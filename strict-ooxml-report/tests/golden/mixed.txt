@@ -1,0 +1,17 @@
+Feature report
+file:        mixed.docx
+standard:    ISO/IEC 29500-1:2008 Strict
+tool:        strict-ooxml-test 0.1.0
+conformance: declared=strict detected=strict normalized=false
+overall:     unsupported
+summary:     supported=1 partial=1 unsupported=2 ignored=1 error=0
+features:    5
+  [warning] unsupported m:oMath x1 @ /word/document.xml:12:1
+  [info] ignored w:comment x1
+  [warning] partial w:drawing x1 @ /word/document.xml:4:7
+  [info] supported w:tbl x1 @ /word/document.xml:1:1
+  [warning] unsupported wp:anchor x1 @ /word/document.xml:9:3
+problems:    3
+  [warning] m:oMath (unsupported) @ /word/document.xml:12:1
+  [warning] w:drawing (partial) @ /word/document.xml:4:7 — only inline images are supported
+  [warning] wp:anchor (unsupported) @ /word/document.xml:9:3 — anchored drawings are not positioned

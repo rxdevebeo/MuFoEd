@@ -24,12 +24,19 @@ use std::io::Read;
 use std::path::Path;
 
 use strict_ooxml_core::error::Result;
+#[cfg(feature = "report")]
+use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_wml::model::support::SupportModel;
 
 pub use strict_ooxml_core::error::StrictError;
 pub use strict_ooxml_core::limits::ResourceLimits;
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
+#[cfg(feature = "report")]
+pub use strict_ooxml_report::{
+    Feature, FeatureStatus, Location, OverallStatus, Severity, SupportReport,
+    SCHEMA_VERSION as REPORT_SCHEMA_VERSION,
+};
 pub use strict_ooxml_wml::model;
 pub use strict_ooxml_wml::model::Document;
 pub use strict_ooxml_wml::ParseOptions as WmlOptions;
@@ -39,10 +46,14 @@ pub use strict_ooxml_wml::{parse_document, ParseOptions};
 pub struct StrictDocument {
     package: Package,
     document: Document,
+    file: String,
 }
 
 impl StrictDocument {
     /// Parses an already-opened package.
+    ///
+    /// The file name used in reports is `"<package>"`; use
+    /// [`StrictDocument::with_file_name`] to override it.
     ///
     /// # Errors
     ///
@@ -50,7 +61,11 @@ impl StrictDocument {
     /// cannot be parsed.
     pub fn from_package(package: Package, options: &ParseOptions) -> Result<Self> {
         let document = parse_document(&package, options)?;
-        Ok(Self { package, document })
+        Ok(Self {
+            package,
+            document,
+            file: "<package>".to_owned(),
+        })
     }
 
     /// Opens and parses a `.docx` from a filesystem path.
@@ -59,8 +74,11 @@ impl StrictDocument {
     ///
     /// See [`StrictDocument::from_package`].
     pub fn open_path(path: impl AsRef<Path>, options: &OpenOptions) -> Result<Self> {
+        let path = path.as_ref();
         let package = Package::open_path(path, options)?;
-        Self::from_package(package, &parse_options_from(options))
+        let mut document = Self::from_package(package, &parse_options_from(options))?;
+        document.file = path.display().to_string();
+        Ok(document)
     }
 
     /// Opens and parses a `.docx` from any reader.
@@ -70,7 +88,22 @@ impl StrictDocument {
     /// See [`StrictDocument::from_package`].
     pub fn open_reader<R: Read>(reader: R, options: &OpenOptions) -> Result<Self> {
         let package = Package::open_reader(reader, options)?;
-        Self::from_package(package, &parse_options_from(options))
+        let mut document = Self::from_package(package, &parse_options_from(options))?;
+        document.file = String::from("<reader>");
+        Ok(document)
+    }
+
+    /// Overrides the file name recorded in reports.
+    #[must_use]
+    pub fn with_file_name(mut self, file: impl Into<String>) -> Self {
+        self.file = file.into();
+        self
+    }
+
+    /// Returns the file name recorded in reports.
+    #[must_use]
+    pub fn file(&self) -> &str {
+        &self.file
     }
 
     /// Returns the parsed document model.
@@ -97,6 +130,57 @@ impl StrictDocument {
     #[must_use]
     pub fn support_debug(&self) -> String {
         self.document.support_debug()
+    }
+
+    /// Builds the Stage-3 Feature Report for this document.
+    ///
+    /// Available with the `report` feature (enabled by default). The report
+    /// records the actual detected conformance and a `Strict` declared target;
+    /// normalization is always `false` until Stage 6.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use strict_ooxml::{OpenOptions, StrictDocument};
+    ///
+    /// let doc = StrictDocument::open_path("document.docx", &OpenOptions::default())?;
+    /// let report = doc.support_report();
+    /// println!("{}", report.overall_status);
+    /// # Ok::<(), strict_ooxml_core::error::StrictError>(())
+    /// ```
+    #[cfg(feature = "report")]
+    #[must_use]
+    pub fn support_report(&self) -> SupportReport {
+        use strict_ooxml_report::{build, Location, ReportInput, Tool};
+
+        let main = self
+            .package
+            .main_document_part()
+            .map_or("/word/document.xml", |part| part.as_str());
+        let fallback = Location::new(format!("{main}:1:1"));
+        let input = ReportInput::new(&self.file, self.support())
+            .tool(Tool::new("strict-ooxml", env!("CARGO_PKG_VERSION")))
+            .conformance(Conformance::Strict, self.package.conformance(), false)
+            .fallback_location(Some(fallback));
+        build(input)
+    }
+
+    /// Serializes the Feature Report to deterministic JSON.
+    ///
+    /// Available with the `report` feature (enabled by default).
+    #[cfg(feature = "report")]
+    #[must_use]
+    pub fn report_json(&self) -> String {
+        self.support_report().to_json()
+    }
+
+    /// Renders the Feature Report for humans.
+    ///
+    /// Available with the `report` feature (enabled by default).
+    #[cfg(feature = "report")]
+    #[must_use]
+    pub fn report_text(&self) -> String {
+        self.support_report().to_text()
     }
 }
 

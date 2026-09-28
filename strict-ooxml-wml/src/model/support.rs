@@ -36,6 +36,13 @@ impl SupportStatus {
     }
 }
 
+/// Maximum number of distinct locations retained per mechanism (ADR-0005).
+///
+/// The [`FeatureUse::count`] keeps counting every occurrence; only the first
+/// `MAX_LOCATIONS_PER_FEATURE` distinct locations are retained so large
+/// documents cannot blow up the report (`STAGE-3-TASK.md` §9, question 1).
+pub const MAX_LOCATIONS_PER_FEATURE: usize = 8;
+
 /// One aggregated record of a mechanism usage.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeatureUse {
@@ -45,9 +52,10 @@ pub struct FeatureUse {
     pub status: SupportStatus,
     /// Optional human-readable message (first occurrence).
     pub message: Option<String>,
-    /// Location of the first occurrence.
-    pub location: Option<SourceLocation>,
-    /// Number of occurrences recorded.
+    /// Distinct locations, in first-seen order (at most
+    /// [`MAX_LOCATIONS_PER_FEATURE`]). The first entry is the primary location.
+    pub locations: Vec<SourceLocation>,
+    /// Number of occurrences recorded (may exceed `locations.len()`).
     pub count: u32,
 }
 
@@ -57,9 +65,29 @@ impl FeatureUse {
             feature_id,
             status: SupportStatus::Supported,
             message: None,
-            location: None,
+            locations: Vec::new(),
             count: 0,
         }
+    }
+
+    /// Returns the primary (first-seen) location, if any.
+    #[must_use]
+    pub fn first_location(&self) -> Option<&SourceLocation> {
+        self.locations.first()
+    }
+
+    /// Returns all retained locations, in first-seen order.
+    #[must_use]
+    pub fn locations(&self) -> &[SourceLocation] {
+        &self.locations
+    }
+
+    /// Retains one distinct location, respecting the cap and de-duplicating.
+    fn push_location(&mut self, location: SourceLocation) {
+        if self.locations.len() >= MAX_LOCATIONS_PER_FEATURE || self.locations.contains(&location) {
+            return;
+        }
+        self.locations.push(location);
     }
 }
 
@@ -79,8 +107,9 @@ impl SupportModel {
     /// Records one use of a mechanism.
     ///
     /// If the feature is already present, its status is raised to the more
-    /// severe of the two, its count is incremented, and the message/location of
-    /// the first occurrence are kept.
+    /// severe of the two, its count is incremented, and the message of the first
+    /// occurrence is kept. The location (if any) is added to the bounded,
+    /// de-duplicated location list (ADR-0005).
     pub fn record(
         &mut self,
         feature_id: impl Into<Arc<str>>,
@@ -100,8 +129,8 @@ impl SupportModel {
         if entry.message.is_none() {
             entry.message = message;
         }
-        if entry.location.is_none() {
-            entry.location = location;
+        if let Some(location) = location {
+            entry.push_location(location);
         }
     }
 
@@ -119,8 +148,8 @@ impl SupportModel {
             if entry.message.is_none() {
                 entry.message = use_.message;
             }
-            if entry.location.is_none() {
-                entry.location = use_.location;
+            for location in use_.locations {
+                entry.push_location(location);
             }
         }
     }
@@ -172,8 +201,7 @@ impl SupportModel {
         );
         for feature in self.iter() {
             let location = feature
-                .location
-                .as_ref()
+                .first_location()
                 .map_or_else(String::new, |loc| format!(" @ {loc}"));
             let message = feature
                 .message

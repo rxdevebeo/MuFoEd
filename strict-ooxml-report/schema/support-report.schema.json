@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/strict-ooxml/support-report.schema.json",
+  "title": "Strict OOXML Feature Report (schema v2)",
+  "description": "Deterministic support report for a WordprocessingML Strict document (ISO/IEC 29500-1:2008). Source of truth for the strict-ooxml-report JSON contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "file",
+    "standard",
+    "tool",
+    "conformance",
+    "overall_status",
+    "summary",
+    "features",
+    "normalization"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "standard": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "conformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declared", "detected", "normalized"],
+      "properties": {
+        "declared": {
+          "$ref": "#/$defs/conformance"
+        },
+        "detected": {
+          "$ref": "#/$defs/conformance"
+        },
+        "normalized": {
+          "type": "boolean"
+        }
+      }
+    },
+    "overall_status": {
+      "enum": ["supported", "partial", "unsupported"]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported", "partial", "unsupported", "ignored", "error"],
+      "properties": {
+        "supported": {
+          "$ref": "#/$defs/count"
+        },
+        "partial": {
+          "$ref": "#/$defs/count"
+        },
+        "unsupported": {
+          "$ref": "#/$defs/count"
+        },
+        "ignored": {
+          "$ref": "#/$defs/count"
+        },
+        "error": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feature"
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applied", "losses", "invariants_ok"],
+      "properties": {
+        "applied": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/applied"
+          }
+        },
+        "losses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/loss"
+          }
+        },
+        "invariants_ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "conformance": {
+      "enum": ["strict", "transitional", "mixed", "unknown"]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "location": {
+      "description": "A source location rendered as <part>:<line>:<column>.",
+      "type": "string",
+      "pattern": "^.+:[0-9]+:[0-9]+$"
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature_id", "status", "severity", "locations", "count"],
+      "properties": {
+        "feature_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["supported", "partial", "unsupported", "ignored", "error"]
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["partial", "unsupported", "error"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "locations": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "supported"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "severity": {
+                "const": "info"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ignored"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "severity": {
+                "const": "info"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "severity": {
+                "const": "warning"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unsupported"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "severity": {
+                "const": "warning"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "error"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "severity": {
+                "const": "error"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "applied": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transform_id", "count", "locations"],
+      "properties": {
+        "transform_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        }
+      }
+    },
+    "loss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transform_id", "feature_id", "reason", "severity", "locations"],
+      "properties": {
+        "transform_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "feature_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        }
+      }
+    }
+  }
+}

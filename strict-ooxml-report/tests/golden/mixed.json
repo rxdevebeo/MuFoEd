@@ -1,0 +1,74 @@
+{
+  "schema_version": "2.0",
+  "file": "mixed.docx",
+  "standard": "ISO/IEC 29500-1:2008 Strict",
+  "tool": {
+    "name": "strict-ooxml-test",
+    "version": "0.1.0"
+  },
+  "conformance": {
+    "declared": "strict",
+    "detected": "strict",
+    "normalized": false
+  },
+  "overall_status": "unsupported",
+  "summary": {
+    "supported": 1,
+    "partial": 1,
+    "unsupported": 2,
+    "ignored": 1,
+    "error": 0
+  },
+  "features": [
+    {
+      "feature_id": "m:oMath",
+      "status": "unsupported",
+      "severity": "warning",
+      "locations": [
+        "/word/document.xml:12:1"
+      ],
+      "count": 1
+    },
+    {
+      "feature_id": "w:comment",
+      "status": "ignored",
+      "severity": "info",
+      "locations": [],
+      "count": 1
+    },
+    {
+      "feature_id": "w:drawing",
+      "status": "partial",
+      "severity": "warning",
+      "message": "only inline images are supported",
+      "locations": [
+        "/word/document.xml:4:7"
+      ],
+      "count": 1
+    },
+    {
+      "feature_id": "w:tbl",
+      "status": "supported",
+      "severity": "info",
+      "locations": [
+        "/word/document.xml:1:1"
+      ],
+      "count": 1
+    },
+    {
+      "feature_id": "wp:anchor",
+      "status": "unsupported",
+      "severity": "warning",
+      "message": "anchored drawings are not positioned",
+      "locations": [
+        "/word/document.xml:9:3"
+      ],
+      "count": 1
+    }
+  ],
+  "normalization": {
+    "applied": [],
+    "losses": [],
+    "invariants_ok": true
+  }
+}

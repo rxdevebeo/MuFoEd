@@ -51,6 +51,39 @@ fn rejects_transitional_under_strict_only() {
     assert!(result.is_err(), "Transitional must be rejected");
 }
 
+#[cfg(feature = "report")]
+#[test]
+fn report_contains_unsupported_mechanism() {
+    let bytes = docx(W_STRICT, "<w:altChunk/>");
+    let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+        .expect("open strict document");
+    let report = document.support_report();
+    assert_eq!(report.file, "<reader>");
+    let chunk = report
+        .features
+        .iter()
+        .find(|feature| feature.feature_id == "w:altChunk")
+        .expect("altChunk reported");
+    assert_eq!(chunk.status, strict_ooxml::FeatureStatus::Unsupported);
+    assert!(!chunk.locations.is_empty());
+    assert!(document
+        .report_json()
+        .contains("\"feature_id\": \"w:altChunk\""));
+    assert!(document.report_text().contains("w:altChunk"));
+    assert!(report.has_critical_problems());
+}
+
+#[cfg(feature = "report")]
+#[test]
+fn report_file_name_can_be_overridden() {
+    let bytes = docx(W_STRICT, "<w:p/>");
+    let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+        .expect("open strict document")
+        .with_file_name("named.docx");
+    assert_eq!(document.file(), "named.docx");
+    assert!(document.report_json().contains("\"file\": \"named.docx\""));
+}
+
 fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut local = Vec::new();
     let mut central = Vec::new();

@@ -10,8 +10,9 @@ Design documents live in the repository root:
 - `base_target.md` — the original (1.0) specification.
 - `STAGE-1-TASK.md`, `STAGE-1-REWORK.md` — Stage-1 task and rework.
 - `STAGE-2-TASK.md`, `STAGE-2-REWORK.md` — Stage-2 task and rework.
-- `docs/stage-2-report.md` — Stage-2 delivery report.
-- `docs/adr/` — accepted architecture decision records (incl. ADR-0004).
+- `STAGE-3-TASK.md` — Stage-3 task (Feature Report).
+- `docs/stage-2-report.md`, `docs/stage-3-report.md` — stage delivery reports.
+- `docs/adr/` — accepted architecture decision records (incl. ADR-0004, ADR-0005).
 
 ## Workspace layout
 
@@ -19,12 +20,24 @@ Design documents live in the repository root:
 |---|---|
 | `strict-ooxml-core` | OPC/ZIP, XML, namespaces, limits, errors (Stage 1). |
 | `strict-ooxml-wml` | WordprocessingML Strict DOM and parser (Stage 2). |
-| `strict-ooxml` | Public `StrictDocument` API (Stage 2). |
-| `strict-ooxml-cli` | `inspect` / `check` command-line tool. |
+| `strict-ooxml-report` | Feature Report: model, build, JSON schema, text (Stage 3). |
+| `strict-ooxml` | Public `StrictDocument` API (Stages 2–3). |
+| `strict-ooxml-cli` | `inspect` / `check` / `report` command-line tool. |
 | `xtool` | Dev utility: XSD inventory, coverage gate, `.docx` generator. |
 
-Later stages add `strict-ooxml-report` and `strict-ooxml-render-svg`
-(`TZ` §5.1).
+Later stages add `strict-ooxml-render-svg` (`TZ` §5.1).
+
+## CLI
+
+```text
+strict-ooxml inspect <file.docx>
+strict-ooxml check   <file.docx>                       # exit 0 / 1 / 2
+strict-ooxml report  <file.docx> [--json|--text] [--out <path>]
+```
+
+`check` exits `0` when no `unsupported`/`error` blocker is found, `1` for a
+blocker (or Transitional input under `StrictOnly`), and `2` for damaged input.
+`report` emits the full JSON Feature Report (or human text with `--text`).
 
 ## Build and test
 
@@ -36,11 +49,20 @@ cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
-Coverage (≥ 80% lines for `core` and `wml`):
+Coverage (≥ 80% lines for `core`, `wml` and `report`):
 
 ```text
-cargo llvm-cov -p strict-ooxml-core --all-features --fail-under-lines 80
-cargo llvm-cov -p strict-ooxml-wml --all-features --fail-under-lines 80
+cargo llvm-cov -p strict-ooxml-core   --all-features --fail-under-lines 80
+cargo llvm-cov -p strict-ooxml-wml    --all-features --fail-under-lines 80
+cargo llvm-cov -p strict-ooxml-report --all-features --fail-under-lines 80
+```
+
+Feature Report schema validation (independent `jsonschema` oracle) and an
+example:
+
+```text
+cargo test -p strict-ooxml-report --all-features --test schema
+cargo run  -p strict-ooxml --example support_report -- document.docx
 ```
 
 Optional-element coverage gate (≥ 90%) and the independent corpus cross-check:

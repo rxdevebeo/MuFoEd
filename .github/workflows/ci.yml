@@ -32,6 +32,12 @@ jobs:
         run: cargo test --workspace --all-features
       - name: WML independent oracle (P-1)
         run: cargo test -p strict-ooxml-wml --all-features --test corpus_oracle
+      - name: Feature Report schema validation (independent oracle)
+        run: cargo test -p strict-ooxml-report --all-features --test schema
+      - name: Feature Report determinism
+        run: cargo test -p strict-ooxml-report --all-features --test determinism
+      - name: CLI exit codes and report command
+        run: cargo test -p strict-ooxml-cli --test cli
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)
@@ -58,6 +64,8 @@ jobs:
         run: cargo llvm-cov -p strict-ooxml-core --all-features --fail-under-lines 80
       - name: Coverage (wml crate, threshold 80%)
         run: cargo llvm-cov -p strict-ooxml-wml --all-features --fail-under-lines 80
+      - name: Coverage (report crate, threshold 80%)
+        run: cargo llvm-cov -p strict-ooxml-report --all-features --fail-under-lines 80
 
   fuzz-smoke:
     name: fuzz smoke (nightly)

@@ -25,6 +25,12 @@ fn document(ns: &str) -> String {
     format!(r#"<?xml version="1.0"?><w:document xmlns:w="{ns}"><w:body/></w:document>"#)
 }
 
+fn document_with_body(ns: &str, body: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?><w:document xmlns:w="{ns}"><w:body>{body}</w:body></w:document>"#
+    )
+}
+
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = !0u32;
     for &byte in data {
@@ -115,7 +121,11 @@ fn run(args: &[&str]) -> (i32, String, String) {
 }
 
 fn strict_docx() -> Vec<u8> {
-    let doc = document(STRICT_W_NS);
+    strict_docx_with_body("")
+}
+
+fn strict_docx_with_body(body: &str) -> Vec<u8> {
+    let doc = document_with_body(STRICT_W_NS, body);
     build_stored_zip(&[
         ("[Content_Types].xml", CONTENT_TYPES.as_bytes()),
         ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes()),
@@ -187,4 +197,80 @@ fn check_unknown_conformance_reports_unknown() {
     assert_eq!(code, 2, "stdout: {stdout}");
     assert!(stdout.contains("unknown"), "stdout: {stdout}");
     assert!(!stdout.contains("ok: strict"), "stdout: {stdout}");
+}
+
+#[test]
+fn check_unsupported_mechanism_returns_one() {
+    let path = write_temp("unsupported.docx", &strict_docx_with_body("<w:altChunk/>"));
+    let (code, stdout, _) = run(&["check", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 1, "stdout: {stdout}");
+    assert!(stdout.contains("ok: strict"), "stdout: {stdout}");
+    assert!(stdout.contains("unsupported=1"), "stdout: {stdout}");
+    assert!(stdout.contains("blocker: w:altChunk"), "stdout: {stdout}");
+}
+
+#[test]
+fn report_json_by_default() {
+    let path = write_temp("report-json.docx", &strict_docx_with_body("<w:altChunk/>"));
+    let (code, stdout, _) = run(&["report", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(stdout.contains("\"schema_version\": \"2.0\""), "{stdout}");
+    assert!(
+        stdout.contains("\"feature_id\": \"w:altChunk\""),
+        "{stdout}"
+    );
+    assert!(stdout.ends_with('\n'), "{stdout}");
+}
+
+#[test]
+fn report_text_flag() {
+    let path = write_temp("report-text.docx", &strict_docx());
+    let (code, stdout, _) = run(&["report", path.to_str().unwrap(), "--text"]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(stdout.contains("Feature report"), "{stdout}");
+    assert!(stdout.contains("overall:"), "{stdout}");
+}
+
+#[test]
+fn report_out_writes_file() {
+    let docx = write_temp("report-out.docx", &strict_docx());
+    let out = std::env::temp_dir().join(format!("strict-ooxml-report-{}.json", std::process::id()));
+    let (code, stdout, _) = run(&[
+        "report",
+        docx.to_str().unwrap(),
+        "--json",
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    let _ = std::fs::remove_file(&docx);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let written = std::fs::read_to_string(&out).expect("written report");
+    let _ = std::fs::remove_file(&out);
+    assert!(written.contains("\"schema_version\": \"2.0\""), "{written}");
+}
+
+#[test]
+fn report_transitional_returns_two() {
+    let path = write_temp("report-transitional.docx", &transitional_docx());
+    let (code, _stdout, stderr) = run(&["report", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 2, "stderr: {stderr}");
+    assert!(stderr.contains("Transitional"), "stderr: {stderr}");
+}
+
+#[test]
+fn report_damaged_returns_two() {
+    let path = write_temp("report-damaged.docx", b"not a zip at all");
+    let (code, _stdout, stderr) = run(&["report", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 2, "stderr: {stderr}");
+}
+
+#[test]
+fn report_missing_file_argument_returns_two() {
+    let (code, _stdout, stderr) = run(&["report", "--json"]);
+    assert_eq!(code, 2, "stderr: {stderr}");
 }

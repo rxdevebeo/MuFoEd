@@ -9,5 +9,6 @@ immutable once accepted; a superseding decision gets a new number.
 | [0002](0002-xml-backend.md) | `quick-xml` tokenizer with an owned limiting wrapper | Accepted |
 | [0003](0003-xml-event-ownership.md) | Owned XML events and a self-positioning `XmlReader` | Accepted |
 | [0004](0004-wml-model.md) | WordprocessingML Strict DOM, event parser and two-phase assembly | Accepted |
+| [0005](0005-report.md) | Feature Report: JSON stack, locations, severity and aggregation | Accepted |
 
 Copy `0000-template.md` when adding a new record.

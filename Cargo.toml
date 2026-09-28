@@ -3,14 +3,16 @@
 # Stage 1 (`STAGE-1-TASK.md`) established `strict-ooxml-core` and the
 # `strict-ooxml-cli` skeleton. Stage 2 (`STAGE-2-TASK.md`) adds
 # `strict-ooxml-wml` (DOM + parser), the `strict-ooxml` meta-crate and the
-# `xtool` inventory utility. `report` and `render-svg` (TZ §5.1) are added in
-# later stages.
+# `xtool` inventory utility. Stage 3 (`STAGE-3-TASK.md`) adds
+# `strict-ooxml-report` (Feature Report) and wires it into the meta-crate and
+# the CLI. `render-svg` (TZ §5.1) is added in a later stage.
 
 [workspace]
 resolver = "2"
 members = [
     "strict-ooxml-core",
     "strict-ooxml-wml",
+    "strict-ooxml-report",
     "strict-ooxml",
     "strict-ooxml-cli",
     "xtool",
@@ -32,6 +34,9 @@ encoding_rs = "0.8"
 thiserror = "2"
 quick-xml = "0.41"
 rayon = "1"
+# JSON serialization for the Feature Report (ADR-0005).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Development dependencies.
 proptest = "1"
 
