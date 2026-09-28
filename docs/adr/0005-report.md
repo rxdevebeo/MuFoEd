@@ -99,6 +99,40 @@ schema accept it now so the contract is stable.
 `unsupported` or `error` — i.e. an `error`/`unsupported` blocker. `partial` is a
 warning, not a blocker.
 
+### Feature semantics: a problem/attention view (option a)
+
+The Stage-2 parser records a mechanism in the `SupportModel` only when it needs
+attention (unknown/foreign, partial, deliberately ignored) or when a value could
+not be applied. It never records fully supported core markup (no production path
+calls `record(…, Supported, …)`; `Supported` is only the default of a record
+that is never created for it).
+
+Consequently the Feature Report is a **problem/attention view, not a coverage
+map**:
+
+- `features` enumerates the mechanisms the parser recorded — normally the ones
+  needing attention. Fully supported core markup is **not** enumerated.
+- `summary.supported` counts only *explicitly recorded* supported mechanisms and
+  is therefore normally `0` in production; it is **not** an indicator that "no
+  markup is supported". `summary` is a set of counters over `features`, not
+  coverage percentages.
+- `overall_status == supported` means "no `partial`/`unsupported`/`error`
+  mechanism was recorded" (no reported limitation), **not** "every mechanism was
+  verified as supported".
+
+This choice is recorded as option **(a)** of the Stage-3 acceptance finding F1:
+document the semantics rather than populate `supported` for every recognised
+element. Emitting a real coverage map (option (b)) would require the Stage-2
+parser to record `supported` mechanisms against the `coverage/wml-elements.toml`
+inventory and to bound the resulting report size; that is deferred to a later
+stage and is **not** part of Stage 3.
+
+Consequences: the human-readable renderer prints an explicit
+`note: only mechanisms with a notable status are recorded; fully supported
+markup is not enumerated`, and the JSON Schema documents the same in the
+`features`/`summary`/`overall_status` descriptions. `check`'s exit codes remain
+driven by `unsupported`/`error` blockers and are unaffected.
+
 ### Transitional input (open question 4)
 
 **Refuse.** Stage 3 opens with `ConformancePolicy::StrictOnly`; a Transitional

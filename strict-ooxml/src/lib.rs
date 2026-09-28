@@ -138,6 +138,11 @@ impl StrictDocument {
     /// records the actual detected conformance and a `Strict` declared target;
     /// normalization is always `false` until Stage 6.
     ///
+    /// The report is a **problem/attention view** (ADR-0005): `features` lists
+    /// the mechanisms the parser recorded (normally those needing attention),
+    /// and `overall_status: supported` means "no recorded limitation", not a
+    /// complete coverage claim.
+    ///
     /// # Example
     ///
     /// ```no_run

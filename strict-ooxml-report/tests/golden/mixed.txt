@@ -5,6 +5,7 @@ tool:        strict-ooxml-test 0.1.0
 conformance: declared=strict detected=strict normalized=false
 overall:     unsupported
 summary:     supported=1 partial=1 unsupported=2 ignored=1 error=0
+note:        only mechanisms with a notable status are recorded; fully supported markup is not enumerated
 features:    5
   [warning] unsupported m:oMath x1 @ /word/document.xml:12:1
   [info] ignored w:comment x1

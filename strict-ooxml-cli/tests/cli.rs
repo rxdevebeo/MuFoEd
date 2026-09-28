@@ -205,9 +205,16 @@ fn check_unsupported_mechanism_returns_one() {
     let (code, stdout, _) = run(&["check", path.to_str().unwrap()]);
     let _ = std::fs::remove_file(&path);
     assert_eq!(code, 1, "stdout: {stdout}");
-    assert!(stdout.contains("ok: strict"), "stdout: {stdout}");
+    assert!(!stdout.contains("ok: strict"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("blocker(s) require attention"),
+        "stdout: {stdout}"
+    );
     assert!(stdout.contains("unsupported=1"), "stdout: {stdout}");
-    assert!(stdout.contains("blocker: w:altChunk"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("blocker: w:altChunk [unsupported]"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]

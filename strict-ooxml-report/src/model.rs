@@ -135,6 +135,11 @@ impl From<SourceLocation> for Location {
 #[serde(rename_all = "lowercase")]
 pub enum FeatureStatus {
     /// Fully parsed into the model.
+    ///
+    /// Under the Stage-3 semantics (ADR-0005) the parser records a mechanism as
+    /// `supported` only when it explicitly reports it; fully supported core
+    /// markup is **not** enumerated, so this status is rare in production and
+    /// `summary.supported` is normally `0`.
     Supported,
     /// Recognised, but only partially represented.
     Partial,
@@ -227,6 +232,10 @@ impl fmt::Display for OverallStatus {
 }
 
 /// One reported mechanism.
+///
+/// `features` is the list of mechanisms the parser **recorded** — normally the
+/// ones that need attention (`partial`/`unsupported`/`ignored`), not a complete
+/// coverage map of the document (ADR-0005).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Feature {
     /// Feature identifier, for example `w:tbl` or `wp:anchor`.
@@ -245,9 +254,14 @@ pub struct Feature {
 }
 
 /// Counts of features per status.
+///
+/// These are counters over the **recorded** [`Feature`]s (see the Stage-3
+/// semantics in ADR-0005), not coverage percentages. In particular
+/// `supported` counts only mechanisms the parser explicitly reported as
+/// supported and is normally `0`; it does **not** mean "no markup is supported".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Summary {
-    /// Number of `supported` features.
+    /// Number of `supported` features (explicitly recorded; usually `0`).
     pub supported: u32,
     /// Number of `partial` features.
     pub partial: u32,
@@ -307,6 +321,11 @@ impl Default for NormalizationBlock {
 }
 
 /// A complete Feature Report (`TZ` §11).
+///
+/// The report is a **problem/attention view**, not a coverage map: `features`
+/// lists the mechanisms the parser recorded and `overall_status` aggregates
+/// them (ADR-0005). `overall_status == supported` therefore means "no recorded
+/// limitation", not "every mechanism was verified as supported".
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupportReport {
     /// Report schema version (`"2.0"`).
@@ -319,11 +338,16 @@ pub struct SupportReport {
     pub tool: Tool,
     /// Conformance block.
     pub conformance: ConformanceBlock,
-    /// Aggregated document status.
+    /// Aggregated status of the **recorded** mechanisms (worst-of).
+    ///
+    /// `supported` means no `partial`/`unsupported`/`error` mechanism was
+    /// recorded; it is not a completeness claim.
     pub overall_status: OverallStatus,
-    /// Status counters.
+    /// Status counters over the recorded mechanisms (not coverage).
     pub summary: Summary,
-    /// Mechanisms, sorted by `feature_id` (then location).
+    /// Recorded mechanisms, sorted by `feature_id` (then location).
+    ///
+    /// Normally the mechanisms needing attention (see [`Feature`]).
     pub features: Vec<Feature>,
     /// Normalization block (empty in Stage 3).
     pub normalization: NormalizationBlock,

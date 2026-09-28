@@ -23,8 +23,7 @@
 
 use std::process::ExitCode;
 
-use strict_ooxml::ConformancePolicy;
-use strict_ooxml::StrictDocument;
+use strict_ooxml::{ConformancePolicy, Feature, FeatureStatus, Location, StrictDocument};
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{OpenOptions, Package};
@@ -104,7 +103,23 @@ fn run_check(args: &[String]) -> ExitCode {
         Ok(document) => match document.package().conformance() {
             Conformance::Strict => {
                 let report = document.support_report();
-                println!("ok: strict");
+                // A blocker is an `unsupported` or `error` feature (ADR-0005).
+                // `partial` is a warning and does not change the exit code.
+                let blockers: Vec<&Feature> = report
+                    .features
+                    .iter()
+                    .filter(|feature| {
+                        matches!(
+                            feature.status,
+                            FeatureStatus::Unsupported | FeatureStatus::Error
+                        )
+                    })
+                    .collect();
+                if blockers.is_empty() {
+                    println!("ok: strict");
+                } else {
+                    println!("strict: {} blocker(s) require attention", blockers.len());
+                }
                 println!("overall: {}", report.overall_status);
                 let summary = report.summary;
                 println!(
@@ -115,19 +130,17 @@ fn run_check(args: &[String]) -> ExitCode {
                     summary.ignored,
                     summary.error,
                 );
-                if report.has_critical_problems() {
-                    for feature in &report.features {
-                        if feature.status == strict_ooxml::FeatureStatus::Unsupported {
-                            let location = feature
-                                .locations
-                                .first()
-                                .map_or("", strict_ooxml::Location::as_str);
-                            println!("blocker: {} @ {location}", feature.feature_id);
-                        }
-                    }
-                    ExitCode::from(EXIT_PROBLEM)
-                } else {
+                for feature in &blockers {
+                    let location = feature.locations.first().map_or("", Location::as_str);
+                    println!(
+                        "blocker: {} [{}] @ {location}",
+                        feature.feature_id, feature.status
+                    );
+                }
+                if blockers.is_empty() {
                     ExitCode::from(EXIT_OK)
+                } else {
+                    ExitCode::from(EXIT_PROBLEM)
                 }
             }
             Conformance::Unknown => {

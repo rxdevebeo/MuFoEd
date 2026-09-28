@@ -38,6 +38,13 @@ pub fn render(report: &SupportReport) -> String {
         report.summary.ignored,
         report.summary.error,
     );
+    // Feature semantics (ADR-0005): `features` lists the mechanisms the parser
+    // recorded — normally the ones needing attention — not a full coverage map.
+    let _ = writeln!(
+        out,
+        "{:<12} only mechanisms with a notable status are recorded; fully supported markup is not enumerated",
+        "note:",
+    );
 
     let _ = writeln!(out, "{:<12} {}", "features:", report.features.len());
     for feature in &report.features {

@@ -60,9 +60,11 @@
       }
     },
     "overall_status": {
+      "description": "Worst-of aggregate over the recorded features. 'supported' means no partial/unsupported/error mechanism was recorded, not that every mechanism was verified as supported (ADR-0005).",
       "enum": ["supported", "partial", "unsupported"]
     },
     "summary": {
+      "description": "Counters over the recorded features (not coverage percentages). 'supported' counts only explicitly recorded supported mechanisms and is normally 0.",
       "type": "object",
       "additionalProperties": false,
       "required": ["supported", "partial", "unsupported", "ignored", "error"],
@@ -85,6 +87,7 @@
       }
     },
     "features": {
+      "description": "Mechanisms the parser recorded (normally those needing attention: partial/unsupported/ignored). Not a complete coverage map: fully supported core markup is not enumerated (ADR-0005).",
       "type": "array",
       "items": {
         "$ref": "#/$defs/feature"

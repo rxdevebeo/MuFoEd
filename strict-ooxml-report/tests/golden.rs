@@ -1,6 +1,14 @@
 //! Golden JSON and text reports on synthetic Strict documents
 //! (`STAGE-3-TASK.md` §8.1).
 //!
+//! Purpose: lock the **serialization format** (field order, spacing, the
+//! `note:` line), not production coverage. The synthetic models include
+//! `supported`/`ignored` features so every status the model can serialize is
+//! exercised; under the Stage-3 semantics (ADR-0005, acceptance finding F1/F5)
+//! the parser records only mechanisms needing attention, so a production
+//! report normally has `summary.supported == 0`. A real Strict example
+//! (unsupported `w:altChunk`) is covered by `strict-ooxml/tests/open.rs`.
+//!
 //! Regenerate with `UPDATE_GOLDEN=1 cargo test -p strict-ooxml-report --test golden`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
