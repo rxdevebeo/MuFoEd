@@ -281,3 +281,81 @@ fn report_missing_file_argument_returns_two() {
     let (code, _stdout, stderr) = run(&["report", "--json"]);
     assert_eq!(code, 2, "stderr: {stderr}");
 }
+
+#[test]
+fn render_prints_svg() {
+    let path = write_temp(
+        "render.docx",
+        &strict_docx_with_body("<w:p><w:r><w:t>Hello</w:t></w:r></w:p>"),
+    );
+    let (code, stdout, _) = run(&["render", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(stdout.contains("<svg "), "{stdout}");
+    assert!(stdout.contains("Hello"), "{stdout}");
+}
+
+#[test]
+fn render_unsupported_mechanism_returns_one() {
+    let path = write_temp(
+        "render-unsupported.docx",
+        &strict_docx_with_body("<w:p><w:r><w:t>x</w:t></w:r></w:p><w:altChunk/>"),
+    );
+    let (code, stdout, stderr) = run(&["render", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 1, "stdout: {stdout} stderr: {stderr}");
+    assert!(stdout.contains("<svg "), "{stdout}");
+}
+
+#[test]
+fn render_out_directory_writes_pages() {
+    let docx = write_temp("render-dir.docx", &strict_docx_with_body("<w:p/>"));
+    let dir = std::env::temp_dir().join(format!("strict-ooxml-render-{}", std::process::id()));
+    let (code, _stdout, stderr) = run(&[
+        "render",
+        docx.to_str().unwrap(),
+        "--out",
+        dir.to_str().unwrap(),
+    ]);
+    let _ = std::fs::remove_file(&docx);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let page = dir.join("page-1.svg");
+    let svg = std::fs::read_to_string(&page).expect("page file");
+    assert!(svg.contains("<svg "), "{svg}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn render_out_file_requires_single_page() {
+    let docx = write_temp("render-file.docx", &strict_docx_with_body("<w:p/>"));
+    let out = std::env::temp_dir().join(format!("strict-ooxml-page-{}.svg", std::process::id()));
+    let (code, _stdout, stderr) = run(&[
+        "render",
+        docx.to_str().unwrap(),
+        "--pages",
+        "1",
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    let _ = std::fs::remove_file(&docx);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let svg = std::fs::read_to_string(&out).expect("svg file");
+    let _ = std::fs::remove_file(&out);
+    assert!(svg.contains("<svg "), "{svg}");
+}
+
+#[test]
+fn render_transitional_returns_two() {
+    let path = write_temp("render-transitional.docx", &transitional_docx());
+    let (code, _stdout, stderr) = run(&["render", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 2, "stderr: {stderr}");
+}
+
+#[test]
+fn render_damaged_returns_two() {
+    let path = write_temp("render-damaged.docx", b"not a zip");
+    let (code, _stdout, stderr) = run(&["render", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 2, "stderr: {stderr}");
+}

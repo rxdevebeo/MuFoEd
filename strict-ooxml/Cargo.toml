@@ -12,9 +12,10 @@ keywords = ["ooxml", "docx", "wordprocessingml", "strict"]
 categories = ["parser-implementations"]
 
 [features]
-default = ["report"]
-# Reserved for Stage 4 (`strict-ooxml-render-svg`).
-svg = []
+default = ["report", "svg"]
+# Stage 4: enables `strict-ooxml-render-svg` and the render methods on
+# `StrictDocument` (TZ §5.4).
+svg = ["dep:strict-ooxml-render-svg"]
 # Stage 3: enables `strict-ooxml-report` and the report methods on
 # `StrictDocument` (TZ §5.4).
 report = ["dep:strict-ooxml-report"]
@@ -25,10 +26,15 @@ parallel = ["strict-ooxml-wml/parallel"]
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 strict-ooxml-report = { version = "0.1.0", path = "../strict-ooxml-report", optional = true }
+strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg", optional = true }
 
 [[example]]
 name = "support_report"
 required-features = ["report"]
+
+[[example]]
+name = "render_svg"
+required-features = ["svg"]
 
 [lints]
 workspace = true

@@ -1,0 +1,36 @@
+[package]
+name = "strict-ooxml-render-svg"
+description = "Deterministic SVG rendering (layout) for WordprocessingML Strict documents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "wordprocessingml", "svg", "rendering"]
+categories = ["parser-implementations", "rendering"]
+
+[features]
+default = []
+# Optional system-font provider (outside the Stage-4 acceptance criteria).
+system-fonts = []
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+
+[dev-dependencies]
+# Independent XML/SVG parser used only as an oracle by the tests (ADR-0006).
+roxmltree = "0.20"
+criterion = "0.5"
+
+[[bench]]
+name = "render"
+harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true

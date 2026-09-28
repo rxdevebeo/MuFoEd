@@ -84,6 +84,22 @@ fn report_file_name_can_be_overridden() {
     assert!(document.report_json().contains("\"file\": \"named.docx\""));
 }
 
+#[cfg(feature = "svg")]
+#[test]
+fn renders_pages_to_svg() {
+    let bytes = docx(W_STRICT, "<w:p><w:r><w:t>Hello</w:t></w:r></w:p>");
+    let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+        .expect("open strict document");
+    let pages = document
+        .render_svg(&strict_ooxml::RenderOptions::default())
+        .expect("render");
+    assert_eq!(pages.len(), 1);
+    assert!(pages[0].svg.contains("Hello"), "{}", pages[0].svg);
+    assert!(document.render_page_svg(0).unwrap().contains("<svg "));
+    assert!(document.render_page_svg(99).is_err());
+    assert_eq!(document.render_all_svg().unwrap().len(), 1);
+}
+
 fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut local = Vec::new();
     let mut central = Vec::new();

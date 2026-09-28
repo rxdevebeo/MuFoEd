@@ -32,6 +32,8 @@ use strict_ooxml_wml::model::support::SupportModel;
 pub use strict_ooxml_core::error::StrictError;
 pub use strict_ooxml_core::limits::ResourceLimits;
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
+#[cfg(feature = "svg")]
+pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
     Feature, FeatureStatus, Location, OverallStatus, Severity, SupportReport,
@@ -186,6 +188,65 @@ impl StrictDocument {
     #[must_use]
     pub fn report_text(&self) -> String {
         self.support_report().to_text()
+    }
+
+    /// Renders the document to SVG pages.
+    ///
+    /// Available with the `svg` feature (enabled by default). Images are
+    /// resolved from the opened package, so `RenderOptions::media` controls
+    /// whether they are embedded as `data:` URIs, referenced by file name or
+    /// replaced with placeholders.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StrictError`] if output limits are exceeded or rendering
+    /// fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use strict_ooxml::{OpenOptions, RenderOptions, StrictDocument};
+    ///
+    /// let doc = StrictDocument::open_path("document.docx", &OpenOptions::default())?;
+    /// let pages = doc.render_svg(&RenderOptions::default())?;
+    /// println!("{} page(s)", pages.len());
+    /// # Ok::<(), strict_ooxml_core::error::StrictError>(())
+    /// ```
+    #[cfg(feature = "svg")]
+    pub fn render_svg(&self, options: &RenderOptions) -> Result<Vec<Page>> {
+        strict_ooxml_render_svg::render_with_media(&self.document, options, Some(&self.package))
+    }
+
+    /// Renders a single page to an SVG string (zero-based `index`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StrictError`] if `index` is out of range or rendering fails.
+    #[cfg(feature = "svg")]
+    pub fn render_page_svg(&self, index: usize) -> Result<String> {
+        let selection = PageSelection::Range {
+            start: index + 1,
+            end: index + 1,
+        };
+        self.render_svg(&RenderOptions::default().pages(selection))?
+            .into_iter()
+            .next()
+            .map(|page| page.svg)
+            .ok_or_else(|| StrictError::Render(format!("page {index} is out of range")))
+    }
+
+    /// Renders every page to an SVG string.
+    ///
+    /// # Errors
+    ///
+    /// See [`StrictDocument::render_svg`].
+    #[cfg(feature = "svg")]
+    pub fn render_all_svg(&self) -> Result<Vec<String>> {
+        Ok(self
+            .render_svg(&RenderOptions::default())?
+            .into_iter()
+            .map(|page| page.svg)
+            .collect())
     }
 }
 

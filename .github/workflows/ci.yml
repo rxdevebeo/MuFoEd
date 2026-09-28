@@ -38,6 +38,14 @@ jobs:
         run: cargo test -p strict-ooxml-report --all-features --test determinism
       - name: CLI exit codes and report command
         run: cargo test -p strict-ooxml-cli --test cli
+      - name: SVG validity oracle (independent parser)
+        run: cargo test -p strict-ooxml-render-svg --all-features --test svg_oracle
+      - name: Renderer determinism and images
+        run: |
+          cargo test -p strict-ooxml-render-svg --all-features --test render
+          cargo test -p strict-ooxml-render-svg --all-features --test images
+      - name: Renderer corpus (no panics)
+        run: cargo test -p strict-ooxml-render-svg --all-features --test corpus
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)
@@ -66,6 +74,8 @@ jobs:
         run: cargo llvm-cov -p strict-ooxml-wml --all-features --fail-under-lines 80
       - name: Coverage (report crate, threshold 80%)
         run: cargo llvm-cov -p strict-ooxml-report --all-features --fail-under-lines 80
+      - name: Coverage (render-svg crate, threshold 80%)
+        run: cargo llvm-cov -p strict-ooxml-render-svg --all-features --fail-under-lines 80
 
   fuzz-smoke:
     name: fuzz smoke (nightly)

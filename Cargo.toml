@@ -4,8 +4,8 @@
 # `strict-ooxml-cli` skeleton. Stage 2 (`STAGE-2-TASK.md`) adds
 # `strict-ooxml-wml` (DOM + parser), the `strict-ooxml` meta-crate and the
 # `xtool` inventory utility. Stage 3 (`STAGE-3-TASK.md`) adds
-# `strict-ooxml-report` (Feature Report) and wires it into the meta-crate and
-# the CLI. `render-svg` (TZ §5.1) is added in a later stage.
+# `strict-ooxml-report` (Feature Report). Stage 4 (`STAGE-4-TASK.md`) adds
+# `strict-ooxml-render-svg` and wires both into the meta-crate and the CLI.
 
 [workspace]
 resolver = "2"
@@ -13,6 +13,7 @@ members = [
     "strict-ooxml-core",
     "strict-ooxml-wml",
     "strict-ooxml-report",
+    "strict-ooxml-render-svg",
     "strict-ooxml",
     "strict-ooxml-cli",
     "xtool",
