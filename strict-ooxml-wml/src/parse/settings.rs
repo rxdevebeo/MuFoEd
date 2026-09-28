@@ -13,10 +13,7 @@ impl PartParser<'_> {
     pub(crate) fn parse_settings_root(&mut self) -> Result<Settings> {
         self.enter()?;
         let mut settings = Settings::default();
-        match self.next_event()? {
-            XmlEvent::StartElement { name, .. } if name.local() == "settings" => {}
-            _ => return Err(self.invalid("expected 'w:settings' root element")),
-        }
+        self.expect_root("settings")?;
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {

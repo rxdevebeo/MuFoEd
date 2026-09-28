@@ -16,10 +16,7 @@ impl PartParser<'_> {
     pub(crate) fn parse_styles_root(&mut self) -> Result<StyleTable> {
         self.enter()?;
         let mut table = StyleTable::new();
-        match self.next_event()? {
-            XmlEvent::StartElement { name, .. } if name.local() == "styles" => {}
-            _ => return Err(self.invalid("expected 'w:styles' root element")),
-        }
+        self.expect_root("styles")?;
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {

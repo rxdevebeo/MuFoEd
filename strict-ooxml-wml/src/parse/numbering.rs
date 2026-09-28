@@ -14,10 +14,7 @@ impl PartParser<'_> {
     pub(crate) fn parse_numbering_root(&mut self) -> Result<NumberingTable> {
         self.enter()?;
         let mut table = NumberingTable::new();
-        match self.next_event()? {
-            XmlEvent::StartElement { name, .. } if name.local() == "numbering" => {}
-            _ => return Err(self.invalid("expected 'w:numbering' root element")),
-        }
+        self.expect_root("numbering")?;
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {

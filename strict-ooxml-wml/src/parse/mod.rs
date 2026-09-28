@@ -294,6 +294,47 @@ impl<'a> PartParser<'a> {
         self.reader.last_event_location()
     }
 
+    /// Consumes the prolog and the root `StartElement` of a part.
+    ///
+    /// XML permits whitespace, comments, processing instructions and the
+    /// declaration between the document start and the root element. The reader
+    /// has already dropped comments, processing instructions and the
+    /// declaration, so only whitespace-only `Text`/`CData` events remain; these
+    /// are skipped. Non-whitespace text or any other leading element is
+    /// malformed input.
+    ///
+    /// For a package detected as Strict the root must also be in the WML Strict
+    /// namespace; packages of undetermined conformance (`Unknown`) keep matching
+    /// by local name so the CLI can still report the missing signal. The root
+    /// occurs once, so this is not recursive.
+    pub(crate) fn expect_root(&mut self, expected_local: &str) -> Result<()> {
+        let require_strict_ns = self.package.conformance() == Conformance::Strict;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. }
+                    if name.local() == expected_local && (!require_strict_ns || is_wml(&name)) =>
+                {
+                    return Ok(());
+                }
+                XmlEvent::StartElement { name, .. } => {
+                    return Err(self.invalid(format!(
+                        "expected 'w:{expected_local}' root element, found '{}'",
+                        name.local()
+                    )));
+                }
+                XmlEvent::Text(text) | XmlEvent::CData(text) if is_prolog_whitespace(&text) => {}
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {
+                    return Err(self.invalid(format!(
+                        "unexpected character data before 'w:{expected_local}' root element"
+                    )));
+                }
+                XmlEvent::EndElement { .. } | XmlEvent::Eof => {
+                    return Err(self.invalid(format!("expected 'w:{expected_local}' root element")));
+                }
+            }
+        }
+    }
+
     /// Interns a string, returning a shared handle.
     pub(crate) fn intern(&mut self, value: &str) -> Arc<str> {
         self.interner.intern(value)
@@ -379,6 +420,15 @@ impl<'a> PartParser<'a> {
     pub(crate) fn content_type(&self, part: &PartId) -> Option<Arc<str>> {
         self.package.content_type(part).map(Arc::from)
     }
+}
+
+/// Returns `true` if `text` consists only of XML whitespace.
+///
+/// XML's `S` production is exactly space, tab, carriage return and line feed;
+/// these are the only characters legal in the prolog before the root.
+fn is_prolog_whitespace(text: &str) -> bool {
+    text.bytes()
+        .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
 }
 
 /// Returns `true` if a qualified name is in the WML Strict namespace.

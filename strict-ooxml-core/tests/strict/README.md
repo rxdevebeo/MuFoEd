@@ -22,8 +22,13 @@ used here only as a test fixture.
 
 ## Status
 
-As of the current commit these fixtures are **detected** as Strict
-(`conformance: Strict`) but do **not** parse yet: they place the XML declaration
-and the root element on separate lines, and the Stage-2 parser rejects leading
-prolog whitespace (`REWORK-WML-1.md`, finding C-3). Once C-3 is fixed, this
-directory is exercised by a dedicated Strict parse/report/render test.
+`strict-profile.docx` **parses**: the Stage-2 parser now skips a whitespace,
+comment or processing-instruction prolog before the root element
+(`REWORK-WML-1.md`, finding C-3). It is exercised end to end (open, Feature
+Report, SVG render) by `strict-ooxml/tests/strict_corpus.rs`, and the
+declaration/newline regression is covered by
+`strict-ooxml-wml/tests/prolog.rs`.
+
+The document reports `unsupported` for mechanisms it does not model (charts,
+diagrams, anchored drawings and various `settings.xml` extensions), so `check`
+exits `1`; opening succeeds and `render` emits one page.

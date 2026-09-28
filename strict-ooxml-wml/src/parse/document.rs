@@ -28,16 +28,7 @@ impl PartParser<'_> {
     /// Parses the `w:document` root and its `w:body`.
     pub(crate) fn parse_document_root(&mut self) -> Result<(Body, Vec<Section>)> {
         self.enter()?;
-        match self.next_event()? {
-            XmlEvent::StartElement { name, .. } if name.local() == "document" => {}
-            XmlEvent::StartElement { name, .. } => {
-                return Err(self.invalid(format!(
-                    "expected 'w:document' root, found '{}'",
-                    name.local()
-                )));
-            }
-            _ => return Err(self.invalid("expected 'w:document' root element")),
-        }
+        self.expect_root("document")?;
 
         let mut body = Body::default();
         let mut sections = Vec::new();
