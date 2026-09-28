@@ -11,7 +11,8 @@
 
 use std::path::Path;
 
-use strict_ooxml_core::error::StrictError;
+use strict_ooxml_core::error::{LimitKind, StrictError};
+use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 
@@ -97,4 +98,43 @@ fn public_corpus_opens_detects_and_reads() {
     }
 
     assert!(checked > 0, "no sample files were checked");
+}
+
+#[test]
+fn legitimate_stress_document_opens_and_strict_ratio_still_rejects() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/sample-docx-200kb.docx");
+    assert!(
+        path.is_file(),
+        "tests/samples/sample-docx-200kb.docx is a versioned fixture and must be present; \
+         the C-1 regression cannot be silently skipped"
+    );
+
+    // C-1: the 201 KB → 44 MB legitimate document opens under the default
+    // *limits*. (The sample is Transitional, so it is opened permissively to
+    // reach conformance detection; the point of this regression is that the
+    // compression-ratio limit no longer rejects it.)
+    let permissive = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+    let package = Package::open_path(&path, &permissive)
+        .expect("default limits must accept the legitimate stress document");
+    let main = package.main_document_part().expect("main document").clone();
+    let bytes = package.read_part(&main).expect("read main document");
+    assert!(
+        bytes.len() > 40_000_000,
+        "expected the ~44 MB stress document, got {} bytes",
+        bytes.len()
+    );
+
+    // C-2: an explicit strict ratio rejects it, and `actual` is the ratio.
+    let strict = OpenOptions::default().limits(ResourceLimits {
+        max_compression_ratio: 200,
+        ..ResourceLimits::default()
+    });
+    match Package::open_path(&path, &strict).unwrap_err() {
+        StrictError::LimitExceeded {
+            kind: LimitKind::CompressionRatio,
+            actual,
+            ..
+        } => assert_eq!(actual, 227, "actual must be the ratio, not bytes"),
+        other => panic!("expected CompressionRatio, got {other:?}"),
+    }
 }

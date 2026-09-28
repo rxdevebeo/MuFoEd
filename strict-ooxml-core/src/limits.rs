@@ -34,7 +34,16 @@ pub struct ResourceLimits {
     /// Maximum uncompressed size of a single part, in bytes. Default: 128 MiB.
     pub max_single_uncompressed: u64,
     /// Maximum allowed uncompressed-to-compressed ratio for one entry.
-    /// Default: 200.
+    /// Default: 1000.
+    ///
+    /// This is a **secondary** heuristic behind the absolute size limits
+    /// ([`max_single_uncompressed`](Self::max_single_uncompressed),
+    /// [`max_total_uncompressed`](Self::max_total_uncompressed)): deflate can
+    /// legitimately exceed 200:1 on highly repetitive XML (the theoretical
+    /// maximum is ≈1032:1), so a low threshold produces false rejections on
+    /// real documents (REWORK-CORE-1 C-1). The default is close to that
+    /// theoretical ceiling, so it only catches true bombs that stay below the
+    /// absolute limits.
     pub max_compression_ratio: u32,
     /// Maximum XML element nesting depth. Default: 256.
     pub max_xml_depth: u32,
@@ -56,7 +65,7 @@ impl Default for ResourceLimits {
             max_compressed_input: 512 * 1024 * 1024,
             max_total_uncompressed: 512 * 1024 * 1024,
             max_single_uncompressed: 128 * 1024 * 1024,
-            max_compression_ratio: 200,
+            max_compression_ratio: 1000,
             max_xml_depth: 256,
             max_xml_attributes_per_elem: 1024,
             max_text_len: 64 * 1024 * 1024,
@@ -77,7 +86,7 @@ mod tests {
         assert_eq!(limits.max_compressed_input, 512 * 1024 * 1024);
         assert_eq!(limits.max_total_uncompressed, 512 * 1024 * 1024);
         assert_eq!(limits.max_single_uncompressed, 128 * 1024 * 1024);
-        assert_eq!(limits.max_compression_ratio, 200);
+        assert_eq!(limits.max_compression_ratio, 1000);
         assert_eq!(limits.max_xml_depth, 256);
         assert_eq!(limits.max_xml_attributes_per_elem, 1024);
         assert_eq!(limits.max_text_len, 64 * 1024 * 1024);

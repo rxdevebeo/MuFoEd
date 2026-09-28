@@ -845,7 +845,7 @@ pub struct ResourceLimits {
     pub max_zip_entries: usize,          // 4096
     pub max_total_uncompressed: u64,     // 512 MiB
     pub max_single_uncompressed: u64,    // 128 MiB
-    pub max_compression_ratio: u32,      // 200
+    pub max_compression_ratio: u32,      // 1000 (вторичная эвристика; см. ниже)
     pub max_xml_depth: u32,              // 256
     pub max_xml_attributes_per_elem: u32,// 1024
     pub max_text_len: usize,             // 64 MiB на часть
@@ -856,6 +856,13 @@ pub struct ResourceLimits {
 
 Все лимиты переопределяемы через `OpenOptions`. При превышении — соответствующая
 ошибка (`LimitExceeded { kind, limit, actual }`), без паники.
+
+> `max_compression_ratio` — **вторичная** эвристика против zip-bomb; основной
+> барьер — абсолютные `max_single_uncompressed`/`max_total_uncompressed`. Дефолт
+> поднят с 200 до 1000 (REWORK-CORE-1 C-1): deflate легитимно сжимает монотонный
+> XML лучше 200:1 (теоретический максимум ≈1032:1), из-за чего реальные
+> документы ложно отклонялись. Для `CompressionRatio` поле `actual` содержит
+> **отношение**, а не байты (C-2).
 
 ### 12.2. Угрозы и контрмеры
 

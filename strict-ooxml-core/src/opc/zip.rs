@@ -73,21 +73,6 @@ impl ZipArchive {
                     actual: raw.uncompressed_size,
                 });
             }
-            if raw.compression == Compression::Deflate {
-                let ratio_exceeded = if raw.compressed_size == 0 {
-                    raw.uncompressed_size > 0
-                } else {
-                    raw.uncompressed_size / raw.compressed_size
-                        > u64::from(limits.max_compression_ratio)
-                };
-                if ratio_exceeded {
-                    return Err(StrictError::LimitExceeded {
-                        kind: LimitKind::CompressionRatio,
-                        limit: u64::from(limits.max_compression_ratio),
-                        actual: raw.uncompressed_size,
-                    });
-                }
-            }
             total_uncompressed = total_uncompressed
                 .checked_add(raw.uncompressed_size)
                 .ok_or_else(|| StrictError::InvalidZip("total size overflow".to_owned()))?;
@@ -97,6 +82,29 @@ impl ZipArchive {
                     limit: limits.max_total_uncompressed,
                     actual: total_uncompressed,
                 });
+            }
+            // The compression ratio is a *secondary* heuristic: the absolute
+            // limits above are the primary barrier, so a legitimate, highly
+            // compressible document is not rejected merely for its ratio
+            // (REWORK-CORE-1 C-1). `actual` reports the ratio itself, not bytes
+            // (C-2).
+            if raw.compression == Compression::Deflate {
+                let ratio = raw
+                    .uncompressed_size
+                    .checked_div(raw.compressed_size)
+                    .unwrap_or(u64::MAX);
+                let ratio_exceeded = if raw.compressed_size == 0 {
+                    raw.uncompressed_size > 0
+                } else {
+                    ratio > u64::from(limits.max_compression_ratio)
+                };
+                if ratio_exceeded {
+                    return Err(StrictError::LimitExceeded {
+                        kind: LimitKind::CompressionRatio,
+                        limit: u64::from(limits.max_compression_ratio),
+                        actual: ratio,
+                    });
+                }
             }
             by_id.insert(id.clone(), entries.len());
             entries.push(ZipEntry {
@@ -624,7 +632,7 @@ mod tests {
     #![allow(clippy::cast_possible_truncation)]
 
     use super::{crc32_update, ZipArchive, EOCD_SIG};
-    use crate::error::StrictError;
+    use crate::error::{LimitKind, StrictError};
     use crate::limits::ResourceLimits;
     use std::io::Read;
     use std::sync::Arc;
@@ -942,5 +950,97 @@ mod tests {
             .unwrap();
         let mut s = String::new();
         assert!(reader.read_to_string(&mut s).is_err());
+    }
+
+    /// Builds a one-entry deflate archive whose central directory **declares**
+    /// arbitrary compressed/uncompressed sizes (the data is never read).
+    fn build_declared_deflate_zip(name: &str, compressed: u32, uncompressed: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04]);
+        push_u16(&mut out, 20);
+        push_u16(&mut out, 0);
+        push_u16(&mut out, 8);
+        push_u16(&mut out, 0);
+        push_u16(&mut out, 0);
+        push_u32(&mut out, 0);
+        push_u32(&mut out, compressed);
+        push_u32(&mut out, uncompressed);
+        push_u16(&mut out, name.len() as u16);
+        push_u16(&mut out, 0);
+        out.extend_from_slice(name.as_bytes());
+        out.extend(std::iter::repeat_n(0u8, compressed as usize));
+        let cd_offset = out.len() as u32;
+        let mut central = Vec::new();
+        central.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02]);
+        push_u16(&mut central, 20);
+        push_u16(&mut central, 20);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 8);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u32(&mut central, 0);
+        push_u32(&mut central, compressed);
+        push_u32(&mut central, uncompressed);
+        push_u16(&mut central, name.len() as u16);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u32(&mut central, 0);
+        push_u32(&mut central, cd_offset);
+        central.extend_from_slice(name.as_bytes());
+        let cd_size = central.len() as u32;
+        out.extend_from_slice(&central);
+        out.extend_from_slice(&EOCD_SIG);
+        push_u16(&mut out, 0);
+        push_u16(&mut out, 0);
+        push_u16(&mut out, 1);
+        push_u16(&mut out, 1);
+        push_u32(&mut out, cd_size);
+        push_u32(&mut out, cd_offset);
+        push_u16(&mut out, 0);
+        out
+    }
+
+    #[test]
+    fn default_ratio_allows_repetitive_but_legitimate_documents() {
+        // 227:1 is exactly the legitimate stress-document ratio (REWORK-CORE-1).
+        let bytes = build_declared_deflate_zip("doc.xml", 1_000, 227_000);
+        assert!(ZipArchive::new(Arc::new(bytes), &ResourceLimits::default()).is_ok());
+    }
+
+    #[test]
+    fn compression_bomb_is_rejected_and_reports_the_ratio() {
+        // Within the absolute limits but with a 100000:1 ratio.
+        let bytes = build_declared_deflate_zip("bomb", 1_000, 100_000_000);
+        let error = ZipArchive::new(Arc::new(bytes), &ResourceLimits::default()).unwrap_err();
+        match error {
+            StrictError::LimitExceeded {
+                kind: LimitKind::CompressionRatio,
+                limit,
+                actual,
+            } => {
+                assert_eq!(limit, 1000);
+                assert_eq!(actual, 100_000, "actual must be the ratio, not bytes");
+            }
+            other => panic!("expected CompressionRatio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn strict_ratio_override_rejects_a_legitimate_document() {
+        let bytes = build_declared_deflate_zip("doc.xml", 1_000, 227_000);
+        let limits = ResourceLimits {
+            max_compression_ratio: 200,
+            ..ResourceLimits::default()
+        };
+        match ZipArchive::new(Arc::new(bytes), &limits).unwrap_err() {
+            StrictError::LimitExceeded {
+                kind: LimitKind::CompressionRatio,
+                actual,
+                ..
+            } => assert_eq!(actual, 227),
+            other => panic!("expected CompressionRatio, got {other:?}"),
+        }
     }
 }
