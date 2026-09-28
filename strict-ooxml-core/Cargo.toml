@@ -1,0 +1,45 @@
+[package]
+name = "strict-ooxml-core"
+description = "Resource-safe OPC/ZIP, XML and namespace core for WordprocessingML Strict (ISO/IEC 29500-1:2008)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "wordprocessingml", "opc", "xml"]
+categories = ["parser-implementations", "encoding"]
+
+[features]
+default = []
+# Parallel parsing of independent parts (TZ §5.4). Wired up in later stages.
+parallel = ["dep:rayon"]
+
+[dependencies]
+miniz_oxide.workspace = true
+memchr.workspace = true
+encoding_rs.workspace = true
+thiserror.workspace = true
+quick-xml.workspace = true
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest.workspace = true
+criterion = "0.5"
+# Independent ZIP implementation used only as an oracle by `tests/corpus_oracle.rs`.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[[bench]]
+name = "xml_scan"
+harness = false
+
+[[bench]]
+name = "opc"
+harness = false
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

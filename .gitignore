@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+# cargo-fuzz artifacts
+fuzz/target
+fuzz/corpus
+fuzz/artifacts
+# coverage
+/coverage
+*.profraw
+# local .docx working corpus (not published in the repository)
+# note: strict-ooxml-core/tests/samples/ is the PUBLIC synthetic corpus and is
+# tracked on purpose; only the local tests/docx/ corpus is ignored here.
+strict-ooxml-core/tests/docx/

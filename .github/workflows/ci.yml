@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --workspace --all-features
+      - name: Docs
+        run: cargo doc --workspace --no-deps
+      - name: Optional-element coverage gate (>= 90%)
+        run: cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 90
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Coverage (core crate, threshold 80%)
+        run: cargo llvm-cov -p strict-ooxml-core --all-features --fail-under-lines 80
+      - name: Coverage (wml crate, threshold 80%)
+        run: cargo llvm-cov -p strict-ooxml-wml --all-features --fail-under-lines 80
+
+  fuzz-smoke:
+    name: fuzz smoke (nightly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@cargo-fuzz
+      - name: Short fuzz session (zip)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run fuzz_zip -- -max_total_time=60
+      - name: Short fuzz session (xml)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run fuzz_xml -- -max_total_time=60
+      - name: Short fuzz session (relpath)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run fuzz_relpath -- -max_total_time=60
+      - name: Short fuzz session (wml)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run fuzz_wml -- -max_total_time=60
+
+  fuzz-nightly:
+    name: fuzz nightly
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@cargo-fuzz
+      - name: Bounded nightly fuzz sessions
+        working-directory: fuzz
+        run: |
+          cargo +nightly fuzz run fuzz_zip -- -max_total_time=3600
+          cargo +nightly fuzz run fuzz_xml -- -max_total_time=3600
+          cargo +nightly fuzz run fuzz_relpath -- -max_total_time=3600
+          cargo +nightly fuzz run fuzz_wml -- -max_total_time=3600

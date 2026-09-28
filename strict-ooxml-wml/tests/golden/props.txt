@@ -1,0 +1,4 @@
+document blocks=1 sections=0 media=0 styles=0 numbering=0 features=0
+  block[0] paragraph style=- jc=both num=-
+    run b=On i=On sz=Some(24) color=Some("0000FF")
+      text space=Default "styled"

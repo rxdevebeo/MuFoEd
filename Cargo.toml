@@ -1,0 +1,53 @@
+# Workspace root for the `strict-ooxml` toolkit.
+#
+# Stage 1 (`STAGE-1-TASK.md`) established `strict-ooxml-core` and the
+# `strict-ooxml-cli` skeleton. Stage 2 (`STAGE-2-TASK.md`) adds
+# `strict-ooxml-wml` (DOM + parser), the `strict-ooxml` meta-crate and the
+# `xtool` inventory utility. `report` and `render-svg` (TZ §5.1) are added in
+# later stages.
+
+[workspace]
+resolver = "2"
+members = [
+    "strict-ooxml-core",
+    "strict-ooxml-wml",
+    "strict-ooxml",
+    "strict-ooxml-cli",
+    "xtool",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://example.invalid/strict-ooxml"
+authors = ["Strict OOXML contributors"]
+
+[workspace.dependencies]
+# Runtime dependencies (see STAGE-1-TASK.md §3).
+miniz_oxide = "0.8"
+memchr = "2"
+encoding_rs = "0.8"
+thiserror = "2"
+quick-xml = "0.41"
+rayon = "1"
+# Development dependencies.
+proptest = "1"
+
+# Lint policy (task S1.1). Every member crate opts in with `[lints] workspace = true`.
+[workspace.lints.rust]
+missing_docs = "deny"
+unsafe_code = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
+unreachable_pub = "warn"
+non_ascii_idents = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Pedantic lints intentionally relaxed for this workspace.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"

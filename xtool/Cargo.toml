@@ -1,0 +1,23 @@
+[package]
+name = "xtool"
+description = "Development utility: XSD inventory, coverage gate and Strict .docx generator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+publish = false
+
+[[bin]]
+name = "xtool"
+path = "src/main.rs"
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+miniz_oxide.workspace = true
+toml = "0.8"
+
+[lints]
+workspace = true

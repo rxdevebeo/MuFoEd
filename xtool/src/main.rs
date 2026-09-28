@@ -1,0 +1,842 @@
+//! `xtool` — development utility for the Stage-2 inventory and corpus.
+//!
+//! Subcommands:
+//!
+//! - `xsd-inventory [--xsd <file>...] [--out <path>]` — emits
+//!   `coverage/wml-elements.toml` for the declared WordprocessingML Strict
+//!   element inventory. When `--xsd` files are given, element names discovered
+//!   there are added as `unsupported`.
+//! - `coverage [--file <path>] [--min <percent>]` — checks the optional-element
+//!   coverage gate and exits non-zero when it is below `--min`.
+//! - `corpus-elements [--corpus <dir>]` — the independent cross-check required by
+//!   REWORK M1: reports which element names actually occurring in the corpus are
+//!   not marked `supported` in the inventory.
+//! - `gen-docx --out <path> [--paragraphs <n>]` — writes a synthetic Strict
+//!   `.docx` for benchmarks and no-panic corpus runs.
+
+#![allow(clippy::cast_possible_truncation, clippy::doc_markdown)]
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::process::ExitCode;
+
+/// Elements that MUST be parsed (STAGE-2 §7.1); excluded from the ratio.
+const MANDATORY: &[&str] = &[
+    "w:document",
+    "w:body",
+    "w:p",
+    "w:r",
+    "w:t",
+    "w:br",
+    "w:tab",
+    "w:tbl",
+    "w:tr",
+    "w:tc",
+    "w:tblGrid",
+    "w:sectPr",
+    "w:pPr",
+    "w:rPr",
+    "w:pStyle",
+    "w:rStyle",
+    "w:numPr",
+    "w:numId",
+    "w:ilvl",
+    "w:drawing",
+    "w:hyperlink",
+    "w:bookmarkStart",
+    "w:bookmarkEnd",
+    "w:fldSimple",
+    "w:instrText",
+    "w:fldChar",
+];
+
+/// Optional elements fully represented in the Stage-2 model.
+const SUPPORTED: &[&str] = &[
+    // Block level.
+    "w:altChunk",
+    "w:commentRangeStart",
+    "w:commentRangeEnd",
+    "w:commentReference",
+    "w:customXml",
+    "w:del",
+    "w:endnoteReference",
+    "w:footnoteReference",
+    "w:ins",
+    "w:moveFrom",
+    "w:moveTo",
+    "w:permEnd",
+    "w:permStart",
+    "w:proofErr",
+    "w:sdt",
+    "w:sdtContent",
+    "w:sdtPr",
+    "w:tag",
+    "w:alias",
+    "w:id",
+    "w:showingPlcHdr",
+    // Paragraph properties.
+    "w:bidi",
+    "w:contextualSpacing",
+    "w:ind",
+    "w:jc",
+    "w:keepLines",
+    "w:keepNext",
+    "w:outlineLvl",
+    "w:pageBreakBefore",
+    "w:pBdr",
+    "w:shd",
+    "w:snapToGrid",
+    "w:spacing",
+    "w:suppressLineNumbers",
+    "w:tabs",
+    "w:tab",
+    "w:textDirection",
+    "w:widowControl",
+    "w:wordWrap",
+    // Run content.
+    "w:cr",
+    "w:delText",
+    "w:delInstrText",
+    "w:lastRenderedPageBreak",
+    "w:noBreakHyphen",
+    "w:softHyphen",
+    "w:sym",
+    // Run properties.
+    "w:b",
+    "w:caps",
+    "w:color",
+    "w:dstrike",
+    "w:emboss",
+    "w:em",
+    "w:highlight",
+    "w:i",
+    "w:imprint",
+    "w:kern",
+    "w:lang",
+    "w:noProof",
+    "w:outline",
+    "w:position",
+    "w:rFonts",
+    "w:rtl",
+    "w:shadow",
+    "w:smallCaps",
+    "w:strike",
+    "w:sz",
+    "w:szCs",
+    "w:u",
+    "w:vanish",
+    "w:vertAlign",
+    "w:w",
+    // Table model.
+    "w:bidiVisual",
+    "w:cantSplit",
+    "w:gridAfter",
+    "w:gridBefore",
+    "w:gridCol",
+    "w:gridSpan",
+    "w:hideMark",
+    "w:noWrap",
+    "w:rsid",
+    // Border edges parsed by `parse_borders` (paragraph/table/cell borders).
+    "w:top",
+    "w:bottom",
+    "w:left",
+    "w:right",
+    "w:start",
+    "w:end",
+    "w:insideH",
+    "w:insideV",
+    "w:tcBorders",
+    "w:tcFitText",
+    "w:tcMar",
+    "w:tcW",
+    "w:tblBorders",
+    "w:tblCellMar",
+    "w:tblHeader",
+    "w:tblInd",
+    "w:tblLayout",
+    "w:tblLook",
+    "w:tblPr",
+    "w:tblStyle",
+    "w:tblW",
+    "w:trHeight",
+    "w:trPr",
+    "w:vAlign",
+    "w:vMerge",
+    "w:wAfter",
+    "w:wBefore",
+    "w:tcPr",
+    // Section properties.
+    "w:cols",
+    "w:col",
+    "w:docGrid",
+    "w:footerReference",
+    "w:gutterAtTop",
+    "w:headerReference",
+    "w:lnNumType",
+    "w:pgMar",
+    "w:pgSz",
+    "w:rtlGutter",
+    "w:titlePg",
+    "w:type",
+    // Styles.
+    "w:style",
+    "w:styles",
+    "w:basedOn",
+    "w:hidden",
+    "w:link",
+    "w:name",
+    "w:next",
+    "w:semiHidden",
+    "w:uiPriority",
+    "w:tblPr",
+    // Numbering.
+    "w:numbering",
+    "w:abstractNum",
+    "w:abstractNumId",
+    "w:lvl",
+    "w:lvlJc",
+    "w:lvlOverride",
+    "w:lvlRestart",
+    "w:lvlText",
+    "w:multiLevelType",
+    "w:num",
+    "w:numFmt",
+    "w:numStyleLink",
+    "w:start",
+    "w:startOverride",
+    "w:styleLink",
+    "w:suff",
+    "w:tentative",
+    "w:isLgl",
+    // Settings.
+    "w:settings",
+    "w:autoHyphenation",
+    "w:compat",
+    "w:compatSetting",
+    "w:decimalSymbol",
+    "w:defaultTabStop",
+    "w:displayBackgroundShape",
+    "w:documentProtection",
+    "w:doNotHyphenateCaps",
+    "w:evenAndOddHeaders",
+    "w:hideGrammaticalErrors",
+    "w:hideSpellingErrors",
+    "w:hyphenationZone",
+    "w:listSeparator",
+    "w:mirrorMargins",
+    "w:proofState",
+    "w:themeFontLang",
+    "w:trackRevisions",
+    "w:zoom",
+    // DrawingML inline.
+    "wp:inline",
+    "wp:extent",
+    "wp:docPr",
+    "a:graphic",
+    "a:graphicData",
+    "pic:pic",
+    "pic:nvPicPr",
+    "pic:cNvPr",
+    "pic:blipFill",
+    "a:blip",
+    "pic:spPr",
+    "a:ext",
+    "a:xfrm",
+];
+
+/// Optional elements only partially represented.
+const PARTIAL: &[&str] = &[
+    "w:background",
+    "w:bdr",
+    "w:docDefaults",
+    "w:pgBorders",
+    "w:tblPrEx",
+];
+
+/// Optional elements in Stage-2 scope but not yet represented.
+const UNSUPPORTED: &[&str] = &[
+    "w:mirrorIndents",
+    "w:suppressOverlap",
+    "w:textAlignment",
+    "w:tblCaption",
+    "w:tblDescription",
+];
+
+/// Elements deliberately out of the Stage-2 scope (parsed structurally, or
+/// skipped and recorded): footnotes/endnotes, comments, VML, math, themes.
+const IGNORED: &[&str] = &[
+    "w:footnotes",
+    "w:endnotes",
+    "w:comments",
+    "w:hdr",
+    "w:ftr",
+    "w:object",
+    "w:pict",
+    "w:ink",
+    "w:theme",
+    "m:oMath",
+    "m:oMathPara",
+    "wp:anchor",
+    "w:latentStyles",
+    "w:qFormat",
+    "w:unhideWhenUsed",
+    "w:effect",
+    "w:fitText",
+    "w:cs",
+    "w:bCs",
+    "w:iCs",
+    "w:webHidden",
+    "w:specVanish",
+    "w:paperSrc",
+    "w:pgNumType",
+    "w:formProt",
+    "w:noEndnote",
+    "w:printerSettings",
+    "w:sectPrChange",
+    "w:footnotePr",
+    "w:endnotePr",
+    "w:nsid",
+    "w:tmpl",
+    "w:legacy",
+    "w:lvlPicBulletId",
+    "w:picBullet",
+    "w:tblOverlap",
+    "w:tblCellSpacing",
+    "w:tblpPr",
+    "w:tblStyleRowBandSize",
+    "w:tblStyleColBandSize",
+];
+
+fn status_for(name: &str) -> &'static str {
+    if MANDATORY.contains(&name) {
+        "mandatory"
+    } else if SUPPORTED.contains(&name) {
+        "supported"
+    } else if PARTIAL.contains(&name) {
+        "partial"
+    } else if UNSUPPORTED.contains(&name) {
+        "unsupported"
+    } else if IGNORED.contains(&name) {
+        "ignored"
+    } else {
+        "unsupported"
+    }
+}
+
+fn all_names() -> BTreeMap<String, &'static str> {
+    let mut map = BTreeMap::new();
+    for name in MANDATORY
+        .iter()
+        .chain(SUPPORTED)
+        .chain(PARTIAL)
+        .chain(UNSUPPORTED)
+        .chain(IGNORED)
+    {
+        map.insert((*name).to_owned(), status_for(name));
+    }
+    map
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("xsd-inventory") => xsd_inventory(&args[1..]),
+        Some("coverage") => coverage(&args[1..]),
+        Some("corpus-elements") => corpus_elements(&args[1..]),
+        Some("gen-docx") => gen_docx(&args[1..]),
+        Some("--help" | "-h") | None => {
+            print_usage();
+            ExitCode::SUCCESS
+        }
+        Some(other) => {
+            eprintln!("error: unknown command '{other}'");
+            print_usage();
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn print_usage() {
+    eprintln!(
+        "usage: xtool <xsd-inventory|coverage|corpus-elements|gen-docx> [options]\n\
+         \n\
+         xsd-inventory   [--xsd <file>]... [--out <path>]\n\
+         coverage        [--file <path>] [--min <percent>]\n\
+         corpus-elements [--corpus <dir>]\n\
+         gen-docx        --out <path> [--paragraphs <n>]"
+    );
+}
+
+fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|arg| arg == flag)
+        .and_then(|index| args.get(index + 1))
+        .map(String::as_str)
+}
+
+fn arg_values<'a>(args: &'a [String], flag: &str) -> Vec<&'a str> {
+    let mut values = Vec::new();
+    let mut rest = args;
+    while let Some(index) = rest.iter().position(|arg| arg == flag) {
+        if let Some(value) = rest.get(index + 1) {
+            values.push(value.as_str());
+        }
+        rest = &rest[index + 1..];
+    }
+    values
+}
+
+fn xsd_inventory(args: &[String]) -> ExitCode {
+    let out = arg_value(args, "--out").unwrap_or("coverage/wml-elements.toml");
+    let mut map = all_names();
+    for xsd in arg_values(args, "--xsd") {
+        match std::fs::read_to_string(xsd) {
+            Ok(text) => {
+                for name in scan_xsd_elements(&text) {
+                    map.entry(format!("w:{name}")).or_insert("unsupported");
+                }
+            }
+            Err(error) => {
+                eprintln!("warning: cannot read {xsd}: {error}");
+            }
+        }
+    }
+    if let Some(parent) = std::path::Path::new(out).parent() {
+        if let Err(error) = std::fs::create_dir_all(parent) {
+            eprintln!("error: cannot create {}: {error}", parent.display());
+            return ExitCode::from(2);
+        }
+    }
+    match std::fs::write(out, render_inventory(&map)) {
+        Ok(()) => {
+            println!("wrote {out} ({} elements)", map.len());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: cannot write {out}: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// Naively scans an XSD document for `name="..."` on element declarations.
+fn scan_xsd_elements(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for marker in ["<xsd:element", "<xs:element", "<element"] {
+        let mut rest = text;
+        while let Some(index) = rest.find(marker) {
+            let after = &rest[index + marker.len()..];
+            let end = after.find('>').unwrap_or(after.len());
+            let tag = &after[..end];
+            if let Some(name) = extract_name(tag) {
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+            rest = &after[end.min(after.len())..];
+        }
+    }
+    names
+}
+
+fn extract_name(tag: &str) -> Option<String> {
+    let at = tag.find("name=")?;
+    let after = tag[at + "name=".len()..].trim_start();
+    let quote = after.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &after[1..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_owned())
+}
+
+fn render_inventory(map: &BTreeMap<String, &'static str>) -> String {
+    let mut out = String::new();
+    out.push_str("# WordprocessingML Strict element inventory (STAGE-2 S2.16).\n");
+    out.push_str("# Generated by `xtool xsd-inventory`; do not edit by hand.\n");
+    out.push_str("# status: mandatory | supported | partial | unsupported | ignored\n");
+    out.push_str("# Coverage = (supported + partial) / (supported + partial + unsupported),\n");
+    out.push_str("# mandatory and ignored elements are excluded from the denominator.\n\n");
+    out.push_str("[meta]\n");
+    out.push_str("standard = \"ISO/IEC 29500-1:2008 Strict\"\n");
+    out.push_str("stage = 2\n");
+    // Provenance (REWORK M1): the statuses are a curated record of the Stage-2
+    // element subset; `xtool corpus-elements` is the independent cross-check.
+    out.push_str("source = \"curated-stage-2\"\n");
+    out.push_str("revision = \"2026-09-28\"\n");
+    out.push_str("generator = \"xtool xsd-inventory\"\n");
+    for (name, status) in map {
+        out.push_str("\n[[elements]]\n");
+        let _ = writeln!(out, "name = \"{name}\"");
+        let _ = writeln!(out, "status = \"{status}\"");
+    }
+    out
+}
+
+/// Aggregated status counts from an inventory.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct CoverageCounts {
+    supported: u32,
+    partial: u32,
+    unsupported: u32,
+    ignored: u32,
+    mandatory: u32,
+}
+
+/// Parses an inventory's `[[elements]]` and counts statuses.
+fn coverage_counts(text: &str) -> Result<CoverageCounts, String> {
+    let value: toml::Value =
+        toml::from_str(text).map_err(|error| format!("invalid TOML: {error}"))?;
+    let elements = value
+        .get("elements")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "no [[elements]] arrays".to_owned())?;
+    let mut counts = CoverageCounts::default();
+    for element in elements {
+        match element.get("status").and_then(toml::Value::as_str) {
+            Some("supported") => counts.supported += 1,
+            Some("partial") => counts.partial += 1,
+            Some("ignored") => counts.ignored += 1,
+            Some("mandatory") => counts.mandatory += 1,
+            // An absent or unknown status is treated as unsupported so that the
+            // gate cannot be satisfied by an incomplete inventory.
+            _ => counts.unsupported += 1,
+        }
+    }
+    Ok(counts)
+}
+
+/// Computes optional-element coverage in percent.
+fn coverage_percent(counts: &CoverageCounts) -> f64 {
+    let denominator = counts.supported + counts.partial + counts.unsupported;
+    if denominator == 0 {
+        100.0
+    } else {
+        f64::from(counts.supported + counts.partial) * 100.0 / f64::from(denominator)
+    }
+}
+
+fn coverage(args: &[String]) -> ExitCode {
+    let file = arg_value(args, "--file").unwrap_or("coverage/wml-elements.toml");
+    let min: f64 = arg_value(args, "--min")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(90.0);
+    let text = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("error: cannot read {file}: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let counts = match coverage_counts(&text) {
+        Ok(counts) => counts,
+        Err(error) => {
+            eprintln!("error: {file}: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let percent = coverage_percent(&counts);
+    println!(
+        "coverage: {percent:.1}% (supported {}, partial {}, unsupported {}, ignored {}, mandatory {})",
+        counts.supported, counts.partial, counts.unsupported, counts.ignored, counts.mandatory
+    );
+    if percent + f64::EPSILON < min {
+        eprintln!("error: optional-element coverage {percent:.1}% is below {min:.1}%");
+        return ExitCode::from(1);
+    }
+    ExitCode::SUCCESS
+}
+
+/// The independent corpus cross-check (REWORK M1 option b).
+///
+/// Walks every `document.xml` in the corpus, records each element's local name,
+/// and classifies it against `status_for`. Elements not marked
+/// `supported`/`partial`/`mandatory` are listed.
+fn corpus_elements(args: &[String]) -> ExitCode {
+    let dir = arg_value(args, "--corpus").unwrap_or("strict-ooxml-core/tests/samples");
+    let options = strict_ooxml_core::opc::OpenOptions::default()
+        .conformance(strict_ooxml_core::opc::ConformancePolicy::Permissive);
+    let limits = strict_ooxml_core::limits::ResourceLimits::default();
+    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+    let mut files = 0u32;
+
+    for path in docx_paths(std::path::Path::new(dir)) {
+        let Ok(package) = strict_ooxml_core::opc::Package::open_path(&path, &options) else {
+            continue;
+        };
+        let Ok(main) = package.main_document_part().cloned() else {
+            continue;
+        };
+        let Ok(bytes) = package.read_part(&main) else {
+            continue;
+        };
+        let Ok(mut reader) = strict_ooxml_core::xml::XmlReader::from_vec(bytes, main, &limits)
+        else {
+            continue;
+        };
+        loop {
+            match reader.next_event() {
+                Ok(strict_ooxml_core::xml::XmlEvent::StartElement { name, .. }) => {
+                    let prefix = name.prefix.clone().unwrap_or_else(|| "w".to_owned());
+                    *seen
+                        .entry(format!("{prefix}:{}", name.local()))
+                        .or_insert(0) += 1;
+                }
+                Ok(strict_ooxml_core::xml::XmlEvent::Eof) | Err(_) => break,
+                _ => {}
+            }
+        }
+        files += 1;
+    }
+
+    let mut covered = 0usize;
+    let mut unsupported: Vec<(&String, u32)> = Vec::new();
+    let mut ignored = 0usize;
+    for (name, count) in &seen {
+        match status_for(name) {
+            "supported" | "partial" | "mandatory" => covered += 1,
+            "ignored" => ignored += 1,
+            _ => unsupported.push((name, *count)),
+        }
+    }
+    unsupported.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+
+    println!(
+        "corpus: {files} file(s), {} distinct elements; {covered} covered, {ignored} ignored, {} not marked supported",
+        seen.len(),
+        unsupported.len()
+    );
+    for (name, count) in &unsupported {
+        println!("  {name} x{count}");
+    }
+    ExitCode::SUCCESS
+}
+
+/// Returns the sorted `.docx` paths in a directory.
+fn docx_paths(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<_> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("docx"))
+        .collect();
+    files.sort();
+    files
+}
+
+fn gen_docx(args: &[String]) -> ExitCode {
+    let Some(out) = arg_value(args, "--out") else {
+        eprintln!("error: gen-docx requires --out <path>");
+        return ExitCode::from(2);
+    };
+    let paragraphs: usize = arg_value(args, "--paragraphs")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(10);
+    let document = document_xml(paragraphs);
+    let bytes = build_strict_docx(&document);
+    match std::fs::write(out, bytes) {
+        Ok(()) => {
+            println!("wrote {out} ({paragraphs} paragraphs)");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: cannot write {out}: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+const W_NS: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+
+fn document_xml(paragraphs: usize) -> Vec<u8> {
+    let mut xml = String::new();
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+    let _ = write!(xml, "<w:document xmlns:w=\"{W_NS}\"><w:body>");
+    for index in 0..paragraphs {
+        let _ = write!(
+            xml,
+            "<w:p><w:r><w:t xml:space=\"preserve\">Paragraph {index}</w:t></w:r></w:p>"
+        );
+    }
+    xml.push_str("</w:body></w:document>");
+    xml.into_bytes()
+}
+
+fn build_strict_docx(document: &[u8]) -> Vec<u8> {
+    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.ms-word.document.main+xml\"/></Types>";
+    let rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
+    zip(&[
+        ("[Content_Types].xml", content_types.as_bytes()),
+        ("_rels/.rels", rels.as_bytes()),
+        ("word/document.xml", document),
+    ])
+}
+
+fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut local = Vec::new();
+    let mut central = Vec::new();
+    let mut offsets = Vec::new();
+    for (name, content) in entries {
+        offsets.push(local.len() as u32);
+        let crc = crc32(content);
+        push_local(&mut local, name, crc, content.len(), content);
+    }
+    let cd_offset = local.len() as u32;
+    for ((name, content), offset) in entries.iter().zip(offsets) {
+        push_central(&mut central, name, crc32(content), content.len(), offset);
+    }
+    let cd_size = central.len() as u32;
+    let mut out = local;
+    out.extend_from_slice(&central);
+    out.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]);
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&cd_size.to_le_bytes());
+    out.extend_from_slice(&cd_offset.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out
+}
+
+fn push_local(out: &mut Vec<u8>, name: &str, crc: u32, size: usize, content: &[u8]) {
+    out.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04]);
+    out.extend_from_slice(&20u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&crc.to_le_bytes());
+    out.extend_from_slice(&(size as u32).to_le_bytes());
+    out.extend_from_slice(&(size as u32).to_le_bytes());
+    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(name.as_bytes());
+    out.extend_from_slice(content);
+}
+
+fn push_central(out: &mut Vec<u8>, name: &str, crc: u32, size: usize, offset: u32) {
+    out.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02]);
+    out.extend_from_slice(&20u16.to_le_bytes());
+    out.extend_from_slice(&20u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&crc.to_le_bytes());
+    out.extend_from_slice(&(size as u32).to_le_bytes());
+    out.extend_from_slice(&(size as u32).to_le_bytes());
+    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&offset.to_le_bytes());
+    out.extend_from_slice(name.as_bytes());
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statuses_default_to_unsupported() {
+        assert_eq!(status_for("w:p"), "mandatory");
+        assert_eq!(status_for("w:ind"), "supported");
+        assert_eq!(status_for("w:bdr"), "partial");
+        assert_eq!(status_for("w:mirrorIndents"), "unsupported");
+        assert_eq!(status_for("w:latentStyles"), "ignored");
+        assert_eq!(status_for("w:totallyUnknown"), "unsupported");
+    }
+
+    #[test]
+    fn coverage_formula_counts_supported_and_partial() {
+        let counts = CoverageCounts {
+            supported: 8,
+            partial: 1,
+            unsupported: 1,
+            ignored: 5,
+            mandatory: 3,
+        };
+        assert!((coverage_percent(&counts) - 90.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn coverage_with_no_optional_elements_is_full() {
+        assert!((coverage_percent(&CoverageCounts::default()) - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parses_inventory_and_missing_status_is_unsupported() {
+        let text = concat!(
+            "[meta]\nstandard = \"x\"\n",
+            "[[elements]]\nname = \"w:a\"\nstatus = \"supported\"\n",
+            "[[elements]]\nname = \"w:b\"\nstatus = \"partial\"\n",
+            "[[elements]]\nname = \"w:c\"\nstatus = \"ignored\"\n",
+            "[[elements]]\nname = \"w:d\"\n",
+            "[[elements]]\nname = \"w:e\"\nstatus = \"weird\"\n",
+            "[[elements]]\nname = \"w:f\"\nstatus = \"mandatory\"\n",
+        );
+        let counts = coverage_counts(text).expect("parse");
+        assert_eq!(counts.supported, 1);
+        assert_eq!(counts.partial, 1);
+        assert_eq!(counts.unsupported, 2); // missing status + unknown status
+        assert_eq!(counts.ignored, 1);
+        assert_eq!(counts.mandatory, 1);
+    }
+
+    #[test]
+    fn missing_elements_is_an_error() {
+        assert!(coverage_counts("[meta]\nstandard = \"x\"\n").is_err());
+        assert!(coverage_counts("not = toml [").is_err());
+    }
+
+    #[test]
+    fn scans_xsd_element_names() {
+        let xsd = concat!(
+            "<?xml version=\"1.0\"?>\n",
+            "<xsd:schema xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n",
+            "  <xsd:element name=\"p\" type=\"CT_P\"/>\n",
+            "  <xsd:element name=\"r\"/>\n",
+            "  <xsd:element name=\"p\"/>\n",
+            "</xsd:schema>",
+        );
+        assert_eq!(scan_xsd_elements(xsd), vec!["p".to_owned(), "r".to_owned()]);
+        assert_eq!(extract_name(" name=\"x\""), Some("x".to_owned()));
+        assert_eq!(extract_name("nope"), None);
+    }
+
+    #[test]
+    fn inventory_rendering_has_meta_and_elements() {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("w:p".to_owned(), "mandatory");
+        map.insert("w:ind".to_owned(), "supported");
+        let rendered = render_inventory(&map);
+        assert!(rendered.contains("[meta]"));
+        assert!(rendered.contains("name = \"w:p\""));
+        assert!(rendered.contains("status = \"supported\""));
+    }
+
+    #[test]
+    fn generated_inventory_passes_the_gate() {
+        let counts = coverage_counts(&render_inventory(&all_names())).expect("parse");
+        assert!(coverage_percent(&counts) >= 90.0);
+    }
+}

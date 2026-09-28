@@ -1,0 +1,66 @@
+//! WordprocessingML Strict document model and parser.
+//!
+//! `strict-ooxml-wml` turns the parts of a Strict package (`document.xml`,
+//! `styles.xml`, `numbering.xml`, `settings.xml` and the relationships that
+//! link them) into a typed, immutable [`model::Document`]. It depends only on
+//! [`strict_ooxml_core`] (ADR-0004).
+//!
+//! The parsing pipeline has two phases (STAGE-2-TASK §4.4):
+//!
+//! 1. **parse** — [`parse::parse_document`] walks the parts with the streaming
+//!    [`strict_ooxml_core::xml::XmlReader`] and builds raw typed structures;
+//! 2. **resolve** — [`resolve::resolve`] wires styles, numbering and
+//!    relationship targets into the final immutable document.
+//!
+//! The entry point is [`parse_document`]; see [`ParseOptions`].
+//!
+//! # Example
+//!
+//! ```no_run
+//! use strict_ooxml_core::opc::{OpenOptions, Package};
+//! use strict_ooxml_wml::{parse_document, ParseOptions};
+//!
+//! let package = Package::open_path("document.docx", &OpenOptions::default())?;
+//! let document = parse_document(&package, &ParseOptions::default())?;
+//! println!("blocks: {}", document.body.blocks.len());
+//! # Ok::<(), strict_ooxml_core::error::StrictError>(())
+//! ```
+
+#![deny(missing_docs)]
+#![deny(unsafe_code)]
+#![deny(rust_2018_idioms)]
+// The DOM is intentionally made of wide, flag-heavy property structs and
+// non-boxed enum variants so that consumers index a flat model; size trade-offs
+// are documented in ADR-0004.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::doc_markdown,
+    clippy::struct_excessive_bools,
+    clippy::large_enum_variant,
+    clippy::type_complexity
+)]
+
+pub mod model;
+pub mod parse;
+pub mod resolve;
+
+pub use model::Document;
+pub use parse::{parse_document, ParseOptions};
+
+/// Default XML namespace of the WordprocessingML Strict main schema.
+pub const WML_STRICT_NS: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+
+/// Strict namespace of the DrawingML main schema.
+pub const DRAWINGML_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/main";
+
+/// Strict namespace of the DrawingML word-processing drawing schema.
+pub const WORDPROCESSING_DRAWING_STRICT_NS: &str =
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing";
+
+/// Strict namespace of the DrawingML picture schema.
+pub const PICTURE_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
+
+/// Strict namespace of the OPC relationships schema.
+pub const RELS_STRICT_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";

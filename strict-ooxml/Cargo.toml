@@ -1,0 +1,28 @@
+[package]
+name = "strict-ooxml"
+description = "Public API for reading WordprocessingML Strict documents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "wordprocessingml", "strict"]
+categories = ["parser-implementations"]
+
+[features]
+default = []
+# Reserved for Stage 4 (`strict-ooxml-render-svg`).
+svg = []
+# Reserved for Stage 3 (`strict-ooxml-report`).
+report = []
+# Parallel parsing of independent parts.
+parallel = ["strict-ooxml-wml/parallel"]
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+
+[lints]
+workspace = true

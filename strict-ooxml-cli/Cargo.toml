@@ -1,0 +1,25 @@
+[package]
+name = "strict-ooxml-cli"
+description = "Command-line interface for inspecting and checking WordprocessingML Strict packages"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "cli"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "strict-ooxml"
+path = "src/main.rs"
+# The binary shares its normalized name with the `strict-ooxml` meta-crate lib;
+# skip its rustdoc target to avoid a filename collision.
+doc = false
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+
+[lints]
+workspace = true

@@ -1,0 +1,9 @@
+document blocks=2 sections=2 media=0 styles=0 numbering=0 features=0
+  block[0] paragraph style=- jc=- num=-
+    run b=Absent i=Absent sz=None color=None
+      text space=Default "one"
+  block[1] paragraph style=- jc=- num=-
+    run b=Absent i=Absent sz=None color=None
+      text space=Default "two"
+section[0] type=Some(Continuous) pgSz=12240x15840/- cols=- headers=[] titlePg=false
+section[1] type=None pgSz=11906x16838/landscape cols=Some(2) headers=["Default"] titlePg=true

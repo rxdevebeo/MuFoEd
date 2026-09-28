@@ -1,0 +1,39 @@
+[package]
+name = "strict-ooxml-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+strict-ooxml-core = { path = "../strict-ooxml-core" }
+strict-ooxml-wml = { path = "../strict-ooxml-wml" }
+
+[[bin]]
+name = "fuzz_zip"
+path = "fuzz_targets/fuzz_zip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_xml"
+path = "fuzz_targets/fuzz_xml.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_relpath"
+path = "fuzz_targets/fuzz_relpath.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_wml"
+path = "fuzz_targets/fuzz_wml.rs"
+test = false
+doc = false
+
+[workspace]

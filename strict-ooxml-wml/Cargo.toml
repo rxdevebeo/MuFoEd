@@ -1,0 +1,36 @@
+[package]
+name = "strict-ooxml-wml"
+description = "WordprocessingML Strict document model (DOM) and event-driven parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "wordprocessingml", "dom", "parser"]
+categories = ["parser-implementations"]
+
+[features]
+default = []
+# Parallel parsing of independent parts (TZ §5.4; STAGE-2 §4.4).
+parallel = ["dep:rayon"]
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest.workspace = true
+criterion = "0.5"
+toml = "0.8"
+
+[[bench]]
+name = "wml_parse"
+harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true

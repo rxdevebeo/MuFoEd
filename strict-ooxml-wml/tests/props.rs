@@ -1,0 +1,297 @@
+#![allow(
+    clippy::doc_markdown,
+    clippy::useless_format,
+    clippy::format_push_string,
+    clippy::unreadable_literal
+)]
+//! Coverage tests for property parsing (`pPr`/`rPr`/`tblPr`/`trPr`/`tcPr`/`sectPr`).
+
+mod common;
+
+use strict_ooxml_wml::model::block::Block;
+use strict_ooxml_wml::model::inline::{Inline, Run, RunContent};
+use strict_ooxml_wml::model::support::SupportStatus;
+use strict_ooxml_wml::model::values::{
+    BorderStyle, BreakKind, HeightRule, Highlight, Justification, LineSpacingRule, TabAlignment,
+    TabLeader, TextDirection, TriState, Underline, VerticalJc, VerticalMerge, WidthKind,
+};
+
+use common::{document_parts, parse_parts};
+
+fn paragraph_inline(body: &str) -> strict_ooxml_wml::model::Document {
+    parse_parts(&document_parts(body, &[])).expect("parse")
+}
+
+fn run(document: &strict_ooxml_wml::model::Document) -> &Run {
+    let Inline::Run(run) = &document.body.blocks[0].as_paragraph().unwrap().inlines[0] else {
+        panic!("expected run");
+    };
+    run
+}
+
+#[test]
+fn parses_rich_paragraph_properties() {
+    let body = "<w:p><w:pPr>\
+<w:pBdr><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\" w:shadow=\"true\"/>\
+<w:start w:val=\"dashed\"/><w:end w:val=\"dotDash\"/><w:bottom w:val=\"double\"/>\
+<w:insideH w:val=\"nil\"/><w:insideV w:val=\"wave\"/></w:pBdr>\
+<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFFF00\"/>\
+<w:tabs><w:tab w:val=\"720\" w:jc=\"center\" w:leader=\"dot\"/><w:tab w:val=\"-1\"/></w:tabs>\
+<w:spacing w:before=\"120\" w:after=\"240\" w:line=\"360\" w:lineRule=\"exact\" w:beforeAutospacing=\"1\" w:afterAutospacing=\"on\"/>\
+<w:ind w:start=\"720\" w:end=\"360\" w:hanging=\"180\" w:startChars=\"100\" w:endChars=\"50\" w:firstLineChars=\"0\" w:hangingChars=\"25\"/>\
+<w:jc w:val=\"both\"/><w:outlineLvl w:val=\"2\"/><w:textDirection w:val=\"tbRl\"/>\
+<w:wordWrap w:val=\"false\"/><w:snapToGrid w:val=\"true\"/><w:widowControl w:val=\"0\"/>\
+<w:bidi/><w:contextualSpacing/><w:suppressLineNumbers/><w:keepLines/><w:keepNext/><w:pageBreakBefore/>\
+<w:numPr><w:ilvl w:val=\"3\"/><w:numId w:val=\"9\"/></w:numPr>\
+</w:pPr><w:r><w:t>x</w:t></w:r></w:p>";
+    let document = paragraph_inline(body);
+    let props = &document.body.blocks[0].as_paragraph().unwrap().props;
+    let borders = &props.borders;
+    assert_eq!(
+        borders.top.as_ref().unwrap().style,
+        Some(BorderStyle::Single)
+    );
+    assert!(borders.top.as_ref().unwrap().shadow);
+    assert_eq!(
+        borders.start.as_ref().unwrap().style,
+        Some(BorderStyle::Dashed)
+    );
+    assert_eq!(
+        borders.end.as_ref().unwrap().style,
+        Some(BorderStyle::DotDash)
+    );
+    assert_eq!(
+        borders.bottom.as_ref().unwrap().style,
+        Some(BorderStyle::Double)
+    );
+    assert_eq!(
+        borders.inside_horizontal.as_ref().unwrap().style,
+        Some(BorderStyle::Nil)
+    );
+    assert_eq!(
+        borders.inside_vertical.as_ref().unwrap().style,
+        Some(BorderStyle::Wave)
+    );
+    let shading = props.shading.as_ref().unwrap();
+    assert_eq!(shading.fill.as_ref().unwrap().as_str(), "FFFF00");
+    assert_eq!(props.tabs.len(), 2);
+    assert_eq!(props.tabs[0].alignment, TabAlignment::Center);
+    assert_eq!(props.tabs[0].leader, Some(TabLeader::Dot));
+    let spacing = props.spacing.unwrap();
+    assert_eq!(spacing.line_rule, Some(LineSpacingRule::Exact));
+    assert!(spacing.before_autospacing);
+    assert!(spacing.after_autospacing);
+    let indentation = props.indentation.unwrap();
+    assert_eq!(indentation.start.unwrap().value(), 720);
+    assert_eq!(indentation.end.unwrap().value(), 360);
+    assert_eq!(indentation.start_chars, Some(100));
+    assert_eq!(indentation.hanging_chars, Some(25));
+    assert_eq!(props.alignment, Some(Justification::Both));
+    assert_eq!(props.outline_level, Some(2));
+    assert_eq!(props.text_direction, Some(TextDirection::TbRl));
+    assert_eq!(props.word_wrap, TriState::Off);
+    assert_eq!(props.snap_to_grid, TriState::On);
+    assert_eq!(props.widow_control, TriState::Off);
+    assert!(props.bidi && props.contextual_spacing && props.suppress_line_numbers);
+    assert!(props.keep_lines && props.keep_next && props.page_break_before);
+    let numbering = props.numbering.unwrap();
+    assert_eq!(numbering.ilvl.unwrap().0, 3);
+    assert_eq!(numbering.num_id.unwrap().0, 9);
+}
+
+#[test]
+fn parses_rich_run_properties() {
+    let body = "<w:p><w:r><w:rPr>\
+<w:u w:val=\"wave\" w:color=\"0000FF\"/><w:dstrike/>\
+<w:highlight w:val=\"yellow\"/><w:szCs w:val=\"32\"/><w:vertAlign w:val=\"superscript\"/>\
+<w:spacing w:val=\"20\"/><w:position w:val=\"6\"/><w:w w:val=\"90\"/><w:kern w:val=\"16\"/>\
+<w:em w:val=\"dot\"/><w:lang w:val=\"en-US\" w:eastAsia=\"ja-JP\" w:bidi=\"ar-SA\"/>\
+<w:caps/><w:smallCaps/><w:rtl/><w:vanish/><w:emboss/><w:imprint/><w:outline/><w:shadow/>\
+<w:noProof/><w:snapToGrid w:val=\"false\"/><w:shd w:val=\"clear\" w:fill=\"EEEEEE\"/><w:bdr w:val=\"single\"/>\
+<w:strike w:val=\"false\"/><w:i/><w:b w:val=\"1\"/>\
+</w:rPr><w:t>x</w:t></w:r></w:p>";
+    let document = paragraph_inline(body);
+    let run = run(&document);
+    assert_eq!(run.props.underline, Some(Underline::Wave));
+    assert_eq!(
+        run.props.underline_color.as_ref().unwrap().as_str(),
+        "0000FF"
+    );
+    assert_eq!(run.props.double_strike, TriState::On);
+    assert_eq!(run.props.highlight, Some(Highlight::Yellow));
+    assert_eq!(run.props.size_cs.unwrap().value(), 32);
+    assert_eq!(
+        run.props.vert_align,
+        Some(strict_ooxml_wml::model::values::VertAlign::Superscript)
+    );
+    assert_eq!(run.props.spacing.unwrap().value(), 20);
+    assert_eq!(run.props.position.unwrap().value(), 6);
+    assert_eq!(run.props.scale, Some(90));
+    assert_eq!(run.props.kerning.unwrap().value(), 16);
+    assert_eq!(run.props.emphasis.as_deref(), Some("dot"));
+    let language = run.props.language.as_ref().unwrap();
+    assert_eq!(language.val.as_deref(), Some("en-US"));
+    assert_eq!(language.east_asia.as_deref(), Some("ja-JP"));
+    assert_eq!(language.bidi.as_deref(), Some("ar-SA"));
+    assert!(run.props.caps && run.props.small_caps && run.props.rtl && run.props.vanish);
+    assert!(run.props.emboss && run.props.imprint && run.props.outline && run.props.shadow);
+    assert!(run.props.no_proof);
+    assert_eq!(run.props.snap_to_grid, TriState::Off);
+    assert_eq!(run.props.strike, TriState::Off);
+    assert_eq!(run.props.italic, TriState::On);
+    assert_eq!(run.props.bold, TriState::On);
+    assert!(document.support.get("w:bdr").is_some());
+}
+
+#[test]
+fn parses_rich_table_properties() {
+    let body = "<w:tbl><w:tblPr>\
+<w:tblStyle w:val=\"Grid\"/><w:tblW w:w=\"5000\" w:type=\"pct\"/>\
+<w:jc w:val=\"end\"/><w:tblLayout w:type=\"fixed\"/><w:tblInd w:w=\"120\"/>\
+<w:bidiVisual/><w:shd w:val=\"clear\" w:fill=\"DDDDDD\"/>\
+<w:tblBorders><w:top w:val=\"single\"/><w:bottom w:val=\"single\"/><w:start w:val=\"single\"/><w:end w:val=\"single\"/></w:tblBorders>\
+<w:tblCellMar><w:top w:w=\"10\"/><w:start w:w=\"20\"/><w:bottom w:w=\"10\"/><w:end w:w=\"20\"/></w:tblCellMar>\
+<w:tblLook w:firstRow=\"1\" w:lastRow=\"1\" w:firstColumn=\"1\" w:lastColumn=\"1\" w:noHBand=\"0\" w:noVBand=\"1\"/>\
+</w:tblPr><w:tblGrid><w:gridCol w:w=\"2500\"/><w:gridCol w:w=\"2500\"/></w:tblGrid>\
+<w:tr><w:trPr><w:trHeight w:val=\"400\" w:hRule=\"exact\"/><w:tblHeader/><w:cantSplit/>\
+<w:gridBefore w:val=\"1\"/><w:gridAfter w:val=\"1\"/><w:wBefore w:w=\"100\" w:type=\"dxa\"/><w:wAfter w:w=\"100\" w:type=\"dxa\"/>\
+<w:rsid w:val=\"00AB\"/><w:tblCellMar><w:top w:w=\"5\"/></w:tblCellMar></w:trPr>\
+<w:tc><w:tcPr><w:tcW w:w=\"2500\" w:type=\"dxa\"/><w:gridSpan w:val=\"2\"/><w:vMerge w:val=\"continue\"/>\
+<w:vAlign w:val=\"center\"/><w:textDirection w:val=\"btLr\"/><w:noWrap/><w:hideMark/><w:tcFitText/>\
+<w:tcBorders><w:top w:val=\"single\"/></w:tcBorders><w:shd w:val=\"clear\" w:fill=\"FFFFFF\"/>\
+<w:tcMar><w:top w:w=\"11\"/><w:start w:w=\"22\"/><w:bottom w:w=\"11\"/><w:end w:w=\"22\"/></w:tcMar>\
+</w:tcPr><w:p/></w:tc></w:tr></w:tbl>";
+    let document = paragraph_inline(body);
+    let Block::Table(table) = &document.body.blocks[0] else {
+        panic!("expected table");
+    };
+    let props = &table.props;
+    assert_eq!(props.style.as_ref().unwrap().as_str(), "Grid");
+    assert_eq!(props.width.unwrap().kind, WidthKind::Pct);
+    assert_eq!(props.alignment, Some(Justification::End));
+    assert_eq!(
+        props.layout,
+        Some(strict_ooxml_wml::model::values::TableLayout::Fixed)
+    );
+    assert_eq!(props.indent.unwrap().value(), 120);
+    assert!(props.bidi_visual);
+    assert_eq!(props.cell_margins.top.unwrap().value(), 10);
+    let look = props.look.unwrap();
+    assert!(look.first_row && look.last_row && look.first_column && look.last_column);
+    assert!(!look.no_h_band && look.no_v_band);
+
+    let row = &table.rows[0];
+    assert_eq!(row.props.height.unwrap().rule, Some(HeightRule::Exact));
+    assert!(row.props.header && row.props.cant_split);
+    assert_eq!(row.props.grid_before, Some(1));
+    assert_eq!(row.props.grid_after, Some(1));
+    assert_eq!(row.props.rsid.as_deref(), Some("00AB"));
+    assert_eq!(row.props.cell_margins.top.unwrap().value(), 5);
+    let cell = &row.cells[0];
+    assert_eq!(cell.props.width.unwrap().kind, WidthKind::Dxa);
+    assert_eq!(cell.props.grid_span, Some(2));
+    assert_eq!(cell.props.vertical_merge, Some(VerticalMerge::Continue));
+    assert_eq!(cell.props.vertical_align, Some(VerticalJc::Center));
+    assert_eq!(cell.props.text_direction, Some(TextDirection::BtLr));
+    assert!(cell.props.no_wrap && cell.props.hide_mark && cell.props.fit_text);
+    assert_eq!(cell.props.margins.top.unwrap().value(), 11);
+    assert_eq!(
+        cell.props
+            .shading
+            .as_ref()
+            .unwrap()
+            .fill
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "FFFFFF"
+    );
+}
+
+#[test]
+fn parses_richer_section_properties() {
+    let body = "<w:p/><w:sectPr>\
+<w:lnNumType w:countBy=\"5\" w:start=\"1\" w:restart=\"newPage\" w:distance=\"240\"/>\
+<w:rtlGutter/><w:gutterAtTop/><w:bidi/><w:vAlign w:val=\"bottom\"/><w:textDirection w:val=\"lrTb\"/>\
+<w:pgBorders><w:top w:val=\"single\"/></w:pgBorders>\
+<w:cols w:num=\"2\" w:space=\"425\" w:equalWidth=\"false\" w:sep=\"true\"><w:col w:w=\"4000\"/></w:cols>\
+</w:sectPr>";
+    let document = paragraph_inline(body);
+    let section = &document.sections[0].properties;
+    let line = section.line_numbering.unwrap();
+    assert_eq!(line.count_by, Some(5));
+    assert_eq!(line.start, Some(1));
+    assert_eq!(line.distance.unwrap().value(), 240);
+    assert!(section.rtl_gutter && section.gutter_at_top && section.bidi);
+    assert_eq!(section.vertical_align, Some(VerticalJc::Bottom));
+    assert_eq!(section.text_direction, Some(TextDirection::LrTb));
+    let columns = section.columns.as_ref().unwrap();
+    assert!(!columns.equal_width);
+    assert!(columns.separator);
+    assert_eq!(columns.columns.len(), 1);
+    // pgBorders is out of Stage-2 scope and recorded.
+    assert!(document.support.get("w:pgBorders").is_some());
+    assert_eq!(
+        document.support.get("w:pgBorders").unwrap().status,
+        SupportStatus::Unsupported
+    );
+}
+
+#[test]
+fn parses_run_content_variants() {
+    let body =
+        "<w:p><w:r><w:delText>gone</w:delText><w:cr/><w:sym w:font=\"Wingdings\" w:char=\"0041\"/>\
+<w:lastRenderedPageBreak/><w:noBreakHyphen/><w:softHyphen/>\
+<w:fldChar w:fldCharType=\"separate\" w:dirty=\"true\"/></w:r></w:p>";
+    let document = paragraph_inline(body);
+    let run = run(&document);
+    assert!(matches!(run.content[0], RunContent::Text(_)));
+    assert!(matches!(run.content[1], RunContent::CarriageReturn));
+    match &run.content[2] {
+        RunContent::Symbol(symbol) => {
+            assert_eq!(symbol.font.as_ref(), "Wingdings");
+            assert_eq!(symbol.character, 'A');
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert!(matches!(run.content[3], RunContent::LastRenderedPageBreak));
+    assert!(matches!(run.content[4], RunContent::NoBreakHyphen));
+    assert!(matches!(run.content[5], RunContent::SoftHyphen));
+    match &run.content[6] {
+        RunContent::FieldChar(field) => {
+            assert_eq!(
+                field.kind,
+                strict_ooxml_wml::model::values::FieldCharType::Separate
+            );
+            assert!(field.dirty);
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn records_invalid_numeric_and_enum_values() {
+    let body = "<w:p><w:pPr><w:outlineLvl w:val=\"abc\"/></w:pPr>\
+<w:r><w:rPr><w:sz w:val=\"notanumber\"/></w:rPr><w:t>x</w:t></w:r></w:p>\
+<w:tbl><w:tblGrid><w:gridCol w:w=\"bad\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:gridSpan w:val=\"x\"/></w:tcPr><w:p/></w:tc></w:tr></w:tbl>";
+    let document = paragraph_inline(body);
+    assert_eq!(
+        document.support.get("w:outlineLvl").unwrap().status,
+        SupportStatus::Partial
+    );
+    assert_eq!(
+        document.support.get("w:sz").unwrap().status,
+        SupportStatus::Partial
+    );
+    assert_eq!(
+        document.support.get("w:gridSpan").unwrap().status,
+        SupportStatus::Partial
+    );
+    // The unknown break type falls back to textWrapping.
+    let document = paragraph_inline("<w:p><w:r><w:br w:type=\"bogus\"/></w:r></w:p>");
+    let run = run(&document);
+    assert!(matches!(
+        run.content[0],
+        RunContent::Break(BreakKind::TextWrapping)
+    ));
+}
