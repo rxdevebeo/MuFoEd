@@ -1,6 +1,7 @@
 # ADR-0006: SVG rendering — font metrics, style cascade, media and SSIM references
 
-- **Status:** Accepted (with one documented waiver: external SSIM references)
+- **Status:** Accepted (superseded the SSIM/font-metrics waiver; see
+  `STAGE-4-RENDER-FIDELITY.md`)
 - **Date:** 2026-09-28
 - **Deciders:** Strict OOXML maintainers
 - **Related:** `STAGE-4-TASK.md` §4–§9; `TZ-STRICT-OOXML-RUST.md` §5.1–§5.4, §6,
@@ -23,16 +24,19 @@ Stage 4 turns the immutable DOM (`strict-ooxml-wml`) into SVG pages. The forces:
 
 ## Decision
 
-### Font metrics: a bundled deterministic provider (open question 1)
+### Font metrics: a bundled metric-compatible provider (open question 1)
 
-Layout depends on a `FontProvider` trait returning [`FontMetrics`]. The default
-is `BuiltinFontProvider`: a **data-only** model with per-character-class advance
-ratios (narrow/wide/digit/uppercase/CJK) and per-family width scaling
-(monospace/sans/serif). No font binaries are bundled. A system-font provider is
-left behind the `system-fonts` feature and is explicitly **outside** the Stage-4
-acceptance criteria. Consequences: byte-identical output across OSes and CI, at
-the cost of exact glyph metrics (a documented limitation; real metrics tables
-would be a data-only addition later).
+Layout depends on a `FontProvider` trait. `BuiltinFontProvider` reads real glyph
+advances and line metrics from **bundled metric-compatible open fonts** —
+Carlito (Calibri), Caladea (Cambria), Arimo (Arial/Helvetica), Tinos (Times New
+Roman) and Cousine (Courier New) — parsed with the maintained `skrifa` parser
+(`STAGE-4-RENDER-FIDELITY.md` S4F.1/S4F.3). Font binaries are compiled into the
+library via `include_bytes!`, so output is byte-identical across OSes and CI and
+never consults system fonts. `map_family` substitutes the proprietary family
+names and the same name is emitted in the SVG `font-family` so the rasterizer
+resolves the bundled face. Unknown families fall back to the deterministic
+character-class model (`FontMetrics::advance_em`). A system-font provider stays
+behind the `system-fonts` feature and is outside the acceptance criteria.
 
 ### Style cascade lives in the render crate (open question 2)
 
@@ -65,29 +69,32 @@ specified API while remaining functional.
 
 ### Pagination and scope
 
-Page geometry comes from the last `sectPr`; page breaks are explicit
-(`w:br type=page`), `pageBreakBefore`, and content overflow. `keepLines` is
-honoured; `keepNext`, multi-column flow, footnotes, fields, headers/footers,
-`wp:anchor`, EMF/WMF and math are **out of scope** for Stage 4 (recorded by the
-Stage-3 support model). Output is capped (`MAX_PAGES`, `MAX_ITEMS`) and every
-coordinate is finite.
+Page geometry comes from the last `sectPr` (universal measures such as
+`545.30pt` are converted to twips); `w:docGrid/@w:linePitch` snaps line heights
+to the document grid; page breaks are explicit (`w:br type=page`),
+`pageBreakBefore`, and content overflow. `spacing/@w:before` is applied at the
+top of a page (Word/WPS default). `keepLines` is honoured; `keepNext`,
+multi-column flow, footnotes, fields, headers/footers, `wp:anchor` and math are
+**out of scope** for Stage 4 (recorded by the Stage-3 support model). Inline
+drawings we cannot rasterize (charts/diagrams) reserve their declared extent so
+pagination matches the producer. Output is capped (`MAX_PAGES`, `MAX_ITEMS`) and
+every coordinate is finite.
 
-### SSIM references and the waiver (open question 3)
+### SSIM references: resvg + pinned WPS (open question 3)
 
-The acceptance criterion “SSIM ≥ 95% against approved references” needs an
-external rasterizer and externally produced reference images (Word/LibreOffice).
-Neither is available in the current environment. Decision:
+The acceptance criterion “SSIM ≥ 95% against approved references” is enforced:
 
-- The SSIM metric is implemented in `tests/ssim.rs` (pure Rust, no deps) and
-  self-tested (identical images → 1.0, perturbed → < 1.0).
-- The harness entry point rasterizes through a caller-provided grayscale buffer
-  list; wiring a specific rasterizer (`resvg`) and committing approved
-  references is **deferred** and recorded as a waiver in `docs/stage-4-report.md`
-  (mirroring the Stage-2 fuzz waiver, M8). Structural/deterministic/validity
-  oracles are fully enforced now; the SSIM gate is the only waived item.
-
-This mirrors the `STAGE-4-TASK.md` §12 risk note: fix the reference source and
-tolerances or revisit the criterion with the customer.
+- References are produced **once** by a pinned engine, WPS Office
+  `12.1.0.28485` (`kwpsconvert.exe word2photo`), and committed under
+  `strict-ooxml-core/tests/strict/refs/<doc>/page_N.png`. WPS is not required in
+  CI.
+- `tests/ssim.rs` rasterizes our SVG with `resvg` using the bundled fonts,
+  converts both sides to grayscale and computes a windowed (11×11 Gaussian) mean
+  SSIM; the gate is the **worst** page score (≥ 0.95) plus the **page-count
+  invariant**.
+- Per-pixel comparison applies to text references (`strict-text`); the
+  chart/diagram document `strict-profile` is page-count checked only, since
+  Stage 4 cannot rasterize DrawingML charts.
 
 ## Alternatives considered
 
@@ -96,9 +103,12 @@ tolerances or revisit the criterion with the customer.
 2. **Compute the cascade in `wml`.** Rejected for Stage 4: it changes the DOM
    contract and Stage-2 golden tests; the cascade is a rendering concern.
 3. **Raster SVG→PNG and compare to committed references in CI with `resvg`.**
-   Deferred with the waiver: no approved references and rasterizer fonts make
-   the comparison non-reproducible today.
-4. **Hand-written JSON/XML for SVG.** Rejected: the writer is small but the
+   Adopted (`STAGE-4-RENDER-FIDELITY.md`): references are pinned and committed,
+   and the bundled fonts make rasterization reproducible in CI.
+4. **`ttf-parser` for font metrics.** Rejected: unmaintained
+   (RUSTSEC-2026-0192) and blocked by `cargo-deny`; `skrifa` (fontations) is
+   used instead.
+5. **Hand-written JSON/XML for SVG.** Rejected: the writer is small but the
    escaping/coordinate rules are easier to keep correct with a dedicated module
    and an independent XML parser as oracle.
 
@@ -114,7 +124,9 @@ tolerances or revisit the criterion with the customer.
 - `tests/images.rs` — data URI / external file / placeholder modes.
 - `tests/golden.rs` — commit-checked SVG snapshots (format lock).
 - `tests/corpus.rs` — no panics on the Stage-1 corpus; Transitional refused.
-- `tests/ssim.rs` — metric self-test; external-reference harness (waiver).
+- `tests/ssim.rs` — windowed SSIM self-test and the `resvg`-based gate against
+  the committed WPS references (worst page ≥ 0.95 + page count); deterministic
+  rasterization self-check.
 - `benches/render.rs` — 10/100/500-page layouts.
-- CI: SVG-validity oracle, corpus no-panic, `cargo-deny`, coverage of
+- CI: SVG-validity oracle, corpus no-panic, SSIM gate, `cargo-deny`, coverage of
   `strict-ooxml-render-svg` ≥ 80% lines.

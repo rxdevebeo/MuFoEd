@@ -10,10 +10,16 @@ packages built in memory by the tests and the Transitional corpus in
 | File | Origin | License | Status |
 |---|---|---|---|
 | `strict-profile.docx` | [kklimuk/docx-cli](https://github.com/kklimuk/docx-cli) — `tests/fixtures/strict-profile.docx` | MIT (© 2026 Kirill Klimuk) | committed |
+| `strict-text.docx` | Built for this project (Strict namespaces) | MIT OR Apache-2.0 (project) | committed |
+| `refs/` | WPS Office reference renders (see `refs/README.md`) | project | committed |
 
 `strict-profile.docx` is redistributed under the MIT License of its source
 repository; the original license text is preserved in the source project. It is
 used here only as a test fixture.
+
+`strict-text.docx` is a small text-only Strict document authored for this
+repository (Calibri/Arial/Times/Courier runs, justification, centering) so the
+renderer can be compared pixel-for-pixel against an external engine.
 
 > Note: an additional real Strict fixture was found in
 > `Esword618/unioffice` (`document/testdata/strict.docx`), but that repository is
@@ -31,4 +37,12 @@ declaration/newline regression is covered by
 
 The document reports `unsupported` for mechanisms it does not model (charts,
 diagrams, anchored drawings and various `settings.xml` extensions), so `check`
-exits `1`; opening succeeds and `render` emits one page.
+exits `1`; opening succeeds and `render` emits two pages (the chart/diagram
+extents are reserved for pagination).
+
+## Visual fidelity (S4F)
+
+`strict-ooxml-render-svg/tests/ssim.rs` rasterizes our SVG with `resvg` using the
+bundled metric-compatible fonts and compares it with the committed WPS
+references: `strict-text` must reach **SSIM ≥ 0.95** and both documents must
+render the **same number of pages** as the reference. See `refs/README.md`.

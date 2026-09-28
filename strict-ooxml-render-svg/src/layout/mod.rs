@@ -167,6 +167,8 @@ pub(crate) struct Geometry {
     pub right: f64,
     /// Bottom content margin in px.
     pub bottom: f64,
+    /// Document-grid line pitch in px (`w:docGrid/@w:linePitch`), if any.
+    pub grid_line_pitch: Option<f64>,
 }
 
 impl Geometry {
@@ -220,6 +222,18 @@ pub(crate) fn geometry_for(section: Option<&SectionProperties>, scale: f64) -> G
     let value = |margin: Option<Twips>, default: i32| {
         twips_to_px(margin.map_or(default, Twips::value), scale)
     };
+    let grid_line_pitch = section
+        .and_then(|section| section.doc_grid.as_ref())
+        .filter(|grid| {
+            // `snapToChars` governs character spacing, not the line pitch.
+            !matches!(
+                grid.grid_type,
+                Some(strict_ooxml_wml::model::values::DocGridType::SnapToChars)
+            )
+        })
+        .and_then(|grid| grid.line_pitch)
+        .filter(|pitch| *pitch > 0)
+        .map(|pitch| twips_to_px(pitch, scale));
     Geometry {
         width,
         height,
@@ -227,6 +241,7 @@ pub(crate) fn geometry_for(section: Option<&SectionProperties>, scale: f64) -> G
         top: value(margins.top, DEFAULT_MARGIN),
         right: value(margins.right, DEFAULT_MARGIN),
         bottom: value(margins.bottom, DEFAULT_MARGIN),
+        grid_line_pitch,
     }
 }
 
@@ -254,10 +269,9 @@ impl LayoutContext<'_> {
     /// Measures the advance width of `text` for a run in px.
     #[must_use]
     pub(crate) fn measure(&self, text: &str, run: &ComputedRun) -> f64 {
-        let metrics = self.font.metrics(&run.family, run.bold, run.italic);
         let size_px = self.size_px(run.size_pt);
         text.chars()
-            .map(|ch| metrics.advance_em(ch, run.bold) * size_px)
+            .map(|ch| self.font.advance_em(&run.family, ch, run.bold, run.italic) * size_px)
             .sum()
     }
 }

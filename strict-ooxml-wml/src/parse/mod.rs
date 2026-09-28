@@ -502,13 +502,42 @@ pub(crate) fn decimal_to_i32(number: f64) -> i32 {
     }
 }
 
-/// Parses `ST_SignedTwipsMeasure`: an integer or decimal twip value.
+/// Parses `ST_SignedTwipsMeasure`: twips, or a universal measure with a unit.
 ///
-/// Real producer markup writes decimals (`1872.0000000000002`, `-180.0`); the
-/// value is rounded to the model's whole-twip representation rather than being
-/// dropped (STAGE-2-WORK-ORDER D-2).
+/// Real producer markup writes decimals (`1872.0000000000002`, `-180.0`) and,
+/// notably, physical units (`545.30pt`, `72pt`) for page size/margins; the value
+/// is converted to the model's whole-twip representation rather than being
+/// dropped (STAGE-2-WORK-ORDER D-2, STAGE-4-RENDER-FIDELITY).
 pub(crate) fn parse_signed_twips(value: &str) -> Option<i32> {
-    parse_decimal(value).map(decimal_to_i32)
+    parse_measure_twips(value).map(decimal_to_i32)
+}
+
+/// Parses a `ST_UniversalMeasure`-style value into twips as a float.
+///
+/// A bare number is already in twips; a unit suffix (`mm`, `cm`, `in`, `pt`,
+/// `pc`, `pi`) is converted. Returns `None` for an unknown unit.
+fn parse_measure_twips(value: &str) -> Option<f64> {
+    let trimmed = value.trim();
+    let (number, unit) = match trimmed
+        .char_indices()
+        .find(|(_, ch)| ch.is_ascii_alphabetic())
+    {
+        Some((index, _)) => (&trimmed[..index], Some(trimmed[index..].trim())),
+        None => (trimmed, None),
+    };
+    let number = parse_decimal(number)?;
+    let Some(unit) = unit else {
+        return Some(number);
+    };
+    let per_unit = match unit {
+        "in" => 1440.0,
+        "cm" => 1440.0 / 2.54,
+        "mm" => 144.0 / 2.54,
+        "pt" => 20.0,
+        "pc" | "pi" => 240.0,
+        _ => return None,
+    };
+    Some(number * per_unit)
 }
 
 /// Parses `ST_MeasurementOrPercent` (widths, `w:tblInd`, `w:wBefore/After`,
@@ -530,5 +559,24 @@ pub(crate) fn parse_on_off(attrs: &[Attr]) -> bool {
     match val_attr(attrs) {
         None => true,
         Some(value) => matches!(value, "true" | "on" | "1"),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::float_cmp)]
+mod measure_tests {
+    use super::parse_signed_twips;
+
+    #[test]
+    fn universal_measures_convert_to_twips() {
+        assert_eq!(parse_signed_twips("360"), Some(360));
+        assert_eq!(parse_signed_twips("545.30pt"), Some(10_906));
+        assert_eq!(parse_signed_twips("72pt"), Some(1440));
+        assert_eq!(parse_signed_twips("1in"), Some(1440));
+        assert_eq!(parse_signed_twips("2.54cm"), Some(1440));
+        assert_eq!(parse_signed_twips("25.4mm"), Some(1440));
+        assert_eq!(parse_signed_twips("-180.0"), Some(-180));
+        assert_eq!(parse_signed_twips("12zz"), None);
+        assert_eq!(parse_signed_twips("abc"), None);
     }
 }

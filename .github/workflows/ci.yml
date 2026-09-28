@@ -46,6 +46,10 @@ jobs:
           cargo test -p strict-ooxml-render-svg --all-features --test images
       - name: Renderer corpus (no panics)
         run: cargo test -p strict-ooxml-render-svg --all-features --test corpus
+      - name: Render fidelity (SSIM >= 0.95 vs pinned WPS references)
+        run: cargo test -p strict-ooxml-render-svg --all-features --test ssim
+      - name: Real Strict corpus (REWORK-WML-1 + fidelity)
+        run: cargo test -p strict-ooxml --all-features --test strict_corpus
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)

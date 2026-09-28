@@ -7,7 +7,8 @@ cargo-llvm-cov 0.9.0, cargo-deny
 **Крейты:** новый `strict-ooxml-render-svg`; интеграция в `strict-ooxml` (meta,
 feature `svg`, default `["report","svg"]`) и `strict-ooxml-cli` (`render`)  
 **Статус:** реализовано; структурные/детерминизм/SVG-валидность/оракул — зелёные.
-SSIM-гейт против **внешних** эталонов — waiver (см. §7).
+SSIM-гейт против **внешних** эталонов — waiver (см. §7) — **закрыт** доработкой
+`STAGE-4-RENDER-FIDELITY.md` (см. §10: реальные метрики, эталоны WPS, SSIM ≥ 0.95).
 
 ---
 
@@ -189,3 +190,44 @@ cargo run -p strict-ooxml --example render_svg -- document.docx out/
 ```text
 UPDATE_GOLDEN=1 cargo test -p strict-ooxml-render-svg --test golden
 ```
+
+---
+
+## 10. Доработка визуальной точности (`STAGE-4-RENDER-FIDELITY.md`, O1+O3)
+
+Закрывает находки приёмки **O1** (SSIM — waiver) и **O3** (приближённые
+метрики), а также расхождение пагинации.
+
+| ID | Работа | Артефакт |
+|---|---|---|
+| S4F.1 | Реальные advance/вертикальные метрики TTF через `skrifa` | `src/font/builtin.rs` |
+| S4F.2 | Маппинг семейств (Calibri→Carlito, Arial→Arimo, …) в вёрстке и SVG | `src/font/family.rs`, `paint/text.rs` |
+| S4F.3 | Бандл Arimo/Tinos/Cousine (+ Carlito/Caladea) с атрибуцией | `assets/fonts/` |
+| S4F.4 | Эталонные PNG WPS 12.1.0.28485 | `strict-ooxml-core/tests/strict/refs/` |
+| S4F.5 | SSIM-harness `resvg`→grayscale→windowed SSIM + инвариант страниц | `tests/ssim.rs` |
+| S4F.6 | Пагинация 2↔1: docGrid linePitch, space-before наверху, резерв extent | `layout/`, `paint/image.rs` |
+| S4F.7 | Обновление golden | `tests/golden/` |
+| S4F.8 | CI-шаг SSIM | `.github/workflows/ci.yml` |
+| S4F.9 | ADR-0006/отчёт | `docs/` |
+
+**Метрики.** `BuiltinFontProvider` читает реальные advance-ширины и line-метрики
+из метрик-совместимых открытых шрифтов; вертикальная модель использует hhea
+(`asc+desc+gap`), что даёт одинарный интерлиньяж Calibri ≈ 1.22 em.
+
+**Пагинация.** Устранены три причины расхождения: (1) физические единицы в
+`w:pgSz`/`w:pgMar` (`545.30pt`) теперь конвертируются в twips — геометрия
+совпала с WPS (727×1055); (2) `w:docGrid/@w:linePitch` задаёт высоту строки;
+(3) `w:spacing/@w:before` применяется в начале страницы; (4) inline-диаграммы и
+диаграммы резервируют заявленный extent, поэтому `strict-profile.docx` даёт
+**2 страницы**, как WPS.
+
+**SSIM.** Сравнение по страницам с эталонами WPS: `strict-text` —
+**worst SSIM = 0.9768** (порог 0.95, окно 11×11, σ=1.5); `strict-profile` —
+инвариант числа страниц (2), без SSIM (диаграммы вне Stage 4). WPS в CI не
+требуется (эталоны закоммичены).
+
+**Окружение эталонов.** WPS Office `12.1.0.28485`; `kwpsconvert.exe word2photo`;
+96 DPI. См. `strict-ooxml-core/tests/strict/refs/README.md`.
+
+**Ограничения.** Кернинг/лигатуры по-прежнему не применяются (хватает advance-
+ширин для порога 0.95); переменный Arimo инстанцируется по `wght`.

@@ -38,8 +38,16 @@ rayon = "1"
 # JSON serialization for the Feature Report (ADR-0005).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# TrueType/OpenType metric extraction for the bundled metric-compatible fonts
+# (STAGE-4-RENDER-FIDELITY S4F.1). `skrifa` is the maintained fontations
+# parser (ttf-parser is unmaintained; RUSTSEC-2026-0192).
+skrifa = "0.44"
 # Development dependencies.
 proptest = "1"
+# SVG rasterization for the SSIM harness (S4F.5).
+resvg = "0.48"
+# Reference-PNG decoding for the SSIM harness.
+png = "0.18"
 
 # Lint policy (task S1.1). Every member crate opts in with `[lints] workspace = true`.
 [workspace.lints.rust]

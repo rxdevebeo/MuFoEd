@@ -28,7 +28,9 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
         .unwrap_or_else(|| "#000000".to_owned());
     let mut attributes = String::new();
     attributes.push_str("font-family=\"");
-    attributes.push_str(&super::escape_attr(&item.run.family));
+    attributes.push_str(&super::escape_attr(crate::font::map_family(
+        &item.run.family,
+    )));
     attributes.push('"');
     let _ = write!(attributes, " font-size=\"{}\"", coord(item.size_px));
     if item.run.bold {

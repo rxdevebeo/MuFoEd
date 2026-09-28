@@ -45,6 +45,7 @@ pub(crate) fn layout_paragraph(
     para: &Paragraph,
     content_left: f64,
     content_width: f64,
+    grid_line_pitch: Option<f64>,
 ) -> ParagraphFlow {
     let computed = compute_paragraph(ctx.document, para);
     let space_before = pt_to_px(computed.space_before_pt, ctx.options.scale);
@@ -53,7 +54,15 @@ pub(crate) fn layout_paragraph(
     let mut segments = Vec::new();
     flatten_inlines(ctx, &computed, &para.inlines, &mut segments);
 
-    let flows = build_lines(ctx, para, &computed, content_left, content_width, segments);
+    let flows = build_lines(
+        ctx,
+        para,
+        &computed,
+        content_left,
+        content_width,
+        grid_line_pitch,
+        segments,
+    );
 
     ParagraphFlow {
         flows,
@@ -161,6 +170,7 @@ fn build_lines(
     computed: &ComputedParagraph,
     content_left: f64,
     content_width: f64,
+    grid_line_pitch: Option<f64>,
     segments: Vec<Seg>,
 ) -> Vec<Flow> {
     let scale = ctx.options.scale;
@@ -184,6 +194,7 @@ fn build_lines(
         ctx,
         computed,
         line_width,
+        grid_line_pitch,
         flows: Vec::new(),
     };
     let mut current = LineBuilder::new();
@@ -275,12 +286,20 @@ struct LineSink<'a, 'b> {
     ctx: &'b LayoutContext<'a>,
     computed: &'b ComputedParagraph,
     line_width: f64,
+    grid_line_pitch: Option<f64>,
     flows: Vec<Flow>,
 }
 
 impl LineSink<'_, '_> {
     fn emit(&mut self, line: LineBuilder, last: bool) {
-        let finished = finish_line(self.ctx, self.computed, line, self.line_width, last);
+        let finished = finish_line(
+            self.ctx,
+            self.computed,
+            line,
+            self.line_width,
+            self.grid_line_pitch,
+            last,
+        );
         self.flows.push(Flow::Line(finished));
     }
 }
@@ -366,6 +385,7 @@ fn finish_line(
     computed: &ComputedParagraph,
     mut line: LineBuilder,
     line_width: f64,
+    grid_line_pitch: Option<f64>,
     last: bool,
 ) -> TextLine {
     let used = line_extent(&line.items);
@@ -407,7 +427,7 @@ fn finish_line(
         item.x += offset;
     }
 
-    let (height, ascent) = resolve_line_metrics(ctx, computed, line.items.first());
+    let (height, ascent) = resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
     for item in &mut line.items {
         item.baseline = ascent;
     }
@@ -438,6 +458,7 @@ fn resolve_line_metrics(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
     item: Option<&TextItem>,
+    grid_line_pitch: Option<f64>,
 ) -> (f64, f64) {
     let run = item.map_or(&computed.default_run, |item| &item.run);
     let metrics = ctx.font.metrics(&run.family, run.bold, run.italic);
@@ -462,8 +483,16 @@ fn resolve_line_metrics(
         }
         LineSpacingRule::Auto => {
             let multiplier = computed.line_pt.map_or(1.0, |pt| pt / 12.0);
-            let height = natural_height * multiplier.max(0.1);
-            (height, natural_ascent.min(height))
+            let scaled = natural_height * multiplier.max(0.1);
+            // With no explicit line spacing, Word/WPS use the document grid's
+            // line pitch as the line height; the extra leading goes above the
+            // baseline so text keeps its vertical position within the grid.
+            let height = match grid_line_pitch {
+                Some(pitch) if computed.line_pt.is_none() => scaled.max(pitch),
+                _ => scaled,
+            };
+            let extra = (height - scaled).max(0.0);
+            (height, (natural_ascent + extra).min(height))
         }
     };
     (height, ascent)

@@ -19,11 +19,17 @@ system-fonts = []
 [dependencies]
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+# Reads the bundled metric-compatible fonts' advances (S4F.1).
+skrifa.workspace = true
 
 [dev-dependencies]
 # Independent XML/SVG parser used only as an oracle by the tests (ADR-0006).
 roxmltree = "0.20"
 criterion = "0.5"
+# Rasterize our SVG for the SSIM harness (S4F.5).
+resvg.workspace = true
+# Decode the WPS reference PNGs for the SSIM harness.
+png.workspace = true
 
 [[bench]]
 name = "render"

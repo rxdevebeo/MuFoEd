@@ -269,7 +269,7 @@ fn layout_blocks_inline(
     for block in blocks {
         match block {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width);
+                let flow = layout_paragraph(ctx, para, left, width, None);
                 *y += flow.space_before;
                 for item in flow.flows {
                     match item {

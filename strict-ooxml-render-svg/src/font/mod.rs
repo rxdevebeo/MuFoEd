@@ -6,17 +6,27 @@
 //! provider is explicitly outside the Stage-4 acceptance criteria.
 
 pub mod builtin;
+pub mod family;
 pub mod metrics;
 
 pub use builtin::BuiltinFontProvider;
+pub use family::map_family;
 pub use metrics::FontMetrics;
 
 /// Provides metrics for a font face.
 ///
 /// Implementations must be deterministic for a given `(family, bold, italic)`.
 pub trait FontProvider: Send + Sync {
-    /// Returns the metrics for a face.
+    /// Returns the vertical metrics for a face.
     fn metrics(&self, family: &str, bold: bool, italic: bool) -> FontMetrics;
+
+    /// Returns the advance width of `ch` in em units.
+    ///
+    /// Providers over real fonts override this with true glyph advances; the
+    /// default falls back to the deterministic character-class model.
+    fn advance_em(&self, family: &str, ch: char, bold: bool, italic: bool) -> f64 {
+        self.metrics(family, bold, italic).advance_em(ch, bold)
+    }
 
     /// Returns a stable provider name (used in diagnostics).
     fn name(&self) -> &'static str;

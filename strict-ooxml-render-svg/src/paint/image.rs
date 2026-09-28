@@ -11,8 +11,13 @@ use crate::MediaMode;
 /// Default image size in px when no extent is declared.
 const DEFAULT_IMAGE_PX: f64 = 96.0;
 
-/// Builds an [`ImageItem`] for an inline drawing, or `None` when the drawing is
-/// not a supported inline raster picture (`wp:anchor`, EMF/WMF, missing blip).
+/// Builds an [`ImageItem`] for an inline drawing.
+///
+/// A supported inline raster picture resolves to its media part. Any other
+/// inline drawing with a declared extent — charts, diagrams, EMF/WMF, a missing
+/// blip — is reserved as a placeholder of that size: Stage 4 cannot rasterize
+/// it, but reserving the extent keeps pagination aligned with the producer
+/// (S4F.6). `wp:anchor` (floating) drawings are out of scope and yield `None`.
 pub(crate) fn layout_inline_image(
     ctx: &LayoutContext<'_>,
     drawing: &strict_ooxml_wml::model::Drawing,
@@ -22,11 +27,15 @@ pub(crate) fn layout_inline_image(
     let strict_ooxml_wml::model::DrawingKind::Inline(inline) = &drawing.kind else {
         return None;
     };
-    let picture = inline.picture.as_ref()?;
-    let blip = picture.blip.as_ref()?;
-    let part = blip.resolved.as_ref()?;
-
-    let extent = inline.extent.or(picture.extent).unwrap_or_default();
+    let picture = inline.picture.as_ref();
+    let extent = inline.extent.or_else(|| picture.and_then(|p| p.extent));
+    let part = picture
+        .and_then(|picture| picture.blip.as_ref())
+        .and_then(|blip| blip.resolved.as_ref());
+    if part.is_none() && extent.is_none() {
+        return None;
+    }
+    let extent = extent.unwrap_or_default();
     let mut w = emu_to_px(extent.cx.value(), ctx.options.scale);
     let mut h = emu_to_px(extent.cy.value(), ctx.options.scale);
     if w <= 0.0 {
@@ -47,7 +56,7 @@ pub(crate) fn layout_inline_image(
         y,
         w,
         h,
-        href: media_href(ctx, part),
+        href: part.and_then(|part| media_href(ctx, part)),
         alt,
     })
 }

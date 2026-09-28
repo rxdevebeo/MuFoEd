@@ -50,7 +50,8 @@ fn layout_blocks(
     for block in blocks {
         match block {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width);
+                let flow =
+                    layout_paragraph(ctx, para, left, width, paginator.geometry.grid_line_pitch);
                 if para.props.page_break_before && !paginator.at_page_top() {
                     paginator.page_break()?;
                 }
@@ -120,9 +121,13 @@ impl Paginator {
         !self.started || (self.current.is_empty() && self.cursor <= 0.0)
     }
 
-    /// Adds vertical space before the next flow (suppressed at a page top).
+    /// Adds vertical space before the next flow.
+    ///
+    /// Word/WPS apply `w:spacing/@w:before` at the top of a page by default
+    /// (the `suppressTopSpacing` compatibility flag is off), so it is not
+    /// suppressed here.
     fn add_vspace(&mut self, space: f64) {
-        if self.at_page_top() || space <= 0.0 {
+        if space <= 0.0 {
             return;
         }
         self.cursor = (self.cursor + space).min(self.content_height());
