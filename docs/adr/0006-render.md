@@ -101,10 +101,13 @@ The acceptance criterion “SSIM ≥ 95% against approved references” is enfor
   converts both sides to grayscale and computes a windowed (11×11 Gaussian) mean
   SSIM; the gate is the **worst** page score (≥ 0.95) plus a **structural
   invariant** and the **page-count invariant**.
-- The structural invariant (`S4F-REWORK-2` B-3) is rasterizer-independent and
-  catches what integral SSIM tolerates on sparse text: candidate/reference ink
-  coverage within `[0.5, 2.0]`×, a row-ink profile correlation ≥ 0.9, and a
-  vertical alignment shift ≤ 2 px (a blank page or a ≥ 3 px shift fails).
+- The structural invariant (`S4F-REWORK-2` B-3/R-1) is rasterizer-independent
+  and catches what integral SSIM tolerates on sparse text: candidate/reference
+  ink coverage within `[0.5, 2.0]`×; row- and column-ink profile correlations
+  ≥ 0.9 / ≥ 0.85; vertical and horizontal profile alignment ≤ 2 px; and an ink
+  centroid drift ≤ 2.5 px on either axis. A blank page or a ≥ 3 px shift on
+  **either** axis is rejected (SSIM alone tolerated a horizontal shift to
+  ~10 px).
 - Per-pixel comparison applies to the text references (`strict-text`,
   `strict-text-grid`). The chart/diagram document `strict-profile` is
   page-count checked only: Stage 4 cannot rasterize DrawingML charts, and a

@@ -36,8 +36,10 @@ not reproducible and is out of scope.
 | `strict-profile` | **page count only** (2 pages) | Real Word-produced Strict file (`kklimuk/docx-cli`, MIT). Dominated by a DrawingML chart and diagram, which Stage 4 cannot rasterize, so per-pixel SSIM is not meaningful (`S4F-REWORK-2` B-2). |
 
 The structural invariant (`tests/ssim.rs`) additionally requires similar ink
-coverage, a row-ink profile correlation ≥ 0.9 and no vertical drift beyond
-2 px, which rejects a blank page or a ≥ 3 px shift that SSIM alone tolerates.
+coverage, row/column ink-profile correlations (≥ 0.9 / ≥ 0.85), profile
+alignment and ink-centroid drift within 2 / 2.5 px on **both** axes. It rejects a
+blank page or a ≥ 3 px shift on either axis, which SSIM alone tolerates
+(horizontal shifts up to ~10 px).
 
 ## SHA-256
 

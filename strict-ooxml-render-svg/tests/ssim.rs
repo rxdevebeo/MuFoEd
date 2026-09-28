@@ -40,30 +40,41 @@ const MIN_INK_FRACTION: f64 = 0.001;
 const MIN_INK_RATIO: f64 = 0.5;
 /// Upper bound of the candidate/reference ink ratio.
 const MAX_INK_RATIO: f64 = 2.0;
-/// Maximum allowed vertical alignment shift in px (B-3: 2 passes, 3 fails).
+/// Maximum allowed alignment shift in px on either axis (2 passes, 3 fails).
 const MAX_ALIGNMENT_SHIFT_PX: isize = 2;
 /// Minimum Pearson correlation of the row-ink profiles.
 const MIN_ROW_CORRELATION: f64 = 0.9;
+/// Minimum Pearson correlation of the column-ink profiles.
+const MIN_COLUMN_CORRELATION: f64 = 0.85;
+/// Maximum allowed shift of the ink centroid in px (either axis).
+const MAX_CENTROID_SHIFT_PX: f64 = 2.5;
 
-/// Structural (rasterizer-independent) fidelity of one page (B-3).
+/// Structural (rasterizer-independent) fidelity of one page (B-3/R-1).
 #[derive(Debug, Clone, Copy)]
 pub struct StructuralFidelity {
     /// Best vertical shift of the candidate relative to the reference.
-    pub shift_px: isize,
-    /// Correlation of the row-ink profiles at that shift.
-    pub correlation: f64,
+    pub shift_y_px: isize,
+    /// Best horizontal shift of the candidate relative to the reference.
+    pub shift_x_px: isize,
+    /// Correlation of the row-ink profiles at `shift_y_px`.
+    pub correlation_y: f64,
+    /// Correlation of the column-ink profiles at `shift_x_px`.
+    pub correlation_x: f64,
+    /// Signed horizontal shift of the ink centroid, in px.
+    pub centroid_x_delta: f64,
+    /// Signed vertical shift of the ink centroid, in px.
+    pub centroid_y_delta: f64,
     /// Reference ink fraction.
     pub reference_ink: f64,
     /// Candidate ink fraction.
     pub candidate_ink: f64,
 }
 
-/// Checks a page structurally: similar ink coverage, no vertical drift and a
-/// well-correlated row-ink profile.
+/// Checks a page structurally: similar ink coverage, no vertical or horizontal
+/// drift and well-correlated row/column ink profiles.
 ///
-/// Complements SSIM, which barely penalises a missing or horizontally shifted
-/// sparse text layer (`S4F-REWORK-2` B-3). Deterministic and rasterizer
-/// independent.
+/// Complements SSIM, which barely penalises a missing or shifted sparse text
+/// layer (`S4F-REWORK-2` B-3/R-1). Deterministic and rasterizer independent.
 ///
 /// # Errors
 ///
@@ -89,24 +100,80 @@ pub fn structural_fidelity(
             "candidate ink {candidate_ink:.5} >> reference {reference_ink:.5}"
         ));
     }
-    let (shift, correlation) = best_vertical_alignment(
+    let (shift_y, correlation_y) = best_profile_alignment(
         &row_ink_profile(reference, width, height),
         &row_ink_profile(candidate, width, height),
         12,
     );
-    let correlation = correlation.ok_or_else(|| "no row structure to compare".to_owned())?;
-    if shift.abs() > MAX_ALIGNMENT_SHIFT_PX {
-        return Err(format!("vertical shift {shift}px exceeds tolerance"));
+    let correlation_y = correlation_y.ok_or_else(|| "no row structure to compare".to_owned())?;
+    if shift_y.abs() > MAX_ALIGNMENT_SHIFT_PX {
+        return Err(format!("vertical shift {shift_y}px exceeds tolerance"));
     }
-    if correlation < MIN_ROW_CORRELATION {
-        return Err(format!("row-ink correlation {correlation:.3} too low"));
+    if correlation_y < MIN_ROW_CORRELATION {
+        return Err(format!("row-ink correlation {correlation_y:.3} too low"));
+    }
+    let (shift_x, correlation_x) = best_profile_alignment(
+        &column_ink_profile(reference, width, height),
+        &column_ink_profile(candidate, width, height),
+        12,
+    );
+    let correlation_x = correlation_x.ok_or_else(|| "no column structure to compare".to_owned())?;
+    if shift_x.abs() > MAX_ALIGNMENT_SHIFT_PX {
+        return Err(format!("horizontal shift {shift_x}px exceeds tolerance"));
+    }
+    if correlation_x < MIN_COLUMN_CORRELATION {
+        return Err(format!("column-ink correlation {correlation_x:.3} too low"));
+    }
+    let (centroid_x_delta, centroid_y_delta) = centroid_delta(reference, candidate, width, height);
+    if centroid_x_delta.abs() > MAX_CENTROID_SHIFT_PX {
+        return Err(format!(
+            "horizontal centroid shift {centroid_x_delta:.2}px exceeds tolerance"
+        ));
+    }
+    if centroid_y_delta.abs() > MAX_CENTROID_SHIFT_PX {
+        return Err(format!(
+            "vertical centroid shift {centroid_y_delta:.2}px exceeds tolerance"
+        ));
     }
     Ok(StructuralFidelity {
-        shift_px: shift,
-        correlation,
+        shift_y_px: shift_y,
+        shift_x_px: shift_x,
+        correlation_y,
+        correlation_x,
+        centroid_x_delta,
+        centroid_y_delta,
         reference_ink,
         candidate_ink,
     })
+}
+
+/// Mean `(x, y)` of the ink pixels, or `None` when the image has no ink.
+#[must_use]
+pub fn ink_centroid(gray: &[f64], width: usize, height: usize) -> Option<(f64, f64)> {
+    let mut sum_x = 0.0;
+    let mut sum_y = 0.0;
+    let mut count = 0u64;
+    for row in 0..height {
+        for col in 0..width {
+            if gray[row * width + col] < INK_LEVEL {
+                sum_x += col as f64;
+                sum_y += row as f64;
+                count += 1;
+            }
+        }
+    }
+    (count > 0).then(|| (sum_x / count as f64, sum_y / count as f64))
+}
+
+/// Signed centroid shift `candidate - reference` on `(x, y)`.
+fn centroid_delta(reference: &[f64], candidate: &[f64], width: usize, height: usize) -> (f64, f64) {
+    match (
+        ink_centroid(reference, width, height),
+        ink_centroid(candidate, width, height),
+    ) {
+        (Some((rx, ry)), Some((cx, cy))) => (cx - rx, cy - ry),
+        _ => (0.0, 0.0),
+    }
 }
 
 /// SSIM window edge (an 11×11 window, `σ = 1.5`, as in the reference paper).
@@ -265,6 +332,19 @@ pub fn row_ink_profile(gray: &[f64], width: usize, height: usize) -> Vec<f64> {
         .collect()
 }
 
+/// Per-column ink fraction, used for horizontal-alignment comparison.
+#[must_use]
+pub fn column_ink_profile(gray: &[f64], width: usize, height: usize) -> Vec<f64> {
+    (0..width)
+        .map(|col| {
+            let dark = (0..height)
+                .filter(|&row| gray[row * width + col] < INK_LEVEL)
+                .count();
+            dark as f64 / height as f64
+        })
+        .collect()
+}
+
 /// Pearson correlation of two equal-length samples, or `None` if either is
 /// constant (no structure to correlate).
 fn pearson(left: &[f64], right: &[f64]) -> Option<f64> {
@@ -287,13 +367,14 @@ fn pearson(left: &[f64], right: &[f64]) -> Option<f64> {
     Some(cov / (var_left.sqrt() * var_right.sqrt()))
 }
 
-/// Finds the vertical shift of `candidate` relative to `reference` that best
-/// aligns their row-ink profiles, returning `(shift_px, correlation)`.
+/// Finds the shift of `candidate` relative to `reference` that best aligns
+/// their ink profiles, returning `(shift_px, correlation)`.
 ///
-/// A positive shift means the candidate content sits lower than the reference.
-/// Returns `(0, None)` when either profile has no structure.
+/// A positive shift means the candidate content sits lower/further right. Pass
+/// `row_ink_profile` for the vertical axis and `column_ink_profile` for the
+/// horizontal axis. Returns `(0, None)` when either profile has no structure.
 #[must_use]
-pub fn best_vertical_alignment(
+pub fn best_profile_alignment(
     reference: &[f64],
     candidate: &[f64],
     max_shift: isize,
@@ -496,9 +577,13 @@ fn matches_wps_references() {
             for (page, structure) in structures.iter().enumerate() {
                 match structure {
                     Ok(structure) => eprintln!(
-                        "  page {page}: shift={}px corr={:.3} ink ref={:.5} cand={:.5}",
-                        structure.shift_px,
-                        structure.correlation,
+                        "  page {page}: dy={}px corr_y={:.3} | dx={}px corr_x={:.3} | centroid d=({:.2},{:.2}) | ink ref={:.5} cand={:.5}",
+                        structure.shift_y_px,
+                        structure.correlation_y,
+                        structure.shift_x_px,
+                        structure.correlation_x,
+                        structure.centroid_x_delta,
+                        structure.centroid_y_delta,
                         structure.reference_ink,
                         structure.candidate_ink
                     ),
@@ -536,12 +621,16 @@ fn rasterization_is_deterministic() {
     assert_eq!(a, b, "rasterization must be byte-deterministic");
 }
 
-/// Builds a tiny text-like image: two dark rows of "ink".
-fn text_like(width: usize, height: usize, rows: [usize; 2]) -> Vec<f64> {
+/// Builds a tiny text-like image: two dark rows of "ink", shifted by
+/// `(dy, dx)` px.
+fn text_like(width: usize, height: usize, rows: [usize; 2], dx: isize) -> Vec<f64> {
     let mut image = vec![1.0; width * height];
     for row in rows {
-        for col in 10..width - 10 {
-            image[row * width + col] = 0.0;
+        for col in 0..width {
+            let source = col as isize - dx;
+            if source >= 10 && (source as usize) < width - 10 {
+                image[row * width + col] = 0.0;
+            }
         }
     }
     image
@@ -550,18 +639,107 @@ fn text_like(width: usize, height: usize, rows: [usize; 2]) -> Vec<f64> {
 #[test]
 fn structural_check_rejects_blank_and_shifted_pages() {
     let (width, height) = (64, 96);
-    let reference = text_like(width, height, [20, 60]);
+    let reference = text_like(width, height, [20, 60], 0);
     // Identical candidate passes.
     assert!(structural_fidelity(&reference, &reference, width, height).is_ok());
     // A blank page is rejected (ink ratio).
     let blank = vec![1.0; width * height];
     assert!(structural_fidelity(&reference, &blank, width, height).is_err());
     // A 3px vertical shift is rejected.
-    let shifted = text_like(width, height, [23, 63]);
-    assert!(structural_fidelity(&reference, &shifted, width, height).is_err());
+    assert!(structural_fidelity(
+        &reference,
+        &text_like(width, height, [23, 63], 0),
+        width,
+        height
+    )
+    .is_err());
     // A 2px vertical shift is still within tolerance.
-    let shifted = text_like(width, height, [22, 62]);
-    assert!(structural_fidelity(&reference, &shifted, width, height).is_ok());
+    assert!(structural_fidelity(
+        &reference,
+        &text_like(width, height, [22, 62], 0),
+        width,
+        height
+    )
+    .is_ok());
+    // A 3px horizontal shift is rejected (R-1).
+    assert!(structural_fidelity(
+        &reference,
+        &text_like(width, height, [20, 60], 3),
+        width,
+        height
+    )
+    .is_err());
+    // A 2px horizontal shift is still within tolerance.
+    assert!(structural_fidelity(
+        &reference,
+        &text_like(width, height, [20, 60], 2),
+        width,
+        height
+    )
+    .is_ok());
+}
+
+/// Renders `name` page `page` and returns `(width, height, reference, candidate)`
+/// grayscale buffers at the reference resolution.
+fn rasterize_reference_pair(name: &str, page: usize) -> (usize, usize, Vec<f64>, Vec<f64>) {
+    let dir = strict_dir().join(format!("refs/{name}"));
+    let (width, height, reference) = load_png_gray(&reference_pages(&dir)[page]);
+    let package = Package::open_path(
+        &strict_dir().join(format!("{name}.docx")),
+        &OpenOptions::default(),
+    )
+    .expect("open package");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let pages =
+        render_with_media(&document, &RenderOptions::default(), Some(&package)).expect("render");
+    let candidate = rasterize_gray(&pages[page].svg, width, height, &fonts_dir());
+    (width as usize, height as usize, reference, candidate)
+}
+
+/// Shifts an image horizontally by `dx` px (fills the exposed columns white).
+fn shift_horizontal(gray: &[f64], width: usize, height: usize, dx: isize) -> Vec<f64> {
+    let mut out = vec![1.0; width * height];
+    for row in 0..height {
+        for col in 0..width {
+            let source = col as isize - dx;
+            if source >= 0 && (source as usize) < width {
+                out[row * width + col] = gray[row * width + source as usize];
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn structural_check_rejects_real_horizontal_shift() {
+    let (width, height, reference, candidate) = rasterize_reference_pair("strict-text", 0);
+    // The unshifted render passes.
+    assert!(structural_fidelity(&reference, &candidate, width, height).is_ok());
+    // A horizontal drift of >= 3 px is rejected (R-1 criterion 1).
+    for dx in [3isize, 5, 8, 10] {
+        let shifted = shift_horizontal(&candidate, width, height, dx);
+        assert!(
+            structural_fidelity(&reference, &shifted, width, height).is_err(),
+            "dx={dx} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn structural_check_rejects_real_vertical_shift() {
+    let (width, height, reference, candidate) = rasterize_reference_pair("strict-text-grid", 0);
+    let shifted: Vec<f64> = {
+        let mut out = vec![1.0; width * height];
+        for row in 3..height {
+            out[row * width..(row + 1) * width]
+                .copy_from_slice(&candidate[(row - 3) * width..(row - 2) * width]);
+        }
+        out
+    };
+    assert!(
+        structural_fidelity(&reference, &shifted, width, height).is_err(),
+        "a 3px vertical shift must be rejected"
+    );
 }
 
 #[test]
