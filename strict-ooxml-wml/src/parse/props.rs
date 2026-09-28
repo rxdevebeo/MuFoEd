@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use strict_ooxml_core::error::Result;
+use strict_ooxml_core::error::{Result, SourceLocation};
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::ids::{Ilvl, NumId, StyleId};
@@ -26,8 +26,8 @@ use crate::model::values::{
 use crate::RELS_STRICT_NS;
 
 use super::{
-    attr_in_ns, is_wml, parse_i32, parse_on_off, parse_u16, parse_u32, val_attr, wml_attr,
-    PartParser,
+    attr_in_ns, decimal_to_i32, is_wml, parse_decimal, parse_i32, parse_measurement_or_percent,
+    parse_on_off, parse_signed_twips, parse_u32, val_attr, wml_attr, PartParser,
 };
 
 /// Parses a tri-state on/off element (present without a value means `on`).
@@ -110,11 +110,11 @@ impl PartParser<'_> {
                         }
                         "tabs" => props.tabs = self.parse_tabs()?,
                         "spacing" => {
-                            props.spacing = Some(Self::parse_paragraph_spacing(&attrs));
+                            props.spacing = Some(self.parse_paragraph_spacing(&attrs));
                             self.skip_element()?;
                         }
                         "ind" => {
-                            props.indentation = Some(Self::parse_indentation(&attrs));
+                            props.indentation = Some(self.parse_indentation(&attrs));
                             self.skip_element()?;
                         }
                         "jc" => {
@@ -317,9 +317,9 @@ impl PartParser<'_> {
     fn parse_border_edge(&mut self, attrs: &[Attr]) -> Border {
         Border {
             style: self.val_enum_owned(attrs, "w:border", BorderStyle::from_strict),
-            size: wml_attr(attrs, "sz").and_then(parse_u16).map(EighthsPoint),
+            size: self.measure_u16(attrs, "sz", "w:border").map(EighthsPoint),
             color: wml_attr(attrs, "color").map(Color::new),
-            space: wml_attr(attrs, "space").and_then(parse_u16),
+            space: self.measure_u16(attrs, "space", "w:border"),
             shadow: attr_on(attrs, "shadow"),
             frame: attr_on(attrs, "frame"),
         }
@@ -335,11 +335,11 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:spacing` (paragraph; attribute-only).
-    fn parse_paragraph_spacing(attrs: &[Attr]) -> Spacing {
+    fn parse_paragraph_spacing(&mut self, attrs: &[Attr]) -> Spacing {
         Spacing {
-            before: wml_attr(attrs, "before").and_then(parse_i32).map(Twips),
-            after: wml_attr(attrs, "after").and_then(parse_i32).map(Twips),
-            line: wml_attr(attrs, "line").and_then(parse_i32).map(Twips),
+            before: self.measure_twips(attrs, "before", "w:spacing"),
+            after: self.measure_twips(attrs, "after", "w:spacing"),
+            line: self.measure_twips(attrs, "line", "w:spacing"),
             line_rule: wml_attr(attrs, "lineRule").and_then(LineSpacingRule::from_strict),
             after_autospacing: attr_on(attrs, "afterAutospacing"),
             before_autospacing: attr_on(attrs, "beforeAutospacing"),
@@ -347,26 +347,35 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:ind` (attribute-only).
-    fn parse_indentation(attrs: &[Attr]) -> Indentation {
+    fn parse_indentation(&mut self, attrs: &[Attr]) -> Indentation {
+        let start = if wml_attr(attrs, "start").is_some() {
+            self.measure_twips(attrs, "start", "w:ind")
+        } else {
+            self.measure_twips(attrs, "left", "w:ind")
+        };
+        let end = if wml_attr(attrs, "end").is_some() {
+            self.measure_twips(attrs, "end", "w:ind")
+        } else {
+            self.measure_twips(attrs, "right", "w:ind")
+        };
         Indentation {
-            start: wml_attr(attrs, "start")
-                .or_else(|| wml_attr(attrs, "left"))
-                .and_then(parse_i32)
-                .map(Twips),
-            end: wml_attr(attrs, "end")
-                .or_else(|| wml_attr(attrs, "right"))
-                .and_then(parse_i32)
-                .map(Twips),
-            first_line: wml_attr(attrs, "firstLine").and_then(parse_i32).map(Twips),
-            hanging: wml_attr(attrs, "hanging").and_then(parse_i32).map(Twips),
-            start_chars: wml_attr(attrs, "startChars").and_then(parse_i32),
-            end_chars: wml_attr(attrs, "endChars").and_then(parse_i32),
-            first_line_chars: wml_attr(attrs, "firstLineChars").and_then(parse_i32),
-            hanging_chars: wml_attr(attrs, "hangingChars").and_then(parse_i32),
+            start,
+            end,
+            first_line: self.measure_twips(attrs, "firstLine", "w:ind"),
+            hanging: self.measure_twips(attrs, "hanging", "w:ind"),
+            start_chars: self.measure_i32(attrs, "startChars", "w:ind"),
+            end_chars: self.measure_i32(attrs, "endChars", "w:ind"),
+            first_line_chars: self.measure_i32(attrs, "firstLineChars", "w:ind"),
+            hanging_chars: self.measure_i32(attrs, "hangingChars", "w:ind"),
         }
     }
 
-    /// Parses `w:tabs`.
+    /// Parses `w:tabs` (`CT_TabStop`).
+    ///
+    /// Per the schema the position is `w:pos` (`ST_SignedTwipsMeasure`), the
+    /// alignment is `w:val` (`ST_TabJc`) and the fill is `w:leader`; there is no
+    /// `w:jc` on `w:tab` (STAGE-2-WORK-ORDER D-1). The stop is always retained;
+    /// a missing/invalid value is recorded rather than dropped.
     fn parse_tabs(&mut self) -> Result<Vec<TabStop>> {
         self.enter()?;
         let mut tabs = Vec::new();
@@ -374,15 +383,19 @@ impl PartParser<'_> {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
                     if is_wml(&name) && name.local() == "tab" {
-                        if let Some(position) = wml_attr(&attrs, "val").and_then(parse_i32) {
-                            tabs.push(TabStop {
-                                position: Twips(position),
-                                alignment: wml_attr(&attrs, "jc")
-                                    .and_then(TabAlignment::from_strict)
-                                    .unwrap_or(TabAlignment::Start),
-                                leader: wml_attr(&attrs, "leader").and_then(TabLeader::from_strict),
-                            });
-                        }
+                        let alignment = self
+                            .enum_attr(&attrs, "val", "w:tab", TabAlignment::from_lexical)
+                            .unwrap_or(TabAlignment::Start);
+                        let leader =
+                            self.enum_attr(&attrs, "leader", "w:tab", TabLeader::from_strict);
+                        let position = self
+                            .measure_twips(&attrs, "pos", "w:tab")
+                            .unwrap_or(Twips(0));
+                        tabs.push(TabStop {
+                            position,
+                            alignment,
+                            leader,
+                        });
                     }
                     self.skip_element()?;
                 }
@@ -413,7 +426,7 @@ impl PartParser<'_> {
                     }
                     match name.local() {
                         "tblStyle" => props.style = self.val_string(&attrs).map(StyleId::new),
-                        "tblW" => props.width = Some(Self::parse_width(&attrs)),
+                        "tblW" => props.width = Some(self.parse_width(&attrs, "w:tblW")),
                         "jc" => {
                             props.alignment =
                                 self.val_enum(&attrs, "w:jc", Justification::from_strict);
@@ -437,7 +450,8 @@ impl PartParser<'_> {
                         "shd" => props.shading = Some(self.parse_shading(&attrs)),
                         "tblLook" => props.look = Some(Self::parse_table_look(&attrs)),
                         "tblInd" => {
-                            props.indent = wml_attr(&attrs, "w").and_then(parse_i32).map(Twips);
+                            props.indent =
+                                self.measure_or_percent(&attrs, "w", "w:tblInd").map(Twips);
                         }
                         "bidiVisual" => props.bidi_visual = parse_on_off(&attrs),
                         _ => {}
@@ -470,7 +484,7 @@ impl PartParser<'_> {
                         continue;
                     }
                     match name.local() {
-                        "trHeight" => props.height = Some(Self::parse_row_height(&attrs)),
+                        "trHeight" => props.height = Some(self.parse_row_height(&attrs)),
                         "tblHeader" => props.header = parse_on_off(&attrs),
                         "cantSplit" => props.cant_split = parse_on_off(&attrs),
                         "tblCellMar" => {
@@ -479,8 +493,12 @@ impl PartParser<'_> {
                         }
                         "gridBefore" => props.grid_before = self.val_i32(&attrs, "w:gridBefore"),
                         "gridAfter" => props.grid_after = self.val_i32(&attrs, "w:gridAfter"),
-                        "wBefore" => props.width_before = Some(Self::parse_width(&attrs)),
-                        "wAfter" => props.width_after = Some(Self::parse_width(&attrs)),
+                        "wBefore" => {
+                            props.width_before = Some(self.parse_width(&attrs, "w:wBefore"));
+                        }
+                        "wAfter" => {
+                            props.width_after = Some(self.parse_width(&attrs, "w:wAfter"));
+                        }
                         "rsid" => props.rsid = self.val_string(&attrs),
                         _ => {}
                     }
@@ -512,7 +530,7 @@ impl PartParser<'_> {
                         continue;
                     }
                     match name.local() {
-                        "tcW" => props.width = Some(Self::parse_width(&attrs)),
+                        "tcW" => props.width = Some(self.parse_width(&attrs, "w:tcW")),
                         "gridSpan" => {
                             props.grid_span = self
                                 .val_u32(&attrs, "w:gridSpan")
@@ -561,19 +579,21 @@ impl PartParser<'_> {
     }
 
     /// Parses a width attribute set (`w:tblW`, `w:tcW`, `w:wBefore`, `w:wAfter`).
-    fn parse_width(attrs: &[Attr]) -> Width {
+    ///
+    /// `ST_MeasurementOrPercent` accepts decimals and percentages (D-2).
+    fn parse_width(&mut self, attrs: &[Attr], feature: &str) -> Width {
         Width {
             kind: wml_attr(attrs, "type")
                 .and_then(WidthKind::from_strict)
                 .unwrap_or_default(),
-            value: wml_attr(attrs, "w").and_then(parse_i32),
+            value: self.measure_or_percent(attrs, "w", feature),
         }
     }
 
     /// Parses a `w:trHeight` element.
-    fn parse_row_height(attrs: &[Attr]) -> RowHeight {
+    fn parse_row_height(&mut self, attrs: &[Attr]) -> RowHeight {
         RowHeight {
-            value: wml_attr(attrs, "val").and_then(parse_i32).map(Twips),
+            value: self.measure_twips(attrs, "val", "w:trHeight"),
             rule: wml_attr(attrs, "hRule").and_then(HeightRule::from_strict),
         }
     }
@@ -586,7 +606,7 @@ impl PartParser<'_> {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
                     if is_wml(&name) {
-                        let value = wml_attr(&attrs, "w").and_then(parse_i32).map(Twips);
+                        let value = self.measure_twips(&attrs, "w", "w:cellMar");
                         match name.local() {
                             "top" => margins.top = value,
                             "start" | "left" => margins.start = value,
@@ -651,21 +671,21 @@ impl PartParser<'_> {
                         }
                         "pgSz" => {
                             props.page_size = Some(PageSize {
-                                width: wml_attr(&attrs, "w").and_then(parse_i32).map(Twips),
-                                height: wml_attr(&attrs, "h").and_then(parse_i32).map(Twips),
+                                width: self.measure_twips(&attrs, "w", "w:pgSz"),
+                                height: self.measure_twips(&attrs, "h", "w:pgSz"),
                                 orientation: wml_attr(&attrs, "orient")
                                     .and_then(PageOrientation::from_strict),
                             });
                         }
                         "pgMar" => {
                             props.page_margins = Some(PageMargins {
-                                top: wml_attr(&attrs, "top").and_then(parse_i32).map(Twips),
-                                right: wml_attr(&attrs, "right").and_then(parse_i32).map(Twips),
-                                bottom: wml_attr(&attrs, "bottom").and_then(parse_i32).map(Twips),
-                                left: wml_attr(&attrs, "left").and_then(parse_i32).map(Twips),
-                                header: wml_attr(&attrs, "header").and_then(parse_i32).map(Twips),
-                                footer: wml_attr(&attrs, "footer").and_then(parse_i32).map(Twips),
-                                gutter: wml_attr(&attrs, "gutter").and_then(parse_i32).map(Twips),
+                                top: self.measure_twips(&attrs, "top", "w:pgMar"),
+                                right: self.measure_twips(&attrs, "right", "w:pgMar"),
+                                bottom: self.measure_twips(&attrs, "bottom", "w:pgMar"),
+                                left: self.measure_twips(&attrs, "left", "w:pgMar"),
+                                header: self.measure_twips(&attrs, "header", "w:pgMar"),
+                                footer: self.measure_twips(&attrs, "footer", "w:pgMar"),
+                                gutter: self.measure_twips(&attrs, "gutter", "w:pgMar"),
                             });
                         }
                         "cols" => {
@@ -677,8 +697,8 @@ impl PartParser<'_> {
                             props.doc_grid = Some(DocGrid {
                                 grid_type: wml_attr(&attrs, "type")
                                     .and_then(DocGridType::from_strict),
-                                line_pitch: wml_attr(&attrs, "linePitch").and_then(parse_i32),
-                                character_space: wml_attr(&attrs, "charSpace").and_then(parse_i32),
+                                line_pitch: self.measure_i32(&attrs, "linePitch", "w:docGrid"),
+                                character_space: self.measure_i32(&attrs, "charSpace", "w:docGrid"),
                             });
                         }
                         "vAlign" => {
@@ -696,7 +716,7 @@ impl PartParser<'_> {
                             );
                         }
                         "lnNumType" => {
-                            props.line_numbering = Some(Self::parse_line_numbering(&attrs));
+                            props.line_numbering = Some(self.parse_line_numbering(&attrs));
                         }
                         "pgBorders" => {
                             self.record(
@@ -742,8 +762,8 @@ impl PartParser<'_> {
             Some(value) => matches!(value, "true" | "on" | "1"),
         };
         let mut columns = Columns {
-            count: wml_attr(attrs, "num").and_then(parse_u16),
-            space: wml_attr(attrs, "space").and_then(parse_i32).map(Twips),
+            count: self.measure_u16(attrs, "num", "w:cols"),
+            space: self.measure_twips(attrs, "space", "w:cols"),
             equal_width,
             separator: attr_on(attrs, "sep"),
             columns: Vec::new(),
@@ -753,8 +773,8 @@ impl PartParser<'_> {
                 XmlEvent::StartElement { name, attrs } => {
                     if is_wml(&name) && name.local() == "col" {
                         columns.columns.push(ColumnSpec {
-                            width: wml_attr(&attrs, "w").and_then(parse_i32).map(Twips),
-                            space: wml_attr(&attrs, "space").and_then(parse_i32).map(Twips),
+                            width: self.measure_twips(&attrs, "w", "w:col"),
+                            space: self.measure_twips(&attrs, "space", "w:col"),
                         });
                     }
                     self.skip_element()?;
@@ -769,12 +789,90 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:lnNumType` (attribute-only).
-    fn parse_line_numbering(attrs: &[Attr]) -> LineNumbering {
+    fn parse_line_numbering(&mut self, attrs: &[Attr]) -> LineNumbering {
         LineNumbering {
-            count_by: wml_attr(attrs, "countBy").and_then(parse_u16),
-            start: wml_attr(attrs, "start").and_then(parse_u16),
+            count_by: self.measure_u16(attrs, "countBy", "w:lnNumType"),
+            start: self.measure_u16(attrs, "start", "w:lnNumType"),
             restart: wml_attr(attrs, "restart").and_then(LineNumberRestart::from_strict),
-            distance: wml_attr(attrs, "distance").and_then(parse_i32).map(Twips),
+            distance: self.measure_twips(attrs, "distance", "w:lnNumType"),
+        }
+    }
+
+    /// Records a measurement/enum value that could not be applied (D-2).
+    pub(crate) fn record_value(&mut self, feature: &str, value: &str, location: &SourceLocation) {
+        self.record(
+            feature,
+            SupportStatus::Partial,
+            Some(format!("could not apply value '{value}'")),
+            Some(location.clone()),
+        );
+    }
+
+    /// Reads a twip measurement (`ST_SignedTwipsMeasure`), recording failures.
+    pub(crate) fn measure_twips(
+        &mut self,
+        attrs: &[Attr],
+        attribute: &str,
+        feature: &str,
+    ) -> Option<Twips> {
+        let value = wml_attr(attrs, attribute)?;
+        let Some(number) = parse_signed_twips(value) else {
+            let location = self.location();
+            self.record_value(feature, value, &location);
+            return None;
+        };
+        Some(Twips(number))
+    }
+
+    /// Reads a `ST_MeasurementOrPercent` value, recording failures.
+    pub(crate) fn measure_or_percent(
+        &mut self,
+        attrs: &[Attr],
+        attribute: &str,
+        feature: &str,
+    ) -> Option<i32> {
+        let value = wml_attr(attrs, attribute)?;
+        let Some(number) = parse_measurement_or_percent(value) else {
+            let location = self.location();
+            self.record_value(feature, value, &location);
+            return None;
+        };
+        Some(number)
+    }
+
+    /// Reads a decimal integer (counts, grid units), recording failures.
+    pub(crate) fn measure_i32(
+        &mut self,
+        attrs: &[Attr],
+        attribute: &str,
+        feature: &str,
+    ) -> Option<i32> {
+        let value = wml_attr(attrs, attribute)?;
+        let Some(number) = parse_decimal(value).map(decimal_to_i32) else {
+            let location = self.location();
+            self.record_value(feature, value, &location);
+            return None;
+        };
+        Some(number)
+    }
+
+    /// Reads a non-negative decimal integer, recording failures.
+    pub(crate) fn measure_u16(
+        &mut self,
+        attrs: &[Attr],
+        attribute: &str,
+        feature: &str,
+    ) -> Option<u16> {
+        let value = wml_attr(attrs, attribute)?;
+        match parse_decimal(value) {
+            Some(number) if number >= 0.0 && number <= f64::from(u16::MAX) => {
+                Some(decimal_to_i32(number) as u16)
+            }
+            _ => {
+                let location = self.location();
+                self.record_value(feature, value, &location);
+                None
+            }
         }
     }
 

@@ -36,7 +36,7 @@ fn parses_rich_paragraph_properties() {
 <w:start w:val=\"dashed\"/><w:end w:val=\"dotDash\"/><w:bottom w:val=\"double\"/>\
 <w:insideH w:val=\"nil\"/><w:insideV w:val=\"wave\"/></w:pBdr>\
 <w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFFF00\"/>\
-<w:tabs><w:tab w:val=\"720\" w:jc=\"center\" w:leader=\"dot\"/><w:tab w:val=\"-1\"/></w:tabs>\
+<w:tabs><w:tab w:pos=\"720\" w:val=\"center\" w:leader=\"dot\"/><w:tab w:pos=\"-1\" w:val=\"clear\"/></w:tabs>\
 <w:spacing w:before=\"120\" w:after=\"240\" w:line=\"360\" w:lineRule=\"exact\" w:beforeAutospacing=\"1\" w:afterAutospacing=\"on\"/>\
 <w:ind w:start=\"720\" w:end=\"360\" w:hanging=\"180\" w:startChars=\"100\" w:endChars=\"50\" w:firstLineChars=\"0\" w:hangingChars=\"25\"/>\
 <w:jc w:val=\"both\"/><w:outlineLvl w:val=\"2\"/><w:textDirection w:val=\"tbRl\"/>\
@@ -75,8 +75,11 @@ fn parses_rich_paragraph_properties() {
     let shading = props.shading.as_ref().unwrap();
     assert_eq!(shading.fill.as_ref().unwrap().as_str(), "FFFF00");
     assert_eq!(props.tabs.len(), 2);
+    assert_eq!(props.tabs[0].position.value(), 720);
     assert_eq!(props.tabs[0].alignment, TabAlignment::Center);
     assert_eq!(props.tabs[0].leader, Some(TabLeader::Dot));
+    assert_eq!(props.tabs[1].position.value(), -1);
+    assert_eq!(props.tabs[1].alignment, TabAlignment::Clear);
     let spacing = props.spacing.unwrap();
     assert_eq!(spacing.line_rule, Some(LineSpacingRule::Exact));
     assert!(spacing.before_autospacing);
@@ -267,6 +270,108 @@ fn parses_run_content_variants() {
         }
         other => panic!("unexpected {other:?}"),
     }
+}
+
+#[test]
+fn tab_stops_use_schema_attributes() {
+    // CT_TabStop: position = `w:pos`, alignment = `w:val` (ST_TabJc), fill =
+    // `w:leader`; there is no `w:jc` on `w:tab` (D-1).
+    let body = "<w:p><w:pPr><w:tabs>\
+<w:tab w:val=\"right\" w:leader=\"none\" w:pos=\"9360\"/>\
+<w:tab w:val=\"center\" w:pos=\"4680\"/>\
+<w:tab w:val=\"num\" w:pos=\"720\"/>\
+<w:tab w:val=\"clear\" w:pos=\"0\"/>\
+<w:tab w:val=\"decimal\" w:pos=\"1000\"/>\
+<w:tab w:val=\"bar\" w:pos=\"2000\"/>\
+<w:tab w:val=\"start\" w:pos=\"3000\"/>\
+<w:tab w:val=\"end\" w:pos=\"4000\"/>\
+</w:tabs></w:pPr></w:p>";
+    let document = paragraph_inline(body);
+    let tabs = &document.body.blocks[0].as_paragraph().unwrap().props.tabs;
+    assert_eq!(tabs.len(), 8);
+    assert_eq!(tabs[0].position.value(), 9360);
+    assert_eq!(tabs[0].alignment, TabAlignment::End); // legacy `right` -> end
+    assert_eq!(tabs[0].leader, Some(TabLeader::None));
+    assert_eq!(tabs[1].alignment, TabAlignment::Center);
+    assert_eq!(tabs[2].alignment, TabAlignment::Num);
+    assert_eq!(tabs[3].alignment, TabAlignment::Clear);
+    assert_eq!(tabs[4].alignment, TabAlignment::Decimal);
+    assert_eq!(tabs[5].alignment, TabAlignment::Bar);
+    assert_eq!(tabs[6].alignment, TabAlignment::Start);
+    assert_eq!(tabs[7].alignment, TabAlignment::End);
+    assert!(document.support.get("w:tab").is_none(), "unexpected loss");
+}
+
+#[test]
+fn tab_stop_losses_are_recorded_not_dropped() {
+    let body = "<w:p><w:pPr><w:tabs><w:tab w:val=\"bogus\" w:pos=\"nope\"/></w:tabs></w:pPr></w:p>";
+    let document = paragraph_inline(body);
+    let tabs = &document.body.blocks[0].as_paragraph().unwrap().props.tabs;
+    // The stop is retained; the unreadable values are recorded.
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0].position.value(), 0);
+    assert_eq!(tabs[0].alignment, TabAlignment::Start);
+    assert_eq!(
+        document.support.get("w:tab").unwrap().status,
+        SupportStatus::Partial
+    );
+}
+
+#[test]
+fn decimal_measurements_are_applied_not_lost() {
+    let body = "<w:p><w:pPr><w:ind w:start=\"1872.0000000000002\" w:hanging=\"180.5\"/>\
+<w:spacing w:before=\"12.5\"/></w:pPr></w:p>\
+<w:tbl><w:tblPr><w:tblW w:w=\"1872.0000000000002\" w:type=\"dxa\"/>\
+<w:tblInd w:w=\"-180.0\" w:type=\"dxa\"/></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"2500.5\"/></w:tblGrid>\
+<w:tr><w:tc><w:tcPr><w:tcW w:w=\"50%\" w:type=\"pct\"/></w:tcPr><w:p/></w:tc></w:tr></w:tbl>\
+<w:sectPr><w:pgMar w:left=\"1872.0000000000002\" w:right=\"17.99999999999983\"/>\
+<w:pgSz w:w=\"11906.0\" w:h=\"16838.0\"/></w:sectPr>";
+    let document = paragraph_inline(body);
+    let props = &document.body.blocks[0].as_paragraph().unwrap().props;
+    assert_eq!(props.indentation.unwrap().start.unwrap().value(), 1872);
+    assert_eq!(props.indentation.unwrap().hanging.unwrap().value(), 181);
+    assert_eq!(props.spacing.unwrap().before.unwrap().value(), 13);
+    let Block::Table(table) = &document.body.blocks[1] else {
+        panic!("expected table");
+    };
+    assert_eq!(table.props.width.unwrap().value, Some(1872));
+    assert_eq!(table.props.indent.unwrap().value(), -180);
+    assert_eq!(table.grid[0].width.unwrap().value(), 2501);
+    // `50%` -> fiftieths of a percent.
+    assert_eq!(
+        table.rows[0].cells[0].props.width.unwrap().value,
+        Some(2500)
+    );
+    let section = &document.sections[0].properties;
+    assert_eq!(section.page_margins.unwrap().left.unwrap().value(), 1872);
+    assert_eq!(section.page_margins.unwrap().right.unwrap().value(), 18);
+    assert_eq!(section.page_size.unwrap().width.unwrap().value(), 11906);
+    assert!(document.support.is_empty(), "no losses expected");
+}
+
+#[test]
+fn percent_measurements_are_applied() {
+    // `ST_MeasurementOrPercent` applies to `w:tblInd` as well as `w:tblW`.
+    let body = "<w:tbl><w:tblPr><w:tblInd w:w=\"50%\" w:type=\"pct\"/>\
+<w:tblW w:w=\"50%\" w:type=\"pct\"/></w:tblPr></w:tbl>";
+    let document = paragraph_inline(body);
+    let Block::Table(table) = &document.body.blocks[0] else {
+        panic!("expected table");
+    };
+    assert_eq!(table.props.indent.unwrap().value(), 2500);
+    assert_eq!(table.props.width.unwrap().value, Some(2500));
+    assert!(document.support.is_empty(), "no losses expected");
+}
+
+#[test]
+fn unreadable_measurements_are_recorded() {
+    let body = "<w:tbl><w:tblPr><w:tblInd w:w=\"abc\"/></w:tblPr></w:tbl>";
+    let document = paragraph_inline(body);
+    assert_eq!(
+        document.support.get("w:tblInd").unwrap().status,
+        SupportStatus::Partial
+    );
 }
 
 #[test]

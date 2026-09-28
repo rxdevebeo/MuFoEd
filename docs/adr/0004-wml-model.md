@@ -168,3 +168,10 @@ Negative / costs:
 - Line coverage of `strict-ooxml-wml` ≥ 80% (CI `coverage` job).
 - `tests/misc.rs::model_variant_sizes_are_bounded` bounds `Block`/`Inline` sizes;
   this is why the `large_enum_variant` allow is acceptable (REWORK M9).
+- Independent WML oracle: `tests/corpus_oracle.rs` derives real lexical forms
+  from the public corpus with an independent ZIP reader and checks that the
+  parser applies them. It is the regression guard for schema attribute names
+  (`CT_TabStop` position in `w:pos`, alignment in `w:val`) and for fractional
+  measurements (`ST_MeasurementOrPercent`/`ST_SignedTwipsMeasure`), which are
+  rounded to the model's whole-twip representation rather than dropped
+  (STAGE-2-WORK-ORDER D-1/D-2/P-1). It runs in the CI test job.

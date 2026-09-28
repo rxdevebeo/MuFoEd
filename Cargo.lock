@@ -833,6 +833,7 @@ dependencies = [
  "rayon",
  "strict-ooxml-core",
  "toml",
+ "zip",
 ]
 
 [[package]]

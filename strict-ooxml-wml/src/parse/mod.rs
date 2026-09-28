@@ -434,9 +434,45 @@ pub(crate) fn parse_u32(value: &str) -> Option<u32> {
     value.trim().parse().ok()
 }
 
-/// Parses a `u16` attribute value.
-pub(crate) fn parse_u16(value: &str) -> Option<u16> {
-    value.trim().parse().ok()
+/// Parses a finite decimal lexical value.
+pub(crate) fn parse_decimal(value: &str) -> Option<f64> {
+    let number: f64 = value.trim().parse().ok()?;
+    number.is_finite().then_some(number)
+}
+
+/// Rounds a decimal to the nearest `i32`, saturating at the type bounds.
+pub(crate) fn decimal_to_i32(number: f64) -> i32 {
+    let rounded = number.round();
+    if rounded >= f64::from(i32::MAX) {
+        i32::MAX
+    } else if rounded <= f64::from(i32::MIN) {
+        i32::MIN
+    } else {
+        rounded as i32
+    }
+}
+
+/// Parses `ST_SignedTwipsMeasure`: an integer or decimal twip value.
+///
+/// Real producer markup writes decimals (`1872.0000000000002`, `-180.0`); the
+/// value is rounded to the model's whole-twip representation rather than being
+/// dropped (STAGE-2-WORK-ORDER D-2).
+pub(crate) fn parse_signed_twips(value: &str) -> Option<i32> {
+    parse_decimal(value).map(decimal_to_i32)
+}
+
+/// Parses `ST_MeasurementOrPercent` (widths, `w:tblInd`, `w:wBefore/After`,
+/// `w:gridCol`): a decimal measurement, or a percentage (`50%`).
+///
+/// A percent is converted to the OOXML fiftieths-of-a-percent unit; other forms
+/// are rounded to the nearest integer in the unit implied by the element's
+/// `w:type`.
+pub(crate) fn parse_measurement_or_percent(value: &str) -> Option<i32> {
+    let trimmed = value.trim();
+    if let Some(percent) = trimmed.strip_suffix('%') {
+        return parse_decimal(percent).map(|number| decimal_to_i32(number * 50.0));
+    }
+    parse_decimal(trimmed).map(decimal_to_i32)
 }
 
 /// Parses an on/off attribute or a bare element (default `true`).

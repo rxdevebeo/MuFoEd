@@ -254,6 +254,19 @@ strict_enum! {
     }
 }
 
+impl TabAlignment {
+    /// Parses `ST_TabJc`, also accepting the legacy `left`/`right` synonyms that
+    /// occur in real-world markup (mapped to `start`/`end`).
+    #[must_use]
+    pub fn from_lexical(value: &str) -> Option<Self> {
+        match value {
+            "left" => Some(Self::Start),
+            "right" => Some(Self::End),
+            _ => Self::from_strict(value),
+        }
+    }
+}
+
 strict_enum! {
     /// `ST_TabTlc` — tab leader.
     pub enum TabLeader {

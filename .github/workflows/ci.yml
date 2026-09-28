@@ -30,6 +30,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test --workspace --all-features
+      - name: WML independent oracle (P-1)
+        run: cargo test -p strict-ooxml-wml --all-features --test corpus_oracle
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)

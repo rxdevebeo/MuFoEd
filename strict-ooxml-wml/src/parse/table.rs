@@ -7,7 +7,7 @@ use crate::model::block::{GridCol, Table, TableCell, TableRow};
 use crate::model::props::{CellProperties, RowProperties, TableProperties};
 use crate::model::values::Twips;
 
-use super::{is_wml, parse_i32, wml_attr, PartParser};
+use super::{is_wml, PartParser};
 
 impl PartParser<'_> {
     /// Parses a table (`w:tbl`); its start element has been consumed.
@@ -63,7 +63,7 @@ impl PartParser<'_> {
                 XmlEvent::StartElement { name, attrs } => {
                     if is_wml(&name) && name.local() == "gridCol" {
                         grid.push(GridCol {
-                            width: wml_attr(&attrs, "w").and_then(parse_i32).map(Twips),
+                            width: self.measure_or_percent(&attrs, "w", "w:gridCol").map(Twips),
                         });
                     }
                     self.skip_element()?;

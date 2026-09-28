@@ -1,10 +1,12 @@
 # Этап 2 — отчёт о выполнении и доработке
 
 **Задача:** `STAGE-2-TASK.md` (TASK-STAGE-2)  
-**Доработка:** `STAGE-2-REWORK.md` (REWORK-STAGE-2, ACCEPT-TASK-STAGE-2)  
+**Доработки:** `STAGE-2-REWORK.md` (REWORK-STAGE-2), `STAGE-2-WORK-ORDER.md`
+(ZAKAZ-STAGE-2-2, по аудиту `STAGE-2-REWORK-2.md`)  
 **Окружение:** Windows x86_64 (MSVC), Rust 1.91.1, cargo 1.91.1, cargo-llvm-cov 0.9.0  
 **Крейты:** `strict-ooxml-wml`, `strict-ooxml`, `xtool`  
-**Статус:** блокеры B1/B2 устранены; замечания M1–M9 закрыты (M8 — waiver).
+**Статус:** блокеры B1/B2 и замечания M1–M9 закрыты; дефекты D-1/D-2 устранены,
+WML-оракул P-1 внедрён.
 
 ---
 
@@ -131,7 +133,61 @@
 | 10 | Документация/примеры | ✅ |
 | 11 | Fuzz подключён; 24 ч | ✅ подключён; 24 ч — waiver (M8) |
 
-## 6. Как проверить
+## 6. Заказ на доработку №2 (`STAGE-2-WORK-ORDER.md`)
+
+### D-1 — `w:tab` по схеме `CT_TabStop`
+`parse_tabs` читает позицию из `w:pos` (`ST_SignedTwipsMeasure`), выравнивание —
+из `w:val` (`ST_TabJc`), заполнитель — из `w:leader`. Легаси-синонимы `left`/
+`right` отображаются в `Start`/`End` (`TabAlignment::from_lexical`). Остановка
+всегда сохраняется; нечитаемое значение фиксируется в `SupportModel`
+(`w:tab`, `Partial`). Фикстура `tests/props.rs` приведена к схемным именам;
+добавлены кейсы `right/none`, `center`, `num`, `clear`, `decimal`, `bar`.
+
+### D-2 — измерения без тихой потери
+Добавлены `parse_signed_twips`, `parse_measurement_or_percent`, `parse_decimal`
+и `measure_twips/measure_or_percent/measure_i32/measure_u16`: дробные и
+процентные формы (`1872.0000000000002`, `-180.0`, `50%`) применяются к модели
+(округление), а нечитаемые — фиксируются в `SupportModel` с локацией. Переведены
+все измерения: `w:tblW`/`w:tcW`/`w:wBefore/After`, `w:tblInd`, `w:gridCol`,
+`w:pgSz`/`w:pgMar`, `w:ind`, `w:spacing`, `w:trHeight`, границы, `w:tblCellMar`/
+`w:tcMar`, `w:cols`/`w:col`, `w:docGrid`, `w:lnNumType`.
+
+### P-1 — независимый WML-оракул
+`strict-ooxml-wml/tests/corpus_oracle.rs` (dev-dep `zip`):
+1. `corpus_tab_tags_are_all_parsed` — из реальных `document.xml` независимо
+   извлекаются все `<w:tab>` и их `w:val`; число разобранных остановок равно
+   независимому счёту (в корпусе **102** `<w:tab>`, значения `left`/`right`);
+2. `corpus_decimal_measures_are_applied` — независимо собираются дробные
+   измерения (**17** различных лексем, напр. `-180.0`, `-161.99999999999932`) и
+   проверяется, что парсер их применяет;
+3. `schema_attribute_names_are_used` — регрессионный страж: старая (неверная)
+   форма `w:val`/`w:jc` не должна удовлетворять схемному контракту.
+Подключён в CI отдельным шагом (`corpus_oracle`) и входит в
+`cargo test --workspace --all-features`.
+
+**Самопроверка (красный → зелёный).** При временном возврате старой логики
+(`w:val`/`w:jc`, целочисленный `parse_signed_twips`) оракул **красный** — падают
+все 3 теста:
+```
+corpus_tab_tags_are_all_parsed ... FAILED (alignment for w:val="right")
+corpus_decimal_measures_are_applied ... FAILED (w:tblInd w:w="-15.0" was silently dropped)
+schema_attribute_names_are_used ... FAILED (position must not come from w:val)
+```
+После исправления — **зелёный**.
+
+### T-1 — синхронизация фикстур
+Неправильные имена в `tests/props.rs` заменены на схемные (`w:pos`/`w:val`);
+golden-дамп табуляции не выводит, `tests/golden/*.txt` не изменились.
+
+### Результаты команд после доработки №2
+| Проверка | Результат |
+|---|---|
+| `cargo clippy --workspace --all-targets --all-features -- -D warnings` | ✅ 0 |
+| `cargo test --workspace --all-features` | ✅ 0 (все тесты, включая `corpus_oracle`) |
+| `cargo llvm-cov -p strict-ooxml-wml --all-features --fail-under-lines 80` | ✅ **90.71%** строк |
+| `cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 90` | ✅ 97.3% |
+
+## 7. Как проверить
 
 ```text
 cargo fmt --all -- --check
