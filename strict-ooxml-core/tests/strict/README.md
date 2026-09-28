@@ -11,6 +11,7 @@ packages built in memory by the tests and the Transitional corpus in
 |---|---|---|---|
 | `strict-profile.docx` | [kklimuk/docx-cli](https://github.com/kklimuk/docx-cli) — `tests/fixtures/strict-profile.docx` | MIT (© 2026 Kirill Klimuk) | committed |
 | `strict-text.docx` | Built for this project (Strict namespaces) | MIT OR Apache-2.0 (project) | committed |
+| `strict-text-grid.docx` | `strict-text` + `w:docGrid` + a Cambria run | MIT OR Apache-2.0 (project) | committed |
 | `refs/` | WPS Office reference renders (see `refs/README.md`) | project | committed |
 
 `strict-profile.docx` is redistributed under the MIT License of its source
@@ -44,5 +45,8 @@ extents are reserved for pagination).
 
 `strict-ooxml-render-svg/tests/ssim.rs` rasterizes our SVG with `resvg` using the
 bundled metric-compatible fonts and compares it with the committed WPS
-references: `strict-text` must reach **SSIM ≥ 0.95** and both documents must
-render the **same number of pages** as the reference. See `refs/README.md`.
+references: `strict-text` and `strict-text-grid` must reach **SSIM ≥ 0.95** plus
+the structural invariant (ink coverage, row-ink correlation, ≤ 2 px vertical
+drift), and every document must render the **same number of pages** as its
+reference. `strict-profile` is page-count only (its DrawingML charts cannot be
+rasterized by Stage 4). See `refs/README.md`.

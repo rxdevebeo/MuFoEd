@@ -1,9 +1,11 @@
-//! Font metrics abstraction and the deterministic character-advance model.
+//! Font metrics abstraction and the deterministic character-advance fallback.
 //!
-//! Real glyph advance widths are not bundled in Stage 4 (ADR-0006): the
-//! builtin provider uses a deterministic per-character-class model. This keeps
-//! layout reproducible across platforms and CI, at the cost of exactness versus
-//! a real font (documented limitation).
+//! Vertical metrics and real glyph advances come from the bundled
+//! metric-compatible fonts via [`super::builtin::BuiltinFontProvider`]
+//! (`S4F.1`). The per-character-class model here is only a **fallback**, used
+//! for unknown families and characters without a glyph in the referenced face;
+//! [`FontMetrics::advance_em`] implements it and [`char_width_ratio`] is its
+//! pure ratio table.
 
 /// Vertical and horizontal metrics of one font face.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -48,8 +48,13 @@ cascade is a rendering concern and keeping it here avoids destabilising the
 DOM and its golden tests (ADR-0004).
 
 The Stage-2 `StyleTable` retains the resolved `based_on_chain`; `docDefaults`
-are not in the DOM, so effectively the built-in defaults play that role. A
-future `docDefaults` capture is additive.
+are parsed but **not** stored in the DOM, so the renderer's built-in defaults
+play that role (`S4F-REWORK-2` B-1b). This is a documented limitation: a
+document whose only spacing comes from `w:docDefaults/w:pPrDefault` does not get
+it applied. It does not change pagination where a line grid is present, because
+the grid rule (`S4F.1` above) snaps `lineRule="auto"` lines independently of the
+multiplier, so `strict-profile` keeps its 2 pages; a future `docDefaults` capture
+is additive.
 
 ### Media resolution: `MediaSource` + explicit modes (open question 4)
 
@@ -71,7 +76,11 @@ specified API while remaining functional.
 
 Page geometry comes from the last `sectPr` (universal measures such as
 `545.30pt` are converted to twips); `w:docGrid/@w:linePitch` snaps line heights
-to the document grid; page breaks are explicit (`w:br type=page`),
+to the document grid — each `lineRule="auto"` line occupies the smallest whole
+number of grid units that fits its (possibly explicit) auto line height, and
+the extra leading is centered on the natural line box, matching WPS even with
+single spacing (`w:line="240"`, `S4F-REWORK-2` B-1); page breaks are explicit
+(`w:br type=page`),
 `pageBreakBefore`, and content overflow. `spacing/@w:before` is applied at the
 top of a page (Word/WPS default). `keepLines` is honoured; `keepNext`,
 multi-column flow, footnotes, fields, headers/footers, `wp:anchor` and math are
@@ -90,11 +99,18 @@ The acceptance criterion “SSIM ≥ 95% against approved references” is enfor
   CI.
 - `tests/ssim.rs` rasterizes our SVG with `resvg` using the bundled fonts,
   converts both sides to grayscale and computes a windowed (11×11 Gaussian) mean
-  SSIM; the gate is the **worst** page score (≥ 0.95) plus the **page-count
-  invariant**.
-- Per-pixel comparison applies to text references (`strict-text`); the
-  chart/diagram document `strict-profile` is page-count checked only, since
-  Stage 4 cannot rasterize DrawingML charts.
+  SSIM; the gate is the **worst** page score (≥ 0.95) plus a **structural
+  invariant** and the **page-count invariant**.
+- The structural invariant (`S4F-REWORK-2` B-3) is rasterizer-independent and
+  catches what integral SSIM tolerates on sparse text: candidate/reference ink
+  coverage within `[0.5, 2.0]`×, a row-ink profile correlation ≥ 0.9, and a
+  vertical alignment shift ≤ 2 px (a blank page or a ≥ 3 px shift fails).
+- Per-pixel comparison applies to the text references (`strict-text`,
+  `strict-text-grid`). The chart/diagram document `strict-profile` is
+  page-count checked only: Stage 4 cannot rasterize DrawingML charts, and a
+  real Strict **text** document is not available under a compatible license, so
+  real-Strict pixel fidelity is a **recorded exception** (see
+  `STAGE-4-ACCEPTANCE.md` O1), not a closed item.
 
 ## Alternatives considered
 

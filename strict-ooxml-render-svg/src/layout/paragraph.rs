@@ -484,15 +484,21 @@ fn resolve_line_metrics(
         LineSpacingRule::Auto => {
             let multiplier = computed.line_pt.map_or(1.0, |pt| pt / 12.0);
             let scaled = natural_height * multiplier.max(0.1);
-            // With no explicit line spacing, Word/WPS use the document grid's
-            // line pitch as the line height; the extra leading goes above the
-            // baseline so text keeps its vertical position within the grid.
-            let height = match grid_line_pitch {
-                Some(pitch) if computed.line_pt.is_none() => scaled.max(pitch),
-                _ => scaled,
+            // When the document declares a line grid, each line occupies the
+            // smallest whole number of grid units that fits the (possibly
+            // explicit) auto line height, as Word/WPS do even with single
+            // spacing (`w:line="240"`). The extra leading goes above the
+            // baseline so the block keeps its vertical position within the grid.
+            let (height, extra) = match grid_line_pitch {
+                Some(pitch) if pitch > 0.0 => {
+                    let height = (scaled / pitch).ceil().max(1.0) * pitch;
+                    (height, height - scaled)
+                }
+                _ => (scaled, 0.0),
             };
-            let extra = (height - scaled).max(0.0);
-            (height, (natural_ascent + extra).min(height))
+            // The extra leading is centered on the natural line box so the glyph
+            // block keeps its optical position within the snapped grid line.
+            (height, (natural_ascent + extra / 2.0).min(height))
         }
     };
     (height, ascent)

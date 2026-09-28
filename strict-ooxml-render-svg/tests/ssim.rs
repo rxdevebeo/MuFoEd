@@ -32,7 +32,82 @@ use strict_ooxml_wml::{parse_document, ParseOptions};
 const SSIM_THRESHOLD: f64 = 0.95;
 
 /// Documents compared with SSIM. Others are checked for page count only.
-const SSIM_DOCS: &[&str] = &["strict-text"];
+const SSIM_DOCS: &[&str] = &["strict-text", "strict-text-grid"];
+
+/// Minimum ink fraction for a page to count as having content.
+const MIN_INK_FRACTION: f64 = 0.001;
+/// Allowed candidate/reference ink ratio (catches blank or over-inked pages).
+const MIN_INK_RATIO: f64 = 0.5;
+/// Upper bound of the candidate/reference ink ratio.
+const MAX_INK_RATIO: f64 = 2.0;
+/// Maximum allowed vertical alignment shift in px (B-3: 2 passes, 3 fails).
+const MAX_ALIGNMENT_SHIFT_PX: isize = 2;
+/// Minimum Pearson correlation of the row-ink profiles.
+const MIN_ROW_CORRELATION: f64 = 0.9;
+
+/// Structural (rasterizer-independent) fidelity of one page (B-3).
+#[derive(Debug, Clone, Copy)]
+pub struct StructuralFidelity {
+    /// Best vertical shift of the candidate relative to the reference.
+    pub shift_px: isize,
+    /// Correlation of the row-ink profiles at that shift.
+    pub correlation: f64,
+    /// Reference ink fraction.
+    pub reference_ink: f64,
+    /// Candidate ink fraction.
+    pub candidate_ink: f64,
+}
+
+/// Checks a page structurally: similar ink coverage, no vertical drift and a
+/// well-correlated row-ink profile.
+///
+/// Complements SSIM, which barely penalises a missing or horizontally shifted
+/// sparse text layer (`S4F-REWORK-2` B-3). Deterministic and rasterizer
+/// independent.
+///
+/// # Errors
+///
+/// Returns a human-readable reason when any structural bound is violated.
+pub fn structural_fidelity(
+    reference: &[f64],
+    candidate: &[f64],
+    width: usize,
+    height: usize,
+) -> Result<StructuralFidelity, String> {
+    let reference_ink = ink_fraction(reference);
+    let candidate_ink = ink_fraction(candidate);
+    if reference_ink <= MIN_INK_FRACTION {
+        return Err(format!("reference ink {reference_ink:.5} is empty"));
+    }
+    if candidate_ink < reference_ink * MIN_INK_RATIO {
+        return Err(format!(
+            "candidate ink {candidate_ink:.5} << reference {reference_ink:.5}"
+        ));
+    }
+    if candidate_ink > reference_ink * MAX_INK_RATIO {
+        return Err(format!(
+            "candidate ink {candidate_ink:.5} >> reference {reference_ink:.5}"
+        ));
+    }
+    let (shift, correlation) = best_vertical_alignment(
+        &row_ink_profile(reference, width, height),
+        &row_ink_profile(candidate, width, height),
+        12,
+    );
+    let correlation = correlation.ok_or_else(|| "no row structure to compare".to_owned())?;
+    if shift.abs() > MAX_ALIGNMENT_SHIFT_PX {
+        return Err(format!("vertical shift {shift}px exceeds tolerance"));
+    }
+    if correlation < MIN_ROW_CORRELATION {
+        return Err(format!("row-ink correlation {correlation:.3} too low"));
+    }
+    Ok(StructuralFidelity {
+        shift_px: shift,
+        correlation,
+        reference_ink,
+        candidate_ink,
+    })
+}
 
 /// SSIM window edge (an 11×11 window, `σ = 1.5`, as in the reference paper).
 const SSIM_WINDOW: usize = 11;
@@ -165,6 +240,87 @@ fn blur(source: &[f64], width: usize, height: usize, kernel: &[f64]) -> Vec<f64>
         }
     }
     output
+}
+
+/// A pixel at or below this gray level counts as "ink" (text).
+const INK_LEVEL: f64 = 0.5;
+
+/// Fraction of the image covered by ink.
+#[must_use]
+pub fn ink_fraction(gray: &[f64]) -> f64 {
+    let dark = gray.iter().filter(|value| **value < INK_LEVEL).count();
+    dark as f64 / gray.len() as f64
+}
+
+/// Per-row ink fraction, used for vertical-alignment comparison.
+#[must_use]
+pub fn row_ink_profile(gray: &[f64], width: usize, height: usize) -> Vec<f64> {
+    (0..height)
+        .map(|row| {
+            let dark = (0..width)
+                .filter(|&col| gray[row * width + col] < INK_LEVEL)
+                .count();
+            dark as f64 / width as f64
+        })
+        .collect()
+}
+
+/// Pearson correlation of two equal-length samples, or `None` if either is
+/// constant (no structure to correlate).
+fn pearson(left: &[f64], right: &[f64]) -> Option<f64> {
+    let n = left.len() as f64;
+    let mean_left = left.iter().sum::<f64>() / n;
+    let mean_right = right.iter().sum::<f64>() / n;
+    let mut cov = 0.0;
+    let mut var_left = 0.0;
+    let mut var_right = 0.0;
+    for (a, b) in left.iter().zip(right) {
+        let da = a - mean_left;
+        let db = b - mean_right;
+        cov += da * db;
+        var_left += da * da;
+        var_right += db * db;
+    }
+    if var_left <= 0.0 || var_right <= 0.0 {
+        return None;
+    }
+    Some(cov / (var_left.sqrt() * var_right.sqrt()))
+}
+
+/// Finds the vertical shift of `candidate` relative to `reference` that best
+/// aligns their row-ink profiles, returning `(shift_px, correlation)`.
+///
+/// A positive shift means the candidate content sits lower than the reference.
+/// Returns `(0, None)` when either profile has no structure.
+#[must_use]
+pub fn best_vertical_alignment(
+    reference: &[f64],
+    candidate: &[f64],
+    max_shift: isize,
+) -> (isize, Option<f64>) {
+    let n = reference.len() as isize;
+    let mut best_shift = 0isize;
+    let mut best_corr: Option<f64> = None;
+    for shift in -max_shift..=max_shift {
+        let start = (-shift).max(0);
+        let end = n - shift.max(0);
+        if start >= end {
+            continue;
+        }
+        let left = &reference[start as usize..end as usize];
+        let right = &candidate[(start + shift) as usize..(end + shift) as usize];
+        if let Some(corr) = pearson(left, right) {
+            let better = match best_corr {
+                None => true,
+                Some(current) => corr > current,
+            };
+            if better {
+                best_corr = Some(corr);
+                best_shift = shift;
+            }
+        }
+    }
+    (best_shift, best_corr)
 }
 
 /// Pairs a reference with a candidate image.
@@ -314,6 +470,7 @@ fn matches_wps_references() {
         );
 
         let mut comparisons = Vec::new();
+        let mut structures = Vec::new();
         for (page, reference_path) in pages.iter().zip(&ref_pages) {
             let (width, height, reference) = load_png_gray(reference_path);
             let candidate = rasterize_gray(&page.svg, width, height, &fonts);
@@ -322,11 +479,13 @@ fn matches_wps_references() {
                 candidate.len(),
                 "{name}: raster size mismatch"
             );
+            let (width, height) = (width as usize, height as usize);
+            structures.push(structural_fidelity(&reference, &candidate, width, height));
             comparisons.push(Comparison {
                 reference,
                 candidate,
-                width: width as usize,
-                height: height as usize,
+                width,
+                height,
             });
         }
         checked += 1;
@@ -334,6 +493,18 @@ fn matches_wps_references() {
         if SSIM_DOCS.contains(&name.as_str()) {
             let worst = worst_score(&comparisons).expect("at least one comparison");
             eprintln!("{name}: worst SSIM = {worst:.4}");
+            for (page, structure) in structures.iter().enumerate() {
+                match structure {
+                    Ok(structure) => eprintln!(
+                        "  page {page}: shift={}px corr={:.3} ink ref={:.5} cand={:.5}",
+                        structure.shift_px,
+                        structure.correlation,
+                        structure.reference_ink,
+                        structure.candidate_ink
+                    ),
+                    Err(reason) => panic!("{name} page {page}: structural check failed: {reason}"),
+                }
+            }
             assert!(
                 worst >= SSIM_THRESHOLD,
                 "{name}: worst SSIM {worst:.4} < {SSIM_THRESHOLD}"
@@ -363,6 +534,34 @@ fn rasterization_is_deterministic() {
     let a = rasterize_gray(&pages[0].svg, width, height, &fonts_dir());
     let b = rasterize_gray(&pages[0].svg, width, height, &fonts_dir());
     assert_eq!(a, b, "rasterization must be byte-deterministic");
+}
+
+/// Builds a tiny text-like image: two dark rows of "ink".
+fn text_like(width: usize, height: usize, rows: [usize; 2]) -> Vec<f64> {
+    let mut image = vec![1.0; width * height];
+    for row in rows {
+        for col in 10..width - 10 {
+            image[row * width + col] = 0.0;
+        }
+    }
+    image
+}
+
+#[test]
+fn structural_check_rejects_blank_and_shifted_pages() {
+    let (width, height) = (64, 96);
+    let reference = text_like(width, height, [20, 60]);
+    // Identical candidate passes.
+    assert!(structural_fidelity(&reference, &reference, width, height).is_ok());
+    // A blank page is rejected (ink ratio).
+    let blank = vec![1.0; width * height];
+    assert!(structural_fidelity(&reference, &blank, width, height).is_err());
+    // A 3px vertical shift is rejected.
+    let shifted = text_like(width, height, [23, 63]);
+    assert!(structural_fidelity(&reference, &shifted, width, height).is_err());
+    // A 2px vertical shift is still within tolerance.
+    let shifted = text_like(width, height, [22, 62]);
+    assert!(structural_fidelity(&reference, &shifted, width, height).is_ok());
 }
 
 #[test]

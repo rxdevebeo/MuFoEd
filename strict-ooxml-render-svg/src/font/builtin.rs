@@ -308,10 +308,22 @@ mod tests {
     #[test]
     fn bundled_advances_match_known_metrics() {
         let provider = BuiltinFontProvider::new();
-        // Carlito's space advance is 0.226 em; Calibri's is 0.2265 em.
-        let space = provider.advance_em("Calibri", ' ', false, false);
-        assert!((space - 0.226).abs() < 0.01, "space advance {space}");
-        // A wide 'M' is wider than a narrow 'l'.
+        // Each expected value is read independently from the bundled TTF (via
+        // fontTools) and differs from the deterministic fallback model by more
+        // than the tolerance, so this proves the real bundled face is used.
+        let check = |family: &str, ch: char, expected: f64| {
+            let got = provider.advance_em(family, ch, false, false);
+            assert!(
+                (got - expected).abs() < 0.002,
+                "{family} '{ch}': {got} != {expected}"
+            );
+        };
+        check("Calibri", ' ', 0.2261); // Carlito (fallback 0.25)
+        check("Cambria", 'M', 0.888); // Caladea (fallback 0.85)
+        check("Arial", ' ', 0.2778); // Arimo (fallback 0.25)
+        check("Times New Roman", 'M', 0.8892); // Tinos (fallback 0.85)
+        check("Courier New", 'i', 0.6001); // Cousine (fallback 0.28)
+                                           // A wide 'M' is wider than a narrow 'l'.
         assert!(
             provider.advance_em("Calibri", 'M', false, false)
                 > provider.advance_em("Calibri", 'l', false, false)
@@ -323,18 +335,5 @@ mod tests {
         );
         // Unknown family falls back to the deterministic model.
         assert!(provider.advance_em("Totally Unknown", 'a', false, false) > 0.0);
-        // All five bundled families resolve.
-        for family in [
-            "Calibri",
-            "Cambria",
-            "Arial",
-            "Times New Roman",
-            "Courier New",
-        ] {
-            assert!(
-                provider.metrics(family, false, false).width_scale == 1.0,
-                "{family} is not bundled"
-            );
-        }
     }
 }
