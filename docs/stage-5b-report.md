@@ -103,8 +103,15 @@ strict-ooxml-render-svg/
 | `cargo test --workspace --all-features` | ✅ 63 test-бинарника, 0 падений |
 | `cargo deny check` | ✅ (зависимости не менялись) |
 | `xtool coverage --file coverage/stage5-scenarios.toml --min 85` | ✅ **92.4%** |
+| SSIM-гейт (5B) | ✅ `strict-stage5b` **0.9640** ≥ 0.95 + структурный инвариант (ink/blank, сдвиг; корреляции/центроид ослаблены) |
 | SSIM-гейт (5A/Этап 4) | ✅ без регрессий (`strict-text` 0.9768, `strict-text-grid` 0.9709, `strict-stage5` 0.9795) |
 | `strict_profile_renders_anchored_text_box` | ✅ текст поля + позиция якоря |
+
+> `STAGE-5B-REWORK-1` (5B-1/5B-2/5B-3): фикстура переведена на реальные
+> Microsoft-пространства расширений; сгенерирован WPS-эталон
+> `refs/strict-stage5b/`; `strict-stage5b` добавлен в SSIM-гейт с негативным
+> контролем пустой/только-границы страницы. Формулировка о «неприменимом»
+> WPS-оракуле в §5 исправлена.
 
 Сквозные тесты 5B:
 
@@ -132,16 +139,20 @@ cargo run -p xtool -- gen-docx --stage5b --out strict-ooxml-core/tests/strict/st
 - Полный `a:custGeom`, градиенты (используется первый стоп), паттерны
   (foreground), 3D/анимации, OLE/ActiveX — вне 5B.
 - Charts/SmartArt — только позиция + placeholder.
-- **WPS-эталон 5B неприменим к чисто-Strict `wps`-разметке:** WPS
-  `12.1.0.28485` не отрисовывает `wordprocessingShape` в ISO-Strict
-  пространстве (проверено: в эталоне видны только границы страницы, без
-  фигур/групп/картинок), поэтому попиксельный SSIM на `strict-stage5b.docx`
-  был бы ложным. Реальный Strict `strict-profile.docx` (Microsoft-пространства)
-  используется как сквозной кейс `tests/strict_profile.rs`. Полноценный
-  WPS-оракул 5B требует фикстуры в Microsoft-пространствах либо обновления
-  WPS — решение за заказчиком.
-- Структурный инвариант (`tests/ssim.rs`) для `strict-stage5b` включён как
-  page-count + валидность SVG сквозным тестом, без SSIM.
+- **WPS-оракул 5B (исправлено в `STAGE-5B-REWORK-1` 5B-1).** Первоначальный
+  диагноз «WPS не отрисовывает `wordprocessingShape` в ISO-Strict» был
+  **неверным**: фикстура использовала несуществующие ISO-пространства
+  `purl.oclc.org/.../wordprocessingShape|Group`. `WordprocessingShape`/`Group` —
+  это расширения Microsoft. Генератор переведён на реальные MS-пространства
+  (`.../office/word/2010/wordprocessingShape|Group`), как в `strict-profile.docx`;
+  WPS `12.1.0.28485` теперь рендерит фигуры/группу/поле/картинку, эталон
+  `refs/strict-stage5b/page_1.png` закоммичен (пиннинг, SHA-256). `strict-stage5b`
+  подключён к SSIM-гейту (SSIM **0.9640** ≥ 0.95).
+- Структурный инвариант (`tests/ssim.rs`) для `strict-stage5b`: ink/blank и сдвиг
+  профиля — строгие (≤ 2 px), корреляции и дрейф центроида ослаблены
+  (`STAGE5B_LIMITS`, ≤ 8 px из-за антиалиасинга заливок WPS при точном
+  совмещении профиля); пустой и «только-границы» рендер отвергаются (негативный
+  контроль).
 
 ---
 
@@ -153,10 +164,22 @@ cargo run -p xtool -- gen-docx --stage5b --out strict-ooxml-core/tests/strict/st
 charts_smartart/namespace_compat` — `partial`; `page.borders` — `supported`.
 Факт: **92.4%** (`supported 47, partial 14, unsupported 5, ignored 4`).
 
-`SupportModel` фиксирует новые механизмы: `wp:anchor`, `wps:wsp`, `wpg:wgp`,
-`w:txbxContent`, `w:pgBorders` — `Supported`; `a:custGeom`, Microsoft-пространства
-и ненативные цветовые пространства — `Partial`. Неподдержанные fill/эффекты не
-теряются молча.
+`SupportModel` фиксирует новые механизмы: `wp:anchor`, `w:txbxContent`,
+`w:pgBorders` — `Supported`; `a:custGeom`, Microsoft-пространства
+(`wps:wsp`/`wpg:wgp` — основной реальный путь, см. 5B-1) и ненативные цветовые
+пространства — `Partial`. Неподдержанные fill/эффекты не теряются молча.
+
+### 5B-3. Статус подтверждения карты и A-1/A-2
+
+- Секция 5B карты (`coverage/stage5-scenarios.toml`) составлена **исполнителем**
+  и на момент сдачи **независимо не подтверждена** (третьей стороной/заказчиком);
+  статус — «предварительно». Гейт ≥ 85 % проходит (92.4 %).
+- **A-1** (реальный Strict под попиксельный SSIM): `strict-profile.docx`
+  рендерит текст поля (критерий §11.4) и участвует как сквозной кейс
+  (`tests/strict_profile.rs`); полноценный SSIM на нём не проводится (главный
+  объект — chart/diagram, не растеризуемый в 5B). Решение — за заказчиком.
+- **A-2** (независимое подтверждение карты 5A) — за заказчиком.
+- Эти пункты остаются открытыми и не закрываются эшелоном 5B.
 
 ---
 

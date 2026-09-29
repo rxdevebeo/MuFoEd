@@ -816,8 +816,10 @@ fn stage5_docx() -> Vec<u8> {
 
 const WP_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing";
 const PIC_NS: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
-const WPS_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingShape";
-const WPG_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingGroup";
+// `WordprocessingShape`/`WordprocessingGroup` are Microsoft extensions, not ISO
+// Strict schemas; real Strict documents (e.g. strict-profile.docx) use these.
+const WPS_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const WPG_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 
 /// Builds a Strict fixture exercising the Stage-5B drawing subsystem.
 #[allow(clippy::too_many_lines)]

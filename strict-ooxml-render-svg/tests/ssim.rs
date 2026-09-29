@@ -32,7 +32,12 @@ use strict_ooxml_wml::{parse_document, ParseOptions};
 const SSIM_THRESHOLD: f64 = 0.95;
 
 /// Documents compared with SSIM. Others are checked for page count only.
-const SSIM_DOCS: &[&str] = &["strict-text", "strict-text-grid", "strict-stage5"];
+const SSIM_DOCS: &[&str] = &[
+    "strict-text",
+    "strict-text-grid",
+    "strict-stage5",
+    "strict-stage5b",
+];
 
 /// Relaxed structural limits for the mixed Stage-5 fixture
 /// (`STAGE-5-REWORK-1` R5-1): the rasterizer-independent checks stay enforced
@@ -47,12 +52,27 @@ const STAGE5_LIMITS: StructuralLimits = StructuralLimits {
     min_column_correlation: 0.70,
 };
 
+/// Relaxed structural limits for the Stage-5B floating-drawing fixture
+/// (`STAGE-5B-REWORK-1` 5B-2). The page is dominated by large solid fills whose
+/// row/column ink profiles correlate only weakly with the WPS raster (the
+/// correlation thresholds are lowered), and the WPS rasterizer's fill/edge
+/// antialiasing and text-metric differences put the ink centroid ~6 px off
+/// while the profile alignment is exact (`dx = dy = 0`). Ink/blank and the
+/// profile-shift bounds stay tight; the centroid bound is widened to `8 px`
+/// but is still enforced (a blank or materially shifted page is rejected).
+const STAGE5B_LIMITS: StructuralLimits = StructuralLimits {
+    max_shift_px: 2,
+    max_centroid_px: 8.0,
+    min_row_correlation: 0.60,
+    min_column_correlation: 0.50,
+};
+
 /// Returns the structural limits for a reference document.
 fn limits_for(name: &str) -> StructuralLimits {
-    if name == "strict-stage5" {
-        STAGE5_LIMITS
-    } else {
-        StructuralLimits::default()
+    match name {
+        "strict-stage5" => STAGE5_LIMITS,
+        "strict-stage5b" => STAGE5B_LIMITS,
+        _ => StructuralLimits::default(),
     }
 }
 
@@ -758,6 +778,36 @@ fn structural_check_rejects_blank_stage5_page() {
     assert!(
         structural_fidelity_with(&reference, &blank, width, height, &STAGE5_LIMITS).is_err(),
         "a blank candidate must be rejected even with the relaxed Stage-5 limits"
+    );
+}
+
+#[test]
+fn structural_check_rejects_blank_stage5b_page() {
+    // STAGE-5B-REWORK-1 5B-2: even with the relaxed 5B limits, a blank render
+    // (or one with no shape ink) must be rejected by the mandatory ink check.
+    let (width, height, reference, _candidate) = rasterize_reference_pair("strict-stage5b", 0);
+    let blank = vec![1.0; width * height];
+    assert!(
+        structural_fidelity_with(&reference, &blank, width, height, &STAGE5B_LIMITS).is_err(),
+        "a blank candidate must be rejected even with the relaxed Stage-5B limits"
+    );
+    // A page-border-only render (shapes/group/text/picture missing) is also
+    // under-inked relative to the reference and must be rejected.
+    let mut border_only = vec![1.0; width * height];
+    for y in 0..height {
+        for x in 0..width {
+            let on_border = (32..34).contains(&y)
+                || (height.saturating_sub(34)..height.saturating_sub(32)).contains(&y)
+                || (32..34).contains(&x)
+                || (width.saturating_sub(34)..width.saturating_sub(32)).contains(&x);
+            if on_border {
+                border_only[y * width + x] = 0.0;
+            }
+        }
+    }
+    assert!(
+        structural_fidelity_with(&reference, &border_only, width, height, &STAGE5B_LIMITS).is_err(),
+        "a page-border-only candidate must be rejected (shape ink missing)"
     );
 }
 

@@ -21,18 +21,23 @@ fn parses_stage5b_drawing_mechanisms() {
     let document =
         StrictDocument::open_path(fixture(), &OpenOptions::default()).expect("open fixture");
     let model = document.document();
-    for id in [
-        "wp:anchor",
-        "wps:wsp",
-        "wpg:wgp",
-        "w:txbxContent",
-        "w:pgBorders",
-    ] {
+    for id in ["wp:anchor", "w:txbxContent", "w:pgBorders"] {
         let entry = model.support.get(id).unwrap_or_else(|| panic!("no {id}"));
         assert_eq!(
             entry.status,
             SupportStatus::Supported,
             "{id} is not supported"
+        );
+    }
+    // `WordprocessingShape`/`WordprocessingGroup` are Microsoft extensions (the
+    // real Strict path, see `strict-profile.docx`), recorded as `Partial`
+    // compatibility rather than as ISO Strict.
+    for id in ["wps:wsp", "wpg:wgp"] {
+        let entry = model.support.get(id).unwrap_or_else(|| panic!("no {id}"));
+        assert_eq!(
+            entry.status,
+            SupportStatus::Partial,
+            "{id} should be Partial (Microsoft extension namespace)"
         );
     }
     assert!(model

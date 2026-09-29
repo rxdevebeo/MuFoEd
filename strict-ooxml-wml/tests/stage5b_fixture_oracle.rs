@@ -53,6 +53,28 @@ fn independent_oracle_sees_stage5b_markup() {
     assert_eq!(count("txbxContent"), 1);
     assert_eq!(count("pgBorders"), 1);
     assert!(count("custGeom") == 0);
+
+    // The fixture uses the *real* Microsoft extension namespaces for shapes and
+    // groups (STAGE-5B-REWORK-1 5B-1), keeping ISO namespaces for the core.
+    let namespace = |name: &str| {
+        parsed
+            .descendants()
+            .find(|node| node.is_element() && node.tag_name().name() == name)
+            .and_then(|node| node.tag_name().namespace())
+            .map(str::to_owned)
+    };
+    assert_eq!(
+        namespace("wsp").as_deref(),
+        Some("http://schemas.microsoft.com/office/word/2010/wordprocessingShape")
+    );
+    assert_eq!(
+        namespace("wgp").as_deref(),
+        Some("http://schemas.microsoft.com/office/word/2010/wordprocessingGroup")
+    );
+    assert_eq!(
+        namespace("anchor").as_deref(),
+        Some("http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing")
+    );
 }
 
 #[test]
