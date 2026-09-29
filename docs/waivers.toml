@@ -1,0 +1,267 @@
+# Registry of conditional acceptances and waivers (GATE-STRATEGY §2).
+#
+# Every entry here is a place where the work is accepted below what the
+# criteria ask for. The file is the whole of §2: it is checked by
+# `strict-ooxml-render-svg/tests/waivers.rs`, so an entry that stops being true
+# fails the build rather than quietly misleading the next reader.
+#
+# `binds` is what authorises the entry, and is what the test resolves. The
+# vocabulary is closed:
+#
+#   class:<name>            the class in coverage/render-gates.toml whose
+#                           bounds are looser than the strict defaults
+#   amber:<document>        a document inside the SSIM margin band
+#   page-count-only:<doc>   a document compared by page count only
+#   process:<topic>         a process gap with no code binding; reviewed by
+#                           hand at acceptance, not machine-checked
+#
+# An entry whose `binds` target no longer exists fails, so the registry cannot
+# rot into a list of resolved problems still described as open.
+
+[meta]
+revision = "2026-09-29"
+policy = "GATE-STRATEGY.md §2"
+source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md"
+
+# ---------------------------------------------------------------------------
+# Bound by the gate itself. Removing one of these is a change in what the
+# product claims, not a cleanup.
+# ---------------------------------------------------------------------------
+
+[[waivers]]
+id = "A-1-LIMITS"
+subject = "5A mixed"
+binds = "class:mixed"
+summary = """
+The mixed class carries centroid 3 px and correlation floors 0.75/0.70,
+against strict defaults of 2.5/0.90/0.85. This is `STAGE-5-LIMITS` from
+Stage 5, and it is not in the GATE-STRATEGY §2 table — the gate found it.
+"""
+risk = """
+Only the correlations are loosened, and only because a sparse mixed page
+carries little structure for a profile correlation to lock onto. The
+rasterizer-independent checks (ink coverage, blank page, 2 px shift, 2 px
+extent) are at the strict defaults and measured at 0-1 px, so this class is
+not carrying a known layout defect.
+"""
+exit = """
+Show the correlations are meaningful on sparse pages, or replace them with a
+measure that is defined there — the extent check is now doing most of this
+work and may make the correlation floors unnecessary.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "A-5B-3"
+subject = "5B graphics"
+binds = "class:graphics"
+summary = """
+The graphics class carries centroid 8 px and correlation floors 0.60/0.50,
+against strict defaults of 2.5/0.90/0.85.
+"""
+risk = """
+A page whose ink is distributed wrongly but whose profiles still correlate
+weakly enough can pass. The rasterizer-independent checks (ink coverage, blank
+page, 2 px shift, 2 px extent) are unchanged and measured at 1 px, so the
+class is not carrying a known layout defect.
+"""
+exit = """
+Root-cause the centroid offset (fill/edge antialiasing of large solid shapes)
+and return the class to the defaults, or replace the centroid with a measure
+that is not sensitive to how much ink each glyph carries.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "5C-C4"
+subject = "5C formulas"
+binds = "class:formulas"
+summary = """
+The formulas class carries shift 12 px, centroid 24 px, correlation floors
+0.45/0.40 and extent 18 px, against strict defaults of 2/2.5/0.90/0.85/2.
+"""
+risk = """
+The shift bound could not fail before this work: the alignment search window
+was hard-coded to +-12 px and the bound was 12, so `shift.abs() > 12` was
+unreachable and a 40 px drift reported dy=8. The window is now derived from
+the bound and pinned by a test. The remaining looseness is real drift: the
+height of a display block disagrees with Word's by 0, -3, -10, -16, +17 and
++18 px across the class.
+"""
+exit = """
+Correct the display-block box so every page in the class meets 2 px of extent
+drift, then return the class to the strict defaults. `EXTENT_RATCHET` in
+`tests/ssim.rs` pins every page's current drift and fails if a page moves
+further, so the numbers have to move rather than the bound.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "5C-C3"
+subject = "5C formulas"
+binds = "process:math-font"
+summary = """
+STIX Two Math is bundled for Cambria Math and is not metric-compatible with
+it; no OFL face is. Block geometry follows the nominal font's line metrics,
+but glyph outlines, weights and advances still differ.
+"""
+risk = """
+The residual is a ceiling on glyph-level SSIM that no threshold change
+absorbs. This is why chasing a metric-compatible face was abandoned rather
+than retried.
+"""
+exit = """
+Already decided (ADR-0006): keep the threshold, follow the nominal metrics for
+block geometry, and record the glyph residual. Revisit only if a Cambria
+Math-compatible face appears under a redistributable licence.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "5C-AMBER"
+subject = "strict-stage5c"
+binds = "amber:strict-stage5c"
+summary = "Worst SSIM 0.9533, clearing the 0.95 criterion by 0.0033."
+risk = """
+The gate runs on three operating systems. At three thousandths the score
+cannot distinguish a property of the layout from a property of one rasterizer
+build, so this page can go red on a runtime nobody tested locally.
+"""
+exit = """
+The same block-geometry fix as 5C-C4. Clearing the 0.01 margin removes the
+entry — the gate then checks that the observed amber set matches the register
+in both directions, so the entry cannot be left behind after the fix.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "07-AMBER"
+subject = "07-strict-drawingml-shapes"
+binds = "amber:07-strict-drawingml-shapes"
+summary = "Worst SSIM 0.9568, clearing the 0.95 criterion by 0.0068."
+risk = """
+Same runtime sensitivity as 5C-AMBER. The underlying drift is the opposite
+sign to the rest of the class — the page is 16 px *shorter* than the
+reference — which is what identifies the block box, not one oversized
+operator, as the cause.
+"""
+exit = """
+Same block-geometry fix as 5C-C4.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "CHARTS"
+subject = "charts and diagrams"
+binds = "page-count-only:09-strict-math-drawing-chart"
+summary = """
+DrawingML chart parts are not rasterized. `09-strict-math-drawing-chart` and
+`strict-profile` are compared by page count only.
+"""
+risk = """
+For those two documents the gate says nothing about appearance at all — not
+that it is close, but that it is not nothing. A chart rendered as a reserved
+placeholder passes.
+"""
+exit = """
+Stage 6. The page-count invariant is what is meaningful until then and is
+enforced.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "CHARTS-2"
+subject = "charts and diagrams"
+binds = "page-count-only:strict-profile"
+summary = "As CHARTS: a real Word-produced Strict file dominated by a chart and a diagram."
+risk = "As CHARTS."
+exit = "As CHARTS."
+opened = "2026-09-29"
+
+# ---------------------------------------------------------------------------
+# Process gaps. No code binding, so the test only checks that a `process:`
+# target is spelled like one. These are reviewed by hand at acceptance.
+# ---------------------------------------------------------------------------
+
+[[waivers]]
+id = "A-1"
+subject = "real Strict corpus"
+binds = "process:real-strict-ssim"
+summary = """
+The documents under pixel comparison are synthetic (`xtool gen-docx`) or
+hand-built by the same author who wrote the renderer (`05`-`10`).
+"""
+risk = """
+The product claim "displays a document" is not demonstrated on a document
+somebody else produced. The references are WPS-produced and independent, but
+the input documents are not.
+"""
+exit = """
+Get `04-libreoffice-roundtrip-strict` and `msword-strict-some-text` into
+`strict-ooxml-core/tests/strict/` with attribution and a compatible licence
+(STAGE-5C-REWORK-1 D5), pin WPS references for them, and gate them. This is
+blocked on licensing, not on the renderer.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "A-2"
+subject = "5A coverage map"
+binds = "process:coverage-map-review"
+summary = "`coverage/stage5-scenarios.toml` is authored by the same engineer who wrote the implementation."
+risk = """
+The coverage ratio is a self-assessment: nothing forces a claim to be honest,
+so a scenario can be marked `supported` without anyone else checking it.
+"""
+exit = """
+A second reviewer re-runs the inventory against the code and the corpus, or a
+script cross-checks each `supported` entry against a test that exercises it.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "A-5B-2"
+subject = "5B coverage map"
+binds = "process:coverage-map-review"
+summary = "As A-2, for the 5B scenarios in the same inventory."
+risk = "As A-2."
+exit = "As A-2."
+opened = "2026-09-29"
+
+[[waivers]]
+id = "COVERAGE-5C"
+subject = "5C coverage map"
+binds = "process:coverage-map-review"
+summary = "As A-2, for the 5C scenarios in the same inventory."
+risk = "As A-2."
+exit = "As A-2."
+opened = "2026-09-29"
+
+[[waivers]]
+id = "FUZZ"
+subject = "fuzzing"
+binds = "process:fuzz-hosting"
+summary = "No dedicated 24 h fuzz host; CI runs four bounded 1 h sessions nightly."
+risk = """
+Hidden panics in the ZIP/XML/relative-path/Word parsers beyond what 1 h per
+target finds. The fuzz targets and protocol are in place and run on every
+nightly build, so this is a depth gap, not an absence of coverage.
+"""
+exit = """
+Either provision a Linux host for long runs, or accept the nightly sessions
+explicitly with the depth written down.
+"""
+opened = "2026-09-29"
+
+[[waivers]]
+id = "VERTJC"
+subject = "5C formulas"
+binds = "process:m-vert-jc"
+summary = "`m:vertJc` on a group character is parsed and reported but does not affect alignment."
+risk = """
+Partial support: a document relying on it renders with the wrong vertical
+alignment for the over/under-brace group, and the coverage map records this as
+`partial` rather than `unsupported`.
+"""
+exit = "Implement it, or state the limitation in the coverage map as `unsupported`."
+opened = "2026-09-29"

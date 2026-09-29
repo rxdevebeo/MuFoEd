@@ -30,8 +30,6 @@ use strict_ooxml_wml::{parse_document, ParseOptions};
 
 use std::sync::OnceLock;
 
-/// The fidelity-gate policy, loaded from `coverage/render-gates.toml`.
-///
 /// GATE-STRATEGY §6 requires the thresholds to live in one place, with their
 /// justification, so that loosening a bound is a reviewable diff in the file
 /// that also states what loosening it costs. A constant inside this test would
@@ -65,6 +63,8 @@ struct GatePolicy {
     ssim: f64,
     /// The margin over `ssim` a document must clear to pass outright.
     margin: f64,
+    /// Documents allowed to sit inside the margin band.
+    amber: Vec<String>,
     /// The content classes, in file order.
     classes: Vec<PolicyClass>,
     /// Documents compared for the page-count invariant only.
@@ -91,6 +91,8 @@ impl GatePolicy {
         struct RawThresholds {
             ssim: f64,
             ssim_margin: f64,
+            #[serde(default)]
+            amber: Vec<String>,
         }
         #[derive(serde::Deserialize)]
         struct RawClass {
@@ -125,6 +127,7 @@ impl GatePolicy {
         let policy = Self {
             ssim: raw.thresholds.ssim,
             margin: raw.thresholds.ssim_margin,
+            amber: raw.thresholds.amber,
             classes,
             page_count_only: raw
                 .page_count_only
@@ -186,6 +189,11 @@ impl GatePolicy {
     fn is_page_count_only(&self, name: &str) -> bool {
         self.page_count_only.iter().any(|entry| entry == name)
     }
+
+    /// Whether a document is registered as amber.
+    fn is_amber(&self, name: &str) -> bool {
+        self.amber.iter().any(|entry| entry == name)
+    }
 }
 
 /// Ink pixels counted from a page edge before the content is considered to
@@ -242,21 +250,6 @@ fn stage5b_limits() -> StructuralLimits {
 fn stage5c_limits() -> StructuralLimits {
     policy().limits_for("strict-stage5c")
 }
-
-/// Documents known to clear [`GatePolicy::ssim`] but not [`GatePolicy::margin`].
-///
-/// This list is the amber register, and it is the whole of the policy: a
-/// document *not* on it that lands in the margin band fails the gate, so a new
-/// fixture cannot join the gate "just below the line" without being written
-/// down here. Each entry is outstanding debt with a named defect, not an
-/// accepted tolerance. Removing an entry is progress; adding one is a decision
-/// that has to be made on purpose.
-///
-/// * `strict-stage5c` — 0.9533. The display-block box is 17/18 px taller than
-///   WPS's (§4.2 of the Stage-5C report); `EXTENT_RATCHET` tracks it.
-/// * `07-strict-drawingml-shapes` — 0.9568. The same block-geometry family, on
-///   the opposite sign: the page is 16 px *shorter* than the reference.
-const SSIM_AMBER: &[&str] = &["strict-stage5c", "07-strict-drawingml-shapes"];
 
 /// The per-fixture ink-extent drift each gated page is allowed to keep, in px.
 ///
@@ -954,7 +947,7 @@ fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity,
 ///
 /// Below [`GatePolicy::ssim`] is a regression and panics. In
 /// `[ssim, ssim + margin)` the document passes only because it is written down
-/// in [`SSIM_AMBER`], so a new fixture cannot join the gate just below the line
+/// in the policy's `amber` list, so a new fixture cannot join the gate just below
 /// without being registered on purpose.
 ///
 /// # Panics
@@ -969,9 +962,9 @@ fn grade_ssim(name: &str, worst: f64) -> bool {
         return false;
     }
     assert!(
-        SSIM_AMBER.contains(&name),
+        policy().is_amber(name),
         "{name}: worst SSIM {worst:.4} clears {ssim} by only {margin_b:.4}, \
-         below the {margin:.2} margin, and is not registered in SSIM_AMBER",
+         below the {margin:.2} margin, and is not registered in the policy's amber list",
         margin_b = worst - ssim
     );
     true
@@ -1072,11 +1065,11 @@ fn matches_wps_references() {
     // one lets a new near-miss through. The per-document check above rejects
     // the unregistered case; this rejects the stale one.
     amber.sort();
-    let mut registered = SSIM_AMBER.to_vec();
+    let mut registered: Vec<String> = policy().amber.clone();
     registered.sort_unstable();
     assert_eq!(
         amber, registered,
-        "SSIM_AMBER is out of date: the documents actually inside the margin band \
+        "the amber list is out of date: the documents actually inside the margin band \
          have changed (amber is the observed set)"
     );
 }

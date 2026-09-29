@@ -26,6 +26,20 @@ source = "GATE-STRATEGY.md §5"
 ssim = 0.95
 ssim_margin = 0.01
 
+# Documents allowed to sit inside the margin band, i.e. to clear `ssim`
+# without clearing `ssim_margin`.
+#
+# A document *not* listed here that lands in the band fails the gate, so a new
+# fixture cannot join the gate just below the line without being written down
+# on purpose. The gate also compares this list against the set it observes, so
+# an entry left behind after the fix is a failure too and the list cannot
+# quietly become a graveyard.
+#
+# Each entry is outstanding debt with a named defect, and each has a waiver in
+# `docs/waivers.toml`. Removing an entry is progress; adding one is a decision
+# that has to be made on purpose.
+amber = ["strict-stage5c", "07-strict-drawingml-shapes"]
+
 # ---------------------------------------------------------------------------
 # Classes. `documents` is the class membership: it replaces the match
 # statement that used to decide which fixture got which limits, so a new
