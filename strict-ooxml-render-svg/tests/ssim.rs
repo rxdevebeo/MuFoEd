@@ -28,86 +28,165 @@ use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_render_svg::{render_with_media, RenderOptions};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
-/// Minimum acceptable worst-page SSIM on the approved references.
-const SSIM_THRESHOLD: f64 = 0.95;
+use std::sync::OnceLock;
 
-/// The margin a document must clear above [`SSIM_THRESHOLD`] to pass outright.
+/// The fidelity-gate policy, loaded from `coverage/render-gates.toml`.
 ///
-/// Without it, "passes" and "passes because the threshold was set from the
-/// result" look identical. The corpus shows why this matters: a document at
-/// 0.9533 clears a 0.95 gate by three thousandths, and the gate runs on three
-/// operating systems in CI, so whether it is a stable property of the layout
-/// or of one rasterizer build is unknowable from the number alone. A document
-/// at 0.96 has cleared a meaningful part of that uncertainty.
-const SSIM_MARGIN: f64 = 0.01;
+/// GATE-STRATEGY §6 requires the thresholds to live in one place, with their
+/// justification, so that loosening a bound is a reviewable diff in the file
+/// that also states what loosening it costs. A constant inside this test would
+/// be reviewed as a test change instead.
+fn policy() -> &'static GatePolicy {
+    static POLICY: OnceLock<GatePolicy> = OnceLock::new();
+    POLICY.get_or_init(|| {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../coverage/render-gates.toml");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+        GatePolicy::parse(&text)
+            .unwrap_or_else(|error| panic!("invalid {}: {error}", path.display()))
+    })
+}
 
-/// Documents known to clear [`SSIM_THRESHOLD`] but not [`SSIM_MARGIN`].
-///
-/// This list is the amber register, and it is the whole of the policy: a
-/// document *not* on it that lands in the margin band fails the gate, so a new
-/// fixture cannot join the gate "just below the line" without being written
-/// down here. Each entry is outstanding debt with a named defect, not an
-/// accepted tolerance. Removing an entry is progress; adding one is a decision
-/// that has to be made on purpose.
-///
-/// * `strict-stage5c` — 0.9533. The display-block box is 17/18 px taller than
-///   WPS's (§4.2 of the Stage-5C report); `EXTENT_RATCHET` tracks it.
-/// * `07-strict-drawingml-shapes` — 0.9568. The same block-geometry family, on
-///   the opposite sign: the page is 16 px *shorter* than the reference.
-const SSIM_AMBER: &[&str] = &["strict-stage5c", "07-strict-drawingml-shapes"];
+/// One content class and the structural bounds its documents are held to.
+#[derive(Debug)]
+struct PolicyClass {
+    /// The class name, for messages.
+    name: String,
+    /// The documents that belong to it.
+    documents: Vec<String>,
+    /// The bounds every document in the class is held to.
+    limits: StructuralLimits,
+}
 
-/// Documents compared page by page with SSIM.
-const SSIM_DOCS: &[&str] = &[
-    "strict-text",
-    "strict-text-grid",
-    "strict-stage5",
-    "strict-stage5b",
-    "strict-stage5c",
-    "05-strict-math-simple",
-    "06-strict-math-display",
-    "07-strict-drawingml-shapes",
-    "10-strict-math-eqarr",
-];
+/// The whole fidelity-gate policy.
+#[derive(Debug)]
+struct GatePolicy {
+    /// Minimum acceptable worst-page SSIM.
+    ssim: f64,
+    /// The margin over `ssim` a document must clear to pass outright.
+    margin: f64,
+    /// The content classes, in file order.
+    classes: Vec<PolicyClass>,
+    /// Documents compared for the page-count invariant only.
+    page_count_only: Vec<String>,
+}
 
-/// Documents compared for the page-count invariant only.
-///
-/// Their content is raster content this renderer cannot produce (a DrawingML
-/// chart part, `strict-ooxml-core/tests/strict/README.md`), so a per-pixel
-/// comparison would measure the placeholder, not the layout. `strict-profile`
-/// has been page-count only since Stage 4; `09-strict-math-drawing-chart` is
-/// the real-Strict counterpart of the same mechanism (`STAGE-5C-TASK.md` §3.2
-/// puts chart rasterization out of scope).
-const PAGE_COUNT_ONLY: &[&str] = &["strict-profile", "09-strict-math-drawing-chart"];
+impl GatePolicy {
+    /// Parses the policy file.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason if a bound is missing or a document is claimed by
+    /// two classes — the second is the one that matters, because it is how a
+    /// limit change goes unnoticed.
+    fn parse(text: &str) -> Result<Self, String> {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            thresholds: RawThresholds,
+            classes: Vec<RawClass>,
+            #[serde(default)]
+            page_count_only: Vec<RawNamed>,
+        }
+        #[derive(serde::Deserialize)]
+        struct RawThresholds {
+            ssim: f64,
+            ssim_margin: f64,
+        }
+        #[derive(serde::Deserialize)]
+        struct RawClass {
+            name: String,
+            documents: Vec<String>,
+            max_shift_px: isize,
+            max_centroid_px: f64,
+            min_row_correlation: f64,
+            min_column_correlation: f64,
+            max_extent_px: f64,
+        }
+        #[derive(serde::Deserialize)]
+        struct RawNamed {
+            name: String,
+        }
 
-/// Relaxed structural limits for the mixed Stage-5 fixture
-/// (`STAGE-5-REWORK-1` R5-1): the rasterizer-independent checks stay enforced
-/// (ink coverage / blank page, alignment shift, ink centroid); only the
-/// row/column profile-correlation thresholds are loosened, because the sparse
-/// mixed table/footnote content makes them fall slightly below the text-only
-/// thresholds.
-const STAGE5_LIMITS: StructuralLimits = StructuralLimits {
-    max_shift_px: 2,
-    max_centroid_px: 3.0,
-    min_row_correlation: 0.75,
-    min_column_correlation: 0.70,
-    max_extent_px: 2.0,
-};
+        let raw: Raw = toml::from_str(text).map_err(|error| error.to_string())?;
+        let mut classes = Vec::with_capacity(raw.classes.len());
+        for class in raw.classes {
+            classes.push(PolicyClass {
+                name: class.name.clone(),
+                documents: class.documents.clone(),
+                limits: StructuralLimits {
+                    max_shift_px: class.max_shift_px,
+                    max_centroid_px: class.max_centroid_px,
+                    min_row_correlation: class.min_row_correlation,
+                    min_column_correlation: class.min_column_correlation,
+                    max_extent_px: class.max_extent_px,
+                },
+            });
+        }
+        let policy = Self {
+            ssim: raw.thresholds.ssim,
+            margin: raw.thresholds.ssim_margin,
+            classes,
+            page_count_only: raw
+                .page_count_only
+                .into_iter()
+                .map(|entry| entry.name)
+                .collect(),
+        };
+        policy.check_membership()?;
+        Ok(policy)
+    }
 
-/// Relaxed structural limits for the Stage-5B floating-drawing fixture
-/// (`STAGE-5B-REWORK-1` 5B-2). The page is dominated by large solid fills whose
-/// row/column ink profiles correlate only weakly with the WPS raster (the
-/// correlation thresholds are lowered), and the WPS rasterizer's fill/edge
-/// antialiasing and text-metric differences put the ink centroid ~6 px off
-/// while the profile alignment is exact (`dx = dy = 0`). Ink/blank and the
-/// profile-shift bounds stay tight; the centroid bound is widened to `8 px`
-/// but is still enforced (a blank or materially shifted page is rejected).
-const STAGE5B_LIMITS: StructuralLimits = StructuralLimits {
-    max_shift_px: 2,
-    max_centroid_px: 8.0,
-    min_row_correlation: 0.60,
-    min_column_correlation: 0.50,
-    max_extent_px: 2.0,
-};
+    /// Rejects a document claimed by two classes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first duplicated document name.
+    fn check_membership(&self) -> Result<(), String> {
+        let mut seen: Vec<&str> = Vec::new();
+        for class in &self.classes {
+            for document in &class.documents {
+                if seen.contains(&document.as_str()) {
+                    return Err(format!("{document} is claimed by two classes"));
+                }
+                seen.push(document);
+            }
+        }
+        Ok(())
+    }
+
+    /// The structural limits for a reference document.
+    ///
+    /// Falls back to the strict defaults, which is what an unclassified
+    /// document gets: a new fixture lands in the tightest class and has to be
+    /// moved deliberately, not silently inherits whatever the last arm of a
+    /// match statement returned.
+    fn limits_for(&self, name: &str) -> StructuralLimits {
+        self.classes
+            .iter()
+            .find(|class| class.documents.iter().any(|entry| entry == name))
+            .map_or_else(StructuralLimits::default, |class| class.limits)
+    }
+
+    /// The name of the class a document belongs to.
+    fn class_of(&self, name: &str) -> Option<&str> {
+        self.classes
+            .iter()
+            .find(|class| class.documents.iter().any(|entry| entry == name))
+            .map(|class| class.name.as_str())
+    }
+
+    /// Every document compared page by page with SSIM.
+    fn ssim_documents(&self) -> impl Iterator<Item = &str> {
+        self.classes
+            .iter()
+            .flat_map(|class| class.documents.iter().map(String::as_str))
+    }
+
+    /// Whether a document is page-count only.
+    fn is_page_count_only(&self, name: &str) -> bool {
+        self.page_count_only.iter().any(|entry| entry == name)
+    }
+}
 
 /// Ink pixels counted from a page edge before the content is considered to
 /// have started.
@@ -144,48 +223,46 @@ fn alignment_search_range(limits: &StructuralLimits) -> isize {
     limits.max_shift_px + ALIGNMENT_SEARCH_MARGIN_PX
 }
 
-/// Structural limits for the Stage-5C formula fixtures
-/// (`STAGE-5C-REWORK-1` C1/C4): `strict-stage5c` and the real-Strict
-/// repro `05`/`06`/`07`/`10`.
+/// The structural limits for the mixed Stage-5 fixture
+/// (`STAGE-5-REWORK-1` R5-1): the rasterizer-independent checks stay enforced
+/// (ink coverage / blank page, alignment shift, ink centroid); only the
+/// row/column profile-correlation thresholds are loosened, because the sparse
+/// mixed table/footnote content makes them fall slightly below the text-only
+/// thresholds.
+fn stage5_limits() -> StructuralLimits {
+    policy().limits_for("strict-stage5")
+}
+
+/// The Stage-5B floating-drawing limits (`STAGE-5B-REWORK-1` 5B-2).
+fn stage5b_limits() -> StructuralLimits {
+    policy().limits_for("strict-stage5b")
+}
+
+/// The Stage-5C formula limits (`STAGE-5C-REWORK-1` C1/C4).
+fn stage5c_limits() -> StructuralLimits {
+    policy().limits_for("strict-stage5c")
+}
+
+/// Documents known to clear [`GatePolicy::ssim`] but not [`GatePolicy::margin`].
 ///
-/// The pages are sparse — a handful of short lines with small constructs
-/// between them — so the row/column ink profiles carry little structure to
-/// correlate, and each construct differs from the WPS rendering by a fraction
-/// of a line. The rasterizer-independent checks stay enforced: the ink ratio
-/// (a blank or materially different page is rejected), the best-alignment shift,
-/// the ink centroid and the ink extent.
+/// This list is the amber register, and it is the whole of the policy: a
+/// document *not* on it that lands in the margin band fails the gate, so a new
+/// fixture cannot join the gate "just below the line" without being written
+/// down here. Each entry is outstanding debt with a named defect, not an
+/// accepted tolerance. Removing an entry is progress; adding one is a decision
+/// that has to be made on purpose.
 ///
-/// `max_shift_px` is `12 px` on a 1056 px page (≈ 1.1 %). Before
-/// `STAGE-5C-REWORK-1` the worst case drifted by 400 px (an `m:eqArr` row
-/// spacing read as points instead of twips), so the bound is a two-order-of-
-/// magnitude tightening of the defect it replaces. The correlation floors
-/// relax only the measure a sparse page cannot satisfy.
-///
-/// `max_extent_px` is the bound that sees the remaining defect, and it is the
-/// one number here that is a **ratchet on a known defect**, not an accepted
-/// tolerance. Measured against the pinned references, the ink extent of the
-/// five 5C fixtures disagrees with WPS by 0 px (`05`), −3 px (`10`),
-/// −10 px (`06`), −16 px (`07`) and +1/+17 px (`strict-stage5c` page 1),
-/// while every text, mixed and 5B page sits at ≤ 1 px.
-///
-/// A bound of `2 px` — the default, and what the other three classes use — is
-/// what the layout should meet; `structural_extent_ratchet_pins_the_known_drift`
-/// pins today's per-fixture values so the drift cannot grow, and closing it
-/// is Stage-5C rework, not a gate change. Relaxing this number to make a
-/// failure pass is exactly what the gate exists to prevent.
-const STAGE5C_LIMITS: StructuralLimits = StructuralLimits {
-    max_shift_px: 12,
-    max_centroid_px: 24.0,
-    min_row_correlation: 0.45,
-    min_column_correlation: 0.40,
-    max_extent_px: 18.0,
-};
+/// * `strict-stage5c` — 0.9533. The display-block box is 17/18 px taller than
+///   WPS's (§4.2 of the Stage-5C report); `EXTENT_RATCHET` tracks it.
+/// * `07-strict-drawingml-shapes` — 0.9568. The same block-geometry family, on
+///   the opposite sign: the page is 16 px *shorter* than the reference.
+const SSIM_AMBER: &[&str] = &["strict-stage5c", "07-strict-drawingml-shapes"];
 
 /// The per-fixture ink-extent drift each gated page is allowed to keep, in px.
 ///
 /// This is the ratchet: it records the measured drift of every gated page
 /// against its pinned WPS reference, so a layout change that makes a page
-/// *worse* fails even while the 5C bound is still loose. Each value must be
+/// *worse* fails even while the class bound is still loose. Each value must be
 /// the current measurement — lowering one is the way to claim progress, and it
 /// is the number the Stage-5C rework has to move down.
 const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
@@ -201,20 +278,6 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     ("07-strict-drawingml-shapes", 0, 0.0, -16.0),
     ("10-strict-math-eqarr", 0, 0.0, -3.0),
 ];
-
-/// Returns the structural limits for a reference document.
-fn limits_for(name: &str) -> StructuralLimits {
-    match name {
-        "strict-stage5" => STAGE5_LIMITS,
-        "strict-stage5b" => STAGE5B_LIMITS,
-        "strict-stage5c"
-        | "05-strict-math-simple"
-        | "06-strict-math-display"
-        | "07-strict-drawingml-shapes"
-        | "10-strict-math-eqarr" => STAGE5C_LIMITS,
-        _ => StructuralLimits::default(),
-    }
-}
 
 /// Minimum ink fraction for a page to count as having content.
 const MIN_INK_FRACTION: f64 = 0.001;
@@ -889,28 +952,27 @@ fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity,
 
 /// Grades one document's worst-page SSIM; returns `true` when it is amber.
 ///
-/// Below [`SSIM_THRESHOLD`] is a regression and panics. In
-/// `[SSIM_THRESHOLD, SSIM_THRESHOLD + SSIM_MARGIN)` the document passes only
-/// because it is written down in [`SSIM_AMBER`], so a new fixture cannot join
-/// the gate just below the line without being registered on purpose.
+/// Below [`GatePolicy::ssim`] is a regression and panics. In
+/// `[ssim, ssim + margin)` the document passes only because it is written down
+/// in [`SSIM_AMBER`], so a new fixture cannot join the gate just below the line
+/// without being registered on purpose.
 ///
 /// # Panics
 ///
 /// If `worst` is below the threshold, or is inside the margin band without
 /// being registered.
 fn grade_ssim(name: &str, worst: f64) -> bool {
-    assert!(
-        worst >= SSIM_THRESHOLD,
-        "{name}: worst SSIM {worst:.4} < {SSIM_THRESHOLD}"
-    );
-    let margin = worst - SSIM_THRESHOLD;
-    if margin >= SSIM_MARGIN {
+    let ssim = policy().ssim;
+    let margin = policy().margin;
+    assert!(worst >= ssim, "{name}: worst SSIM {worst:.4} < {ssim}");
+    if worst - ssim >= margin {
         return false;
     }
     assert!(
         SSIM_AMBER.contains(&name),
-        "{name}: worst SSIM {worst:.4} clears {SSIM_THRESHOLD} by only {margin:.4}, \
-         below the {SSIM_MARGIN:.2} margin, and is not registered in SSIM_AMBER"
+        "{name}: worst SSIM {worst:.4} clears {ssim} by only {margin_b:.4}, \
+         below the {margin:.2} margin, and is not registered in SSIM_AMBER",
+        margin_b = worst - ssim
     );
     true
 }
@@ -957,7 +1019,7 @@ fn matches_wps_references() {
                 "{name}: raster size mismatch"
             );
             let (width, height) = (width as usize, height as usize);
-            if PAGE_COUNT_ONLY.contains(&name.as_str()) {
+            if policy().is_page_count_only(&name) {
                 // The page-count invariant is all that is meaningful here: the
                 // content is raster data this renderer does not produce, so the
                 // reference and our render legitimately differ completely.
@@ -967,7 +1029,7 @@ fn matches_wps_references() {
                 );
                 continue;
             }
-            let limits = limits_for(&name);
+            let limits = policy().limits_for(&name);
             structures.push((
                 page.index,
                 structural_fidelity_with(&reference, &candidate, width, height, &limits),
@@ -981,11 +1043,13 @@ fn matches_wps_references() {
         }
         checked += 1;
 
-        if SSIM_DOCS.contains(&name.as_str()) && !comparisons.is_empty() {
+        if policy().ssim_documents().any(|entry| entry == name) && !comparisons.is_empty() {
             let worst = worst_score(&comparisons).expect("at least one comparison");
             eprintln!(
-                "{name}: worst SSIM = {worst:.4} (margin {:+.4}, needs {SSIM_MARGIN:+.4})",
-                worst - SSIM_THRESHOLD
+                "{name} [class {}]: worst SSIM = {worst:.4} (margin {margin:+.4}, needs {needed:+.4})",
+                policy().class_of(&name).unwrap_or("unclassified"),
+                margin = worst - policy().ssim,
+                needed = policy().margin
             );
             report_structure(&name, &structures);
             if grade_ssim(&name, worst) {
@@ -998,7 +1062,8 @@ fn matches_wps_references() {
     assert!(gated > 0, "no SSIM-gated documents were present");
     if !amber.is_empty() {
         eprintln!(
-            "AMBER (clears the threshold, not the {SSIM_MARGIN:.2} margin): {}",
+            "AMBER (clears the threshold, not the {:.2} margin): {}",
+            policy().margin,
             amber.join(", ")
         );
     }
@@ -1101,7 +1166,7 @@ fn structural_check_rejects_blank_stage5_page() {
     let (width, height, reference, _candidate) = rasterize_reference_pair("strict-stage5", 0);
     let blank = vec![1.0; width * height];
     assert!(
-        structural_fidelity_with(&reference, &blank, width, height, &STAGE5_LIMITS).is_err(),
+        structural_fidelity_with(&reference, &blank, width, height, &stage5_limits()).is_err(),
         "a blank candidate must be rejected even with the relaxed Stage-5 limits"
     );
 }
@@ -1113,7 +1178,7 @@ fn structural_check_rejects_blank_stage5b_page() {
     let (width, height, reference, _candidate) = rasterize_reference_pair("strict-stage5b", 0);
     let blank = vec![1.0; width * height];
     assert!(
-        structural_fidelity_with(&reference, &blank, width, height, &STAGE5B_LIMITS).is_err(),
+        structural_fidelity_with(&reference, &blank, width, height, &stage5b_limits()).is_err(),
         "a blank candidate must be rejected even with the relaxed Stage-5B limits"
     );
     // A page-border-only render (shapes/group/text/picture missing) is also
@@ -1131,7 +1196,8 @@ fn structural_check_rejects_blank_stage5b_page() {
         }
     }
     assert!(
-        structural_fidelity_with(&reference, &border_only, width, height, &STAGE5B_LIMITS).is_err(),
+        structural_fidelity_with(&reference, &border_only, width, height, &stage5b_limits())
+            .is_err(),
         "a page-border-only candidate must be rejected (shape ink missing)"
     );
 }
@@ -1145,14 +1211,14 @@ fn structural_check_rejects_blank_and_shifted_stage5c_pages() {
         let (width, height, reference, candidate) = rasterize_reference_pair(document, page);
         // The unshifted render passes.
         assert!(
-            structural_fidelity_with(&reference, &candidate, width, height, &STAGE5C_LIMITS)
+            structural_fidelity_with(&reference, &candidate, width, height, &stage5c_limits())
                 .is_ok(),
             "{document} page {page} must pass its own gate"
         );
         // A blank render is rejected by the ink ratio.
         let blank = vec![1.0; width * height];
         assert!(
-            structural_fidelity_with(&reference, &blank, width, height, &STAGE5C_LIMITS).is_err(),
+            structural_fidelity_with(&reference, &blank, width, height, &stage5c_limits()).is_err(),
             "{document}: a blank render must be rejected"
         );
         // A vertical drift beyond the 12 px alignment bound is rejected.
@@ -1165,7 +1231,8 @@ fn structural_check_rejects_blank_and_shifted_stage5c_pages() {
             out
         };
         assert!(
-            structural_fidelity_with(&reference, &shifted, width, height, &STAGE5C_LIMITS).is_err(),
+            structural_fidelity_with(&reference, &shifted, width, height, &stage5c_limits())
+                .is_err(),
             "{document}: a 20px vertical drift must be rejected"
         );
     }
@@ -1277,9 +1344,9 @@ fn structural_check_rejects_real_vertical_shift() {
 fn alignment_search_range_is_wider_than_every_bound() {
     for (name, limits) in [
         ("default", StructuralLimits::default()),
-        ("5A", STAGE5_LIMITS),
-        ("5B", STAGE5B_LIMITS),
-        ("5C", STAGE5C_LIMITS),
+        ("mixed", stage5_limits()),
+        ("graphics", stage5b_limits()),
+        ("formulas", stage5c_limits()),
     ] {
         assert!(
             alignment_search_range(&limits) > limits.max_shift_px,
@@ -1300,7 +1367,8 @@ fn a_drift_beyond_the_shift_bound_is_rejected() {
     let (width, height, reference, candidate) = rasterize_reference_pair("strict-stage5c", 1);
     for drift in [20isize, 40, 80] {
         let shifted = shift_vertical(&candidate, width, height, drift);
-        let result = structural_fidelity_with(&reference, &shifted, width, height, &STAGE5C_LIMITS);
+        let result =
+            structural_fidelity_with(&reference, &shifted, width, height, &stage5c_limits());
         assert!(
             result.is_err(),
             "a {drift}px vertical drift must be rejected, got {result:?}"
@@ -1376,13 +1444,13 @@ fn structural_extent_ratchet_pins_the_known_drift() {
 #[test]
 fn every_gated_page_is_pinned_by_the_extent_ratchet() {
     let mut gated: Vec<(String, usize)> = Vec::new();
-    for name in SSIM_DOCS {
-        if PAGE_COUNT_ONLY.contains(name) {
+    for name in policy().ssim_documents() {
+        if policy().is_page_count_only(name) {
             continue;
         }
         let dir = strict_dir().join(format!("refs/{name}"));
         for (index, _) in reference_pages(&dir).into_iter().enumerate() {
-            gated.push(((*name).to_owned(), index));
+            gated.push((name.to_owned(), index));
         }
     }
     let pinned: std::collections::BTreeSet<(String, usize)> = EXTENT_RATCHET
@@ -1394,6 +1462,60 @@ fn every_gated_page_is_pinned_by_the_extent_ratchet() {
             pinned.contains(&entry),
             "{entry:?} is gated but not pinned in EXTENT_RATCHET"
         );
+    }
+}
+
+/// Every reference directory must declare its class.
+///
+/// An unclassified document silently inherits the strict defaults, which
+/// sounds safe but is not: it means a fixture can be added to the corpus
+/// without anyone deciding what it is held to, and the class it *should* have
+/// had (the loosened `formulas` bounds, say) is never applied. The decision
+/// has to be made on purpose, in the policy file.
+#[test]
+fn every_reference_document_declares_a_class() {
+    let refs = strict_dir().join("refs");
+    let mut unclassified = Vec::new();
+    for entry in std::fs::read_dir(&refs).expect("read refs dir").flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let name = dir
+            .file_name()
+            .and_then(|value| value.to_str())
+            .expect("document name")
+            .to_owned();
+        if policy().is_page_count_only(&name) || policy().class_of(&name).is_some() {
+            continue;
+        }
+        unclassified.push(name);
+    }
+    assert!(
+        unclassified.is_empty(),
+        "these reference documents are in neither a class nor page_count_only \
+         in coverage/render-gates.toml: {unclassified:?}"
+    );
+}
+
+/// The gate must actually exercise every class it declares, or a class can
+/// rot into a table of numbers nothing is checked against.
+#[test]
+fn every_declared_class_is_exercised() {
+    for class in &policy().classes {
+        assert!(
+            !class.documents.is_empty(),
+            "class {} declares no documents",
+            class.name
+        );
+        for document in &class.documents {
+            let dir = strict_dir().join(format!("refs/{document}"));
+            assert!(
+                dir.is_dir(),
+                "class {} lists {document}, which has no references",
+                class.name
+            );
+        }
     }
 }
 

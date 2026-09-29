@@ -1,0 +1,124 @@
+# Visual-fidelity gate policy (GATE-STRATEGY §5, §6; STAGE-4-RENDER-FIDELITY
+# S4F.5). This file is the single place a fidelity threshold or a structural
+# tolerance is written down, and `strict-ooxml-render-svg/tests/ssim.rs` reads
+# it rather than carrying its own copies.
+#
+# Why a data file: a threshold edited inside a test looks like a test change
+# and gets reviewed as one. Here it is a value in a table, next to the reason
+# it has that value and next to the documents it applies to, so loosening a
+# bound is a reviewable diff in the file that also says what loosening it
+# costs.
+#
+# status vocabulary is not used here (unlike coverage/*.toml): these are
+# limits, not claims about element support.
+
+[meta]
+standard = "ISO/IEC 29500-1:2008 Strict"
+revision = "2026-09-29"
+source = "GATE-STRATEGY.md §5"
+
+# The fidelity criterion, and the margin a document must clear over it to
+# pass outright (GATE-STRATEGY §3.2). The margin exists because several
+# documents clear the criterion by three thousandths while the gate runs on
+# three operating systems; at that distance the score cannot distinguish a
+# property of the layout from a property of one rasterizer build.
+[thresholds]
+ssim = 0.95
+ssim_margin = 0.01
+
+# ---------------------------------------------------------------------------
+# Classes. `documents` is the class membership: it replaces the match
+# statement that used to decide which fixture got which limits, so a new
+# fixture has to declare its class rather than fall into a default.
+# ---------------------------------------------------------------------------
+
+[[classes]]
+name = "text"
+rationale = """
+Real Strict text. Carlito/Arimo/Tinos/Cousine stand in for the nominal
+faces with matching advances, so the ink lands where Word puts it. The
+default bounds are met by every page in this class at 0-1 px.
+"""
+documents = ["strict-text", "strict-text-grid"]
+max_shift_px = 2
+max_centroid_px = 2.5
+min_row_correlation = 0.90
+min_column_correlation = 0.85
+max_extent_px = 2.0
+
+[[classes]]
+name = "mixed"
+rationale = """
+Tables, notes, fields and numbering on one page. The profile correlations
+are relaxed because a sparse mixed page carries little structure for them;
+the rasterizer-independent checks (ink coverage, shift, centroid, extent)
+stay at the default. Measured extent drift: 0-1 px.
+"""
+documents = ["strict-stage5"]
+max_shift_px = 2
+max_centroid_px = 3.0
+min_row_correlation = 0.75
+min_column_correlation = 0.70
+max_extent_px = 2.0
+
+[[classes]]
+name = "graphics"
+rationale = """
+Floating drawing objects, groups, text boxes and page borders. Large solid
+fills make the row/column ink profiles correlate only weakly with the WPS
+raster, and the rasterizer's fill/edge antialiasing moves the ink centroid
+while the profile alignment stays exact (dx = dy = 0). Ink coverage, the
+blank check and the shift bound are unchanged. Measured extent drift: 1 px.
+"""
+documents = ["strict-stage5b"]
+max_shift_px = 2
+max_centroid_px = 8.0
+min_row_correlation = 0.60
+min_column_correlation = 0.50
+max_extent_px = 2.0
+
+[[classes]]
+name = "formulas"
+rationale = """
+OMML formulas and inline shapes. The pages are sparse, so the profile
+correlations carry little structure to correlate and are not a meaningful
+measure here.
+
+max_extent_px is a RATCHET ON A KNOWN DEFECT, not an accepted tolerance. The
+bound every other class meets is 2 px; this class currently measures 0, -3,
+-10, -16, +17 and +18 px against the pinned references. The height of a
+display block is derived from the formula's own extent and disagrees with
+Word's in both directions — `strict-stage5c` runs 17-18 px past the
+reference's last ink row, `07` stops 16 px short — which is consistent with
+a block box rather than one oversized operator. Closing it means correcting
+the block geometry, and EXTENT_RATCHET in tests/ssim.rs pins every page's
+current drift so the numbers have to move rather than the bound. The
+pre-rework defect this bound replaced was 400 px on the same page.
+"""
+documents = [
+  "strict-stage5c",
+  "05-strict-math-simple",
+  "06-strict-math-display",
+  "07-strict-drawingml-shapes",
+  "10-strict-math-eqarr",
+]
+max_shift_px = 12
+max_centroid_px = 24.0
+min_row_correlation = 0.45
+min_column_correlation = 0.40
+max_extent_px = 18.0
+
+# ---------------------------------------------------------------------------
+# Page-count-only documents.
+#
+# Their content is raster this renderer does not produce (DrawingML charts),
+# so a per-pixel comparison would measure the reserved placeholder. The
+# page-count invariant is what is meaningful and is enforced.
+# ---------------------------------------------------------------------------
+[[page_count_only]]
+name = "strict-profile"
+rationale = "DrawingML chart and diagram, out of scope since Stage 4."
+
+[[page_count_only]]
+name = "09-strict-math-drawing-chart"
+rationale = "Real Strict package with a DrawingML chart part; Stage 6 scope."

@@ -8,6 +8,7 @@ fuzz/artifacts
 /coverage/*
 !/coverage/wml-elements.toml
 !/coverage/stage5-scenarios.toml
+!/coverage/render-gates.toml
 *.profraw
 # local .docx working corpus (not published in the repository)
 # note: strict-ooxml-core/tests/samples/ is the PUBLIC synthetic corpus and is

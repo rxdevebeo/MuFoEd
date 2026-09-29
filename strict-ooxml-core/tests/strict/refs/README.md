@@ -39,6 +39,15 @@ because several documents clear 0.95 by three thousandths, and the gate runs
 on three operating systems; whether that number is a property of the layout or
 of one rasterizer build is not something the score can tell you.
 
+All of it — the threshold, the margin, the content classes, which document
+belongs to which class, and the structural bounds per class — lives in
+[`coverage/render-gates.toml`](../../../../coverage/render-gates.toml) with its
+justification beside it, and `tests/ssim.rs` reads it. Two guards keep the table
+honest: every reference directory must declare a class, and every class must
+name documents that exist. The rationale for each bound is in the file, next to
+the bound, so loosening one is a reviewable diff in the place that also says
+what loosening it costs.
+
 | Document | Compared how | Notes |
 |---|---|---|
 | `strict-text` | per-page **SSIM ≥ 0.95** + structural invariant + page count | Text-only synthetic Strict doc exercising Carlito/Arimo/Tinos/Cousine text, justification and centering. |

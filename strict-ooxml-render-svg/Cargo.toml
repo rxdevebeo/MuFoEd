@@ -30,6 +30,11 @@ criterion = "0.5"
 resvg.workspace = true
 # Decode the WPS reference PNGs for the SSIM harness.
 png.workspace = true
+# Read the fidelity-gate policy from `coverage/render-gates.toml` (GATE-STRATEGY
+# §5/§6): thresholds are data with their justification beside them, not
+# constants buried in a test.
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
 
 [[bench]]
 name = "render"

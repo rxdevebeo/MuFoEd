@@ -1529,9 +1529,11 @@ dependencies = [
  "png",
  "resvg",
  "roxmltree 0.20.0",
+ "serde",
  "skrifa",
  "strict-ooxml-core",
  "strict-ooxml-wml",
+ "toml",
 ]
 
 [[package]]
