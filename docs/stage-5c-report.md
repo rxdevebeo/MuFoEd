@@ -142,12 +142,12 @@ Measured extent drift, candidate − reference, on the gated fixtures:
 | Fixture | First ink row | Last ink row | Worst |
 |---|---|---|---|
 | `strict-text`, `strict-text-grid`, `strict-stage5`, `strict-stage5b` | −1…+1 px | −1…+1 px | **1 px** |
-| `05-strict-math-simple` | 0 | 0 | **0 px** |
-| `10-strict-math-eqarr` | 0 | −4 | 4 px |
+| `05-strict-math-simple` | 0 | −2 | **2 px** |
+| `10-strict-math-eqarr` | 0 | −3 | 3 px |
 | `06-strict-math-display` | 0 | −10 | 10 px |
-| `strict-stage5c` p.1 | +1 | +15 | 15 px |
+| `strict-stage5c` p.1 | +1 | +17 | 17 px |
 | `07-strict-drawingml-shapes` | 0 | −16 | 16 px |
-| `strict-stage5c` p.2 | +10 | +18 | **18 px** |
+| `strict-stage5c` p.2 | +9 | +18 | **18 px** |
 
 Every text, mixed and 5B page sits at ≤ 1 px, so the 2 px default extent
 bound is met everywhere outside the 5C set — the drift is a formula/shape

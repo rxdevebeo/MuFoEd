@@ -61,10 +61,20 @@ the check unfailable. `alignment_search_range_is_wider_than_every_bound` pins
 that invariant.
 
 `strict-stage5c`, `06`, `07` and `10` currently exceed the 2 px extent bound
-(15 / 10 / 16 / 4 px). Their drift is pinned per page by `EXTENT_RATCHET` in
+(17 / 10 / 16 / 3 px). Their drift is pinned per page by `EXTENT_RATCHET` in
 `tests/ssim.rs`, which fails if any page drifts *further* and fails if a page
 gets better without the pinned value being lowered — the ratchet is how the
 known block-geometry defect is tracked down, not a tolerance.
+
+The extent counts ink cumulatively from each page edge rather than requiring a
+threshold within a single row. A per-row threshold cannot see a vertical rule:
+a 3 px page border contributes ~3 pixels to each of the ~1000 rows it runs
+down, so a per-row filter drops it. That is not hypothetical — `strict-stage5b`
+shipped a page border whose vertical rules ran the full page height, past the
+horizontal ones, with every structural bound satisfied (the extent check
+reported ±1 px). The border is now drawn as the closed box ISO/IEC 29500-1
+§17.6.2 specifies, and the cumulative extent reports the old rendering as
+−23/+23 px.
 
 ## SHA-256
 

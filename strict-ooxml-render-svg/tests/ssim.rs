@@ -84,15 +84,24 @@ const STAGE5B_LIMITS: StructuralLimits = StructuralLimits {
     max_extent_px: 2.0,
 };
 
-/// Minimum ink pixels in a row (or column) for it to count as part of the
-/// page's extent.
+/// Ink pixels counted from a page edge before the content is considered to
+/// have started.
 ///
-/// The extent is the outermost *substantial* ink, not the outermost ink
-/// pixel: an antialiased hairline or a clipped border edge can put a stray
-/// pixel one row outside the real content, and a bound that tight would then
-/// measure rasterizer noise instead of layout. Six pixels on an 816 px page
-/// is under 1 % of the width and well under one glyph stroke.
-const MIN_EXTENT_INK_PX: usize = 6;
+/// The extent is where the page's content *begins*, not where the first
+/// antialiased pixel lands, so a single stray pixel one row outside the real
+/// content must not move it — a bound that tight would measure rasterizer
+/// noise instead of layout.
+///
+/// The threshold is accumulated *across* rows rather than required within one.
+/// A per-row threshold is blind to a vertical rule: a 3 px page border
+/// contributes about three ink pixels to each of the thousand rows it runs
+/// down, so a per-row filter discards it and a border running off the bottom
+/// of the page looks exactly like one that stops at the right place. That is
+/// not hypothetical — it is how `strict-stage5b` shipped a page border whose
+/// vertical rules ran the full page height, past the horizontal ones, with
+/// every structural bound satisfied. Forty pixels is a few glyph strokes: too
+/// much for antialiasing, far less than any real rule or text line.
+const MIN_EXTENT_INK_PX: usize = 40;
 
 /// Extra pixels searched beyond [`StructuralLimits::max_shift_px`] when
 /// looking for the best profile alignment.
@@ -130,8 +139,8 @@ fn alignment_search_range(limits: &StructuralLimits) -> isize {
 /// `max_extent_px` is the bound that sees the remaining defect, and it is the
 /// one number here that is a **ratchet on a known defect**, not an accepted
 /// tolerance. Measured against the pinned references, the ink extent of the
-/// five 5C fixtures disagrees with WPS by 0 px (`05`), 0/−4 px (`10`),
-/// 0/−10 px (`06`), 0/−16 px (`07`) and +1/+15 px (`strict-stage5c` page 1),
+/// five 5C fixtures disagrees with WPS by 0 px (`05`), −3 px (`10`),
+/// −10 px (`06`), −16 px (`07`) and +1/+17 px (`strict-stage5c` page 1),
 /// while every text, mixed and 5B page sits at ≤ 1 px.
 ///
 /// A bound of `2 px` — the default, and what the other three classes use — is
@@ -155,17 +164,17 @@ const STAGE5C_LIMITS: StructuralLimits = StructuralLimits {
 /// the current measurement — lowering one is the way to claim progress, and it
 /// is the number the Stage-5C rework has to move down.
 const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
-    ("strict-text", 0, -1.0, 0.0),
-    ("strict-text-grid", 0, -1.0, 1.0),
+    ("strict-text", 0, 0.0, 1.0),
+    ("strict-text-grid", 0, 0.0, 1.0),
     ("strict-stage5", 0, 0.0, -1.0),
     ("strict-stage5", 1, 1.0, 0.0),
     ("strict-stage5b", 0, -1.0, 1.0),
-    ("strict-stage5c", 0, 1.0, 15.0),
-    ("strict-stage5c", 1, 10.0, 18.0),
-    ("05-strict-math-simple", 0, 0.0, 0.0),
+    ("strict-stage5c", 0, 1.0, 17.0),
+    ("strict-stage5c", 1, 9.0, 18.0),
+    ("05-strict-math-simple", 0, 0.0, -2.0),
     ("06-strict-math-display", 0, 0.0, -10.0),
     ("07-strict-drawingml-shapes", 0, 0.0, -16.0),
-    ("10-strict-math-eqarr", 0, 0.0, -4.0),
+    ("10-strict-math-eqarr", 0, 0.0, -3.0),
 ];
 
 /// Returns the structural limits for a reference document.
@@ -378,21 +387,51 @@ enum Edge {
     Bottom,
 }
 
-/// Returns the first/last row holding at least [`MIN_EXTENT_INK_PX`] ink
-/// pixels, or `None` for a blank image.
+/// Returns the first/last row where the page's content starts, or `None` for a
+/// blank image.
+///
+/// Rows are counted cumulatively from each edge; see
+/// [`MIN_EXTENT_INK_PX`]. A page too sparse to reach the threshold falls back
+/// to its outermost ink pixel rather than reporting no extent.
 fn ink_rows(gray: &[f64], width: usize, height: usize) -> Option<(usize, usize)> {
-    let mut first = None;
-    let mut last = None;
+    let row_ink: Vec<usize> = (0..height)
+        .map(|row| {
+            (0..width)
+                .filter(|&col| gray[row * width + col] < INK_LEVEL)
+                .count()
+        })
+        .collect();
+    let outermost = || {
+        let first = row_ink.iter().position(|&ink| ink > 0)?;
+        let last = row_ink.iter().rposition(|&ink| ink > 0)?;
+        Some((first, last))
+    };
+    let mut from_top = 0usize;
+    let mut top = None;
+    let mut from_bottom = 0usize;
+    let mut bottom = None;
     for row in 0..height {
-        let ink = (0..width)
-            .filter(|&col| gray[row * width + col] < INK_LEVEL)
-            .count();
-        if ink >= MIN_EXTENT_INK_PX {
-            first.get_or_insert(row);
-            last = Some(row);
+        if top.is_none() {
+            from_top += row_ink[row];
+            if from_top >= MIN_EXTENT_INK_PX {
+                top = Some(row);
+            }
+        }
+        let reversed = height - 1 - row;
+        if bottom.is_none() {
+            from_bottom += row_ink[reversed];
+            if from_bottom >= MIN_EXTENT_INK_PX {
+                bottom = Some(reversed);
+            }
+        }
+        if top.is_some() && bottom.is_some() {
+            break;
         }
     }
-    first.zip(last)
+    match (top, bottom) {
+        (Some(top), Some(bottom)) => Some((top, bottom)),
+        _ => outermost(),
+    }
 }
 
 /// Signed drift of one ink edge, `candidate - reference`, in px.
