@@ -62,5 +62,31 @@ pub const WORDPROCESSING_DRAWING_STRICT_NS: &str =
 /// Strict namespace of the DrawingML picture schema.
 pub const PICTURE_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
 
+/// Strict namespace of the DrawingML word-processing shape schema.
+pub const WORD_PROCESSING_SHAPE_STRICT_NS: &str =
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingShape";
+
+/// Strict namespace of the DrawingML word-processing group schema.
+pub const WORD_PROCESSING_GROUP_STRICT_NS: &str =
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingGroup";
+
+/// Strict namespace of the DrawingML chart schema.
+pub const CHART_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/chart";
+
+/// Strict namespace of the DrawingML diagram (SmartArt) schema.
+pub const DIAGRAM_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/diagram";
+
+/// Microsoft 2010 wordprocessingShape namespace (compatibility for real-world
+/// "Strict" producers, recorded as `Partial`).
+pub const MS_WORD_PROCESSING_SHAPE_NS: &str =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+
+/// Microsoft 2010 wordprocessingGroup namespace.
+pub const MS_WORD_PROCESSING_GROUP_NS: &str =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+
+/// Microsoft 2006 WordprocessingML namespace (`wne:txbxContent`).
+pub const MS_WORD_2006_WML_NS: &str = "http://schemas.microsoft.com/office/word/2006/wordml";
+
 /// Strict namespace of the OPC relationships schema.
 pub const RELS_STRICT_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";

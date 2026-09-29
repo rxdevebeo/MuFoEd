@@ -223,3 +223,26 @@ Negative / costs:
 - Validation: `tests/theme.rs`, unit tests in `model/theme.rs`/`parse/theme.rs`;
   cascade application in ADR-0006.
 
+
+## Stage 5B - DrawingML anchors, shapes, groups, page borders (additive)
+
+- `DrawingKind::Anchor` replaces the Stage-2 `AnchorStub` with the full
+  `AnchorDrawing` model (`wp:positionH`/`positionV`, `wp:wrap*`, `wp:extent`/
+  `effectExtent`, `behindDoc`/`relativeHeight`/`dist*`, `allowOverlap`/
+  `layoutInCell`/`locked`). This is the documented pre-1.0 breaking change; the
+  golden DOM was regenerated intentionally.
+- New drawing model: `Graphic` (`None`/`Picture`/`Shape`/`Group`/`Chart`/
+  `Diagram`/`Other`), `Shape` (+`ShapeGeometry`/`ShapeFill`/`ShapeStroke`/
+  `ShapeStyle`/`TextBox`), `GroupShape` (+`GroupTransform`), `Position`, `Wrap`,
+  `SrcRect`, `Xfrm`, `CustomGeometry`/`PathCommand` and `EffectExtent`.
+  `InlineDrawing`/`AnchorDrawing` hold `Box<Graphic>` to keep enum variants
+  small. `Picture` gains `src_rect` and `xfrm`.
+- New section model: `PageBorders`/`PageBorder`/`BorderOffsetFrom`/`BorderZOrder`
+  on `SectionProperties.page_borders`.
+- Parsing accepts the Strict namespaces and, for real-world "Strict" producers,
+  the Microsoft namespaces (`.../word/2010/wordprocessingShape`,
+  `.../wordprocessingGroup`, `wne:txbxContent`, `wp:wsp` in wordprocessingDrawing)
+  by local name, recording `Partial`. `a:custGeom` is parsed as a subset
+  (`moveTo/lnTo/cubicBezTo/close`) and recorded `Partial`.
+- Validation: `tests/drawing.rs`, `tests/props.rs`, `tests/stage5b_fixture_oracle.rs`;
+  rendering in ADR-0006.

@@ -47,7 +47,7 @@ fn resolves_inline_picture_to_media_part() {
     let DrawingKind::Inline(inline) = &drawing.kind else {
         panic!("expected inline drawing");
     };
-    let picture = inline.picture.as_ref().expect("picture");
+    let picture = inline.picture().expect("picture");
     let blip = picture.blip.as_ref().expect("blip");
     assert_eq!(blip.embed.as_ref().unwrap().as_str(), "rIdImg1");
     assert_eq!(
@@ -61,9 +61,16 @@ fn resolves_inline_picture_to_media_part() {
 }
 
 #[test]
-fn floating_anchor_is_recorded_as_unsupported() {
+fn floating_anchor_is_parsed() {
     let parts = document_parts(
-        "<w:p><w:r><w:drawing><wp:anchor><wp:docPr id=\"2\" name=\"float\"/></wp:anchor></w:drawing></w:r></w:p>",
+        "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"1\" relativeHeight=\"2\" distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" simplePos=\"0\" allowOverlap=\"1\" locked=\"0\" layoutInCell=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"column\"><wp:posOffset>114300</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"paragraph\"><wp:align>top</wp:align></wp:positionV>\
+<wp:extent cx=\"914400\" cy=\"457200\"/>\
+<wp:wrapSquare wrapText=\"bothSides\" distL=\"114300\"/>\
+<wp:docPr id=\"2\" name=\"float\"/>\
+</wp:anchor></w:drawing></w:r></w:p>",
         &[],
     );
     let document = parse_parts(&parts).expect("parse");
@@ -73,9 +80,30 @@ fn floating_anchor_is_recorded_as_unsupported() {
     let strict_ooxml_wml::model::inline::RunContent::Drawing(drawing) = &run.content[0] else {
         panic!("expected drawing");
     };
-    assert!(matches!(drawing.kind, DrawingKind::Anchor(_)));
+    let DrawingKind::Anchor(anchor) = &drawing.kind else {
+        panic!("expected anchor");
+    };
+    assert!(anchor.behind_doc);
+    assert_eq!(anchor.relative_height, Some(2));
+    assert_eq!(anchor.dist_left, Some(114_300));
+    assert_eq!(
+        anchor.position_h.as_ref().unwrap().relative_from.as_deref(),
+        Some("column")
+    );
+    assert_eq!(
+        anchor.position_h.as_ref().unwrap().offset.unwrap().value(),
+        114_300
+    );
+    assert_eq!(
+        anchor.position_v.as_ref().unwrap().align.as_deref(),
+        Some("top")
+    );
+    assert_eq!(
+        anchor.wrap.as_ref().unwrap().kind,
+        strict_ooxml_wml::model::WrapKind::Square
+    );
     assert_eq!(
         document.support.get("wp:anchor").unwrap().status,
-        SupportStatus::Unsupported
+        SupportStatus::Supported
     );
 }

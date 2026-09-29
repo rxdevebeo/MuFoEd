@@ -1,4 +1,4 @@
-# Stage-5 (5A) extended-scenario coverage inventory (ZAKAZ-STAGE-5 §3.1.7, §11.1).
+# Stage-5 (5A + 5B) extended-scenario coverage inventory (ZAKAZ-STAGE-5/5B §3.1.7, §11.1).
 #
 # Curated map of the extended scenarios the renderer claims to cover. It is an
 # independent, human-authored matrix (not derived from the parser's
@@ -9,13 +9,13 @@
 #   supported   - fully implemented and tested
 #   partial     - implemented with a documented limitation
 #   unsupported - recognised but not implemented (counts against coverage)
-#   ignored     - deliberately out of the 5A scope (excluded from the ratio)
+#   ignored     - deliberately out of the 5A/5B scope (excluded from the ratio)
 # Coverage = (supported + partial) / (supported + partial + unsupported) >= 85%.
 
 [meta]
 standard = "ISO/IEC 29500-1:2008 Strict"
-stage = 5
-source = "curated-stage-5a"
+stage = "5A+5B"
+source = "curated-stage-5a-5b"
 revision = "2026-09-29"
 generator = "manual"
 
@@ -270,23 +270,73 @@ note = "numId=0 (remove numbering) not modelled"
 
 [[elements]]
 name = "drawingml.anchors"
-status = "ignored"
-note = "element tier 5B"
+status = "supported"
+note = "wp:anchor parsed and rendered (extent, docPr, behindDoc/relativeHeight, dist*)"
+
+[[elements]]
+name = "drawingml.anchor_positioning"
+status = "supported"
+note = "positionH/positionV relativeFrom (page/margin/column/paragraph/line) with align/posOffset"
+
+[[elements]]
+name = "drawingml.anchor_wrap"
+status = "partial"
+note = "wrapNone and wrapTopAndBottom reflow; wrapSquare/Tight/Through treated as overlay (bounding box)"
+
+[[elements]]
+name = "drawingml.anchor_zorder"
+status = "supported"
+note = "behindDoc and relativeHeight order the floating layer"
+
+[[elements]]
+name = "drawingml.pictures_anchored"
+status = "partial"
+note = "srcRect parsed; rot/flip applied; crop rasterization not performed"
 
 [[elements]]
 name = "drawingml.shapes"
-status = "ignored"
-note = "element tier 5B"
+status = "supported"
+note = "wps:wsp with prstGeom subset (rect/roundRect/ellipse/arrows/stars/flowchart basics)"
+
+[[elements]]
+name = "drawingml.shape_fills"
+status = "supported"
+note = "solid/gradient(first stop)/pattern(foreground)/none; theme colours resolved"
+
+[[elements]]
+name = "drawingml.shape_outline"
+status = "partial"
+note = "colour/width/prstDash rendered; headEnd/tailEnd parsed but not drawn"
 
 [[elements]]
 name = "drawingml.groups"
-status = "ignored"
-note = "element tier 5B"
+status = "supported"
+note = "wpg:wgp composed via off/ext/chOff/chExt with child scale"
+
+[[elements]]
+name = "drawingml.textboxes"
+status = "supported"
+note = "w:txbxContent laid out as blocks inside the frame (wps + Microsoft wne)"
+
+[[elements]]
+name = "drawingml.custgeom"
+status = "partial"
+note = "a:custGeom subset: moveTo/lnTo/cubicBezTo/close"
+
+[[elements]]
+name = "drawingml.charts_smartart"
+status = "partial"
+note = "anchored position + placeholder extent; content not rasterized"
+
+[[elements]]
+name = "drawingml.namespace_compat"
+status = "partial"
+note = "Microsoft 2010 shape/group and wne:txbxContent namespaces accepted (real Strict producers)"
 
 [[elements]]
 name = "page.borders"
-status = "ignored"
-note = "element tier 5B"
+status = "supported"
+note = "w:pgBorders edges with offsetFrom/space/val/sz/colour/theme/zOrder"
 
 [[elements]]
 name = "math.omml"

@@ -4,9 +4,11 @@
 use strict_ooxml_wml::model::values::{
     BreakKind, FieldCharType, LineSpacingRule, TabAlignment, VertAlign,
 };
-use strict_ooxml_wml::model::{Drawing, Inline, Paragraph, Run, RunContent};
+use strict_ooxml_wml::model::{
+    AnchorDrawing, Drawing, DrawingKind, Inline, Paragraph, Run, RunContent,
+};
 
-use crate::layout::{Flow, ImageItem, LayoutContext, TextItem, TextLine};
+use crate::layout::{Flow, ImageItem, Item, LayoutContext, TextItem, TextLine};
 use crate::paint::image::layout_inline_image;
 use crate::style::{apply_caps, compute_paragraph, compute_run, ComputedParagraph, ComputedRun};
 use crate::units::{pt_to_px, twips_to_px};
@@ -23,6 +25,10 @@ enum Seg {
     PageBreak,
     /// An inline image.
     Image(ImageItem),
+    /// An inline block object (shape/group), already rendered.
+    Object(Vec<Item>, f64),
+    /// A floating (anchored) drawing.
+    Anchor(Box<AnchorDrawing>),
     /// A footnote reference marker (the referenced note id).
     FootnoteMarker(u32, ComputedRun),
     /// An endnote reference marker (the referenced note id).
@@ -41,6 +47,8 @@ enum Seg {
 pub(crate) struct ParagraphFlow {
     /// Flows in order.
     pub flows: Vec<Flow>,
+    /// Floating (anchored) drawings attached to this paragraph.
+    pub anchors: Vec<AnchorDrawing>,
     /// Space before in px.
     pub space_before: f64,
     /// Space after in px.
@@ -103,7 +111,8 @@ pub(crate) fn layout_paragraph(
     );
 
     ParagraphFlow {
-        flows,
+        flows: flows.0,
+        anchors: flows.1,
         space_before,
         space_after,
         keep_lines: computed.keep_lines,
@@ -276,8 +285,18 @@ fn flatten_run(
 }
 
 fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg>) {
-    if let Some(image) = layout_inline_image(ctx, drawing, 0.0, 0.0) {
-        out.push(Seg::Image(image));
+    match &drawing.kind {
+        DrawingKind::Anchor(anchor) => out.push(Seg::Anchor(Box::new(anchor.clone()))),
+        DrawingKind::Inline(_) => {
+            if let Some(image) = layout_inline_image(ctx, drawing, 0.0, 0.0) {
+                out.push(Seg::Image(image));
+            } else if let Some((items, _, height)) =
+                crate::paint::graphics::inline_items(ctx, drawing)
+            {
+                out.push(Seg::Object(items, height));
+            }
+        }
+        DrawingKind::Opaque(_) => {}
     }
 }
 
@@ -310,7 +329,7 @@ fn build_lines(
     grid_line_pitch: Option<f64>,
     note_marker: Option<&str>,
     segments: Vec<Seg>,
-) -> Vec<Flow> {
+) -> (Vec<Flow>, Vec<AnchorDrawing>) {
     let scale = ctx.options.scale;
     let indent_start = pt_to_px(computed.indent_start_pt, scale);
     let indent_end = pt_to_px(computed.indent_end_pt, scale);
@@ -335,6 +354,7 @@ fn build_lines(
         line_width,
         grid_line_pitch,
         flows: Vec::new(),
+        anchors: Vec::new(),
     };
     let mut current = LineBuilder::new();
     let mut x = if marker.is_some() { normal_x } else { first_x };
@@ -368,6 +388,14 @@ fn build_lines(
                 line_start = x;
                 first_line = false;
             }
+            Seg::Object(items, height) => {
+                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                sink.flows.push(Flow::Block { items, height });
+                x = normal_x;
+                line_start = x;
+                first_line = false;
+            }
+            Seg::Anchor(anchor) => sink.anchors.push(*anchor),
             Seg::Text(text, run) => {
                 for token in tokenize(&text) {
                     place_token(
@@ -412,6 +440,7 @@ fn build_lines(
     }
     sink.emit(current, true);
     let mut flows = sink.flows;
+    let anchors = sink.anchors;
 
     // Prepend the numbering marker to the first line, if any.
     if let Some((marker_text, marker_run)) = &marker {
@@ -435,7 +464,7 @@ fn build_lines(
     }
 
     let _ = para;
-    flows
+    (flows, anchors)
 }
 
 /// Splits text into wrap tokens (words keep a single trailing space).
@@ -453,6 +482,7 @@ struct LineSink<'a, 'b> {
     line_width: f64,
     grid_line_pitch: Option<f64>,
     flows: Vec<Flow>,
+    anchors: Vec<AnchorDrawing>,
 }
 
 impl LineSink<'_, '_> {

@@ -240,3 +240,27 @@ The acceptance criterion “SSIM ≥ 95% against approved references” is enfor
 - Validation: `tests/numbering.rs` (multi-level + restart, start override,
   bullet, indentation), unit tests in `numbering.rs`.
 
+
+## Stage 5B - floating DrawingML and page borders (additive)
+
+- New floating layer: `layout/floating.rs` resolves `wp:anchor` positions
+  (`relativeFrom` page/margin/column/paragraph/line with `align`/`posOffset`,
+  EMU->px) and inserts the object items into the page where its host paragraph
+  was placed. `behindDoc` objects go to the page front, others to the back
+  (before headers/footers); `relativeHeight` orders each group. `wrapNone` is an
+  overlay, `wrapTopAndBottom` reserves vertical flow space; `wrapSquare/Tight/
+  Through` are overlaid by bounding box (`Partial`).
+- `paint/graphics.rs` renders shapes (preset-geometry subset, solid/gradient/
+  pattern/none fills with theme colours, strokes with `prstDash`), groups
+  (compose `off/ext/chOff/chExt` with child scale) and text boxes
+  (`w:txbxContent` laid out as blocks with `bodyPr` insets/anchor). Anchored
+  pictures apply `rot`/`flip`; `srcRect` is parsed but not cropped (`Partial`).
+  `paint/shapes.rs` emits arbitrary `<path>` with a translate/rotate/scale
+  transform.
+- `layout/pageborders.rs` draws the four `w:pgBorders` edges with `offsetFrom`
+  (page/text), `space`, `val`->dash, `sz`, colour/theme and `zOrder` (behind or
+  front of the text).
+- `RenderOptions::floating` (default `true`) and the CLI `--no-floating` disable
+  the floating layer.
+- Validation: `tests/floating.rs`, `tests/strict_profile.rs`,
+  `strict-ooxml/tests/stage5b_corpus.rs`; the 5A/Stage-4 SSIM gate stays green.

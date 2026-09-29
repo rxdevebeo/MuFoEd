@@ -11,9 +11,10 @@ use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::ids::{Ilvl, NumId, StyleId};
 use crate::model::props::{
-    CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind, HeaderFooterRef, Language,
-    LineNumbering, NumPr, PageMargins, PageSize, ParagraphProperties, RowProperties, RunProperties,
-    SectionProperties, TableProperties,
+    BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind,
+    HeaderFooterRef, Language, LineNumbering, NumPr, PageBorder, PageBorders, PageMargins,
+    PageSize, ParagraphProperties, RowProperties, RunProperties, SectionProperties,
+    TableProperties,
 };
 use crate::model::support::SupportStatus;
 use crate::model::values::{
@@ -777,12 +778,14 @@ impl PartParser<'_> {
                             continue;
                         }
                         "pgBorders" => {
+                            props.page_borders = Some(self.parse_page_borders(&attrs)?);
                             self.record(
                                 "w:pgBorders",
-                                SupportStatus::Unsupported,
-                                Some("page borders are Stage 5".to_owned()),
+                                SupportStatus::Supported,
+                                None,
                                 Some(self.location()),
                             );
+                            continue;
                         }
                         _ => {}
                     }
@@ -795,6 +798,56 @@ impl PartParser<'_> {
         }
         self.leave();
         Ok(props)
+    }
+
+    /// Parses `w:pgBorders` (start element consumed).
+    fn parse_page_borders(&mut self, attrs: &[Attr]) -> Result<PageBorders> {
+        let mut borders = PageBorders {
+            offset_from: wml_attr(attrs, "offsetFrom").and_then(BorderOffsetFrom::from_strict),
+            z_order: wml_attr(attrs, "zOrder").and_then(BorderZOrder::from_strict),
+            ..PageBorders::default()
+        };
+        self.enter()?;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_wml(&name) {
+                        let edge = self.parse_page_border_edge(&attrs);
+                        match name.local() {
+                            "top" => borders.top = Some(edge),
+                            "left" => borders.left = Some(edge),
+                            "bottom" => borders.bottom = Some(edge),
+                            "right" => borders.right = Some(edge),
+                            _ => {}
+                        }
+                    }
+                    self.skip_element()?;
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of page borders")),
+            }
+        }
+        self.leave();
+        Ok(borders)
+    }
+
+    /// Parses one page-border edge element's attributes.
+    fn parse_page_border_edge(&mut self, attrs: &[Attr]) -> PageBorder {
+        PageBorder {
+            style: wml_attr(attrs, "val").and_then(BorderStyle::from_strict),
+            size: wml_attr(attrs, "sz")
+                .and_then(|value| value.trim().parse::<u16>().ok())
+                .map(EighthsPoint),
+            space: wml_attr(attrs, "space").and_then(|value| value.trim().parse::<u16>().ok()),
+            color: wml_attr(attrs, "color").map(Color::new),
+            theme_color: wml_attr(attrs, "themeColor").map(|slot| ThemeColorRef {
+                color: ThemeColor::new(slot),
+                tint: wml_attr(attrs, "themeTint").map(|value| self.intern(value)),
+                shade: wml_attr(attrs, "themeShade").map(|value| self.intern(value)),
+            }),
+            shadow: attr_on(attrs, "shadow"),
+        }
     }
 
     /// Parses a `w:headerReference`/`w:footerReference` (attribute-only).

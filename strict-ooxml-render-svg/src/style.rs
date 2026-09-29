@@ -382,6 +382,21 @@ pub fn parse_color(color: &Color) -> Option<String> {
     }
 }
 
+/// Resolves a DrawingML shape colour (explicit RGB or theme reference).
+#[must_use]
+pub fn resolve_shape_color(
+    theme: Option<&Theme>,
+    color: &strict_ooxml_wml::model::drawing::ShapeColor,
+) -> Option<String> {
+    if let Some(value) = &color.value {
+        return parse_color(value);
+    }
+    color
+        .theme
+        .as_ref()
+        .and_then(|reference| resolve_theme_color(reference, theme))
+}
+
 /// Maps a highlight name to its conventional RGB colour.
 #[must_use]
 pub fn highlight_color(highlight: Highlight) -> Option<String> {

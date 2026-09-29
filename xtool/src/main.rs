@@ -364,7 +364,7 @@ fn print_usage() {
          xsd-inventory   [--xsd <file>]... [--out <path>]\n\
          coverage        [--file <path>] [--min <percent>]\n\
          corpus-elements [--corpus <dir>]\n\
-         gen-docx        --out <path> [--paragraphs <n>]"
+         gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b]"
     );
 }
 
@@ -634,7 +634,10 @@ fn gen_docx(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     };
     let stage5 = args.iter().any(|arg| arg == "--stage5");
-    let (bytes, label) = if stage5 {
+    let stage5b = args.iter().any(|arg| arg == "--stage5b");
+    let (bytes, label) = if stage5b {
+        (stage5b_docx(), "stage-5B fixture".to_owned())
+    } else if stage5 {
         (stage5_docx(), "stage-5 fixture".to_owned())
     } else {
         let paragraphs: usize = arg_value(args, "--paragraphs")
@@ -810,6 +813,104 @@ fn stage5_docx() -> Vec<u8> {
     ];
     zip(&entries)
 }
+
+const WP_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing";
+const PIC_NS: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
+const WPS_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingShape";
+const WPG_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingGroup";
+
+/// Builds a Strict fixture exercising the Stage-5B drawing subsystem.
+#[allow(clippy::too_many_lines)]
+fn stage5b_docx() -> Vec<u8> {
+    fn anchor(id: u32, name: &str, uri: &str, h: i64, v: i64, graphic_data: &str) -> String {
+        format!(
+            "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" simplePos=\"0\" relativeHeight=\"{id}\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"page\"><wp:posOffset>{h}</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"page\"><wp:posOffset>{v}</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"1371600\" cy=\"914400\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>\
+<wp:wrapNone/><wp:docPr id=\"{id}\" name=\"{name}\"/>\
+<a:graphic><a:graphicData uri=\"{uri}\">{graphic_data}</a:graphicData></a:graphic>\
+</wp:anchor></w:drawing></w:r></w:p>"
+        )
+    }
+    fn rect(name: &str, fill: &str, x: i64) -> String {
+        format!(
+            "<wps:wsp><wps:cNvPr id=\"1\" name=\"{name}\"/><wps:cNvSpPr/><wps:spPr>\
+<a:xfrm><a:off x=\"{x}\" y=\"0\"/><a:ext cx=\"1371600\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"roundRect\"/><a:solidFill><a:srgbClr val=\"{fill}\"/></a:solidFill>\
+<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"1F3864\"/></a:solidFill></a:ln>\
+</wps:spPr></wps:wsp>"
+        )
+    }
+    let text_box = "<wps:wsp><wps:cNvPr id=\"4\" name=\"Box\"/><wps:cNvSpPr txBox=\"1\"/><wps:spPr>\
+<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"/><a:noFill/><a:ln><a:noFill/></a:ln></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>\
+<w:r><w:rPr><w:sz w:val=\"48\"/></w:rPr><w:t>Floating text</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr anchor=\"ctr\"/></wps:wsp>";
+    let group = format!(
+        "<wpg:wgp><wpg:cNvPr id=\"2\" name=\"Group\"/><wpg:cNvSpPr/><wpg:grpSpPr>\
+<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"2743200\" cy=\"914400\"/>\
+<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"2743200\" cy=\"914400\"/></a:xfrm></wpg:grpSpPr>\
+{}{}</wpg:wgp>",
+        rect("Left", "70AD47", 0),
+        rect("Right", "ED7D31", 1_371_600)
+    );
+    let picture = "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"5\" name=\"img\" descr=\"anchor image\"/></pic:nvPicPr>\
+<pic:blipFill><a:blip r:embed=\"rIdImage1\"/><a:srcRect l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"/></pic:spPr></pic:pic>";
+
+    let document = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+<w:document xmlns:w=\"{W_NS}\" xmlns:r=\"{R_NS}\" xmlns:wp=\"{WP_NS}\" xmlns:a=\"{A_NS}\" xmlns:pic=\"{PIC_NS}\" xmlns:wps=\"{WPS_NS}\" xmlns:wpg=\"{WPG_NS}\"><w:body>\
+<w:p><w:r><w:t>Stage 5B floating objects</w:t></w:r></w:p>\
+{}{}{}{}\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/>\
+<w:pgBorders w:offsetFrom=\"page\">\
+<w:top w:val=\"single\" w:sz=\"16\" w:space=\"24\" w:color=\"1F3864\"/>\
+<w:left w:val=\"single\" w:sz=\"16\" w:space=\"24\" w:color=\"1F3864\"/>\
+<w:bottom w:val=\"single\" w:sz=\"16\" w:space=\"24\" w:color=\"1F3864\"/>\
+<w:right w:val=\"single\" w:sz=\"16\" w:space=\"24\" w:color=\"1F3864\"/>\
+</w:pgBorders></w:sectPr></w:body></w:document>",
+        anchor(1, "Shape", WPS_NS, 914_400, 457_200, &rect("Shape", "4472C4", 0)),
+        anchor(2, "Group", WPG_NS, 2_743_200, 1_371_600, &group),
+        anchor(3, "TextBox", WPS_NS, 914_400, 2_286_000, text_box),
+        anchor(4, "Picture", PIC_NS, 2_743_200, 3_200_400, picture),
+    );
+    let document_rels = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdImage1\" Type=\"{REL_BASE}/image\" Target=\"media/image1.png\"/></Relationships>"
+    );
+    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
+<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
+<Default Extension=\"xml\" ContentType=\"application/xml\"/>\
+<Default Extension=\"png\" ContentType=\"image/png\"/>\
+<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\
+</Types>";
+    let root_rels = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL_BASE}/officeDocument\" Target=\"word/document.xml\"/></Relationships>"
+    );
+    let entries: Vec<(&str, &[u8])> = vec![
+        ("[Content_Types].xml", content_types.as_bytes()),
+        ("_rels/.rels", root_rels.as_bytes()),
+        ("word/document.xml", document.as_bytes()),
+        ("word/_rels/document.xml.rels", document_rels.as_bytes()),
+        ("word/media/image1.png", TINY_PNG),
+    ];
+    zip(&entries)
+}
+
+/// A tiny valid 1x1 PNG used by the Stage-5B fixture.
+#[allow(clippy::unreadable_literal)]
+const TINY_PNG: &[u8] = &[
+    0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D', b'R',
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0A, b'I', b'D', b'A', b'T', 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE,
+    0x42, 0x60, 0x82,
+];
 
 fn build_strict_docx(document: &[u8]) -> Vec<u8> {
     let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>";

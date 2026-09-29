@@ -7,6 +7,7 @@ use strict_ooxml_core::error::Result;
 
 use crate::error::RenderError;
 use crate::fields::FieldKind;
+use crate::layout::floating::{reserves_vertical_space, PendingAnchor};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::table::{layout_blocks_inline, layout_table, offset_item};
 use crate::layout::{
@@ -70,6 +71,8 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
     paginator.flush_pending()?;
     let has_fields = paginator.has_fields;
     let mut layout = paginator.finish();
+    crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, &geometry);
+    crate::layout::pageborders::apply(ctx, &mut layout.pages, &geometry, section);
     crate::layout::headerfooter::decorate_pages(ctx, &mut layout.pages, geometry, section);
     Ok((layout, has_fields))
 }
@@ -113,10 +116,28 @@ fn layout_blocks(
                         paginator.page_break()?;
                     }
                 }
+                let page = paginator.pages.len();
+                let host_x = paginator.geometry.left;
+                let host_y = paginator.geometry.top + paginator.cursor;
                 for item in flow.flows {
                     paginator.place(item)?;
                 }
                 paginator.add_vspace(flow.space_after);
+                for anchor in flow.anchors {
+                    if reserves_vertical_space(&anchor) {
+                        if let Some(extent) = anchor.extent {
+                            let height =
+                                crate::units::emu_to_px(extent.cy.value(), ctx.options.scale);
+                            paginator.add_vspace(height);
+                        }
+                    }
+                    paginator.anchors.push(PendingAnchor {
+                        page,
+                        host_x,
+                        host_y,
+                        anchor,
+                    });
+                }
             }
             Block::Table(table) => {
                 let flows = layout_table(ctx, table, left, width);
@@ -230,6 +251,8 @@ struct Paginator<'a> {
     note_cache: HashMap<u32, (Vec<Item>, f64)>,
     /// Header rows of the table currently being placed (`w:tblHeader`).
     table_headers: Vec<TableRowFlow>,
+    /// Anchored (floating) objects recorded during pagination.
+    anchors: Vec<PendingAnchor>,
 }
 
 impl<'a> Paginator<'a> {
@@ -275,6 +298,7 @@ impl<'a> Paginator<'a> {
             continuation: false,
             note_cache,
             table_headers: Vec::new(),
+            anchors: Vec::new(),
         }
     }
 
@@ -595,6 +619,9 @@ impl<'a> Paginator<'a> {
                 items: Vec::new(),
             });
         }
-        Layout { pages: self.pages }
+        Layout {
+            pages: self.pages,
+            anchors: self.anchors,
+        }
     }
 }

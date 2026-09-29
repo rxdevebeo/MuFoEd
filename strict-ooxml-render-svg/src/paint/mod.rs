@@ -4,6 +4,7 @@
 //! in a fixed order; text/attribute values are XML-escaped. The output is a
 //! single `<svg>` document per page, terminated by `\n`.
 
+pub(crate) mod graphics;
 pub(crate) mod image;
 pub(crate) mod shapes;
 pub(crate) mod text;
@@ -35,6 +36,7 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
             Item::Line(line) => shapes::line_svg(&mut out, line),
             Item::Text(item) => text::text_svg(&mut out, item),
             Item::Image(item) => image::image_svg(&mut out, item),
+            Item::Path(item) => shapes::path_svg(&mut out, item),
         }
     }
     out.push_str("</svg>\n");

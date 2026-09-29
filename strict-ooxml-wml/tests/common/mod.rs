@@ -29,6 +29,10 @@ pub const A_NS: &str = "http://purl.oclc.org/ooxml/drawingml/main";
 pub const WP_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing";
 /// DrawingML picture Strict namespace.
 pub const PIC_NS: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
+/// wordprocessingShape Strict namespace.
+pub const WPS_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingShape";
+/// wordprocessingGroup Strict namespace.
+pub const WPG_NS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingGroup";
 
 /// Default `[Content_Types].xml` for the synthetic packages.
 pub const CONTENT_TYPES: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
@@ -56,7 +60,7 @@ pub const ROOT_RELS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 pub fn document_xml(body: &str) -> Vec<u8> {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-<w:document xmlns:w=\"{W_NS}\" xmlns:r=\"{R_NS}\" xmlns:wp=\"{WP_NS}\" xmlns:a=\"{A_NS}\" xmlns:pic=\"{PIC_NS}\">\
+<w:document xmlns:w=\"{W_NS}\" xmlns:r=\"{R_NS}\" xmlns:wp=\"{WP_NS}\" xmlns:a=\"{A_NS}\" xmlns:pic=\"{PIC_NS}\" xmlns:wps=\"{WPS_NS}\" xmlns:wpg=\"{WPG_NS}\">\
 <w:body>{body}</w:body></w:document>"
     )
     .into_bytes()

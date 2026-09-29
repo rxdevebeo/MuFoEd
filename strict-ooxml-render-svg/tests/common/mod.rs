@@ -23,6 +23,10 @@ pub(crate) const WP: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessing
 pub(crate) const A: &str = "http://purl.oclc.org/ooxml/drawingml/main";
 /// Strict picture namespace.
 pub(crate) const PIC: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
+/// Strict wordprocessingShape namespace.
+pub(crate) const WPS: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingShape";
+/// Strict wordprocessingGroup namespace.
+pub(crate) const WPG: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingGroup";
 /// Strict officeDocument relationship type.
 pub(crate) const DOC_REL: &str =
     "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument";
@@ -32,7 +36,7 @@ pub(crate) const IMAGE_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/re
 /// Builds a minimal Strict document wrapping `body`.
 pub(crate) fn document(body: &str) -> String {
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\" xmlns:wp=\"{WP}\" xmlns:a=\"{A}\" xmlns:pic=\"{PIC}\"><w:body>{body}</w:body></w:document>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\" xmlns:wp=\"{WP}\" xmlns:a=\"{A}\" xmlns:pic=\"{PIC}\" xmlns:wps=\"{WPS}\" xmlns:wpg=\"{WPG}\"><w:body>{body}</w:body></w:document>"
     )
 }
 

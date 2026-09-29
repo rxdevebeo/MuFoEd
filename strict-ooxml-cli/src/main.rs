@@ -9,8 +9,9 @@
 //!   [`ConformancePolicy::StrictOnly`] and prints a brief support summary.
 //! - `report <file> [--json|--text] [--out <path>]` — emits the full Stage-3
 //!   Feature Report.
-//! - `render <file> [--out <dir|file.svg>] [--pages <range>] [--scale <n>]` —
-//!   renders Stage-4 SVG pages.
+//! - `render <file> [--out <dir|file.svg>] [--pages <range>] [--scale <n>]
+//!   [--no-floating]` — renders Stage-4/5B SVG pages (floating heavy objects can
+//!   be disabled with `--no-floating`).
 //!
 //! Exit codes for `check` (per `TZ-STRICT-OOXML-RUST.md` decision G.8 and
 //! `STAGE-3-TASK.md` §7.2):
@@ -66,7 +67,7 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render> <file.docx> [--json|--text] [--out <path>] [--pages 1-3] [--scale 96]"
+        "usage: strict-ooxml <inspect|check|report|render> <file.docx> [--json|--text] [--out <path>] [--pages 1-3] [--scale 96] [--no-floating]"
     );
 }
 
@@ -254,6 +255,7 @@ struct RenderArgs {
     out: Option<String>,
     pages: Option<PageSelection>,
     scale: Option<f64>,
+    floating: bool,
 }
 
 impl RenderArgs {
@@ -262,9 +264,11 @@ impl RenderArgs {
         let mut out: Option<String> = None;
         let mut pages: Option<PageSelection> = None;
         let mut scale: Option<f64> = None;
+        let mut floating = true;
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
+                "--no-floating" => floating = false,
                 "--out" => {
                     index += 1;
                     out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
@@ -303,6 +307,7 @@ impl RenderArgs {
             out,
             pages,
             scale,
+            floating,
         })
     }
 }
@@ -340,6 +345,7 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     if let Some(pages) = parsed.pages {
         render_options = render_options.pages(pages);
     }
+    render_options = render_options.floating(parsed.floating);
     let rendered = match document.render_svg(&render_options) {
         Ok(rendered) => rendered,
         Err(error) => {

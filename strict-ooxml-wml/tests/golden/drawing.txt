@@ -1,5 +1,5 @@
 document blocks=1 sections=0 media=1 styles=0 numbering=0 features=0
   block[0] paragraph style=- jc=- num=-
     run b=Absent i=Absent sz=None color=None
-      Drawing(Drawing { kind: Inline(InlineDrawing { extent: Some(Extent { cx: Emu(914400), cy: Emu(457200) }), doc_pr: Some(DocPr { id: Some(1), name: Some("Picture 1"), descr: Some("d") }), graphic_uri: Some("http://schemas.openxmlformats.org/drawingml/2006/picture"), picture: Some(Picture { name: Some("image1.png"), descr: Some(""), blip: Some(BlipRef { embed: Some(RelId("rIdImg1")), link: None, resolved: Some(PartId("/word/media/image1.png")), location: SourceLocation { part: PartId("/word/document.xml"), line: 1, column: 678, byte_offset: 677 } }), extent: Some(Extent { cx: Emu(914400), cy: Emu(457200) }) }), location: SourceLocation { part: PartId("/word/document.xml"), line: 1, column: 401, byte_offset: 400 } }), location: SourceLocation { part: PartId("/word/document.xml"), line: 1, column: 390, byte_offset: 389 } })
+      drawing inline extent=914400x457200 blip=/word/media/image1.png
 media /word/media/image1.png Png

@@ -9,9 +9,10 @@ use strict_ooxml_core::part::PartId;
 use super::ids::{Ilvl, NumId, StyleId};
 use super::notes::NoteProperties;
 use super::values::{
-    Borders, CellMargins, Color, DocGridType, Fonts, Indentation, Justification, LineNumberRestart,
-    PageOrientation, SectionType, Shading, Spacing, TabStop, TableLayout, TableLook, TextDirection,
-    TriState, Twips, Underline, VertAlign, VerticalJc, Width,
+    BorderStyle, Borders, CellMargins, Color, DocGridType, EighthsPoint, Fonts, Indentation,
+    Justification, LineNumberRestart, PageOrientation, SectionType, Shading, Spacing, TabStop,
+    TableLayout, TableLook, TextDirection, ThemeColorRef, TriState, Twips, Underline, VertAlign,
+    VerticalJc, Width,
 };
 
 /// Numbering reference (`w:numPr`).
@@ -373,8 +374,104 @@ pub struct SectionProperties {
     pub footnote_properties: NoteProperties,
     /// Endnote properties (`w:endnotePr`).
     pub endnote_properties: NoteProperties,
+    /// Page borders (`w:pgBorders`), Stage 5B.
+    pub page_borders: Option<PageBorders>,
     /// Source location of `w:sectPr`.
     pub location: Option<SourceLocation>,
+}
+
+/// Which are the reference edges for page borders (`w:offsetFrom`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BorderOffsetFrom {
+    /// Offset from the page edge (`page`).
+    Page,
+    /// Offset from the text margin (`text`).
+    Text,
+}
+
+impl BorderOffsetFrom {
+    /// Parses the Strict lexical value.
+    #[must_use]
+    pub fn from_strict(value: &str) -> Option<Self> {
+        match value {
+            "page" => Some(Self::Page),
+            "text" => Some(Self::Text),
+            _ => None,
+        }
+    }
+
+    /// Returns the Strict lexical value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::Text => "text",
+        }
+    }
+}
+
+/// Z-order of page borders relative to text (`w:zOrder`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BorderZOrder {
+    /// Behind the text (`back`).
+    Back,
+    /// In front of the text (`front`).
+    Front,
+}
+
+impl BorderZOrder {
+    /// Parses the Strict lexical value.
+    #[must_use]
+    pub fn from_strict(value: &str) -> Option<Self> {
+        match value {
+            "back" => Some(Self::Back),
+            "front" => Some(Self::Front),
+            _ => None,
+        }
+    }
+
+    /// Returns the Strict lexical value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Back => "back",
+            Self::Front => "front",
+        }
+    }
+}
+
+/// One page-border edge (`w:top`, `w:left`, `w:bottom`, `w:right`).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PageBorder {
+    /// Line style (`w:val`).
+    pub style: Option<BorderStyle>,
+    /// Line width in eighths of a point (`w:sz`).
+    pub size: Option<EighthsPoint>,
+    /// Space between border and text, in points (`w:space`).
+    pub space: Option<u16>,
+    /// Border colour (`w:color`).
+    pub color: Option<Color>,
+    /// Theme colour reference (`w:themeColor` and tint/shade).
+    pub theme_color: Option<ThemeColorRef>,
+    /// Shadow (`w:shadow`).
+    pub shadow: bool,
+}
+
+/// Page borders (`w:pgBorders`), Stage 5B.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PageBorders {
+    /// Top edge.
+    pub top: Option<PageBorder>,
+    /// Left edge.
+    pub left: Option<PageBorder>,
+    /// Bottom edge.
+    pub bottom: Option<PageBorder>,
+    /// Right edge.
+    pub right: Option<PageBorder>,
+    /// Offset reference (`w:offsetFrom`).
+    pub offset_from: Option<BorderOffsetFrom>,
+    /// Z-order (`w:zOrder`).
+    pub z_order: Option<BorderZOrder>,
 }
 
 /// A resolved section of the document.

@@ -428,6 +428,11 @@ pub(crate) fn offset_item(item: &Item, dx: f64, dy: f64) -> Item {
             y: image.y + dy,
             ..image.clone()
         }),
+        Item::Path(path) => Item::Path(crate::layout::PathItem {
+            x: path.x + dx,
+            y: path.y + dy,
+            ..path.clone()
+        }),
     }
 }
 

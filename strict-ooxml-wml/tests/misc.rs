@@ -136,7 +136,7 @@ fn parses_drawing_link_without_embed() {
     let DrawingKind::Inline(inline) = &drawing.kind else {
         panic!("expected inline");
     };
-    let blip = inline.picture.as_ref().unwrap().blip.as_ref().unwrap();
+    let blip = inline.picture().unwrap().blip.as_ref().unwrap();
     assert!(blip.embed.is_none());
     assert_eq!(blip.link.as_ref().unwrap().as_str(), "rIdLink");
     assert!(document.media.is_empty());

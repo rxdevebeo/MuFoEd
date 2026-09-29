@@ -4,7 +4,9 @@
 //! pagination → a list of [`PlacedPage`]s holding paint [`Item`]s. Painting
 //! (`crate::paint`) is the only place that knows SVG.
 
+pub(crate) mod floating;
 pub(crate) mod headerfooter;
+pub(crate) mod pageborders;
 pub(crate) mod paginate;
 pub(crate) mod paragraph;
 pub(crate) mod table;
@@ -76,6 +78,35 @@ pub(crate) struct LineItem {
     pub dashed: bool,
 }
 
+/// An arbitrary SVG path (a DrawingML shape), in local coordinates.
+#[derive(Clone, Debug)]
+pub(crate) struct PathItem {
+    /// Placement x.
+    pub x: f64,
+    /// Placement y.
+    pub y: f64,
+    /// Local width.
+    pub w: f64,
+    /// Local height.
+    pub h: f64,
+    /// SVG path data in local coordinates (`0..w`, `0..h`).
+    pub d: String,
+    /// Fill colour.
+    pub fill: Option<String>,
+    /// Stroke colour.
+    pub stroke: Option<String>,
+    /// Stroke width in px.
+    pub stroke_w: f64,
+    /// SVG dash array.
+    pub dash: Option<String>,
+    /// Rotation in degrees.
+    pub rotate_deg: f64,
+    /// Horizontal flip.
+    pub flip_h: bool,
+    /// Vertical flip.
+    pub flip_v: bool,
+}
+
 /// An embedded/placed image.
 #[derive(Clone, Debug)]
 pub(crate) struct ImageItem {
@@ -91,6 +122,8 @@ pub(crate) struct ImageItem {
     pub href: Option<String>,
     /// Alternative text.
     pub alt: String,
+    /// Optional SVG transform (rotation/flip) applied about the image centre.
+    pub transform: Option<String>,
 }
 
 /// One paint primitive.
@@ -104,6 +137,8 @@ pub(crate) enum Item {
     Line(LineItem),
     /// Image.
     Image(ImageItem),
+    /// Arbitrary shape path.
+    Path(PathItem),
 }
 
 /// A fully placed page ready to be painted.
@@ -303,4 +338,6 @@ impl LayoutContext<'_> {
 pub(crate) struct Layout {
     /// Pages in order.
     pub pages: Vec<PlacedPage>,
+    /// Floating (anchored) objects with the page they belong to.
+    pub anchors: Vec<floating::PendingAnchor>,
 }

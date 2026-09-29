@@ -12,8 +12,10 @@ Design documents live in the repository root:
 - `STAGE-2-TASK.md`, `STAGE-2-REWORK.md` — Stage-2 task and rework.
 - `STAGE-3-TASK.md` — Stage-3 task (Feature Report).
 - `STAGE-4-TASK.md` — Stage-4 task (SVG rendering).
-- `docs/stage-2-report.md`, `docs/stage-3-report.md`, `docs/stage-4-report.md` —
-  stage delivery reports.
+- `STAGE-5-TASK.md`, `STAGE-5B-TASK.md` — Stage-5 tasks (5A extended support,
+  5B DrawingML + page borders).
+- `docs/stage-2-report.md`, `docs/stage-3-report.md`, `docs/stage-4-report.md`,
+  `docs/stage-5-report.md`, `docs/stage-5b-report.md` — stage delivery reports.
 - `docs/adr/` — accepted architecture decision records (incl. ADR-0004/0005/0006).
 
 ## Workspace layout

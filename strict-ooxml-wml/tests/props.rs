@@ -232,11 +232,15 @@ fn parses_richer_section_properties() {
     assert!(!columns.equal_width);
     assert!(columns.separator);
     assert_eq!(columns.columns.len(), 1);
-    // pgBorders is out of Stage-2 scope and recorded.
-    assert!(document.support.get("w:pgBorders").is_some());
+    // pgBorders is parsed in Stage 5B.
+    let borders = section.page_borders.as_ref().expect("page borders");
+    assert_eq!(
+        borders.top.as_ref().unwrap().style,
+        Some(strict_ooxml_wml::model::values::BorderStyle::Single)
+    );
     assert_eq!(
         document.support.get("w:pgBorders").unwrap().status,
-        SupportStatus::Unsupported
+        SupportStatus::Supported
     );
 }
 

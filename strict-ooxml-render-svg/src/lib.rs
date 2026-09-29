@@ -128,6 +128,8 @@ pub struct RenderOptions {
     pub pages: PageSelection,
     /// Draw a white page background.
     pub background: bool,
+    /// Render floating (anchored) DrawingML objects.
+    pub floating: bool,
 }
 
 impl Default for RenderOptions {
@@ -138,6 +140,7 @@ impl Default for RenderOptions {
             font_provider: FontProviderKind::Builtin,
             pages: PageSelection::All,
             background: true,
+            floating: true,
         }
     }
 }
@@ -163,6 +166,13 @@ impl RenderOptions {
     #[must_use]
     pub fn pages(mut self, pages: PageSelection) -> Self {
         self.pages = pages;
+        self
+    }
+
+    /// Enables or disables floating (anchored) DrawingML objects.
+    #[must_use]
+    pub fn floating(mut self, floating: bool) -> Self {
+        self.floating = floating;
         self
     }
 }

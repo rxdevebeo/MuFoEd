@@ -55,6 +55,13 @@ jobs:
           cargo test -p strict-ooxml-wml --all-features --test stage5_fixture_oracle
           cargo test -p strict-ooxml-wml --all-features --test stage5_coverage
           cargo test -p strict-ooxml --all-features --test stage5_corpus
+      - name: Stage-5B floating DrawingML (oracle + corpus + real Strict)
+        run: |
+          cargo test -p strict-ooxml-wml --all-features --test drawing_stage5b
+          cargo test -p strict-ooxml-wml --all-features --test stage5b_fixture_oracle
+          cargo test -p strict-ooxml-render-svg --all-features --test floating
+          cargo test -p strict-ooxml-render-svg --all-features --test strict_profile
+          cargo test -p strict-ooxml --all-features --test stage5b_corpus
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)

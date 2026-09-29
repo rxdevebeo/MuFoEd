@@ -23,8 +23,10 @@ pub use block::{
 };
 pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{
-    AnchorStub, BlipRef, DocPr, Drawing, DrawingKind, Extent, InlineDrawing, MediaIndex, MediaItem,
-    MediaKind, Picture,
+    AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
+    GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing, MediaIndex, MediaItem,
+    MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry,
+    ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap, WrapKind, Xfrm,
 };
 pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 pub use inline::{
@@ -34,9 +36,10 @@ pub use inline::{
 pub use notes::{Note, NoteKind, NoteProperties, NoteTable};
 pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 pub use props::{
-    CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind, HeaderFooterRef, Language,
-    LineNumbering, NumPr, PageMargins, PageSize, ParagraphProperties, RowProperties, RunProperties,
-    Section, SectionProperties, TableProperties,
+    BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind,
+    HeaderFooterRef, Language, LineNumbering, NumPr, PageBorder, PageBorders, PageMargins,
+    PageSize, ParagraphProperties, RowProperties, RunProperties, Section, SectionProperties,
+    TableProperties,
 };
 pub use settings::{DocumentZoom, Settings, Zoom};
 pub use styles::{Style, StyleTable};

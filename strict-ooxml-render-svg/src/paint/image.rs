@@ -27,7 +27,7 @@ pub(crate) fn layout_inline_image(
     let strict_ooxml_wml::model::DrawingKind::Inline(inline) = &drawing.kind else {
         return None;
     };
-    let picture = inline.picture.as_ref();
+    let picture = inline.picture();
     let extent = inline.extent.or_else(|| picture.and_then(|p| p.extent));
     let part = picture
         .and_then(|picture| picture.blip.as_ref())
@@ -58,6 +58,7 @@ pub(crate) fn layout_inline_image(
         h,
         href: part.and_then(|part| media_href(ctx, part)),
         alt,
+        transform: None,
     })
 }
 
@@ -102,25 +103,30 @@ pub(crate) fn image_svg(out: &mut String, item: &ImageItem) {
     } else {
         format!("<title>{}</title>", crate::paint::escape_text(&item.alt))
     };
+    let transform = item.transform.as_deref().map_or_else(String::new, |value| {
+        format!(" transform=\"{}\"", crate::paint::escape_attr(value))
+    });
     if let Some(href) = &item.href {
         let _ = writeln!(
             out,
-            "  <image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\" xlink:href=\"{}\">{}</image>",
+            "  <image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\"{} xlink:href=\"{}\">{}</image>",
             crate::paint::coord(item.x),
             crate::paint::coord(item.y),
             crate::paint::coord(item.w.max(0.0)),
             crate::paint::coord(item.h.max(0.0)),
+            transform,
             crate::paint::escape_attr(href),
             title,
         );
     } else {
         let _ = writeln!(
             out,
-            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#f2f2f2\" stroke=\"#999999\" stroke-width=\"1\">{}</rect>",
+            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#f2f2f2\" stroke=\"#999999\" stroke-width=\"1\"{}>{}</rect>",
             crate::paint::coord(item.x),
             crate::paint::coord(item.y),
             crate::paint::coord(item.w.max(0.0)),
             crate::paint::coord(item.h.max(0.0)),
+            transform,
             title,
         );
     }

@@ -580,6 +580,8 @@ fn drawing_and_run_constructors() {
             cx: Emu(1),
             cy: Emu(2),
         }),
+        src_rect: None,
+        xfrm: None,
     };
     let inline = InlineDrawing {
         extent: Some(Extent {
@@ -592,7 +594,7 @@ fn drawing_and_run_constructors() {
             descr: None,
         }),
         graphic_uri: Some(Arc::from("uri")),
-        picture: Some(picture),
+        graphic: Box::new(strict_ooxml_wml::model::Graphic::Picture(picture)),
         location: location(),
     };
     let drawing = Drawing {

@@ -231,8 +231,7 @@ fn dump_drawing(out: &mut String, drawing: &strict_ooxml_wml::model::drawing::Dr
                 |extent| format!("{}x{}", extent.cx.value(), extent.cy.value()),
             );
             let blip = inline
-                .picture
-                .as_ref()
+                .picture()
                 .and_then(|picture| picture.blip.as_ref())
                 .and_then(|blip| blip.resolved.as_ref())
                 .map_or_else(|| "-".to_owned(), |part| part.as_str().to_owned());
@@ -273,6 +272,7 @@ fn dump_run(out: &mut String, run: &Run, depth: usize) {
             RunContent::Break(kind) => {
                 let _ = writeln!(out, "break {}", kind.as_str());
             }
+            RunContent::Drawing(drawing) => dump_drawing(out, drawing),
             other => {
                 let _ = writeln!(out, "{other:?}");
             }
