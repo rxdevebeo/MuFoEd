@@ -45,6 +45,9 @@ use self::interner::Interner;
 /// Namespace of `w14` extensions (`w14:paraId`, `w14:textId`).
 pub(crate) const W14_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordml";
 
+/// Namespace of `w15` extensions (`w15:docId`, `w15:chartTrackingRefBased`).
+pub(crate) const W15_NS: &str = "http://schemas.microsoft.com/office/word/2012/wordml";
+
 /// Namespace of Markup Compatibility and Extensibility (MCE).
 pub(crate) const MCE_NS: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 

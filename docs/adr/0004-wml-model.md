@@ -246,3 +246,30 @@ Negative / costs:
   (`moveTo/lnTo/cubicBezTo/close`) and recorded `Partial`.
 - Validation: `tests/drawing.rs`, `tests/props.rs`, `tests/stage5b_fixture_oracle.rs`;
   rendering in ADR-0006.
+
+## Stage 5C - OMML formulas and `w:docDefaults` (additive)
+
+- New `model/math.rs`: the twenty OMML constructs of `STAGE-5C-TASK.md` §3.1 as
+  typed nodes, each with a `SourceLocation`, plus `MathParagraph`/`MathRun` and
+  the property sets (`m:rPr`, `m:argPr`, `m:ctrlPr`, `m:oMathParaPr`). OMML is a
+  native part of ISO/IEC 29500-1, so only
+  `http://purl.oclc.org/ooxml/officeDocument/math` is accepted; a formula
+  arrives as `Inline::Math` / `Inline::MathParagraph` where Stage 2 produced
+  `Opaque`. Per-formula budgets (4096 nodes, 64 nesting levels) are new
+  `LimitKind` variants, so a violation is `LimitExceeded` and never a panic.
+- `StyleTable` gains `DocDefaults` (`w:docDefaults/w:pPrDefault/w:pPr` and
+  `w:rPrDefault/w:rPr`). ISO/IEC 29500-1 §17.7.1 makes it the **root** of the
+  style cascade; until this change it was recorded `Partial` and skipped, and
+  every real Strict package that sets its font and `w:spacing` there laid out
+  with the wrong line height. The golden DOM is unchanged (it carries no
+  `docDefaults`), so no golden regeneration was needed.
+- `record_foreign` routes a table of standard elements that provably cannot
+  change a rendered page (`w:characterSpacingControl`, `w:clrSchemeMapping`,
+  `w:rsids`, `a:objectDefaults`, `a:extraClrSchemeList`, the `w14`/`w15`
+  identity settings, the editing/custom-XML compatibility settings) to
+  `ignored` with a reason, and `w:mathPr`/`m:mathPr` to `partial`
+  (`STAGE-5C-REWORK-1` D2). The element is still listed in the Feature Report,
+  so nothing is lost; `check` stops reporting a real Word file as blocked.
+- Validation: `tests/math.rs`, `tests/stage5c_fixture_oracle.rs` (extended to
+  the real repro packages `05`/`06`/`10`), `tests/styles_settings.rs`;
+  rendering in ADR-0006.

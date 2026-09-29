@@ -263,3 +263,62 @@ fn our_model_agrees_with_the_oracle_on_the_text() {
     assert_eq!(ours, oracle, "the two readers must see the same characters");
     assert!(!ours.is_empty(), "the fixture must carry text");
 }
+
+/// STAGE-5C-REWORK-1: the real Strict OMML packages committed with the rework
+/// must use the ISO Strict math namespace and must yield the same characters
+/// through the independent ZIP/XML reader and through our model. Read with
+/// `zip` + `roxmltree`, so a namespace or dispatch mistake cannot hide.
+#[test]
+fn the_repro_packages_agree_with_the_oracle() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/strict");
+    for name in [
+        "05-strict-math-simple",
+        "06-strict-math-display",
+        "10-strict-math-eqarr",
+    ] {
+        let path = dir.join(format!("{name}.docx"));
+        assert!(path.is_file(), "missing {}", path.display());
+        let document_xml = read_part(&path, "word/document.xml");
+        assert!(
+            document_xml.contains("http://purl.oclc.org/ooxml/officeDocument/math"),
+            "{name}: not a Strict OMML package"
+        );
+        assert!(
+            !document_xml.contains("schemas.openxmlformats.org/officeDocument"),
+            "{name}: a Transitional namespace leaked in"
+        );
+        let parsed = roxmltree::Document::parse(&document_xml).expect("valid xml");
+        let oracle: String = parsed
+            .descendants()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "t"
+                    && node.tag_name().namespace() == Some(MATH_NS)
+            })
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(!oracle.is_empty(), "{name}: no OMML text for the oracle");
+
+        let package = Package::open_path(&path, &OpenOptions::default()).expect("open");
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        let mut ours = String::new();
+        for block in &document.body.blocks {
+            let Block::Paragraph(paragraph) = block else {
+                continue;
+            };
+            for entry in &paragraph.inlines {
+                let expression = match entry {
+                    Inline::Math(expression) => expression,
+                    Inline::MathParagraph(display) => &display.expression,
+                    _ => continue,
+                };
+                expression.walk(&mut |node| {
+                    if let MathNode::Run(run) = node {
+                        ours.push_str(&run.text);
+                    }
+                });
+            }
+        }
+        assert_eq!(ours, oracle, "{name}: the two readers disagree");
+    }
+}

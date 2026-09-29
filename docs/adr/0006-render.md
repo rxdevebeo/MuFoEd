@@ -264,3 +264,39 @@ The acceptance criterion “SSIM ≥ 95% against approved references” is enfor
   the floating layer.
 - Validation: `tests/floating.rs`, `tests/strict_profile.rs`,
   `strict-ooxml/tests/stage5b_corpus.rs`; the 5A/Stage-4 SSIM gate stays green.
+
+## Stage 5C - math layout, the math font and inline drawings (additive)
+
+- New `math/` module: a deterministic two-pass TeX-style layout
+  (`layout_inline`, `layout_display`) that turns a formula into a size triple
+  plus paint items, and a deterministic SVG emission of the stretchy
+  constructs (delimiters, radical sign, large operators) as vector paths, so a
+  character the bundled face does not cover still yields the right structure.
+- **Block geometry follows the nominal math font, not the substitute.**
+  `map_family` puts STIX Two Math behind `Cambria Math`, and the two are not
+  metric-compatible. The *layout* therefore uses the nominal font's line
+  metrics (Cambria Math `hhea`: ascender 1901, descender 483, 2048 units/em)
+  for the formula row grid, the fraction box and the display sizes of the large
+  operators — the same substitution principle the text cascade already uses
+  when it puts Carlito's advances behind Calibri. Glyph shapes and advances
+  still come from the substitute. `STAGE-5C-REWORK-1` C3.
+- A display formula (`m:oMathPara`) is a self-contained block: the paragraph's
+  `w:spacing` is **not** added around it, and the line it interrupts is emitted
+  only when it carries content. Both were emitting a whole empty line of
+  leading per display formula.
+- A formula line keeps the paragraph's natural height and grows only by the
+  formula's own box, capped at 1.60×.
+- `w:docGrid` snaps the line height only for `w:type="lines"`,
+  `linesAndChars` and `snapToChars`; `w:type="default"` — also the value when
+  the attribute is absent — is *no* document grid (ISO/IEC 29500-1 §17.6.6).
+- An inline drawing (`wp:inline` with a shape or a group) is placed **in the
+  text line** with its bottom on the baseline, and the inline-image path no
+  longer claims it: an extent alone no longer turns a shape into an image
+  placeholder (`STAGE-5C-REWORK-1` D3).
+- `map_family` learns the LibreOffice `Liberation Sans/Serif/Mono` families
+  (→ `Arimo`/`Tinos`/`Cousine`, the same metric-compatible designs under their
+  OFL names) so a LibreOffice Strict package renders black text instead of
+  falling back to the rasterizer's grey (D1).
+- Validation: `tests/math.rs`, `tests/ssim.rs` (SSIM ≥ 0.95 + structural
+  invariant against pinned WPS references for `strict-stage5c`, `05`, `06`,
+  `07`, `10`), `tests/floating.rs`, `strict-ooxml/tests/stage5c_corpus.rs`.

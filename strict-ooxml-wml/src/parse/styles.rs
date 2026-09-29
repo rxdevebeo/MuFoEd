@@ -5,7 +5,7 @@ use strict_ooxml_core::xml::XmlEvent;
 
 use crate::model::ids::StyleId;
 use crate::model::props::{ParagraphProperties, RunProperties, TableProperties};
-use crate::model::styles::{Style, StyleTable};
+use crate::model::styles::{DocDefaults, Style, StyleTable};
 use crate::model::support::SupportStatus;
 use crate::model::values::StyleType;
 
@@ -32,13 +32,7 @@ impl PartParser<'_> {
                             }
                         }
                         "docDefaults" => {
-                            self.record(
-                                "w:docDefaults",
-                                SupportStatus::Partial,
-                                Some("document defaults are not flattened".to_owned()),
-                                Some(self.location()),
-                            );
-                            self.skip_element()?;
+                            table.set_defaults(self.parse_doc_defaults()?);
                         }
                         "latentStyles" => {
                             self.record(
@@ -59,6 +53,95 @@ impl PartParser<'_> {
         }
         self.leave();
         Ok(table)
+    }
+
+    /// Parses a `w:docDefaults` element (ISO/IEC 29500-1 §17.7.1).
+    fn parse_doc_defaults(&mut self) -> Result<DocDefaults> {
+        self.enter()?;
+        let mut defaults = DocDefaults::default();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_wml(&name) {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "rPrDefault" => {
+                            if let Some(run) = self.parse_wrapped_run_properties()? {
+                                defaults.run = run;
+                            }
+                        }
+                        "pPrDefault" => {
+                            if let Some(paragraph) = self.parse_wrapped_paragraph_properties()? {
+                                defaults.paragraph = paragraph;
+                            }
+                        }
+                        _ => self.skip_element()?,
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of docDefaults")),
+            }
+        }
+        self.leave();
+        Ok(defaults)
+    }
+
+    /// Parses a wrapper element whose only relevant child is `w:rPr`.
+    fn parse_wrapped_run_properties(&mut self) -> Result<Option<RunProperties>> {
+        self.enter()?;
+        let mut parsed = None;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_wml(&name) {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                        continue;
+                    }
+                    if name.local() == "rPr" {
+                        parsed = Some(self.parse_run_properties()?);
+                    } else {
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of rPrDefault")),
+            }
+        }
+        self.leave();
+        Ok(parsed)
+    }
+
+    /// Parses a wrapper element whose only relevant child is `w:pPr`.
+    fn parse_wrapped_paragraph_properties(&mut self) -> Result<Option<ParagraphProperties>> {
+        self.enter()?;
+        let mut parsed = None;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_wml(&name) {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                        continue;
+                    }
+                    if name.local() == "pPr" {
+                        parsed = Some(self.parse_paragraph_properties()?);
+                    } else {
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of pPrDefault")),
+            }
+        }
+        self.leave();
+        Ok(parsed)
     }
 
     /// Parses one `w:style` element.

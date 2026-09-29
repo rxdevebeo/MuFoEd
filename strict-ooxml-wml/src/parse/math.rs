@@ -1,10 +1,12 @@
 //! OMML (Office Math Markup Language) parser — `STAGE-5C-TASK.md` §5.1.
 //!
 //! Strict-first: only `http://purl.oclc.org/ooxml/officeDocument/math` is
-//! accepted. Every node carries a [`SourceLocation`], recursion is bounded by
-//! the shared XML depth limit and an additional node budget, and unmodelled
-//! constructs are recorded in the [`SupportModel`] as `Partial`/`Unsupported`
-//! instead of being dropped.
+//! accepted. Every node carries a
+//! [`SourceLocation`](strict_ooxml_core::error::SourceLocation), recursion is
+//! bounded by the shared XML depth limit and an additional node budget, and
+//! unmodelled constructs are recorded in the
+//! [`SupportModel`](crate::model::support::SupportModel) as
+//! `Partial`/`Unsupported` instead of being dropped.
 
 use std::sync::Arc;
 

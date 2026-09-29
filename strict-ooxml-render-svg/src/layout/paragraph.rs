@@ -26,7 +26,7 @@ enum Seg {
     /// An inline image.
     Image(ImageItem),
     /// An inline block object (shape/group), already rendered.
-    Object(Vec<Item>, f64),
+    Object(Vec<Item>, f64, f64),
     /// A floating (anchored) drawing.
     Anchor(Box<AnchorDrawing>),
     /// An inline formula (`m:oMath`), laid out on the text baseline.
@@ -64,22 +64,16 @@ pub(crate) struct ParagraphFlow {
 /// Default tab stop in twips (0.5 inch) when settings omit one.
 const DEFAULT_TAB_TWIPS: i32 = 720;
 
-/// Extra leading a line carrying an inline formula receives, as a multiple of
-/// the paragraph's natural line height (Word's math line spacing,
-/// `STAGE-5C-TASK.md` §5.2).
-const MATH_LINE_SPACING: f64 = 1.30;
-
 /// Hard cap on how far the ink of an inline formula may grow a text line.
-/// Word (and therefore the WPS reference) keeps a formula line's box close to
-/// the paragraph's natural line height; only a genuinely tall construct (a large
-/// matrix) expands it further. Capping the growth is what keeps the following
-/// lines aligned with the producer — the effect the SSIM/structural gate
-/// measures (§7.2).
+///
+/// A formula line keeps the paragraph's natural line height and grows only by
+/// what the formula's own box needs (ISO/IEC 29500-1 gives no separate math
+/// line spacing, and both reproducible WPS references measure exactly that).
+/// The cap bounds the growth for a construct that is genuinely taller than one
+/// line — a large matrix — so that a following line cannot be pushed off the
+/// producer's grid (`STAGE-5C-REWORK-1` C1, §5.2 of `STAGE-5C-TASK.md`).
 const MAX_MATH_LINE_GROWTH: f64 = 1.60;
 
-/// Vertical space Word inserts above and below a display formula, in points.
-const MATH_DISPLAY_SPACE_PT: f64 = 10.0;
-///
 /// `note_marker` is the formatted number used to replace a `w:footnoteRef`/
 /// `w:endnoteRef` marker when laying out a note body; body paragraphs pass
 /// `None`.
@@ -130,23 +124,29 @@ pub(crate) fn layout_paragraph(
         segments,
     );
 
-    // Word separates a display formula from the surrounding text; the extra
-    // leading belongs to the paragraph, as its spacing does.
-    let has_display = para
-        .inlines
-        .iter()
-        .any(|inline| matches!(inline, Inline::MathParagraph(_)) && ctx.options.math);
-    let display_pad = if has_display {
-        pt_to_px(MATH_DISPLAY_SPACE_PT, ctx.options.scale)
-    } else {
-        0.0
-    };
+    // A paragraph whose only content is a display formula (`m:oMathPara`) is a
+    // *math paragraph*: Word lays it out as one self-contained block and does
+    // not add the paragraph's `w:spacing` around it — the block's own ascent
+    // and descent already separate it from the surrounding lines. Adding the
+    // spacing a second time is what pushed the text below every display
+    // formula down by a full line (STAGE-5C-REWORK-1 C1).
+    let math_paragraph = ctx.options.math
+        && para
+            .inlines
+            .iter()
+            .any(|inline| matches!(inline, Inline::MathParagraph(_)))
+        && para.inlines.iter().all(|inline| {
+            matches!(
+                inline,
+                Inline::MathParagraph(_) | Inline::BookmarkStart(_) | Inline::BookmarkEnd(_)
+            )
+        });
 
     ParagraphFlow {
         flows: flows.0,
         anchors: flows.1,
-        space_before: space_before + display_pad,
-        space_after: space_after + display_pad,
+        space_before: if math_paragraph { 0.0 } else { space_before },
+        space_after: if math_paragraph { 0.0 } else { space_after },
         keep_lines: computed.keep_lines,
     }
 }
@@ -364,10 +364,10 @@ fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg
         DrawingKind::Inline(_) => {
             if let Some(image) = layout_inline_image(ctx, drawing, 0.0, 0.0) {
                 out.push(Seg::Image(image));
-            } else if let Some((items, _, height)) =
+            } else if let Some((items, width, height)) =
                 crate::paint::graphics::inline_items(ctx, drawing)
             {
-                out.push(Seg::Object(items, height));
+                out.push(Seg::Object(items, width, height));
             }
         }
         DrawingKind::Opaque(_) => {}
@@ -383,6 +383,8 @@ struct LineBuilder {
     ink_height: f64,
     /// Ink extent below the baseline contributed by formulas, in px.
     ink_depth: f64,
+    /// Height of the tallest inline drawing on the line, in px.
+    object_height: f64,
 }
 
 impl LineBuilder {
@@ -393,6 +395,7 @@ impl LineBuilder {
             footnote_refs: Vec::new(),
             ink_height: 0.0,
             ink_depth: 0.0,
+            object_height: 0.0,
         }
     }
 
@@ -437,6 +440,7 @@ fn build_lines(
         grid_line_pitch,
         flows: Vec::new(),
         anchors: Vec::new(),
+        math_block: false,
     };
     let mut current = LineBuilder::new();
     let mut x = if marker.is_some() { normal_x } else { first_x };
@@ -470,12 +474,20 @@ fn build_lines(
                 line_start = x;
                 first_line = false;
             }
-            Seg::Object(items, height) => {
-                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
-                sink.flows.push(Flow::Block { items, height });
-                x = normal_x;
-                line_start = x;
-                first_line = false;
+            Seg::Object(items, width, height) => {
+                // An inline drawing sits in the text line with its bottom on the
+                // baseline, as Word places `wp:inline` (STAGE-5C-REWORK-1 D3).
+                let line_end = line_start + sink.line_width;
+                if x + width > line_end + 1e-9 && !current.is_empty() {
+                    sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                    x = if first_line { first_x } else { normal_x };
+                    first_line = false;
+                }
+                for item in items {
+                    current.graphics.push(shift_item(item, x, -height));
+                }
+                current.object_height = current.object_height.max(height);
+                x += width;
             }
             Seg::Anchor(anchor) => sink.anchors.push(*anchor),
             Seg::Math(boxed, run) => {
@@ -492,8 +504,15 @@ fn build_lines(
                 let _ = run;
             }
             Seg::MathParagraph(boxed) => {
-                // A display formula owns its line, as Word/WPS lay it out.
-                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                // A display formula owns its line, as Word/WPS lay it out. The
+                // line it interrupts is emitted only when it carries content: an
+                // empty placeholder line would add a whole empty line of
+                // leading above and below the block, which is what pushed the
+                // following text a full line down (STAGE-5C-REWORK-1 C1).
+                let pending = std::mem::replace(&mut current, LineBuilder::new());
+                if !pending.is_empty() {
+                    sink.emit(pending, false);
+                }
                 let height = boxed.size.height + boxed.size.depth;
                 let items = boxed
                     .items
@@ -501,6 +520,7 @@ fn build_lines(
                     .map(|item| shift_item(item, 0.0, boxed.size.height))
                     .collect();
                 sink.flows.push(Flow::Block { items, height });
+                sink.math_block = true;
                 x = normal_x;
                 line_start = x;
                 first_line = false;
@@ -547,7 +567,10 @@ fn build_lines(
             }
         }
     }
-    sink.emit(current, true);
+    let current_is_empty = current.is_empty();
+    if !(sink.math_block && current_is_empty) {
+        sink.emit(current, true);
+    }
     let mut flows = sink.flows;
     let anchors = sink.anchors;
 
@@ -648,6 +671,9 @@ struct LineSink<'a, 'b> {
     grid_line_pitch: Option<f64>,
     flows: Vec<Flow>,
     anchors: Vec<AnchorDrawing>,
+    /// Whether the last flow is a display-formula block (so a trailing empty
+    /// line must not be synthesised after it).
+    math_block: bool,
 }
 
 impl LineSink<'_, '_> {
@@ -661,6 +687,7 @@ impl LineSink<'_, '_> {
             last,
         );
         self.flows.push(Flow::Line(finished));
+        self.math_block = false;
     }
 }
 
@@ -796,13 +823,12 @@ fn finish_line(
 
     let (mut height, mut ascent) =
         resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
-    // A formula may be taller or deeper than the text it sits on. Word gives a
-    // formula line extra leading and lets a genuinely tall construct grow it
-    // further, but not without bound; capping the growth is what keeps the
-    // following lines aligned with the producer (Stage 5C, SSIM gate).
+    // A formula may be taller or deeper than the text it sits on. The line keeps
+    // the paragraph's natural height and grows only by what the formula's box
+    // needs, capped so that a genuinely tall construct cannot push the following
+    // line off the producer's grid (STAGE-5C-REWORK-1 C1).
     let natural = height.max(1.0);
     if line.ink_height > 0.0 || line.ink_depth > 0.0 {
-        height = height.max(natural * MATH_LINE_SPACING);
         ascent = ascent.max(line.ink_height);
         height = height.max(ascent + line.ink_depth);
         let allowed = natural * MAX_MATH_LINE_GROWTH;
@@ -814,6 +840,12 @@ fn finish_line(
             ascent = ascent.max(line.ink_height);
             height = allowed.max(ascent + line.ink_depth);
         }
+    }
+    // An inline drawing keeps its full extent: the line grows to hold it, as
+    // Word does, instead of being capped like a formula.
+    if line.object_height > 0.0 {
+        ascent = ascent.max(line.object_height);
+        height = height.max(ascent);
     }
     for item in &mut line.items {
         item.baseline = ascent;

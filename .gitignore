@@ -13,3 +13,10 @@ fuzz/artifacts
 # note: strict-ooxml-core/tests/samples/ is the PUBLIC synthetic corpus and is
 # tracked on purpose; only the local tests/docx/ corpus is ignored here.
 strict-ooxml-core/tests/docx/
+# Stage-5C sample deliveries (STAGE-5C-REWORK-1 D5): the ZIP archives are NOT
+# committed - only the individual packages that ended up in
+# strict-ooxml-core/tests/strict/ (see that directory's README for provenance).
+/strict-ooxml-samples.zip
+/strict-ooxml-samples2.zip
+# a stray copy of a corpus fixture at the repository root
+/10-strict-math-eqarr.docx

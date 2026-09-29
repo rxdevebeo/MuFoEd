@@ -42,11 +42,24 @@ pub struct Style {
     pub location: SourceLocation,
 }
 
+/// Document-wide default properties (`w:docDefaults`).
+///
+/// ISO/IEC 29500-1 §17.7.1: `w:docDefaults` is the root of the style cascade —
+/// every paragraph and run inherits from it before any style is applied.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DocDefaults {
+    /// Default run properties (`w:rPrDefault/w:rPr`).
+    pub run: RunProperties,
+    /// Default paragraph properties (`w:pPrDefault/w:pPr`).
+    pub paragraph: ParagraphProperties,
+}
+
 /// All styles declared by `styles.xml`.
 #[derive(Clone, Debug, Default)]
 pub struct StyleTable {
     styles: Vec<Style>,
     by_id: HashMap<StyleId, usize>,
+    defaults: DocDefaults,
 }
 
 impl StyleTable {
@@ -54,6 +67,22 @@ impl StyleTable {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Sets the document-wide default properties (`w:docDefaults`).
+    pub fn set_defaults(&mut self, defaults: DocDefaults) {
+        self.defaults = defaults;
+    }
+
+    /// Returns the document-wide default properties, if any were declared.
+    #[must_use]
+    pub fn defaults(&self) -> Option<&DocDefaults> {
+        let empty = DocDefaults::default();
+        if self.defaults == empty {
+            None
+        } else {
+            Some(&self.defaults)
+        }
     }
 
     /// Inserts a style. A later definition with the same id replaces the former.

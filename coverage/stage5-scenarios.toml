@@ -319,7 +319,7 @@ note = "m:sPre with the scripts stacked to the left of the base"
 [[elements]]
 name = "math.nary"
 status = "supported"
-note = "m:nary: m:chr, m:limLoc (undOvr/subSup), m:grow, m:subHide, m:supHide"
+note = "m:nary: m:chr, m:limLoc (undOvr/subSup), m:grow, m:subHide, m:supHide; a large operator takes the display cut in m:oMathPara and the text cut inline"
 [[elements]]
 name = "math.delimiter"
 status = "supported"
@@ -391,7 +391,7 @@ note = "delimiters and the radical sign are drawn as deterministic vector paths,
 [[elements]]
 name = "math.font"
 status = "supported"
-note = "the bundled OFL face STIX Two Math supplies the OMML glyph repertoire (S5C.6)"
+note = "the bundled OFL face STIX Two Math supplies the OMML glyph repertoire (S5C.6); it is not metric-compatible with Cambria Math, so block layout uses the nominal font line metrics (STAGE-5C-REWORK-1 C3)"
 [[elements]]
 name = "math.mathml_export"
 status = "supported"
@@ -407,11 +407,19 @@ note = "a long inline formula moves to the next line as an atomic unit"
 [[elements]]
 name = "math.line_growth"
 status = "partial"
-note = "a formula line receives 1.30x the natural line height and grows at most 1.60x; the exact Word/WPS line box for tall constructs is not reproduced"
+note = "a formula line keeps the paragraph's natural height and grows by the formula's own box, capped at 1.60x; both WPS references measure exactly that. The cap still clips the box of a construct taller than 1.6 lines (a large m:m), so its ink can overlap the next line"
 [[elements]]
 name = "math.display_spacing"
+status = "supported"
+note = "a display formula is a self-contained block: the paragraph's own w:spacing is not added around it, and the line it interrupts is emitted only when it carries content (STAGE-5C-REWORK-1 C1)"
+[[elements]]
+name = "math.grid_metrics"
 status = "partial"
-note = "10 pt before and after a display formula; WPS overlaps consecutive m:oMathPara instead of stacking them"
+note = "m:m/m:eqArr rows sit on the nominal line grid of the math face (Cambria Math hhea, 1.164 em) and m:rSp/m:cSp are read as twips or hundredths of an em per m:rSpRule/m:cGpRule; the residual drift of three stacked display blocks on a synthetic all-constructs page is ~11 px (STAGE-5C-REWORK-1 C1)"
+[[elements]]
+name = "math.large_operators"
+status = "partial"
+note = "a large operator grows to a tabulated display cut (height and aspect measured from the WPS references) only in m:oMathPara, as Word does; the bundled face has no display cut, so the glyph is stroked as a vector path and carries less ink than WPS's filled glyph"
 [[elements]]
 name = "math.arg_alignment"
 status = "partial"

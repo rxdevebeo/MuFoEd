@@ -13,9 +13,12 @@ pub fn map_family(family: &str) -> &str {
     match family.trim().to_ascii_lowercase().as_str() {
         "calibri" => "Carlito",
         "cambria" => "Caladea",
-        "arial" | "helvetica" => "Arimo",
-        "times new roman" => "Tinos",
-        "courier new" => "Cousine",
+        // LibreOffice writes its own metric-compatible Liberation families;
+        // the bundled Arimo/Tinos/Cousine are the same designs under the OFL
+        // names (STAGE-5C-REWORK-1 D1).
+        "arial" | "helvetica" | "liberation sans" => "Arimo",
+        "times new roman" | "liberation serif" => "Tinos",
+        "courier new" | "liberation mono" => "Cousine",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
         // is the bundled OFL face with the full OMML glyph repertoire.
         "cambria math" | "stix two math" | "stix2 math" | "stixgeneral" => "STIX Two Math",
@@ -43,6 +46,17 @@ mod tests {
         assert_eq!(map_family("Cambria Math"), "STIX Two Math");
         assert_eq!(map_family("cambria math"), "STIX Two Math");
         assert_eq!(map_family("STIX Two Math"), "STIX Two Math");
+    }
+
+    #[test]
+    fn maps_the_libreoffice_families_to_their_bundled_twins() {
+        // STAGE-5C-REWORK-1 D1: an unmapped family is resolved by the
+        // rasterizer's fallback and comes out grey, so `04-libreoffice-…`
+        // rendered no ink at all.
+        assert_eq!(map_family("Liberation Sans"), "Arimo");
+        assert_eq!(map_family("Liberation Serif"), "Tinos");
+        assert_eq!(map_family("Liberation Mono"), "Cousine");
+        assert_eq!(map_family("  liberation mono "), "Cousine");
     }
 
     #[test]

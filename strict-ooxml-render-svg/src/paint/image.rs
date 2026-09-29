@@ -14,19 +14,27 @@ const DEFAULT_IMAGE_PX: f64 = 96.0;
 /// Builds an [`ImageItem`] for an inline drawing.
 ///
 /// A supported inline raster picture resolves to its media part. Any other
-/// inline drawing with a declared extent — charts, diagrams, EMF/WMF, a missing
-/// blip — is reserved as a placeholder of that size: Stage 4 cannot rasterize
-/// it, but reserving the extent keeps pagination aligned with the producer
-/// (S4F.6). `wp:anchor` (floating) drawings are out of scope and yield `None`.
+/// *picture-shaped* inline drawing with a declared extent — a chart, a diagram,
+/// EMF/WMF, a missing blip — is reserved as a placeholder of that size: Stage 4
+/// cannot rasterize it, but reserving the extent keeps pagination aligned with
+/// the producer (S4F.6). An inline *shape or group* is not an image at all: it
+/// is left to `crate::paint::graphics::inline_items`, which draws its geometry
+/// (STAGE-5C-REWORK-1 D3). `wp:anchor` (floating) drawings are out of scope and
+/// yield `None`.
 pub(crate) fn layout_inline_image(
     ctx: &LayoutContext<'_>,
     drawing: &strict_ooxml_wml::model::Drawing,
     x: f64,
     y: f64,
 ) -> Option<ImageItem> {
+    use strict_ooxml_wml::model::drawing::Graphic;
     let strict_ooxml_wml::model::DrawingKind::Inline(inline) = &drawing.kind else {
         return None;
     };
+    match inline.graphic.as_ref() {
+        Graphic::Shape(_) | Graphic::Group(_) | Graphic::Other => return None,
+        Graphic::None | Graphic::Picture(_) | Graphic::Chart | Graphic::Diagram => {}
+    }
     let picture = inline.picture();
     let extent = inline.extent.or_else(|| picture.and_then(|p| p.extent));
     let part = picture

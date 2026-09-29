@@ -135,6 +135,15 @@ pub fn compute_paragraph(
     let mut computed = ComputedParagraph::default();
     let theme = document.theme.as_ref();
 
+    // `w:docDefaults` is the root of the cascade (ISO/IEC 29500-1 §17.7.1): it
+    // applies before any style, so a document that only sets Calibri/11 pt and
+    // `w:spacing` there still gets the producer's line height and paragraph
+    // spacing.
+    if let Some(defaults) = document.styles.defaults() {
+        apply_paragraph_props(&mut computed, &defaults.paragraph, theme);
+        apply_run_props(&mut computed.default_run, &defaults.run, theme);
+    }
+
     let style_id = para.props.style.as_ref().or_else(|| {
         document
             .styles

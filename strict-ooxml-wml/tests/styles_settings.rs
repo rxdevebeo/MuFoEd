@@ -67,7 +67,12 @@ fn parses_full_style_definition() {
 </w:styles>"
     );
     let document = parse_aux(Some(&styles), None, None);
-    assert!(document.support.get("w:docDefaults").is_some());
+    // `w:docDefaults` is parsed and becomes the root of the style cascade
+    // (STAGE-5C-REWORK-1 C1: the real Strict corpus sets its line spacing and
+    // font there), so it is no longer reported as a partial.
+    assert!(document.support.get("w:docDefaults").is_none());
+    let defaults = document.styles.defaults().expect("document defaults");
+    assert_eq!(defaults.run.size.unwrap().value(), 22);
     assert_eq!(
         document.support.get("w:latentStyles").unwrap().status,
         SupportStatus::Ignored

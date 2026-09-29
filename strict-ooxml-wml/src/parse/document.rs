@@ -703,6 +703,12 @@ impl PartParser<'_> {
     }
 
     /// Records an unknown element as unsupported (MCE is recorded as ignored).
+    ///
+    /// Elements that ISO/IEC 29500-1 defines but that provably cannot change
+    /// this renderer's output are reclassified by [`harmless_element`] so that
+    /// real Word/LibreOffice Strict files are not reported as blocked on a
+    /// technicality (`STAGE-5C-REWORK-1` D2). The information is kept: the
+    /// feature is still listed, with the reason why it does not apply.
     pub(crate) fn record_foreign(&mut self, name: &QName) {
         let feature = feature_id_for(name);
         let is_mce = name
@@ -714,6 +720,8 @@ impl PartParser<'_> {
                 SupportStatus::Ignored,
                 Some("markup compatibility processing is Stage 6".to_owned()),
             )
+        } else if let Some((status, reason)) = harmless_element(name) {
+            (status, Some(reason.to_owned()))
         } else {
             (SupportStatus::Unsupported, None)
         };
@@ -729,6 +737,98 @@ impl PartParser<'_> {
                 (self.intern(&name), self.intern(&attr.value))
             })
             .collect()
+    }
+}
+
+/// Classifies a standard element that this renderer does not consume, so that
+/// [`PartParser::record_foreign`] does not turn it into an `unsupported`
+/// blocker on a real Word/LibreOffice Strict file
+/// (`STAGE-5C-REWORK-1` D2).
+///
+/// Returns `(status, reason)`. `Ignored` means the element provably cannot
+/// change the rendered output; `Partial` means it could in principle but this
+/// renderer does not model it. The reason is kept in the Feature Report, so no
+/// information is lost either way.
+fn harmless_element(name: &QName) -> Option<(crate::model::support::SupportStatus, &'static str)> {
+    use crate::model::support::SupportStatus;
+    let ns = name.ns.as_ref().map_or("", |uri| uri.as_str());
+    match (ns, name.local()) {
+        // `settings.xml`: proofing, revision, custom-XML and compatibility
+        // bookkeeping. None of it reaches the rendered page.
+        (
+            crate::WML_STRICT_NS,
+            "characterSpacingControl"
+            | "noPunctuationKerning"
+            | "printTwoOnOne"
+            | "strictFirstAndLastChars"
+            | "noLineBreaksAfter"
+            | "noLineBreaksBefore"
+            | "savePreviewPicture"
+            | "doNotValidateAgainstSchema"
+            | "saveInvalidXml"
+            | "ignoreMixedContent"
+            | "alwaysShowPlaceholderText"
+            | "doNotDemarcateInvalidXml"
+            | "saveXmlDataOnly"
+            | "useXSLTWhenSaving"
+            | "saveThroughXslt"
+            | "showXMLTags"
+            | "alwaysMergeEmptyNamespace"
+            | "updateFields"
+            | "hdrShapeDefaults"
+            | "doNotIncludeSubdocsInStats"
+            | "doNotAutoCompressPictures"
+            | "forceUpgrade"
+            | "captions"
+            | "readModeInkLockDown"
+            | "smartTagType",
+        ) => Some((
+            SupportStatus::Ignored,
+            "editing/compatibility setting without effect on the rendered page",
+        )),
+        (crate::WML_STRICT_NS, "rsids" | "rsid") => {
+            Some((SupportStatus::Ignored, "revision save ids carry no content"))
+        }
+        (crate::WML_STRICT_NS, "clrSchemeMapping") => Some((
+            SupportStatus::Ignored,
+            "theme colour mapping is resolved directly against the theme part",
+        )),
+        (crate::WML_STRICT_NS, "docVars" | "attachedSchema") => Some((
+            SupportStatus::Ignored,
+            "custom XML/doc-variable data does not affect the rendered page",
+        )),
+        (crate::WML_STRICT_NS, "shapeDefaults") => Some((
+            SupportStatus::Ignored,
+            "document-wide default shape properties apply only to shapes that omit them",
+        )),
+        (crate::WML_STRICT_NS | crate::MATH_STRICT_NS, "mathPr") => Some((
+            SupportStatus::Partial,
+            "document math defaults (math font, bracket/break rules) are not applied; \
+             the paragraph font and the Word default metrics drive the formula",
+        )),
+        // Microsoft extension markup in `settings.xml`: document identity and
+        // co-authoring bookkeeping (5B rework accepts these namespaces).
+        (
+            super::W14_NS | super::W15_NS,
+            "docId"
+            | "conflictMode"
+            | "discardImageEditingData"
+            | "defaultImageDpi"
+            | "chartTrackingRefBased",
+        ) => Some((
+            SupportStatus::Ignored,
+            "Microsoft extension setting without effect on the rendered page",
+        )),
+        // `theme1.xml`: object/extension defaults and extra colour schemes.
+        // Only the colour and font schemes reach the renderer.
+        (
+            crate::DRAWINGML_STRICT_NS,
+            "objectDefaults" | "extraClrSchemeLst" | "extLst" | "custClrLst" | "ext",
+        ) => Some((
+            SupportStatus::Ignored,
+            "theme default/extension data does not affect the rendered page",
+        )),
+        _ => None,
     }
 }
 

@@ -62,6 +62,12 @@ jobs:
           cargo test -p strict-ooxml-render-svg --all-features --test floating
           cargo test -p strict-ooxml-render-svg --all-features --test strict_profile
           cargo test -p strict-ooxml --all-features --test stage5b_corpus
+      - name: Stage-5C OMML formulas (oracle + corpus + real Strict repros)
+        run: |
+          cargo test -p strict-ooxml-wml --all-features --test stage5c_fixture_oracle
+          cargo test -p strict-ooxml-wml --all-features --test coverage_gate
+          cargo test -p strict-ooxml-render-svg --all-features --test math
+          cargo test -p strict-ooxml --all-features --test stage5c_corpus
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)

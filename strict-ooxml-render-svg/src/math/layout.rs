@@ -34,16 +34,50 @@ use crate::style::ComputedRun;
 /// The math family requested by Word documents, mapped to the bundled face.
 pub(crate) const MATH_FAMILY: &str = "Cambria Math";
 
+/// Nominal ascent of the math face Word uses for OMML, in em.
+///
+/// `map_family` substitutes STIX Two Math for Cambria Math: it covers the OMML
+/// glyph repertoire but is *not* metric-compatible with it
+/// (`assets/fonts/ATTRIBUTION.md`). Block layout therefore follows the
+/// **nominal** font's line metrics — the same substitution principle the text
+/// cascade uses when it puts Carlito's advances behind Calibri — so that a
+/// formula occupies the same number of lines and the same row pitch as in
+/// Word/WPS. Cambria Math's `hhea` table: ascender 1901, descender -483, no
+/// line gap, 2048 units/em.
+const MATH_ASCENT_EM: f64 = 1901.0 / 2048.0;
+/// Nominal descent of the math face Word uses for OMML, in em (positive).
+const MATH_DESCENT_EM: f64 = 483.0 / 2048.0;
+/// Nominal line height of one formula row, in em.
+const MATH_LINE_EM: f64 = MATH_ASCENT_EM + MATH_DESCENT_EM;
+
+/// The display size of a large operator, as `(height, aspect)` in em.
+///
+/// N-ary operators are set with a fixed display size rather than the text size,
+/// which is what makes `∑` and `∫` span their limits.
+fn nary_display(character: char) -> (f64, f64) {
+    NARY_DISPLAY
+        .iter()
+        .find(|(candidate, _, _)| *candidate == character)
+        .map_or(NARY_DISPLAY_DEFAULT, |(_, height, aspect)| {
+            (*height, *aspect)
+        })
+}
 /// Math axis height above the baseline, in em (Word's default).
 const AXIS: f64 = 0.25;
-/// Minimum gap between a fraction part and the rule, in em.
-const FRACTION_GAP: f64 = 0.10;
 /// Rule thickness (fraction bar, overlines, bars), in em.
 const RULE: f64 = 0.045;
 /// Minimum rule thickness in px so a hairline stays visible.
 const MIN_RULE_PX: f64 = 0.6;
 /// Horizontal padding inside a fraction, in em.
 const FRACTION_PAD: f64 = 0.12;
+/// Baseline shift of a stacked fraction's parts from the formula baseline, in em.
+const FRACTION_PART_SHIFT: f64 = 0.40;
+/// Baseline shift of a linear fraction's numerator, in em.
+const LINEAR_NUMERATOR_SHIFT: f64 = 0.30;
+/// Baseline shift of a linear fraction's denominator, in em.
+const LINEAR_DENOMINATOR_SHIFT: f64 = 0.20;
+/// Horizontal room the solidus of a linear fraction takes, in em.
+const LINEAR_SLASH_GAP: f64 = 0.16;
 /// Baseline shift of a first-order superscript, in em.
 const SUP_SHIFT: f64 = 0.38;
 /// Baseline shift of a first-order subscript, in em.
@@ -66,12 +100,35 @@ const MIN_DELIMITER_HEIGHT_PX: f64 = 8.0;
 const LIMIT_GAP: f64 = 0.12;
 /// Gap between an n-ary operator and its operand, in em.
 const NARY_GAP: f64 = 0.16;
+/// The display size of the large operators Word sets in display math: the
+/// height in em and the width/height ratio of the glyph.
+///
+/// Word picks a *display* cut of the math font for `m:oMathPara`, which is
+/// larger than the text cut and keeps each operator's own proportions. The
+/// values come from the two reproducible WPS references: `\u{2211}` with
+/// `i=1`/`n` limits measures 1.98 × 0.66 em and `\u{222B}` with `a`/`b` limits
+/// 2.18 × 0.28 em; the sum-like and integral-like families are kept apart.
+const NARY_DISPLAY: &[(char, f64, f64)] = &[
+    ('\u{2211}', 1.98, 0.66),
+    ('\u{220F}', 1.98, 0.90),
+    ('\u{2210}', 1.98, 0.90),
+    ('\u{222B}', 2.18, 0.28),
+    ('\u{222C}', 2.18, 0.55),
+    ('\u{222D}', 2.18, 0.80),
+    ('\u{222E}', 2.18, 0.28),
+    ('\u{22C3}', 1.98, 0.90),
+    ('\u{22C2}', 1.98, 0.90),
+    ('\u{22C1}', 1.98, 0.90),
+    ('\u{22C0}', 1.98, 0.90),
+];
+
+/// Fallback display height (in em) and aspect of a large operator whose family
+/// is not tabulated above.
+const NARY_DISPLAY_DEFAULT: (f64, f64) = (1.98, 0.66);
 /// Gap between a function name and its argument, in em.
 const FUNCTION_GAP: f64 = 0.12;
 /// Gap between matrix columns, in em.
 const COLUMN_GAP: f64 = 0.55;
-/// Gap between matrix rows, in em.
-const ROW_GAP: f64 = 0.25;
 /// Gap between an accent and its base, in em.
 const ACCENT_GAP: f64 = 0.02;
 /// Gap between a group character and its base, in em.
@@ -230,6 +287,8 @@ struct Frame<'a, 'b> {
     level: u8,
     /// Run format inherited from the paragraph (colour, weight, highlight).
     run: &'b ComputedRun,
+    /// Whether the formula belongs to a display (`m:oMathPara`) paragraph.
+    display: bool,
     /// Remaining item budget, shared by the whole formula.
     budget: &'b Cell<usize>,
 }
@@ -243,6 +302,16 @@ impl Frame<'_, '_> {
     /// The current em, in px.
     fn em(&self) -> f64 {
         self.size_px
+    }
+
+    /// The distance between two consecutive formula-row baselines, in px.
+    fn row_pitch(&self) -> f64 {
+        MATH_LINE_EM * self.size_px
+    }
+
+    /// The distance from a formula row's top edge to its baseline, in px.
+    fn row_ascent(&self) -> f64 {
+        MATH_ASCENT_EM * self.size_px
     }
 
     /// Returns a frame for the next script level.
@@ -267,9 +336,21 @@ impl Frame<'_, '_> {
         (RULE * self.size_px).max(MIN_RULE_PX)
     }
 
-    /// Converts a `m:sp`/`m:cSp` style point value to px.
+    /// Converts a point-denominated measure (`ST_PointMeasure`) to px.
+    ///
+    /// Only `m:boxPr/m:sp` and `m:borderBoxPr/m:sp` are points; the matrix and
+    /// equation-array spacings are twips — see [`Self::twips`].
     fn points(&self, points: i32) -> f64 {
         self.ctx.size_px(f64::from(points))
+    }
+
+    /// Converts a twips-denominated measure (`ST_UnsignedInteger`) to px.
+    ///
+    /// `m:cSp`, `m:cGp` and `m:rSp` carry a twip count, not points: Word
+    /// writes `m:rSp w:val="120"` for 120 twips (8 px), and treating the
+    /// value as points inflated a two-row `m:eqArr` to a 160 px row gap.
+    fn twips(&self, twips: i32) -> f64 {
+        crate::units::twips_to_px(twips, self.ctx.options.scale)
     }
 
     /// Builds a run format for a math text run.
@@ -389,12 +470,14 @@ fn base_frame<'a, 'b>(
     ctx: &'b LayoutContext<'a>,
     run: &'b ComputedRun,
     budget: &'b Cell<usize>,
+    display: bool,
 ) -> Frame<'a, 'b> {
     Frame {
         ctx,
         size_px: ctx.size_px(run.size_pt),
         level: 0,
         run,
+        display,
         budget,
     }
 }
@@ -406,7 +489,7 @@ pub(crate) fn layout_inline(
     run: &ComputedRun,
 ) -> MathBox {
     let budget = Cell::new(MAX_ITEMS);
-    layout_nodes(&base_frame(ctx, run, &budget), &expression.nodes)
+    layout_nodes(&base_frame(ctx, run, &budget, false), &expression.nodes)
 }
 
 /// Lays out a display formula (`m:oMathPara`), placing it in the content box.
@@ -422,7 +505,10 @@ pub(crate) fn layout_display(
     content_width: f64,
 ) -> MathBox {
     let budget = Cell::new(MAX_ITEMS);
-    let boxed = layout_nodes(&base_frame(ctx, run, &budget), &paragraph.expression.nodes);
+    let boxed = layout_nodes(
+        &base_frame(ctx, run, &budget, true),
+        &paragraph.expression.nodes,
+    );
     // `m:oMathParaPr/m:jc` places the display formula in the text column.
     let justification = paragraph
         .properties
@@ -535,23 +621,37 @@ fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
         apply_control(&mut numerator, control);
         apply_control(&mut denominator, control);
     }
+    // ISO/IEC 29500-1 §22.1.2.36: `m:type` selects between a stacked fraction
+    // (`bar`/`noBar`/`skew`) and the *linear* one (`lin`), whose parts stay on
+    // the line and therefore never grow it.
+    if fraction.bar_type.as_deref() == Some("lin") {
+        return layout_linear_fraction(frame, numerator, denominator);
+    }
     let bar_type = fraction.bar_type.as_deref().unwrap_or("bar");
     let thickness = frame.rule_thickness();
     let axis = frame.axis();
     let shrink = if fraction.small_fraction { 0.6 } else { 1.0 };
-    let gap = FRACTION_GAP * frame.em() * shrink;
     let pad = FRACTION_PAD * frame.em();
     let width = numerator.size.width.max(denominator.size.width).max(0.0) + 2.0 * pad;
 
-    // The numerator sits above the rule, the denominator below it, both clear
-    // of the rule and of the math axis.
-    let numerator_dy = -(numerator.size.height + thickness / 2.0 + gap - axis);
-    let denominator_dy = denominator.size.height + thickness / 2.0 + gap - axis;
+    // Word sets a fraction's parts on their own typographic box: the numerator's
+    // baseline sits `FRACTION_PART_SHIFT` above the formula's baseline and the
+    // denominator's the same distance below, with the rule on the math axis
+    // between them. Measuring the parts by the *font* ascent instead (what a
+    // plain glyph box reports) reserves room for accents and tall scripts a
+    // fraction part never carries, and made every inline formula grow its
+    // line. A part that is genuinely taller than one line keeps its extent.
+    let shift = |part: &MathBox| {
+        (FRACTION_PART_SHIFT * frame.em() * shrink).max((part.size.height - part.size.depth) / 2.0)
+    };
+    let numerator_dy = -shift(&numerator);
+    let denominator_dy = shift(&denominator);
 
     let mut out = MathBox::empty();
     match bar_type {
         "skew" => {
-            // A slanted rule spanning both parts, as in an inline fraction.
+            // A slanted rule spanning both parts, as Word draws a skewed
+            // fraction.
             let top = numerator_dy;
             let bottom = denominator_dy + denominator.size.depth;
             if let Some(rule) = frame.segment(0.0, bottom, width, top) {
@@ -575,6 +675,43 @@ fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
         out.size.height.max(axis + thickness / 2.0),
         out.size.depth.max(-axis + thickness / 2.0),
     );
+    out
+}
+
+/// Lays out the `m:f/m:type="lin"` linear fraction: both parts stay on the
+/// text line, the numerator raised and the denominator lowered, separated by a
+/// slash. The construct never exceeds one line of the math font, which is what
+/// makes a linear fraction inline (§22.1.2.36).
+fn layout_linear_fraction(
+    frame: &Frame<'_, '_>,
+    numerator: MathBox,
+    denominator: MathBox,
+) -> MathBox {
+    let em = frame.em();
+    let slash = LINEAR_SLASH_GAP * em;
+    let denominator_dx = numerator.size.width + 2.0 * slash;
+    let up = -LINEAR_NUMERATOR_SHIFT * em;
+    let down = LINEAR_DENOMINATOR_SHIFT * em;
+
+    let mut out = MathBox::empty();
+    // The slash runs from the denominator's lower left to the numerator's upper
+    // right, as a printed solidus does.
+    let x0 = numerator.size.width + 0.35 * slash;
+    let x1 = numerator.size.width + 1.65 * slash;
+    let y0 = down + denominator.size.depth.max(0.15 * em);
+    let y1 = up - numerator.size.height.max(0.15 * em);
+    if let Some(rule) = frame.segment(x0, y0, x1, y1) {
+        out.items.push(rule);
+    }
+    let denominator_width = denominator.size.width;
+    out.place(numerator, 0.0, up);
+    out.place(denominator, denominator_dx, down);
+    out.size.width = (denominator_dx + denominator_width).max(out.size.width);
+    // One line of the math font bounds the construct.
+    let ascent = frame.row_ascent();
+    let line = frame.row_pitch();
+    out.size.height = out.size.height.min(ascent);
+    out.size.depth = out.size.depth.min((line - ascent).max(0.0));
     out
 }
 
@@ -742,17 +879,24 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
         layout_argument(&script_frame, &nary.superscript)
     };
     let (lower, upper) = separate_scripts(frame, lower, upper);
-    let mut operator = frame.text(
-        0.0,
-        0.0,
-        &character.to_string(),
-        frame.math_run(MathStyle::Plain),
+    let under_over = nary.limit_location == Some(LimitLocation::UnderOver);
+    // The operator has to cover its limits as well as its operand.
+    let limit_extent = if under_over {
+        upper.size.height + LIMIT_GAP * frame.em() + lower.size.depth
+    } else {
+        0.0
+    } + 2.0 * LIMIT_GAP * frame.em();
+    let mut operator = nary_operator(
+        frame,
+        character,
+        nary.grow != Some(false),
+        operand.size.height + operand.size.depth,
+        limit_extent,
     );
     if let Some(control) = nary.control.as_deref() {
         apply_control(&mut operator, control);
     }
 
-    let under_over = nary.limit_location == Some(LimitLocation::UnderOver);
     let mut head = MathBox::empty();
     if under_over {
         // The limits sit over/under the operator; `m:grow` widens the
@@ -768,21 +912,90 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
         let upper_x = (width - upper.size.width) / 2.0;
         head = MathBox::blank(Size::new(width, 0.0, 0.0));
         head.place(operator, operator_x, 0.0);
-        let lower_y = head.size.depth + LIMIT_GAP * frame.em();
+        // The limits clear the operator's ink, not just its baseline: a
+        // stretched operator reaches well past the limit's own ascent.
+        let lower_y = head.size.depth + LIMIT_GAP * frame.em() + lower.size.height;
         head.place(lower, lower_x, lower_y);
-        let upper_y = -(head.size.height + LIMIT_GAP * frame.em());
+        let upper_y = -(head.size.height + LIMIT_GAP * frame.em()) - upper.size.depth;
         head.place(upper, upper_x, upper_y);
     } else {
         let script_x = operator.size.width + SCRIPT_GAP * frame.em();
-        head.place(operator, 0.0, 0.0);
-        head.place(lower, script_x, SUB_SHIFT * frame.em());
-        head.place(upper, script_x, -SUP_SHIFT * frame.em());
+        // A large operator carries its limits at its own extremes; a plain one
+        // keeps them at the ordinary script positions.
+        if operator.size.height > frame.row_ascent() {
+            let lower_y = operator.size.depth + LIMIT_GAP * frame.em() + lower.size.height;
+            let upper_y = -(operator.size.height + LIMIT_GAP * frame.em()) - upper.size.depth;
+            head.place(operator, 0.0, 0.0);
+            head.place(lower, script_x, lower_y);
+            head.place(upper, script_x, upper_y);
+        } else {
+            head.place(operator, 0.0, 0.0);
+            head.place(lower, script_x, SUB_SHIFT * frame.em());
+            head.place(upper, script_x, -SUP_SHIFT * frame.em());
+        }
     }
 
     let mut out = MathBox::empty();
     out.append(head);
     out.append_gap(operand, NARY_GAP * frame.em());
     out
+}
+
+/// Builds the `m:nary` operator glyph, stretched as Word draws it.
+///
+/// ISO/IEC 29500-1 §22.1.2.35: `m:grow` (on by default) makes the operator grow
+/// to cover its limits and operand. Word only takes that decision in *display*
+/// math — the inline style keeps the text cut of the math font, which is what
+/// the two WPS references show (`∑` measures ≈ 0.9 em inline and ≈ 1.98 em
+/// inside `m:oMathPara`). STIX Two Math has no display cut, so a grown operator
+/// is stroked as a deterministic path of the tabulated height and proportions.
+fn nary_operator(
+    frame: &Frame<'_, '_>,
+    character: char,
+    grow: bool,
+    operand_extent: f64,
+    limit_extent: f64,
+) -> MathBox {
+    let run = frame.math_run(MathStyle::Plain);
+    let text = character.to_string();
+    let plain = frame.text_size(&text, &run);
+    let em = frame.em();
+    if !(grow && frame.display) {
+        return frame.text(0.0, 0.0, &text, run);
+    }
+    let (display_height, aspect) = nary_display(character);
+    let height = (plain.height + plain.depth)
+        .max(operand_extent + 2.0 * NARY_GAP * em)
+        .max(limit_extent)
+        .max(display_height * em);
+    if height <= plain.height + plain.depth {
+        return frame.text(0.0, 0.0, &text, run);
+    }
+    let box_width = height * aspect;
+    let Some(d) = shapes::nary_operator(character, box_width, height) else {
+        return frame.text(0.0, 0.0, &text, run);
+    };
+    let width = box_width.max(plain.width);
+    // A large operator is centred on the math axis, as Word draws it.
+    let axis = frame.axis();
+    let item = frame.charge(Item::Path(PathItem {
+        x: crate::units::finite((width - box_width) / 2.0),
+        y: crate::units::finite(-height / 2.0 - axis),
+        w: crate::units::finite(box_width),
+        h: crate::units::finite(height),
+        d,
+        fill: None,
+        stroke: Some(frame.color()),
+        stroke_w: frame.rule_thickness(),
+        dash: None,
+        rotate_deg: 0.0,
+        flip_h: false,
+        flip_v: false,
+    }));
+    MathBox {
+        size: Size::new(width, height / 2.0 + axis, (height / 2.0 - axis).max(0.0)),
+        items: item.into_iter().collect(),
+    }
 }
 
 /// Lays out `m:d`.
@@ -916,7 +1129,8 @@ struct Grid {
     row_heights: Vec<f64>,
     row_depths: Vec<f64>,
     column_gap: f64,
-    row_gap: f64,
+    /// Distance between consecutive row baselines, in px.
+    row_pitch: f64,
     base: Option<MathAlignment>,
     per_column: Vec<MatrixColumn>,
 }
@@ -927,7 +1141,8 @@ impl Grid {
         rows: Vec<Vec<MathBox>>,
         column_count: usize,
         column_gap: f64,
-        row_gap: f64,
+        row_pitch: f64,
+        row_ascent: f64,
         base: Option<MathAlignment>,
         per_column: Vec<MatrixColumn>,
     ) -> Self {
@@ -944,7 +1159,11 @@ impl Grid {
                 height = height.max(cell.size.height);
                 depth = depth.max(cell.size.depth);
             }
-            row_heights.push(height);
+            // A row is never shorter than one line of the math font, and its
+            // baseline sits at the nominal ascent within it: Word lays matrix
+            // and equation-array rows out on a line grid, not on the raw ink
+            // extents of the cells.
+            row_heights.push(height.max(row_ascent));
             row_depths.push(depth);
         }
         Self {
@@ -953,7 +1172,7 @@ impl Grid {
             row_heights,
             row_depths,
             column_gap,
-            row_gap,
+            row_pitch,
             base,
             per_column,
         }
@@ -991,25 +1210,67 @@ impl Grid {
                 x += column + self.column_gap;
             }
             widest = widest.max(x - self.column_gap);
-            top += self.row_heights[row_index] + self.row_depths[row_index] + self.row_gap;
+            // Rows advance by a whole line of the math font, or by their own
+            // extent when a cell is taller than one line.
+            top += self.row_heights[row_index]
+                .max(self.row_pitch)
+                .max(self.row_heights[row_index] + self.row_depths[row_index]);
         }
-        let total = (top - self.row_gap).max(0.0);
+        let total = top.max(0.0);
         let first_baseline = self.row_heights.first().copied().unwrap_or(0.0);
         out.size.width = widest.max(out.size.width);
         out.size.height = out.size.height.max(first_baseline);
-        out.size.depth = out.size.depth.max(total - first_baseline);
+        out.size.depth = out.size.depth.max((total - first_baseline).max(0.0));
         out
+    }
+}
+
+/// Resolves the `m:cSp` inter-column spacing of a math grid, in px.
+///
+/// ISO/IEC 29500-1 §22.1.2.16: `m:cSp` is `ST_UnsignedTwipsMeasure` when
+/// `m:cGpRule` is `exact`/`atLeast` and a hundredth of the current font size
+/// otherwise.
+fn grid_column_gap(
+    frame: &Frame<'_, '_>,
+    rule: Option<&str>,
+    spacing: Option<i32>,
+    default_em: f64,
+) -> f64 {
+    match (rule, spacing) {
+        (Some("exact" | "atLeast"), Some(value)) => default_em * frame.em() + frame.twips(value),
+        (_, Some(value)) => (f64::from(value) / 100.0 * frame.em()).max(default_em * frame.em()),
+        _ => default_em * frame.em(),
+    }
+}
+
+/// Resolves the `m:rSp` row spacing of a math grid, in px.
+///
+/// ISO/IEC 29500-1 §22.1.2.79: with `m:rSpRule` `exact`/`atLeast` the value is
+/// `ST_UnsignedTwipsMeasure` added to the row pitch; with the rule `1` it is a
+/// hundredth of the current font size that sets the pitch itself. A row is
+/// never compressed below one line of the math font.
+fn grid_row_pitch(frame: &Frame<'_, '_>, rule: Option<&str>, spacing: Option<i32>) -> f64 {
+    let natural = frame.row_pitch();
+    match (rule, spacing) {
+        (Some("exact" | "atLeast"), Some(value)) => natural + frame.twips(value).max(0.0),
+        (_, Some(value)) => (f64::from(value) / 100.0 * frame.em()).max(natural),
+        _ => natural,
     }
 }
 
 /// Lays out `m:m`.
 fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
-    let column_gap = matrix
-        .column_spacing
-        .map_or(COLUMN_GAP * frame.em(), |points| frame.points(points));
-    let row_gap = matrix
-        .row_spacing
-        .map_or(ROW_GAP * frame.em(), |points| frame.points(points));
+    let column_gap = grid_column_gap(
+        frame,
+        matrix.column_group_rule.as_deref(),
+        matrix.column_spacing,
+        COLUMN_GAP,
+    );
+    let row_pitch = grid_row_pitch(
+        frame,
+        matrix.row_spacing_rule.as_deref(),
+        matrix.row_spacing,
+    );
     let rows: Vec<Vec<MathBox>> = matrix
         .rows
         .iter()
@@ -1024,7 +1285,8 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
         rows,
         columns,
         column_gap,
-        row_gap,
+        row_pitch,
+        frame.row_ascent(),
         matrix.base_justification,
         matrix.columns.clone(),
     );
@@ -1037,16 +1299,23 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
 
 /// Lays out `m:eqArr`.
 fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBox {
-    let row_gap = array
-        .row_spacing
-        .map_or(ROW_GAP * frame.em(), |points| frame.points(points));
+    let row_pitch = grid_row_pitch(frame, array.row_spacing_rule.as_deref(), array.row_spacing);
     let rows: Vec<Vec<MathBox>> = array
         .rows
         .iter()
         .map(|row| vec![layout_argument(frame, row)])
         .collect();
-    let grid = Grid::new(rows, 1, 0.0, row_gap, array.base_justification, Vec::new());
+    let grid = Grid::new(
+        rows,
+        1,
+        0.0,
+        row_pitch,
+        frame.row_ascent(),
+        array.base_justification,
+        Vec::new(),
+    );
     let mut out = grid.place();
+
     if let Some(control) = array.control.as_deref() {
         apply_control(&mut out, control);
     }

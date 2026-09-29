@@ -102,9 +102,76 @@ pub(crate) fn delimiter(character: char, width: f64, height: f64) -> Option<Stri
     Some(path(segments, width, height))
 }
 
+/// The path of a large n-ary operator in a local `width × height` box, or
+/// `None` when the character has no geometric form (it is then drawn as a
+/// glyph at its natural size).
+///
+/// Word draws `\u{2211}`/`\u{222B}` and friends from a separate *display* cut of
+/// the math font; the bundled face has no such cut, so the operator is stroked
+/// as a deterministic path that stretches to the height the layout asks for
+/// (§9.1: same structure even when the font has no glyph for it).
+#[must_use]
+pub(crate) fn nary_operator(character: char, width: f64, height: f64) -> Option<String> {
+    let segments: &[(&str, &[f64])] = match character {
+        // Sum-like: a sigma / capital pi zig-zag.
+        '\u{2211}' | '\u{2A01}' | '\u{2A02}' | '\u{2A04}' | '\u{2A06}' => {
+            &[("M", &[1.0, 0.0, 0.05, 0.0, 0.5, 0.5, 0.05, 1.0, 1.0, 1.0])]
+        }
+        '\u{220F}' | '\u{2210}' | '\u{2A03}' | '\u{2A05}' | '\u{2A07}' | '\u{2A08}'
+        | '\u{2A09}' => &[
+            ("M", &[0.0, 0.0, 1.0, 0.0]),
+            ("M", &[0.18, 0.0, 0.18, 1.0]),
+            ("M", &[0.82, 0.0, 0.82, 1.0]),
+        ],
+        // Integral-like: an elongated S with a serifed hook.
+        '\u{222B}' | '\u{222E}' | '\u{2A0C}' => &[(
+            "M",
+            &[
+                1.0, 0.0, 0.55, 0.0, 0.25, 0.12, 0.3, 0.45, 0.2, 0.85, 0.0, 1.0,
+            ],
+        )],
+        '\u{222C}' | '\u{2A0D}' => &[
+            (
+                "M",
+                &[
+                    0.95, 0.0, 0.5, 0.0, 0.22, 0.12, 0.27, 0.45, 0.17, 0.85, 0.0, 1.0,
+                ],
+            ),
+            (
+                "M",
+                &[
+                    1.0, 0.0, 0.55, 0.0, 0.27, 0.12, 0.32, 0.45, 0.22, 0.85, 0.05, 1.0,
+                ],
+            ),
+        ],
+        '\u{222D}' => &[
+            (
+                "M",
+                &[
+                    0.95, 0.0, 0.5, 0.0, 0.22, 0.12, 0.27, 0.45, 0.17, 0.85, 0.0, 1.0,
+                ],
+            ),
+            (
+                "M",
+                &[
+                    1.0, 0.0, 0.55, 0.0, 0.27, 0.12, 0.32, 0.45, 0.22, 0.85, 0.05, 1.0,
+                ],
+            ),
+            ("M", &[0.62, 0.0, 0.62, 1.0]),
+        ],
+        // Union, intersection, `bigvee`, `bigwedge`.
+        '\u{22C3}' | '\u{22C2}' | '\u{22C1}' | '\u{22C0}' => &[
+            ("M", &[0.0, 0.25, 1.0, 0.25]),
+            ("M", &[0.0, 0.75, 1.0, 0.75]),
+        ],
+        _ => return None,
+    };
+    Some(path(segments, width, height))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{delimiter, radical_sign};
+    use super::{delimiter, nary_operator, radical_sign};
 
     /// The numeric tokens of a path (the command letters are skipped).
     fn coordinates(path: &str) -> Vec<f64> {
@@ -130,6 +197,21 @@ mod tests {
     fn characters_without_a_geometric_form_have_no_path() {
         assert!(delimiter('a', 4.0, 20.0).is_none());
         assert!(delimiter('\u{222B}', 4.0, 20.0).is_none());
+    }
+
+    #[test]
+    fn every_large_operator_has_a_path() {
+        for ch in [
+            '\u{2211}', '\u{220F}', '\u{222B}', '\u{222C}', '\u{222D}', '\u{222E}', '\u{22C2}',
+            '\u{22C3}',
+        ] {
+            let d = nary_operator(ch, 6.0, 30.0).unwrap_or_else(|| panic!("no path for {ch:?}"));
+            assert!(d.starts_with('M'), "path must start with a move: {d}");
+            for value in coordinates(&d) {
+                assert!((0.0..=30.0).contains(&value), "{value} out of range in {d}");
+            }
+        }
+        assert!(nary_operator('a', 4.0, 20.0).is_none());
     }
 
     #[test]

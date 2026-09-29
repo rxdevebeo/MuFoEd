@@ -313,10 +313,18 @@ pub(crate) fn geometry_for(section: Option<&SectionProperties>, scale: f64) -> G
     let grid_line_pitch = section
         .and_then(|section| section.doc_grid.as_ref())
         .filter(|grid| {
-            // `snapToChars` governs character spacing, not the line pitch.
-            !matches!(
+            // ISO/IEC 29500-1 §17.6.6: only the snapping grid types make lines
+            // occupy whole grid units. `w:type="default"` (also the value used
+            // when the attribute is absent) is *no* document grid — `linePitch`
+            // then only fixes the number of lines per page, and the line height
+            // stays the natural one, as Word/WPS lay it out.
+            matches!(
                 grid.grid_type,
-                Some(strict_ooxml_wml::model::values::DocGridType::SnapToChars)
+                Some(
+                    strict_ooxml_wml::model::values::DocGridType::Lines
+                        | strict_ooxml_wml::model::values::DocGridType::LinesAndChars
+                        | strict_ooxml_wml::model::values::DocGridType::SnapToChars
+                )
             )
         })
         .and_then(|grid| grid.line_pitch)

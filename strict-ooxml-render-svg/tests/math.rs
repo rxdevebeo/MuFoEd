@@ -318,6 +318,90 @@ fn an_unmodelled_construct_is_reported_by_the_mathml_projection() {
     assert!(error.to_string().contains("m:newThing"), "{error}");
 }
 
+/// STAGE-5C-REWORK-1 C1: `m:eqArr` row spacing is `ST_UnsignedTwipsMeasure`,
+/// not a point value. Reading `m:rSp="120"` as 120 pt made a two-row array
+/// 175 px tall instead of 35 px and blew the display block apart.
+#[test]
+fn an_equation_array_row_spacing_is_twips() {
+    let narrow = render_body(
+        "<w:p><m:oMathPara><m:oMath><m:eqArr><m:eqArrPr/><m:e><m:r><m:t>a</m:t></m:r></m:e>\
+<m:e><m:r><m:t>b</m:t></m:r></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>",
+    );
+    let wide = render_body(
+        "<w:p><m:oMathPara><m:oMath><m:eqArr><m:eqArrPr><m:rSpRule m:val=\"exact\"/>\
+<m:rSp m:val=\"120\"/></m:eqArrPr><m:e><m:r><m:t>a</m:t></m:r></m:e>\
+<m:e><m:r><m:t>b</m:t></m:r></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>",
+    );
+    let row = |svg: &str| -> f64 {
+        // The two rows are the only `<text>` runs; their baselines differ by the
+        // row pitch.
+        let ys: Vec<f64> = svg
+            .match_indices("STIX Two Math")
+            .map(|(index, _)| {
+                let tag = &svg[index - 40..index];
+                attribute(tag, "y").expect("baseline")
+            })
+            .collect();
+        ys.windows(2)
+            .map(|pair| pair[1] - pair[0])
+            .fold(0.0, f64::max)
+    };
+    let narrow_pitch = row(&narrow);
+    let wide_pitch = row(&wide);
+    // 120 twips = 6 pt = 8 px of extra pitch.
+    assert!(
+        (wide_pitch - narrow_pitch - 8.0).abs() < 1.0,
+        "120 twips must add 8px of row pitch: {narrow_pitch} -> {wide_pitch}"
+    );
+    // Without the rule the natural row pitch is one line of the math font.
+    assert!(
+        narrow_pitch > 14.0 && narrow_pitch < 20.0,
+        "a two-row array must be about one line per row, got {narrow_pitch}"
+    );
+}
+
+/// STAGE-5C-REWORK-1 C1: `w:docGrid` without `w:type` is *no* document grid
+/// (ISO/IEC 29500-1 §17.6.6), so the line pitch must not snap the text lines.
+#[test]
+fn a_default_document_grid_does_not_snap_line_heights() {
+    let body = "<w:p><w:r><w:t>one</w:t></w:r></w:p><w:p><w:r><w:t>two</w:t></w:r></w:p>";
+    let free = render_body(&format!(
+        "<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/></w:sectPr></w:pPr></w:p>{body}"
+    ));
+    let default_grid = render_body(&format!(
+        "<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/>\
+<w:docGrid w:linePitch=\"360\"/></w:sectPr></w:pPr></w:p>{body}"
+    ));
+    let line_grid = render_body(&format!(
+        "<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/>\
+<w:docGrid w:type=\"lines\" w:linePitch=\"360\"/></w:sectPr></w:pPr></w:p>{body}"
+    ));
+    let pitch = |svg: &str| {
+        let ys: Vec<f64> = svg
+            .match_indices(">one</text>")
+            .chain(svg.match_indices(">two</text>"))
+            .map(|(index, _)| {
+                let start = svg[..index].rfind("<text ").expect("text");
+                attribute(&svg[start..index], "y").expect("baseline")
+            })
+            .collect();
+        ys[1] - ys[0]
+    };
+    assert!(
+        (pitch(&default_grid) - pitch(&free)).abs() < 0.01,
+        "the default grid must not snap lines: {} vs {}",
+        pitch(&default_grid),
+        pitch(&free)
+    );
+    assert!(
+        pitch(&line_grid) > pitch(&free),
+        "w:type=\"lines\" must snap to the 360-twip grid"
+    );
+}
+
 /// The Stage-5C fixture renders and is covered by the SSIM gate.
 #[test]
 fn the_stage5c_fixture_renders_two_pages() {
