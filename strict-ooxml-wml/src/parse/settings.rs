@@ -57,6 +57,14 @@ impl PartParser<'_> {
                                 wml_attr(&attrs, "val").map(|value| self.intern(value));
                         }
                         "mirrorMargins" => settings.mirror_margins = true,
+                        "footnotePr" => {
+                            settings.footnote_properties = self.parse_note_properties()?;
+                            continue;
+                        }
+                        "endnotePr" => {
+                            settings.endnote_properties = self.parse_note_properties()?;
+                            continue;
+                        }
                         "compat" => {
                             let pairs = self.parse_compat()?;
                             settings.compatibility.extend(pairs);

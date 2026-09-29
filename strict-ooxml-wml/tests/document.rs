@@ -274,7 +274,7 @@ fn footnote_reference_is_fixed_and_recorded() {
     assert!(matches!(run.content[0], RunContent::FootnoteRef(3)));
     assert_eq!(
         document.support.get("w:footnoteReference").unwrap().status,
-        SupportStatus::Unsupported
+        SupportStatus::Supported
     );
 }
 

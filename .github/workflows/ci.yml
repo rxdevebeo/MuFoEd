@@ -50,10 +50,17 @@ jobs:
         run: cargo test -p strict-ooxml-render-svg --all-features --test ssim
       - name: Real Strict corpus (REWORK-WML-1 + fidelity)
         run: cargo test -p strict-ooxml --all-features --test strict_corpus
+      - name: Stage-5 fixture (independent XML oracle + corpus)
+        run: |
+          cargo test -p strict-ooxml-wml --all-features --test stage5_fixture_oracle
+          cargo test -p strict-ooxml-wml --all-features --test stage5_coverage
+          cargo test -p strict-ooxml --all-features --test stage5_corpus
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Optional-element coverage gate (>= 90%)
         run: cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 90
+      - name: Stage-5 extended-scenario coverage gate (>= 85%)
+        run: cargo run -p xtool -- coverage --file coverage/stage5-scenarios.toml --min 85
 
   deny:
     name: cargo-deny

@@ -335,7 +335,18 @@ fn golden_section() {
         "http://purl.oclc.org/ooxml/officeDocument/relationships/header",
         "header1.xml",
     )]);
-    let document = parse_case(SECTION, &[("word/_rels/document.xml.rels", rels)]);
+    let header = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:hdr xmlns:w=\"{}\"><w:p><w:r><w:t>Head</w:t></w:r></w:p></w:hdr>",
+        common::W_NS
+    )
+    .into_bytes();
+    let document = parse_case(
+        SECTION,
+        &[
+            ("word/_rels/document.xml.rels", rels),
+            ("word/header1.xml", header),
+        ],
+    );
     check("section", &document);
 }
 

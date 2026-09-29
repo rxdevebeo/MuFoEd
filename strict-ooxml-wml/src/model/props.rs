@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::opc::rels::RelId;
+use strict_ooxml_core::part::PartId;
 
 use super::ids::{Ilvl, NumId, StyleId};
+use super::notes::NoteProperties;
 use super::values::{
     Borders, CellMargins, Color, DocGridType, Fonts, Indentation, Justification, LineNumberRestart,
     PageOrientation, SectionType, Shading, Spacing, TabStop, TableLayout, TableLook, TextDirection,
@@ -102,6 +104,8 @@ pub struct RunProperties {
     pub double_strike: TriState,
     /// Text colour (`w:color`).
     pub color: Option<Color>,
+    /// Theme colour reference (`w:color` theme attributes).
+    pub color_theme: Option<super::values::ThemeColorRef>,
     /// Highlight (`w:highlight`).
     pub highlight: Option<super::values::Highlight>,
     /// Font size in half-points (`w:sz`).
@@ -327,6 +331,11 @@ pub struct HeaderFooterRef {
     pub kind: HeaderFooterKind,
     /// Relationship id of the referenced part.
     pub rel_id: RelId,
+    /// Resolved header/footer part, filled by the resolve phase.
+    ///
+    /// `None` when the relationship is unresolved, absent or points at a part
+    /// that is not a header/footer (recorded as `Partial` in the support model).
+    pub part: Option<PartId>,
 }
 
 /// Section properties (`w:sectPr`).
@@ -360,6 +369,10 @@ pub struct SectionProperties {
     pub text_direction: Option<TextDirection>,
     /// Line numbering.
     pub line_numbering: Option<LineNumbering>,
+    /// Footnote properties (`w:footnotePr`).
+    pub footnote_properties: NoteProperties,
+    /// Endnote properties (`w:endnotePr`).
+    pub endnote_properties: NoteProperties,
     /// Source location of `w:sectPr`.
     pub location: Option<SourceLocation>,
 }

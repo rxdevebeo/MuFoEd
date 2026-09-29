@@ -175,3 +175,51 @@ Negative / costs:
   measurements (`ST_MeasurementOrPercent`/`ST_SignedTwipsMeasure`), which are
   rounded to the model's whole-twip representation rather than dropped
   (STAGE-2-WORK-ORDER D-1/D-2/P-1). It runs in the CI test job.
+
+## Stage 5A.1a — headers and footers (additive)
+
+- The DOM gains `HeaderFooter` (`part`, `is_header`, `blocks`, `location`) and
+  `Document::headers_footers`; `HeaderFooterRef` gains a resolved `part`.
+  `DocumentSource` gains `footnotes`/`endnotes`/`theme` part ids. All additions
+  are additive (pre-1.0, ADR-0004 §4).
+- Header (`w:hdr`) and footer (`w:ftr`) parts are located by **relationship
+  type** (`RelType::Header`/`Footer`), never by file name, and reused with the
+  body block parser (`parse_block_children`); the part root must be in the WML
+  Strict namespace under a detected-Strict package.
+- A relationship that resolves to a part absent from the package is
+  `StrictError::MissingReferencedPart { part, location }` (an error with a
+  location, never a panic). Unresolved or mistyped relationships are recorded as
+  `Partial` and left unresolved.
+- Validation: `tests/sections.rs` (parsing, missing part, wrong rel type),
+  `tests/golden.rs` (`section`), plus render coverage in ADR-0006.
+
+## Stage 5A.1b — footnotes, endnotes and fields (additive)
+
+- New `notes` model: `Note`/`NoteKind`/`NoteTable` (keyed by `w:id`, with the
+  reserved separator ids `-1`/`0`) and `NoteProperties`
+  (`w:footnotePr`/`w:endnotePr`). `Document` gains `footnotes`/`endnotes`;
+  `Settings` and `SectionProperties` gain note properties.
+- `footnotes.xml`/`endnotes.xml` are discovered by relationship type and parsed
+  with the body block parser; `w:footnoteRef`/`w:endnoteRef` are modelled as the
+  new `RunContent::NoteRef`. `w:footnoteReference`/`w:endnoteReference` are now
+  `Supported` (they were placeholder `Unsupported` in Stages 2–4).
+- Fields stay flat (`w:fldChar`/`w:instrText`/`w:fldSimple`) and are grouped in
+  the renderer; the parser records `w:fldSimple`/`w:instrText` as `Supported`
+  for computed fields (PAGE/NUMPAGES/SECTIONPAGES) and `Partial` for cached
+  fields, so the "not computed" state is never silent.
+- Validation: `tests/notes.rs` (parts, marker, numbering properties), unit tests
+  in `model/notes.rs`; rendering in ADR-0006.
+
+## Stage 5A.1d — themes (additive)
+
+- New `theme` model (`Theme`/`ThemeFonts`/`FontSet`/`ThemeColors`) parsed from
+  `theme/theme1.xml` (DrawingML Strict namespace). `Document.theme` holds it.
+- `Fonts` gains theme references (`asciiTheme`/`hAnsiTheme`/`eastAsiaTheme`/
+  `cstheme`); `RunProperties` gains `color_theme` (`w:themeColor` + tint/shade).
+- `Theme::font` resolves `major*`/`minor*` + script suffix;
+  `Theme::colors::resolve` maps `dark1`/`text1`/`accent1`/`hyperlink`/… to the
+  `dk1`/`lt1`/`accent1`/`hlink`/… slots. Effects/fills/line styles (`a:fmtScheme`)
+  are recorded `Partial` and not resolved (5A scope).
+- Validation: `tests/theme.rs`, unit tests in `model/theme.rs`/`parse/theme.rs`;
+  cascade application in ADR-0006.
+

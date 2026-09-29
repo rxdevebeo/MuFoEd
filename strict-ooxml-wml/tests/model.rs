@@ -537,16 +537,23 @@ fn document_accessors_and_tables() {
         styles: None,
         numbering: None,
         settings: None,
+        footnotes: None,
+        endnotes: None,
+        theme: None,
     };
     let built = Document {
         body: Body::default(),
         styles: StyleTable::new(),
         numbering: NumberingTable::new(),
+        footnotes: strict_ooxml_wml::model::NoteTable::new(),
+        endnotes: strict_ooxml_wml::model::NoteTable::new(),
         settings: Settings::default(),
+        theme: None,
         sections: vec![Section {
             properties: strict_ooxml_wml::model::props::SectionProperties::default(),
             location: location(),
         }],
+        headers_footers: Vec::new(),
         media: MediaIndex::new(),
         support: SupportModel::new(),
         source,

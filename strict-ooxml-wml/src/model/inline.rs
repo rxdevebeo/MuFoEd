@@ -58,6 +58,9 @@ pub enum RunContent {
     FootnoteRef(u32),
     /// Endnote reference (`w:endnoteReference`); rendering is Stage 5.
     EndnoteRef(u32),
+    /// The number marker inside a footnote/endnote body (`w:footnoteRef`/
+    /// `w:endnoteRef`); replaced by the note's number when rendered.
+    NoteRef,
     /// Symbol (`w:sym`).
     Symbol(Symbol),
     /// Last rendered page break (`w:lastRenderedPageBreak`).

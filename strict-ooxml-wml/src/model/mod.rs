@@ -9,17 +9,19 @@ pub mod document;
 pub mod drawing;
 pub mod ids;
 pub mod inline;
+pub mod notes;
 pub mod numbering;
 pub mod props;
 pub mod settings;
 pub mod styles;
 pub mod support;
+pub mod theme;
 pub mod values;
 
 pub use block::{
     AltChunkInfo, Block, GridCol, OpaqueBlock, Paragraph, SdtContainer, Table, TableCell, TableRow,
 };
-pub use document::{Body, Document, DocumentSource};
+pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{
     AnchorStub, BlipRef, DocPr, Drawing, DrawingKind, Extent, InlineDrawing, MediaIndex, MediaItem,
     MediaKind, Picture,
@@ -29,6 +31,7 @@ pub use inline::{
     BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent,
     Symbol, TextNode,
 };
+pub use notes::{Note, NoteKind, NoteProperties, NoteTable};
 pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 pub use props::{
     CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind, HeaderFooterRef, Language,
@@ -38,6 +41,7 @@ pub use props::{
 pub use settings::{DocumentZoom, Settings, Zoom};
 pub use styles::{Style, StyleTable};
 pub use support::{FeatureUse, SupportModel, SupportStatus};
+pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts};
 pub use values::{
     Border, BorderStyle, Borders, BreakKind, CellMargins, Color, DocGridType, EighthsPoint, Emu,
     FieldCharType, Fonts, HalfPoints, HeightRule, Highlight, HighlightOrColor, Indentation,

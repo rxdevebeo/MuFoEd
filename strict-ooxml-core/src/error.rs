@@ -191,6 +191,17 @@ pub enum StrictError {
     /// A referenced package part does not exist.
     #[error("missing package part: {0}")]
     MissingPart(PartId),
+    /// A part referenced by a relationship is absent from the package.
+    ///
+    /// Unlike [`MissingPart`](Self::MissingPart), this carries the location of
+    /// the referencing construct so the error is actionable (STAGE-5 §5.1).
+    #[error("missing referenced part {part} (referenced at {location})")]
+    MissingReferencedPart {
+        /// The referenced part that is not present in the package.
+        part: PartId,
+        /// Location of the referencing construct.
+        location: SourceLocation,
+    },
     /// A part name is not a safe, canonical OPC part path.
     #[error("invalid part name: {0}")]
     InvalidPartName(String),

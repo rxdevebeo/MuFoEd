@@ -26,6 +26,8 @@ criterion = "0.5"
 toml = "0.8"
 # Independent ZIP implementation used only as an oracle by `tests/corpus_oracle.rs`.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Independent XML parser used only as an oracle by `tests/stage5_fixture_oracle.rs`.
+roxmltree = "0.20"
 
 [[bench]]
 name = "wml_parse"

@@ -257,8 +257,8 @@ impl PartParser<'_> {
                 out.push(Inline::FootnoteRef(id));
                 self.record(
                     "w:footnoteReference",
-                    SupportStatus::Unsupported,
-                    Some("footnote rendering is Stage 5".to_owned()),
+                    SupportStatus::Supported,
+                    None,
                     Some(location),
                 );
                 self.skip_element()?;
@@ -268,8 +268,8 @@ impl PartParser<'_> {
                 out.push(Inline::EndnoteRef(id));
                 self.record(
                     "w:endnoteReference",
-                    SupportStatus::Unsupported,
-                    Some("endnote rendering is Stage 5".to_owned()),
+                    SupportStatus::Supported,
+                    None,
                     Some(location),
                 );
                 self.skip_element()?;
@@ -339,6 +339,21 @@ impl PartParser<'_> {
                         }
                         RunKind::InstrText => {
                             let text = self.parse_text_content()?;
+                            let computed = super::field_is_computed(&text);
+                            self.record(
+                                "w:instrText",
+                                if computed {
+                                    SupportStatus::Supported
+                                } else {
+                                    SupportStatus::Partial
+                                },
+                                Some(if computed {
+                                    "computed at render time".to_owned()
+                                } else {
+                                    "field result taken from cache (not computed)".to_owned()
+                                }),
+                                Some(self.location()),
+                            );
                             content.push(RunContent::InstrText(text));
                         }
                         RunKind::FieldChar => {
@@ -354,8 +369,8 @@ impl PartParser<'_> {
                             content.push(RunContent::FootnoteRef(id));
                             self.record(
                                 "w:footnoteReference",
-                                SupportStatus::Unsupported,
-                                Some("footnote rendering is Stage 5".to_owned()),
+                                SupportStatus::Supported,
+                                None,
                                 Some(self.location()),
                             );
                             self.skip_element()?;
@@ -365,10 +380,14 @@ impl PartParser<'_> {
                             content.push(RunContent::EndnoteRef(id));
                             self.record(
                                 "w:endnoteReference",
-                                SupportStatus::Unsupported,
-                                Some("endnote rendering is Stage 5".to_owned()),
+                                SupportStatus::Supported,
+                                None,
                                 Some(self.location()),
                             );
+                            self.skip_element()?;
+                        }
+                        RunKind::NoteRef => {
+                            content.push(RunContent::NoteRef);
                             self.skip_element()?;
                         }
                         RunKind::Symbol => {
@@ -402,6 +421,16 @@ impl PartParser<'_> {
                         }
                         RunKind::RunProperties => {
                             props = self.parse_run_properties()?;
+                        }
+                        RunKind::Separator => {
+                            let feature = feature_id_for(&name);
+                            self.record(
+                                &feature,
+                                SupportStatus::Supported,
+                                None,
+                                Some(self.location()),
+                            );
+                            self.skip_element()?;
                         }
                         RunKind::Opaque => {
                             self.record_foreign(&name);
@@ -473,6 +502,21 @@ impl PartParser<'_> {
     fn parse_fld_simple(&mut self, attrs: &[Attr]) -> Result<Field> {
         let location = self.location();
         let instruction = wml_attr(attrs, "instr").map(|value| self.intern(value));
+        let computed = instruction.as_deref().is_some_and(super::field_is_computed);
+        self.record(
+            "w:fldSimple",
+            if computed {
+                SupportStatus::Supported
+            } else {
+                SupportStatus::Partial
+            },
+            Some(if computed {
+                "computed at render time".to_owned()
+            } else {
+                "field result taken from cache (not computed)".to_owned()
+            }),
+            Some(location.clone()),
+        );
         let inlines = self.parse_inline_children()?;
         Ok(Field {
             instruction,

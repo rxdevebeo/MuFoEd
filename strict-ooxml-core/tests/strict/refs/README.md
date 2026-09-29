@@ -52,3 +52,21 @@ blank page or a ≥ 3 px shift on either axis, which SSIM alone tolerates
 
 Rasterization of our SVG uses `resvg` with the bundled fonts in
 `strict-ooxml-render-svg/assets/fonts/` (see its `ATTRIBUTION.md`).
+
+## Stage-5 fixture (no pixel reference)
+
+`tests/strict/strict-stage5.docx` is a synthetic Strict fixture covering the
+Stage-5 subsystems (headers/footers, footnotes/endnotes, computed fields, a
+complex table with gridSpan/vMerge/tblHeader, a theme and multi-level
+numbering). It is generated deterministically by
+`cargo run -p xtool -- gen-docx --stage5 --out <path>` (S5.12).
+
+It is validated **structurally** — parse model, Feature Report, two-page SVG
+render, and an independent XML oracle (`zip` + `roxmltree`,
+`strict-ooxml-wml/tests/stage5_fixture_oracle.rs`) — but it has **no WPS pixel
+reference**: on the pinned WPS build `word2photo` produced 12 pages for this
+two-page synthetic package (it does not honour the minimal synthetic Strict
+content model), so its output is not a trustworthy oracle. Pixel fidelity for
+real Strict text remains covered by `strict-text`/`strict-text-grid`
+(Stage 4).
+

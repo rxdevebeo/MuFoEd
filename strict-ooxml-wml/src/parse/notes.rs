@@ -1,0 +1,111 @@
+//! Parsing of `footnotes.xml` / `endnotes.xml` and note properties
+//! (`w:footnotePr`/`w:endnotePr`).
+
+use strict_ooxml_core::error::{Result, SourceLocation};
+use strict_ooxml_core::xml::{Attr, XmlEvent};
+
+use crate::model::notes::{Note, NoteKind, NoteProperties, NoteTable};
+use crate::model::support::SupportStatus;
+
+use super::{is_wml, parse_i32, parse_u32, val_attr, wml_attr, PartParser};
+
+impl PartParser<'_> {
+    /// Parses a `footnotes.xml` part.
+    pub(crate) fn parse_footnotes_root(&mut self) -> Result<(NoteTable, SourceLocation)> {
+        self.parse_notes_root("footnotes", "footnote", "w:footnotes", "w:footnote")
+    }
+
+    /// Parses an `endnotes.xml` part.
+    pub(crate) fn parse_endnotes_root(&mut self) -> Result<(NoteTable, SourceLocation)> {
+        self.parse_notes_root("endnotes", "endnote", "w:endnotes", "w:endnote")
+    }
+
+    /// Parses a notes part (`w:footnotes`/`w:endnotes`).
+    fn parse_notes_root(
+        &mut self,
+        root: &str,
+        item: &str,
+        root_feature: &str,
+        item_feature: &str,
+    ) -> Result<(NoteTable, SourceLocation)> {
+        self.enter()?;
+        self.expect_root(root)?;
+        let location = self.location();
+        self.record(
+            root_feature,
+            SupportStatus::Supported,
+            None,
+            Some(location.clone()),
+        );
+        let mut table = NoteTable::new();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_wml(&name) && name.local() == item {
+                        let note = self.parse_note(&attrs, item_feature)?;
+                        table.insert(note);
+                    } else {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of notes part")),
+            }
+        }
+        self.leave();
+        Ok((table, location))
+    }
+
+    /// Parses one `w:footnote`/`w:endnote`; its start element was consumed.
+    fn parse_note(&mut self, attrs: &[Attr], feature: &str) -> Result<Note> {
+        let location = self.location();
+        let id = wml_attr(attrs, "id").and_then(parse_i32).unwrap_or(0);
+        let kind = wml_attr(attrs, "type")
+            .and_then(NoteKind::from_strict)
+            .unwrap_or(NoteKind::Normal);
+        self.record(
+            feature,
+            SupportStatus::Supported,
+            None,
+            Some(location.clone()),
+        );
+        let (blocks, _sections) = self.parse_block_children()?;
+        Ok(Note {
+            id,
+            kind,
+            blocks,
+            location,
+        })
+    }
+
+    /// Parses a `w:footnotePr`/`w:endnotePr` element (start consumed).
+    pub(crate) fn parse_note_properties(&mut self) -> Result<NoteProperties> {
+        self.enter()?;
+        let mut props = NoteProperties::default();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_wml(&name) {
+                        match name.local() {
+                            "pos" => props.position = val_attr(&attrs).map(|v| self.intern(v)),
+                            "numFmt" => props.num_format = val_attr(&attrs).map(|v| self.intern(v)),
+                            "numStart" => props.num_start = val_attr(&attrs).and_then(parse_u32),
+                            "numRestart" => {
+                                props.num_restart = val_attr(&attrs).map(|v| self.intern(v));
+                            }
+                            _ => {}
+                        }
+                    }
+                    self.skip_element()?;
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of note properties")),
+            }
+        }
+        self.leave();
+        Ok(props)
+    }
+}

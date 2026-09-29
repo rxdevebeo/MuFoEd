@@ -149,3 +149,94 @@ The acceptance criterion “SSIM ≥ 95% against approved references” is enfor
 - `benches/render.rs` — 10/100/500-page layouts.
 - CI: SVG-validity oracle, corpus no-panic, SSIM gate, `cargo-deny`, coverage of
   `strict-ooxml-render-svg` ≥ 80% lines.
+
+## Stage 5A.1a — header/footer decoration (additive)
+
+- `layout/headerfooter.rs` lays each referenced header/footer part out once into
+  a region (origin = content left edge, `y = 0`) and decorates every page after
+  pagination. Selection honours `w:titlePg` (first page → `first`) and
+  `settings.evenAndOddHeaders` (even pages → `even`); otherwise `default`.
+- Geometry uses `w:pgMar/@w:header` and `@w:footer` (default 720 twips); the
+  footer region's top is `page_height − footer_offset − region_height`. Paint
+  order per page is deterministic: header, then body, then footer.
+- Per the Stage-5 open-question default (§9 q4), headers/footers do **not**
+  reduce the body's available height in this increment; they are painted inside
+  the top/bottom margins. Multi-section header selection follows the existing
+  single-section renderer (the last section's geometry is used).
+- Known limitation (deferred to a later 5A increment): a header/footer taller
+  than its margin band is not split across pages; it overflows into the body.
+- Validation: `tests/headers.rs` (default/first/even, `pgMar` offset delta,
+  footer placement, per-page presence).
+
+## Stage 5A.1b — footnotes, endnotes and computed fields (additive)
+
+- `notes.rs` numbers the referenced footnotes/endnotes in document order
+  (`NoteNumbering`), with `ST_NumberFormat` formatting (decimal, decimalZero,
+  roman, letter, bullet, none). Defaults: footnotes decimal, endnotes
+  `lowerRoman`; `w:footnotePr`/`w:endnotePr` (section over `settings`) set
+  format/start.
+- Footnote references render as superscript markers and reserve a bottom-of-page
+  area (`layout/paginate.rs`): a separator line plus the note bodies, laid out by
+  `layout_blocks_inline` with the note's number substituted for `w:footnoteRef`.
+  When the accumulated notes exceed the page, the remaining notes are deferred to
+  the next page as a continuation (full-width separator). Endnotes are flowed
+  after the body with an endnote separator.
+- Computed fields (`fields.rs`): `fldSimple` and `fldChar` sequences are folded
+  in the renderer; PAGE/NUMPAGES/SECTIONPAGES become placeholders resolved at
+  placement. NUMPAGES/SECTIONPAGES use a bounded two-pass layout
+  (`layout_document` → `layout_once`) that iterates until the page count is
+  stable; other fields keep their cached result.
+- Validation: `tests/notes.rs` (marker + area, endnote at end, continuation),
+  `tests/fields.rs` (PAGE/NUMPAGES, complex field, cache fallback, `\* roman`),
+  unit tests in `notes.rs`/`fields.rs`.
+
+## Stage 5A.1c — complex tables (additive)
+
+- `layout/table.rs` now builds a two-phase row/cell model. `gridSpan` positions
+  and sizes the merged cell; `vMerge` (restart/continue) suppresses continuation
+  cells and lets the restart cell own the merged region's shading, borders and
+  content, spanning the summed row heights. Nested tables are laid out inline
+  inside their cell.
+- Tables emit `Flow::TableRow` (items, height, `header`) instead of opaque
+  blocks, so `layout/paginate.rs` breaks the table between rows across pages and
+  repeats rows marked `w:tblHeader` at the top of each continued page
+  (`set_table_headers`/`repeat_table_headers`).
+- Known limitation: a single row taller than a page is placed whole and may
+  overflow (rows are not split at line boundaries); a merged region that crosses
+  a page break draws its background/borders on the first page.
+- Validation: `tests/tables.rs` (gridSpan, vMerge region height, nested table,
+  page break, repeated header row).
+
+## Stage 5A.1d — theme resolution (additive)
+
+- `style.rs` threads the document `Theme` through the cascade. `apply_fonts`
+  prefers a direct `w:ascii`/`w:hAnsi` family, then a theme reference
+  (`minorHAnsi` → minor Latin, `majorEastAsia` → major East-Asian, …), so
+  `w:asciiTheme`/`w:hAnsiTheme` resolve to the actual typeface (and are mapped to
+  the bundled metric-compatible face by `map_family`).
+- `apply_run_props` resolves `w:color/@w:themeColor` against the colour scheme and
+  applies `w:themeShade` (multiply) or `w:themeTint` (lighten); a direct `w:val`
+  still applies when no theme slot resolves.
+- Validation: `tests/themes.rs` (minor/major theme fonts, direct override,
+  accent resolution, shade), unit tests in `notes.rs`/`fields.rs`/`model/theme.rs`.
+
+## Stage 5A.1e — full list numbering (additive)
+
+- `numbering.rs` precomputes a marker for every numbered body paragraph in
+  document order (`NumberingMarkers`, keyed by `SourceLocation`) so the result is
+  stable across the two-pass field layout. The evaluator keeps per-`numId`
+  counters, increments the current level and restarts deeper levels when a higher
+  level is used (unless `w:lvlRestart w:val="0"`), and applies
+  `lvlOverride`/`startOverride`.
+- `w:lvlText` supports `%n` substitution with each referenced level's number
+  format (decimal/roman/letter, via `NumberFormat`); bullet levels render their
+  literal glyph. Level indentation (`w:pPr/w:ind`) is applied to a numbered
+  paragraph that has no direct indentation, positioning the marker at the
+  hanging offset and the text at the level start.
+- `layout/paragraph.rs` looks the marker up by paragraph location instead of the
+  previous single-level heuristic.
+- Known limitations: `w:lvlJc` marker alignment, `w:suff`, style-linked
+  numbering (`numStyleLink`/`styleLink`) and `numId=0` removal are not modelled.
+- Validation: `tests/numbering.rs` (multi-level + restart, start override,
+  bullet, indentation), unit tests in `numbering.rs`.
+

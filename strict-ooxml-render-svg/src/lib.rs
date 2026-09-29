@@ -45,7 +45,10 @@ pub mod font;
 pub mod style;
 pub mod units;
 
+mod fields;
 mod layout;
+mod notes;
+mod numbering;
 mod paint;
 
 use strict_ooxml_core::error::Result;
@@ -206,6 +209,8 @@ pub fn render_with_media(
         font: provider.as_ref(),
         media,
         media_mode: options.media,
+        note_numbers: notes::NoteNumbering::build(document),
+        numbering: numbering::NumberingMarkers::build(document),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
 

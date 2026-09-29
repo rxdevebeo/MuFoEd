@@ -1,4 +1,4 @@
-document blocks=2 sections=2 media=0 styles=0 numbering=0 features=0
+document blocks=2 sections=2 media=0 styles=0 numbering=0 features=2
   block[0] paragraph style=- jc=- num=-
     run b=Absent i=Absent sz=None color=None
       text space=Default "one"

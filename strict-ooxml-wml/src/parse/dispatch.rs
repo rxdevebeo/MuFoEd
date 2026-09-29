@@ -145,6 +145,8 @@ pub(crate) enum RunKind {
     FootnoteRef,
     /// `w:endnoteReference`.
     EndnoteRef,
+    /// `w:footnoteRef` / `w:endnoteRef` (the marker inside a note body).
+    NoteRef,
     /// `w:sym`.
     Symbol,
     /// `w:lastRenderedPageBreak`.
@@ -155,6 +157,8 @@ pub(crate) enum RunKind {
     SoftHyphen,
     /// `w:rPr`.
     RunProperties,
+    /// `w:separator` / `w:continuationSeparator` (note separators).
+    Separator,
     /// Unknown.
     Opaque,
 }
@@ -171,11 +175,15 @@ const RUN_TABLE: &[(&str, RunKind)] = &[
     ("fldChar", RunKind::FieldChar),
     ("footnoteReference", RunKind::FootnoteRef),
     ("endnoteReference", RunKind::EndnoteRef),
+    ("footnoteRef", RunKind::NoteRef),
+    ("endnoteRef", RunKind::NoteRef),
     ("sym", RunKind::Symbol),
     ("lastRenderedPageBreak", RunKind::LastRenderedPageBreak),
     ("noBreakHyphen", RunKind::NoBreakHyphen),
     ("softHyphen", RunKind::SoftHyphen),
     ("rPr", RunKind::RunProperties),
+    ("separator", RunKind::Separator),
+    ("continuationSeparator", RunKind::Separator),
     ("object", RunKind::Opaque),
     ("pict", RunKind::Opaque),
     ("AlternateContent", RunKind::Opaque),

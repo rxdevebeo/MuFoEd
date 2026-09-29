@@ -633,14 +633,21 @@ fn gen_docx(args: &[String]) -> ExitCode {
         eprintln!("error: gen-docx requires --out <path>");
         return ExitCode::from(2);
     };
-    let paragraphs: usize = arg_value(args, "--paragraphs")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(10);
-    let document = document_xml(paragraphs);
-    let bytes = build_strict_docx(&document);
+    let stage5 = args.iter().any(|arg| arg == "--stage5");
+    let (bytes, label) = if stage5 {
+        (stage5_docx(), "stage-5 fixture".to_owned())
+    } else {
+        let paragraphs: usize = arg_value(args, "--paragraphs")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(10);
+        (
+            build_strict_docx(&document_xml(paragraphs)),
+            format!("{paragraphs} paragraphs"),
+        )
+    };
     match std::fs::write(out, bytes) {
         Ok(()) => {
-            println!("wrote {out} ({paragraphs} paragraphs)");
+            println!("wrote {out} ({label})");
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -651,6 +658,9 @@ fn gen_docx(args: &[String]) -> ExitCode {
 }
 
 const W_NS: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+const A_NS: &str = "http://purl.oclc.org/ooxml/drawingml/main";
+const R_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+const REL_BASE: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 
 fn document_xml(paragraphs: usize) -> Vec<u8> {
     let mut xml = String::new();
@@ -664,6 +674,140 @@ fn document_xml(paragraphs: usize) -> Vec<u8> {
     }
     xml.push_str("</w:body></w:document>");
     xml.into_bytes()
+}
+
+/// Builds a Strict fixture exercising the Stage-5 subsystems.
+#[allow(clippy::too_many_lines)]
+fn stage5_docx() -> Vec<u8> {
+    let document = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+<w:document xmlns:w=\"{W_NS}\" xmlns:r=\"{R_NS}\"><w:body>\
+<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Heading One</w:t></w:r></w:p>\
+<w:p><w:pPr><w:numPr><w:ilvl w:val=\"1\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Sub item A</w:t></w:r></w:p>\
+<w:p><w:pPr><w:numPr><w:ilvl w:val=\"1\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Sub item B</w:t></w:r></w:p>\
+<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Heading Two</w:t></w:r></w:p>\
+<w:tbl><w:tblPr><w:tblW w:w=\"8000\" w:type=\"dxa\"/></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"2666\"/><w:gridCol w:w=\"2666\"/><w:gridCol w:w=\"2668\"/></w:tblGrid>\
+<w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:gridSpan w:val=\"3\"/><w:shd w:val=\"clear\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:r><w:t>Merged header</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:tcPr><w:vMerge w:val=\"restart\"/></w:tcPr><w:p><w:r><w:t>VMerge</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>B1</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>C1</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc>\
+<w:tc><w:p><w:r><w:t>B2</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>C2</w:t></w:r></w:p></w:tc></w:tr></w:tbl>\
+<w:p><w:r><w:t xml:space=\"preserve\">Page </w:t></w:r>\
+<w:fldSimple w:instr=\" PAGE \"><w:r><w:t>1</w:t></w:r></w:fldSimple>\
+<w:r><w:t xml:space=\"preserve\"> of </w:t></w:r>\
+<w:fldSimple w:instr=\" NUMPAGES \"><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p>\
+<w:p><w:r><w:t xml:space=\"preserve\">A footnote</w:t></w:r><w:r><w:footnoteReference w:id=\"1\"/></w:r>\
+<w:r><w:t xml:space=\"preserve\"> and an endnote</w:t></w:r><w:r><w:endnoteReference w:id=\"1\"/></w:r></w:p>\
+<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\
+<w:p><w:r><w:t>Second page body</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\"/>\
+<w:headerReference w:type=\"default\" r:id=\"rIdHeader1\"/>\
+<w:headerReference w:type=\"even\" r:id=\"rIdHeader2\"/>\
+<w:footerReference w:type=\"default\" r:id=\"rIdFooter1\"/>\
+<w:titlePg/></w:sectPr>\
+</w:body></w:document>"
+    );
+
+    let header_default = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:hdr xmlns:w=\"{W_NS}\"><w:p><w:r><w:t>Default header</w:t></w:r></w:p></w:hdr>"
+    );
+    let header_even = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:hdr xmlns:w=\"{W_NS}\"><w:p><w:r><w:t>Even header</w:t></w:r></w:p></w:hdr>"
+    );
+    let footer = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:ftr xmlns:w=\"{W_NS}\"><w:p><w:r><w:t>Default footer</w:t></w:r></w:p></w:ftr>"
+    );
+    let settings = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:settings xmlns:w=\"{W_NS}\"><w:evenAndOddHeaders/></w:settings>"
+    );
+    let numbering = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:numbering xmlns:w=\"{W_NS}\">\
+<w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.\"/></w:lvl>\
+<w:lvl w:ilvl=\"1\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.%2\"/></w:lvl>\
+</w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>"
+    );
+    let theme = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a:theme xmlns:a=\"{A_NS}\" name=\"Office\"><a:themeElements>\
+<a:clrScheme name=\"Office\">\
+<a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1>\
+<a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1>\
+<a:dk2><a:srgbClr val=\"44546A\"/></a:dk2>\
+<a:lt2><a:srgbClr val=\"E7E6E6\"/></a:lt2>\
+<a:accent1><a:srgbClr val=\"4472C4\"/></a:accent1>\
+<a:accent2><a:srgbClr val=\"ED7D31\"/></a:accent2>\
+<a:accent3><a:srgbClr val=\"A5A5A5\"/></a:accent3>\
+<a:accent4><a:srgbClr val=\"FFC000\"/></a:accent4>\
+<a:accent5><a:srgbClr val=\"5B9BD5\"/></a:accent5>\
+<a:accent6><a:srgbClr val=\"70AD47\"/></a:accent6>\
+<a:hlink><a:srgbClr val=\"0563C1\"/></a:hlink>\
+<a:folHlink><a:srgbClr val=\"954F72\"/></a:folHlink>\
+</a:clrScheme>\
+<a:fontScheme name=\"Office\"><a:majorFont><a:latin typeface=\"Cambria\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/></a:minorFont></a:fontScheme>\
+<a:fmtScheme name=\"Office\"/>\
+</a:themeElements></a:theme>"
+    );
+    let footnotes = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:footnotes xmlns:w=\"{W_NS}\" xmlns:r=\"{R_NS}\">\
+<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>\
+<w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>\
+<w:footnote w:id=\"1\"><w:p><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space=\"preserve\"> Footnote body text.</w:t></w:r></w:p></w:footnote>\
+</w:footnotes>"
+    );
+    let endnotes = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:endnotes xmlns:w=\"{W_NS}\" xmlns:r=\"{R_NS}\">\
+<w:endnote w:id=\"1\"><w:p><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:endnoteRef/></w:r><w:r><w:t xml:space=\"preserve\"> Endnote body text.</w:t></w:r></w:p></w:endnote>\
+</w:endnotes>"
+    );
+    let document_rels = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
+<Relationship Id=\"rIdSettings\" Type=\"{REL_BASE}/settings\" Target=\"settings.xml\"/>\
+<Relationship Id=\"rIdNumbering\" Type=\"{REL_BASE}/numbering\" Target=\"numbering.xml\"/>\
+<Relationship Id=\"rIdTheme\" Type=\"{REL_BASE}/theme\" Target=\"theme/theme1.xml\"/>\
+<Relationship Id=\"rIdHeader1\" Type=\"{REL_BASE}/header\" Target=\"header1.xml\"/>\
+<Relationship Id=\"rIdHeader2\" Type=\"{REL_BASE}/header\" Target=\"header2.xml\"/>\
+<Relationship Id=\"rIdFooter1\" Type=\"{REL_BASE}/footer\" Target=\"footer1.xml\"/>\
+<Relationship Id=\"rIdFootnotes\" Type=\"{REL_BASE}/footnotes\" Target=\"footnotes.xml\"/>\
+<Relationship Id=\"rIdEndnotes\" Type=\"{REL_BASE}/endnotes\" Target=\"endnotes.xml\"/>\
+</Relationships>"
+    );
+    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
+<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
+<Default Extension=\"xml\" ContentType=\"application/xml\"/>\
+<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.ms-word.document.main+xml\"/>\
+<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.ms-word.settings+xml\"/>\
+<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.ms-word.numbering+xml\"/>\
+<Override PartName=\"/word/theme/theme1.xml\" ContentType=\"application/vnd.ms-word.theme+xml\"/>\
+<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.ms-word.header+xml\"/>\
+<Override PartName=\"/word/header2.xml\" ContentType=\"application/vnd.ms-word.header+xml\"/>\
+<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.ms-word.footer+xml\"/>\
+<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.ms-word.footnotes+xml\"/>\
+<Override PartName=\"/word/endnotes.xml\" ContentType=\"application/vnd.ms-word.endnotes+xml\"/>\
+</Types>";
+    let root_rels = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL_BASE}/officeDocument\" Target=\"word/document.xml\"/></Relationships>"
+    );
+
+    let entries: Vec<(&str, &[u8])> = vec![
+        ("[Content_Types].xml", content_types.as_bytes()),
+        ("_rels/.rels", root_rels.as_bytes()),
+        ("word/document.xml", document.as_bytes()),
+        ("word/_rels/document.xml.rels", document_rels.as_bytes()),
+        ("word/settings.xml", settings.as_bytes()),
+        ("word/numbering.xml", numbering.as_bytes()),
+        ("word/theme/theme1.xml", theme.as_bytes()),
+        ("word/header1.xml", header_default.as_bytes()),
+        ("word/header2.xml", header_even.as_bytes()),
+        ("word/footer1.xml", footer.as_bytes()),
+        ("word/footnotes.xml", footnotes.as_bytes()),
+        ("word/endnotes.xml", endnotes.as_bytes()),
+    ];
+    zip(&entries)
 }
 
 fn build_strict_docx(document: &[u8]) -> Vec<u8> {

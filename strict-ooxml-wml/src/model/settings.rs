@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use super::ids::StyleId;
+use super::notes::NoteProperties;
 use super::values::Twips;
 
 /// The document zoom level (`w:zoom`).
@@ -79,6 +80,10 @@ pub struct Settings {
     pub compatibility: Vec<(Arc<str>, Arc<str>)>,
     /// Theme font languages (`w:themeFontLang`).
     pub theme_font_lang: Option<Arc<str>>,
+    /// Footnote properties (`w:footnotePr`).
+    pub footnote_properties: NoteProperties,
+    /// Endnote properties (`w:endnotePr`).
+    pub endnote_properties: NoteProperties,
     /// Click-and-type settings are ignored in Stage 2.
     pub click_and_type: bool,
     /// Recognise the document as having a "mirror margins" preference.

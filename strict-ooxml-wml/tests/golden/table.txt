@@ -1,4 +1,4 @@
-document blocks=1 sections=0 media=0 styles=0 numbering=0 features=0
+document blocks=1 sections=0 media=0 styles=0 numbering=0 features=2
   block[0] table grid=[1000,2000,3000] rows=2
     row cells=2
       cell span=Some(2) vmerge=None blocks=1

@@ -20,19 +20,22 @@ pub(crate) fn validate_references(document: &mut Document, package: &Package) {
                 .resolve_relationship(&main, reference.rel_id.as_str())
                 .is_err()
             {
-                issues.push(format!(
-                    "unresolved header/footer relationship '{}'",
-                    reference.rel_id
+                issues.push((
+                    format!(
+                        "unresolved header/footer relationship '{}'",
+                        reference.rel_id
+                    ),
+                    section.location.clone(),
                 ));
             }
         }
     }
-    for message in issues {
+    for (message, location) in issues {
         document.support.record(
             "w:headerReference",
             SupportStatus::Partial,
             Some(message),
-            None,
+            Some(location),
         );
     }
 }

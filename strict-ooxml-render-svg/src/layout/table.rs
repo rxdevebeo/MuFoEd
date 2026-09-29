@@ -1,18 +1,61 @@
-//! Table layout: grid, spans, borders, shading (`STAGE-4-TASK.md` §5.5).
+//! Table layout: grid, spans, vertical merges, borders, shading
+//! (`STAGE-4-TASK.md` §5.5, `STAGE-5-TASK.md` §5.7–§5.8).
 
 use strict_ooxml_wml::model::props::CellProperties;
-use strict_ooxml_wml::model::values::{Border, BorderStyle, CellMargins, Twips, Width, WidthKind};
+use strict_ooxml_wml::model::values::{
+    Border, BorderStyle, CellMargins, Twips, VerticalMerge, Width, WidthKind,
+};
 use strict_ooxml_wml::model::{Block, Table};
 
 use crate::layout::paragraph::layout_paragraph;
-use crate::layout::{Flow, Item, LayoutContext, LineItem, RectItem};
+use crate::layout::{Flow, Item, LayoutContext, LineItem, RectItem, TableRowFlow};
 use crate::style::parse_color;
 use crate::units::{eighths_point_to_px, twips_to_px};
 
 /// Default cell margin in twips (0.075 inch).
 const DEFAULT_CELL_MARGIN: i32 = 108;
 
-/// Lays out a table into per-row atomic flows.
+/// Vertical merge state of a cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VState {
+    /// No vertical merge.
+    None,
+    /// The cell starts a merged region (`w:vMerge w:val="restart"`).
+    Restart,
+    /// The cell continues the region above (`w:vMerge`/`continuous`).
+    Continue,
+}
+
+impl VState {
+    fn from_merge(merge: Option<VerticalMerge>) -> Self {
+        match merge {
+            Some(VerticalMerge::Restart) => Self::Restart,
+            Some(VerticalMerge::Continue) => Self::Continue,
+            None => Self::None,
+        }
+    }
+}
+
+/// A laid-out cell before row assembly.
+struct RawCell {
+    col: usize,
+    span: usize,
+    x: f64,
+    width: f64,
+    properties: CellProperties,
+    items: Vec<Item>,
+    margin_top: f64,
+    vmerge: VState,
+}
+
+/// A laid-out row before flow assembly.
+struct RawRow {
+    header: bool,
+    height: f64,
+    cells: Vec<RawCell>,
+}
+
+/// Lays out a table into per-row flows.
 #[must_use]
 pub(crate) fn layout_table(
     ctx: &LayoutContext<'_>,
@@ -29,14 +72,110 @@ pub(crate) fn layout_table(
     let total_width: f64 = widths.iter().sum();
     let table_x = table_x(ctx, table, content_left, content_width, total_width);
 
-    let mut flows = Vec::new();
-    let mut grid_before = 0usize;
+    let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
-        let (items, height) = layout_row(ctx, table, row, &widths, table_x, grid_before, scale);
-        flows.push(Flow::Block { items, height });
-        grid_before = 0;
+        let mut column = 0usize;
+        let mut cells = Vec::with_capacity(row.cells.len());
+        let mut max_content: f64 = 0.0;
+        for cell in &row.cells {
+            let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+            let span = span.min(widths.len().saturating_sub(column).max(1));
+            let x: f64 = table_x + widths[..column].iter().sum::<f64>();
+            let width: f64 = widths[column..(column + span).min(widths.len())]
+                .iter()
+                .sum();
+            let margins = effective_margins(ctx, table, row, cell);
+            let content_width = (width - margins.0 - margins.1).max(1.0);
+            let (items, content_height) =
+                layout_cell_content(ctx, &cell.blocks, x + margins.0, content_width);
+            let height = content_height + margins.2 + margins.3;
+            max_content = max_content.max(height);
+            cells.push(RawCell {
+                col: column,
+                span,
+                x,
+                width,
+                properties: cell.props.clone(),
+                items,
+                margin_top: margins.2,
+                vmerge: VState::from_merge(cell.props.vertical_merge),
+            });
+            column += span;
+        }
+        let mut height = max_content;
+        if let Some(declared) = &row.props.height {
+            height = height.max(
+                declared
+                    .value
+                    .map_or(0.0, |value| twips_to_px(value.value(), scale)),
+            );
+        }
+        if height <= 0.0 {
+            height = 1.0;
+        }
+        rows.push(RawRow {
+            header: row.props.header,
+            height,
+            cells,
+        });
+    }
+
+    let mut flows = Vec::with_capacity(rows.len());
+    for (row_index, row) in rows.iter().enumerate() {
+        let mut items = Vec::new();
+        for cell in &row.cells {
+            // A continuation cell draws nothing: the restart cell owns the
+            // merged region's background, borders and content.
+            if cell.vmerge == VState::Continue {
+                continue;
+            }
+            let region_height = if cell.vmerge == VState::Restart {
+                merged_height(&rows, row_index, cell)
+            } else {
+                row.height
+            };
+            if let Some(fill) = shading_fill(&cell.properties) {
+                items.push(Item::Rect(RectItem {
+                    x: cell.x,
+                    y: 0.0,
+                    w: cell.width,
+                    h: region_height,
+                    fill: Some(fill),
+                    stroke: None,
+                    stroke_w: 0.0,
+                }));
+            }
+            for item in &cell.items {
+                items.push(offset_item(item, 0.0, cell.margin_top));
+            }
+            push_borders(ctx, table, cell, region_height, &mut items);
+        }
+        flows.push(Flow::TableRow(TableRowFlow {
+            items,
+            height: row.height,
+            header: row.header,
+        }));
     }
     flows
+}
+
+/// Returns the total height of the merged region starting at `row`/`cell`.
+fn merged_height(rows: &[RawRow], row: usize, cell: &RawCell) -> f64 {
+    let mut total = rows[row].height;
+    let mut index = row + 1;
+    while index < rows.len() {
+        let continues = rows[index].cells.iter().any(|candidate| {
+            candidate.vmerge == VState::Continue
+                && candidate.col == cell.col
+                && candidate.span == cell.span
+        });
+        if !continues {
+            break;
+        }
+        total += rows[index].height;
+        index += 1;
+    }
+    total
 }
 
 /// Number of grid columns: explicit grid, else the widest row's span.
@@ -133,86 +272,6 @@ fn table_x(
     x
 }
 
-/// Lays out one table row.
-fn layout_row(
-    ctx: &LayoutContext<'_>,
-    table: &Table,
-    row: &strict_ooxml_wml::model::TableRow,
-    widths: &[f64],
-    table_x: f64,
-    grid_before: usize,
-    scale: f64,
-) -> (Vec<Item>, f64) {
-    let mut items = Vec::new();
-    let mut column = grid_before.min(widths.len());
-    let mut cells: Vec<CellPlacement> = Vec::new();
-    let mut max_height: f64 = 0.0;
-
-    for cell in &row.cells {
-        let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
-        let span = span.min(widths.len().saturating_sub(column).max(1));
-        let cell_x: f64 = table_x + widths[..column].iter().sum::<f64>();
-        let cell_width: f64 = widths[column..(column + span).min(widths.len())]
-            .iter()
-            .sum();
-        let margins = effective_margins(ctx, table, row, cell);
-        let content_width = (cell_width - margins.0 - margins.1).max(1.0);
-        let (cell_items, content_height) =
-            layout_cell_content(ctx, &cell.blocks, cell_x + margins.0, content_width);
-        let height = content_height + margins.2 + margins.3;
-        max_height = max_height.max(height);
-        cells.push(CellPlacement {
-            x: cell_x,
-            width: cell_width,
-            properties: cell.props.clone(),
-            items: cell_items,
-            margin_top: margins.2,
-        });
-        column += span;
-    }
-
-    // Row height from `w:trHeight`.
-    if let Some(height) = &row.props.height {
-        let declared = height
-            .value
-            .map_or(0.0, |value| twips_to_px(value.value(), scale));
-        max_height = max_height.max(declared);
-    }
-    if max_height <= 0.0 {
-        max_height = 1.0;
-    }
-
-    // Draw borders/shading and place the cell content.
-    for cell in &cells {
-        if let Some(fill) = shading_fill(&cell.properties) {
-            items.push(Item::Rect(RectItem {
-                x: cell.x,
-                y: 0.0,
-                w: cell.width,
-                h: max_height,
-                fill: Some(fill),
-                stroke: None,
-                stroke_w: 0.0,
-            }));
-        }
-        for item in &cell.items {
-            items.push(offset_item(item, 0.0, cell.margin_top));
-        }
-        push_borders(ctx, table, cell, max_height, &mut items);
-    }
-
-    (items, max_height)
-}
-
-/// A placed table cell.
-struct CellPlacement {
-    x: f64,
-    width: f64,
-    properties: CellProperties,
-    items: Vec<Item>,
-    margin_top: f64,
-}
-
 /// Effective cell margins `(left, right, top, bottom)` in px.
 fn effective_margins(
     ctx: &LayoutContext<'_>,
@@ -248,13 +307,13 @@ fn layout_cell_content(
 ) -> (Vec<Item>, f64) {
     let mut items = Vec::new();
     let mut y = 0.0;
-    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 0);
+    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 0, None);
     (items, y)
 }
 
 /// Stacks blocks vertically (used inside cells; page breaks are ignored).
 #[allow(clippy::too_many_arguments)]
-fn layout_blocks_inline(
+pub(crate) fn layout_blocks_inline(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
     left: f64,
@@ -262,6 +321,7 @@ fn layout_blocks_inline(
     y: &mut f64,
     items: &mut Vec<Item>,
     depth: usize,
+    note_marker: Option<&str>,
 ) {
     if depth > 8 {
         return;
@@ -269,7 +329,7 @@ fn layout_blocks_inline(
     for block in blocks {
         match block {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width, None);
+                let flow = layout_paragraph(ctx, para, left, width, None, note_marker);
                 *y += flow.space_before;
                 for item in flow.flows {
                     match item {
@@ -289,7 +349,12 @@ fn layout_blocks_inline(
                         Flow::Block {
                             items: block_items,
                             height,
-                        } => {
+                        }
+                        | Flow::TableRow(TableRowFlow {
+                            items: block_items,
+                            height,
+                            ..
+                        }) => {
                             for item in block_items {
                                 items.push(offset_item(&item, 0.0, *y));
                             }
@@ -305,7 +370,12 @@ fn layout_blocks_inline(
                     if let Flow::Block {
                         items: block_items,
                         height,
-                    } = flow
+                    }
+                    | Flow::TableRow(TableRowFlow {
+                        items: block_items,
+                        height,
+                        ..
+                    }) = flow
                     {
                         for item in block_items {
                             items.push(offset_item(&item, 0.0, *y));
@@ -315,7 +385,16 @@ fn layout_blocks_inline(
                 }
             }
             Block::SdtBlock(sdt) => {
-                layout_blocks_inline(ctx, &sdt.blocks, left, width, y, items, depth + 1);
+                layout_blocks_inline(
+                    ctx,
+                    &sdt.blocks,
+                    left,
+                    width,
+                    y,
+                    items,
+                    depth + 1,
+                    note_marker,
+                );
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
@@ -350,11 +429,11 @@ pub(crate) fn offset_item(item: &Item, dx: f64, dy: f64) -> Item {
     }
 }
 
-/// Emits the four borders of a cell.
+/// Emits the four borders of a cell region.
 fn push_borders(
     ctx: &LayoutContext<'_>,
     table: &Table,
-    cell: &CellPlacement,
+    cell: &RawCell,
     height: f64,
     items: &mut Vec<Item>,
 ) {
@@ -369,7 +448,7 @@ fn push_borders(
         (3, right, y, right, bottom),
     ];
     for (edge, x1, y1, x2, y2) in edges {
-        if let Some(stroke) = resolve_edge(ctx, table, cell, edge) {
+        if let Some(stroke) = resolve_edge(ctx, table, &cell.properties, edge) {
             items.push(Item::Line(LineItem {
                 x1,
                 y1,
@@ -389,14 +468,14 @@ type Stroke = (String, f64, bool);
 fn resolve_edge(
     ctx: &LayoutContext<'_>,
     table: &Table,
-    cell: &CellPlacement,
+    properties: &CellProperties,
     edge: u8,
 ) -> Option<Stroke> {
     let cell_border = match edge {
-        0 => cell.properties.borders.top.as_ref(),
-        1 => cell.properties.borders.bottom.as_ref(),
-        2 => cell.properties.borders.start.as_ref(),
-        _ => cell.properties.borders.end.as_ref(),
+        0 => properties.borders.top.as_ref(),
+        1 => properties.borders.bottom.as_ref(),
+        2 => properties.borders.start.as_ref(),
+        _ => properties.borders.end.as_ref(),
     };
     let table_border = match edge {
         0 => table.props.borders.top.as_ref(),

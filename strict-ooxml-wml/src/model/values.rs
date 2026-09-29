@@ -584,6 +584,17 @@ impl ThemeColor {
     }
 }
 
+/// A theme-colour reference with optional tint/shade (`w:color` theme attrs).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThemeColorRef {
+    /// Theme colour slot (`w:themeColor`), for example `accent1`.
+    pub color: ThemeColor,
+    /// Tint applied to the colour (`w:themeTint`), a hex byte.
+    pub tint: Option<Arc<str>>,
+    /// Shade applied to the colour (`w:themeShade`), a hex byte.
+    pub shade: Option<Arc<str>>,
+}
+
 /// A shaded fill (`w:shd`).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Shading {
@@ -642,6 +653,14 @@ pub struct Fonts {
     pub complex_script: Option<Arc<str>>,
     /// Font hint (`w:hint`).
     pub hint: Option<Arc<str>>,
+    /// Theme ASCII font reference (`w:asciiTheme`), for example `minorHAnsi`.
+    pub ascii_theme: Option<Arc<str>>,
+    /// Theme high-ANSI font reference (`w:hAnsiTheme`).
+    pub h_ansi_theme: Option<Arc<str>>,
+    /// Theme East-Asian font reference (`w:eastAsiaTheme`).
+    pub east_asia_theme: Option<Arc<str>>,
+    /// Theme complex-script font reference (`w:cstheme`).
+    pub cs_theme: Option<Arc<str>>,
 }
 
 /// Paragraph spacing (`w:spacing`).

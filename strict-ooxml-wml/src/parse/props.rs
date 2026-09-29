@@ -20,8 +20,8 @@ use crate::model::values::{
     Border, BorderStyle, Borders, CellMargins, Color, DocGridType, EighthsPoint, Fonts, HalfPoints,
     HeightRule, Highlight, Indentation, Justification, LineNumberRestart, LineSpacingRule,
     PageOrientation, RowHeight, SectionType, Shading, Spacing, TabAlignment, TabLeader, TabStop,
-    TableLayout, TableLook, TextDirection, TriState, Twips, Underline, VertAlign, VerticalJc,
-    VerticalMerge, Width, WidthKind,
+    TableLayout, TableLook, TextDirection, ThemeColor, ThemeColorRef, TriState, Twips, Underline,
+    VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use crate::RELS_STRICT_NS;
 
@@ -208,7 +208,18 @@ impl PartParser<'_> {
                         }
                         "strike" => props.strike = tristate(&attrs),
                         "dstrike" => props.double_strike = tristate(&attrs),
-                        "color" => props.color = self.val_string(&attrs).map(Color::new),
+                        "color" => {
+                            props.color = self.val_string(&attrs).map(Color::new);
+                            if let Some(theme) = wml_attr(&attrs, "themeColor") {
+                                props.color_theme = Some(ThemeColorRef {
+                                    color: ThemeColor::new(self.intern(theme)),
+                                    tint: wml_attr(&attrs, "themeTint")
+                                        .map(|value| self.intern(value)),
+                                    shade: wml_attr(&attrs, "themeShade")
+                                        .map(|value| self.intern(value)),
+                                });
+                            }
+                        }
                         "highlight" => {
                             props.highlight =
                                 self.val_enum(&attrs, "w:highlight", Highlight::from_strict);
@@ -280,6 +291,10 @@ impl PartParser<'_> {
             east_asia: wml_attr(attrs, "eastAsia").map(|value| self.intern(value)),
             complex_script: wml_attr(attrs, "cs").map(|value| self.intern(value)),
             hint: wml_attr(attrs, "hint").map(|value| self.intern(value)),
+            ascii_theme: wml_attr(attrs, "asciiTheme").map(|value| self.intern(value)),
+            h_ansi_theme: wml_attr(attrs, "hAnsiTheme").map(|value| self.intern(value)),
+            east_asia_theme: wml_attr(attrs, "eastAsiaTheme").map(|value| self.intern(value)),
+            cs_theme: wml_attr(attrs, "cstheme").map(|value| self.intern(value)),
         }
     }
 
@@ -485,7 +500,17 @@ impl PartParser<'_> {
                     }
                     match name.local() {
                         "trHeight" => props.height = Some(self.parse_row_height(&attrs)),
-                        "tblHeader" => props.header = parse_on_off(&attrs),
+                        "tblHeader" => {
+                            props.header = parse_on_off(&attrs);
+                            if props.header {
+                                self.record(
+                                    "w:tblHeader",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(self.location()),
+                                );
+                            }
+                        }
                         "cantSplit" => props.cant_split = parse_on_off(&attrs),
                         "tblCellMar" => {
                             props.cell_margins = self.parse_cell_margins()?;
@@ -535,11 +560,23 @@ impl PartParser<'_> {
                             props.grid_span = self
                                 .val_u32(&attrs, "w:gridSpan")
                                 .map(|value| u16::try_from(value).unwrap_or(u16::MAX));
+                            self.record(
+                                "w:gridSpan",
+                                SupportStatus::Supported,
+                                None,
+                                Some(self.location()),
+                            );
                         }
                         "vMerge" => {
                             props.vertical_merge = Some(
                                 self.val_enum(&attrs, "w:vMerge", VerticalMerge::from_strict)
                                     .unwrap_or(VerticalMerge::Continue),
+                            );
+                            self.record(
+                                "w:vMerge",
+                                SupportStatus::Supported,
+                                None,
+                                Some(self.location()),
                             );
                         }
                         "vAlign" => {
@@ -639,6 +676,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:sectPr`.
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_section_properties(&mut self) -> Result<SectionProperties> {
         let location = self.location();
         self.enter()?;
@@ -658,11 +696,23 @@ impl PartParser<'_> {
                         "headerReference" => {
                             if let Some(reference) = Self::parse_header_footer_ref(&attrs) {
                                 props.headers.push(reference);
+                                self.record(
+                                    "w:headerReference",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(self.location()),
+                                );
                             }
                         }
                         "footerReference" => {
                             if let Some(reference) = Self::parse_header_footer_ref(&attrs) {
                                 props.footers.push(reference);
+                                self.record(
+                                    "w:footerReference",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(self.location()),
+                                );
                             }
                         }
                         "type" => {
@@ -718,6 +768,14 @@ impl PartParser<'_> {
                         "lnNumType" => {
                             props.line_numbering = Some(self.parse_line_numbering(&attrs));
                         }
+                        "footnotePr" => {
+                            props.footnote_properties = self.parse_note_properties()?;
+                            continue;
+                        }
+                        "endnotePr" => {
+                            props.endnote_properties = self.parse_note_properties()?;
+                            continue;
+                        }
                         "pgBorders" => {
                             self.record(
                                 "w:pgBorders",
@@ -751,6 +809,7 @@ impl PartParser<'_> {
         Some(HeaderFooterRef {
             kind,
             rel_id: strict_ooxml_core::opc::rels::RelId::new(rel_id),
+            part: None,
         })
     }
 

@@ -6,9 +6,10 @@
 //! own `rPr`. `TriState::Absent` leaves the inherited value untouched.
 
 use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
+use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
     Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule, Spacing, TabStop,
-    TriState, Underline, VertAlign,
+    ThemeColorRef, TriState, Underline, VertAlign,
 };
 use strict_ooxml_wml::model::Document;
 
@@ -132,6 +133,7 @@ pub fn compute_paragraph(
     para: &strict_ooxml_wml::model::Paragraph,
 ) -> ComputedParagraph {
     let mut computed = ComputedParagraph::default();
+    let theme = document.theme.as_ref();
 
     let style_id = para.props.style.as_ref().or_else(|| {
         document
@@ -139,9 +141,9 @@ pub fn compute_paragraph(
             .default_for(strict_ooxml_wml::model::values::StyleType::Paragraph)
     });
     if let Some(style_id) = style_id {
-        apply_paragraph_style(document, &mut computed, style_id);
+        apply_paragraph_style(document, &mut computed, style_id, theme);
     }
-    apply_paragraph_props(&mut computed, &para.props);
+    apply_paragraph_props(&mut computed, &para.props, theme);
     computed
 }
 
@@ -152,18 +154,19 @@ pub fn compute_run(
     para: &ComputedParagraph,
     run: &strict_ooxml_wml::model::Run,
 ) -> ComputedRun {
+    let theme = document.theme.as_ref();
     let mut computed = para.default_run.clone();
     if let Some(style_id) = &run.props.style {
         if let Some(style) = document.styles.get(style_id) {
             for ancestor in style.based_on_chain.iter().rev() {
                 if let Some(ancestor) = document.styles.get(ancestor) {
-                    apply_run_props(&mut computed, &ancestor.run);
+                    apply_run_props(&mut computed, &ancestor.run, theme);
                 }
             }
-            apply_run_props(&mut computed, &style.run);
+            apply_run_props(&mut computed, &style.run, theme);
         }
     }
-    apply_run_props(&mut computed, &run.props);
+    apply_run_props(&mut computed, &run.props, theme);
     computed
 }
 
@@ -172,22 +175,27 @@ fn apply_paragraph_style(
     document: &Document,
     computed: &mut ComputedParagraph,
     style_id: &strict_ooxml_wml::model::StyleId,
+    theme: Option<&Theme>,
 ) {
     let Some(style) = document.styles.get(style_id) else {
         return;
     };
     for ancestor in style.based_on_chain.iter().rev() {
         if let Some(ancestor) = document.styles.get(ancestor) {
-            apply_paragraph_props(computed, &ancestor.paragraph);
-            apply_run_props(&mut computed.default_run, &ancestor.run);
+            apply_paragraph_props(computed, &ancestor.paragraph, theme);
+            apply_run_props(&mut computed.default_run, &ancestor.run, theme);
         }
     }
-    apply_paragraph_props(computed, &style.paragraph);
-    apply_run_props(&mut computed.default_run, &style.run);
+    apply_paragraph_props(computed, &style.paragraph, theme);
+    apply_run_props(&mut computed.default_run, &style.run, theme);
 }
 
 /// Merges direct paragraph properties onto `computed`.
-pub fn apply_paragraph_props(computed: &mut ComputedParagraph, props: &ParagraphProperties) {
+pub fn apply_paragraph_props(
+    computed: &mut ComputedParagraph,
+    props: &ParagraphProperties,
+    theme: Option<&Theme>,
+) {
     if let Some(alignment) = props.alignment {
         computed.alignment = alignment;
     }
@@ -218,7 +226,7 @@ pub fn apply_paragraph_props(computed: &mut ComputedParagraph, props: &Paragraph
         }
     }
     if let Some(run) = &props.run_props {
-        apply_run_props(&mut computed.default_run, run);
+        apply_run_props(&mut computed.default_run, run, theme);
     }
 }
 
@@ -252,9 +260,9 @@ fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation
 }
 
 /// Merges direct run properties onto `computed`.
-pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties) {
+pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme: Option<&Theme>) {
     if let Some(fonts) = &props.fonts {
-        apply_fonts(computed, fonts);
+        apply_fonts(computed, fonts, theme);
     }
     if let Some(bold) = toggle(props.bold) {
         computed.bold = bold;
@@ -274,6 +282,11 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties) {
     if let Some(color) = &props.color {
         computed.color = parse_color(color);
     }
+    if let Some(theme_color) = &props.color_theme {
+        if let Some(resolved) = resolve_theme_color(theme_color, theme) {
+            computed.color = Some(resolved);
+        }
+    }
     if let Some(highlight) = props.highlight {
         computed.highlight = highlight_color(highlight);
     }
@@ -288,10 +301,63 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties) {
     }
 }
 
-fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts) {
-    if let Some(family) = fonts.ascii.as_ref().or(fonts.h_ansi.as_ref()) {
+fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>) {
+    if let Some(family) = fonts.ascii.as_ref() {
         computed.family = family.to_string();
+    } else if let Some(family) = theme_font(fonts.ascii_theme.as_deref(), theme) {
+        computed.family = family;
+    } else if let Some(family) = fonts.h_ansi.as_ref() {
+        computed.family = family.to_string();
+    } else if let Some(family) = theme_font(fonts.h_ansi_theme.as_deref(), theme) {
+        computed.family = family;
     }
+}
+
+/// Resolves a `w:*Theme` font reference through `theme`.
+fn theme_font(reference: Option<&str>, theme: Option<&Theme>) -> Option<String> {
+    let reference = reference?;
+    theme?.font(reference).map(ToString::to_string)
+}
+
+/// Resolves a themed run colour (`w:themeColor`/`themeTint`/`themeShade`).
+fn resolve_theme_color(reference: &ThemeColorRef, theme: Option<&Theme>) -> Option<String> {
+    let theme = theme?;
+    let (red, green, blue) = parse_hex(theme.color(reference.color.as_str())?)?;
+    let tint = reference
+        .tint
+        .as_deref()
+        .and_then(|value| u8::from_str_radix(value, 16).ok());
+    let shade = reference
+        .shade
+        .as_deref()
+        .and_then(|value| u8::from_str_radix(value, 16).ok());
+    let apply = |channel: u8| -> u8 {
+        if let Some(shade) = shade {
+            (u16::from(channel) * u16::from(shade) / 255) as u8
+        } else if let Some(tint) = tint {
+            (255 - (255 - u16::from(channel)) * (255 - u16::from(tint)) / 255) as u8
+        } else {
+            channel
+        }
+    };
+    Some(format!(
+        "#{:02x}{:02x}{:02x}",
+        apply(red),
+        apply(green),
+        apply(blue)
+    ))
+}
+
+/// Parses `#rrggbb` into its channels.
+fn parse_hex(value: &str) -> Option<(u8, u8, u8)> {
+    let digits = value.strip_prefix('#').unwrap_or(value);
+    if digits.len() != 6 {
+        return None;
+    }
+    let red = u8::from_str_radix(&digits[0..2], 16).ok()?;
+    let green = u8::from_str_radix(&digits[2..4], 16).ok()?;
+    let blue = u8::from_str_radix(&digits[4..6], 16).ok()?;
+    Some((red, green, blue))
 }
 
 fn toggle(state: TriState) -> Option<bool> {
@@ -373,8 +439,12 @@ mod tests {
             body: strict_ooxml_wml::model::Body::default(),
             styles: StyleTable::new(),
             numbering: strict_ooxml_wml::model::NumberingTable::new(),
+            footnotes: strict_ooxml_wml::model::NoteTable::new(),
+            endnotes: strict_ooxml_wml::model::NoteTable::new(),
             settings: strict_ooxml_wml::model::Settings::default(),
+            theme: None,
             sections: Vec::new(),
+            headers_footers: Vec::new(),
             media: strict_ooxml_wml::model::MediaIndex::new(),
             support: strict_ooxml_wml::model::SupportModel::new(),
             source: strict_ooxml_wml::model::DocumentSource {
@@ -382,6 +452,9 @@ mod tests {
                 styles: None,
                 numbering: None,
                 settings: None,
+                footnotes: None,
+                endnotes: None,
+                theme: None,
             },
         }
     }

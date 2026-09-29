@@ -9,29 +9,35 @@
 pub mod dispatch;
 pub mod document;
 pub mod drawing;
+pub mod headerfooter;
 pub mod interner;
+pub mod notes;
 pub mod numbering;
 pub mod props;
 pub mod settings;
 pub mod styles;
 pub mod table;
+pub mod theme;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use strict_ooxml_core::error::{Result, SourceLocation, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_core::ns::Conformance;
-use strict_ooxml_core::opc::rels::{RelType, Relationship};
+use strict_ooxml_core::opc::rels::{RelId, RelType, Relationship};
 use strict_ooxml_core::opc::{ConformancePolicy, Package};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_core::xml::qname::QName;
 use strict_ooxml_core::xml::{Attr, XmlEvent, XmlReader};
 
-use crate::model::document::{Document, DocumentSource};
+use crate::model::document::{Document, DocumentSource, HeaderFooter};
 use crate::model::drawing::MediaIndex;
+use crate::model::props::Section;
 use crate::model::styles::StyleTable;
 use crate::model::support::{SupportModel, SupportStatus};
-use crate::model::{NumberingTable, Settings};
+use crate::model::theme::Theme;
+use crate::model::{NoteTable, NumberingTable, Settings};
 
 use self::interner::Interner;
 
@@ -93,6 +99,9 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     let styles_part = find_related_part(package, &main, &RelType::Styles);
     let numbering_part = find_related_part(package, &main, &RelType::Numbering);
     let settings_part = find_related_part(package, &main, &RelType::Settings);
+    let footnotes_part = find_related_part(package, &main, &RelType::Footnotes);
+    let endnotes_part = find_related_part(package, &main, &RelType::Endnotes);
+    let theme_part = find_related_part(package, &main, &RelType::Theme);
 
     let mut parser = PartParser::new(
         package,
@@ -100,10 +109,19 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         package.read_part(&main)?,
         &options.limits,
     )?;
-    let (body, sections) = parser.parse_document_root()?;
-    let media = std::mem::take(&mut parser.media);
+    let (body, mut sections) = parser.parse_document_root()?;
+    let mut media = std::mem::take(&mut parser.media);
     let mut support = std::mem::take(&mut parser.support);
     drop(parser);
+
+    let headers_footers = parse_decoration_parts(
+        package,
+        &main,
+        &mut sections,
+        options,
+        &mut support,
+        &mut media,
+    )?;
 
     let (styles, numbering, settings, aux_support) = parse_auxiliary(
         package,
@@ -114,12 +132,26 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     )?;
     support.merge(aux_support);
 
+    let (footnotes, endnotes, note_support) = parse_notes_parts(
+        package,
+        footnotes_part.as_ref(),
+        endnotes_part.as_ref(),
+        options,
+    )?;
+    support.merge(note_support);
+
+    let theme = parse_theme_part(package, theme_part.as_ref(), options, &mut support)?;
+
     let mut document = Document {
         body,
         styles: styles.unwrap_or_default(),
         numbering: numbering.unwrap_or_default(),
+        footnotes,
+        endnotes,
         settings: settings.unwrap_or_default(),
+        theme,
         sections,
+        headers_footers,
         media,
         support,
         source: DocumentSource {
@@ -127,6 +159,9 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
             styles: styles_part,
             numbering: numbering_part,
             settings: settings_part,
+            footnotes: footnotes_part,
+            endnotes: endnotes_part,
+            theme: theme_part,
         },
     };
     crate::resolve::resolve(&mut document, package, options)?;
@@ -234,6 +269,47 @@ fn parse_auxiliary(
     }
 }
 
+/// Parses the independent `footnotes`/`endnotes` parts and returns their tables.
+fn parse_notes_parts(
+    package: &Package,
+    footnotes_part: Option<&PartId>,
+    endnotes_part: Option<&PartId>,
+    options: &ParseOptions,
+) -> Result<(NoteTable, NoteTable, SupportModel)> {
+    let (footnotes, footnotes_support) = match footnotes_part {
+        Some(part) => parse_part_with(package, part, options, |parser| {
+            parser.parse_footnotes_root().map(|(table, _)| table)
+        })?,
+        None => (NoteTable::new(), SupportModel::new()),
+    };
+    let (endnotes, endnotes_support) = match endnotes_part {
+        Some(part) => parse_part_with(package, part, options, |parser| {
+            parser.parse_endnotes_root().map(|(table, _)| table)
+        })?,
+        None => (NoteTable::new(), SupportModel::new()),
+    };
+    let mut support = footnotes_support;
+    support.merge(endnotes_support);
+    Ok((footnotes, endnotes, support))
+}
+
+/// Parses the theme part into a [`Theme`], if present.
+#[allow(clippy::redundant_closure_for_method_calls)]
+fn parse_theme_part(
+    package: &Package,
+    theme_part: Option<&PartId>,
+    options: &ParseOptions,
+    support: &mut SupportModel,
+) -> Result<Option<Theme>> {
+    let Some(part) = theme_part else {
+        return Ok(None);
+    };
+    let (theme, theme_support) =
+        parse_part_with(package, part, options, |parser| parser.parse_theme_root())?;
+    support.merge(theme_support);
+    Ok(Some(theme))
+}
+
 /// Finds the first part related to `source` (or the package root) by type.
 fn find_related_part(package: &Package, source: &PartId, rel_type: &RelType) -> Option<PartId> {
     let root = PartId::new("/");
@@ -248,6 +324,157 @@ fn find_related_part(package: &Package, source: &PartId, rel_type: &RelType) -> 
         }
     }
     None
+}
+
+/// Discovers and parses the header/footer parts referenced by the sections.
+///
+/// Parts are resolved by relationship type, never by file name (STAGE-5 §5.1).
+/// A referenced part that is absent from the package is an error carrying the
+/// location of the reference; an unresolved or mistyped relationship is recorded
+/// as `Partial` and left unresolved (the resolve phase re-reports it).
+#[allow(clippy::too_many_arguments)]
+fn parse_decoration_parts(
+    package: &Package,
+    main: &PartId,
+    sections: &mut [Section],
+    options: &ParseOptions,
+    support: &mut SupportModel,
+    media: &mut MediaIndex,
+) -> Result<Vec<HeaderFooter>> {
+    let mut decorations: Vec<HeaderFooter> = Vec::new();
+    let mut seen: HashMap<PartId, usize> = HashMap::new();
+    for section in sections.iter_mut() {
+        let location = section.location.clone();
+
+        let headers = std::mem::take(&mut section.properties.headers);
+        let mut restored = Vec::with_capacity(headers.len());
+        for mut reference in headers {
+            reference.part = resolve_decoration_reference(
+                package,
+                main,
+                &reference.rel_id,
+                true,
+                &location,
+                options,
+                support,
+                media,
+                &mut decorations,
+                &mut seen,
+            )?;
+            restored.push(reference);
+        }
+        section.properties.headers = restored;
+
+        let footers = std::mem::take(&mut section.properties.footers);
+        let mut restored = Vec::with_capacity(footers.len());
+        for mut reference in footers {
+            reference.part = resolve_decoration_reference(
+                package,
+                main,
+                &reference.rel_id,
+                false,
+                &location,
+                options,
+                support,
+                media,
+                &mut decorations,
+                &mut seen,
+            )?;
+            restored.push(reference);
+        }
+        section.properties.footers = restored;
+    }
+    Ok(decorations)
+}
+
+/// Resolves one section header/footer reference to a parsed [`HeaderFooter`].
+#[allow(clippy::too_many_arguments)]
+fn resolve_decoration_reference(
+    package: &Package,
+    main: &PartId,
+    rel_id: &RelId,
+    is_header: bool,
+    reference_location: &SourceLocation,
+    options: &ParseOptions,
+    support: &mut SupportModel,
+    media: &mut MediaIndex,
+    decorations: &mut Vec<HeaderFooter>,
+    seen: &mut HashMap<PartId, usize>,
+) -> Result<Option<PartId>> {
+    let feature = if is_header {
+        "w:headerReference"
+    } else {
+        "w:footerReference"
+    };
+    let expected = if is_header {
+        RelType::Header
+    } else {
+        RelType::Footer
+    };
+    let Ok(relationship) = package.resolve_relationship(main, rel_id.as_str()) else {
+        // Left unresolved; `resolve::rels` records it with the section location.
+        return Ok(None);
+    };
+    if relationship.rel_type != expected {
+        support.record(
+            feature,
+            SupportStatus::Partial,
+            Some(format!(
+                "relationship '{rel_id}' is not a {} part",
+                if is_header { "header" } else { "footer" }
+            )),
+            Some(reference_location.clone()),
+        );
+        return Ok(None);
+    }
+    let Some(part) = relationship.resolved.clone() else {
+        support.record(
+            feature,
+            SupportStatus::Partial,
+            Some(format!("relationship '{rel_id}' has no resolved target")),
+            Some(reference_location.clone()),
+        );
+        return Ok(None);
+    };
+    if package.part(&part).is_none() {
+        return Err(StrictError::MissingReferencedPart {
+            part,
+            location: reference_location.clone(),
+        });
+    }
+    if seen.contains_key(&part) {
+        return Ok(Some(part));
+    }
+
+    let bytes = package.read_part(&part)?;
+    let mut parser = PartParser::new(package, part.clone(), bytes, &options.limits)?;
+    let (blocks, location) = if is_header {
+        parser.parse_header_root()?
+    } else {
+        parser.parse_footer_root()?
+    };
+    let decoration_media = std::mem::take(&mut parser.media);
+    let decoration_support = std::mem::take(&mut parser.support);
+    drop(parser);
+    support.merge(decoration_support);
+    merge_media(media, &decoration_media);
+
+    let index = decorations.len();
+    decorations.push(HeaderFooter {
+        part: part.clone(),
+        is_header,
+        blocks,
+        location,
+    });
+    seen.insert(part.clone(), index);
+    Ok(Some(part))
+}
+
+/// Merges media items discovered in an auxiliary part into the document index.
+fn merge_media(target: &mut MediaIndex, source: &MediaIndex) {
+    for item in source.iter() {
+        target.insert(item.clone());
+    }
 }
 
 /// Internal parser state for one part.
@@ -308,28 +535,36 @@ impl<'a> PartParser<'a> {
     /// by local name so the CLI can still report the missing signal. The root
     /// occurs once, so this is not recursive.
     pub(crate) fn expect_root(&mut self, expected_local: &str) -> Result<()> {
+        self.expect_root_ns(expected_local, crate::WML_STRICT_NS)
+    }
+
+    /// Like [`expect_root`](Self::expect_root) but for another schema namespace
+    /// (for example DrawingML for `theme1.xml`).
+    pub(crate) fn expect_root_ns(&mut self, expected_local: &str, namespace: &str) -> Result<()> {
         let require_strict_ns = self.package.conformance() == Conformance::Strict;
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, .. }
-                    if name.local() == expected_local && (!require_strict_ns || is_wml(&name)) =>
+                    if name.local() == expected_local
+                        && (!require_strict_ns
+                            || name.ns.as_ref().is_some_and(|ns| ns == namespace)) =>
                 {
                     return Ok(());
                 }
                 XmlEvent::StartElement { name, .. } => {
                     return Err(self.invalid(format!(
-                        "expected 'w:{expected_local}' root element, found '{}'",
+                        "expected '{expected_local}' root element, found '{}'",
                         name.local()
                     )));
                 }
                 XmlEvent::Text(text) | XmlEvent::CData(text) if is_prolog_whitespace(&text) => {}
                 XmlEvent::Text(_) | XmlEvent::CData(_) => {
                     return Err(self.invalid(format!(
-                        "unexpected character data before 'w:{expected_local}' root element"
+                        "unexpected character data before '{expected_local}' root element"
                     )));
                 }
                 XmlEvent::EndElement { .. } | XmlEvent::Eof => {
-                    return Err(self.invalid(format!("expected 'w:{expected_local}' root element")));
+                    return Err(self.invalid(format!("expected '{expected_local}' root element")));
                 }
             }
         }
@@ -431,11 +666,32 @@ fn is_prolog_whitespace(text: &str) -> bool {
         .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
 }
 
+/// Returns `true` if a field instruction is computed by the renderer
+/// (PAGE/NUMPAGES/SECTIONPAGES). Every other field is rendered from its cache.
+pub(crate) fn field_is_computed(instruction: &str) -> bool {
+    matches!(
+        instruction
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase()
+            .as_str(),
+        "PAGE" | "NUMPAGES" | "SECTIONPAGES" | "SECTIONPAGE"
+    )
+}
+
 /// Returns `true` if a qualified name is in the WML Strict namespace.
 pub(crate) fn is_wml(name: &QName) -> bool {
     name.ns
         .as_ref()
         .is_some_and(|ns| ns == crate::WML_STRICT_NS)
+}
+
+/// Returns `true` if a qualified name is in the DrawingML Strict namespace.
+pub(crate) fn is_drawingml(name: &QName) -> bool {
+    name.ns
+        .as_ref()
+        .is_some_and(|ns| ns == crate::DRAWINGML_STRICT_NS)
 }
 
 /// Builds a stable feature identifier from a qualified name.

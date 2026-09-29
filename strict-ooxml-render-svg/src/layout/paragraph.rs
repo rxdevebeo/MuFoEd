@@ -1,8 +1,10 @@
 //! Paragraph layout: inline flattening, line breaking, alignment and spacing
 //! (`STAGE-4-TASK.md` §5.4).
 
-use strict_ooxml_wml::model::values::{BreakKind, LineSpacingRule, TabAlignment};
-use strict_ooxml_wml::model::{Document, Drawing, Ilvl, Inline, NumId, Paragraph, Run, RunContent};
+use strict_ooxml_wml::model::values::{
+    BreakKind, FieldCharType, LineSpacingRule, TabAlignment, VertAlign,
+};
+use strict_ooxml_wml::model::{Drawing, Inline, Paragraph, Run, RunContent};
 
 use crate::layout::{Flow, ImageItem, LayoutContext, TextItem, TextLine};
 use crate::paint::image::layout_inline_image;
@@ -21,6 +23,18 @@ enum Seg {
     PageBreak,
     /// An inline image.
     Image(ImageItem),
+    /// A footnote reference marker (the referenced note id).
+    FootnoteMarker(u32, ComputedRun),
+    /// An endnote reference marker (the referenced note id).
+    EndnoteMarker(u32, ComputedRun),
+    /// The note number marker inside a note body (`w:footnoteRef`).
+    NoteNumber(ComputedRun),
+    /// A computed field result (PAGE/NUMPAGES/SECTIONPAGES).
+    FieldResult(
+        crate::fields::FieldKind,
+        crate::notes::NumberFormat,
+        ComputedRun,
+    ),
 }
 
 /// A laid-out paragraph plus its surrounding spacing.
@@ -39,6 +53,10 @@ pub(crate) struct ParagraphFlow {
 const DEFAULT_TAB_TWIPS: i32 = 720;
 
 /// Lays out one paragraph within a content box.
+///
+/// `note_marker` is the formatted number used to replace a `w:footnoteRef`/
+/// `w:endnoteRef` marker when laying out a note body; body paragraphs pass
+/// `None`.
 #[must_use]
 pub(crate) fn layout_paragraph(
     ctx: &LayoutContext<'_>,
@@ -46,13 +64,32 @@ pub(crate) fn layout_paragraph(
     content_left: f64,
     content_width: f64,
     grid_line_pitch: Option<f64>,
+    note_marker: Option<&str>,
 ) -> ParagraphFlow {
-    let computed = compute_paragraph(ctx.document, para);
+    let mut computed = compute_paragraph(ctx.document, para);
+    // A numbered paragraph without its own indentation inherits the level's.
+    if para.props.indentation.is_none() {
+        if let Some(marker) = ctx.numbering.get(&para.location) {
+            if let Some(start) = marker.indent_start_pt {
+                computed.indent_start_pt = start;
+            }
+            if let Some(first_line) = marker.first_line_pt {
+                computed.first_line_pt = first_line;
+            }
+        }
+    }
     let space_before = pt_to_px(computed.space_before_pt, ctx.options.scale);
     let space_after = pt_to_px(computed.space_after_pt, ctx.options.scale);
 
     let mut segments = Vec::new();
-    flatten_inlines(ctx, &computed, &para.inlines, &mut segments);
+    let mut field_state = FieldState::default();
+    flatten_inlines(
+        ctx,
+        &computed,
+        &para.inlines,
+        &mut segments,
+        &mut field_state,
+    );
 
     let flows = build_lines(
         ctx,
@@ -61,6 +98,7 @@ pub(crate) fn layout_paragraph(
         content_left,
         content_width,
         grid_line_pitch,
+        note_marker,
         segments,
     );
 
@@ -72,32 +110,122 @@ pub(crate) fn layout_paragraph(
     }
 }
 
+/// Returns an effective run format forced to superscript (for note markers).
+fn superscript(mut run: ComputedRun) -> ComputedRun {
+    run.vert_align = VertAlign::Superscript;
+    run
+}
+
+/// The stage of a complex field while flattening a paragraph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum FieldStage {
+    /// Not inside a field.
+    #[default]
+    Outside,
+    /// Between `begin` and `separate`: collecting the instruction.
+    Instruction,
+    /// Between `separate` and `end`: the cached result region.
+    Result,
+}
+
+/// Tracks complex-field (`fldChar`/`instrText`) state across runs.
+#[derive(Default)]
+struct FieldState {
+    stage: FieldStage,
+    instruction: String,
+    computed: Option<(crate::fields::FieldKind, crate::notes::NumberFormat)>,
+}
+
+impl FieldState {
+    /// Whether the current position is inside a computed field's result.
+    fn suppressed(&self) -> bool {
+        self.stage == FieldStage::Result && self.computed.is_some()
+    }
+
+    /// Handles a `w:fldChar`.
+    fn on_char(&mut self, kind: FieldCharType, out: &mut Vec<Seg>, run: &ComputedRun) {
+        match kind {
+            FieldCharType::Begin => {
+                self.stage = FieldStage::Instruction;
+                self.instruction.clear();
+                self.computed = None;
+            }
+            FieldCharType::Separate => {
+                if self.stage == FieldStage::Instruction {
+                    let (kind, format) = crate::fields::parse_instruction(&self.instruction);
+                    self.computed = kind.map(|kind| (kind, format));
+                    self.stage = FieldStage::Result;
+                    if let Some((kind, format)) = self.computed {
+                        out.push(Seg::FieldResult(kind, format, run.clone()));
+                    }
+                }
+            }
+            FieldCharType::End => {
+                if self.stage == FieldStage::Instruction {
+                    let (kind, format) = crate::fields::parse_instruction(&self.instruction);
+                    if let Some(kind) = kind {
+                        out.push(Seg::FieldResult(kind, format, run.clone()));
+                    }
+                }
+                self.stage = FieldStage::Outside;
+                self.computed = None;
+                self.instruction.clear();
+            }
+        }
+    }
+
+    /// Handles a `w:instrText` chunk.
+    fn on_instr(&mut self, text: &str) {
+        if self.stage == FieldStage::Instruction {
+            self.instruction.push_str(text);
+        }
+    }
+}
+
 /// Recursively flattens inline content into segments.
 fn flatten_inlines(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
     inlines: &[Inline],
     out: &mut Vec<Seg>,
+    field: &mut FieldState,
 ) {
     for inline in inlines {
         match inline {
-            Inline::Run(run) => flatten_run(ctx, computed, run, out),
-            Inline::Hyperlink(link) => flatten_inlines(ctx, computed, &link.inlines, out),
-            Inline::Field(field) => flatten_inlines(ctx, computed, &field.inlines, out),
+            Inline::Run(run) => flatten_run(ctx, computed, run, out, field),
+            _ if field.suppressed() => {}
+            Inline::Hyperlink(link) => flatten_inlines(ctx, computed, &link.inlines, out, field),
+            Inline::Field(simple) => {
+                let instruction = simple.instruction.as_deref().unwrap_or("");
+                let (kind, format) = crate::fields::parse_instruction(instruction);
+                if let Some(kind) = kind {
+                    out.push(Seg::FieldResult(kind, format, computed.default_run.clone()));
+                } else {
+                    flatten_inlines(ctx, computed, &simple.inlines, out, field);
+                }
+            }
             Inline::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             Inline::Break(kind) => match kind {
                 BreakKind::Page => out.push(Seg::PageBreak),
                 BreakKind::Column | BreakKind::TextWrapping => out.push(Seg::Break),
             },
             Inline::Tab => out.push(Seg::Tab),
-            Inline::SdtInline(sdt) => flatten_inlines(ctx, computed, &sdt.inlines, out),
+            Inline::SdtInline(sdt) => {
+                flatten_inlines(ctx, computed, &sdt.inlines, out, field);
+            }
+            Inline::FootnoteRef(id) => out.push(Seg::FootnoteMarker(
+                *id,
+                superscript(computed.default_run.clone()),
+            )),
+            Inline::EndnoteRef(id) => out.push(Seg::EndnoteMarker(
+                *id,
+                superscript(computed.default_run.clone()),
+            )),
             Inline::BookmarkStart(_)
             | Inline::BookmarkEnd(_)
             | Inline::CommentRangeStart(_)
             | Inline::CommentRangeEnd(_)
             | Inline::CommentReference(_)
-            | Inline::FootnoteRef(_)
-            | Inline::EndnoteRef(_)
             | Inline::Opaque(_) => {}
         }
     }
@@ -108,10 +236,14 @@ fn flatten_run(
     computed: &ComputedParagraph,
     run: &Run,
     out: &mut Vec<Seg>,
+    field: &mut FieldState,
 ) {
     let run_style = compute_run(ctx.document, computed, run);
     for content in &run.content {
         match content {
+            RunContent::FieldChar(field_char) => field.on_char(field_char.kind, out, &run_style),
+            RunContent::InstrText(text) => field.on_instr(text),
+            _ if field.suppressed() => {}
             RunContent::Text(text) => {
                 if !text.text.is_empty() {
                     out.push(Seg::Text(
@@ -131,13 +263,14 @@ fn flatten_run(
             RunContent::NoBreakHyphen => {
                 out.push(Seg::Text("\u{2011}".to_owned(), run_style.clone()));
             }
-            RunContent::SoftHyphen
-            | RunContent::InstrText(_)
-            | RunContent::FieldChar(_)
-            | RunContent::FootnoteRef(_)
-            | RunContent::EndnoteRef(_)
-            | RunContent::LastRenderedPageBreak
-            | RunContent::Opaque(_) => {}
+            RunContent::FootnoteRef(id) => {
+                out.push(Seg::FootnoteMarker(*id, superscript(run_style.clone())));
+            }
+            RunContent::EndnoteRef(id) => {
+                out.push(Seg::EndnoteMarker(*id, superscript(run_style.clone())));
+            }
+            RunContent::NoteRef => out.push(Seg::NoteNumber(superscript(run_style.clone()))),
+            RunContent::SoftHyphen | RunContent::LastRenderedPageBreak | RunContent::Opaque(_) => {}
         }
     }
 }
@@ -151,11 +284,15 @@ fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg
 /// Mutable line being assembled.
 struct LineBuilder {
     items: Vec<TextItem>,
+    footnote_refs: Vec<u32>,
 }
 
 impl LineBuilder {
     fn new() -> Self {
-        Self { items: Vec::new() }
+        Self {
+            items: Vec::new(),
+            footnote_refs: Vec::new(),
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -163,7 +300,7 @@ impl LineBuilder {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn build_lines(
     ctx: &LayoutContext<'_>,
     para: &Paragraph,
@@ -171,6 +308,7 @@ fn build_lines(
     content_left: f64,
     content_width: f64,
     grid_line_pitch: Option<f64>,
+    note_marker: Option<&str>,
     segments: Vec<Seg>,
 ) -> Vec<Flow> {
     let scale = ctx.options.scale;
@@ -186,9 +324,10 @@ fn build_lines(
         strict_ooxml_wml::model::values::Twips::value,
     );
 
-    let marker = computed
+    let marker = ctx
         .numbering
-        .and_then(|numbering| numbering_marker(ctx.document, numbering.num_id, numbering.ilvl));
+        .get(&para.location)
+        .map(|marker| (marker.text.clone(), marker.run.clone()));
 
     let mut sink = LineSink {
         ctx,
@@ -244,6 +383,31 @@ fn build_lines(
                     );
                 }
             }
+            Seg::FootnoteMarker(id, run) => {
+                if let Some((number, format)) = ctx.note_numbers.footnote_number(id) {
+                    push_note_marker(ctx, &mut current, &mut x, &format.format(number), &run);
+                    current.footnote_refs.push(id);
+                }
+            }
+            Seg::EndnoteMarker(id, run) => {
+                if let Some((number, format)) = ctx.note_numbers.endnote_number(id) {
+                    push_note_marker(ctx, &mut current, &mut x, &format.format(number), &run);
+                }
+            }
+            Seg::NoteNumber(run) => {
+                if let Some(text) = note_marker {
+                    push_note_marker(ctx, &mut current, &mut x, text, &run);
+                }
+            }
+            Seg::FieldResult(kind, format, run) => {
+                push_field_marker(
+                    ctx,
+                    &mut current,
+                    &mut x,
+                    &run,
+                    crate::fields::FieldMarker { kind, format },
+                );
+            }
         }
     }
     sink.emit(current, true);
@@ -264,6 +428,7 @@ fn build_lines(
                     text: marker_text.clone(),
                     run: marker_run.clone(),
                     size_px,
+                    field: None,
                 },
             );
         }
@@ -343,6 +508,7 @@ fn place_token(
         text: token.to_owned(),
         run: run.clone(),
         size_px,
+        field: None,
     });
     *x += width;
 }
@@ -374,6 +540,7 @@ fn place_long_token(
             text: ch.to_string(),
             run: run.clone(),
             size_px,
+            field: None,
         });
         *x += width;
     }
@@ -430,11 +597,74 @@ fn finish_line(
     let (height, ascent) = resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
     for item in &mut line.items {
         item.baseline = ascent;
+        apply_vertical_align(item);
     }
     TextLine {
         items: line.items,
         height,
         ascent,
+        footnote_refs: line.footnote_refs,
+    }
+}
+
+/// Appends a note marker to the line, advancing `x`.
+fn push_note_marker(
+    ctx: &LayoutContext<'_>,
+    current: &mut LineBuilder,
+    x: &mut f64,
+    text: &str,
+    run: &ComputedRun,
+) {
+    let width = ctx.measure(text, run);
+    let size_px = ctx.size_px(run.size_pt);
+    current.items.push(TextItem {
+        x: *x,
+        baseline: 0.0,
+        width,
+        text: text.to_owned(),
+        run: run.clone(),
+        size_px,
+        field: None,
+    });
+    *x += width;
+}
+
+/// Appends a computed-field placeholder to the line, advancing `x`.
+fn push_field_marker(
+    ctx: &LayoutContext<'_>,
+    current: &mut LineBuilder,
+    x: &mut f64,
+    run: &ComputedRun,
+    marker: crate::fields::FieldMarker,
+) {
+    let text = marker.format.format(1);
+    let width = ctx.measure(&text, run);
+    let size_px = ctx.size_px(run.size_pt);
+    current.items.push(TextItem {
+        x: *x,
+        baseline: 0.0,
+        width,
+        text,
+        run: run.clone(),
+        size_px,
+        field: Some(marker),
+    });
+    *x += width;
+}
+
+/// Adjusts a superscript/subscript item's size and baseline.
+fn apply_vertical_align(item: &mut TextItem) {
+    let base = item.size_px;
+    match item.run.vert_align {
+        VertAlign::Superscript => {
+            item.baseline -= base * 0.33;
+            item.size_px = base * 0.65;
+        }
+        VertAlign::Subscript => {
+            item.baseline += base * 0.20;
+            item.size_px = base * 0.65;
+        }
+        VertAlign::Baseline => {}
     }
 }
 
@@ -530,31 +760,4 @@ fn next_tab_x(
     let tab_step = twips_to_px(default_tab, scale);
     let steps = (relative / tab_step).floor() + 1.0;
     content_left + steps * tab_step
-}
-
-/// Resolves a numbering marker text for `(num_id, ilvl)`.
-fn numbering_marker(document: &Document, num_id: u32, ilvl: u8) -> Option<(String, ComputedRun)> {
-    let abstract_num = document.numbering.resolved_abstract(NumId(num_id))?;
-    let level = abstract_num.level(Ilvl(ilvl))?;
-    let text = level.text.as_ref()?;
-    let start = level.start.unwrap_or(1);
-    let mut rendered = String::new();
-    let mut chars = text.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '%' {
-            if let Some(digit) = chars.peek().and_then(|value| value.to_digit(10)) {
-                chars.next();
-                rendered.push_str(&start.to_string());
-                let _ = digit;
-                continue;
-            }
-        }
-        rendered.push(ch);
-    }
-    if rendered.is_empty() {
-        return None;
-    }
-    let mut run = ComputedRun::default();
-    crate::style::apply_run_props(&mut run, &level.run);
-    Some((rendered, run))
 }

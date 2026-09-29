@@ -1552,6 +1552,7 @@ dependencies = [
  "criterion",
  "proptest",
  "rayon",
+ "roxmltree 0.20.0",
  "strict-ooxml-core",
  "toml",
  "zip",

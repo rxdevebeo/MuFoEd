@@ -1,20 +1,39 @@
 //! The top-level immutable document model.
 
+use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::part::PartId;
 
 use super::block::Block;
 use super::drawing::MediaIndex;
+use super::notes::NoteTable;
 use super::numbering::NumberingTable;
 use super::props::Section;
 use super::settings::Settings;
 use super::styles::StyleTable;
 use super::support::SupportModel;
+use super::theme::Theme;
 
 /// The document body (`w:body`) as a sequence of block-level items.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Body {
     /// Block-level content.
     pub blocks: Vec<Block>,
+}
+
+/// A parsed header or footer part (`w:hdr`/`w:ftr`).
+///
+/// Headers and footers contain the same block-level content as the body and
+/// are referenced by [`SectionProperties`](super::props::SectionProperties).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HeaderFooter {
+    /// Part id of the header/footer XML.
+    pub part: PartId,
+    /// Whether this is a header (`w:hdr`) rather than a footer (`w:ftr`).
+    pub is_header: bool,
+    /// Block content.
+    pub blocks: Vec<Block>,
+    /// Source location of the part root element.
+    pub location: SourceLocation,
 }
 
 /// The package parts a [`Document`] was built from.
@@ -28,6 +47,12 @@ pub struct DocumentSource {
     pub numbering: Option<PartId>,
     /// Settings part, if present.
     pub settings: Option<PartId>,
+    /// Footnotes part, if present.
+    pub footnotes: Option<PartId>,
+    /// Endnotes part, if present.
+    pub endnotes: Option<PartId>,
+    /// Theme part, if present.
+    pub theme: Option<PartId>,
 }
 
 /// An immutable, resolved WordprocessingML Strict document.
@@ -42,10 +67,18 @@ pub struct Document {
     pub styles: StyleTable,
     /// Numbering definitions.
     pub numbering: NumberingTable,
+    /// Footnote definitions (`footnotes.xml`).
+    pub footnotes: NoteTable,
+    /// Endnote definitions (`endnotes.xml`).
+    pub endnotes: NoteTable,
     /// Document settings.
     pub settings: Settings,
+    /// Parsed theme, if present.
+    pub theme: Option<Theme>,
     /// Resolved sections, in document order.
     pub sections: Vec<Section>,
+    /// Parsed header/footer parts referenced by the sections, in first-seen order.
+    pub headers_footers: Vec<HeaderFooter>,
     /// Media parts referenced by the document.
     pub media: MediaIndex,
     /// Support information gathered while parsing.
@@ -65,6 +98,14 @@ impl Document {
     #[must_use]
     pub fn media(&self) -> &MediaIndex {
         &self.media
+    }
+
+    /// Returns the parsed header/footer for `part`, if any.
+    #[must_use]
+    pub fn header_footer(&self, part: &PartId) -> Option<&HeaderFooter> {
+        self.headers_footers
+            .iter()
+            .find(|header_footer| &header_footer.part == part)
     }
 
     /// Renders a human-readable support summary.

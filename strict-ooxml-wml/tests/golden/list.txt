@@ -1,4 +1,4 @@
-document blocks=1 sections=0 media=0 styles=0 numbering=1 features=0
+document blocks=1 sections=0 media=0 styles=0 numbering=1 features=1
   block[0] paragraph style=ListParagraph jc=- num=Some(Ilvl(1))/Some(NumId(5))
     run b=Absent i=Absent sz=None color=None
       text space=Default "item"

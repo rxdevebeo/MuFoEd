@@ -5,6 +5,7 @@ use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::ids::{AbstractNumId, Ilvl, NumId, StyleId};
 use crate::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
+use crate::model::support::SupportStatus;
 use crate::model::values::Justification;
 
 use super::{is_wml, parse_u32, val_attr, wml_attr, PartParser};
@@ -15,6 +16,12 @@ impl PartParser<'_> {
         self.enter()?;
         let mut table = NumberingTable::new();
         self.expect_root("numbering")?;
+        self.record(
+            "w:numbering",
+            SupportStatus::Supported,
+            None,
+            Some(self.location()),
+        );
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
@@ -191,7 +198,15 @@ impl PartParser<'_> {
                             abstract_id = val_attr(&attrs).and_then(parse_u32);
                             self.skip_element()?;
                         }
-                        "lvlOverride" => overrides.push(self.parse_level_override(&attrs)?),
+                        "lvlOverride" => {
+                            self.record(
+                                "w:lvlOverride",
+                                SupportStatus::Supported,
+                                None,
+                                Some(self.location()),
+                            );
+                            overrides.push(self.parse_level_override(&attrs)?);
+                        }
                         _ => self.skip_element()?,
                     }
                 }
@@ -241,6 +256,12 @@ impl PartParser<'_> {
                     match name.local() {
                         "startOverride" => {
                             over.start_override = val_attr(&attrs).and_then(parse_u32);
+                            self.record(
+                                "w:startOverride",
+                                SupportStatus::Supported,
+                                None,
+                                Some(self.location()),
+                            );
                             self.skip_element()?;
                         }
                         "lvl" => over.level = Some(self.parse_level(&attrs)?),

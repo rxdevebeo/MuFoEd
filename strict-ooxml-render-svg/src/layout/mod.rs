@@ -4,6 +4,7 @@
 //! pagination → a list of [`PlacedPage`]s holding paint [`Item`]s. Painting
 //! (`crate::paint`) is the only place that knows SVG.
 
+pub(crate) mod headerfooter;
 pub(crate) mod paginate;
 pub(crate) mod paragraph;
 pub(crate) mod table;
@@ -32,6 +33,9 @@ pub(crate) struct TextItem {
     pub run: ComputedRun,
     /// Font size in px.
     pub size_px: f64,
+    /// Computed field marker, when this item is a PAGE/NUMPAGES/SECTIONPAGES
+    /// placeholder resolved at placement time.
+    pub field: Option<crate::fields::FieldMarker>,
 }
 
 /// A filled/stroked rectangle.
@@ -122,6 +126,8 @@ pub(crate) struct TextLine {
     pub height: f64,
     /// Baseline offset from the line top in px.
     pub ascent: f64,
+    /// Footnote ids referenced on this line, in order.
+    pub footnote_refs: Vec<u32>,
 }
 
 impl TextLine {
@@ -148,8 +154,21 @@ pub(crate) enum Flow {
         /// Block height in px.
         height: f64,
     },
+    /// A table row, carrying repeat/keep metadata.
+    TableRow(TableRowFlow),
     /// An explicit page break.
     PageBreak,
+}
+
+/// A laid-out table row.
+#[derive(Clone, Debug)]
+pub(crate) struct TableRowFlow {
+    /// Items positioned relative to the row's top-left.
+    pub items: Vec<Item>,
+    /// Row height in px.
+    pub height: f64,
+    /// Whether this row repeats as a header on each page (`w:tblHeader`).
+    pub header: bool,
 }
 
 /// Page geometry derived from a section's `sectPr`.
@@ -257,6 +276,10 @@ pub(crate) struct LayoutContext<'a> {
     pub media: Option<&'a dyn MediaSource>,
     /// Media emission mode.
     pub media_mode: MediaMode,
+    /// Footnote/endnote numbering.
+    pub note_numbers: crate::notes::NoteNumbering,
+    /// List numbering markers by paragraph location.
+    pub numbering: crate::numbering::NumberingMarkers,
 }
 
 impl LayoutContext<'_> {
