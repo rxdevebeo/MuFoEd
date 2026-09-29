@@ -169,6 +169,43 @@ fn first_page_header_wins_when_title_page() {
 }
 
 #[test]
+fn title_page_without_first_leaves_first_page_blank() {
+    // `titlePg` set but no `first` reference: the first page must have no
+    // header and no footer (no Default/Even fallback).
+    let body = two_page_body(
+        "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\"/>\
+<w:headerReference w:type=\"default\" r:id=\"rIdH\"/>\
+<w:footerReference w:type=\"default\" r:id=\"rIdF\"/><w:titlePg/>",
+    );
+    let rels = doc_rels(&[
+        ("rIdH", HEADER_REL, "header1.xml"),
+        ("rIdF", FOOTER_REL, "footer1.xml"),
+    ]);
+    let pages = build(
+        &body,
+        &rels,
+        None,
+        &[
+            ("word/header1.xml", header("DEFHDR")),
+            ("word/footer1.xml", footer("DEFTR")),
+        ],
+    );
+    assert_eq!(pages.len(), 2);
+    assert!(
+        !pages[0].svg.contains("DEFHDR"),
+        "first page must not use the default header"
+    );
+    assert!(
+        !pages[0].svg.contains("DEFTR"),
+        "first page must not use the default footer"
+    );
+    // Later pages keep using the default header/footer.
+    assert!(pages[1].svg.contains("DEFHDR"));
+    assert!(pages[1].svg.contains("DEFTR"));
+}
+
+#[test]
 fn even_odd_headers_follow_settings() {
     let settings = format!(
         "<?xml version=\"1.0\"?><w:settings xmlns:w=\"{W}\"><w:evenAndOddHeaders/></w:settings>"

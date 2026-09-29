@@ -20,9 +20,13 @@ const MAX_PAGES: usize = 10_000;
 /// Hard cap on the number of paint items (output-size guard).
 const MAX_ITEMS: usize = 2_000_000;
 /// Height reserved for the footnote separator, in px.
-const FOOTNOTE_SEPARATOR_HEIGHT: f64 = 6.0;
-/// Height reserved for the endnote separator block, in px.
-const ENDNOTE_SEPARATOR_HEIGHT: f64 = 8.0;
+const FOOTNOTE_SEPARATOR_HEIGHT: f64 = 10.0;
+/// Padding between the footnote area and the bottom content edge, in px.
+const FOOTNOTE_BOTTOM_PAD: f64 = 4.0;
+/// Height reserved for the endnote separator block, in px (gap + line).
+const ENDNOTE_SEPARATOR_HEIGHT: f64 = 16.0;
+/// Vertical gap before the endnote separator line, in px.
+const ENDNOTE_SEPARATOR_GAP: f64 = 8.0;
 
 /// Lays out the whole document into pages.
 pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
@@ -141,11 +145,11 @@ fn append_endnotes(ctx: &LayoutContext<'_>, paginator: &mut Paginator<'_>) -> Re
     let width = paginator.geometry.content_width();
     let line = Item::Line(LineItem {
         x1: left,
-        y1: 0.0,
+        y1: ENDNOTE_SEPARATOR_GAP,
         x2: left + (width / 3.0).max(8.0),
-        y2: 0.0,
+        y2: ENDNOTE_SEPARATOR_GAP,
         color: "#000000".to_owned(),
-        width: 0.5,
+        width: 1.0,
         dashed: false,
     });
     paginator.place(Flow::Block {
@@ -279,7 +283,7 @@ impl<'a> Paginator<'a> {
         if self.page_footnotes.is_empty() {
             0.0
         } else {
-            FOOTNOTE_SEPARATOR_HEIGHT + self.notes_height
+            FOOTNOTE_SEPARATOR_HEIGHT + self.notes_height + FOOTNOTE_BOTTOM_PAD
         }
     }
 
@@ -379,7 +383,8 @@ impl<'a> Paginator<'a> {
             .iter()
             .map(|id| self.note_height(*id))
             .sum();
-        let area_top = bottom - FOOTNOTE_SEPARATOR_HEIGHT - total;
+        let area_bottom = bottom - FOOTNOTE_BOTTOM_PAD;
+        let area_top = area_bottom - FOOTNOTE_SEPARATOR_HEIGHT - total;
         let separator_length = if self.continuation {
             width
         } else {
@@ -391,7 +396,7 @@ impl<'a> Paginator<'a> {
             x2: left + separator_length,
             y2: area_top,
             color: "#000000".to_owned(),
-            width: 0.5,
+            width: 1.0,
             dashed: false,
         })];
         let mut y = area_top + FOOTNOTE_SEPARATOR_HEIGHT;

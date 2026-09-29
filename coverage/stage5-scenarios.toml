@@ -1,0 +1,307 @@
+# Stage-5 (5A) extended-scenario coverage inventory (ZAKAZ-STAGE-5 §3.1.7, §11.1).
+#
+# Curated map of the extended scenarios the renderer claims to cover. It is an
+# independent, human-authored matrix (not derived from the parser's
+# problem-only SupportModel) and is checked by
+# `strict-ooxml-wml/tests/stage5_coverage.rs` and `xtool coverage`.
+#
+# status: supported | partial | unsupported | ignored
+#   supported   - fully implemented and tested
+#   partial     - implemented with a documented limitation
+#   unsupported - recognised but not implemented (counts against coverage)
+#   ignored     - deliberately out of the 5A scope (excluded from the ratio)
+# Coverage = (supported + partial) / (supported + partial + unsupported) >= 85%.
+
+[meta]
+standard = "ISO/IEC 29500-1:2008 Strict"
+stage = 5
+source = "curated-stage-5a"
+revision = "2026-09-29"
+generator = "manual"
+
+[[elements]]
+name = "headers.parts"
+status = "supported"
+note = "headerN.xml discovered by relationship type; parsed/reused with the body parser"
+
+[[elements]]
+name = "headers.default"
+status = "supported"
+
+[[elements]]
+name = "headers.first"
+status = "supported"
+note = "w:titlePg selects the first-page header"
+
+[[elements]]
+name = "headers.title_pg_without_first"
+status = "supported"
+note = "titlePg with no first reference leaves the first page header/footer empty (no Default/Even fallback; B5-1)"
+
+[[elements]]
+name = "headers.even"
+status = "supported"
+note = "settings evenAndOddHeaders selects the even-page header"
+
+[[elements]]
+name = "headers.geometry"
+status = "supported"
+note = "w:pgMar/@header and @footer distances; default 720 twips"
+
+[[elements]]
+name = "footers.parts"
+status = "supported"
+
+[[elements]]
+name = "headers.multi_page_split"
+status = "partial"
+note = "a header taller than its margin band is not split across pages"
+
+[[elements]]
+name = "headers.multi_section"
+status = "partial"
+note = "single-section renderer: the last section's headers are used"
+
+[[elements]]
+name = "footnotes.parts"
+status = "supported"
+
+[[elements]]
+name = "footnotes.binding"
+status = "supported"
+note = "w:footnoteReference/w:id bound to footnotes.xml"
+
+[[elements]]
+name = "footnotes.numbering"
+status = "supported"
+note = "continuous numbering, formats (decimal/roman/letter), numStart"
+
+[[elements]]
+name = "footnotes.marker"
+status = "supported"
+note = "superscript marker at the reference position"
+
+[[elements]]
+name = "footnotes.area"
+status = "supported"
+note = "area at the page bottom with a separator"
+
+[[elements]]
+name = "footnotes.continuation"
+status = "supported"
+note = "overflow notes move to the next page with a continuation separator"
+
+[[elements]]
+name = "endnotes.parts"
+status = "supported"
+
+[[elements]]
+name = "endnotes.end_of_document"
+status = "supported"
+note = "endnotes flow after the body with a separator"
+
+[[elements]]
+name = "footnotes.restart"
+status = "partial"
+note = "w:numRestart=eachSect/eachPage not modelled (continuous)"
+
+[[elements]]
+name = "footnotes.in_tables"
+status = "partial"
+note = "notes referenced inside table cells do not reserve area"
+
+[[elements]]
+name = "fields.fld_simple"
+status = "supported"
+
+[[elements]]
+name = "fields.fld_char"
+status = "supported"
+note = "begin/separate/end grouped by the renderer"
+
+[[elements]]
+name = "fields.instr_text"
+status = "supported"
+
+[[elements]]
+name = "fields.page"
+status = "supported"
+note = "PAGE computed at placement"
+
+[[elements]]
+name = "fields.numpages"
+status = "supported"
+note = "NUMPAGES computed by a bounded two-pass layout"
+
+[[elements]]
+name = "fields.sectionpages"
+status = "supported"
+
+[[elements]]
+name = "fields.cached"
+status = "supported"
+note = "non-computed fields use the cached result; recorded Partial in SupportModel"
+
+[[elements]]
+name = "fields.format_switch"
+status = "partial"
+note = "only roman/letter/arabic switches; other switches fall back to decimal"
+
+[[elements]]
+name = "tables.grid_span"
+status = "supported"
+
+[[elements]]
+name = "tables.vertical_merge"
+status = "supported"
+note = "restart owns the merged region; continuation suppressed"
+
+[[elements]]
+name = "tables.nested"
+status = "supported"
+
+[[elements]]
+name = "tables.header_repeat"
+status = "supported"
+note = "w:tblHeader repeated on continued pages"
+
+[[elements]]
+name = "tables.page_break"
+status = "supported"
+note = "the table breaks between rows across pages"
+
+[[elements]]
+name = "tables.borders_shading"
+status = "supported"
+note = "tblBorders/tcBorders/shd"
+
+[[elements]]
+name = "tables.fixed_width"
+status = "supported"
+note = "tblGrid/tblLayout fixed widths"
+
+[[elements]]
+name = "tables.row_split"
+status = "unsupported"
+note = "a single row taller than a page is placed whole"
+
+[[elements]]
+name = "tables.merge_across_pages"
+status = "unsupported"
+note = "a merged region crossing a page break draws on the first page"
+
+[[elements]]
+name = "theme.fonts"
+status = "supported"
+note = "major/minor latin/ea/cs parsed and resolved"
+
+[[elements]]
+name = "theme.colors"
+status = "supported"
+note = "dk1..accent6/hlink/folHlink and aliases"
+
+[[elements]]
+name = "theme.color_resolution"
+status = "supported"
+note = "w:themeColor resolved in the run cascade"
+
+[[elements]]
+name = "theme.tint_shade"
+status = "supported"
+
+[[elements]]
+name = "theme.fmt_scheme"
+status = "partial"
+note = "effects/fills/line styles (a:fmtScheme) not resolved (5A scope)"
+
+[[elements]]
+name = "theme.fill_colors"
+status = "unsupported"
+note = "w:shd/@w:themeFill not resolved"
+
+[[elements]]
+name = "numbering.multilevel"
+status = "supported"
+
+[[elements]]
+name = "numbering.lvl_text"
+status = "supported"
+note = "%n substitution with per-level formats"
+
+[[elements]]
+name = "numbering.formats"
+status = "supported"
+note = "decimal/decimalZero/roman/letter/bullet"
+
+[[elements]]
+name = "numbering.overrides"
+status = "supported"
+note = "lvlOverride/startOverride"
+
+[[elements]]
+name = "numbering.restart"
+status = "supported"
+note = "deeper levels restart when a higher level is used; lvlRestart=0 honoured"
+
+[[elements]]
+name = "numbering.indentation"
+status = "supported"
+note = "level w:ind applied to numbered paragraphs"
+
+[[elements]]
+name = "numbering.level_justification"
+status = "partial"
+note = "w:lvlJc marker alignment not applied (left markers)"
+
+[[elements]]
+name = "numbering.suffix"
+status = "partial"
+note = "w:suff not applied (marker followed by a tab to the level start)"
+
+[[elements]]
+name = "numbering.style_linked"
+status = "unsupported"
+note = "numStyleLink/styleLink not resolved"
+
+[[elements]]
+name = "numbering.num_id_zero"
+status = "unsupported"
+note = "numId=0 (remove numbering) not modelled"
+
+[[elements]]
+name = "drawingml.anchors"
+status = "ignored"
+note = "element tier 5B"
+
+[[elements]]
+name = "drawingml.shapes"
+status = "ignored"
+note = "element tier 5B"
+
+[[elements]]
+name = "drawingml.groups"
+status = "ignored"
+note = "element tier 5B"
+
+[[elements]]
+name = "page.borders"
+status = "ignored"
+note = "element tier 5B"
+
+[[elements]]
+name = "math.omml"
+status = "ignored"
+note = "element tier 5C"
+
+[[elements]]
+name = "vml"
+status = "ignored"
+
+[[elements]]
+name = "comments.bodies"
+status = "ignored"
+
+[[elements]]
+name = "normalization.transitional"
+status = "ignored"
+note = "element tier Stage 6"

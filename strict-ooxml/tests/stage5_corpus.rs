@@ -100,9 +100,12 @@ fn renders_two_valid_pages_with_stage5_content() {
         assert!(!svg.contains("NaN"), "NaN in SVG");
     }
     // Text is wrapped into word tokens, so assert on individual words.
+    // `titlePg` is set with no `first` reference: the first page must have no
+    // header/footer (no Default/Even fallback); the even page uses the even
+    // header (B5-1).
     assert!(
-        first.contains("Default"),
-        "default header missing on page 1"
+        !first.contains("Default"),
+        "first page must not draw a default header/footer"
     );
     assert!(second.contains("Even"), "even header missing on page 2");
     assert!(first.contains("Footnote"), "footnote missing");

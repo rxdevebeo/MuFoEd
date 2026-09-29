@@ -12,8 +12,10 @@ use crate::layout::{Flow, Item, LayoutContext, LineItem, RectItem, TableRowFlow}
 use crate::style::parse_color;
 use crate::units::{eighths_point_to_px, twips_to_px};
 
-/// Default cell margin in twips (0.075 inch).
+/// Default horizontal cell margin in twips (`CT_TblCellMar` start/end).
 const DEFAULT_CELL_MARGIN: i32 = 108;
+/// Default vertical cell margin in twips (`CT_TblCellMar` top/bottom is `0`).
+const DEFAULT_CELL_MARGIN_VERTICAL: i32 = 0;
 
 /// Vertical merge state of a cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -287,14 +289,14 @@ fn effective_margins(
     } else {
         table.props.cell_margins
     };
-    let value = |margin: Option<Twips>| {
-        twips_to_px(margin.map_or(DEFAULT_CELL_MARGIN, Twips::value), scale)
+    let value = |margin: Option<Twips>, default: i32| {
+        twips_to_px(margin.map_or(default, Twips::value), scale)
     };
     (
-        value(source.start),
-        value(source.end),
-        value(source.top),
-        value(source.bottom),
+        value(source.start, DEFAULT_CELL_MARGIN),
+        value(source.end, DEFAULT_CELL_MARGIN),
+        value(source.top, DEFAULT_CELL_MARGIN_VERTICAL),
+        value(source.bottom, DEFAULT_CELL_MARGIN_VERTICAL),
     )
 }
 

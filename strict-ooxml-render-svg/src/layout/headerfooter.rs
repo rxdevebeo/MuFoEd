@@ -127,9 +127,10 @@ fn select_reference(
             .and_then(|reference| reference.part.as_ref())
     };
     if page_number == 1 && title_page {
-        if let Some(part) = find(HeaderFooterKind::First) {
-            return Some(part);
-        }
+        // With `w:titlePg` the first page uses only the `first` reference; when
+        // it is absent the first page has no header/footer (no Default/Even
+        // fallback), as Word/WPS do.
+        return find(HeaderFooterKind::First);
     }
     if even_and_odd && page_number % 2 == 0 {
         return find(HeaderFooterKind::Even);

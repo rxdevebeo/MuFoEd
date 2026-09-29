@@ -105,6 +105,26 @@ fn independent_oracle_checks_stage5_parts() {
         .collect();
     assert_eq!(texts, vec!["%1.", "%1.%2"]);
 
+    // Content types must be ISO/IEC 29500 (no legacy `vnd.ms-word.*`), which is
+    // what makes WPS read the package as a real document (B5-2).
+    let content_types = read_part(&path, "[Content_Types].xml");
+    let types_doc = roxmltree::Document::parse(&content_types).expect("valid content types");
+    let declared: Vec<&str> = types_doc
+        .descendants()
+        .filter(|node| node.is_element() && node.tag_name().name() == "Override")
+        .filter_map(|node| node.attribute("ContentType"))
+        .collect();
+    assert!(!declared.is_empty(), "no content-type overrides");
+    for content_type in &declared {
+        assert!(
+            !content_type.starts_with("application/vnd.ms-word"),
+            "legacy content type: {content_type}"
+        );
+    }
+    assert!(declared.contains(
+        &"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+    ));
+
     // Cross-check with our parser: the same facts must hold.
     let package = Package::open_path(&path, &OpenOptions::default()).expect("open strict");
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");

@@ -4,8 +4,10 @@
 fuzz/target
 fuzz/corpus
 fuzz/artifacts
-# coverage
-/coverage
+# coverage reports/artifacts (the tracked inventories are un-ignored below)
+/coverage/*
+!/coverage/wml-elements.toml
+!/coverage/stage5-scenarios.toml
 *.profraw
 # local .docx working corpus (not published in the repository)
 # note: strict-ooxml-core/tests/samples/ is the PUBLIC synthetic corpus and is

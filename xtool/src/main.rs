@@ -708,6 +708,7 @@ fn stage5_docx() -> Vec<u8> {
 <w:headerReference w:type=\"default\" r:id=\"rIdHeader1\"/>\
 <w:headerReference w:type=\"even\" r:id=\"rIdHeader2\"/>\
 <w:footerReference w:type=\"default\" r:id=\"rIdFooter1\"/>\
+<w:docGrid w:type=\"lines\" w:linePitch=\"360\"/>\
 <w:titlePg/></w:sectPr>\
 </w:body></w:document>"
     );
@@ -727,8 +728,8 @@ fn stage5_docx() -> Vec<u8> {
     let numbering = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:numbering xmlns:w=\"{W_NS}\">\
 <w:abstractNum w:abstractNumId=\"0\">\
-<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.\"/></w:lvl>\
-<w:lvl w:ilvl=\"1\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.%2\"/></w:lvl>\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.\"/><w:pPr><w:ind w:start=\"720\" w:hanging=\"360\"/></w:pPr></w:lvl>\
+<w:lvl w:ilvl=\"1\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.%2\"/><w:pPr><w:ind w:start=\"1440\" w:hanging=\"360\"/></w:pPr></w:lvl>\
 </w:abstractNum>\
 <w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>"
     );
@@ -779,15 +780,15 @@ fn stage5_docx() -> Vec<u8> {
     let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
 <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
 <Default Extension=\"xml\" ContentType=\"application/xml\"/>\
-<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.ms-word.document.main+xml\"/>\
-<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.ms-word.settings+xml\"/>\
-<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.ms-word.numbering+xml\"/>\
-<Override PartName=\"/word/theme/theme1.xml\" ContentType=\"application/vnd.ms-word.theme+xml\"/>\
-<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.ms-word.header+xml\"/>\
-<Override PartName=\"/word/header2.xml\" ContentType=\"application/vnd.ms-word.header+xml\"/>\
-<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.ms-word.footer+xml\"/>\
-<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.ms-word.footnotes+xml\"/>\
-<Override PartName=\"/word/endnotes.xml\" ContentType=\"application/vnd.ms-word.endnotes+xml\"/>\
+<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\
+<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>\
+<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>\
+<Override PartName=\"/word/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>\
+<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>\
+<Override PartName=\"/word/header2.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>\
+<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>\
+<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>\
+<Override PartName=\"/word/endnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml\"/>\
 </Types>";
     let root_rels = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL_BASE}/officeDocument\" Target=\"word/document.xml\"/></Relationships>"
@@ -811,7 +812,7 @@ fn stage5_docx() -> Vec<u8> {
 }
 
 fn build_strict_docx(document: &[u8]) -> Vec<u8> {
-    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.ms-word.document.main+xml\"/></Types>";
+    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>";
     let rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
     zip(&[
         ("[Content_Types].xml", content_types.as_bytes()),

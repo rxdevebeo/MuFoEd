@@ -8,9 +8,11 @@ ADR-0004/0005/0006
 **Окружение:** Windows x86_64 (MSVC), Rust 1.91.x, cargo-llvm-cov, cargo-deny  
 **Крейты:** `strict-ooxml-core` (error), `strict-ooxml-wml` (модель/парсинг),
 `strict-ooxml-render-svg` (вёрстка/SVG)  
-**Статус:** эшелон 5A (S5.1–S5.10) реализован; гейты и покрытие — зелёные.
-Остаётся S5.11–S5.13 (карта покрытия отчёта, корпус/WPS-эталоны, документация)
-и внешняя приёмка (`ACCEPT-STAGE-5`).
+**Статус:** эшелон 5A (S5.1–S5.13) реализован; гейты и покрытие — зелёные;
+доработка по приёмке `STAGE-5-REWORK-1` (B5-1 колонтитул первой страницы,
+B5-2 ISO content types + WPS-эталон 5A, B5-3 карта/A-3) — выполнена. Открыты
+только A-1 (реальный Strict под SSIM) и A-2 (независимое подтверждение карты)
+до подписи заказчика.
 
 ---
 
@@ -109,7 +111,7 @@ strict-ooxml-render-svg/
 | Формат | `cargo fmt --all -- --check` | ✅ exit 0 |
 | Линт | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | ✅ exit 0 |
 | Сборка | `cargo build --workspace --all-targets --all-features` | ✅ exit 0 |
-| Тесты | `cargo test --workspace --all-features` | ✅ **348 тестов**, 0 падений |
+| Тесты | `cargo test --workspace --all-features` | ✅ **349 тестов**, 0 падений |
 | Docs | `cargo doc --workspace --no-deps` | ✅ exit 0 |
 | Зависимости | `cargo deny check` | ✅ advisories/bans/licenses/sources ok |
 | Покрытие core | `--fail-under-lines 80` | ✅ 88.53% |
@@ -220,11 +222,15 @@ MathML/OMML (5C), VML, комментарии, нормализация Transiti
   читает части фикстуры внешним `zip` и парсит их внешним `roxmltree`, сверяя
   структуру (заголовок, id сносок −1/0/1, `accent1=4472C4`, minor Latin Calibri,
   `%1.`/`%1.%2`, vMerge) и перекрёстно — наш парсер.
-- **WPS-эталоны для 5A — не применимы.** На пиннинге WPS `12.1.0.28485`
-  `kwpsconvert word2photo` выдал **12 страниц** для двухстраничной синтетической
-  Strict-фикстуры: WPS не соблюдает минимальную синтетическую Strict-модель,
-  поэтому её вывод не является достоверным оракулом. Попиксельная точность
-  реального Strict-текста остаётся за Этапом 4
-  (`strict-text`/`strict-text-grid`, SSIM ≥ 0.95). Зафиксировано в
-  `strict-ooxml-core/tests/strict/refs/README.md`.
+- **WPS-эталоны для 5A — применимы** (`STAGE-5-REWORK-1` B5-2). Изначально
+  `kwpsconvert word2photo` давал 12 страниц, но причина — legacy content types
+  (`application/vnd.ms-word.*`), а не WPS. После перехода генератора на ISO
+  (`application/vnd.openxmlformats-officedocument.*`) WPS даёт **2 страницы**;
+  эталон `refs/strict-stage5/page_{1,2}.png` закоммичен (пиннинг `12.1.0.28485`,
+  SHA-256 в `refs/README.md`). SSIM = **0.9795** (SSIM ≥ 0.95 + инвариант
+  страниц + структурный инвариант с ослабленными порогами **корреляций**
+  (`STAGE5_LIMITS`: 0.75/0.70) — rasterizer-независимые проверки
+  покрытия/пустой страницы, сдвига и центроида сохранены; R5-1). Попутно
+  исправлена свёрстка области концевых сносок (R5-2) и добавлен отступ уровня
+  нумерации в фикстуру. Зафиксировано в `tests/ssim.rs`.
 
