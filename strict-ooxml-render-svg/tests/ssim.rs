@@ -31,6 +31,31 @@ use strict_ooxml_wml::{parse_document, ParseOptions};
 /// Minimum acceptable worst-page SSIM on the approved references.
 const SSIM_THRESHOLD: f64 = 0.95;
 
+/// The margin a document must clear above [`SSIM_THRESHOLD`] to pass outright.
+///
+/// Without it, "passes" and "passes because the threshold was set from the
+/// result" look identical. The corpus shows why this matters: a document at
+/// 0.9533 clears a 0.95 gate by three thousandths, and the gate runs on three
+/// operating systems in CI, so whether it is a stable property of the layout
+/// or of one rasterizer build is unknowable from the number alone. A document
+/// at 0.96 has cleared a meaningful part of that uncertainty.
+const SSIM_MARGIN: f64 = 0.01;
+
+/// Documents known to clear [`SSIM_THRESHOLD`] but not [`SSIM_MARGIN`].
+///
+/// This list is the amber register, and it is the whole of the policy: a
+/// document *not* on it that lands in the margin band fails the gate, so a new
+/// fixture cannot join the gate "just below the line" without being written
+/// down here. Each entry is outstanding debt with a named defect, not an
+/// accepted tolerance. Removing an entry is progress; adding one is a decision
+/// that has to be made on purpose.
+///
+/// * `strict-stage5c` — 0.9533. The display-block box is 17/18 px taller than
+///   WPS's (§4.2 of the Stage-5C report); `EXTENT_RATCHET` tracks it.
+/// * `07-strict-drawingml-shapes` — 0.9568. The same block-geometry family, on
+///   the opposite sign: the page is 16 px *shorter* than the reference.
+const SSIM_AMBER: &[&str] = &["strict-stage5c", "07-strict-drawingml-shapes"];
+
 /// Documents compared page by page with SSIM.
 const SSIM_DOCS: &[&str] = &[
     "strict-text",
@@ -833,6 +858,63 @@ fn reference_pages(dir: &Path) -> Vec<PathBuf> {
     pages
 }
 
+/// Prints the structural numbers of every page of a document.
+///
+/// The numbers are printed whether or not the page passes, so a regression is
+/// readable from the log rather than only from the panic.
+///
+/// # Panics
+///
+/// If any page violated a structural bound.
+fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity, String>)]) {
+    for (page, structure) in structures {
+        match structure {
+            Ok(structure) => eprintln!(
+                "  page {page}: dy={}px corr_y={:.3} | dx={}px corr_x={:.3} | centroid d=({:.2},{:.2}) | edge d=({:+.0},{:+.0}) | ink ref={:.5} cand={:.5}",
+                structure.shift_y_px,
+                structure.correlation_y,
+                structure.shift_x_px,
+                structure.correlation_x,
+                structure.centroid_x_delta,
+                structure.centroid_y_delta,
+                structure.top_delta,
+                structure.bottom_delta,
+                structure.reference_ink,
+                structure.candidate_ink
+            ),
+            Err(reason) => panic!("{name} page {page}: structural check failed: {reason}"),
+        }
+    }
+}
+
+/// Grades one document's worst-page SSIM; returns `true` when it is amber.
+///
+/// Below [`SSIM_THRESHOLD`] is a regression and panics. In
+/// `[SSIM_THRESHOLD, SSIM_THRESHOLD + SSIM_MARGIN)` the document passes only
+/// because it is written down in [`SSIM_AMBER`], so a new fixture cannot join
+/// the gate just below the line without being registered on purpose.
+///
+/// # Panics
+///
+/// If `worst` is below the threshold, or is inside the margin band without
+/// being registered.
+fn grade_ssim(name: &str, worst: f64) -> bool {
+    assert!(
+        worst >= SSIM_THRESHOLD,
+        "{name}: worst SSIM {worst:.4} < {SSIM_THRESHOLD}"
+    );
+    let margin = worst - SSIM_THRESHOLD;
+    if margin >= SSIM_MARGIN {
+        return false;
+    }
+    assert!(
+        SSIM_AMBER.contains(&name),
+        "{name}: worst SSIM {worst:.4} clears {SSIM_THRESHOLD} by only {margin:.4}, \
+         below the {SSIM_MARGIN:.2} margin, and is not registered in SSIM_AMBER"
+    );
+    true
+}
+
 #[test]
 fn matches_wps_references() {
     let refs = strict_dir().join("refs");
@@ -840,6 +922,7 @@ fn matches_wps_references() {
     let fonts = fonts_dir();
     let mut checked = 0u32;
     let mut gated = 0u32;
+    let mut amber: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(&refs).expect("read refs dir") {
         let dir = entry.expect("refs entry").path();
         if !dir.is_dir() {
@@ -900,34 +983,37 @@ fn matches_wps_references() {
 
         if SSIM_DOCS.contains(&name.as_str()) && !comparisons.is_empty() {
             let worst = worst_score(&comparisons).expect("at least one comparison");
-            eprintln!("{name}: worst SSIM = {worst:.4}");
-            for (page, structure) in &structures {
-                match structure {
-                    Ok(structure) => eprintln!(
-                        "  page {page}: dy={}px corr_y={:.3} | dx={}px corr_x={:.3} | centroid d=({:.2},{:.2}) | edge d=({:+.0},{:+.0}) | ink ref={:.5} cand={:.5}",
-                        structure.shift_y_px,
-                        structure.correlation_y,
-                        structure.shift_x_px,
-                        structure.correlation_x,
-                        structure.centroid_x_delta,
-                        structure.centroid_y_delta,
-                        structure.top_delta,
-                        structure.bottom_delta,
-                        structure.reference_ink,
-                        structure.candidate_ink
-                    ),
-                    Err(reason) => panic!("{name} page {page}: structural check failed: {reason}"),
-                }
-            }
-            assert!(
-                worst >= SSIM_THRESHOLD,
-                "{name}: worst SSIM {worst:.4} < {SSIM_THRESHOLD}"
+            eprintln!(
+                "{name}: worst SSIM = {worst:.4} (margin {:+.4}, needs {SSIM_MARGIN:+.4})",
+                worst - SSIM_THRESHOLD
             );
+            report_structure(&name, &structures);
+            if grade_ssim(&name, worst) {
+                amber.push(name.clone());
+            }
             gated += 1;
         }
     }
     assert!(checked > 0, "no reference documents were checked");
     assert!(gated > 0, "no SSIM-gated documents were present");
+    if !amber.is_empty() {
+        eprintln!(
+            "AMBER (clears the threshold, not the {SSIM_MARGIN:.2} margin): {}",
+            amber.join(", ")
+        );
+    }
+    // The register has to be exact in both directions, or it rots: a stale
+    // entry keeps a fixed document looking like outstanding debt, and a missing
+    // one lets a new near-miss through. The per-document check above rejects
+    // the unregistered case; this rejects the stale one.
+    amber.sort();
+    let mut registered = SSIM_AMBER.to_vec();
+    registered.sort_unstable();
+    assert_eq!(
+        amber, registered,
+        "SSIM_AMBER is out of date: the documents actually inside the margin band \
+         have changed (amber is the observed set)"
+    );
 }
 
 #[test]

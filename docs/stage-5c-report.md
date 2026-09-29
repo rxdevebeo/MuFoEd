@@ -242,9 +242,10 @@ only for the same reason and has been since Stage 4.
 | `xtool coverage --file coverage/stage5-scenarios.toml --min 85` | **94.4 %** |
 | `xtool coverage --file coverage/wml-elements.toml --min 90` | pass |
 | line coverage core / wml / report / render-svg (≥ 80) | 87.97 / 85.08 / 99.83 / 84.94 % |
-| SSIM `strict-text` / `-grid` / `strict-stage5` / `strict-stage5b` | 0.9768 / 0.9709 / 0.9795 / 0.9640 — **unchanged** |
+| SSIM `strict-text` / `-grid` / `strict-stage5` / `strict-stage5b` | 0.9768 / 0.9709 / 0.9795 / 0.9664 — `5b` up from 0.9640 (the page-border box fix) |
 | SSIM `strict-stage5c` (both pages gated) | 0.9533 / 0.9761 |
 | SSIM `05` / `06` / `07` / `10` | 0.9836 / 0.9746 / 0.9568 / 0.9722 |
+| margin over the 0.95 criterion (§3.2 policy, `SSIM_MARGIN` = 0.01) | seven of nine clear it; **`strict-stage5c` (+0.0033) and `07` (+0.0068) are amber** — they pass only because they are registered in `SSIM_AMBER` |
 | SSIM values independently reproduced with `skimage` (11×11, σ=1.5, population covariance) | identical to 4 decimals on all gated pages — the harness SSIM is the reference implementation, not a lookalike |
 | ink-extent drift, 5C set (§4.2) | 0 / −10 / −16 / −4 / +18 px, pinned by `EXTENT_RATCHET` |
 | perf: 110 pages of dense inline OMML (3600 paragraphs, every construct) | **0.29 s** (limit 5 s) |
