@@ -65,6 +65,7 @@ const STAGE5_LIMITS: StructuralLimits = StructuralLimits {
     max_centroid_px: 3.0,
     min_row_correlation: 0.75,
     min_column_correlation: 0.70,
+    max_extent_px: 2.0,
 };
 
 /// Relaxed structural limits for the Stage-5B floating-drawing fixture
@@ -80,7 +81,34 @@ const STAGE5B_LIMITS: StructuralLimits = StructuralLimits {
     max_centroid_px: 8.0,
     min_row_correlation: 0.60,
     min_column_correlation: 0.50,
+    max_extent_px: 2.0,
 };
+
+/// Minimum ink pixels in a row (or column) for it to count as part of the
+/// page's extent.
+///
+/// The extent is the outermost *substantial* ink, not the outermost ink
+/// pixel: an antialiased hairline or a clipped border edge can put a stray
+/// pixel one row outside the real content, and a bound that tight would then
+/// measure rasterizer noise instead of layout. Six pixels on an 816 px page
+/// is under 1 % of the width and well under one glyph stroke.
+const MIN_EXTENT_INK_PX: usize = 6;
+
+/// Extra pixels searched beyond [`StructuralLimits::max_shift_px`] when
+/// looking for the best profile alignment.
+///
+/// The search range must strictly exceed the bound it is checked against,
+/// otherwise the reported shift is clamped to the search window and a page
+/// that drifted *further* than the bound can report a shift *inside* it —
+/// the check then cannot fail. This margin is what makes the bound a real
+/// bound; [`alignment_search_range_is_wider_than_every_bound`] pins the
+/// invariant.
+const ALIGNMENT_SEARCH_MARGIN_PX: isize = 8;
+
+/// The alignment search range for `limits`: the bound plus the margin.
+fn alignment_search_range(limits: &StructuralLimits) -> isize {
+    limits.max_shift_px + ALIGNMENT_SEARCH_MARGIN_PX
+}
 
 /// Structural limits for the Stage-5C formula fixtures
 /// (`STAGE-5C-REWORK-1` C1/C4): `strict-stage5c` and the real-Strict
@@ -90,32 +118,55 @@ const STAGE5B_LIMITS: StructuralLimits = StructuralLimits {
 /// between them — so the row/column ink profiles carry little structure to
 /// correlate, and each construct differs from the WPS rendering by a fraction
 /// of a line. The rasterizer-independent checks stay enforced: the ink ratio
-/// (a blank or materially different page is rejected), the best-alignment shift
-/// and the ink centroid.
+/// (a blank or materially different page is rejected), the best-alignment shift,
+/// the ink centroid and the ink extent.
 ///
-/// The alignment bound is `12 px` on a 1056 px page (≈ 1.1 %) where the text
-/// fixtures use `2 px`: the *worst* case is `strict-stage5c` page 2, whose three
-/// display-formula blocks accumulate ≈ 11 px over 135 px of content — the
-/// residual of the block box of a stretched `m:nary`/`m:f`, and 0.1 % of the
-/// page. Before `STAGE-5C-REWORK-1` the same page drifted by 400 px (an
-/// `m:eqArr` row spacing read as points instead of twips), so the bound is a
-/// two-order-of-magnitude tightening of the defect it replaces, not a
-/// relaxation to make a failure pass. The correlation floors relax only the
-/// measure a sparse page cannot satisfy (the column floor is set by
-/// `strict-stage5c` page 2, three *centred* display blocks whose column
-/// profile has three narrow clusters and almost no structure).
+/// `max_shift_px` is `12 px` on a 1056 px page (≈ 1.1 %). Before
+/// `STAGE-5C-REWORK-1` the worst case drifted by 400 px (an `m:eqArr` row
+/// spacing read as points instead of twips), so the bound is a two-order-of-
+/// magnitude tightening of the defect it replaces. The correlation floors
+/// relax only the measure a sparse page cannot satisfy.
 ///
-/// The centroid bound is the pre-existing `STAGE5C_LIMITS` value (24 px): it
-/// is sensitive to *how much* ink each glyph carries, and a large operator
-/// stroked as a path (no display cut in the bundled face) puts its ink at the
-/// edges where WPS's filled glyph puts it in the middle. The other four
-/// 5C fixtures stay within 11 px on both axes.
+/// `max_extent_px` is the bound that sees the remaining defect, and it is the
+/// one number here that is a **ratchet on a known defect**, not an accepted
+/// tolerance. Measured against the pinned references, the ink extent of the
+/// five 5C fixtures disagrees with WPS by 0 px (`05`), 0/−4 px (`10`),
+/// 0/−10 px (`06`), 0/−16 px (`07`) and +1/+15 px (`strict-stage5c` page 1),
+/// while every text, mixed and 5B page sits at ≤ 1 px.
+///
+/// A bound of `2 px` — the default, and what the other three classes use — is
+/// what the layout should meet; `structural_extent_ratchet_pins_the_known_drift`
+/// pins today's per-fixture values so the drift cannot grow, and closing it
+/// is Stage-5C rework, not a gate change. Relaxing this number to make a
+/// failure pass is exactly what the gate exists to prevent.
 const STAGE5C_LIMITS: StructuralLimits = StructuralLimits {
     max_shift_px: 12,
     max_centroid_px: 24.0,
     min_row_correlation: 0.45,
     min_column_correlation: 0.40,
+    max_extent_px: 18.0,
 };
+
+/// The per-fixture ink-extent drift each gated page is allowed to keep, in px.
+///
+/// This is the ratchet: it records the measured drift of every gated page
+/// against its pinned WPS reference, so a layout change that makes a page
+/// *worse* fails even while the 5C bound is still loose. Each value must be
+/// the current measurement — lowering one is the way to claim progress, and it
+/// is the number the Stage-5C rework has to move down.
+const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
+    ("strict-text", 0, -1.0, 0.0),
+    ("strict-text-grid", 0, -1.0, 1.0),
+    ("strict-stage5", 0, 0.0, -1.0),
+    ("strict-stage5", 1, 1.0, 0.0),
+    ("strict-stage5b", 0, -1.0, 1.0),
+    ("strict-stage5c", 0, 1.0, 15.0),
+    ("strict-stage5c", 1, 10.0, 18.0),
+    ("05-strict-math-simple", 0, 0.0, 0.0),
+    ("06-strict-math-display", 0, 0.0, -10.0),
+    ("07-strict-drawingml-shapes", 0, 0.0, -16.0),
+    ("10-strict-math-eqarr", 0, 0.0, -4.0),
+];
 
 /// Returns the structural limits for a reference document.
 fn limits_for(name: &str) -> StructuralLimits {
@@ -145,6 +196,8 @@ const MIN_ROW_CORRELATION: f64 = 0.9;
 const MIN_COLUMN_CORRELATION: f64 = 0.85;
 /// Maximum allowed shift of the ink centroid in px (either axis).
 const MAX_CENTROID_SHIFT_PX: f64 = 2.5;
+/// Maximum allowed drift of the page's ink extent in px (either edge).
+const MAX_EXTENT_DRIFT_PX: f64 = 2.0;
 
 /// Structural (rasterizer-independent) fidelity of one page (B-3/R-1).
 #[derive(Debug, Clone, Copy)]
@@ -161,6 +214,10 @@ pub struct StructuralFidelity {
     pub centroid_x_delta: f64,
     /// Signed vertical shift of the ink centroid, in px.
     pub centroid_y_delta: f64,
+    /// Signed drift of the first substantial ink row, in px.
+    pub top_delta: f64,
+    /// Signed drift of the last substantial ink row, in px.
+    pub bottom_delta: f64,
     /// Reference ink fraction.
     pub reference_ink: f64,
     /// Candidate ink fraction.
@@ -178,6 +235,8 @@ pub struct StructuralLimits {
     pub min_row_correlation: f64,
     /// Minimum column-ink profile correlation.
     pub min_column_correlation: f64,
+    /// Maximum tolerated drift of the ink extent, in px (either edge).
+    pub max_extent_px: f64,
 }
 
 impl Default for StructuralLimits {
@@ -187,6 +246,7 @@ impl Default for StructuralLimits {
             max_centroid_px: MAX_CENTROID_SHIFT_PX,
             min_row_correlation: MIN_ROW_CORRELATION,
             min_column_correlation: MIN_COLUMN_CORRELATION,
+            max_extent_px: MAX_EXTENT_DRIFT_PX,
         }
     }
 }
@@ -245,7 +305,7 @@ pub fn structural_fidelity_with(
     let (shift_y, correlation_y) = best_profile_alignment(
         &row_ink_profile(reference, width, height),
         &row_ink_profile(candidate, width, height),
-        12,
+        alignment_search_range(limits),
     );
     let correlation_y = correlation_y.ok_or_else(|| "no row structure to compare".to_owned())?;
     if shift_y.abs() > limits.max_shift_px {
@@ -257,7 +317,7 @@ pub fn structural_fidelity_with(
     let (shift_x, correlation_x) = best_profile_alignment(
         &column_ink_profile(reference, width, height),
         &column_ink_profile(candidate, width, height),
-        12,
+        alignment_search_range(limits),
     );
     let correlation_x = correlation_x.ok_or_else(|| "no column structure to compare".to_owned())?;
     if shift_x.abs() > limits.max_shift_px {
@@ -277,6 +337,24 @@ pub fn structural_fidelity_with(
             "vertical centroid shift {centroid_y_delta:.2}px exceeds tolerance"
         ));
     }
+    // The extent is the outermost *substantial* ink on each edge. Unlike the
+    // centroid it does not average over the page: a block that is a whole line
+    // too tall moves the last ink row without moving the mean, which is exactly
+    // the defect the centroid tolerates.
+    let top_delta = extent_delta(reference, candidate, width, height, Edge::Top);
+    if top_delta.abs() > limits.max_extent_px {
+        return Err(format!(
+            "top ink edge drifted {top_delta:.2}px (bound {:.2})",
+            limits.max_extent_px
+        ));
+    }
+    let bottom_delta = extent_delta(reference, candidate, width, height, Edge::Bottom);
+    if bottom_delta.abs() > limits.max_extent_px {
+        return Err(format!(
+            "bottom ink edge drifted {bottom_delta:.2}px (bound {:.2})",
+            limits.max_extent_px
+        ));
+    }
     Ok(StructuralFidelity {
         shift_y_px: shift_y,
         shift_x_px: shift_x,
@@ -284,9 +362,63 @@ pub fn structural_fidelity_with(
         correlation_x,
         centroid_x_delta,
         centroid_y_delta,
+        top_delta,
+        bottom_delta,
         reference_ink,
         candidate_ink,
     })
+}
+
+/// Which page edge an [`extent_delta`] reads.
+#[derive(Debug, Clone, Copy)]
+enum Edge {
+    /// The first substantial ink row.
+    Top,
+    /// The last substantial ink row.
+    Bottom,
+}
+
+/// Returns the first/last row holding at least [`MIN_EXTENT_INK_PX`] ink
+/// pixels, or `None` for a blank image.
+fn ink_rows(gray: &[f64], width: usize, height: usize) -> Option<(usize, usize)> {
+    let mut first = None;
+    let mut last = None;
+    for row in 0..height {
+        let ink = (0..width)
+            .filter(|&col| gray[row * width + col] < INK_LEVEL)
+            .count();
+        if ink >= MIN_EXTENT_INK_PX {
+            first.get_or_insert(row);
+            last = Some(row);
+        }
+    }
+    first.zip(last)
+}
+
+/// Signed drift of one ink edge, `candidate - reference`, in px.
+///
+/// Zero when either image has no substantial ink; the ink-ratio check above
+/// has already rejected a blank page by this point.
+fn extent_delta(
+    reference: &[f64],
+    candidate: &[f64],
+    width: usize,
+    height: usize,
+    edge: Edge,
+) -> f64 {
+    let pick = |rows: Option<(usize, usize)>| match edge {
+        Edge::Top => rows.map(|value| value.0),
+        Edge::Bottom => rows.map(|value| value.1),
+    };
+    match (
+        pick(ink_rows(reference, width, height)),
+        pick(ink_rows(candidate, width, height)),
+    ) {
+        (Some(reference_edge), Some(candidate_edge)) => {
+            candidate_edge as f64 - reference_edge as f64
+        }
+        _ => 0.0,
+    }
 }
 
 /// Mean `(x, y)` of the ink pixels, or `None` when the image has no ink.
@@ -733,13 +865,15 @@ fn matches_wps_references() {
             for (page, structure) in &structures {
                 match structure {
                     Ok(structure) => eprintln!(
-                        "  page {page}: dy={}px corr_y={:.3} | dx={}px corr_x={:.3} | centroid d=({:.2},{:.2}) | ink ref={:.5} cand={:.5}",
+                        "  page {page}: dy={}px corr_y={:.3} | dx={}px corr_x={:.3} | centroid d=({:.2},{:.2}) | edge d=({:+.0},{:+.0}) | ink ref={:.5} cand={:.5}",
                         structure.shift_y_px,
                         structure.correlation_y,
                         structure.shift_x_px,
                         structure.correlation_x,
                         structure.centroid_x_delta,
                         structure.centroid_y_delta,
+                        structure.top_delta,
+                        structure.bottom_delta,
                         structure.reference_ink,
                         structure.candidate_ink
                     ),
@@ -943,6 +1077,40 @@ fn shift_horizontal(gray: &[f64], width: usize, height: usize, dx: isize) -> Vec
     out
 }
 
+/// Shifts an image down by `dy` px (fills the exposed rows white).
+fn shift_vertical(gray: &[f64], width: usize, height: usize, dy: isize) -> Vec<f64> {
+    let mut out = vec![1.0; width * height];
+    for row in 0..height {
+        let source = row as isize - dy;
+        if source >= 0 && (source as usize) < height {
+            out[row * width..(row + 1) * width]
+                .copy_from_slice(&gray[source as usize * width..(source as usize + 1) * width]);
+        }
+    }
+    out
+}
+
+/// Stretches an image vertically by `by` px about its middle row: the top half
+/// moves up, the bottom half down. The ink centroid barely moves (the two
+/// halves cancel) while both ink edges do, which is the point of the extent
+/// check.
+fn stretch_vertical(gray: &[f64], width: usize, height: usize, by: isize) -> Vec<f64> {
+    let mid = (height / 2) as isize;
+    let mut out = vec![1.0; width * height];
+    for row in 0..height {
+        let source = if (row as isize) < mid {
+            row as isize - by
+        } else {
+            row as isize + by
+        };
+        if source >= 0 && (source as usize) < height {
+            out[row * width..(row + 1) * width]
+                .copy_from_slice(&gray[source as usize * width..(source as usize + 1) * width]);
+        }
+    }
+    out
+}
+
 #[test]
 fn structural_check_rejects_real_horizontal_shift() {
     let (width, height, reference, candidate) = rasterize_reference_pair("strict-text", 0);
@@ -973,6 +1141,135 @@ fn structural_check_rejects_real_vertical_shift() {
         structural_fidelity(&reference, &shifted, width, height).is_err(),
         "a 3px vertical shift must be rejected"
     );
+}
+
+/// The alignment search range must be strictly wider than the bound it is
+/// checked against, or the shift check can never fail: the reported shift is
+/// clamped to the search window, so a page that drifted further than the bound
+/// would report a shift inside it. This pins the invariant for every limit set
+/// rather than trusting the arithmetic at each call site.
+#[test]
+fn alignment_search_range_is_wider_than_every_bound() {
+    for (name, limits) in [
+        ("default", StructuralLimits::default()),
+        ("5A", STAGE5_LIMITS),
+        ("5B", STAGE5B_LIMITS),
+        ("5C", STAGE5C_LIMITS),
+    ] {
+        assert!(
+            alignment_search_range(&limits) > limits.max_shift_px,
+            "{name}: search range {} must exceed the bound {}",
+            alignment_search_range(&limits),
+            limits.max_shift_px
+        );
+    }
+}
+
+/// The shift bound must reject a drift *beyond* the bound, not merely a drift
+/// inside the search window. The 5C limits are the widest, so they are the
+/// case that previously could not fail: a 20 px vertical drift is well outside
+/// the ±12 px window the gate used to search, and the old check reported it as
+/// an in-bounds shift.
+#[test]
+fn a_drift_beyond_the_shift_bound_is_rejected() {
+    let (width, height, reference, candidate) = rasterize_reference_pair("strict-stage5c", 1);
+    for drift in [20isize, 40, 80] {
+        let shifted = shift_vertical(&candidate, width, height, drift);
+        let result = structural_fidelity_with(&reference, &shifted, width, height, &STAGE5C_LIMITS);
+        assert!(
+            result.is_err(),
+            "a {drift}px vertical drift must be rejected, got {result:?}"
+        );
+    }
+}
+
+/// The ink extent is what catches a block that is a whole line too tall: the
+/// centroid averages over the page and barely moves, and the correlation is
+/// computed after the best alignment, so neither sees it. This is the real
+/// defect behind the relaxed 5C limits.
+#[test]
+fn the_extent_check_sees_drift_the_centroid_does_not() {
+    let (width, height, reference, candidate) = rasterize_reference_pair("strict-stage5c", 1);
+    // Every bound except the extent one is disabled, so the extent check is
+    // the only thing that can reject this page. The shift bound is large
+    // rather than unbounded so the alignment search range stays in range.
+    let without_extent = StructuralLimits {
+        max_shift_px: 4096,
+        min_row_correlation: 0.0,
+        min_column_correlation: 0.0,
+        max_centroid_px: f64::MAX,
+        max_extent_px: f64::MAX,
+    };
+    assert!(
+        structural_fidelity_with(&reference, &candidate, width, height, &without_extent).is_ok(),
+        "with the extent bound disabled the fixture must pass, \
+         otherwise it is rejected by an unrelated bound and the test proves nothing"
+    );
+    // Stretched by 10 px about the middle: the two halves cancel in the
+    // centroid, but both ink edges move.
+    let stretched = stretch_vertical(&candidate, width, height, 5);
+    let just_extent = StructuralLimits {
+        max_extent_px: 2.0,
+        ..without_extent
+    };
+    let error = structural_fidelity_with(&reference, &stretched, width, height, &just_extent)
+        .expect_err("a 10px vertical stretch must be caught by the extent bound");
+    assert!(
+        error.contains("ink edge"),
+        "the extent bound must be what rejects the stretch, got: {error}"
+    );
+}
+
+/// The extent ratchet: every gated page's ink-extent drift is pinned to its
+/// current measured value against the pinned WPS reference.
+///
+/// The class bounds in [`StructuralLimits`] are coarse — the 5C set is
+/// carried by a single loose `max_extent_px` so that `05` (0 px) and
+/// `strict-stage5c` page 2 (18 px) share one number. This test is the fine
+/// grain: it fails the moment any page drifts *further*, so a layout change
+/// cannot hide inside the loose bound, and it fails when a page gets better
+/// and the pinned value was not lowered, which is how progress is claimed.
+#[test]
+fn structural_extent_ratchet_pins_the_known_drift() {
+    for (document, page, top, bottom) in EXTENT_RATCHET {
+        let (width, height, reference, candidate) = rasterize_reference_pair(document, *page);
+        let top_delta = extent_delta(&reference, &candidate, width, height, Edge::Top);
+        let bottom_delta = extent_delta(&reference, &candidate, width, height, Edge::Bottom);
+        assert_eq!(
+            top_delta, *top,
+            "{document} page {page}: top ink edge moved (was {top}, now {top_delta})"
+        );
+        assert_eq!(
+            bottom_delta, *bottom,
+            "{document} page {page}: bottom ink edge moved (was {bottom}, now {bottom_delta})"
+        );
+    }
+}
+
+/// The ratchet must cover every gated page: a fixture added to the gate
+/// without a pinned extent would escape the fine-grained check.
+#[test]
+fn every_gated_page_is_pinned_by_the_extent_ratchet() {
+    let mut gated: Vec<(String, usize)> = Vec::new();
+    for name in SSIM_DOCS {
+        if PAGE_COUNT_ONLY.contains(name) {
+            continue;
+        }
+        let dir = strict_dir().join(format!("refs/{name}"));
+        for (index, _) in reference_pages(&dir).into_iter().enumerate() {
+            gated.push(((*name).to_owned(), index));
+        }
+    }
+    let pinned: std::collections::BTreeSet<(String, usize)> = EXTENT_RATCHET
+        .iter()
+        .map(|(name, page, _, _)| ((*name).to_owned(), *page))
+        .collect();
+    for entry in gated {
+        assert!(
+            pinned.contains(&entry),
+            "{entry:?} is gated but not pinned in EXTENT_RATCHET"
+        );
+    }
 }
 
 #[test]

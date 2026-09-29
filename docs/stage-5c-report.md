@@ -120,14 +120,46 @@ contained our own defect.
 
 ### 4.2 What is still off, measured
 
-`strict-stage5c` page 2 — three display blocks, the worst case in the corpus —
-accumulates **11 px** of vertical drift over 135 px of content (1.0 % of the
-page height), and its horizontal ink centroid is 23.6 px off. Both are the
-residual of the block *box* of a stretched operator and of the ink distribution
-inside it (a stroked path carries less ink than WPS's filled glyph). The other
-five gated fixtures are within 11 px on both axes and mostly at 0–1 px of
-shift. `STAGE5C_LIMITS` records the bounds and why they are what they are; the
-pre-rework defect this replaced was 400 px on the same page.
+**The extent, not an accumulated drift.** An earlier revision of this section
+attributed the page-2 shift to "the block box of a stretched `m:nary`/`m:f`
+accumulating ≈ 11 px over 135 px of content". Measuring the ink bands
+against the pinned reference contradicts that: the first substantial ink row
+of `strict-stage5c` page 2 is at y = 115 in **both** renderings. What differs
+is where the content *ends* — the reference stops at y = 231, ours at
+y = 250. WPS sets the three display blocks as one continuous 116 px band; we
+break them into four bands spread over 135 px. There is no drift to
+accumulate; the block is simply taller.
+
+This is why the *centroid* could not see it either: a 19 px change at the
+bottom of a 1056 px page moves the mean ink position by 13 px, which is
+inside the 24 px bound, and the profile correlation is computed after the
+best alignment so the two ends cancel there too. The ink **extent** — the
+first and last substantial ink row — sees it directly, and is now part of the
+structural gate (`tests/ssim.rs`, `max_extent_px`).
+
+Measured extent drift, candidate − reference, on the gated fixtures:
+
+| Fixture | First ink row | Last ink row | Worst |
+|---|---|---|---|
+| `strict-text`, `strict-text-grid`, `strict-stage5`, `strict-stage5b` | −1…+1 px | −1…+1 px | **1 px** |
+| `05-strict-math-simple` | 0 | 0 | **0 px** |
+| `10-strict-math-eqarr` | 0 | −4 | 4 px |
+| `06-strict-math-display` | 0 | −10 | 10 px |
+| `strict-stage5c` p.1 | +1 | +15 | 15 px |
+| `07-strict-drawingml-shapes` | 0 | −16 | 16 px |
+| `strict-stage5c` p.2 | +10 | +18 | **18 px** |
+
+Every text, mixed and 5B page sits at ≤ 1 px, so the 2 px default extent
+bound is met everywhere outside the 5C set — the drift is a formula/shape
+block-geometry defect, not a general one. `strict-stage5c` p.2 also fails
+`07` on the *opposite* sign (−16 px, content too short), which points at the
+block box being computed from the formula's own extent rather than at a single
+operator being too large.
+
+Each value is pinned per page in `EXTENT_RATCHET` (`tests/ssim.rs`): the
+ratchet fails if a page drifts further, and fails if a page gets better
+without the pinned value being lowered. Closing the gap is Stage-5C rework —
+the numbers move, not the bound.
 
 ## 5. Fonts
 
@@ -213,11 +245,14 @@ only for the same reason and has been since Stage 4.
 | SSIM `strict-text` / `-grid` / `strict-stage5` / `strict-stage5b` | 0.9768 / 0.9709 / 0.9795 / 0.9640 — **unchanged** |
 | SSIM `strict-stage5c` (both pages gated) | 0.9533 / 0.9761 |
 | SSIM `05` / `06` / `07` / `10` | 0.9836 / 0.9746 / 0.9568 / 0.9722 |
+| SSIM values independently reproduced with `skimage` (11×11, σ=1.5, population covariance) | identical to 4 decimals on all gated pages — the harness SSIM is the reference implementation, not a lookalike |
+| ink-extent drift, 5C set (§4.2) | 0 / −10 / −16 / −4 / +18 px, pinned by `EXTENT_RATCHET` |
 | perf: 110 pages of dense inline OMML (3600 paragraphs, every construct) | **0.29 s** (limit 5 s) |
 | perf: 100 text paragraphs | 0.13 s |
 
 New tests this rework: `render-svg/tests/math.rs` (twips regression, doc-grid
-regression), `render-svg/tests/ssim.rs` (5C negative controls),
+regression), `render-svg/tests/ssim.rs` (5C negative controls, the ink-extent
+check and its ratchet, the alignment-search-range invariant),
 `strict-ooxml/tests/stage5c_corpus.rs` (end-to-end over the five repro
 packages: parse, report, page count, formula ink, `check`), and
 `wml/tests/stage5c_fixture_oracle.rs` (the independent `zip` + `roxmltree`
@@ -242,8 +277,11 @@ workspace root makes the measurement deterministic; with it the crate measures
    now follows the nominal font, but glyph outlines, weights and widths still
    differ. This is the residual behind `06` (0.9746) and `10` (0.9722), both
    comfortably above the 0.95 criterion.
-2. **`strict-stage5c` page 2 drifts 11 px** and its ink centroid 23.6 px across
-   three stacked display blocks (§4.2). Enforced with a documented bound.
+2. **`strict-stage5c` page 2 sits 18 px below the reference's last ink row**
+   and 10 px above its first (§4.2). The block is taller than WPS's, not
+   shifted: the top matches exactly. Tracked by the extent ratchet in
+   `tests/ssim.rs`; closing it means correcting the display-block box, and
+   the bound is not what moves.
 3. **Charts are not rasterized** (Stage 6): `09-strict-math-drawing-chart` and
    `strict-profile` are page-count only.
 4. **`m:vertJc`** is parsed and reported but its effect on over/under-brace

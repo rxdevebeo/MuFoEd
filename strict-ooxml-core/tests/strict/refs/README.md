@@ -46,9 +46,25 @@ not reproducible and is out of scope.
 
 The structural invariant (`tests/ssim.rs`) additionally requires similar ink
 coverage, row/column ink-profile correlations (≥ 0.9 / ≥ 0.85), profile
-alignment and ink-centroid drift within 2 / 2.5 px on **both** axes. It rejects a
-blank page or a ≥ 3 px shift on either axis, which SSIM alone tolerates
-(horizontal shifts up to ~10 px).
+alignment and ink-centroid drift within 2 / 2.5 px on **both** axes, plus an
+**ink-extent** bound: the first and last substantial ink row (≥ 6 ink pixels)
+must sit within 2 px of the reference. The extent check is what a block that
+is a whole line too tall cannot hide from — the centroid averages over the
+page and the profile correlation is computed *after* the best alignment, so
+neither of them sees it. It rejects a blank page or a ≥ 3 px shift on either
+axis, which SSIM alone tolerates (horizontal shifts up to ~10 px).
+
+The alignment search window is derived from the bound
+(`max_shift_px + ALIGNMENT_SEARCH_MARGIN_PX`), never a fixed constant: a search
+window equal to the bound cannot report a shift outside it, which would make
+the check unfailable. `alignment_search_range_is_wider_than_every_bound` pins
+that invariant.
+
+`strict-stage5c`, `06`, `07` and `10` currently exceed the 2 px extent bound
+(15 / 10 / 16 / 4 px). Their drift is pinned per page by `EXTENT_RATCHET` in
+`tests/ssim.rs`, which fails if any page drifts *further* and fails if a page
+gets better without the pinned value being lowered — the ratchet is how the
+known block-geometry defect is tracked down, not a tolerance.
 
 ## SHA-256
 
