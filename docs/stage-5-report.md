@@ -9,10 +9,10 @@ ADR-0004/0005/0006
 **Крейты:** `strict-ooxml-core` (error), `strict-ooxml-wml` (модель/парсинг),
 `strict-ooxml-render-svg` (вёрстка/SVG)  
 **Статус:** эшелон 5A (S5.1–S5.13) реализован; гейты и покрытие — зелёные;
-доработка по приёмке `STAGE-5-REWORK-1` (B5-1 колонтитул первой страницы,
-B5-2 ISO content types + WPS-эталон 5A, B5-3 карта/A-3) — выполнена. Открыты
-только A-1 (реальный Strict под SSIM) и A-2 (независимое подтверждение карты)
-до подписи заказчика.
+доработка `STAGE-5-REWORK-1` (B5-1/B5-2/B5-3) и замечания R5-1/R5-2/R5-3
+выполнены. **Принято с замечаниями** (`STAGE-5-ACCEPTANCE.md`,
+`ACCEPT-STAGE-5`, 2026-09-29). Открыты A-1 (реальный Strict под SSIM) и A-2
+(независимое подтверждение карты) — за заказчиком/третьей стороной.
 
 ---
 
@@ -30,8 +30,8 @@ B5-2 ISO content types + WPS-эталон 5A, B5-3 карта/A-3) — выпо�
 | S5.8 | Сложные таблицы: вложенность, tblHeader, разрыв строк | готово (разрыв таблицы по строкам; разрыв отдельной строки — ограничение) |
 | S5.9 | Темы: парсинг theme1.xml + резолв fonts/colors | готово (fmtScheme — из 5A scope) |
 | S5.10 | Полная нумерация (многоуровневость, overrides, отступы) | готово |
-| S5.11 | Отчётность: карта покрытия расширенных сценариев | готово: `coverage/stage5-scenarios.toml` + гейт ≥ 85% (90.2%) |
-| S5.12 | Корпус: Strict-фикстуры + WPS-эталоны | фикстуры готовы (синтетические in-memory + `strict-stage5.docx` + независимый XML-оракул); WPS-эталоны для 5A — **не применимы** (см. §7) |
+| S5.11 | Отчётность: карта покрытия расширенных сценариев | готово: `coverage/stage5-scenarios.toml` + гейт ≥ 85% (90.4%) |
+| S5.12 | Корпус: Strict-фикстуры + WPS-эталоны | фикстуры готовы (синтетические in-memory + `strict-stage5.docx` + независимый XML-оракул); WPS-эталоны для 5A — **применимы**: `refs/strict-stage5/` (2 стр., SSIM 0.9795; `STAGE-5-REWORK-1` B5-2) |
 | S5.13 | Документация/ADR, отчёт этапа, приёмка | готово (ADR-0004/0006, этот отчёт, `STAGE-5-ACCEPTANCE.md`) |
 
 ## 2. Решения по открытым вопросам (§9)
@@ -111,15 +111,15 @@ strict-ooxml-render-svg/
 | Формат | `cargo fmt --all -- --check` | ✅ exit 0 |
 | Линт | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | ✅ exit 0 |
 | Сборка | `cargo build --workspace --all-targets --all-features` | ✅ exit 0 |
-| Тесты | `cargo test --workspace --all-features` | ✅ **349 тестов**, 0 падений |
+| Тесты | `cargo test --workspace --all-features` | ✅ **350 тестов**, 0 падений |
 | Docs | `cargo doc --workspace --no-deps` | ✅ exit 0 |
 | Зависимости | `cargo deny check` | ✅ advisories/bans/licenses/sources ok |
 | Покрытие core | `--fail-under-lines 80` | ✅ 88.53% |
 | Покрытие wml | `--fail-under-lines 80` | ✅ 86.56% |
 | Покрытие report | `--fail-under-lines 80` | ✅ 99.43% |
-| Покрытие render-svg | `--fail-under-lines 80` | ✅ 89.70% |
+| Покрытие render-svg | `--fail-under-lines 80` | ✅ 90.12% |
 | Гейт опциональных элементов | `xtool coverage --min 90` | ✅ 97.3% |
-| Гейт расширенных сценариев (5A) | `xtool coverage --min 85` | ✅ **90.2%** |
+| Гейт расширенных сценариев (5A) | `xtool coverage --min 85` | ✅ **90.4%** |
 
 > Примечание: измерения покрытия выполняются после `cargo llvm-cov clean`;
 > без очистки устаревшие `profraw` искажают числитель/знаменатель.
@@ -144,8 +144,8 @@ strict-ooxml-render-svg/
 - **Нумерация:** не моделируются выравнивание маркера (`w:lvlJc`),
   `w:suff` (suffix), нумерация через стили (`numStyleLink`/`styleLink`) и
   снятие нумерации `numId=0`; маркеры считаются для тела документа.
-- S5.11–S5.13 (карта покрытия отчёта, WPS-эталоны, финальная документация) —
-  отдельный остаток эшелона.
+- S5.11–S5.13 (карта покрытия, WPS-эталон 5A, финальная документация) —
+  выполнены (`STAGE-5-REWORK-1`).
 - `B-2` (реальный Strict под SSIM) — не закрыт (заказчик).
 
 ## 6. Как проверить
@@ -198,7 +198,7 @@ cargo run -p xtool -- gen-docx --stage5 --out strict-ooxml-core/tests/strict/str
 - `cargo run -p xtool -- coverage --file coverage/stage5-scenarios.toml --min 85`
   в CI.
 
-Факт: **90.2%** (supported 38, partial 8, unsupported 5, ignored 8;
+Факт: **90.4%** (supported 39, partial 8, unsupported 5, ignored 8;
 `ignored` — вне 5A: DrawingML-якоря/фигуры/группы (5B), границы страниц (5B),
 MathML/OMML (5C), VML, комментарии, нормализация Transitional (Этап 6)).
 
