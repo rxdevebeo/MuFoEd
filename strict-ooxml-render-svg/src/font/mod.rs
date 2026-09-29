@@ -30,6 +30,15 @@ pub trait FontProvider: Send + Sync {
 
     /// Returns a stable provider name (used in diagnostics).
     fn name(&self) -> &'static str;
+
+    /// Returns `true` when the face for `family` actually covers `ch`.
+    ///
+    /// Math layout uses this to decide between a real glyph and the
+    /// deterministic vector fallback (Stage 5C, §9.1/§12). The default is
+    /// `false` — a provider that cannot answer must not silently claim coverage.
+    fn has_glyph(&self, _family: &str, _ch: char) -> bool {
+        false
+    }
 }
 
 /// Which font provider the renderer uses.

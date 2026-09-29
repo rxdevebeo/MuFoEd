@@ -90,3 +90,11 @@ pub const MS_WORD_2006_WML_NS: &str = "http://schemas.microsoft.com/office/word/
 
 /// Strict namespace of the OPC relationships schema.
 pub const RELS_STRICT_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+
+/// Strict namespace of the Office Math Markup Language schema
+/// (`STAGE-5C-TASK.md` §5.1). OMML is a native part of ISO/IEC 29500-1, so the
+/// Strict namespace is the only one accepted for formulas.
+pub const MATH_STRICT_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/math";
+
+/// The OMML namespace under the name used by the Stage-5C order (`M_NS`).
+pub const M_NS: &str = MATH_STRICT_NS;

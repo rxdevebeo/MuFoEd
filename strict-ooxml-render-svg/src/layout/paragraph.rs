@@ -29,6 +29,10 @@ enum Seg {
     Object(Vec<Item>, f64),
     /// A floating (anchored) drawing.
     Anchor(Box<AnchorDrawing>),
+    /// An inline formula (`m:oMath`), laid out on the text baseline.
+    Math(crate::math::layout::MathBox, ComputedRun),
+    /// A display formula (`m:oMathPara`), laid out as its own centred block.
+    MathParagraph(crate::math::layout::MathBox),
     /// A footnote reference marker (the referenced note id).
     FootnoteMarker(u32, ComputedRun),
     /// An endnote reference marker (the referenced note id).
@@ -60,7 +64,21 @@ pub(crate) struct ParagraphFlow {
 /// Default tab stop in twips (0.5 inch) when settings omit one.
 const DEFAULT_TAB_TWIPS: i32 = 720;
 
-/// Lays out one paragraph within a content box.
+/// Extra leading a line carrying an inline formula receives, as a multiple of
+/// the paragraph's natural line height (Word's math line spacing,
+/// `STAGE-5C-TASK.md` §5.2).
+const MATH_LINE_SPACING: f64 = 1.30;
+
+/// Hard cap on how far the ink of an inline formula may grow a text line.
+/// Word (and therefore the WPS reference) keeps a formula line's box close to
+/// the paragraph's natural line height; only a genuinely tall construct (a large
+/// matrix) expands it further. Capping the growth is what keeps the following
+/// lines aligned with the producer — the effect the SSIM/structural gate
+/// measures (§7.2).
+const MAX_MATH_LINE_GROWTH: f64 = 1.60;
+
+/// Vertical space Word inserts above and below a display formula, in points.
+const MATH_DISPLAY_SPACE_PT: f64 = 10.0;
 ///
 /// `note_marker` is the formatted number used to replace a `w:footnoteRef`/
 /// `w:endnoteRef` marker when laying out a note body; body paragraphs pass
@@ -95,6 +113,8 @@ pub(crate) fn layout_paragraph(
         ctx,
         &computed,
         &para.inlines,
+        content_left,
+        content_width,
         &mut segments,
         &mut field_state,
     );
@@ -110,11 +130,23 @@ pub(crate) fn layout_paragraph(
         segments,
     );
 
+    // Word separates a display formula from the surrounding text; the extra
+    // leading belongs to the paragraph, as its spacing does.
+    let has_display = para
+        .inlines
+        .iter()
+        .any(|inline| matches!(inline, Inline::MathParagraph(_)) && ctx.options.math);
+    let display_pad = if has_display {
+        pt_to_px(MATH_DISPLAY_SPACE_PT, ctx.options.scale)
+    } else {
+        0.0
+    };
+
     ParagraphFlow {
         flows: flows.0,
         anchors: flows.1,
-        space_before,
-        space_after,
+        space_before: space_before + display_pad,
+        space_after: space_after + display_pad,
         keep_lines: computed.keep_lines,
     }
 }
@@ -192,10 +224,13 @@ impl FieldState {
 }
 
 /// Recursively flattens inline content into segments.
+#[allow(clippy::too_many_arguments)]
 fn flatten_inlines(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
     inlines: &[Inline],
+    content_left: f64,
+    content_width: f64,
     out: &mut Vec<Seg>,
     field: &mut FieldState,
 ) {
@@ -203,14 +238,30 @@ fn flatten_inlines(
         match inline {
             Inline::Run(run) => flatten_run(ctx, computed, run, out, field),
             _ if field.suppressed() => {}
-            Inline::Hyperlink(link) => flatten_inlines(ctx, computed, &link.inlines, out, field),
+            Inline::Hyperlink(link) => flatten_inlines(
+                ctx,
+                computed,
+                &link.inlines,
+                content_left,
+                content_width,
+                out,
+                field,
+            ),
             Inline::Field(simple) => {
                 let instruction = simple.instruction.as_deref().unwrap_or("");
                 let (kind, format) = crate::fields::parse_instruction(instruction);
                 if let Some(kind) = kind {
                     out.push(Seg::FieldResult(kind, format, computed.default_run.clone()));
                 } else {
-                    flatten_inlines(ctx, computed, &simple.inlines, out, field);
+                    flatten_inlines(
+                        ctx,
+                        computed,
+                        &simple.inlines,
+                        content_left,
+                        content_width,
+                        out,
+                        field,
+                    );
                 }
             }
             Inline::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
@@ -219,9 +270,15 @@ fn flatten_inlines(
                 BreakKind::Column | BreakKind::TextWrapping => out.push(Seg::Break),
             },
             Inline::Tab => out.push(Seg::Tab),
-            Inline::SdtInline(sdt) => {
-                flatten_inlines(ctx, computed, &sdt.inlines, out, field);
-            }
+            Inline::SdtInline(sdt) => flatten_inlines(
+                ctx,
+                computed,
+                &sdt.inlines,
+                content_left,
+                content_width,
+                out,
+                field,
+            ),
             Inline::FootnoteRef(id) => out.push(Seg::FootnoteMarker(
                 *id,
                 superscript(computed.default_run.clone()),
@@ -230,11 +287,28 @@ fn flatten_inlines(
                 *id,
                 superscript(computed.default_run.clone()),
             )),
+            // Formulas (Stage 5C, §3.1.1/§3.1.5). An inline `m:oMath` joins the
+            // text baseline; a display `m:oMathPara` becomes its own block.
+            Inline::Math(expression) if ctx.options.math => out.push(Seg::Math(
+                crate::math::layout_inline(ctx, expression, &computed.default_run),
+                computed.default_run.clone(),
+            )),
+            Inline::MathParagraph(paragraph) if ctx.options.math => {
+                out.push(Seg::MathParagraph(crate::math::layout_display(
+                    ctx,
+                    paragraph,
+                    &computed.default_run,
+                    content_left,
+                    content_width,
+                )));
+            }
             Inline::BookmarkStart(_)
             | Inline::BookmarkEnd(_)
             | Inline::CommentRangeStart(_)
             | Inline::CommentRangeEnd(_)
             | Inline::CommentReference(_)
+            | Inline::Math(_)
+            | Inline::MathParagraph(_)
             | Inline::Opaque(_) => {}
         }
     }
@@ -303,19 +377,27 @@ fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg
 /// Mutable line being assembled.
 struct LineBuilder {
     items: Vec<TextItem>,
+    graphics: Vec<Item>,
     footnote_refs: Vec<u32>,
+    /// Ink extent above the baseline contributed by formulas, in px.
+    ink_height: f64,
+    /// Ink extent below the baseline contributed by formulas, in px.
+    ink_depth: f64,
 }
 
 impl LineBuilder {
     fn new() -> Self {
         Self {
             items: Vec::new(),
+            graphics: Vec::new(),
             footnote_refs: Vec::new(),
+            ink_height: 0.0,
+            ink_depth: 0.0,
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.items.is_empty() && self.graphics.is_empty()
     }
 }
 
@@ -396,6 +478,33 @@ fn build_lines(
                 first_line = false;
             }
             Seg::Anchor(anchor) => sink.anchors.push(*anchor),
+            Seg::Math(boxed, run) => {
+                place_formula(
+                    &mut sink,
+                    &mut current,
+                    &mut x,
+                    line_start,
+                    first_x,
+                    normal_x,
+                    &mut first_line,
+                    boxed,
+                );
+                let _ = run;
+            }
+            Seg::MathParagraph(boxed) => {
+                // A display formula owns its line, as Word/WPS lay it out.
+                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                let height = boxed.size.height + boxed.size.depth;
+                let items = boxed
+                    .items
+                    .into_iter()
+                    .map(|item| shift_item(item, 0.0, boxed.size.height))
+                    .collect();
+                sink.flows.push(Flow::Block { items, height });
+                x = normal_x;
+                line_start = x;
+                first_line = false;
+            }
             Seg::Text(text, run) => {
                 for token in tokenize(&text) {
                     place_token(
@@ -473,6 +582,62 @@ fn tokenize(text: &str) -> Vec<String> {
         return Vec::new();
     }
     text.split_inclusive(' ').map(str::to_owned).collect()
+}
+
+/// Shifts a paint item vertically (used to place a display formula's ink).
+fn shift_item(item: Item, dx: f64, dy: f64) -> Item {
+    match item {
+        Item::Text(mut text) => {
+            text.x += dx;
+            text.baseline += dy;
+            Item::Text(text)
+        }
+        Item::Rect(mut rect) => {
+            rect.x += dx;
+            rect.y += dy;
+            Item::Rect(rect)
+        }
+        Item::Line(mut line) => {
+            line.x1 += dx;
+            line.y1 += dy;
+            line.x2 += dx;
+            line.y2 += dy;
+            Item::Line(line)
+        }
+        Item::Path(mut path) => {
+            path.x += dx;
+            path.y += dy;
+            Item::Path(path)
+        }
+        Item::Image(image) => Item::Image(image),
+    }
+}
+
+/// Places an inline formula on the current line, wrapping when it does not fit.
+#[allow(clippy::too_many_arguments)]
+fn place_formula(
+    sink: &mut LineSink<'_, '_>,
+    current: &mut LineBuilder,
+    x: &mut f64,
+    line_start: f64,
+    first_x: f64,
+    normal_x: f64,
+    first_line: &mut bool,
+    boxed: crate::math::layout::MathBox,
+) {
+    let width = boxed.size.width;
+    let line_end = line_start + sink.line_width;
+    if *x + width > line_end + 1e-9 && !current.is_empty() {
+        sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+        *x = if *first_line { first_x } else { normal_x };
+        *first_line = false;
+    }
+    for item in boxed.items {
+        current.graphics.push(shift_item(item, *x, 0.0));
+    }
+    current.ink_height = current.ink_height.max(boxed.size.height);
+    current.ink_depth = current.ink_depth.max(boxed.size.depth);
+    *x += width;
 }
 
 /// Accumulates finished lines and break/image flows in order.
@@ -585,7 +750,7 @@ fn finish_line(
     grid_line_pitch: Option<f64>,
     last: bool,
 ) -> TextLine {
-    let used = line_extent(&line.items);
+    let used = line_extent(&line.items, &line.graphics);
     let justify = !last
         && matches!(
             computed.alignment,
@@ -623,14 +788,45 @@ fn finish_line(
     for item in &mut line.items {
         item.x += offset;
     }
+    if offset != 0.0 {
+        for item in &mut line.graphics {
+            *item = shift_item(item.clone(), offset, 0.0);
+        }
+    }
 
-    let (height, ascent) = resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
+    let (mut height, mut ascent) =
+        resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
+    // A formula may be taller or deeper than the text it sits on. Word gives a
+    // formula line extra leading and lets a genuinely tall construct grow it
+    // further, but not without bound; capping the growth is what keeps the
+    // following lines aligned with the producer (Stage 5C, SSIM gate).
+    let natural = height.max(1.0);
+    if line.ink_height > 0.0 || line.ink_depth > 0.0 {
+        height = height.max(natural * MATH_LINE_SPACING);
+        ascent = ascent.max(line.ink_height);
+        height = height.max(ascent + line.ink_depth);
+        let allowed = natural * MAX_MATH_LINE_GROWTH;
+        if height > allowed {
+            let excess = height - natural;
+            let factor = ((allowed - natural) / excess).clamp(0.0, 1.0);
+            line.ink_height *= factor;
+            line.ink_depth *= factor;
+            ascent = ascent.max(line.ink_height);
+            height = allowed.max(ascent + line.ink_depth);
+        }
+    }
     for item in &mut line.items {
         item.baseline = ascent;
         apply_vertical_align(item);
     }
+    // The graphics were placed relative to the baseline, which is only now
+    // known.
+    for item in &mut line.graphics {
+        *item = shift_item(item.clone(), 0.0, ascent);
+    }
     TextLine {
         items: line.items,
+        graphics: line.graphics,
         height,
         ascent,
         footnote_refs: line.footnote_refs,
@@ -699,17 +895,43 @@ fn apply_vertical_align(item: &mut TextItem) {
 }
 
 /// Returns the horizontal extent covered by a line's items.
-fn line_extent(items: &[TextItem]) -> f64 {
+fn line_extent(items: &[TextItem], graphics: &[Item]) -> f64 {
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
     for item in items {
         min = min.min(item.x);
         max = max.max(item.x + item.width);
     }
+    for item in graphics {
+        min = min.min(item_left(item));
+        max = max.max(item_right(item));
+    }
     if min.is_finite() && max.is_finite() {
         (max - min).max(0.0)
     } else {
         0.0
+    }
+}
+
+/// The left edge of a paint item.
+fn item_left(item: &Item) -> f64 {
+    match item {
+        Item::Text(text) => text.x,
+        Item::Rect(rect) => rect.x,
+        Item::Path(path) => path.x,
+        Item::Line(line) => line.x1.min(line.x2),
+        Item::Image(image) => image.x,
+    }
+}
+
+/// The right edge of a paint item.
+fn item_right(item: &Item) -> f64 {
+    match item {
+        Item::Text(text) => text.x + text.width,
+        Item::Rect(rect) => rect.x + rect.w,
+        Item::Path(path) => path.x + path.w,
+        Item::Line(line) => line.x1.max(line.x2),
+        Item::Image(image) => image.x + image.w,
     }
 }
 

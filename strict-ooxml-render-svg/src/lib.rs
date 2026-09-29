@@ -47,6 +47,7 @@ pub mod units;
 
 mod fields;
 mod layout;
+mod math;
 mod notes;
 mod numbering;
 mod paint;
@@ -58,6 +59,7 @@ use strict_ooxml_wml::model::Document;
 
 pub use error::RenderError;
 pub use font::{FontMetrics, FontProvider, FontProviderKind};
+pub use math::{math_expression_to_mathml, math_paragraph_to_mathml, MathMlError};
 pub use paint::image::media_file_name;
 
 /// Supplies image bytes for referenced media parts.
@@ -130,6 +132,12 @@ pub struct RenderOptions {
     pub background: bool,
     /// Render floating (anchored) DrawingML objects.
     pub floating: bool,
+    /// Render OMML formulas (`STAGE-5C-TASK.md` §6).
+    ///
+    /// The default reproduces Word/WPS behaviour: formulas are laid out and
+    /// drawn. Setting it to `false` skips them (the parser still models them,
+    /// so the Feature Report is unchanged).
+    pub math: bool,
 }
 
 impl Default for RenderOptions {
@@ -141,6 +149,7 @@ impl Default for RenderOptions {
             pages: PageSelection::All,
             background: true,
             floating: true,
+            math: true,
         }
     }
 }
@@ -173,6 +182,13 @@ impl RenderOptions {
     #[must_use]
     pub fn floating(mut self, floating: bool) -> Self {
         self.floating = floating;
+        self
+    }
+
+    /// Enables or disables the layout and drawing of OMML formulas.
+    #[must_use]
+    pub fn math(mut self, math: bool) -> Self {
+        self.math = math;
         self
     }
 }

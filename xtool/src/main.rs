@@ -11,8 +11,9 @@
 //! - `corpus-elements [--corpus <dir>]` — the independent cross-check required by
 //!   REWORK M1: reports which element names actually occurring in the corpus are
 //!   not marked `supported` in the inventory.
-//! - `gen-docx --out <path> [--paragraphs <n>]` — writes a synthetic Strict
-//!   `.docx` for benchmarks and no-panic corpus runs.
+//! - `gen-docx --out <path> [--paragraphs <n>] [--stage5] [--stage5b]
+//!   [--stage5c]` — writes a synthetic Strict `.docx` for benchmarks and
+//!   no-panic corpus runs; the stage flags select the echelon fixture.
 
 #![allow(clippy::cast_possible_truncation, clippy::doc_markdown)]
 
@@ -364,7 +365,7 @@ fn print_usage() {
          xsd-inventory   [--xsd <file>]... [--out <path>]\n\
          coverage        [--file <path>] [--min <percent>]\n\
          corpus-elements [--corpus <dir>]\n\
-         gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b]"
+         gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b] [--stage5c]"
     );
 }
 
@@ -635,7 +636,10 @@ fn gen_docx(args: &[String]) -> ExitCode {
     };
     let stage5 = args.iter().any(|arg| arg == "--stage5");
     let stage5b = args.iter().any(|arg| arg == "--stage5b");
-    let (bytes, label) = if stage5b {
+    let math = args.iter().any(|arg| arg == "--stage5c");
+    let (bytes, label) = if math {
+        (stage5c_docx(), "stage-5C formula fixture".to_owned())
+    } else if stage5b {
         (stage5b_docx(), "stage-5B fixture".to_owned())
     } else if stage5 {
         (stage5_docx(), "stage-5 fixture".to_owned())
@@ -900,6 +904,369 @@ fn stage5b_docx() -> Vec<u8> {
         ("word/document.xml", document.as_bytes()),
         ("word/_rels/document.xml.rels", document_rels.as_bytes()),
         ("word/media/image1.png", TINY_PNG),
+    ];
+    zip(&entries)
+}
+
+/// The OMML Strict namespace (ISO/IEC 29500-1 shared-math schema).
+const M_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/math";
+
+/// Builds a Strict fixture exercising every Stage-5C OMML construct
+/// (`STAGE-5C-TASK.md` §3.1, §7.3).
+///
+/// Each construct group appears once as inline `m:oMath` (in a text paragraph)
+/// and once as display `m:oMathPara`, so one reference render exercises both
+/// layout paths of §5.2.
+// The markup is assembled from nested `format!` calls, which is the clearest
+// way to build it: every OMML element is spelled out next to its arguments.
+#[allow(clippy::format_in_format_args, clippy::too_many_lines)]
+fn stage5c_docx() -> Vec<u8> {
+    /// A math run with default properties.
+    fn r(text: &str) -> String {
+        format!("<m:r><m:t>{text}</m:t></m:r>")
+    }
+    /// A math run with an explicit `m:rPr` body.
+    fn rpr(props: &str, text: &str) -> String {
+        format!("<m:r><m:rPr>{props}</m:rPr><m:t>{text}</m:t></m:r>")
+    }
+    /// The body of a `CT_OMathArg` argument (no wrapper element).
+    ///
+    /// In OMML every argument element — `m:num`, `m:den`, `m:sub`, `m:sup`,
+    /// `m:deg`, `m:lim`, `m:e`, `m:fName` — *is* a `CT_OMathArg`; there is no
+    /// inner `m:e` wrapper.
+    fn arg(body: &str) -> String {
+        body.to_owned()
+    }
+    /// An `m:e` argument.
+    #[allow(dead_code)]
+    fn e(body: &str) -> String {
+        format!("<m:e>{body}</m:e>")
+    }
+    /// An inline formula.
+    fn omath(body: &str) -> String {
+        format!("<m:oMath>{body}</m:oMath>")
+    }
+    /// A display formula with an `m:oMathParaPr/m:jc` justification.
+    ///
+    /// The caller passes the `m:oMath` children directly; the schema allows
+    /// several of them inside one `m:oMathPara`.
+    fn omath_para(jc: &str, body: &str) -> String {
+        format!(
+            "<m:oMathPara><m:oMathParaPr><m:jc m:val=\"{jc}\"/></m:oMathParaPr>\
+{body}</m:oMathPara>"
+        )
+    }
+    /// A paragraph that interleaves text runs and inline formulas.
+    fn p(parts: &[&str]) -> String {
+        let mut body = String::from("<w:p>");
+        for part in parts {
+            if part.starts_with("<m:") {
+                body.push_str(part);
+            } else {
+                let _ = write!(body, "<w:r><w:t xml:space=\"preserve\">{part}</w:t></w:r>");
+            }
+        }
+        body.push_str("</w:p>");
+        body
+    }
+    /// A paragraph holding a single display formula.
+    fn display(formula: &str) -> String {
+        format!("<w:p>{formula}</w:p>")
+    }
+
+    // 1. `m:f`: bar, noBar, lin (with `m:smallFrac`) and skew, plus `m:ctrlPr`.
+    let fraction_bar = omath(&format!(
+        "<m:f><m:fPr><m:ctrlPr><w:rPr><w:i/></w:rPr></m:ctrlPr></m:fPr>\
+<m:num>{}</m:num><m:den>{}</m:den></m:f>",
+        arg(&format!("{}{}", rpr("<m:sty m:val=\"i\"/>", "a"), r("+"))),
+        arg(&rpr("<m:sty m:val=\"i\"/>", "b")),
+    ));
+    let fraction_no_bar = omath(&format!(
+        "<m:f><m:fPr><m:type m:val=\"noBar\"/></m:fPr>\
+<m:num>{}</m:num><m:den>{}</m:den></m:f>",
+        arg(&r("x")),
+        arg(&r("1")),
+    ));
+    let fraction_lin = omath(&format!(
+        "<m:f><m:fPr><m:type m:val=\"lin\"/><m:smallFrac m:val=\"1\"/></m:fPr>\
+<m:num>{}</m:num><m:den>{}</m:den></m:f>",
+        arg(&r("n")),
+        arg(&r("k")),
+    ));
+    let fraction_skew = omath(&format!(
+        "<m:f><m:fPr><m:type m:val=\"skew\"/></m:fPr>\
+<m:num>{}</m:num><m:den>{}</m:den></m:f>",
+        arg(&r("d")),
+        arg(&r("y")),
+    ));
+
+    // 2. `m:sSup`, `m:sSub`, `m:sSubSup`, `m:sPre`.
+    let scripts = omath(&format!(
+        "{}{}{}{}",
+        format!(
+            "<m:sSup><m:e>{}</m:e><m:sup>{}</m:sup></m:sSup>",
+            arg(&format!("{}{}", r("x"), r("+"))),
+            arg(&r("2"))
+        ),
+        format!(
+            "<m:sSub><m:e>{}</m:e><m:sub>{}</m:sub></m:sSub>",
+            arg(&r("a")),
+            arg(&r("ij"))
+        ),
+        format!(
+            "<m:sSubSup><m:e>{}</m:e><m:sub>{}</m:sub><m:sup>{}</m:sup></m:sSubSup>",
+            arg(&r("P")),
+            arg(&r("i")),
+            arg(&r("j"))
+        ),
+        format!(
+            "<m:sPre><m:sub>{}</m:sub><m:sup>{}</m:sup><m:e>{}</m:e></m:sPre>",
+            arg(&r("n")),
+            arg(&r("1")),
+            arg(&r("F"))
+        ),
+    ));
+
+    // 3. `m:rad` with a hidden and a visible degree.
+    let radicals = omath(&format!(
+        "{}{}",
+        format!(
+            "<m:rad><m:radPr><m:degHide m:val=\"1\"/></m:radPr>\
+<m:deg/><m:e>{}</m:e></m:rad>",
+            arg(&format!("{}2+1", r("x")))
+        ),
+        format!(
+            "<m:rad><m:deg>{}</m:deg><m:e>{}</m:e></m:rad>",
+            arg(&r("3")),
+            arg(&r("y"))
+        ),
+    ));
+
+    // 4. `m:nary`: limits under/over and as scripts, plus hidden limits.
+    let nary = omath(&format!(
+        "{}{}{}",
+        format!(
+            "<m:nary><m:naryPr><m:chr m:val=\"∑\"/><m:limLoc m:val=\"undOvr\"/>\
+<m:grow m:val=\"1\"/></m:naryPr>\
+<m:sub>{}</m:sub><m:sup>{}</m:sup><m:e>{}</m:e></m:nary>",
+            arg(&r("i=1")),
+            arg(&r("n")),
+            arg(&format!("{}{}", r("a"), rpr("<m:sty m:val=\"i\"/>", "i"))),
+        ),
+        format!(
+            "<m:nary><m:naryPr><m:chr m:val=\"∫\"/><m:limLoc m:val=\"subSup\"/>\
+</m:naryPr><m:sub>{}</m:sub><m:sup>{}</m:sup><m:e>{}</m:e></m:nary>",
+            arg(&r("0")),
+            arg(&r("1")),
+            arg(&rpr("<m:sty m:val=\"i\"/>", "x")),
+        ),
+        format!(
+            "<m:nary><m:naryPr><m:chr m:val=\"∏\"/><m:subHide m:val=\"1\"/>\
+<m:supHide m:val=\"1\"/></m:naryPr><m:sub/><m:sup/><m:e>{}</m:e></m:nary>",
+            arg(&r("k"))
+        ),
+    ));
+
+    // 5. `m:d`: square, brace, default with a separator, and empty delimiters.
+    let delimiters = omath(&format!(
+        "{}{}{}{}",
+        format!(
+            "<m:d><m:dPr><m:begChr m:val=\"[\"/><m:endChr m:val=\"]\"/></m:dPr>\
+<m:e>{}</m:e><m:e>{}</m:e></m:d>",
+            arg(&r("a")),
+            arg(&r("b")),
+        ),
+        format!(
+            "<m:d><m:dPr><m:begChr m:val=\"{{\"/><m:endChr m:val=\"}}\"/></m:dPr>\
+<m:e>{}</m:e></m:d>",
+            arg(&r("x")),
+        ),
+        format!(
+            "<m:d><m:e>{}</m:e><m:e>{}</m:e><m:e>{}</m:e></m:d>",
+            arg(&r("x")),
+            arg(&r("y")),
+            arg(&r("z")),
+        ),
+        format!(
+            "<m:d><m:dPr><m:grow m:val=\"0\"/><m:begChr m:val=\"\"/>\
+<m:endChr m:val=\"\"/></m:dPr><m:e>{}</m:e></m:d>",
+            arg(&format!("{}{}", r("f"), r("(x)"))),
+        ),
+    ));
+
+    // 6. `m:func`, `m:limLow`, `m:limUpp`.
+    let functions = omath(&format!(
+        "{}{}{}",
+        format!(
+            "<m:func><m:funcPr/><m:fName>{}{}</m:fName><m:e>{}</m:e></m:func>",
+            rpr("<m:sty m:val=\"p\"/>", "sin"),
+            rpr("<m:sty m:val=\"p\"/>", "x"),
+            arg(&r("x")),
+        ),
+        format!(
+            "<m:limLow><m:e>{}</m:e><m:lim>{}</m:lim></m:limLow>",
+            arg(&r("x")),
+            arg(&r("0"))
+        ),
+        format!(
+            "<m:limUpp><m:e>{}</m:e><m:lim>{}</m:lim></m:limUpp>",
+            arg(&r("n")),
+            arg(&r("∞"))
+        ),
+    ));
+
+    // 7. `m:m` (with `m:mcs`/`m:mcJc`) and `m:eqArr` inside a brace delimiter.
+    let matrix = omath(&format!(
+        "<m:m><m:mPr><m:mcs><m:mc><m:mcPr><m:count m:val=\"3\"/>\
+<m:mcJc m:val=\"center\"/></m:mcPr></m:mc></m:mcs>\
+<m:ctrlPr><w:rPr><w:i/></w:rPr></m:ctrlPr></m:mPr>\
+<m:mr><m:e>{}</m:e><m:e>{}</m:e><m:e>{}</m:e></m:mr>\
+<m:mr><m:e>{}</m:e><m:e>{}</m:e><m:e>{}</m:e></m:mr>\
+<m:mr><m:e>{}</m:e><m:e>{}</m:e><m:e>{}</m:e></m:mr></m:m>",
+        arg(&r("1")),
+        arg(&r("2")),
+        arg(&r("3")),
+        arg(&r("4")),
+        arg(&r("5")),
+        arg(&r("6")),
+        arg(&r("7")),
+        arg(&r("8")),
+        arg(&r("9")),
+    ));
+    let system = omath(&format!(
+        "<m:d><m:dPr><m:begChr m:val=\"{{\"/><m:endChr m:val=\"\"/></m:dPr>\
+<m:e><m:eqArr><m:eqArrPr><m:rSpRule m:val=\"1\"/><m:rSp m:val=\"120\"/>\
+<m:maxDist m:val=\"0\"/><m:objDist m:val=\"1\"/>\
+</m:eqArrPr><m:e>{}</m:e><m:e>{}</m:e></m:eqArr></m:e></m:d>",
+        arg(&format!("{} + {} = {}", r("2"), r("3"), r("5"))),
+        arg(&format!("{} = {}", r("x"), r("1"))),
+    ));
+
+    // 8. `m:acc`, `m:bar` (top and bottom), `m:groupChr` (over and under),
+    //    `m:box`, `m:borderBox` and `m:phant`.
+    let decorations = omath(&format!(
+        "{}{}{}{}{}{}",
+        format!(
+            "<m:acc><m:accPr><m:chr m:val=\"x̂\"/></m:accPr>\
+<m:e>{}</m:e></m:acc>",
+            arg(&r("v")),
+        ),
+        format!(
+            "<m:bar><m:barPr><m:pos m:val=\"top\"/></m:barPr><m:e>{}</m:e></m:bar>",
+            arg(&r("x")),
+        ),
+        format!(
+            "<m:bar><m:barPr><m:pos m:val=\"bot\"/></m:barPr><m:e>{}</m:e></m:bar>",
+            arg(&r("y")),
+        ),
+        format!(
+            "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏞\"/><m:vertJc m:val=\"bot\"/>\
+<m:pos m:val=\"top\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
+            arg(&format!("{}2", r("z"))),
+        ),
+        format!(
+            "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏟\"/>\
+<m:pos m:val=\"bot\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
+            arg(&format!("{}2", r("z"))),
+        ),
+        format!(
+            "<m:box><m:boxPr><m:aln m:val=\"center\"/></m:boxPr><m:e>{}</m:e></m:box>\
+<m:borderBox><m:borderBoxPr><m:lines m:val=\"1\"/>\
+<m:shadow m:val=\"0\"/></m:borderBoxPr><m:e>{}</m:e><m:e>{}</m:e></m:borderBox>\
+<m:phant><m:phantPr><m:show m:val=\"0\"/><m:zeroWid m:val=\"0\"/>\
+</m:phantPr><m:e>{}</m:e></m:phant>",
+            arg(&r("box")),
+            arg(&r("a")),
+            arg(&r("b")),
+            arg(&r("p")),
+        ),
+    ));
+
+    // 9. Run properties: `m:nor`, `m:lit`, `m:scr`, `m:sty` and `m:argPr`.
+    let run_properties = omath(&format!(
+        "{}{}{}{}{}",
+        rpr("<m:nor m:val=\"1\"/>", "nor"),
+        rpr("<m:lit m:val=\"1\"/>", "lit"),
+        rpr("<m:scr m:val=\"doubleStruck\"/>", "ds"),
+        rpr("<m:sty m:val=\"b\"/>", "b"),
+        rpr("<m:sty m:val=\"bi\"/>", "bi"),
+    ));
+    let arg_properties = omath(&format!(
+        "<m:m><m:mPr><m:baseJc m:val=\"right\"/><m:mcs><m:mc><m:mcPr><m:mcJc m:val=\"right\"/></m:mcPr>\
+</m:mc></m:mcs></m:mPr><m:mr><m:e><m:argPr><m:defJc m:val=\"right\"/>\
+<m:sty m:val=\"i\"/></m:argPr>{}</m:e></m:mr></m:m>",
+        r("aligned"),
+    ));
+
+    let body = format!(
+        "{heading}\
+{frac}\
+{scripts_line}\
+{radical_line}\
+{nary_line}\
+{delimiter_line}\
+{function_line}\
+{matrix_line}\
+{decoration_line}\
+{run_line}\
+<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\
+{display1}\
+{display2}\
+{display3}",
+        heading = p(&["Stage 5C OMML formulas (inline)"]),
+        frac = p(&[
+            "1 fraction: ",
+            &fraction_bar,
+            " noBar: ",
+            &fraction_no_bar,
+            " lin: ",
+            &fraction_lin,
+            " skew: ",
+            &fraction_skew,
+        ]),
+        scripts_line = p(&["2 scripts: ", &scripts]),
+        radical_line = p(&["3 radical: ", &radicals]),
+        nary_line = p(&["4 n-ary: ", &nary]),
+        delimiter_line = p(&["5 delimiters: ", &delimiters]),
+        function_line = p(&["6 function/limits: ", &functions]),
+        matrix_line = p(&["7 matrix: ", &matrix, " system: ", &system]),
+        decoration_line = p(&["8 decorations: ", &decorations]),
+        run_line = p(&["9 runs/args: ", &run_properties, &arg_properties]),
+        display1 = display(&omath_para(
+            "center",
+            &format!("{fraction_bar}{scripts}{radicals}"),
+        )),
+        display2 = display(&omath_para(
+            "left",
+            &format!("{nary}{delimiters}{functions}"),
+        )),
+        display3 = display(&omath_para(
+            "center",
+            &format!("{matrix}{system}{decorations}"),
+        )),
+    );
+
+    let document = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+<w:document xmlns:w=\"{W_NS}\" xmlns:m=\"{M_NS}\"><w:body>{body}\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
+w:header=\"720\" w:footer=\"720\"/></w:sectPr></w:body></w:document>"
+    );
+
+    let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
+<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
+<Default Extension=\"xml\" ContentType=\"application/xml\"/>\
+<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\
+</Types>";
+    let root_rels = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL_BASE}/officeDocument\" Target=\"word/document.xml\"/></Relationships>"
+    );
+
+    let entries: Vec<(&str, &[u8])> = vec![
+        ("[Content_Types].xml", content_types.as_bytes()),
+        ("_rels/.rels", root_rels.as_bytes()),
+        ("word/document.xml", document.as_bytes()),
     ];
     zip(&entries)
 }

@@ -45,6 +45,13 @@ pub enum LimitKind {
     RelationshipDepth,
     /// `ResourceLimits::max_parts`.
     Parts,
+    /// The per-formula node budget enforced by the OMML parser
+    /// (`STAGE-5C-TASK.md` §5.1). Not a `ResourceLimits` field: the bound
+    /// applies to one `m:oMath`, not to the whole package.
+    MathNodes,
+    /// The per-formula nesting budget enforced by the OMML parser
+    /// (`STAGE-5C-TASK.md` §5.1).
+    MathDepth,
 }
 
 impl LimitKind {
@@ -62,6 +69,8 @@ impl LimitKind {
             Self::TextLen => "text_len",
             Self::RelationshipDepth => "relationship_depth",
             Self::Parts => "parts",
+            Self::MathNodes => "math_nodes",
+            Self::MathDepth => "math_depth",
         }
     }
 }
@@ -98,6 +107,21 @@ impl SourceLocation {
             column,
             byte_offset,
         }
+    }
+
+    /// Creates a location that points at no part (`<unknown>:1:1`).
+    ///
+    /// Used for synthesised nodes (for example a formula built by a caller
+    /// rather than parsed) so model types stay `Default`-constructible.
+    #[must_use]
+    pub fn unknown() -> Self {
+        Self::new(PartId::new(""), 1, 1, 0)
+    }
+}
+
+impl Default for SourceLocation {
+    fn default() -> Self {
+        Self::unknown()
     }
 }
 

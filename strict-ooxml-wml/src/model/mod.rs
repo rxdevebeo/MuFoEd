@@ -9,6 +9,7 @@ pub mod document;
 pub mod drawing;
 pub mod ids;
 pub mod inline;
+pub mod math;
 pub mod notes;
 pub mod numbering;
 pub mod props;
@@ -32,6 +33,13 @@ pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 pub use inline::{
     BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent,
     Symbol, TextNode,
+};
+pub use math::{
+    Accent, ArgumentProperties, Bar, BorderBox, Boxed, Delimiter, EquationArray, Fraction,
+    Function, GroupCharacter, LimitLocation, MathAlignment, MathArgument, MathExpression,
+    MathLimit, MathNode, MathParagraph, MathParagraphProperties, MathPosition, MathRun,
+    MathRunProperties, MathScript, MathStyle, MathVerticalJc, Matrix, MatrixColumn, NaryOperator,
+    Phantom, PreScript, Radical, SubSuperscript, Subscript, Superscript, UnknownMathNode,
 };
 pub use notes::{Note, NoteKind, NoteProperties, NoteTable};
 pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};

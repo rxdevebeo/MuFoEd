@@ -7,6 +7,7 @@ use strict_ooxml_core::opc::rels::RelId;
 
 use super::block::SdtContainer;
 use super::drawing::Drawing;
+use super::math::{MathExpression, MathParagraph};
 use super::props::RunProperties;
 use super::values::{BreakKind, FieldCharType, Space};
 
@@ -200,6 +201,10 @@ pub enum Inline {
     FootnoteRef(u32),
     /// Endnote reference (rendering is Stage 5).
     EndnoteRef(u32),
+    /// An inline formula (`m:oMath`, Stage 5C).
+    Math(MathExpression),
+    /// A display formula (`m:oMathPara`, Stage 5C).
+    MathParagraph(MathParagraph),
     /// Unknown inline element.
     Opaque(OpaqueInline),
 }
@@ -210,6 +215,24 @@ impl Inline {
     pub fn as_run(&self) -> Option<&Run> {
         match self {
             Self::Run(run) => Some(run),
+            _ => None,
+        }
+    }
+
+    /// Returns the formula, if this inline is an inline `m:oMath`.
+    #[must_use]
+    pub const fn as_math(&self) -> Option<&MathExpression> {
+        match self {
+            Self::Math(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    /// Returns the display formula, if this inline is an `m:oMathPara`.
+    #[must_use]
+    pub const fn as_math_paragraph(&self) -> Option<&MathParagraph> {
+        match self {
+            Self::MathParagraph(paragraph) => Some(paragraph),
             _ => None,
         }
     }

@@ -11,6 +11,7 @@ pub mod document;
 pub mod drawing;
 pub mod headerfooter;
 pub mod interner;
+pub mod math;
 pub mod notes;
 pub mod numbering;
 pub mod props;
@@ -692,6 +693,15 @@ pub(crate) fn is_drawingml(name: &QName) -> bool {
     name.ns
         .as_ref()
         .is_some_and(|ns| ns == crate::DRAWINGML_STRICT_NS)
+}
+
+/// Returns `true` if a qualified name is in the OMML Strict namespace
+/// (`STAGE-5C-TASK.md` §5.1). OMML is part of ISO/IEC 29500-1, so the Strict
+/// namespace is the only one accepted for formulas.
+pub(crate) fn is_math(name: &QName) -> bool {
+    name.ns
+        .as_ref()
+        .is_some_and(|ns| ns == crate::MATH_STRICT_NS)
 }
 
 /// Builds a stable feature identifier from a qualified name.

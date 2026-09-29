@@ -14,343 +14,434 @@
 
 [meta]
 standard = "ISO/IEC 29500-1:2008 Strict"
-stage = "5A+5B"
-source = "curated-stage-5a-5b"
+stage = "5A+5B+5C"
+source = "curated-stage-5a-5b-5c"
 revision = "2026-09-29"
 generator = "manual"
-
 [[elements]]
 name = "headers.parts"
 status = "supported"
 note = "headerN.xml discovered by relationship type; parsed/reused with the body parser"
-
 [[elements]]
 name = "headers.default"
 status = "supported"
-
 [[elements]]
 name = "headers.first"
 status = "supported"
 note = "w:titlePg selects the first-page header"
-
 [[elements]]
 name = "headers.title_pg_without_first"
 status = "supported"
 note = "titlePg with no first reference leaves the first page header/footer empty (no Default/Even fallback; B5-1)"
-
 [[elements]]
 name = "headers.even"
 status = "supported"
 note = "settings evenAndOddHeaders selects the even-page header"
-
 [[elements]]
 name = "headers.geometry"
 status = "supported"
 note = "w:pgMar/@header and @footer distances; default 720 twips"
-
 [[elements]]
 name = "footers.parts"
 status = "supported"
-
 [[elements]]
 name = "headers.multi_page_split"
 status = "partial"
 note = "a header taller than its margin band is not split across pages"
-
 [[elements]]
 name = "headers.multi_section"
 status = "partial"
 note = "single-section renderer: the last section's headers are used"
-
 [[elements]]
 name = "footnotes.parts"
 status = "supported"
-
 [[elements]]
 name = "footnotes.binding"
 status = "supported"
 note = "w:footnoteReference/w:id bound to footnotes.xml"
-
 [[elements]]
 name = "footnotes.numbering"
 status = "supported"
 note = "continuous numbering, formats (decimal/roman/letter), numStart"
-
 [[elements]]
 name = "footnotes.marker"
 status = "supported"
 note = "superscript marker at the reference position"
-
 [[elements]]
 name = "footnotes.area"
 status = "supported"
 note = "area at the page bottom with a separator"
-
 [[elements]]
 name = "footnotes.continuation"
 status = "supported"
 note = "overflow notes move to the next page with a continuation separator"
-
 [[elements]]
 name = "endnotes.parts"
 status = "supported"
-
 [[elements]]
 name = "endnotes.end_of_document"
 status = "supported"
 note = "endnotes flow after the body with a separator"
-
 [[elements]]
 name = "footnotes.restart"
 status = "partial"
 note = "w:numRestart=eachSect/eachPage not modelled (continuous)"
-
 [[elements]]
 name = "footnotes.in_tables"
 status = "partial"
 note = "notes referenced inside table cells do not reserve area"
-
 [[elements]]
 name = "fields.fld_simple"
 status = "supported"
-
 [[elements]]
 name = "fields.fld_char"
 status = "supported"
 note = "begin/separate/end grouped by the renderer"
-
 [[elements]]
 name = "fields.instr_text"
 status = "supported"
-
 [[elements]]
 name = "fields.page"
 status = "supported"
 note = "PAGE computed at placement"
-
 [[elements]]
 name = "fields.numpages"
 status = "supported"
 note = "NUMPAGES computed by a bounded two-pass layout"
-
 [[elements]]
 name = "fields.sectionpages"
 status = "supported"
-
 [[elements]]
 name = "fields.cached"
 status = "supported"
 note = "non-computed fields use the cached result; recorded Partial in SupportModel"
-
 [[elements]]
 name = "fields.format_switch"
 status = "partial"
 note = "only roman/letter/arabic switches; other switches fall back to decimal"
-
 [[elements]]
 name = "tables.grid_span"
 status = "supported"
-
 [[elements]]
 name = "tables.vertical_merge"
 status = "supported"
 note = "restart owns the merged region; continuation suppressed"
-
 [[elements]]
 name = "tables.nested"
 status = "supported"
-
 [[elements]]
 name = "tables.header_repeat"
 status = "supported"
 note = "w:tblHeader repeated on continued pages"
-
 [[elements]]
 name = "tables.page_break"
 status = "supported"
 note = "the table breaks between rows across pages"
-
 [[elements]]
 name = "tables.borders_shading"
 status = "supported"
 note = "tblBorders/tcBorders/shd"
-
 [[elements]]
 name = "tables.fixed_width"
 status = "supported"
 note = "tblGrid/tblLayout fixed widths"
-
 [[elements]]
 name = "tables.row_split"
 status = "unsupported"
 note = "a single row taller than a page is placed whole"
-
 [[elements]]
 name = "tables.merge_across_pages"
 status = "unsupported"
 note = "a merged region crossing a page break draws on the first page"
-
 [[elements]]
 name = "theme.fonts"
 status = "supported"
 note = "major/minor latin/ea/cs parsed and resolved"
-
 [[elements]]
 name = "theme.colors"
 status = "supported"
 note = "dk1..accent6/hlink/folHlink and aliases"
-
 [[elements]]
 name = "theme.color_resolution"
 status = "supported"
 note = "w:themeColor resolved in the run cascade"
-
 [[elements]]
 name = "theme.tint_shade"
 status = "supported"
-
 [[elements]]
 name = "theme.fmt_scheme"
 status = "partial"
 note = "effects/fills/line styles (a:fmtScheme) not resolved (5A scope)"
-
 [[elements]]
 name = "theme.fill_colors"
 status = "unsupported"
 note = "w:shd/@w:themeFill not resolved"
-
 [[elements]]
 name = "numbering.multilevel"
 status = "supported"
-
 [[elements]]
 name = "numbering.lvl_text"
 status = "supported"
 note = "%n substitution with per-level formats"
-
 [[elements]]
 name = "numbering.formats"
 status = "supported"
 note = "decimal/decimalZero/roman/letter/bullet"
-
 [[elements]]
 name = "numbering.overrides"
 status = "supported"
 note = "lvlOverride/startOverride"
-
 [[elements]]
 name = "numbering.restart"
 status = "supported"
 note = "deeper levels restart when a higher level is used; lvlRestart=0 honoured"
-
 [[elements]]
 name = "numbering.indentation"
 status = "supported"
 note = "level w:ind applied to numbered paragraphs"
-
 [[elements]]
 name = "numbering.level_justification"
 status = "partial"
 note = "w:lvlJc marker alignment not applied (left markers)"
-
 [[elements]]
 name = "numbering.suffix"
 status = "partial"
 note = "w:suff not applied (marker followed by a tab to the level start)"
-
 [[elements]]
 name = "numbering.style_linked"
 status = "unsupported"
 note = "numStyleLink/styleLink not resolved"
-
 [[elements]]
 name = "numbering.num_id_zero"
 status = "unsupported"
 note = "numId=0 (remove numbering) not modelled"
-
 [[elements]]
 name = "drawingml.anchors"
 status = "supported"
 note = "wp:anchor parsed and rendered (extent, docPr, behindDoc/relativeHeight, dist*)"
-
 [[elements]]
 name = "drawingml.anchor_positioning"
 status = "supported"
 note = "positionH/positionV relativeFrom (page/margin/column/paragraph/line) with align/posOffset"
-
 [[elements]]
 name = "drawingml.anchor_wrap"
 status = "partial"
 note = "wrapNone and wrapTopAndBottom reflow; wrapSquare/Tight/Through treated as overlay (bounding box)"
-
 [[elements]]
 name = "drawingml.anchor_zorder"
 status = "supported"
 note = "behindDoc and relativeHeight order the floating layer"
-
 [[elements]]
 name = "drawingml.pictures_anchored"
 status = "partial"
 note = "srcRect parsed; rot/flip applied; crop rasterization not performed"
-
 [[elements]]
 name = "drawingml.shapes"
 status = "supported"
 note = "wps:wsp with prstGeom subset (rect/roundRect/ellipse/arrows/stars/flowchart basics)"
-
 [[elements]]
 name = "drawingml.shape_fills"
 status = "supported"
 note = "solid/gradient(first stop)/pattern(foreground)/none; theme colours resolved"
-
 [[elements]]
 name = "drawingml.shape_outline"
 status = "partial"
 note = "colour/width/prstDash rendered; headEnd/tailEnd parsed but not drawn"
-
 [[elements]]
 name = "drawingml.groups"
 status = "supported"
 note = "wpg:wgp composed via off/ext/chOff/chExt with child scale"
-
 [[elements]]
 name = "drawingml.textboxes"
 status = "supported"
 note = "w:txbxContent laid out as blocks inside the frame (wps + Microsoft wne)"
-
 [[elements]]
 name = "drawingml.custgeom"
 status = "partial"
 note = "a:custGeom subset: moveTo/lnTo/cubicBezTo/close"
-
 [[elements]]
 name = "drawingml.charts_smartart"
 status = "partial"
 note = "anchored position + placeholder extent; content not rasterized"
-
 [[elements]]
 name = "drawingml.namespace_compat"
 status = "partial"
 note = "Microsoft 2010 shape/group and wne:txbxContent namespaces accepted (real Strict producers)"
-
 [[elements]]
 name = "page.borders"
 status = "supported"
 note = "w:pgBorders edges with offsetFrom/space/val/sz/colour/theme/zOrder"
 
+# --- Echelon 5C: OMML formulas (STAGE-5C-TASK.md §3.1) -------------------------
+# OMML is a native part of ISO/IEC 29500-1, so a Strict-first implementation is
+# exact; the constructs below are the ones §3.1 enumerates, plus the layout and
+# reporting behaviour §5.2/§5.3 ask for.
 [[elements]]
-name = "math.omml"
-status = "ignored"
-note = "element tier 5C"
-
+name = "math.omath_inline"
+status = "supported"
+note = "m:oMath as paragraph content: laid out on the text baseline (S5C.5)"
+[[elements]]
+name = "math.omath_para"
+status = "supported"
+note = "m:oMathPara + m:oMathParaPr/m:jc (left/center/centerGroup/right) on its own line"
+[[elements]]
+name = "math.runs"
+status = "supported"
+note = "m:r/m:t; m:sty (p/i/b/bi), m:nor, m:lit, m:scr, m:aln, m:brk, w:br as a line break"
+[[elements]]
+name = "math.arg_properties"
+status = "supported"
+note = "m:argPr (aln/defJc, lit, nor, scr, sty, ctrlPr) and m:ctrlPr/w:rPr"
+[[elements]]
+name = "math.fraction"
+status = "supported"
+note = "m:f with m:type bar/lin/skew/noBar, m:smallFrac and m:ctrlPr"
+[[elements]]
+name = "math.radical"
+status = "supported"
+note = "m:rad with m:degHide; the degree sits in the notch of the sign"
+[[elements]]
+name = "math.superscript"
+status = "supported"
+note = "m:sSup"
+[[elements]]
+name = "math.subscript"
+status = "supported"
+note = "m:sSub"
+[[elements]]
+name = "math.sub_superscript"
+status = "supported"
+note = "m:sSubSup; the two scripts are pushed apart when they would overlap"
+[[elements]]
+name = "math.pre_script"
+status = "supported"
+note = "m:sPre with the scripts stacked to the left of the base"
+[[elements]]
+name = "math.nary"
+status = "supported"
+note = "m:nary: m:chr, m:limLoc (undOvr/subSup), m:grow, m:subHide, m:supHide"
+[[elements]]
+name = "math.delimiter"
+status = "supported"
+note = "m:d: begChr/sepChr/endChr (including the empty draw-nothing form), m:grow, m:shp"
+[[elements]]
+name = "math.function"
+status = "supported"
+note = "m:func with m:fName and the argument; a thin space separates them"
+[[elements]]
+name = "math.limit"
+status = "supported"
+note = "m:limLow and m:limUpp"
+[[elements]]
+name = "math.matrix"
+status = "supported"
+note = "m:m: m:mcs/m:mc/m:mcJc, m:baseJc, m:plcHide, m:cSp, m:cGp, m:cGpRule, m:rSp, m:rSpRule"
+[[elements]]
+name = "math.equation_array"
+status = "supported"
+note = "m:eqArr: m:baseJc, m:maxDist, m:objDist, m:rSp, m:rSpRule"
+[[elements]]
+name = "math.accent"
+status = "supported"
+note = "m:acc with m:chr"
+[[elements]]
+name = "math.bar"
+status = "supported"
+note = "m:bar with m:pos top/bot"
+[[elements]]
+name = "math.group_chr"
+status = "supported"
+note = "m:groupChr: m:chr (over/under brace), m:pos, m:vertJc"
+[[elements]]
+name = "math.box"
+status = "supported"
+note = "m:box with m:aln and m:sp padding"
+[[elements]]
+name = "math.border_box"
+status = "supported"
+note = "m:borderBox with m:algn, m:sp, m:lines, m:shadow"
+[[elements]]
+name = "math.phantom"
+status = "supported"
+note = "m:phant: show/transp/zeroWid/zeroAsc/zeroDesc/showAll/rtl"
+[[elements]]
+name = "math.namespace_strict"
+status = "supported"
+note = "only http://purl.oclc.org/ooxml/officeDocument/math is accepted (S5C.1)"
+[[elements]]
+name = "math.locations"
+status = "supported"
+note = "every math node carries a SourceLocation"
+[[elements]]
+name = "math.limits"
+status = "supported"
+note = "per-formula node (4096) and nesting (64) budgets; a violation is LimitExceeded, never a panic"
+[[elements]]
+name = "math.axis"
+status = "supported"
+note = "the math axis is 0.25 em above the baseline, as in Word"
+[[elements]]
+name = "math.scripts"
+status = "supported"
+note = "one script level is 0.62 em with a 0.38/0.18 em shift (Word professional style)"
+[[elements]]
+name = "math.stretchy_delimiters"
+status = "supported"
+note = "delimiters and the radical sign are drawn as deterministic vector paths, so a missing glyph still yields the right structure (S5C.6)"
+[[elements]]
+name = "math.font"
+status = "supported"
+note = "the bundled OFL face STIX Two Math supplies the OMML glyph repertoire (S5C.6)"
+[[elements]]
+name = "math.mathml_export"
+status = "supported"
+note = "model -> MathML projection for the independent structural oracle (S5C decision 9.6)"
+[[elements]]
+name = "math.detachment"
+status = "supported"
+note = "every stretchy construct is an independent node, not a stretchy glyph run"
+[[elements]]
+name = "math.wrap"
+status = "supported"
+note = "a long inline formula moves to the next line as an atomic unit"
+[[elements]]
+name = "math.line_growth"
+status = "partial"
+note = "a formula line receives 1.30x the natural line height and grows at most 1.60x; the exact Word/WPS line box for tall constructs is not reproduced"
+[[elements]]
+name = "math.display_spacing"
+status = "partial"
+note = "10 pt before and after a display formula; WPS overlaps consecutive m:oMathPara instead of stacking them"
+[[elements]]
+name = "math.arg_alignment"
+status = "partial"
+note = "m:aln is honoured for m:m columns (m:mcJc) and m:eqArr rows (m:baseJc); for other arguments the construct's own centring wins"
+[[elements]]
+name = "math.phantom_transparency"
+status = "partial"
+note = "m:show is honoured; m:transp/m:showAll only affect the reserved space, not the alpha of drawn ink"
+[[elements]]
+name = "math.control_revision"
+status = "partial"
+note = "m:ctrlPr/w:rPr colours the construct; a w:ins/w:del revision marker inside m:ctrlPr is recorded and dropped"
+[[elements]]
+name = "math.brk"
+status = "partial"
+note = "m:brk is parsed and reported; the renderer applies its own line breaking"
+[[elements]]
+name = "math.shp_delimiter"
+status = "partial"
+note = "m:dPr/m:shp is parsed and reported; the delimiter is drawn in its glyph form"
+[[elements]]
+name = "math.ole_fields"
+status = "unsupported"
+note = "MathType/OLE field formulas (no OMML) are out of scope (S5C 3.2)"
 [[elements]]
 name = "vml"
 status = "ignored"
-
 [[elements]]
 name = "comments.bodies"
 status = "ignored"
-
 [[elements]]
 name = "normalization.transitional"
 status = "ignored"

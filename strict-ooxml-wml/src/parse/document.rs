@@ -155,6 +155,8 @@ impl PartParser<'_> {
                 XmlEvent::StartElement { name, attrs } => {
                     if name.local() == "pPr" && is_wml(&name) {
                         props = self.parse_paragraph_properties()?;
+                    } else if crate::parse::is_math(&name) {
+                        self.parse_math_into(&name, &mut inlines)?;
                     } else if is_wml(&name) {
                         self.parse_inline_into(&name, &attrs, &mut inlines)?;
                     } else {
@@ -186,7 +188,9 @@ impl PartParser<'_> {
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) {
+                    if crate::parse::is_math(&name) {
+                        self.parse_math_into(&name, &mut out)?;
+                    } else if is_wml(&name) {
                         self.parse_inline_into(&name, &attrs, &mut out)?;
                     } else {
                         self.record_foreign(&name);
@@ -200,6 +204,29 @@ impl PartParser<'_> {
         }
         self.leave();
         Ok(out)
+    }
+
+    /// Dispatches one OMML element into `out` (`STAGE-5C-TASK.md` §3.1.1).
+    ///
+    /// `m:oMath` and `m:oMathPara` are paragraph content, so they arrive
+    /// through the inline path; only the math namespace reaches here.
+    fn parse_math_into(&mut self, name: &QName, out: &mut Vec<Inline>) -> Result<()> {
+        match name.local() {
+            "oMath" => out.push(Inline::Math(crate::parse::math::parse_omath(self)?)),
+            "oMathPara" => out.push(Inline::MathParagraph(crate::parse::math::parse_omath_para(
+                self,
+            )?)),
+            other => {
+                self.record(
+                    &format!("m:{other}"),
+                    SupportStatus::Partial,
+                    Some("OMML element outside a formula".to_owned()),
+                    Some(self.location()),
+                );
+                self.skip_element()?;
+            }
+        }
+        Ok(())
     }
 
     /// Dispatches one paragraph child element into `out`.

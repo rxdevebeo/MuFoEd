@@ -531,6 +531,9 @@ impl<'a> Paginator<'a> {
         for item in line.items {
             self.current.push(Item::Text(item));
         }
+        for item in line.graphics {
+            self.current.push(item);
+        }
         self.cursor += line.height;
         self.check_capacity()
     }

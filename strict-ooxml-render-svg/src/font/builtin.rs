@@ -20,6 +20,8 @@ struct FaceEntry {
     family: &'static str,
     bold: bool,
     italic: bool,
+    /// Whether this face serves every `(bold, italic)` combination.
+    single: bool,
     font: FontRef<'static>,
     location: Vec<NormalizedCoord>,
     units_per_em: f64,
@@ -31,6 +33,11 @@ struct FaceSpec {
     family: &'static str,
     bold: bool,
     italic: bool,
+    /// Whether the single face serves every `(bold, italic)` combination.
+    ///
+    /// STIX Two Math ships one upright face only; the mathematical italic of
+    /// variables is a *slant* of the same outlines, so the same advances apply.
+    single: bool,
     /// Variable-font `wght` value, when the face is a variable font instance.
     weight: Option<f32>,
     data: &'static [u8],
@@ -42,6 +49,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Carlito",
         bold: false,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/carlito/Carlito-Regular.ttf"),
     },
@@ -49,6 +57,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Carlito",
         bold: true,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/carlito/Carlito-Bold.ttf"),
     },
@@ -56,6 +65,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Carlito",
         bold: false,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/carlito/Carlito-Italic.ttf"),
     },
@@ -63,6 +73,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Carlito",
         bold: true,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/carlito/Carlito-BoldItalic.ttf"),
     },
@@ -70,6 +81,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Caladea",
         bold: false,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/caladea/Caladea-Regular.ttf"),
     },
@@ -77,6 +89,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Caladea",
         bold: true,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/caladea/Caladea-Bold.ttf"),
     },
@@ -84,6 +97,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Caladea",
         bold: false,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/caladea/Caladea-Italic.ttf"),
     },
@@ -91,6 +105,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Caladea",
         bold: true,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/caladea/Caladea-BoldItalic.ttf"),
     },
@@ -98,6 +113,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Arimo",
         bold: false,
         italic: false,
+        single: false,
         weight: Some(400.0),
         data: include_bytes!("../../assets/fonts/arimo/Arimo[wght].ttf"),
     },
@@ -105,6 +121,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Arimo",
         bold: true,
         italic: false,
+        single: false,
         weight: Some(700.0),
         data: include_bytes!("../../assets/fonts/arimo/Arimo[wght].ttf"),
     },
@@ -112,6 +129,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Arimo",
         bold: false,
         italic: true,
+        single: false,
         weight: Some(400.0),
         data: include_bytes!("../../assets/fonts/arimo/Arimo-Italic[wght].ttf"),
     },
@@ -119,6 +137,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Arimo",
         bold: true,
         italic: true,
+        single: false,
         weight: Some(700.0),
         data: include_bytes!("../../assets/fonts/arimo/Arimo-Italic[wght].ttf"),
     },
@@ -126,6 +145,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Tinos",
         bold: false,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/tinos/Tinos-Regular.ttf"),
     },
@@ -133,6 +153,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Tinos",
         bold: true,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/tinos/Tinos-Bold.ttf"),
     },
@@ -140,6 +161,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Tinos",
         bold: false,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/tinos/Tinos-Italic.ttf"),
     },
@@ -147,6 +169,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Tinos",
         bold: true,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/tinos/Tinos-BoldItalic.ttf"),
     },
@@ -154,6 +177,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Cousine",
         bold: false,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/cousine/Cousine-Regular.ttf"),
     },
@@ -161,6 +185,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Cousine",
         bold: true,
         italic: false,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/cousine/Cousine-Bold.ttf"),
     },
@@ -168,6 +193,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Cousine",
         bold: false,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/cousine/Cousine-Italic.ttf"),
     },
@@ -175,8 +201,20 @@ const FACE_SPECS: &[FaceSpec] = &[
         family: "Cousine",
         bold: true,
         italic: true,
+        single: false,
         weight: None,
         data: include_bytes!("../../assets/fonts/cousine/Cousine-BoldItalic.ttf"),
+    },
+    // The OFL math face (Stage 5C, §9.1). One upright face covers the whole
+    // OMML glyph repertoire: n-ary operators, radicals, stretchy delimiter
+    // parts, accents, over/under-braces and the letterlike-alphanumeric block.
+    FaceSpec {
+        family: "STIX Two Math",
+        bold: false,
+        italic: false,
+        single: true,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/STIXTwoMath-Regular.otf"),
     },
 ];
 
@@ -216,6 +254,7 @@ impl BuiltinFontProvider {
                     family: spec.family,
                     bold: spec.bold,
                     italic: spec.italic,
+                    single: spec.single,
                     font,
                     location,
                     units_per_em,
@@ -231,6 +270,12 @@ impl BuiltinFontProvider {
         self.faces
             .iter()
             .find(|entry| entry.family == family && entry.bold == bold && entry.italic == italic)
+            .or_else(|| {
+                // A single-face family (STIX Two Math) serves every style.
+                self.faces
+                    .iter()
+                    .find(|entry| entry.family == family && entry.single)
+            })
     }
 }
 
@@ -273,6 +318,18 @@ impl FontProvider for BuiltinFontProvider {
     fn name(&self) -> &'static str {
         "bundled"
     }
+
+    fn has_glyph(&self, family: &str, ch: char) -> bool {
+        use skrifa::raw::types::GlyphId;
+        self.face(map_family(family), false, false)
+            .is_some_and(|entry| {
+                entry
+                    .font
+                    .charmap()
+                    .map(ch)
+                    .is_some_and(|glyph| glyph != GlyphId::NOTDEF)
+            })
+    }
 }
 
 /// Returns the deterministic width scale for a family name (fallback only).
@@ -303,6 +360,32 @@ mod tests {
         assert_eq!(provider.name(), "bundled");
         assert!(family_scale("Courier New") > family_scale("Calibri"));
         assert!((family_scale("Unknown Family") - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn math_face_covers_the_omml_repertoire() {
+        let provider = BuiltinFontProvider::new();
+        // Letters, digits and the OMML operators/decorations the renderer draws
+        // as text. Values are read independently from the bundled OTF.
+        for ch in [
+            'a', 'Z', '0', '9', '+', '−', '∑', '∏', '∫', '∞', '≠', '≤', '√', '̂', '⃗', '↻', '→', 'ℝ',
+            '⟨', '⟩',
+        ] {
+            assert!(
+                provider.has_glyph("Cambria Math", ch),
+                "missing glyph {ch:?}"
+            );
+        }
+        // A single face serves every style: mathematical italic is a slant.
+        assert!(provider.advance_em("Cambria Math", 'x', true, true) > 0.0);
+        assert_eq!(
+            provider.advance_em("Cambria Math", 'x', true, true),
+            provider.advance_em("Cambria Math", 'x', false, false)
+        );
+        // Characters outside the repertoire report no coverage so the math
+        // layout falls back to its deterministic vector model.
+        assert!(!provider.has_glyph("Cambria Math", '\u{10FFFD}'));
+        assert!(!provider.has_glyph("Totally Unknown", 'a'));
     }
 
     #[test]

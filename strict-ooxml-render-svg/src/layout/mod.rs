@@ -157,6 +157,9 @@ pub(crate) struct PlacedPage {
 pub(crate) struct TextLine {
     /// Paint items.
     pub items: Vec<TextItem>,
+    /// Non-text paint items produced by the line's content (math rules, vector
+    /// delimiters, rules of an accent or a bar).
+    pub graphics: Vec<Item>,
     /// Line height in px.
     pub height: f64,
     /// Baseline offset from the line top in px.
@@ -171,6 +174,37 @@ impl TextLine {
         for item in &mut self.items {
             item.x += dx;
             item.baseline += dy;
+        }
+        for item in &mut self.graphics {
+            *item = match item.clone() {
+                Item::Text(mut text) => {
+                    text.x += dx;
+                    text.baseline += dy;
+                    Item::Text(text)
+                }
+                Item::Rect(mut rect) => {
+                    rect.x += dx;
+                    rect.y += dy;
+                    Item::Rect(rect)
+                }
+                Item::Line(mut line) => {
+                    line.x1 += dx;
+                    line.y1 += dy;
+                    line.x2 += dx;
+                    line.y2 += dy;
+                    Item::Line(line)
+                }
+                Item::Path(mut path) => {
+                    path.x += dx;
+                    path.y += dy;
+                    Item::Path(path)
+                }
+                Item::Image(mut image) => {
+                    image.x += dx;
+                    image.y += dy;
+                    Item::Image(image)
+                }
+            };
         }
     }
 }

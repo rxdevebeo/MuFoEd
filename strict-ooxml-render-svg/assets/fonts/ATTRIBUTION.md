@@ -18,6 +18,7 @@ No font was modified; the OFL license text is included alongside each family.
 | Arimo | Arial / Helvetica | SIL Open Font License 1.1 (`arimo/OFL.txt`) | `arimo/Arimo[wght].ttf`, `arimo/Arimo-Italic[wght].ttf` (variable `wght` 400/700) |
 | Tinos | Times New Roman | SIL Open Font License 1.1 (`tinos/OFL.txt`) | `tinos/Tinos-{Regular,Bold,Italic,BoldItalic}.ttf` |
 | Cousine | Courier New | SIL Open Font License 1.1 (`cousine/OFL.txt`) | `cousine/Cousine-{Regular,Bold,Italic,BoldItalic}.ttf` |
+| STIX Two Math | Cambria Math | SIL Open Font License 1.1 (`stix/OFL.txt`) | `stix/STIXTwoMath-Regular.otf` |
 
 ## Provenance
 
@@ -36,6 +37,16 @@ instantiates `wght` 400/700 with `skrifa`.
 The Tinos `OFL.txt` is taken from the upstream `googlefonts/tinos` repository at
 `3b4482a99b80ea5fc75f187b1be3120a3f5905b3` (google/fonts ships none for that
 family).
+
+**STIX Two Math** (Stage 5C, §9.1) is not metric-compatible with anything Word
+ships — it *is* the open face for the OMML repertoire: n-ary operators,
+radicals, stretchy delimiter parts, accents, over/under-braces and the
+letterlike-alphanumeric block. It is bundled from the CTAN package
+`stix2-otf` (`https://mirrors.ctan.org/fonts/stix2-otf.zip`). One upright face
+covers every style, so `m:sty` only reaches the SVG as `font-style` /
+`font-weight`; the *stretchy* constructs (delimiters, the radical sign) are drawn
+as deterministic vector paths instead of glyphs, which is also the fallback when
+a character has no glyph at all.
 
 ## SHA-256
 

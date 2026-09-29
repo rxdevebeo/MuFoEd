@@ -16,6 +16,9 @@ pub fn map_family(family: &str) -> &str {
         "arial" | "helvetica" => "Arimo",
         "times new roman" => "Tinos",
         "courier new" => "Cousine",
+        // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
+        // is the bundled OFL face with the full OMML glyph repertoire.
+        "cambria math" | "stix two math" | "stix2 math" | "stixgeneral" => "STIX Two Math",
         _ => family,
     }
 }
@@ -33,6 +36,13 @@ mod tests {
         assert_eq!(map_family("Cambria"), "Caladea");
         assert_eq!(map_family("Times New Roman"), "Tinos");
         assert_eq!(map_family("Courier New"), "Cousine");
+    }
+
+    #[test]
+    fn maps_the_math_family_to_the_bundled_ofl_face() {
+        assert_eq!(map_family("Cambria Math"), "STIX Two Math");
+        assert_eq!(map_family("cambria math"), "STIX Two Math");
+        assert_eq!(map_family("STIX Two Math"), "STIX Two Math");
     }
 
     #[test]
