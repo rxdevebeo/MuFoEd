@@ -19,12 +19,22 @@ members = [
     "xtool",
 ]
 
-[profile.dev]
-# One codegen unit. parse_document and the other public entry points are
-# emitted once instead of once per codegen unit, so `cargo llvm-cov` measures
-# the lines the tests actually reach: with the default 16 units the coverage
-# number moved by 11 points on a 200-line change (STAGE-5C-REWORK-1 C4).
-codegen-units = 1
+# NOTE: `codegen-units = 1` is deliberately *not* set here.
+#
+# It is needed for `cargo llvm-cov` to be reproducible (STAGE-5C-REWORK-1 C4):
+# with the default 16 units the public entry points (`parse_document` and
+# friends) are emitted once per unit, `llvm-cov` merges by source line, and a
+# line covered in one copy and absent in another counts as uncovered — the
+# number moved by 11 points on a 200-line change (79.80% -> 85.08% for
+# `strict-ooxml-wml`). But paying for it in `[profile.dev]` slows every local
+# debug build to fix a measurement only CI takes.
+#
+# The coverage job therefore sets `CARGO_PROFILE_DEV_CODEGEN_UNITS=1` for the
+# measurement, and leaves everyone else on the default. See `.github/workflows/
+# ci.yml`.
+#
+# The `[profile.dev]` override is removed, so a local `cargo llvm-cov` reports
+# the *unreproducible* number; the CI value is the one that gates.
 
 [workspace.package]
 version = "0.1.0"

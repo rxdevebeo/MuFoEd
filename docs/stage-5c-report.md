@@ -261,15 +261,34 @@ oracle now also covers `05`/`06`/`10`).
 
 ### 8.1 A coverage-gate defect found on the way
 
-`cargo llvm-cov -p strict-ooxml-wml` reported 79.80 % lines at the 5C commit
-(below the CI threshold of 80) and 73.8 % after the rework — from a 217-line
-change. The cause is not the change: with the default 16 codegen units the
-public entry points (`parse_document` and friends) are emitted once per unit,
-and `llvm-cov` merges by source line, so a line covered in one copy and absent
-in another counts as uncovered. The number therefore moved with code layout
-rather than with test coverage. `[profile.dev] codegen-units = 1` in the
-workspace root makes the measurement deterministic; with it the crate measures
-**85.08 %** lines. The other three crates are unchanged and pass.
+`cargo llvm-cov -p strict-ooxml-wml` was reported at 79.80 %, below the CI
+threshold of 80, and attributed to code layout: with the default 16 codegen
+units the public entry points (`parse_document` and friends) are emitted once
+per unit, `llvm-cov` merges by source line, and a line covered in one copy and
+absent in another counts as uncovered. The fix applied was
+`[profile.dev] codegen-units = 1`, which took the crate to 85.08 %.
+
+**That diagnosis was wrong on two counts, and re-measuring says so.**
+
+* 79.80 % was *region* coverage. `--fail-under-lines` gates *line* coverage,
+  which was 85.08 % — comfortably above the threshold — with and without the
+  setting. Measured on this toolchain: `codegen-units = 1` and the default 16
+  both give 11588 regions / 6829 lines / 1019 missed / **85.08 %**, on a clean
+  instrumented build each time. The setting changes the region count by 3 and
+  the line count not at all.
+* The cost was real and the benefit was not: `codegen-units = 1` in
+  `[profile.dev]` slowed every local debug build to fix a measurement only CI
+  takes, and on this toolchain it fixed nothing.
+
+The setting is now applied by the coverage job alone, via
+`CARGO_PROFILE_DEV_CODEGEN_UNITS=1`, and removed from `[profile.dev]`. Keeping
+it in CI is deliberate: if some toolchain does reproduce the duplication
+artefact, the gate should be measured the stable way, and it costs nothing
+there. Removing it from the dev profile is what pays the developers back.
+
+The honest consequence is that the 79.80 % figure quoted in the 5C acceptance
+was a category error — region coverage read as line coverage — and the crate
+was never below the threshold the CI actually enforces.
 
 ## 9. Reservations
 

@@ -85,6 +85,14 @@ jobs:
   coverage:
     name: coverage
     runs-on: ubuntu-latest
+    env:
+      # One codegen unit, for the measurement only (STAGE-5C-REWORK-1 C4). With
+      # the default 16 units `parse_document` and the other public entry points
+      # are emitted once per unit and `llvm-cov` merges by source line, so a
+      # line covered in one copy and absent in another counts as uncovered: the
+      # number moved by 11 points on a 200-line change. This is set here rather
+      # than in `[profile.dev]` so local debug builds keep the default.
+      CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
