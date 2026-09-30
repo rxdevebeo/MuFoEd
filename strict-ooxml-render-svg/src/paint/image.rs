@@ -65,6 +65,7 @@ pub(crate) fn layout_inline_image(
         w,
         h,
         href: part.and_then(|part| media_href(ctx, part)),
+        part: part.cloned(),
         alt,
         transform: None,
     })

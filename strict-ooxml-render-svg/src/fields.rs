@@ -7,9 +7,9 @@
 
 use crate::notes::NumberFormat;
 
-/// A field the renderer computes at pagination time.
+/// A computed field the renderer places itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FieldKind {
+pub enum FieldKind {
     /// `PAGE` — the current page number.
     Page,
     /// `NUMPAGES` — the total number of pages.
@@ -20,11 +20,11 @@ pub(crate) enum FieldKind {
 
 /// A computed field placed in a line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FieldMarker {
+pub struct FieldMarker {
     /// Which field.
     pub kind: FieldKind,
-    /// Number format from the field's `\*` switch.
-    pub format: NumberFormat,
+    /// Number format from the field's `*` switch.
+    pub format: crate::notes::NumberFormat,
 }
 
 /// Parses a field instruction, returning the computed kind (if any) and format.

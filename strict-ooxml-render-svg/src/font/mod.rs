@@ -9,7 +9,7 @@ pub mod builtin;
 pub mod family;
 pub mod metrics;
 
-pub use builtin::BuiltinFontProvider;
+pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};
 pub use family::map_family;
 pub use metrics::FontMetrics;
 

@@ -223,6 +223,61 @@ pub struct BuiltinFontProvider {
     faces: Vec<FaceEntry>,
 }
 
+/// A bundled face, identified for a consumer that needs the font *program*
+/// rather than its metrics.
+///
+/// The PDF backend (Stage 8B) has to embed a real face, so it needs the bytes
+/// and the variable-font instance, not the resolved metrics. Returning them
+/// from here keeps the bundle in one place: the same face that produced the
+/// advances is the one that gets embedded, which is what makes the PDF's text
+/// positions agree with the layout.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FaceSource {
+    /// The bundled family name (the metric-compatible substitute).
+    pub family: &'static str,
+    /// The raw font program.
+    pub data: &'static [u8],
+    /// The `wght` instance to apply, when the face is a variable font.
+    pub weight: Option<f32>,
+    /// Whether one face serves every `(bold, italic)` combination.
+    pub single: bool,
+}
+
+/// Returns the bundled face backing a `(family, bold, italic)` request.
+///
+/// `family` goes through [`map_family`], so `Calibri` yields the Carlito face —
+/// the same substitution the layout used, which is the point.
+#[must_use]
+pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource> {
+    let mapped = map_family(family);
+    let exact = FACE_SPECS
+        .iter()
+        .find(|spec| spec.family == mapped && spec.bold == bold && spec.italic == italic);
+    let spec = exact.or_else(|| {
+        FACE_SPECS
+            .iter()
+            .find(|spec| spec.family == mapped && spec.single)
+    })?;
+    Some(FaceSource {
+        family: spec.family,
+        data: spec.data,
+        weight: spec.weight,
+        single: spec.single,
+    })
+}
+
+/// The families the bundle can serve, for a caller's diagnostics.
+#[must_use]
+pub fn bundled_families() -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for spec in FACE_SPECS {
+        if !out.contains(&spec.family) {
+            out.push(spec.family);
+        }
+    }
+    out
+}
+
 impl BuiltinFontProvider {
     /// Creates the provider, parsing the bundled fonts.
     #[must_use]

@@ -41,6 +41,11 @@ pub use strict_ooxml_core::normalize::{
     TransitionalNormalizer,
 };
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
+#[cfg(feature = "pdf")]
+pub use strict_ooxml_render_pdf::{
+    render as render_pdf_pages, render_with_source as render_pdf_pages_with_source, PdfLoss,
+    PdfOutput, PdfReport,
+};
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};
 #[cfg(feature = "report")]
@@ -262,6 +267,24 @@ impl StrictDocument {
             .into_iter()
             .map(|page| page.svg)
             .collect())
+    }
+
+    /// Renders the document to a PDF (`STAGE-8-TASK.md` §4).
+    ///
+    /// The text is real text: every used face is subsetted and embedded as a CID
+    /// font with a `ToUnicode` CMap, so the result is selectable and searchable
+    /// rather than a page of drawn glyphs. What the render could not represent
+    /// is reported in [`PdfOutput::report`] — a lossy render says so.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StrictError`] if a media part cannot be read or a limit is
+    /// exceeded.
+    #[cfg(feature = "pdf")]
+    pub fn render_pdf(&self, options: &RenderOptions) -> Result<PdfOutput> {
+        let pages =
+            strict_ooxml_render_svg::place_pages(&self.document, options, Some(&self.package))?;
+        strict_ooxml_render_pdf::render_with_source(&pages, options, Some(&self.package))
     }
 }
 

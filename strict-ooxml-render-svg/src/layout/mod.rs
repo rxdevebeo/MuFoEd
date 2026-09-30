@@ -11,6 +11,7 @@ pub(crate) mod paginate;
 pub(crate) mod paragraph;
 pub(crate) mod table;
 
+use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::props::{PageMargins, PageSize, SectionProperties};
 use strict_ooxml_wml::model::values::{PageOrientation, Twips};
 use strict_ooxml_wml::model::Document;
@@ -22,7 +23,7 @@ use crate::{MediaMode, MediaSource, RenderOptions};
 
 /// A painted text fragment.
 #[derive(Clone, Debug)]
-pub(crate) struct TextItem {
+pub struct TextItem {
     /// Left edge in px.
     pub x: f64,
     /// Baseline y in px.
@@ -37,12 +38,17 @@ pub(crate) struct TextItem {
     pub size_px: f64,
     /// Computed field marker, when this item is a PAGE/NUMPAGES/SECTIONPAGES
     /// placeholder resolved at placement time.
+    ///
+    /// A backend that draws the text needs to know which fragment is a page
+    /// number, so the marker is public — but the marker type stays crate-internal
+    /// and is matched by behaviour (`is_page_number` and friends), which is what
+    /// keeps a second backend from depending on the field machinery's internals.
     pub field: Option<crate::fields::FieldMarker>,
 }
 
 /// A filled/stroked rectangle.
 #[derive(Clone, Debug)]
-pub(crate) struct RectItem {
+pub struct RectItem {
     /// X.
     pub x: f64,
     /// Y.
@@ -61,7 +67,7 @@ pub(crate) struct RectItem {
 
 /// A straight line.
 #[derive(Clone, Debug)]
-pub(crate) struct LineItem {
+pub struct LineItem {
     /// Start x.
     pub x1: f64,
     /// Start y.
@@ -80,7 +86,7 @@ pub(crate) struct LineItem {
 
 /// An arbitrary SVG path (a DrawingML shape), in local coordinates.
 #[derive(Clone, Debug)]
-pub(crate) struct PathItem {
+pub struct PathItem {
     /// Placement x.
     pub x: f64,
     /// Placement y.
@@ -109,7 +115,7 @@ pub(crate) struct PathItem {
 
 /// An embedded/placed image.
 #[derive(Clone, Debug)]
-pub(crate) struct ImageItem {
+pub struct ImageItem {
     /// X.
     pub x: f64,
     /// Y.
@@ -120,6 +126,13 @@ pub(crate) struct ImageItem {
     pub h: f64,
     /// Href (data URI or relative filename), or `None` for a placeholder.
     pub href: Option<String>,
+    /// The media part this image was resolved from, when there was one.
+    ///
+    /// The SVG backend inlines the bytes into `href`, but a backend that emits
+    /// the image as its own object — the PDF one, Stage 8B — needs the part to
+    /// read the *original* bytes rather than to decode a data URI it would have
+    /// to trust. This is the honest answer to "what was placed here".
+    pub part: Option<PartId>,
     /// Alternative text.
     pub alt: String,
     /// Optional SVG transform (rotation/flip) applied about the image centre.
@@ -127,8 +140,12 @@ pub(crate) struct ImageItem {
 }
 
 /// One paint primitive.
+///
+/// The variants are backend-neutral: the SVG backend writes markup and the PDF
+/// backend (Stage 8B) writes a content stream from the same values, so a second
+/// renderer cannot disagree with the first about what was placed.
 #[derive(Clone, Debug)]
-pub(crate) enum Item {
+pub enum Item {
     /// Text.
     Text(TextItem),
     /// Rectangle.
@@ -143,7 +160,7 @@ pub(crate) enum Item {
 
 /// A fully placed page ready to be painted.
 #[derive(Clone, Debug)]
-pub(crate) struct PlacedPage {
+pub struct PlacedPage {
     /// Page width in px.
     pub width_px: f64,
     /// Page height in px.

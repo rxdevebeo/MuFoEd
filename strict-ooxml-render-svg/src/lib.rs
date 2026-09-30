@@ -42,16 +42,17 @@
 
 pub mod error;
 pub mod font;
+pub mod layout;
 pub mod style;
 pub mod units;
 
-mod fields;
-mod layout;
+pub mod fields;
 mod math;
 mod notes;
 mod numbering;
 mod paint;
 
+pub use layout::{ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextItem};
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_core::part::PartId;
@@ -204,6 +205,38 @@ pub struct Page {
     pub height_px: f64,
     /// The SVG document.
     pub svg: String,
+}
+
+/// Places every page of a document without painting it.
+///
+/// This is the entry point for a second backend (Stage 8B, PDF): the SVG
+/// renderer is one *consumer* of the placement, not its owner. Sharing the
+/// placement is what makes the two backends agree — a PDF cannot disagree with
+/// the SVG about where a line went, because there is only one answer computed
+/// once.
+///
+/// Embedded images resolve to placeholders without a `media` source, exactly as
+/// [`render`] does; use [`render_with_media`] for the SVG that inlines them.
+///
+/// # Errors
+///
+/// Returns a [`StrictError`]-backed error if a layout limit is exceeded.
+pub fn place_pages(
+    document: &Document,
+    options: &RenderOptions,
+    media: Option<&dyn MediaSource>,
+) -> Result<Vec<PlacedPage>> {
+    let provider = options.font_provider.make();
+    let context = layout::LayoutContext {
+        document,
+        options,
+        font: provider.as_ref(),
+        media,
+        media_mode: options.media,
+        note_numbers: notes::NoteNumbering::build(document),
+        numbering: numbering::NumberingMarkers::build(document),
+    };
+    Ok(layout::paginate::layout_document(&context)?.pages)
 }
 
 /// Renders a document without a media source.

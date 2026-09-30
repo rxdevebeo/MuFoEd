@@ -58,6 +58,7 @@ fn main() -> ExitCode {
         Some("check") => run_check(&args.collect::<Vec<_>>()),
         Some("report") => run_report(&args.collect::<Vec<_>>()),
         Some("render") => run_render(&args.collect::<Vec<_>>()),
+        Some("to-pdf") => run_to_pdf(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("--help" | "-h") | None => {
@@ -74,13 +75,14 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|write|normalize> <file.docx> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|write|normalize> <file.docx> \
          [--json|--text] [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math] \
          [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
+    eprintln!("  to-pdf          render to PDF with embedded, selectable text (--out is required)");
     eprintln!("  write           serialize the model back to a Strict .docx (--out is required)");
 }
 
@@ -443,6 +445,58 @@ fn run_render(args: &[String]) -> ExitCode {
     let (options, normalizer) = open_options(args.iter().any(|arg| arg == "--transitional"));
     let code = match StrictDocument::open_path(&parsed.file, &options) {
         Ok(document) => render_parsed(&document, &parsed),
+        Err(error @ StrictError::TransitionalNotSupported { .. }) => {
+            eprintln!("error: {error}");
+            eprintln!("hint: pass --transitional to normalize it to Strict on the way in");
+            ExitCode::from(EXIT_ERROR)
+        }
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(EXIT_ERROR)
+        }
+    };
+    print_loss(normalizer.as_deref(), code)
+}
+
+/// `to-pdf`: render the document to a PDF (`STAGE-8-TASK.md` §4).
+///
+/// Exit codes follow `render`: `0` when the PDF is written and nothing was lost,
+/// `1` when it was written but the report has losses, `2` on failure.
+fn run_to_pdf(args: &[String]) -> ExitCode {
+    let parsed = match WriteArgs::parse(args) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    let (options, normalizer) = open_options(parsed.transitional);
+    let code = match StrictDocument::open_path(&parsed.file, &options) {
+        Ok(document) => match document.render_pdf(&RenderOptions::default()) {
+            Ok(output) => {
+                if let Err(error) = std::fs::write(&parsed.out, &output.bytes) {
+                    eprintln!("error: cannot write {}: {error}", parsed.out);
+                    return ExitCode::from(EXIT_ERROR);
+                }
+                println!(
+                    "wrote {} ({} page(s), {} bytes, {} embedded face(s))",
+                    parsed.out,
+                    output.page_count,
+                    output.bytes.len(),
+                    output.embedded_faces.len()
+                );
+                if !output.report.is_clean() {
+                    eprintln!("warning: the render is not lossless");
+                    eprint!("{}", output.report);
+                    return print_loss(normalizer.as_deref(), ExitCode::from(EXIT_PROBLEM));
+                }
+                ExitCode::from(EXIT_OK)
+            }
+            Err(error) => {
+                eprintln!("error: {error}");
+                ExitCode::from(EXIT_ERROR)
+            }
+        },
         Err(error @ StrictError::TransitionalNotSupported { .. }) => {
             eprintln!("error: {error}");
             eprintln!("hint: pass --transitional to normalize it to Strict on the way in");

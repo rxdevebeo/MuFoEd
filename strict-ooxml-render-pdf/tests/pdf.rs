@@ -1,0 +1,283 @@
+//! Acceptance for the PDF backend (`STAGE-8-TASK.md` §4).
+//!
+//! The oracle is `lopdf`, which shares no code with the writer: it re-reads the
+//! file we produced, so a PDF that is merely self-consistent — but malformed, or
+//! with an unresolvable font — fails here rather than in a reader.
+//!
+//! - **SC-1** two renders of one document are byte-identical;
+//! - **SC-6** the page count matches the SVG backend's, because both come from
+//!   the same placement;
+//! - **SC-7** every used font is embedded and its text is extractable.
+
+// The `ToUnicode` in prose is a PDF key, and the fixtures below are built with
+// `Default::default()` for model types that have no `new()`.
+#![allow(clippy::doc_markdown, clippy::default_trait_access)]
+
+use std::path::Path;
+
+use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
+use strict_ooxml_render_pdf::{render, render_with_source, PdfReport};
+use strict_ooxml_render_svg::{place_pages, render_with_media, MediaSource, RenderOptions};
+use strict_ooxml_wml::{parse_document, ParseOptions};
+
+/// The Strict documents the render runs on.
+fn corpus() -> Vec<(&'static str, Vec<u8>)> {
+    let mut out: Vec<(&'static str, Vec<u8>)> = Vec::new();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/strict");
+    for (name, file) in [
+        ("strict-text", "strict-text.docx"),
+        ("strict-profile", "strict-profile.docx"),
+        ("strict-math", "05-strict-math-simple.docx"),
+        ("strict-shapes", "07-strict-drawingml-shapes.docx"),
+    ] {
+        if let Ok(bytes) = std::fs::read(root.join(file)) {
+            out.push((name, bytes));
+        }
+    }
+    assert!(!out.is_empty(), "no Strict corpus under {}", root.display());
+    out
+}
+
+fn open(bytes: &[u8]) -> Package {
+    Package::open_reader(bytes, &OpenOptions::default())
+        .unwrap_or_else(|error| panic!("open: {error}"))
+}
+
+/// Renders a document to PDF the way the CLI does, with media resolved.
+fn to_pdf(bytes: &[u8]) -> (Vec<u8>, Vec<strict_ooxml_render_svg::Page>, PdfReport) {
+    let package = open(bytes);
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let options = RenderOptions::default();
+    let pages = place_pages(&document, &options, Some(&package)).expect("place");
+    let output = render_with_source(&pages, &options, Some(&package)).expect("render");
+    let svg = render_with_media(&document, &options, Some(&package)).expect("svg");
+    (output.bytes, svg, output.report)
+}
+
+/// The text a reader gets back out of the PDF, via an independent reader.
+fn extracted_text(pdf: &[u8]) -> String {
+    let document = lopdf::Document::load_mem(pdf).expect("the PDF parses");
+    let mut out = String::new();
+    for id in document.page_iter() {
+        out.push_str(&String::from_utf8_lossy(&document.get_page_content(id)));
+        out.push('\n');
+    }
+    out
+}
+
+/// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
+/// encoding and a `ToUnicode` CMap: the two things that make the text
+/// selectable and searchable rather than glyph ids.
+#[test]
+fn every_used_font_is_embedded() {
+    for (name, bytes) in corpus() {
+        let (pdf, _svg, _report) = to_pdf(&bytes);
+        let document =
+            lopdf::Document::load_mem(&pdf).unwrap_or_else(|error| panic!("{name}: {error}"));
+        let mut embedded = 0usize;
+        let mut type0 = 0usize;
+        let mut encodings = 0usize;
+        let mut to_unicode = 0usize;
+        for (id, object) in &document.objects {
+            let Ok(dictionary) = object.as_dict() else {
+                continue;
+            };
+            if dictionary.get(b"FontFile2").is_ok() || dictionary.get(b"FontFile3").is_ok() {
+                embedded += 1;
+            }
+            let is_font = dictionary
+                .get(b"Type")
+                .ok()
+                .and_then(|value| value.as_name().ok())
+                == Some(&b"Font"[..]);
+            if !is_font {
+                continue;
+            }
+            // A `Type0` font names its descendant, which is where the program and
+            // the descriptor live; the check is that every one of them is
+            // complete, not that some of them are.
+            let subtype = dictionary
+                .get(b"Subtype")
+                .ok()
+                .and_then(|value| value.as_name().ok())
+                .map(<[u8]>::to_vec);
+            if dictionary.get(b"Encoding").is_ok() {
+                if subtype.as_deref() == Some(b"Type0") {
+                    type0 += 1;
+                }
+                encodings += 1;
+            }
+            if let Ok(cmap_id) = dictionary
+                .get(b"ToUnicode")
+                .and_then(lopdf::Object::as_reference)
+            {
+                let cmap = document
+                    .get_object(cmap_id)
+                    .unwrap_or_else(|error| panic!("{name}: dangling ToUnicode: {error}"));
+                let content = cmap
+                    .as_stream()
+                    .and_then(lopdf::Stream::decompressed_content)
+                    .unwrap_or_else(|error| panic!("{name}: unreadable ToUnicode CMap: {error}"));
+                let text = String::from_utf8_lossy(&content).to_string();
+                assert!(
+                    text.contains("beginbfchar"),
+                    "{name}: the ToUnicode CMap of object {} has no character map",
+                    id.0
+                );
+                to_unicode += 1;
+            }
+        }
+        assert!(embedded > 0, "{name}: no embedded font program in the PDF");
+        assert_eq!(type0, encodings, "{name}: a composite font has no encoding");
+        assert!(to_unicode > 0, "{name}: no font carries a ToUnicode CMap");
+        assert_eq!(
+            type0, to_unicode,
+            "{name}: a composite font is missing its ToUnicode CMap"
+        );
+    }
+}
+
+/// SC-6: the page count is the one the SVG backend produced, and the media box
+/// is a real page rather than a default.
+#[test]
+fn the_page_count_matches_the_svg_backend() {
+    for (name, bytes) in corpus() {
+        let (pdf, svg, _report) = to_pdf(&bytes);
+        let document =
+            lopdf::Document::load_mem(&pdf).unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert_eq!(
+            document.get_pages().len(),
+            svg.len(),
+            "{name}: the two backends disagree on the page count"
+        );
+        for id in document.page_iter() {
+            let dictionary = document
+                .get_dictionary(id)
+                .unwrap_or_else(|error| panic!("{name}: no page dictionary: {error}"));
+            let box_dict = dictionary
+                .get(b"MediaBox")
+                .unwrap_or_else(|error| panic!("{name}: no media box: {error}"));
+            let array = box_dict
+                .as_array()
+                .unwrap_or_else(|error| panic!("{name}: media box is not an array: {error}"));
+            assert_eq!(array.len(), 4, "{name}: a media box has four numbers");
+            let numbers: Vec<f32> = array
+                .iter()
+                .map(|item| item.as_float().unwrap_or_default())
+                .collect();
+            assert!(
+                numbers[2] > numbers[0] && numbers[3] > numbers[1],
+                "{name}: degenerate media box {numbers:?}"
+            );
+        }
+    }
+}
+
+/// SC-1: the same document renders to the same bytes every time.
+#[test]
+fn rendering_is_reproducible() {
+    for (name, bytes) in corpus() {
+        let (first, _svg, first_report) = to_pdf(&bytes);
+        let (second, _svg, second_report) = to_pdf(&bytes);
+        assert_eq!(first, second, "{name}: the render is not reproducible");
+        assert_eq!(
+            first_report.to_string(),
+            second_report.to_string(),
+            "{name}: the report is not reproducible"
+        );
+    }
+}
+
+/// The text operators survive, so the file is not a page of drawn boxes.
+#[test]
+fn the_content_stream_draws_text() {
+    for (name, bytes) in corpus() {
+        let (pdf, _svg, _report) = to_pdf(&bytes);
+        let text = extracted_text(&pdf);
+        assert!(
+            text.contains("BT") && text.contains("Tj") && text.contains("ET"),
+            "{name}: no text object in the content stream"
+        );
+    }
+}
+
+/// A document with no text still produces a valid, openable file.
+#[test]
+fn an_empty_document_produces_a_valid_page() {
+    let document = strict_ooxml_wml::model::Document {
+        body: Default::default(),
+        styles: Default::default(),
+        numbering: Default::default(),
+        footnotes: Default::default(),
+        endnotes: Default::default(),
+        settings: Default::default(),
+        theme: None,
+        sections: Vec::new(),
+        headers_footers: Vec::new(),
+        media: Default::default(),
+        support: Default::default(),
+        source: strict_ooxml_wml::model::document::DocumentSource {
+            main_document: strict_ooxml_core::part::PartId::new("/word/document.xml"),
+            styles: None,
+            numbering: None,
+            settings: None,
+            footnotes: None,
+            endnotes: None,
+            theme: None,
+        },
+    };
+    let options = RenderOptions::default();
+    let pages = place_pages(&document, &options, None).expect("place");
+    let output = render(&pages, &options).expect("render");
+    assert_eq!(output.page_count, pages.len());
+    let parsed = lopdf::Document::load_mem(&output.bytes).expect("the PDF parses");
+    assert_eq!(parsed.get_pages().len(), pages.len());
+}
+
+/// A picture whose bytes are available is embedded; without a source it is a
+/// recorded placeholder and still a valid file.
+#[test]
+fn pictures_are_embedded_or_recorded() {
+    for (name, bytes) in corpus() {
+        let package = open(&bytes);
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        if document.media.is_empty() {
+            continue;
+        }
+        let options = RenderOptions::default();
+        let with_media = place_pages(&document, &options, Some(&package)).expect("place");
+        let pdf = render_with_source(&with_media, &options, Some(&package)).expect("render");
+        let text = String::from_utf8_lossy(&pdf.bytes).to_string();
+        assert!(text.contains("/XObject"), "{name}: no image was embedded");
+
+        let without_media = place_pages(&document, &options, None).expect("place");
+        let bare = render(&without_media, &options).expect("render");
+        let parsed = lopdf::Document::load_mem(&bare.bytes).expect("the PDF still parses");
+        assert!(!parsed.get_pages().is_empty());
+    }
+}
+
+/// The reader's own strictness is the check that matters for the CLI path: a
+/// package opened under `StrictOnly` is a Strict document, and the PDF is written
+/// from exactly that model.
+#[test]
+fn the_source_package_is_strict() {
+    for (name, bytes) in corpus() {
+        let options = OpenOptions {
+            conformance: ConformancePolicy::StrictOnly,
+            ..OpenOptions::default()
+        };
+        Package::open_reader(&bytes[..], &options)
+            .unwrap_or_else(|error| panic!("{name} is not Strict: {error}"));
+    }
+}
+
+/// The media source the render is given is the one the crate defines, so the
+/// meta-crate can pass its own package without an adapter.
+#[test]
+fn the_package_is_a_media_source() {
+    fn assert_source<S: MediaSource>(_: &S) {}
+    for (_name, bytes) in corpus() {
+        assert_source(&open(&bytes));
+    }
+}

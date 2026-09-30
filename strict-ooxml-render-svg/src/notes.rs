@@ -10,7 +10,7 @@ use strict_ooxml_wml::model::{Block, Document, Inline, RunContent, Table};
 
 /// A supported note number format (`ST_NumberFormat` subset).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum NumberFormat {
+pub enum NumberFormat {
     /// `decimal` (`1, 2, 3`).
     #[default]
     Decimal,
@@ -50,7 +50,7 @@ impl NumberFormat {
 
     /// Formats `number` in this format.
     #[must_use]
-    pub(crate) fn format(self, number: u32) -> String {
+    pub fn format(self, number: u32) -> String {
         match self {
             Self::Decimal => number.to_string(),
             Self::DecimalZero => format!("{number:02}"),

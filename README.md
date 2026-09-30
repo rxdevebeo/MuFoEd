@@ -27,6 +27,7 @@ Design documents live in the repository root:
 | `strict-ooxml-wml` | WordprocessingML Strict DOM and parser (Stage 2). |
 | `strict-ooxml-report` | Feature Report: model, build, JSON schema, text (Stage 3). |
 | `strict-ooxml-render-svg` | Deterministic SVG layout and rendering (Stage 4). |
+| `strict-ooxml-render-pdf` | PDF output: a second backend over the same layout (Stage 8B). |
 | `strict-ooxml-write` | Serialization of the model back to a Strict `.docx` (Stage 8A). |
 | `strict-ooxml` | Public `StrictDocument` API (Stages 2–4, 8A). |
 | `strict-ooxml-cli` | `inspect` / `check` / `report` / `render` / `write` / `normalize` command-line tool. |
@@ -39,14 +40,17 @@ strict-ooxml inspect <file.docx>
 strict-ooxml check   <file.docx>                       # exit 0 / 1 / 2
 strict-ooxml report  <file.docx> [--json|--text] [--out <path>]
 strict-ooxml render  <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96]
-strict-ooxml write   <file.docx> --out <file.docx>     # Stage 8A
+strict-ooxml to-pdf  <file.docx> --out <file.pdf>       # Stage 8B
+strict-ooxml write   <file.docx> --out <file.docx>      # Stage 8A
 ```
 
 `check` exits `0` when no `unsupported`/`error` blocker is found, `1` for a
 blocker (or Transitional input under `StrictOnly`), and `2` for damaged input.
 `report` emits the full JSON Feature Report (or human text with `--text`).
 `render` emits deterministic SVG pages (`1` when rendered but the report has
-blockers). `write` serializes the parsed model back to a Strict package, prints
+blockers). `to-pdf` renders PDF with the used faces subsetted and embedded, so
+the text is selectable and searchable; it exits `1` when the render lost
+something. `write` serializes the parsed model back to a Strict package, prints
 what the writer could not express, and exits `1` when something was lost
 (`STAGE-8-TASK.md`).
 
@@ -58,10 +62,12 @@ PDF support is specified in `STAGE-8-TASK.md` and delivered in phases:
   OPC, deterministic, with a loss report. Not yet done: unmodelled parts (charts,
   diagrams) are dropped rather than passed through — see the `8A-CHART` waiver
   in `docs/waivers.toml`.
-- **8B–8D — specified, not implemented.** PDF output (`strict-ooxml-render-pdf`),
-  PDF reading (`strict-ooxml-pdf`, built on `lopdf`), the PDF → WML converter in
-  `semantic` and `visual` modes, and the optional ollama-backed OCR/figure
-  classifier.
+- **8B — done.** `strict-ooxml-render-pdf` + `strict-ooxml to-pdf`: PDF over the
+  same placement as the SVG backend, with real embedded text. Not yet done: the
+  pixel-level fidelity gate (it shares a gate that is mid-rework elsewhere).
+- **8C–8D — specified, not implemented.** PDF reading (`strict-ooxml-pdf`, built
+  on `lopdf`), the PDF → WML converter in `semantic` and `visual` modes, and the
+  optional ollama-backed OCR/figure classifier.
 
 ## Build and test
 

@@ -1,0 +1,45 @@
+[package]
+name = "strict-ooxml-render-pdf"
+description = "Deterministic PDF rendering (a second backend over the shared layout) for WordprocessingML Strict documents (STAGE-8-TASK.md phase 8B)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "wordprocessingml", "pdf", "rendering"]
+categories = ["parser-implementations", "rendering"]
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+# The placement engine is shared with the SVG backend (ADR-0008): a second
+# backend reuses the placed pages rather than re-deriving the layout.
+strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
+# Low-level PDF object writer. Deterministic by construction: object numbers are
+# assigned by call order and nothing else varies between runs.
+pdf-writer = "0.15"
+# Font subsetting for embedding. It converts every face to CID-keyed with an
+# identity GID->CID mapping, which is exactly what a PDF CID font needs.
+subsetter = "0.2"
+# Reads glyph ids and advances from the bundled faces.
+skrifa.workspace = true
+# Decodes a PNG into raw samples plus an alpha mask, for the image XObject.
+png = "0.18"
+# Deflates the streams: `pdf-writer` records a `/Filter` but does not apply it,
+# so a stream that claims `FlateDecode` must already carry deflated bytes.
+miniz_oxide.workspace = true
+
+[dev-dependencies]
+# Independent PDF reader used only as an oracle by the tests (SC-5/SC-7): it
+# re-reads what we wrote without sharing a line of our parsing code.
+lopdf = "0.45"
+# An external ZIP/XML implementation is not needed here; the package side of the
+# round trip is covered by `strict-ooxml-write`.
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

@@ -83,11 +83,11 @@ pub(crate) fn picture_items(
     w: f64,
     h: f64,
 ) -> Vec<Item> {
-    let href = picture
+    let part = picture
         .blip
         .as_ref()
-        .and_then(|blip| blip.resolved.as_ref())
-        .and_then(|part| crate::paint::image::media_href(ctx, part));
+        .and_then(|blip| blip.resolved.as_ref());
+    let href = part.and_then(|part| crate::paint::image::media_href(ctx, part));
     let alt = alt.unwrap_or_else(|| {
         picture
             .descr
@@ -101,6 +101,7 @@ pub(crate) fn picture_items(
         w,
         h,
         href,
+        part: part.cloned(),
         alt,
         transform: xfrm_transform(picture.xfrm, x, y, w, h),
     })]
