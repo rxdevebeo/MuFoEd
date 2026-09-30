@@ -52,6 +52,7 @@
 )]
 
 mod geometry;
+mod lists;
 mod media;
 mod recover;
 mod report;
@@ -68,6 +69,7 @@ use strict_ooxml_wml::model::styles::StyleTable;
 use strict_ooxml_wml::model::support::SupportModel;
 use strict_ooxml_wml::model::Document;
 
+pub use lists::ListRules;
 pub use report::{ConversionLoss, ConversionReport, Severity};
 pub use semantic::ParagraphRules;
 pub use tables::TableRules;
@@ -145,6 +147,12 @@ pub struct PdfOptions {
     pub paragraphs: ParagraphRules,
     /// The rules that turn ruling lines into tables, in semantic mode.
     pub tables: TableRules,
+    /// The rules that turn a drawn marker into a list, in semantic mode (P-8).
+    ///
+    /// Only bullets: a marker that is a literal character moves into the numbering
+    /// definition and Word draws the same character. A *numbered* list would need
+    /// Word to generate the sequence, so those are reported and left as text.
+    pub lists: ListRules,
     /// Pages to convert; `None` means all of them.
     pub pages: Option<(usize, usize)>,
     /// Whether to embed the images the PDF carries.
@@ -238,6 +246,7 @@ impl Default for PdfOptions {
             mode: Mode::default(),
             paragraphs: Rules::default(),
             tables: TableRules::default(),
+            lists: ListRules::default(),
             pages: None,
             embed_images: true,
             figure_classifier: None,
@@ -278,6 +287,13 @@ impl PdfOptions {
     #[must_use]
     pub fn tables(mut self, rules: TableRules) -> Self {
         self.tables = rules;
+        self
+    }
+
+    /// Sets the list rules.
+    #[must_use]
+    pub fn lists(mut self, rules: ListRules) -> Self {
+        self.lists = rules;
         self
     }
 

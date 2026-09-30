@@ -85,6 +85,28 @@ impl Default for ParagraphRules {
     }
 }
 
+/// The list items of one stretch of a page's flow, by the index of their marker
+/// line.
+///
+/// Two things are decided here and both belong to the same place: the bullet runs
+/// are turned into numbering definitions, and the **numbered** runs are only
+/// reported. A stretch rather than a page, because the flow is cut at every table
+/// and a list cannot cross one.
+fn list_items_of(
+    flow: &[GlyphLine],
+    body: f64,
+    options: &PdfOptions,
+    numbering: &mut strict_ooxml_wml::model::numbering::NumberingTable,
+    report: &mut ConversionReport,
+    page: usize,
+) -> std::collections::BTreeMap<usize, crate::lists::Item> {
+    crate::lists::record_numbered(flow, body, &options.lists, report, page);
+    let mut items = crate::lists::items_of(flow, body, &options.lists);
+    let runs = crate::lists::runs_of(&items, flow, &options.lists);
+    crate::lists::apply(&runs, &mut items, numbering, report, page);
+    items
+}
+
 /// Builds the semantic document.
 pub(crate) fn build(
     pages: &[PdfPage],
@@ -95,6 +117,10 @@ pub(crate) fn build(
     let mut media = MediaCollector::new();
     let mut blocks: Vec<Block> = Vec::new();
     let mut sections: Vec<crate::Section> = Vec::new();
+    // Lists the pages' markers added. The table is filled while the blocks are
+    // built and moves into the document at the end, because a `w:numPr` paragraph
+    // and the `numbering.xml` that defines its marker have to arrive together.
+    let mut numbering = strict_ooxml_wml::model::numbering::NumberingTable::new();
 
     for (index, page) in pages.iter().enumerate() {
         let lines = strict_ooxml_pdf::text::lines(page.items());
@@ -110,6 +136,8 @@ pub(crate) fn build(
         let mut flow: Vec<GlyphLine> = Vec::new();
         for (number, line) in lines.iter().enumerate() {
             if let Some(table) = plan.starts_table(number) {
+                let list_items =
+                    list_items_of(&flow, body, options, &mut numbering, report, index + 1);
                 push_paragraphs(
                     &mut blocks,
                     &flow,
@@ -120,6 +148,7 @@ pub(crate) fn build(
                     true,
                     report,
                     index + 1,
+                    &list_items,
                 );
                 // The paragraphs above the table are done; keeping them would put
                 // the page's text in the document twice.
@@ -139,6 +168,7 @@ pub(crate) fn build(
             }
             flow.push(line.clone());
         }
+        let list_items = list_items_of(&flow, body, options, &mut numbering, report, index + 1);
         push_paragraphs(
             &mut blocks,
             &flow,
@@ -149,6 +179,7 @@ pub(crate) fn build(
             true,
             report,
             index + 1,
+            &list_items,
         );
 
         if options.embed_images {
@@ -178,6 +209,8 @@ pub(crate) fn build(
         })
         .collect();
     media.register(&mut document.media);
+    // The numbering the lists asked for, with the `w:numPr` paragraphs above.
+    document.numbering = numbering;
     report.paragraphs = document
         .body
         .blocks
@@ -209,18 +242,35 @@ fn paragraphs_of(
     allow_headings: bool,
     report: &mut ConversionReport,
     page: usize,
+    items: &std::collections::BTreeMap<usize, crate::lists::Item>,
 ) -> Vec<Paragraph> {
     let mut out: Vec<Paragraph> = Vec::new();
     let mut paragraph: Option<Paragraph> = None;
     let mut previous: Option<&GlyphLine> = None;
-    for line in lines {
-        let starts_new = previous.is_none_or(|previous| {
-            let gap = line.baseline - previous.baseline;
-            let moved = (line.x - previous.x).abs();
-            gap > pitch * options.paragraphs.paragraph_gap_ratio
-                || moved > body * options.paragraphs.indent_ratio
-                || !same_format(previous, line)
-        });
+    for (at, line) in lines.iter().enumerate() {
+        // Is this line nothing but the marker of an item whose text is the next
+        // line? And is this line the text of the marker above it? The two
+        // questions have different keys, and the difference is the whole feature:
+        // the gap that makes a marker recognisable is also the gap that splits the
+        // item's line in two, so an item is a **pair of lines on one baseline** and
+        // this is where they become one paragraph again.
+        let marker_item = items.get(&(at + 1)).filter(|item| item.marker_line == at);
+        let is_marker = marker_item.is_some();
+        let is_item_text = items.get(&at).is_some();
+        let with_its_marker = is_item_text
+            && previous.is_some_and(|previous| (previous.baseline - line.baseline).abs() < 0.5);
+        // A marker's line always begins a paragraph, whatever the gap to the line
+        // above says: it is a structural boundary, and a paragraph that swallowed
+        // one would end up holding two items.
+        let starts_new = is_marker
+            || (!with_its_marker
+                && previous.is_some_and(|previous| {
+                    let gap = line.baseline - previous.baseline;
+                    let moved = (line.x - previous.x).abs();
+                    gap > pitch * options.paragraphs.paragraph_gap_ratio
+                        || moved > body * options.paragraphs.indent_ratio
+                        || !same_format(previous, line)
+                }));
         if starts_new || paragraph.is_none() {
             if let Some(finished) = paragraph.take() {
                 out.push(finished);
@@ -242,12 +292,26 @@ fn paragraphs_of(
                     ),
                 );
             }
-            paragraph = Some(new_paragraph(line, heading, origin));
+            let mut fresh = new_paragraph(line, heading, origin);
+            if let Some(item) = marker_item.filter(|item| item.numbered) {
+                crate::lists::mark(&mut fresh, item);
+            }
+            paragraph = Some(fresh);
         } else if let Some(paragraph) = paragraph.as_mut() {
             set_line_gap(paragraph, line, body);
         }
+        // The marker's line is *all* marker, and the character is in the
+        // numbering definition now — see lists for why that moves a character
+        // rather than deleting one. Nothing of that line is pushed as text.
+        // Only an accepted item's marker leaves the text; a rejected candidate keeps
+        // its character, because the run test said «this is not a list» and that is
+        // the whole of what it said.
+        let skip = match marker_item {
+            Some(item) if item.numbered => line.glyphs.len(),
+            _ => 0,
+        };
         if let Some(paragraph) = paragraph.as_mut() {
-            push_runs(paragraph, line);
+            push_runs_from(paragraph, line, skip);
         }
         previous = Some(line);
     }
@@ -269,6 +333,7 @@ fn push_paragraphs(
     allow_headings: bool,
     report: &mut ConversionReport,
     page: usize,
+    items: &std::collections::BTreeMap<usize, crate::lists::Item>,
 ) {
     blocks.extend(
         paragraphs_of(
@@ -280,6 +345,7 @@ fn push_paragraphs(
             allow_headings,
             report,
             page,
+            items,
         )
         .into_iter()
         .map(Block::Paragraph),
@@ -311,6 +377,7 @@ fn table_block(
                         false,
                         report,
                         page,
+                        &std::collections::BTreeMap::new(),
                     )
                 })
                 .collect()
@@ -459,8 +526,16 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, body: f64) {
 
 /// Appends a line's glyphs as runs.
 fn push_runs(paragraph: &mut Paragraph, line: &GlyphLine) {
+    push_runs_from(paragraph, line, 0);
+}
+
+/// The line's runs, minus its first skip glyphs.
+///
+/// skip is where a list item's marker goes: the character is not lost, it is in
+/// the numbering definition, and pushing it here as well would draw it twice.
+fn push_runs_from(paragraph: &mut Paragraph, line: &GlyphLine, skip: usize) {
     let mut current: Option<(RunProperties, String)> = None;
-    for glyph in &line.glyphs {
+    for glyph in line.glyphs.iter().skip(skip) {
         let properties = run_properties(glyph);
         match current.as_mut() {
             Some((existing, text)) if *existing == properties => text.push_str(&glyph.text),
