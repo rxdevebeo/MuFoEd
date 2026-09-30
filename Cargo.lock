@@ -1853,7 +1853,9 @@ dependencies = [
 name = "strict-ooxml"
 version = "0.1.0"
 dependencies = [
+ "strict-ooxml-convert",
  "strict-ooxml-core",
+ "strict-ooxml-pdf",
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
  "strict-ooxml-report",
@@ -1867,6 +1869,19 @@ version = "0.1.0"
 dependencies = [
  "strict-ooxml",
  "strict-ooxml-core",
+]
+
+[[package]]
+name = "strict-ooxml-convert"
+version = "0.1.0"
+dependencies = [
+ "roxmltree 0.20.0",
+ "strict-ooxml-core",
+ "strict-ooxml-pdf",
+ "strict-ooxml-render-pdf",
+ "strict-ooxml-render-svg",
+ "strict-ooxml-wml",
+ "strict-ooxml-write",
 ]
 
 [[package]]

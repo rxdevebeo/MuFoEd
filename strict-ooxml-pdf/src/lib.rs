@@ -60,6 +60,7 @@ pub mod error;
 pub mod fonts;
 pub mod image;
 pub mod report;
+pub mod text;
 
 pub use crate::content::{
     Content, Glyph, Item, Matrix, PageGeometry, PlacedImage, RenderMode, Rgb, SubPath, Vector,
@@ -69,6 +70,7 @@ pub use crate::error::{LimitKind, PdfError, PdfLimits};
 pub use crate::fonts::{BaseEncoding, PdfFont, Width};
 pub use crate::image::{Encoded, Reject};
 pub use crate::report::{Loss, ReadReport};
+pub use crate::text::{lines as text_lines, GlyphLine};
 
 /// The largest deviation a flattened Bézier may have from the curve, in points.
 ///

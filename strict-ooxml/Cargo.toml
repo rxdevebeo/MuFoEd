@@ -12,7 +12,7 @@ keywords = ["ooxml", "docx", "wordprocessingml", "strict"]
 categories = ["parser-implementations"]
 
 [features]
-default = ["report", "svg", "write", "pdf"]
+default = ["report", "svg", "write", "pdf", "convert"]
 # Stage 4: enables `strict-ooxml-render-svg` and the render methods on
 # `StrictDocument` (TZ §5.4).
 svg = ["dep:strict-ooxml-render-svg"]
@@ -25,6 +25,8 @@ write = ["dep:strict-ooxml-write"]
 # Stage 8B: enables strict-ooxml-render-pdf and the PDF methods on
 # StrictDocument (STAGE-8-TASK.md 4).
 pdf = ["dep:strict-ooxml-render-pdf"]
+# Stage 8C+: PDF reading and the conversion of a PDF into a Strict document.
+convert = ["dep:strict-ooxml-pdf", "dep:strict-ooxml-convert"]
 # Parallel parsing of independent parts.
 parallel = ["strict-ooxml-wml/parallel"]
 
@@ -35,6 +37,8 @@ strict-ooxml-report = { version = "0.1.0", path = "../strict-ooxml-report", opti
 strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg", optional = true }
 strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write", optional = true }
 strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pdf", optional = true }
+strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true }
+strict-ooxml-convert = { version = "0.1.0", path = "../strict-ooxml-convert", optional = true }
 
 [[example]]
 name = "support_report"

@@ -29,6 +29,11 @@ use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_wml::model::support::SupportModel;
 
+#[cfg(feature = "convert")]
+pub use strict_ooxml_convert::{
+    convert as convert_pdf, ConversionReport, ConvertError, Converted, Mode, ParagraphRules,
+    PdfOptions,
+};
 pub use strict_ooxml_core::error::StrictError;
 pub use strict_ooxml_core::limits::ResourceLimits;
 /// How much a normalization removal matters.
@@ -41,6 +46,8 @@ pub use strict_ooxml_core::normalize::{
     TransitionalNormalizer,
 };
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
+#[cfg(feature = "convert")]
+pub use strict_ooxml_pdf::{PdfDocument, PdfError, PdfLimits, PdfPage};
 #[cfg(feature = "pdf")]
 pub use strict_ooxml_render_pdf::{
     render as render_pdf_pages, render_with_source as render_pdf_pages_with_source, PdfLoss,

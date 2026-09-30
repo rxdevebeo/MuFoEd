@@ -1,0 +1,37 @@
+[package]
+name = "strict-ooxml-convert"
+description = "PDF to WordprocessingML Strict conversion in semantic and visual modes (STAGE-8-TASK.md phase 8C+)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["pdf", "ooxml", "docx", "convert", "text-extraction"]
+categories = ["text-processing", "parser-implementations"]
+
+[dependencies]
+# Reading the PDF: pages, glyphs, images, paths.
+strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf" }
+# The model that comes out.
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+# Part ids and the media content types the writer needs.
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+
+[dev-dependencies]
+# The whole chain, so the conversion is tested as a package a reader can open
+# rather than as a DOM in memory.
+strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write" }
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pdf" }
+strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+# The independent XML oracle for what the writer produced.
+roxmltree = "0.20"
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

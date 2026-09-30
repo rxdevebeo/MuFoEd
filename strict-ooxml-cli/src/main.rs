@@ -59,6 +59,7 @@ fn main() -> ExitCode {
         Some("report") => run_report(&args.collect::<Vec<_>>()),
         Some("render") => run_render(&args.collect::<Vec<_>>()),
         Some("to-pdf") => run_to_pdf(&args.collect::<Vec<_>>()),
+        Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("--help" | "-h") | None => {
@@ -75,14 +76,15 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|to-pdf|write|normalize> <file.docx> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|write|normalize> <file> \
          [--json|--text] [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math] \
          [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
-    eprintln!("  to-pdf          render to PDF with embedded, selectable text (--out is required)");
+    eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] (--out is required)");
     eprintln!("  write           serialize the model back to a Strict .docx (--out is required)");
 }
 
@@ -547,6 +549,127 @@ impl WriteArgs {
             out: out.ok_or("'write' requires --out <path>")?,
             transitional,
         })
+    }
+}
+
+/// `from-pdf`: convert a PDF into a Strict `.docx` (`STAGE-8-TASK.md` §5.1).
+///
+/// Exit codes: `0` when the document is written and nothing was lost, `1` when
+/// it was written and the report has losses, `2` on failure. A lossy conversion
+/// is still a usable file, so it is a warning; but the report is always printed,
+/// because a conversion that quietly dropped a diagram is worse than one that
+/// says it could not place it.
+// The argument loop is the function: splitting it would move the option
+// table away from the thing it parses.
+#[allow(clippy::too_many_lines)]
+fn run_from_pdf(args: &[String]) -> ExitCode {
+    let mut file: Option<&str> = None;
+    let mut out: Option<&str> = None;
+    let mut mode = strict_ooxml::Mode::Semantic;
+    let mut no_images = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--mode" => {
+                index += 1;
+                let Some(value) = args.get(index).map(String::as_str) else {
+                    eprintln!("error: '--mode' requires semantic or visual");
+                    return ExitCode::from(EXIT_ERROR);
+                };
+                mode = match value {
+                    "semantic" => strict_ooxml::Mode::Semantic,
+                    "visual" => strict_ooxml::Mode::Visual,
+                    other => {
+                        eprintln!("error: unknown mode '{other}'");
+                        return ExitCode::from(EXIT_ERROR);
+                    }
+                };
+            }
+            "--no-images" => no_images = true,
+            "--out" => {
+                index += 1;
+                out = Some(args.get(index).map_or("", String::as_str));
+                if out == Some("") {
+                    eprintln!("error: '--out' requires a path");
+                    return ExitCode::from(EXIT_ERROR);
+                }
+            }
+            flag if flag.starts_with("--") => {
+                eprintln!("error: unknown option '{flag}'");
+                return ExitCode::from(EXIT_ERROR);
+            }
+            positional => {
+                if file.is_some() {
+                    eprintln!("error: 'from-pdf' accepts a single file");
+                    return ExitCode::from(EXIT_ERROR);
+                }
+                file = Some(positional);
+            }
+        }
+        index += 1;
+    }
+    let (Some(file), Some(out)) = (file, out) else {
+        eprintln!("error: 'from-pdf' requires a PDF path and --out <file.docx>");
+        return ExitCode::from(EXIT_ERROR);
+    };
+
+    let bytes = match std::fs::read(file) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("error: cannot read {file}: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    let mut reader =
+        match strict_ooxml::PdfDocument::open(&bytes, strict_ooxml::PdfLimits::default()) {
+            Ok(reader) => reader,
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(EXIT_ERROR);
+            }
+        };
+    let options = strict_ooxml::PdfOptions::default()
+        .mode(mode)
+        .embed_images(!no_images);
+    let converted = match strict_ooxml::convert_pdf(&mut reader, &options) {
+        Ok(converted) => converted,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    print!("{}", converted.report);
+
+    let written = match strict_ooxml::write_package(
+        &converted.document,
+        None,
+        &strict_ooxml::WriteOptions::default(),
+    ) {
+        Ok(written) => written,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    if let Err(error) = std::fs::write(out, &written.bytes) {
+        eprintln!("error: cannot write {out}: {error}");
+        return ExitCode::from(EXIT_ERROR);
+    }
+    println!(
+        "wrote {out} ({} blocks, {} bytes)",
+        converted.document.body.blocks.len(),
+        written.bytes.len()
+    );
+    match strict_ooxml::verify_no_silent_loss(&written.report) {
+        Ok(()) if converted.report.is_lossless() => ExitCode::from(EXIT_OK),
+        Ok(()) => {
+            eprintln!("warning: the conversion is not lossless");
+            ExitCode::from(EXIT_PROBLEM)
+        }
+        Err(reason) => {
+            eprintln!("error: {reason}");
+            ExitCode::from(EXIT_ERROR)
+        }
     }
 }
 
