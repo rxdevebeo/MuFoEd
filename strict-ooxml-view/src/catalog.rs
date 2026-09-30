@@ -45,7 +45,7 @@ pub(crate) fn discover(dir: &Path) -> Vec<Entry> {
             if !is_docx || !path.is_file() {
                 return None;
             }
-            let size = item.metadata().map(|meta| meta.len()).unwrap_or(0);
+            let size = item.metadata().map_or(0, |meta| meta.len());
             Some(Entry {
                 name: path.file_name().map_or_else(
                     || "<unnamed>".to_owned(),

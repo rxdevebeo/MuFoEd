@@ -201,6 +201,6 @@ fn page_border_edges_close_into_one_box() {
 
 #[test]
 fn wps_namespaces_are_declared() {
-    assert!(common::WPS == WPS);
-    assert!(common::WPG == WPG);
+    assert_eq!(common::WPS, WPS);
+    assert_eq!(common::WPG, WPG);
 }

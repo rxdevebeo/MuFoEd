@@ -132,7 +132,7 @@ fn select_reference(
         // fallback), as Word/WPS do.
         return find(HeaderFooterKind::First);
     }
-    if even_and_odd && page_number % 2 == 0 {
+    if even_and_odd && page_number.is_multiple_of(2) {
         return find(HeaderFooterKind::Even);
     }
     find(HeaderFooterKind::Default)

@@ -571,7 +571,7 @@ mod tests {
         };
         let computed = compute_run(&document, &para, &run);
         assert_eq!(computed.color.as_deref(), Some("#ff0000"));
-        assert!(super::apply_caps("ab", &computed) == "ab");
+        assert_eq!(super::apply_caps("ab", &computed), "ab");
         assert_eq!(
             super::apply_caps("ab", &ComputedParagraph::default().default_run),
             "ab"
