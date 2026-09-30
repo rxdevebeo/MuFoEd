@@ -10,28 +10,71 @@
 //! ## Coordinates
 //!
 //! Output is in **points** (1/72 inch) with **y measured downwards from the top**
-//! of the page, because that is the space the WML model is written in
-//! (twips from the top margin) and a converter that had to flip every coordinate
-//! on the way out would be a second place to get the flip wrong. PDF's own
-//! y-up space is only an intermediate step inside the interpreter.
+//! of the page, because that is the space the WML model is written in (twips from
+//! the top margin) and a converter that had to flip every coordinate on the way
+//! out would be a second place to get the flip wrong. PDF's y-up space is an
+//! intermediate step inside the interpreter and nowhere else.
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use strict_ooxml_pdf::{PdfDocument, PdfLimits};
+//!
+//! let bytes = std::fs::read("document.pdf").expect("readable");
+//! let mut pdf = PdfDocument::open(&bytes, PdfLimits::default())?;
+//! for page in pdf.pages()? {
+//!     println!("page: {} items", page.items().len());
+//! }
+//! for loss in pdf.report().losses() {
+//!     eprintln!("{loss}");
+//! }
+//! # Ok::<(), strict_ooxml_pdf::PdfError>(())
+//! ```
 //!
 //! ## State of the phase
 //!
-//! Landed: the resource budget ([`error::PdfLimits`]) and the font layer
-//! ([`fonts`]). The content interpreter, the page assembly, images and vector
-//! paths are the next increments; see `STAGE-8-OPEN.md` (O-4).
+//! Landed: the resource budget, the font layer, the content interpreter, images
+//! and path flattening. Not landed: the fixtures corpus and the round trip
+//! against a PDF this workspace wrote — see `STAGE-8-OPEN.md` (O-9).
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]
-// PDF dictionaries index glyphs with numbers a producer wrote, so the casts
-// into glyph codes are deliberate and clamped by `to_code`; the rest is the
-// model's own arithmetic on f64 geometry.
+// PDF dictionaries index glyphs with numbers a producer wrote, so the casts into
+// glyph codes are deliberate and clamped; the rest is the model's own f64
+// geometry.
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    clippy::doc_markdown
+    clippy::doc_markdown,
+    // PDF numbers arrive as `i64` or `f32` and are geometry: a length, a
+    // rotation, a colour component, a glyph code. Every one of them is small,
+    // and the conversions are the only way to get them into one arithmetic.
+    clippy::cast_precision_loss,
+    clippy::cast_lossless
 )]
 
+pub mod content;
+pub mod document;
 pub mod error;
 pub mod fonts;
+pub mod image;
+pub mod report;
+
+pub use crate::content::{
+    Content, Glyph, Item, Matrix, PageGeometry, PlacedImage, RenderMode, Rgb, SubPath, Vector,
+};
+pub use crate::document::{PdfDocument, PdfPage};
+pub use crate::error::{LimitKind, PdfError, PdfLimits};
+pub use crate::fonts::{BaseEncoding, PdfFont, Width};
+pub use crate::image::{Encoded, Reject};
+pub use crate::report::{Loss, ReadReport};
+
+/// The largest deviation a flattened Bézier may have from the curve, in points.
+///
+/// SC-9 allows 0.5 pt; the reader uses a quarter of that, because the
+/// consumer that draws the result is a *different* renderer and a quarter of
+/// the budget spent here is a quarter the consumer never has to.
+pub const FLATTEN_TOLERANCE_PT: f64 = 0.125;
+
+pub use document::{PdfDocument as Document, PdfPage as Page};

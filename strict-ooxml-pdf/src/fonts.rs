@@ -129,6 +129,10 @@ pub struct PdfFont {
     pub embedded: bool,
     /// The base font name, for diagnostics.
     pub base_font: String,
+    /// `/Ascent` in 1000-unit text space, when the font states one.
+    pub ascent: Option<f64>,
+    /// `/Descent` in 1000-unit text space, when the font states one.
+    pub descent: Option<f64>,
 }
 
 impl PdfFont {
@@ -141,15 +145,16 @@ impl PdfFont {
     pub fn build(
         name: &str,
         dictionary: &lopdf::Dictionary,
-        resolve: &dyn Fn(&Object) -> Option<&Object>,
+        document: &lopdf::Document,
         limits: &PdfLimits,
     ) -> Result<Self> {
+        let resolve = resolver(document);
         let subtype = name_of(dictionary, b"Subtype", resolve);
         let descendant: Option<lopdf::Dictionary> = dictionary
             .get(b"DescendantFonts")
             .ok()
             .and_then(|value| array_items(value, resolve).into_iter().next())
-            .and_then(|item| resolve(&item).cloned())
+            .and_then(|item| resolve.get(&item).cloned())
             .and_then(|item| item.as_dict().ok().cloned());
         let two_byte = subtype.as_deref() == Some(b"Type0");
 
@@ -163,6 +168,8 @@ impl PdfFont {
             default_width: 1000.0,
             embedded: false,
             base_font: String::new(),
+            ascent: None,
+            descent: None,
         };
 
         if two_byte {
@@ -205,7 +212,8 @@ impl PdfFont {
             }
             read_simple_widths(dictionary, resolve, &mut font.widths);
             font.embedded = dictionary.get(b"FontDescriptor").is_ok_and(|descriptor| {
-                resolve(descriptor)
+                resolve
+                    .get(descriptor)
                     .and_then(|value| value.as_dict().ok())
                     .is_some_and(|descriptor| {
                         [b"FontFile".as_slice(), b"FontFile2", b"FontFile3"]
@@ -213,6 +221,25 @@ impl PdfFont {
                             .any(|key| descriptor.get(key).is_ok())
                     })
             });
+        }
+
+        // The descriptor of a composite font hangs off the CID font, not off the
+        // `Type0` wrapper.
+        let owned = dictionary.clone();
+        let wrapper = dictionary.clone();
+        let descriptor_source: &lopdf::Dictionary = if two_byte {
+            descendant.as_ref().unwrap_or(&owned)
+        } else {
+            &wrapper
+        };
+        if let Ok(descriptor) = descriptor_source.get(b"FontDescriptor") {
+            let inner = resolve
+                .get(descriptor)
+                .and_then(|value| value.as_dict().ok())
+                .cloned()
+                .unwrap_or_else(|| descriptor_source.clone());
+            font.ascent = number_entry(&inner, b"Ascent", resolve);
+            font.descent = number_entry(&inner, b"Descent", resolve);
         }
 
         if let Ok(to_unicode) = dictionary.get(b"ToUnicode") {
@@ -266,6 +293,23 @@ impl PdfFont {
         }
     }
 
+    /// The ascender and descender in 1000-unit text space, and where they came from.
+    ///
+    /// A PDF that embeds a font usually states /Ascent and /Descent; a
+    /// standard-14 font often does not, and the fallback is the conventional
+    /// 750/-250 rather than a silent zero, because a zero-height line is
+    /// indistinguishable from a broken conversion.
+    #[must_use]
+    pub fn vertical_metrics(&self) -> (f64, f64) {
+        let (ascent, descent) = match (self.ascent, self.descent) {
+            (Some(ascent), Some(descent)) => (ascent, descent),
+            (Some(ascent), None) => (ascent, -250.0),
+            (None, Some(descent)) => (750.0, descent),
+            (None, None) => (750.0, -250.0),
+        };
+        (ascent, descent)
+    }
+
     /// The codes this reader can turn into characters, for diagnostics.
     #[must_use]
     pub fn mapped_codes(&self) -> usize {
@@ -276,18 +320,18 @@ impl PdfFont {
 /// Reads `/Encoding`: a name, or a dictionary with a base plus `/Differences`.
 fn read_encoding(
     encoding: &Object,
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
+    resolve: Resolver<'_>,
     base: &mut BaseEncoding,
     differences: &mut BTreeMap<u8, String>,
 ) {
-    let Some(object) = resolve(encoding) else {
+    let Some(object) = resolve.get(encoding) else {
         return;
     };
     match object {
-        Object::Name(name) => *base = BaseEncoding::from_name(name),
+        Object::Name(name) => *base = BaseEncoding::from_name(name.as_slice()),
         Object::Dictionary(dictionary) => {
             if let Ok(name) = dictionary.get(b"BaseEncoding") {
-                if let Some(name) = resolve(name).and_then(|value| value.as_name().ok()) {
+                if let Some(name) = resolve.get(name).and_then(|value| value.as_name().ok()) {
                     *base = BaseEncoding::from_name(name);
                 }
             }
@@ -321,7 +365,7 @@ fn read_encoding(
 /// Reads `/FirstChar`…`/Widths` for a simple font.
 fn read_simple_widths(
     dictionary: &lopdf::Dictionary,
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
+    resolve: Resolver<'_>,
     out: &mut BTreeMap<u32, f64>,
 ) {
     let Some(first) = number_entry(dictionary, b"FirstChar", resolve) else {
@@ -344,7 +388,7 @@ fn read_simple_widths(
 /// `c_first c_last w` group.
 fn read_cid_widths(
     dictionary: &lopdf::Dictionary,
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
+    resolve: Resolver<'_>,
     out: &mut BTreeMap<u32, f64>,
 ) {
     let Ok(w) = dictionary.get(b"W") else {
@@ -654,32 +698,69 @@ fn glyph_name_to_char(name: &str) -> Option<char> {
 }
 
 /// Resolves one level of indirection.
-pub fn resolver<'a>(
+///
+/// A named type rather than an `impl Fn`: a closure over a document cannot
+/// satisfy a `&dyn Fn` parameter, because the closure fixes one lifetime while
+/// the trait object is higher-ranked, and the compiler rejects every call site
+/// with a message that points at the closure instead of at the mismatch.
+#[derive(Clone, Copy)]
+pub struct Resolver<'a> {
     document: &'a lopdf::Document,
-) -> impl Fn(&'a Object) -> Option<&'a Object> + 'a {
-    move |object: &'a Object| match object {
-        Object::Reference(id) => document.get_object(*id).ok(),
-        other => Some(other),
+}
+
+impl<'a> Resolver<'a> {
+    /// Wraps a document.
+    #[must_use]
+    pub fn new(document: &'a lopdf::Document) -> Self {
+        Self { document }
     }
+
+    /// Resolves one object.
+    #[must_use]
+    pub fn get<'o>(&'o self, object: &'o Object) -> Option<&'o Object> {
+        match object {
+            Object::Reference(id) => self.document.get_object(*id).ok(),
+            other => Some(other),
+        }
+    }
+
+    /// Resolves an object that is expected to be a dictionary.
+    #[must_use]
+    pub fn dictionary<'o>(&'o self, object: &'o Object) -> Option<&'o lopdf::Dictionary> {
+        self.get(object).and_then(|value| value.as_dict().ok())
+    }
+
+    /// The document behind the resolver.
+    #[must_use]
+    pub fn document(&self) -> &'a lopdf::Document {
+        self.document
+    }
+}
+
+/// Resolves one level of indirection.
+#[must_use]
+pub fn resolver(document: &lopdf::Document) -> Resolver<'_> {
+    Resolver::new(document)
 }
 
 /// The name of a dictionary entry, dereferenced.
 pub fn name_of(
     dictionary: &lopdf::Dictionary,
     key: &[u8],
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
+    resolve: Resolver<'_>,
 ) -> Option<Vec<u8>> {
     dictionary
         .get(key)
         .ok()
-        .and_then(resolve)
+        .and_then(|value| resolve.get(value))
         .and_then(|value| value.as_name().ok())
         .map(<[u8]>::to_vec)
 }
 
 /// A number, whether it is stored as an integer or a real.
-pub fn number_of(object: &Object, resolve: &dyn Fn(&Object) -> Option<&Object>) -> Option<f64> {
-    resolve(object)
+pub fn number_of(object: &Object, resolve: Resolver<'_>) -> Option<f64> {
+    resolve
+        .get(object)
         .and_then(|value| value.as_float().ok())
         .map(f64::from)
 }
@@ -688,7 +769,7 @@ pub fn number_of(object: &Object, resolve: &dyn Fn(&Object) -> Option<&Object>) 
 pub fn number_entry(
     dictionary: &lopdf::Dictionary,
     key: &[u8],
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
+    resolve: Resolver<'_>,
 ) -> Option<f64> {
     dictionary
         .get(key)
@@ -706,12 +787,9 @@ pub fn number(dictionary: &lopdf::Dictionary, key: &[u8]) -> Option<f64> {
 }
 
 /// A text string from a dictionary entry.
-pub fn string_of(
-    object: Option<&Object>,
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
-) -> Option<String> {
+pub fn string_of(object: Option<&Object>, resolve: Resolver<'_>) -> Option<String> {
     let object = object?;
-    let object = resolve(object)?;
+    let object = resolve.get(object)?;
     match object {
         Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).into_owned()),
         Object::Name(name) => Some(String::from_utf8_lossy(name).into_owned()),
@@ -720,22 +798,19 @@ pub fn string_of(
 }
 
 /// The items of an array, dereferenced.
-pub fn array_items(object: &Object, resolve: &dyn Fn(&Object) -> Option<&Object>) -> Vec<Object> {
-    match resolve(object) {
+pub fn array_items(object: &Object, resolve: Resolver<'_>) -> Vec<Object> {
+    match resolve.get(object) {
         Some(Object::Array(items)) => items
             .iter()
-            .map(|item| resolve(item).cloned().unwrap_or(item.clone()))
+            .map(|item| resolve.get(item).cloned().unwrap_or_else(|| item.clone()))
             .collect(),
         _ => Vec::new(),
     }
 }
 
 /// The decompressed bytes of a stream object, dereferenced.
-pub fn stream_bytes(
-    object: &Object,
-    resolve: &dyn Fn(&Object) -> Option<&Object>,
-) -> Option<Vec<u8>> {
-    let object = resolve(object)?;
+pub fn stream_bytes(object: &Object, resolve: Resolver<'_>) -> Option<Vec<u8>> {
+    let object = resolve.get(object)?;
     let stream = object.as_stream().ok()?;
     stream.decompressed_content().ok()
 }
@@ -869,6 +944,8 @@ endcmap";
             default_width: 1000.0,
             embedded: false,
             base_font: "Helvetica".to_owned(),
+            ascent: None,
+            descent: None,
         };
         assert!(font.width(65).is_estimated());
         assert!((font.width(65).value() - 500.0).abs() < 1e-9);
