@@ -19,6 +19,11 @@ default = []
 # Without it a page this reader cannot read is reported as a loss instead, which
 # is the honest answer and the reason the loss report has that entry.
 raster = ["strict-ooxml-pdf/raster"]
+# The transport to a real model, for `examples/live_recovery.rs` only. The crate's own
+# code asks a `TextRecovery` trait and never names a transport, so this feature
+# exists for the probe: a build without it cannot talk to a daemon, and that is
+# the point of a trait.
+ocr-ollama = ["strict-ooxml-ocr/ocr-ollama"]
 
 [dependencies]
 # Reading the PDF: pages, glyphs, images, paths.
