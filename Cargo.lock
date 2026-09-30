@@ -1885,6 +1885,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "strict-ooxml-pdf"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "lopdf",
+ "miniz_oxide 0.8.9",
+ "png",
+]
+
+[[package]]
 name = "strict-ooxml-render-pdf"
 version = "0.1.0"
 dependencies = [

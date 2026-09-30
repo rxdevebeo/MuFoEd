@@ -1,0 +1,36 @@
+[package]
+name = "strict-ooxml-pdf"
+description = "PDF reading: pages, text with geometry, fonts, images and vector paths (STAGE-8-TASK.md phase 8C)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["pdf", "extract", "text", "geometry", "ooxml"]
+categories = ["parser-implementations", "text-processing"]
+
+[dependencies]
+# Object model, xref, filters and the content-stream parser. Everything above
+# that — encodings, `ToUnicode`, the graphics state machine, the placement — is
+# written here, in the same spirit as the ZIP and XML layers of `core`.
+lopdf = "0.45"
+# Extra stream filters `lopdf` does not apply for us, and the PNG encoder for
+# images that come out of a Flate-compressed XObject.
+miniz_oxide.workspace = true
+png = "0.18"
+# Windows-1252 and MacRoman, which are what `/WinAnsiEncoding` and
+# `/MacRomanEncoding` are; hand-written 256-entry tables would be worse.
+encoding_rs.workspace = true
+
+[dev-dependencies]
+# The round-trip fixtures need the writer and the layout, so those dev-deps come
+# with the integration test that builds them (STAGE-8-OPEN.md O-9), not before:
+# an unused dev-dependency is a build-order liability for no benefit.
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

@@ -15,6 +15,7 @@ members = [
     "strict-ooxml-report",
     "strict-ooxml-render-svg",
     "strict-ooxml-render-pdf",
+    "strict-ooxml-pdf",
     "strict-ooxml-write",
     "strict-ooxml",
     "strict-ooxml-cli",
