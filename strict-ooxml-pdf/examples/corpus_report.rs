@@ -84,9 +84,21 @@ struct Reading {
     unreadable: usize,
     no_text: usize,
     blank: usize,
-    /// Pictures found, and how many of them failed to decode.
+    /// Pictures drawn, how many of them failed to decode, and how many distinct
+    /// `XObject`s those draws named.
+    ///
+    /// The last number is the one that says whether the reader decodes a picture
+    /// once or once per draw. A document that draws 102 902 pictures naming 1 160
+    /// of them is a document about pictures, and a reader that inflates the same
+    /// stream a hundred times is spending its time there (Q-26). The opposite
+    /// ratio is just as real: a photo album draws almost every picture once, and
+    /// no cache can help a decode that was going to happen anyway.
     pictures: usize,
     broken_pictures: usize,
+    distinct_pictures: usize,
+    /// Bytes of decoded pictures the reader is still holding, which is the number
+    /// the cache ceiling (`PdfLimits::max_cached_image_bytes`) is about.
+    cached_bytes: usize,
     millis: u128,
     /// `(kind, count)` for the losses this file reported.
     losses: Vec<(String, usize)>,
@@ -113,6 +125,8 @@ fn read(path: &Path) -> Option<Reading> {
         blank: 0,
         pictures: 0,
         broken_pictures: 0,
+        distinct_pictures: 0,
+        cached_bytes: 0,
         millis: 0,
         losses: Vec::new(),
         candidates: Vec::new(),
@@ -155,8 +169,44 @@ fn read(path: &Path) -> Option<Reading> {
         *kinds.entry(loss.id.clone()).or_default() += 1;
     }
     reading.losses = kinds.into_iter().collect();
+    reading.distinct_pictures = document.distinct_images();
+    reading.cached_bytes = document.cached_image_bytes();
     reading.millis = started.elapsed().as_millis();
     Some(reading)
+}
+
+/// One file's row of numbers.
+///
+/// Its own function, because the row and the header must agree on their columns
+/// and a table nobody can line up is a table nobody reads.
+fn print_row(reading: &Reading) {
+    println!(
+        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>8} {:>7}",
+        reading.name,
+        reading.pages,
+        reading.glyphs,
+        reading.unreadable,
+        reading.no_text,
+        reading.blank,
+        reading.pictures,
+        reading.broken_pictures,
+        reading.distinct_pictures,
+        reading.millis
+    );
+}
+
+/// How the reading time and the picture cache add up.
+///
+/// Integer arithmetic, because a byte count is not a number to hand to a float:
+/// the point of the line is to be read exactly.
+fn print_picture_summary(drawn: usize, distinct: usize, cached: usize) {
+    const MIB: usize = 1024 * 1024;
+    println!(
+        "pictures: {drawn} drawn, {distinct} distinct, {} MiB {} KiB still held by the \
+         picture cache",
+        cached / MIB,
+        (cached % MIB) / 1024
+    );
 }
 
 fn main() {
@@ -177,14 +227,26 @@ fn main() {
     }
 
     println!(
-        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>7}",
-        "file", "pages", "glyphs", "unread", "no tx", "blank", "pics", "broken", "read ms"
+        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>8} {:>7}",
+        "file",
+        "pages",
+        "glyphs",
+        "unread",
+        "no tx",
+        "blank",
+        "pics",
+        "broken",
+        "distinct",
+        "read ms"
     );
     let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
     let mut totals = (
         0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
     );
     let mut candidates: Vec<String> = Vec::new();
+    let mut drawn = 0usize;
+    let mut distinct = 0usize;
+    let mut cached = 0usize;
     for path in &files {
         let Some(reading) = read(path) else {
             println!("{:<40} refused or unreadable", path.display());
@@ -203,18 +265,10 @@ fn main() {
         totals.5 += reading.blank;
         totals.6 += reading.pictures;
         totals.7 += reading.broken_pictures;
-        println!(
-            "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>7}",
-            reading.name,
-            reading.pages,
-            reading.glyphs,
-            reading.unreadable,
-            reading.no_text,
-            reading.blank,
-            reading.pictures,
-            reading.broken_pictures,
-            reading.millis
-        );
+        drawn += reading.pictures;
+        distinct += reading.distinct_pictures;
+        cached += reading.cached_bytes;
+        print_row(&reading);
     }
 
     println!();
@@ -232,6 +286,8 @@ fn main() {
         totals.7,
         totals.8
     );
+    println!();
+    print_picture_summary(drawn, distinct, cached);
     println!();
     println!("what the reader said it could not carry, by kind:");
     let mut kinds: Vec<(&String, &usize)> = kinds.iter().collect();

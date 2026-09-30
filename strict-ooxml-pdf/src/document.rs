@@ -10,12 +10,10 @@ use std::collections::BTreeMap;
 
 use lopdf::Object;
 
-use crate::content::{
-    decode_image, interpret, Content, Item, PageGeometry, Resources as ResourceProvider,
-};
+use crate::content::{interpret, Content, Item, PageGeometry, Resources as ResourceProvider};
 use crate::error::{PdfError, PdfLimits, Result};
 use crate::fonts::{resolver, PdfFont};
-use crate::image::Encoded;
+use crate::image::{Encoded, ImageCache};
 
 /// An opened PDF.
 pub struct PdfDocument {
@@ -28,6 +26,12 @@ pub struct PdfDocument {
     /// a hash. One copy of a file that has already been read into memory.
     source: Vec<u8>,
     limits: PdfLimits,
+    /// Pictures already decoded, shared by every page (Q-26).
+    ///
+    /// A document that draws the same picture on many pages decodes it once
+    /// here instead of once per draw; the budget is
+    /// [`PdfLimits::max_cached_image_bytes`].
+    images: ImageCache,
     report: crate::report::ReadReport,
 }
 
@@ -65,6 +69,7 @@ impl PdfDocument {
             document,
             source: bytes.to_vec(),
             limits,
+            images: ImageCache::new(limits.max_cached_image_bytes),
             report: crate::report::ReadReport::new(),
         })
     }
@@ -99,6 +104,26 @@ impl PdfDocument {
     #[must_use]
     pub fn limits(&self) -> PdfLimits {
         self.limits
+    }
+
+    /// Bytes of decoded pictures this document is holding on to (Q-26).
+    ///
+    /// What a caller tuning [`PdfLimits::max_cached_image_bytes`] needs: a number
+    /// equal to the ceiling means the cache is full and further pictures are
+    /// being decoded per draw again, which is the state the reader was in before
+    /// there was a cache.
+    #[must_use]
+    pub fn cached_image_bytes(&self) -> usize {
+        self.images.bytes()
+    }
+
+    /// How many distinct pictures this document has decoded, refusals included.
+    ///
+    /// The number to compare against the number of picture draws: equal means
+    /// every draw was served from the cache.
+    #[must_use]
+    pub fn distinct_images(&self) -> usize {
+        self.images.distinct_images()
     }
 
     /// What could not be carried out, across every page read so far.
@@ -155,7 +180,7 @@ impl PdfDocument {
             .map_err(|error| PdfError::from_lopdf(&error))?;
         let inherited = self.inherited(id);
         let geometry = geometry_of(dictionary, &inherited)?;
-        let resources = PageResources::new(&self.document, &inherited, self.limits);
+        let resources = PageResources::new(&self.document, &self.images, &inherited, self.limits);
 
         let content_bytes = self
             .document
@@ -443,6 +468,8 @@ fn number_of_object(object: &Object) -> Option<f64> {
 /// two are the same type with a parent link rather than two types.
 struct PageResources<'a> {
     document: &'a lopdf::Document,
+    /// The document's picture cache: a form's pictures are the document's.
+    cache: &'a ImageCache,
     fonts: BTreeMap<String, PdfFont>,
     images: BTreeMap<String, lopdf::ObjectId>,
     forms: BTreeMap<String, lopdf::ObjectId>,
@@ -454,24 +481,27 @@ struct PageResources<'a> {
 impl<'a> PageResources<'a> {
     fn new(
         document: &'a lopdf::Document,
+        cache: &'a ImageCache,
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
     ) -> Self {
-        Self::load(document, inherited, limits, None)
+        Self::load(document, cache, inherited, limits, None)
     }
 
     /// Builds the resource set of a form, falling back on `parent`.
     fn for_form(
         document: &'a lopdf::Document,
+        cache: &'a ImageCache,
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
         parent: &'a PageResources<'a>,
     ) -> Self {
-        Self::load(document, inherited, limits, Some(parent))
+        Self::load(document, cache, inherited, limits, Some(parent))
     }
 
     fn load(
         document: &'a lopdf::Document,
+        cache: &'a ImageCache,
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
         parent: Option<&'a PageResources<'a>>,
@@ -487,6 +517,7 @@ impl<'a> PageResources<'a> {
         else {
             return Self {
                 document,
+                cache,
                 fonts,
                 images,
                 forms,
@@ -555,6 +586,7 @@ impl<'a> PageResources<'a> {
 
         Self {
             document,
+            cache,
             fonts,
             images,
             forms,
@@ -602,7 +634,9 @@ impl ResourceProvider for PageResources<'_> {
                 None => Ok(None),
             };
         };
-        match decode_image(id, self.document, &self.limits) {
+        // Through the document's cache: the same picture drawn on the next page
+        // is decoded once for the document, not once per draw (Q-26).
+        match self.cache.decode(id, self.document, &self.limits) {
             Ok(image) => Ok(Some(image)),
             Err(error) => Err(PdfError::Missing(error.to_string())),
         }
@@ -659,7 +693,8 @@ impl ResourceProvider for PageResources<'_> {
             }
             None => BTreeMap::new(),
         };
-        let child = PageResources::for_form(self.document, &inherited, self.limits, self);
+        let child =
+            PageResources::for_form(self.document, self.cache, &inherited, self.limits, self);
         Some(crate::content::Form {
             operations,
             matrix,

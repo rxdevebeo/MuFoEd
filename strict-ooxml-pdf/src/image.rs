@@ -10,6 +10,8 @@
 //! stage 8B takes, so a PDF → WML converter and a PDF → PDF rewrite share one
 //! image representation instead of two.
 
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use lopdf::Object;
@@ -166,6 +168,122 @@ pub const fn image_limit_kind() -> LimitKind {
     LimitKind::ImageBytes
 }
 
+/// How many bytes of decoded pictures one image's payload is worth.
+///
+/// What the cache is charged for, and what a caller decides it can afford: the
+/// inflated samples, not the compressed stream the document carries.
+fn payload_bytes(encoded: &Encoded) -> usize {
+    match encoded {
+        Encoded::Jpeg { data, alpha, .. } => {
+            data.len() + alpha.as_ref().map_or(0, |mask| payload_bytes(mask))
+        }
+        Encoded::Raw { samples, alpha, .. } => {
+            samples.len() + alpha.as_ref().map_or(0, |mask| mask.len())
+        }
+    }
+}
+
+/// Picture XObjects already decoded in this document, by object id.
+///
+/// A `Do` decodes the picture it draws, and a document that draws the same logo
+/// on every page — or the same scanned figure on every spread — decodes it once
+/// per draw. `Балашова` (139 MiB, 160 pages) draws 102 902 pictures, and before
+/// this cache every one of them was an inflate of a stream the reader had
+/// already inflated, on a page that was holding the result anyway.
+///
+/// **On the document, not on the page.** The second page of a spread draws what
+/// the first drew, and a per-page cache would decode it twice; the pages of a
+/// document are also read one after another, so a per-page cache is 160 maps
+/// instead of one. A hit is a hash lookup and a refcount: the page's own
+/// `PlacedImage` already holds an `Arc` to the same bytes.
+///
+/// **Bounded, because it outlives the page.** A caller that reads one page at a
+/// time and drops it would otherwise keep every picture the document has, which
+/// is the whole document in memory and not the page it asked for.
+/// `PdfLimits::max_cached_image_bytes` is the ceiling; past it a picture is
+/// decoded per draw again, which is what always happened. Nothing is evicted: an
+/// entry nobody draws again costs what it cost, and a policy that guessed wrong
+/// would cost more than it saves.
+///
+/// A refusal is cached too, and for free — a broken stream re-inflated on every
+/// draw is a real cost, and the refusal is a fact about the object rather than
+/// about the draw. The caller still records the loss for each draw, because the
+/// number of draws is what a report is about.
+///
+/// The map is never iterated, so its order cannot reach any output.
+pub(crate) struct ImageCache {
+    entries: RefCell<HashMap<lopdf::ObjectId, CachedImage>>,
+    /// What the entries are worth, so the ceiling is about bytes and not about
+    /// the number of pictures — a document of 10 000 tiny icons is not a
+    /// document of 10 000 large photographs.
+    bytes: Cell<usize>,
+    limit: usize,
+}
+
+struct CachedImage {
+    result: Result<(Encoded, u32, u32), Reject>,
+}
+
+impl ImageCache {
+    /// A cache that will hold up to `limit` bytes of decoded pictures.
+    pub(crate) fn new(limit: usize) -> Self {
+        Self {
+            entries: RefCell::new(HashMap::new()),
+            bytes: Cell::new(0),
+            limit,
+        }
+    }
+
+    /// The decoded picture, decoded at most once per document.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Reject`] describing what the image is that this reader will
+    /// not carry — and the same one every time, because the answer is a property
+    /// of the object.
+    pub(crate) fn decode(
+        &self,
+        id: lopdf::ObjectId,
+        document: &lopdf::Document,
+        limits: &PdfLimits,
+    ) -> Result<(Encoded, u32, u32), Reject> {
+        if let Some(hit) = self.entries.borrow().get(&id) {
+            return hit.result.clone();
+        }
+        let result = decode_inner(id, document, limits, &|mask_id| {
+            self.decode(mask_id, document, limits).ok()
+        });
+        let bytes = match &result {
+            Ok((encoded, _, _)) => payload_bytes(encoded),
+            Err(_) => 0,
+        };
+        let mut entries = self.entries.borrow_mut();
+        if self.bytes.get() + bytes <= self.limit {
+            self.bytes.set(self.bytes.get() + bytes);
+            entries.insert(
+                id,
+                CachedImage {
+                    result: result.clone(),
+                },
+            );
+        }
+        result
+    }
+
+    /// How many bytes of decoded pictures are held.
+    ///
+    /// Named for a caller that wants to know what the cache is worth, and for a
+    /// test that wants to prove a second `Do` decoded nothing.
+    pub(crate) fn bytes(&self) -> usize {
+        self.bytes.get()
+    }
+
+    /// How many distinct pictures are held, refusals included.
+    pub(crate) fn distinct_images(&self) -> usize {
+        self.entries.borrow().len()
+    }
+}
+
 /// Decodes the image XObject at `id`.
 ///
 /// # Errors
@@ -176,6 +294,24 @@ pub fn decode_from(
     id: lopdf::ObjectId,
     document: &lopdf::Document,
     limits: &PdfLimits,
+) -> Result<(Encoded, u32, u32), Reject> {
+    // Without a cache, a soft mask is decoded by decoding it: the public entry
+    // point is the one place that has no cache to ask.
+    decode_inner(id, document, limits, &|mask_id| {
+        decode_from(mask_id, document, limits).ok()
+    })
+}
+
+/// The decode itself, with the soft mask fetched through `mask_of`.
+///
+/// A soft mask is an image in its own right, and the caller that knows about a
+/// cache is the one that should be asked for it — a mask shared by a hundred
+/// draws of the same logo is a hundred inflates of one stream.
+fn decode_inner(
+    id: lopdf::ObjectId,
+    document: &lopdf::Document,
+    limits: &PdfLimits,
+    mask_of: &dyn Fn(lopdf::ObjectId) -> Option<(Encoded, u32, u32)>,
 ) -> Result<(Encoded, u32, u32), Reject> {
     let resolve = resolver(document);
     let object = document
@@ -260,7 +396,7 @@ pub fn decode_from(
     // A soft mask is an image in its own right; carrying it is what keeps a
     // PNG's transparency alive through the conversion.
     if let Ok(mask_id) = dictionary.get(b"SMask").and_then(Object::as_reference) {
-        if let Ok((mask, _, _)) = decode_from(mask_id, document, limits) {
+        if let Some((mask, _, _)) = mask_of(mask_id) {
             match (&mut encoded, &mask) {
                 (Encoded::Jpeg { alpha: slot, .. }, _) => {
                     *slot = Some(Box::new(mask));

@@ -30,3 +30,6 @@ strict-ooxml-core/tests/docx/
 /testdata/
 # scratch output of the browser driver (screenshots, snapshots, console logs)
 /.playwright-mcp/
+
+# a hard link to one corpus file, for timing one document repeatedly
+/.tmp-bench/

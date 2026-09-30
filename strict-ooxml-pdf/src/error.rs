@@ -142,6 +142,17 @@ pub struct PdfLimits {
     /// deep, a drawing assembled from parts is two or three) and shallow enough
     /// that a form which draws itself is refused instead of recursing.
     pub max_form_depth: usize,
+    /// Bytes of decoded pictures the document holds on to between pages. Default:
+    /// 64 MiB.
+    ///
+    /// A document that draws one picture on every page decodes it once instead of
+    /// once per draw, and this cache is what makes that true — but the cache
+    /// outlives the page, so a caller that reads one page at a time and drops it
+    /// would otherwise keep every picture the document has. Past this ceiling a
+    /// picture is decoded per draw again, which is what always happened; nothing
+    /// is evicted, because a policy that guessed wrong would cost more than it
+    /// saves.
+    pub max_cached_image_bytes: usize,
     /// Pixels in one rasterized page or region. Default: 16 777 216 (4096²).
     ///
     /// A Letter page at scale 4 is 2448 × 3168 pixels — 7.7 M — so the default
@@ -163,6 +174,7 @@ impl Default for PdfLimits {
             max_path_points: 200_000,
             max_fonts: 512,
             max_form_depth: 12,
+            max_cached_image_bytes: 64 * 1024 * 1024,
             max_raster_pixels: 4096 * 4096,
         }
     }
