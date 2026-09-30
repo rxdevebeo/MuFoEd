@@ -84,6 +84,12 @@ pub enum LimitKind {
     /// twelve levels is a million operations, and the page is refused for that
     /// rather than for being deep.
     FormDepth,
+    /// `PdfLimits::max_raster_pixels`, pixels in one rasterized page or region.
+    ///
+    /// Only reachable with the `raster` feature, and it is a *pixel* budget
+    /// rather than a byte one: a page at scale 8 is 4 000 × 6 000 pixels before
+    /// anybody asks what that costs in memory.
+    RasterPixels,
 }
 
 impl LimitKind {
@@ -100,6 +106,7 @@ impl LimitKind {
             Self::PathPoints => "path_points",
             Self::Fonts => "fonts",
             Self::FormDepth => "form_depth",
+            Self::RasterPixels => "raster_pixels",
         }
     }
 }
@@ -135,6 +142,13 @@ pub struct PdfLimits {
     /// deep, a drawing assembled from parts is two or three) and shallow enough
     /// that a form which draws itself is refused instead of recursing.
     pub max_form_depth: usize,
+    /// Pixels in one rasterized page or region. Default: 16 777 216 (4096²).
+    ///
+    /// A Letter page at scale 4 is 2448 × 3168 pixels — 7.7 M — so the default
+    /// leaves room for a page at scale 4 and refuses scale 8, which is 31 M pixels
+    /// and 124 MiB of RGBA before a single glyph is drawn. Checked *before* the
+    /// rasterizer is asked for anything.
+    pub max_raster_pixels: u64,
 }
 
 impl Default for PdfLimits {
@@ -149,6 +163,7 @@ impl Default for PdfLimits {
             max_path_points: 200_000,
             max_fonts: 512,
             max_form_depth: 12,
+            max_raster_pixels: 4096 * 4096,
         }
     }
 }
@@ -171,6 +186,7 @@ impl PdfLimits {
             LimitKind::PathPoints => self.max_path_points as u64,
             LimitKind::Fonts => self.max_fonts as u64,
             LimitKind::FormDepth => self.max_form_depth as u64,
+            LimitKind::RasterPixels => self.max_raster_pixels,
         };
         PdfError::LimitExceeded {
             kind,

@@ -59,6 +59,8 @@ pub mod document;
 pub mod error;
 pub mod fonts;
 pub mod image;
+#[cfg(feature = "raster")]
+pub mod raster;
 pub mod report;
 pub mod text;
 

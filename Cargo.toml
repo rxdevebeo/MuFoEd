@@ -45,7 +45,12 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+# One honest floor for the whole workspace, not two: the PDF page rasterizer
+# (`hayro`, ADR-0011) needs 1.92, the CI gates build `--all-features`, and a
+# manifest that promises 1.85 while a default-path dependency needs 1.92 is a
+# promise cargo cannot keep. The CI has an MSRV job so this number is verified
+# rather than declared.
+rust-version = "1.92"
 license = "MIT OR Apache-2.0"
 repository = "https://example.invalid/strict-ooxml"
 authors = ["Strict OOXML contributors"]

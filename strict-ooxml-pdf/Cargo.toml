@@ -24,6 +24,23 @@ png = "0.18"
 # `/MacRomanEncoding` are; hand-written 256-entry tables would be worse.
 encoding_rs.workspace = true
 
+[features]
+default = []
+# Page and region rasterization (`STAGE-8-TASK.md` §6, O3; the input for
+# `TextRecovery` in O1 and for the pixel-level half of SC-6). Off by default
+# because it is a heavy dependency — 75 crates, a full software rasterizer — and
+# most callers of a *reader* want glyph geometry, not pictures.
+#
+# `hayro` is MIT/Apache-2.0 and needs Rust 1.92, which is why the workspace floor
+# is where it is (ADR-0011). Its default features embed the standard fonts and
+# the CMaps, which is what makes a page from a producer that references no font
+# file render at all instead of coming out blank.
+raster = ["dep:hayro"]
+
+[dependencies.hayro]
+version = "0.7"
+optional = true
+
 [dev-dependencies]
 # The geometry oracle needs a document laid out by the real engine and written
 # by the real writer, so the reader is tested against the whole chain rather

@@ -20,6 +20,13 @@ use crate::image::Encoded;
 /// An opened PDF.
 pub struct PdfDocument {
     document: lopdf::Document,
+    /// The bytes the document was opened from.
+    ///
+    /// Kept because two things need the file itself rather than what this reader
+    /// made of it: the `raster` feature hands the whole file to a rasterizer, and
+    /// a caller converting a document may want the original bytes for a report or
+    /// a hash. One copy of a file that has already been read into memory.
+    source: Vec<u8>,
     limits: PdfLimits,
     report: crate::report::ReadReport,
 }
@@ -56,9 +63,30 @@ impl PdfDocument {
         }
         Ok(Self {
             document,
+            source: bytes.to_vec(),
             limits,
             report: crate::report::ReadReport::new(),
         })
+    }
+
+    /// The bytes the document was opened from.
+    #[must_use]
+    pub fn source(&self) -> &[u8] {
+        &self.source
+    }
+
+    /// A rasterizer for this document, under the `raster` feature.
+    ///
+    /// The convenience a caller converting a document wants: the bytes are
+    /// already here, and a rasterizer parses the file once for as many pages as
+    /// the caller asks for.
+    ///
+    /// # Errors
+    ///
+    /// As [`crate::raster::Rasterizer::new`].
+    #[cfg(feature = "raster")]
+    pub fn rasterizer(&self) -> Result<crate::raster::Rasterizer> {
+        crate::raster::Rasterizer::new(&self.source, self.limits)
     }
 
     /// How many pages the document has.
