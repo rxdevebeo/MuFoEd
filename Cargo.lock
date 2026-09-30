@@ -1892,6 +1892,10 @@ dependencies = [
  "lopdf",
  "miniz_oxide 0.8.9",
  "png",
+ "strict-ooxml-core",
+ "strict-ooxml-render-pdf",
+ "strict-ooxml-render-svg",
+ "strict-ooxml-wml",
 ]
 
 [[package]]

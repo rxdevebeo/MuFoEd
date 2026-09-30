@@ -25,6 +25,17 @@ pub struct PdfDocument {
 }
 
 impl PdfDocument {
+    /// Opens a PDF from a path.
+    ///
+    /// # Errors
+    ///
+    /// As [`PdfDocument::open`], with the file's own I/O failure reported the
+    /// same way.
+    pub fn open_path(path: impl AsRef<std::path::Path>, limits: PdfLimits) -> Result<Self> {
+        let bytes = std::fs::read(path).map_err(|error| PdfError::Malformed(error.to_string()))?;
+        Self::open(&bytes, limits)
+    }
+
     /// Opens a PDF from memory.
     ///
     /// # Errors

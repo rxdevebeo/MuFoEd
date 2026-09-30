@@ -9,38 +9,16 @@
 //! which is blocked while another crate in the workspace does not build
 //! (`STAGE-8-OPEN.md` O-9).
 
-use std::fmt::Write as _;
-
 use strict_ooxml_pdf::{
     content::{Item, Matrix, Rgb},
     PdfDocument, PdfLimits,
 };
 
+mod common;
+
 /// A one-page PDF with a font, a media box and a content stream.
 ///
 /// The object numbers are fixed: 1 catalog, 2 pages, 3 page, 4 content,
-/// 5 font, 6 descriptor, 7 `ToUnicode`.
-fn pdf_with(objects: &[&str], catalog_extra: &str, page_extra: &str, content: &str) -> Vec<u8> {
-    let mut out = Vec::new();
-    out.extend_from_slice(b"%PDF-1.7\n");
-    let mut offsets: Vec<usize> = Vec::new();
-    let mut body = String::new();
-    for (index, object) in objects.iter().enumerate() {
-        offsets.push(out.len() + body.len());
-        let _ = writeln!(body, "{} 0 obj\n{object}\nendobj\n", index + 1);
-    }
-    let _ = (catalog_extra, page_extra, content);
-    out.extend_from_slice(body.as_bytes());
-    let mut table = String::new();
-    let _ = writeln!(table, "xref\n0 {}\n0000000000 65535 f ", objects.len() + 1);
-    for offset in &offsets {
-        let _ = writeln!(table, "{offset:010} 00000 n ");
-    }
-    out.extend_from_slice(table.as_bytes());
-    out.extend_from_slice(b"trailer\n<< /Size 99 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n");
-    out
-}
-
 /// The smallest font: one glyph, one width, one `ToUnicode` entry.
 const FONT: &str = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 65 /LastChar 66 /Widths [600 600] >>";
 
@@ -53,7 +31,7 @@ fn hello_pdf() -> Vec<u8> {
         "<< /Length 0 >>\nstream\nBT /F1 12 Tf 1 0 0 1 20 50 Tm (AB) Tj ET\nendstream",
         FONT,
     ];
-    pdf_with(&objects, "", "", "")
+    common::pdf_with(&objects)
 }
 
 fn open(bytes: &[u8]) -> PdfDocument {
@@ -111,7 +89,7 @@ fn a_transformed_page_places_its_glyphs_in_device_space() {
         "<< /Length 0 >>\nstream\nq 2 0 0 2 0 0 cm BT /F1 10 Tf 1 0 0 1 10 10 Tm (A) Tj ET Q\nendstream",
         FONT,
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     let Some(Item::Glyph(glyph)) = page.items().first() else {
         panic!("no glyph: {:?}", page.items());
@@ -133,7 +111,7 @@ fn a_graphics_state_stack_is_honoured() {
         "<< /Length 0 >>\nstream\nq 2 0 0 2 0 0 cm BT /F1 10 Tf 1 0 0 1 0 0 Tm (A) Tj ET Q\nBT /F1 10 Tf 1 0 0 1 5 5 Tm (A) Tj ET\nendstream",
         FONT,
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     let glyphs: Vec<&strict_ooxml_pdf::Glyph> = page
         .items()
@@ -157,7 +135,7 @@ fn a_rectangle_becomes_a_path_with_its_fill() {
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> /Contents 4 0 R >>",
         "<< /Length 0 >>\nstream\n1 0 0 rg 10 20 30 40 re f\nendstream",
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     let Some(Item::Vector(vector)) = page.items().first() else {
         panic!("no path: {:?}", page.items());
@@ -182,7 +160,7 @@ fn a_curve_is_flattened_within_the_documented_tolerance() {
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> /Contents 4 0 R >>",
         "<< /Length 0 >>\nstream\n0 0 m 0 55.23 44.77 55.23 100 0 c 0 0 0 RG S\nendstream",
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     let Some(Item::Vector(vector)) = page.items().first() else {
         panic!("no path: {:?}", page.items());
@@ -243,7 +221,7 @@ fn a_tj_adjustment_moves_the_pen_without_drawing() {
         "<< /Length 0 >>\nstream\nBT /F1 10 Tf 1 0 0 1 10 50 Tm [(A) -1000 (B)] TJ ET\nendstream",
         FONT,
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     let glyphs: Vec<&strict_ooxml_pdf::Glyph> = page
         .items()
@@ -268,7 +246,7 @@ fn invisible_text_is_measured_but_not_drawn() {
         "<< /Length 0 >>\nstream\nBT /F1 10 Tf 3 Tr 1 0 0 1 10 50 Tm (A) Tj ET\nendstream",
         FONT,
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     // `3 Tr` means invisible: a reader that ignores it draws a layer of text
     // the producer deliberately hid.
@@ -287,7 +265,7 @@ fn a_construct_the_reader_does_not_carry_is_reported() {
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << >> /Contents 4 0 R >>",
         "<< /Length 0 >>\nstream\n/sh0 sh 0 0 100 100 re f Q\nendstream",
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let _page = pdf.page(1).expect("page 1");
     let ids: Vec<&str> = pdf
         .report()
@@ -307,7 +285,7 @@ fn a_crop_box_smaller_than_the_media_box_is_the_page() {
         "<< /Type /Page /Parent 2 0 R /CropBox [50 50 250 150] /Resources << >> /Contents 4 0 R >>",
         "<< /Length 0 >>\nstream\nendstream",
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     // The crop box is what is shown, and what the reader measures against.
     assert!(
@@ -331,7 +309,7 @@ fn a_page_that_never_closes_its_graphics_state_is_still_readable() {
         "<< /Length 0 >>\nstream\nq 2 0 0 2 0 0 cm BT /F1 10 Tf 1 0 0 1 0 0 Tm (A) Tj ET\nendstream",
         FONT,
     ];
-    let mut pdf = open(&pdf_with(&objects, "", "", ""));
+    let mut pdf = open(&common::pdf_with(&objects));
     let page = pdf.page(1).expect("page 1");
     assert!(!page.items().is_empty());
 }

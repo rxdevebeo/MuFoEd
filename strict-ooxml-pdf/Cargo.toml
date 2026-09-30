@@ -25,9 +25,14 @@ png = "0.18"
 encoding_rs.workspace = true
 
 [dev-dependencies]
-# The round-trip fixtures need the writer and the layout, so those dev-deps come
-# with the integration test that builds them (STAGE-8-OPEN.md O-9), not before:
-# an unused dev-dependency is a build-order liability for no benefit.
+# The geometry oracle needs a document laid out by the real engine and written
+# by the real writer, so the reader is tested against the whole chain rather
+# than against hand-made fixtures alone. This is not a dependency cycle: the
+# writer does not depend on the reader.
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
+strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pdf" }
 
 [lints]
 workspace = true

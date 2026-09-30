@@ -124,7 +124,13 @@ pub struct PdfFont {
     /// `/Widths` or `/W`, code → 1000-unit width.
     pub widths: BTreeMap<u32, f64>,
     /// The default width from `/DW` for a CID font.
+    ///
+    /// The specification's fallback when `/DW` is absent is one em, which is a
+    /// guess: `Width::Estimated` says so, and a caller that positions text by
+    /// advance can then treat the number as provisional rather than declared.
     pub default_width: f64,
+    /// Whether the font actually stated `/DW`.
+    pub default_width_stated: bool,
     /// Whether the font is embedded.
     pub embedded: bool,
     /// The base font name, for diagnostics.
@@ -166,6 +172,7 @@ impl PdfFont {
             to_unicode: BTreeMap::new(),
             widths: BTreeMap::new(),
             default_width: 1000.0,
+            default_width_stated: false,
             embedded: false,
             base_font: String::new(),
             ascent: None,
@@ -196,9 +203,19 @@ impl PdfFont {
             // closest thing to a CID font there is.
             let owned = dictionary.clone();
             let descendant: &lopdf::Dictionary = descendant.as_ref().unwrap_or(&owned);
-            font.default_width = number_entry(descendant, b"DW", resolve).unwrap_or(1000.0);
-            if font.default_width <= 0.0 {
-                font.default_width = 1000.0;
+            match number_entry(descendant, b"DW", resolve) {
+                Some(width) if width > 0.0 => {
+                    font.default_width = width;
+                    font.default_width_stated = true;
+                }
+                _ => {
+                    // No `/DW`, or a nonsensical one: the fallback is one em
+                    // and it is a *guess*, not a number the document committed
+                    // to. Reporting it as declared is how a wrong advance
+                    // becomes indistinguishable from a right one.
+                    font.default_width = 1000.0;
+                    font.default_width_stated = false;
+                }
             }
             read_cid_widths(descendant, resolve, &mut font.widths);
             font.base_font =
@@ -287,8 +304,10 @@ impl PdfFont {
     pub fn width(&self, code: u32) -> Width {
         match self.widths.get(&code) {
             Some(width) => Width::Stated(*width),
-            // A CID font's `/DW` is a real default, not a guess.
-            None if self.two_byte => Width::Stated(self.default_width),
+            // A CID font's `/DW` is a real default *when the font states it*;
+            // the one-em fallback is the specification's suggestion, not a
+            // number the document committed to.
+            None if self.two_byte && self.default_width_stated => Width::Stated(self.default_width),
             None => Width::Estimated,
         }
     }
@@ -942,6 +961,7 @@ endcmap";
             to_unicode: BTreeMap::new(),
             widths: BTreeMap::new(),
             default_width: 1000.0,
+            default_width_stated: false,
             embedded: false,
             base_font: "Helvetica".to_owned(),
             ascent: None,

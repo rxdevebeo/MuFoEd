@@ -1079,8 +1079,19 @@ fn show_text(
     };
     let codes = font.codes(bytes);
     for code in codes {
-        let glyph = render_glyph(code, font, state, text, geometry, out);
+        // The advance is computed first so the glyph can report it: a consumer
+        // that lays text out from the reader's output needs the pen movement,
+        // and recomputing it from `/W` is exactly the work the reader has
+        // already done.
         let advance = glyph_advance(code, font, state);
+        let mut glyph = render_glyph(code, font, state, text, geometry, out);
+        if let Some(glyph) = glyph.as_mut() {
+            // `glyph_advance` is already in text space, where one unit is one em
+            // scaled by `Tfs`, so on an identity CTM it is the device distance.
+            // Scaling it again by the font size is what turned a 7.6 pt advance
+            // into 1937 pt.
+            glyph.width = advance.abs() * state.ctm.scale_factor();
+        }
         adjust_text(advance, text, state, geometry);
         if let Some(glyph) = glyph {
             if out.items.len() >= limits.max_glyphs {
