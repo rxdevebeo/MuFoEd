@@ -16,6 +16,7 @@ members = [
     "strict-ooxml-render-svg",
     "strict-ooxml",
     "strict-ooxml-cli",
+    "strict-ooxml-view",
     "xtool",
 ]
 
