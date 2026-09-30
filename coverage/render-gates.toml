@@ -98,16 +98,21 @@ OMML formulas and inline shapes. The pages are sparse, so the profile
 correlations carry little structure to correlate and are not a meaningful
 measure here.
 
-max_extent_px is a RATCHET ON A KNOWN DEFECT, not an accepted tolerance. The
-bound every other class meets is 2 px; this class currently measures 0, -3,
--10, -16, +17 and +18 px against the pinned references. The height of a
-display block is derived from the formula's own extent and disagrees with
-Word's in both directions — `strict-stage5c` runs 17-18 px past the
-reference's last ink row, `07` stops 16 px short — which is consistent with
-a block box rather than one oversized operator. Closing it means correcting
-the block geometry, and EXTENT_RATCHET in tests/ssim.rs pins every page's
-current drift so the numbers have to move rather than the bound. The
-pre-rework defect this bound replaced was 400 px on the same page.
+max_centroid_px is the STRICT DEFAULT, 2.5. It used to be 24, and that 24
+was not a bound at all: it was the value that happened to contain
+`strict-stage5c` page 1, whose ink centroid sits 23.59 px from the reference
+because the page is 17 px out at the bottom edge. A limit fitted to a known
+defect stops being a limit, so it is now the default and the page fails on
+the metric that means something.
+
+max_extent_px = 18 is still a ratchet on the measured defect (the bottom
+edge drifts 18.00 px) and is the next thing to tighten; the extent check is
+ordered before the centroid so the failure names the edge rather than the
+mean.
+
+max_shift_px is 12 px and is no longer reachable in the way it was: the
+alignment search range is derived from this bound plus a margin, so a page
+that drifted further now reports a shift outside it.
 """
 documents = [
   "strict-stage5c",
@@ -117,7 +122,7 @@ documents = [
   "10-strict-math-eqarr",
 ]
 max_shift_px = 12
-max_centroid_px = 24.0
+max_centroid_px = 2.5
 min_row_correlation = 0.45
 min_column_correlation = 0.40
 max_extent_px = 18.0

@@ -77,24 +77,36 @@ id = "5C-C4"
 subject = "5C formulas"
 binds = "class:formulas"
 summary = """
-The formulas class carries shift 12 px, centroid 24 px, correlation floors
-0.45/0.40 and extent 18 px, against strict defaults of 2/2.5/0.90/0.85/2.
+The formulas class is outside its own bounds on four pages. With
+max_centroid_px returned to the strict default of 2.5, the gate fails and
+names all four at once:
+
+  06-strict-math-display  page 0  centroid (-10.67,  -2.57)
+  07-strict-drawingml-…   page 0  centroid (  0.79,  -2.57)
+  strict-stage5c          page 0  centroid (  1.84,   8.91)
+  strict-stage5c          page 1  centroid ( 24.76,  13.47)
+
+The bound was 24 before, and that 24 was not a limit at all: it was the
+value that happened to contain `strict-stage5c` page 1 and the two others
+behind it. It never rejected anything. max_extent_px = 18 is the same
+shape of thing and still is — it equals that page's measured bottom drift
+of 18.00 px.
 """
 risk = """
-The shift bound could not fail before this work: the alignment search window
-was hard-coded to +-12 px and the bound was 12, so `shift.abs() > 12` was
-unreachable and a 40 px drift reported dy=8. The window is now derived from
-the bound and pinned by a test. The remaining looseness is real drift: the
-height of a display block disagrees with Word's by 0, -3, -10, -16, +17 and
-+18 px across the class.
+The gate reports the class as failing. That is the honest state: three of
+five formula fixtures have ink centroids 2.5-25 px from the reference, and
+05-strict-math-simple is the only one inside. Nobody has been able to say
+which is the real defect, because a bound fitted to the first failure
+names nothing.
 """
 exit = """
-Correct the display-block box so every page in the class meets 2 px of extent
-drift, then return the class to the strict defaults. `EXTENT_RATCHET` in
-`tests/ssim.rs` pins every page's current drift and fails if a page moves
-further, so the numbers have to move rather than the bound.
+Correct the display-block box so every page in the class meets 2 px, then
+return the class to the strict defaults on every axis including the extent
+bound. `EXTENT_RATCHET` in `tests/ssim.rs` pins every page's current drift
+and fails if a page moves further, so the numbers have to move rather than
+the bound.
 """
-opened = "2026-09-29"
+opened = "2026-09-30"
 
 [[waivers]]
 id = "5C-C3"

@@ -141,6 +141,135 @@ const BOX_PAD: f64 = 0.15;
 const BORDER_BOX_GAP: f64 = 0.25;
 /// Gap between the arguments of a delimiter, in em.
 const SEPARATOR_GAP: f64 = 0.12;
+
+// ---------------------------------------------------------------------------
+// Inter-atom spacing (ECMA-376 Part 1 §22.1.2, the math spacing table).
+//
+// Adjacent children of an `m:oMath` used to be joined with no space at all:
+// `out.append(child)` puts each one exactly at the previous one's advance
+// width. For two text runs that happens to look acceptable, because a glyph
+// sits inside its advance, but any construct with real extent has ink at that
+// boundary. In a real document `H_q = (1/(1-q)) ln(Σ p_i^q_i)` put the `ln`
+// flush against the end of the fraction rule — measured 139.832 against
+// 139.832, a zero-pixel gap, which is what the visual viewer was built to
+// find and did find.
+//
+// # `verified = false`
+//
+// The *widths* below are Word's (TeX's) values, but they are **not confirmed
+// against a reference here**, and the reason is worth stating rather than
+// hiding: the WPS references are Cambria Math and this renderer draws STIX Two
+// Math, so a gap measured in a reference is the sum of the layout's spacing and
+// the difference between two typefaces. The same confounded measurement is
+// what makes the Stage-5C display-block height unfixable (docs/
+// stage-5c-report.md §4.2).
+//
+// This mirrors the `verified` flag on `normalize::tables::RENAMES`: applied
+// because the specification requires it, flagged because the evidence for the
+// constant is the specification and not a measurement. Confirming it needs a
+// metric-compatible reference, which is the same prerequisite.
+// ---------------------------------------------------------------------------
+
+/// The widths Word's math layout uses, in em: thin, medium and thick.
+const ATOM_GAP_THIN: f64 = 3.0 / 18.0;
+const ATOM_GAP_MEDIUM: f64 = 4.0 / 18.0;
+const ATOM_GAP_THICK: f64 = 5.0 / 18.0;
+
+/// The spacing class of one atom in a formula.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Atom {
+    /// Plain text and any boxed construct: fractions, scripts, radicals,
+    /// delimiters, matrices, boxes.
+    Ordinary,
+    /// A large operator or a function name.
+    Operator,
+    /// A binary operator: `+`, `-`, `×`, `÷`, `∪`, …
+    Binary,
+    /// A relation: `=`, `<`, `>`, `≤`, `≈`, `→`, …
+    Relation,
+}
+
+/// Characters that make a whole run a binary operator.
+const BINARY_CHARS: &str = "+-−*×÷±∓∪∩∖⊕⊗∝≺⋃⨁";
+/// Characters that make a whole run a relation.
+const RELATION_CHARS: &str = "=<>≤≥≠≈≡∼≅→←↔⇒⇔∝∈∉⊂⊃⊆⊇≪≫";
+/// Characters that make a whole run a large operator or a function name.
+///
+/// The Latin names matter as much as the symbols: `ln`, `log`, `sin` and the
+/// rest are operators for spacing purposes, which is exactly why a function
+/// name needs a thin space in front of it and a fraction does not.
+const OPERATOR_CHARS: &str = "∑∏∐∫∬∭∮∂∇√limlnloglgmaxminsupinfargdetexpdimhomkerdegmodPr";
+
+/// Classifies a run by the characters it consists of.
+///
+/// A run that mixes classes — `x=` typed as one `m:r`, or a variable named
+/// with a minus sign — is `Ordinary`: the spacing table has no entry for a
+/// mixed atom, and the conservative reading of "unknown" is "no extra space".
+fn classify_run(text: &str) -> Atom {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Atom::Ordinary;
+    }
+    let all = |set: &str| trimmed.chars().all(|c| set.contains(c));
+    if all(RELATION_CHARS) {
+        Atom::Relation
+    } else if all(BINARY_CHARS) {
+        Atom::Binary
+    } else if all(OPERATOR_CHARS) {
+        Atom::Operator
+    } else {
+        Atom::Ordinary
+    }
+}
+
+/// Classifies a node for spacing purposes.
+fn classify(node: &MathNode) -> Atom {
+    match node {
+        MathNode::Run(run) => classify_run(&run.text),
+        // A large operator is an operator; every other construct is boxed and
+        // reads as ordinary.
+        MathNode::NaryOperator(_) => Atom::Operator,
+        // The class comes from the function's *name*, which is what carries the
+        // operator semantics: `ln` is an operator, its argument is ordinary.
+        MathNode::Function(function) => classify_argument(&function.name),
+        _ => Atom::Ordinary,
+    }
+}
+
+/// The class of an `m:arg` whose contents decide it, for a function name.
+fn classify_argument(argument: &MathArgument) -> Atom {
+    let mut nodes = argument.nodes.iter();
+    let Some(MathNode::Run(run)) = nodes.next() else {
+        return Atom::Ordinary;
+    };
+    if nodes.next().is_some() {
+        return Atom::Ordinary;
+    }
+    classify_run(&run.text)
+}
+
+/// The space between two adjacent atoms, in em.
+///
+/// Asymmetric classes take the wider of the two sides — a relation wants a
+/// thick space whichever side it is on — and an operator binds to its
+/// neighbour on the outside only, so `a + b` is not `a + + b`.
+fn atom_gap(left: Atom, right: Atom) -> f64 {
+    let side = |a: Atom, b: Atom| match (a, b) {
+        (Atom::Relation, _) | (_, Atom::Relation) => ATOM_GAP_THICK,
+        (Atom::Binary, _) | (_, Atom::Binary) => ATOM_GAP_MEDIUM,
+        (Atom::Operator, _) | (_, Atom::Operator) => ATOM_GAP_THIN,
+        (Atom::Ordinary, Atom::Ordinary) => 0.0,
+    };
+    match (left, right) {
+        // An operator binds to its neighbour on the outside only, so a run of
+        // operators stays tight: `a + b` is not `a + + b`.
+        (Atom::Binary, Atom::Binary)
+        | (Atom::Operator, Atom::Operator | Atom::Binary) => 0.0,
+        (Atom::Binary, Atom::Operator) => ATOM_GAP_MEDIUM,
+        _ => side(right, left),
+    }
+}
+
 /// Hard cap on the paint items one formula may produce (`STAGE-5C-TASK.md` §5.3).
 const MAX_ITEMS: usize = 20_000;
 
@@ -529,7 +658,18 @@ pub(crate) fn layout_display(
 /// Lays out a list of sibling nodes as one horizontal list.
 fn layout_nodes(frame: &Frame<'_, '_>, nodes: &[MathNode]) -> MathBox {
     let mut out = MathBox::empty();
+    let mut previous: Option<Atom> = None;
     for node in nodes {
+        // Siblings are separated by the spacing table, not by each one's ink
+        // extent: a fraction's box ends at its rule, and a function name
+        // starting exactly there touches it.
+        if let Some(previous) = previous {
+            let gap = atom_gap(previous, classify(node)) * frame.em();
+            if gap > 0.0 {
+                out.append_gap(MathBox::empty(), gap);
+            }
+        }
+        previous = Some(classify(node));
         out.append(layout_node(frame, node));
     }
     out

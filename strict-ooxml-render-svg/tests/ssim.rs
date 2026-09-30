@@ -398,52 +398,70 @@ pub fn structural_fidelity_with(
         alignment_search_range(limits),
     );
     let correlation_y = correlation_y.ok_or_else(|| "no row structure to compare".to_owned())?;
-    if shift_y.abs() > limits.max_shift_px {
-        return Err(format!("vertical shift {shift_y}px exceeds tolerance"));
-    }
-    if correlation_y < limits.min_row_correlation {
-        return Err(format!("row-ink correlation {correlation_y:.3} too low"));
-    }
     let (shift_x, correlation_x) = best_profile_alignment(
         &column_ink_profile(reference, width, height),
         &column_ink_profile(candidate, width, height),
         alignment_search_range(limits),
     );
     let correlation_x = correlation_x.ok_or_else(|| "no column structure to compare".to_owned())?;
-    if shift_x.abs() > limits.max_shift_px {
-        return Err(format!("horizontal shift {shift_x}px exceeds tolerance"));
-    }
-    if correlation_x < limits.min_column_correlation {
-        return Err(format!("column-ink correlation {correlation_x:.3} too low"));
-    }
     let (centroid_x_delta, centroid_y_delta) = centroid_delta(reference, candidate, width, height);
-    if centroid_x_delta.abs() > limits.max_centroid_px {
-        return Err(format!(
-            "horizontal centroid shift {centroid_x_delta:.2}px exceeds tolerance"
-        ));
-    }
-    if centroid_y_delta.abs() > limits.max_centroid_px {
-        return Err(format!(
-            "vertical centroid shift {centroid_y_delta:.2}px exceeds tolerance"
-        ));
-    }
     // The extent is the outermost *substantial* ink on each edge. Unlike the
     // centroid it does not average over the page: a block that is a whole line
     // too tall moves the last ink row without moving the mean, which is exactly
     // the defect the centroid tolerates.
     let top_delta = extent_delta(reference, candidate, width, height, Edge::Top);
+    let bottom_delta = extent_delta(reference, candidate, width, height, Edge::Bottom);
+    // Every measurement is taken before any bound is judged, so a failure
+    // carries the numbers that produced it. Naming only the violated bound is
+    // what left the Stage-5C display-block defect invisible: the class limits
+    // were fitted to whichever page failed first, and the log never said how
+    // far the others were out.
+    let measured = |violation: String| {
+        format!(
+            "{violation} [measured: top {top_delta:+.0}px, bottom {bottom_delta:+.0}px, \
+             centroid ({centroid_x_delta:.2},{centroid_y_delta:.2}), \
+             shift ({shift_x}px,{shift_y}px), corr_y {correlation_y:.3}, corr_x {correlation_x:.3}]"
+        )
+    };
+    if shift_y.abs() > limits.max_shift_px {
+        return Err(measured(format!("vertical shift {shift_y}px exceeds tolerance")));
+    }
+    if correlation_y < limits.min_row_correlation {
+        return Err(measured(format!(
+            "row-ink correlation {correlation_y:.3} too low"
+        )));
+    }
+    if shift_x.abs() > limits.max_shift_px {
+        return Err(measured(format!(
+            "horizontal shift {shift_x}px exceeds tolerance"
+        )));
+    }
+    if correlation_x < limits.min_column_correlation {
+        return Err(measured(format!(
+            "column-ink correlation {correlation_x:.3} too low"
+        )));
+    }
     if top_delta.abs() > limits.max_extent_px {
-        return Err(format!(
+        return Err(measured(format!(
             "top ink edge drifted {top_delta:.2}px (bound {:.2})",
             limits.max_extent_px
-        ));
+        )));
     }
-    let bottom_delta = extent_delta(reference, candidate, width, height, Edge::Bottom);
     if bottom_delta.abs() > limits.max_extent_px {
-        return Err(format!(
+        return Err(measured(format!(
             "bottom ink edge drifted {bottom_delta:.2}px (bound {:.2})",
             limits.max_extent_px
-        ));
+        )));
+    }
+    if centroid_x_delta.abs() > limits.max_centroid_px {
+        return Err(measured(format!(
+            "horizontal centroid shift {centroid_x_delta:.2}px exceeds tolerance"
+        )));
+    }
+    if centroid_y_delta.abs() > limits.max_centroid_px {
+        return Err(measured(format!(
+            "vertical centroid shift {centroid_y_delta:.2}px exceeds tolerance"
+        )));
     }
     Ok(StructuralFidelity {
         shift_y_px: shift_y,
@@ -914,15 +932,15 @@ fn reference_pages(dir: &Path) -> Vec<PathBuf> {
     pages
 }
 
-/// Prints the structural numbers of every page of a document.
+/// Prints the structural numbers of every page of a document and returns the
+/// pages that violated a bound.
 ///
-/// The numbers are printed whether or not the page passes, so a regression is
-/// readable from the log rather than only from the panic.
-///
-/// # Panics
-///
-/// If any page violated a structural bound.
-fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity, String>)]) {
+/// The numbers are printed whether or not the page passes, and the caller
+/// collects the failures instead of panicking here: a gate that stops at the
+/// first bad page reports one problem and hides the rest, which is how a class
+/// ends up quietly failing three documents while the log names one.
+fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity, String>)]) -> Vec<String> {
+    let mut failures = Vec::new();
     for (page, structure) in structures {
         match structure {
             Ok(structure) => eprintln!(
@@ -938,9 +956,13 @@ fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity,
                 structure.reference_ink,
                 structure.candidate_ink
             ),
-            Err(reason) => panic!("{name} page {page}: structural check failed: {reason}"),
+            Err(reason) => {
+                eprintln!("  page {page}: STRUCTURAL FAIL: {reason}");
+                failures.push(format!("{name} page {page}: {reason}"));
+            }
         }
     }
+    failures
 }
 
 /// Grades one document's worst-page SSIM; returns `true` when it is amber.
@@ -978,6 +1000,7 @@ fn matches_wps_references() {
     let mut checked = 0u32;
     let mut gated = 0u32;
     let mut amber: Vec<String> = Vec::new();
+    let mut structural_failures: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(&refs).expect("read refs dir") {
         let dir = entry.expect("refs entry").path();
         if !dir.is_dir() {
@@ -1044,7 +1067,7 @@ fn matches_wps_references() {
                 margin = worst - policy().ssim,
                 needed = policy().margin
             );
-            report_structure(&name, &structures);
+            structural_failures.extend(report_structure(&name, &structures));
             if grade_ssim(&name, worst) {
                 amber.push(name.clone());
             }
@@ -1071,6 +1094,17 @@ fn matches_wps_references() {
         amber, registered,
         "the amber list is out of date: the documents actually inside the margin band \
          have changed (amber is the observed set)"
+    );
+    // Every structural failure is named at once. A gate that panics on the
+    // first bad page reports one document and hides the rest, and the way the
+    // `formulas` class ended up quietly out of tolerance on three documents is
+    // that the earlier bounds were fitted to whichever one failed first.
+    assert!(
+        structural_failures.is_empty(),
+        "{} page(s) outside the {} class bounds:\n  {}",
+        structural_failures.len(),
+        policy().class_of(structural_failures[0].split(" page").next().unwrap_or("")).unwrap_or("?"),
+        structural_failures.join("\n  ")
     );
 }
 
@@ -1195,40 +1229,74 @@ fn structural_check_rejects_blank_stage5b_page() {
     );
 }
 
-/// STAGE-5C-REWORK-1 C4: the relaxed 5C limits must still reject a blank page
-/// and a materially shifted one, on the formula fixture and on a real-Strict
-/// repro. The gate only means something if it can fail.
+/// STAGE-5C-REWORK-1 C4: the 5C bounds must reject a blank page and a
+/// materially drifted one. The gate only means something if it can fail, and
+/// it can only be shown to fail on a page that *does* pass otherwise — so the
+/// pass/fail pair runs on `05-strict-math-simple`, the one fixture in the class
+/// that meets the bounds.
+///
+/// The other class fixtures no longer pass, which is the point of the
+/// tightened centroid: `06`, `07` and `strict-stage5c` are outside it, and the
+/// gate says so by name. A rejection asserted against a page that already
+/// fails proves nothing, so those documents are only checked for *not*
+/// silently passing.
 #[test]
 fn structural_check_rejects_blank_and_shifted_stage5c_pages() {
-    for (document, page) in [("strict-stage5c", 0usize), ("10-strict-math-eqarr", 0)] {
-        let (width, height, reference, candidate) = rasterize_reference_pair(document, page);
-        // The unshifted render passes.
-        assert!(
-            structural_fidelity_with(&reference, &candidate, width, height, &stage5c_limits())
-                .is_ok(),
-            "{document} page {page} must pass its own gate"
-        );
-        // A blank render is rejected by the ink ratio.
-        let blank = vec![1.0; width * height];
-        assert!(
-            structural_fidelity_with(&reference, &blank, width, height, &stage5c_limits()).is_err(),
-            "{document}: a blank render must be rejected"
-        );
-        // A vertical drift beyond the 12 px alignment bound is rejected.
-        let shifted: Vec<f64> = {
-            let mut out = vec![1.0; width * height];
-            for row in 20..height {
-                out[row * width..(row + 1) * width]
-                    .copy_from_slice(&candidate[(row - 20) * width..(row - 19) * width]);
-            }
-            out
-        };
-        assert!(
-            structural_fidelity_with(&reference, &shifted, width, height, &stage5c_limits())
-                .is_err(),
-            "{document}: a 20px vertical drift must be rejected"
-        );
+    let (document, page) = ("05-strict-math-simple", 0usize);
+    let (width, height, reference, candidate) = rasterize_reference_pair(document, page);
+    // The unshifted render passes, so the rejections below are attributable.
+    assert!(
+        structural_fidelity_with(&reference, &candidate, width, height, &stage5c_limits()).is_ok(),
+        "{document} page {page} must pass its own gate for the rest of this test to mean \
+         anything"
+    );
+    // A blank render is rejected by the ink ratio.
+    let blank = vec![1.0; width * height];
+    assert!(
+        structural_fidelity_with(&reference, &blank, width, height, &stage5c_limits()).is_err(),
+        "{document}: a blank render must be rejected"
+    );
+    // A vertical drift beyond the 12 px alignment bound is rejected.
+    let shifted: Vec<f64> = {
+        let mut out = vec![1.0; width * height];
+        for row in 20..height {
+            out[row * width..(row + 1) * width]
+                .copy_from_slice(&candidate[(row - 20) * width..(row - 19) * width]);
+        }
+        out
+    };
+    assert!(
+        structural_fidelity_with(&reference, &shifted, width, height, &stage5c_limits())
+            .is_err(),
+        "{document}: a 20px vertical drift must be rejected"
+    );
+}
+
+/// The class must not be entirely out of tolerance.
+///
+/// If no fixture met the bounds, the rejection test above would pass for the
+/// wrong reason, and the class would be describing nothing.
+#[test]
+fn at_least_one_formula_fixture_meets_the_class_bounds() {
+    let mut meeting = Vec::new();
+    let mut outside = Vec::new();
+    for document in policy()
+        .ssim_documents()
+        .filter(|name| policy().class_of(name) == Some("formulas"))
+    {
+        let (width, height, reference, candidate) = rasterize_reference_pair(document, 0);
+        let result =
+            structural_fidelity_with(&reference, &candidate, width, height, &stage5c_limits());
+        if result.is_ok() {
+            meeting.push(document);
+        } else {
+            outside.push(format!("{document}: {result:?}"));
+        }
     }
+    assert!(
+        !meeting.is_empty(),
+        "no formula fixture meets the class bounds, so the gate is not discriminating: {outside:?}"
+    );
 }
 
 /// Renders `name` page `page` and returns `(width, height, reference, candidate)`
