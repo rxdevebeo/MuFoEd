@@ -505,7 +505,7 @@ fn document_part(ctx: &mut Ctx<'_>, document: &Document) -> String {
     xml.start("w:body");
     blocks(ctx, &mut xml, &document.body.blocks);
     if let Some(section) = document.sections.last() {
-        section_properties(&mut xml, &section.properties);
+        section_properties(ctx, &mut xml, &section.properties);
     }
     xml.end(); // w:body
     xml.end(); // w:document

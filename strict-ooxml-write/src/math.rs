@@ -109,7 +109,16 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
             xml.start("m:f");
             if fraction.bar_type.is_some() || fraction.small_fraction {
                 xml.start("m:fPr");
-                xml.attr_m_opt("type", fraction.bar_type.as_deref());
+                // §22.1.2.f: `CT_FPr` is the sequence `m:type?, m:ctrlPr?`,
+                // and `m:type` is an *element* (`CT_FType`, carrying `m:val`).
+                // The writer wrote it as an attribute of `m:fPr`, which parsed
+                // as nothing: every fraction came back with a default bar, so a
+                // `lin` or `noBar` fraction grew a rule on the second write.
+                if let Some(bar_type) = fraction.bar_type.as_deref() {
+                    xml.start("m:type");
+                    xml.attr_m("val", bar_type);
+                    xml.end();
+                }
                 if fraction.small_fraction {
                     xml.empty("m:smallFrac");
                 }
@@ -205,15 +214,18 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
                 || delimiter.shape.is_some()
             {
                 xml.start("m:dPr");
-                if let Some(chr) = delimiter.begin {
-                    xml.empty_attr("m:begChr", "m:val", format!("{chr}"));
-                }
-                if let Some(chr) = delimiter.separator {
-                    xml.empty_attr("m:sepChr", "m:val", format!("{chr}"));
-                }
-                if let Some(chr) = delimiter.end {
-                    xml.empty_attr("m:endChr", "m:val", format!("{chr}"));
-                }
+                // The model holds the *effective* character: `None` means the
+                // producer asked for no delimiter there, and the parser has
+                // already resolved an absent element to the schema default. So
+                // both cases have to be written out — `None` as the empty
+                // `m:val` Word itself uses. Omitting the element instead meant
+                // that a bracket-less delimiter came back bracketed on the
+                // second write: `<m:begChr m:val=""/>` vanished, and re-reading
+                // the result restored the default `(`. The document grew
+                // brackets every generation and never settled.
+                delimiter_char_element(xml, "m:begChr", delimiter.begin);
+                delimiter_char_element(xml, "m:sepChr", delimiter.separator);
+                delimiter_char_element(xml, "m:endChr", delimiter.end);
                 if let Some(grow) = delimiter.grow {
                     xml.empty_attr("m:grow", "m:val", bool_str(grow));
                 }
@@ -450,7 +462,11 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
             }
             if let Some(lines) = border_box.lines {
                 xml.start("m:lines");
-                xml.attr_w("m:val", lines);
+                // `attr_w("m:val", …)` produced `w:m:val` — two prefixes on one
+                // attribute name, which is not a name at all. The part was not
+                // well-formed XML, and only a document with an `m:borderBox` in
+                // it ever noticed.
+                xml.attr_m("val", lines);
                 xml.end();
             }
             control(ctx, xml, border_box.control.as_deref());
@@ -533,7 +549,7 @@ fn argument(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, name: &'static str, argument
         }
         if let Some(control) = properties.control.as_deref() {
             xml.start("m:ctrlPr");
-            crate::props::run_properties(xml, control, false);
+            crate::props::run_properties(xml, control);
             xml.end();
         }
         xml.end();
@@ -542,6 +558,16 @@ fn argument(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, name: &'static str, argument
         math_node(ctx, xml, child);
     }
     xml.end();
+}
+
+/// Writes one `m:begChr`/`m:sepChr`/`m:endChr`, including the empty `m:val`
+/// that suppresses a delimiter.
+fn delimiter_char_element(xml: &mut XmlWriter, name: &str, character: Option<char>) {
+    xml.empty_attr(
+        name,
+        "m:val",
+        character.map_or_else(String::new, |c| c.to_string()),
+    );
 }
 
 /// Writes `m:ctrlPr` for a construct whose control properties the schema places
@@ -554,7 +580,7 @@ fn control(
     let _ = ctx;
     if let Some(run_props) = run_props {
         xml.start("m:ctrlPr");
-        crate::props::run_properties(xml, run_props, false);
+        crate::props::run_properties(xml, run_props);
         xml.end();
     }
 }
@@ -586,13 +612,19 @@ fn function_control(
 }
 
 /// Writes `m:r`.
+///
+/// ISO/IEC 29500-1 §22.1.2.79 declares `CT_R` as the sequence
+/// `m:rPr?, w:rPr?, (m:t | …)*` — the two property elements are **siblings**.
+/// The writer nested `w:rPr` inside `m:rPr`, which is well-formed XML and
+/// therefore passed every parse check, but the parser reads `m:rPr` as the math
+/// property container and ignores a `w:rPr` inside it: the character formatting
+/// was dropped on the very next read, which showed up as a formula shrinking by
+/// several kilobytes on a second write.
 fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
     xml.start("m:r");
     run_properties(ctx, xml, &run.properties);
     if let Some(run_props) = run.run_properties.as_deref() {
-        xml.start("m:rPr");
-        crate::props::run_properties(xml, run_props, false);
-        xml.end();
+        crate::props::run_properties(xml, run_props);
     }
     xml.start("m:t");
     xml.text(&run.text);
@@ -636,7 +668,7 @@ fn run_properties(_ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunP
     }
     if let Some(control) = properties.control.as_deref() {
         xml.start("m:ctrlPr");
-        crate::props::run_properties(xml, control, false);
+        crate::props::run_properties(xml, control);
         xml.end();
     }
     xml.end();

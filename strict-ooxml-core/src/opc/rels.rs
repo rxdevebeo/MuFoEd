@@ -14,6 +14,10 @@ use crate::opc::path::resolve_target;
 use crate::part::PartId;
 use crate::xml::{XmlEvent, XmlReader};
 
+/// The Strict OPC package-relationships namespace, written into every `.rels`
+/// part this crate produces.
+pub const STRICT_PACKAGE_REL_NS: &str = "http://purl.oclc.org/ooxml/package/relationships";
+
 /// Identifier of a relationship, unique within the `.rels` part that defines
 /// it (the `Id` attribute of a `Relationship` element).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -275,13 +279,22 @@ pub fn strict_type_uri(rel_type: &RelType) -> String {
 /// Declarations are emitted in the given order — the caller owns determinism,
 /// so this function does not sort. The document is parseable by
 /// [`parse_relationships`].
+///
+/// The document namespace is the **Strict** one, `purl.oclc.org`. The
+/// Transitional OPC namespace is still accepted by every reader in the wild,
+/// which is exactly why writing it hid the problem: the file opened fine, the
+/// conformance check passed (it classifies relationship *types*, not the `.rels`
+/// namespace), and the package still needed a normalization pass to become
+/// Strict. A written package has to be Strict on the first open — that is the
+/// writer's first load-bearing property — so the namespace it declares is the
+/// Strict one. [`parse_relationships`] accepts either.
 #[must_use]
 pub fn write_relationships(relationships: &[Relationship]) -> String {
     let mut out = String::with_capacity(128 + 160 * relationships.len());
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-    out.push_str(
-        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
-    );
+    out.push_str("<Relationships xmlns=\"");
+    out.push_str(STRICT_PACKAGE_REL_NS);
+    out.push_str("\">");
     for relationship in relationships {
         out.push_str("<Relationship Id=\"");
         escape_into(&mut out, &relationship.id);

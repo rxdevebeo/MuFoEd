@@ -32,13 +32,14 @@ use strict_ooxml_core::part::PartId;
 use strict_ooxml_core::xml::qname::QName;
 use strict_ooxml_core::xml::{Attr, XmlEvent, XmlReader};
 
+use crate::model::block::Block;
 use crate::model::document::{Document, DocumentSource, HeaderFooter};
 use crate::model::drawing::MediaIndex;
 use crate::model::props::Section;
 use crate::model::styles::StyleTable;
 use crate::model::support::{SupportModel, SupportStatus};
 use crate::model::theme::Theme;
-use crate::model::{NoteTable, NumberingTable, Settings};
+use crate::model::{Body, NoteTable, NumberingTable, Settings};
 
 use self::interner::Interner;
 
@@ -126,7 +127,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         package.read_part(&main)?,
         &options.limits,
     )?;
-    let (body, mut sections) = parser.parse_document_root()?;
+    let (mut body, mut sections) = parser.parse_document_root()?;
     let mut media = std::mem::take(&mut parser.media);
     let mut support = std::mem::take(&mut parser.support);
     drop(parser);
@@ -135,6 +136,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         package,
         &main,
         &mut sections,
+        &mut body,
         options,
         &mut support,
         &mut media,
@@ -354,6 +356,7 @@ fn parse_decoration_parts(
     package: &Package,
     main: &PartId,
     sections: &mut [Section],
+    body: &mut Body,
     options: &ParseOptions,
     support: &mut SupportModel,
     media: &mut MediaIndex,
@@ -401,7 +404,50 @@ fn parse_decoration_parts(
         }
         section.properties.footers = restored;
     }
+    // A section's properties exist twice in the model: once in `sections`, and
+    // once on the `w:pPr` of the paragraph that ends the section — the parser
+    // clones the former out of the latter. Only the `sections` copy was being
+    // resolved, so the paragraph copy kept `part: None`, and the writer — which
+    // has to emit the mid-document `w:sectPr` from the paragraph copy — dropped
+    // every header and footer reference of every section except the last. That
+    // is not a difference a byte comparison notices, it is a page that loses
+    // its footer; the corpus document `2024_application_form_ en.docx` was the
+    // one that showed it.
+    sync_resolved_sections_into_body(body, sections);
     Ok(decorations)
+}
+
+/// Copies resolved section properties back onto the paragraphs that carry them.
+///
+/// `sections` is built in document order from the paragraph-level `w:sectPr`
+/// first and the body-level one last, so the *n*-th paragraph-level `sectPr`
+/// is `sections[n]`.
+fn sync_resolved_sections_into_body(body: &mut Body, sections: &[Section]) {
+    fn walk(blocks: &mut [Block], sections: &[Section], next: &mut usize) {
+        for block in blocks {
+            match block {
+                Block::Paragraph(paragraph) => {
+                    if paragraph.props.section.is_some() {
+                        if let Some(section) = sections.get(*next) {
+                            paragraph.props.section = Some(section.properties.clone());
+                        }
+                        *next += 1;
+                    }
+                }
+                Block::Table(table) => {
+                    for row in &mut table.rows {
+                        for cell in &mut row.cells {
+                            walk(&mut cell.blocks, sections, next);
+                        }
+                    }
+                }
+                Block::SdtBlock(sdt) => walk(&mut sdt.blocks, sections, next),
+                _ => {}
+            }
+        }
+    }
+    let mut next = 0;
+    walk(&mut body.blocks, sections, &mut next);
 }
 
 /// Resolves one section header/footer reference to a parsed [`HeaderFooter`].

@@ -17,6 +17,7 @@ use strict_ooxml_wml::model::values::{
     TabStop, ThemeColorRef, TriState, Width, WidthKind,
 };
 
+use crate::ctx::Ctx;
 use crate::xml::XmlWriter;
 
 /// Why the child order in this module is hand-written.
@@ -25,7 +26,15 @@ pub const PROPS_ORDER_NOTE: &str = "ISO/IEC 29500-1 declares property children a
                                     valid, so the order is explicit rather than sorted";
 
 /// Writes `w:pPr`, or nothing when no property is set.
-pub fn paragraph_properties(xml: &mut XmlWriter, props: &ParagraphProperties) {
+///
+/// `ctx` is needed for the one property that names something this write moved:
+/// a `w:sectPr` inside `w:pPr` carries header/footer relationship ids, and the
+/// ids in the parsed document are the *source* package's. Writing them
+/// unchanged points the reference at whatever this write put at that number —
+/// in practice a hyperlink — so the header or footer disappears on the next
+/// open, silently, because a footer that resolves to nothing is simply not
+/// drawn.
+pub fn paragraph_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &ParagraphProperties) {
     if is_empty_paragraph(props) {
         return;
     }
@@ -109,10 +118,10 @@ pub fn paragraph_properties(xml: &mut XmlWriter, props: &ParagraphProperties) {
     }
     if let Some(run_props) = &props.run_props {
         // `w:rPr` inside `w:pPr` marks the paragraph mark itself.
-        run_properties(xml, run_props, false);
+        run_properties(xml, run_props);
     }
     if let Some(section) = &props.section {
-        section_properties(xml, section);
+        section_properties(ctx, xml, section);
     }
 
     xml.end();
@@ -190,18 +199,23 @@ fn tab_stop(xml: &mut XmlWriter, tab: &TabStop) {
 
 /// Writes `w:rPr`.
 ///
-/// `with_style` is `false` for the run properties of a paragraph mark, where
-/// `w:rStyle` is not allowed by the schema.
-pub fn run_properties(xml: &mut XmlWriter, props: &RunProperties, with_style: bool) {
+/// `w:rStyle` is written at every position this is called from. The function
+/// used to take a flag suppressing it for "the run properties of a paragraph
+/// mark", on the stated grounds that `CT_ParaRPr` does not allow it. It does:
+/// §17.3.1.29 defines `CT_ParaRPr` as the revision-tracking group followed by
+/// `EG_RPrBase`, which begins with `rStyle`. The same is true of `m:ctrlPr` and
+/// of `m:r/w:rPr`. A Word footer in the local corpus carries
+/// `<w:pPr><w:rPr><w:rStyle w:val="a5"/></w:rPr></w:pPr>`, so the
+/// suppression dropped a style Word had written and left an empty `<w:rPr/>`
+/// behind — which the next parse did not read back, so the note never settled.
+pub fn run_properties(xml: &mut XmlWriter, props: &RunProperties) {
     if is_empty_run(props) {
         return;
     }
     xml.start("w:rPr");
 
-    if with_style {
-        if let Some(style) = &props.style {
-            xml.empty_attr_w("w:rStyle", "val", style.as_str());
-        }
+    if let Some(style) = &props.style {
+        xml.empty_attr_w("w:rStyle", "val", style.as_str());
     }
     if let Some(fonts) = &props.fonts {
         fonts_element(xml, fonts);
@@ -450,7 +464,13 @@ fn cell_margins(xml: &mut XmlWriter, name: &str, margins: &CellMargins) {
 
 fn width_element(xml: &mut XmlWriter, name: &str, width: &Width) {
     xml.start(name);
-    xml.attr_w("w", width_kind(width.kind));
+    // §17.4.64 `w:tblW` and §17.4.70 `w:tcW` both carry two attributes: the
+    // unit in `w:type` and the measurement in `w:w`. The writer wrote the unit
+    // as `w:w` as well, so every table and every cell produced
+    // `<w:tblW w:w="dxa" w:w="17663"/>` — a repeated attribute, which is a hard
+    // XML error, not a tolerated one. Eight documents in the local corpus
+    // failed to reparse for exactly this and nothing else.
+    xml.attr_w("type", width_kind(width.kind));
     if let Some(value) = width.value {
         xml.attr_w("w", value);
     }
@@ -634,16 +654,16 @@ pub fn cell_properties(xml: &mut XmlWriter, props: &CellProperties) {
 }
 
 /// Writes `w:sectPr`.
-pub fn section_properties(xml: &mut XmlWriter, section: &SectionProperties) {
+pub fn section_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, section: &SectionProperties) {
     // Header/footer references carry the id this write emits, which the
-    // context computed; a reference without a mapping is dropped and reported
-    // by the caller.
+    // context computed; a reference whose part this write does not emit is
+    // dropped and reported rather than left pointing at an unrelated id.
     xml.start("w:sectPr");
     for reference in &section.headers {
-        header_footer_reference(xml, "w:headerReference", reference);
+        header_footer_reference(ctx, xml, "w:headerReference", reference);
     }
     for reference in &section.footers {
-        header_footer_reference(xml, "w:footerReference", reference);
+        header_footer_reference(ctx, xml, "w:footerReference", reference);
     }
     if let Some(kind) = &section.section_type {
         xml.empty_attr_w("w:type", "val", kind.as_str());
@@ -700,7 +720,29 @@ pub fn section_properties(xml: &mut XmlWriter, section: &SectionProperties) {
     xml.end();
 }
 
-fn header_footer_reference(xml: &mut XmlWriter, name: &str, reference: &HeaderFooterRef) {
+fn header_footer_reference(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    name: &str,
+    reference: &HeaderFooterRef,
+) {
+    let Some(part) = reference.part.as_ref() else {
+        return;
+    };
+    // The ids in the parsed document are the *source* package's. This write
+    // allocates its own, so the reference has to be looked up by the part it
+    // names. Writing the source id unchanged aims the reference at whatever
+    // this write put at that number — in practice a hyperlink — and the header
+    // or footer then simply is not there on the next open. A part the write
+    // does not emit is reported instead of left dangling.
+    let Some(rel_id) = ctx.header_footer_rel(part).map(str::to_owned) else {
+        ctx.report_unsupported(
+            name,
+            &format!("header/footer part {part} is not in the written package"),
+            &strict_ooxml_core::error::SourceLocation::unknown(),
+        );
+        return;
+    };
     xml.start(name);
     xml.attr_w(
         "type",
@@ -710,7 +752,7 @@ fn header_footer_reference(xml: &mut XmlWriter, name: &str, reference: &HeaderFo
             HeaderFooterKind::Even => "even",
         },
     );
-    xml.attr_r_opt("id", reference.rel_id.as_str().into());
+    xml.attr_r_opt("id", Some(rel_id));
     xml.end();
 }
 
@@ -762,10 +804,21 @@ fn page_border_edge(xml: &mut XmlWriter, local: &str, border: &PageBorder) {
     xml.attr_w("val", border.style.map_or("none", |s| s.as_str()));
     xml.attr_w_opt("sz", border.size.map(|v| v.0));
     xml.attr_w_opt("space", border.space);
-    if let Some(color) = &border.color {
-        color_element(xml, "w:color", color, border.theme_color.as_ref());
-    } else if let Some(theme) = &border.theme_color {
+    // §17.6.2: the edges of `w:pgBorders` are `CT_TopPageBorder` and friends,
+    // which derive from `CT_Border` — and `CT_Border` has **no child
+    // elements**. `w:color` is an attribute. The writer emitted it as a child,
+    // so the parser, which reads the attribute, dropped the colour on the very
+    // next open: a page border that silently lost its ink. The tint and shade
+    // that go with `w:themeColor` are attributes for the same reason.
+    xml.attr_w_opt("color", border.color.as_ref().map(Color::as_str));
+    if let Some(theme) = &border.theme_color {
         xml.attr_w("themeColor", theme.color.as_str());
+        if let Some(tint) = &theme.tint {
+            xml.attr_w("themeTint", tint.as_ref());
+        }
+        if let Some(shade) = &theme.shade {
+            xml.attr_w("themeShade", shade.as_ref());
+        }
     }
     if border.shadow {
         xml.attr_w("shadow", "true");
@@ -839,16 +892,20 @@ fn bool_str(value: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use strict_ooxml_core::normalize::report::NormalizationReport;
     use strict_ooxml_wml::model::props::{PageMargins, ParagraphProperties};
     use strict_ooxml_wml::model::values::{Justification, Spacing, Twips};
 
     use super::{paragraph_properties, section_properties};
+    use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
 
     #[test]
     fn an_empty_ppr_is_not_emitted() {
         let mut xml = XmlWriter::new();
-        paragraph_properties(&mut xml, &ParagraphProperties::default());
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        paragraph_properties(&mut ctx, &mut xml, &ParagraphProperties::default());
         assert!(!xml.has_open_elements());
         assert_eq!(xml.finish().expect("balanced"), "\n");
     }
@@ -865,7 +922,9 @@ mod tests {
             ..ParagraphProperties::default()
         };
         let mut xml = XmlWriter::new();
-        paragraph_properties(&mut xml, &props);
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        paragraph_properties(&mut ctx, &mut xml, &props);
         let text = xml.finish().expect("balanced");
         let keep = text.find("keepNext").expect("keepNext");
         let spacing = text.find("w:spacing").expect("spacing");
@@ -884,7 +943,9 @@ mod tests {
             ..strict_ooxml_wml::model::props::SectionProperties::default()
         };
         let mut xml = XmlWriter::new();
-        section_properties(&mut xml, &section);
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        section_properties(&mut ctx, &mut xml, &section);
         let text = xml.finish().expect("balanced");
         assert!(
             text.contains("<w:pgMar w:top=\"1440\" w:left=\"1800\"/>"),

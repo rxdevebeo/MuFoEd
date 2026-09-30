@@ -230,6 +230,22 @@ pub fn classify_namespace(uri: &str) -> Option<Conformance> {
     }
 }
 
+/// Returns the Strict form of a namespace URI, when the registry knows it.
+///
+/// This is the mapping the writer needs for the places where a namespace URI is
+/// carried as a *value* rather than as a declaration — `a:graphicData/@uri` is
+/// the one that matters in practice. Such a value is invisible to the
+/// conformance check, which only looks at declarations and relationship types,
+/// and invisible to the normalizer, which rewrites declarations. A picture
+/// written with the Transitional URI in `@uri` therefore passed every gate in
+/// the project and was still not Strict.
+#[must_use]
+pub fn strict_form(uri: &str) -> Option<&'static str> {
+    NamespaceRegistry::global()
+        .lookup(uri)
+        .and_then(|entry| entry.strict)
+}
+
 /// Classifies a relationship-type URI by its office-relationships base.
 #[must_use]
 pub fn classify_relationship(uri: &str) -> Option<Conformance> {

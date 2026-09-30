@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use strict_ooxml_wml::model::document::HeaderFooter;
+use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, NumberingTable};
 use strict_ooxml_wml::model::settings::Settings;
@@ -17,12 +18,18 @@ use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::StyleType;
 
 use crate::body::blocks;
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, NoteRole};
 use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
-use crate::xml::{XmlWriter, NS_A, NS_R, NS_W};
+use crate::xml::{XmlWriter, NS_A, NS_R, NS_W, NS_W14};
 
 /// The namespace declarations a `w:` part carries.
-const WML_NAMESPACES: [(&str, &str); 2] = [("w", NS_W), ("r", NS_R)];
+///
+/// `w14` is here because the paragraph writer emits `w14:paraId`/`w14:textId`
+/// (§17.3.1.26) on every paragraph that has them, and a header or footer is
+/// made of paragraphs like any other. Without the declaration those parts were
+/// not well-formed — an unbound prefix — so four documents in the local corpus
+/// produced a header Word could not open.
+const WML_NAMESPACES: [(&str, &str); 3] = [("w", NS_W), ("r", NS_R), ("w14", NS_W14)];
 
 /// The namespace declarations the theme part carries.
 const THEME_NAMESPACES: [(&str, &str); 1] = [("a", NS_A)];
@@ -44,10 +51,10 @@ pub fn styles_part(ctx: &mut Ctx<'_>, table: &StyleTable) -> String {
 fn doc_defaults(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, defaults: &DocDefaults) {
     xml.start("w:docDefaults");
     xml.start("w:rPrDefault");
-    run_properties(xml, &defaults.run, false);
+    run_properties(xml, &defaults.run);
     xml.end();
     xml.start("w:pPrDefault");
-    paragraph_properties(xml, &defaults.paragraph);
+    paragraph_properties(ctx, xml, &defaults.paragraph);
     xml.end();
     xml.end();
     let _ = ctx;
@@ -91,8 +98,8 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
     if style.style_type == StyleType::Table {
         table_properties(xml, &style.table);
     }
-    paragraph_properties(xml, &style.paragraph);
-    run_properties(xml, &style.run, false);
+    paragraph_properties(ctx, xml, &style.paragraph);
+    run_properties(xml, &style.run);
     let _ = ctx;
     xml.end();
 }
@@ -173,8 +180,8 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     if level.tentative {
         xml.empty("w:tentative");
     }
-    paragraph_properties(xml, &level.paragraph);
-    run_properties(xml, &level.run, false);
+    paragraph_properties(ctx, xml, &level.paragraph);
+    run_properties(xml, &level.run);
     let _ = ctx;
     xml.end();
 }
@@ -374,11 +381,39 @@ pub fn notes_part(ctx: &mut Ctx<'_>, table: &NoteTable, is_footnote: bool) -> St
         },
         &WML_NAMESPACES,
     );
+    let role = if is_footnote {
+        NoteRole::Footnote
+    } else {
+        NoteRole::Endnote
+    };
+    let ctx = &mut *ctx;
+    ctx.set_note_role(role);
     for note in table.iter() {
         note_element(ctx, &mut xml, note, is_footnote);
     }
     xml.end();
     xml.finish().expect("balanced")
+}
+
+/// Whether a note's leading paragraph already carries the reference marker.
+///
+/// Word's separator notes put a run holding `w:footnoteRef`/`w:endnoteRef` at
+/// the start of their first paragraph, and the parser records it as
+/// [`RunContent::NoteRef`]. The writer used to emit that run itself *as well*,
+/// which is invisible on the first write and grows the note by one run on every
+/// later one — a round trip that never settles. Emitting it only when the model
+/// does not already carry it keeps a note Word wrote byte-identical and still
+/// gives a hand-built note the marker it needs.
+fn leading_paragraph_has_reference(note: &Note) -> bool {
+    let Some(block) = note.blocks.first() else {
+        return false;
+    };
+    let strict_ooxml_wml::model::block::Block::Paragraph(paragraph) = block else {
+        return false;
+    };
+    paragraph.inlines.iter().any(
+        |inline| matches!(inline, Inline::Run(run) if run.content.contains(&RunContent::NoteRef)),
+    )
 }
 
 fn note_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, note: &Note, is_footnote: bool) {
@@ -397,10 +432,13 @@ fn note_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, note: &Note, is_footnote
     xml.attr_w("id", note.id);
     xml.start("w:p");
     // Word's own separator notes carry a run holding the reference element and
-    // nothing else; reproducing that keeps the note area identical.
-    xml.start("w:r");
-    xml.empty(reference);
-    xml.end();
+    // nothing else; reproducing that keeps the note area identical. The model
+    // usually already has that run, so this is a fallback, not an addition.
+    if !leading_paragraph_has_reference(note) {
+        xml.start("w:r");
+        xml.empty(reference);
+        xml.end();
+    }
     for block in &note.blocks {
         // The first paragraph already exists, so a leading paragraph is merged
         // into it by writing only its inlines.
@@ -517,8 +555,7 @@ mod tests {
     use strict_ooxml_wml::model::styles::{Style, StyleTable};
     use strict_ooxml_wml::model::values::{StyleType, TriState};
 
-    use super::{font_families, styles_part};
-    use crate::ctx::Ctx;
+    use super::{font_families, styles_part, Ctx};
 
     #[test]
     fn a_style_keeps_its_type_and_relationships() {

@@ -67,7 +67,7 @@ pub fn paragraph_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &Par
         );
     }
 
-    paragraph_properties(xml, &paragraph.props);
+    paragraph_properties(ctx, xml, &paragraph.props);
 
     for inline in &paragraph.inlines {
         inline_item(ctx, xml, inline);
@@ -178,7 +178,7 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
 /// Writes `w:r` and its content.
 pub fn run_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &Run) {
     xml.start("w:r");
-    crate::props::run_properties(xml, &run.props, true);
+    crate::props::run_properties(xml, &run.props);
     for content in &run.content {
         run_content(ctx, xml, content);
     }
@@ -215,8 +215,18 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent)
         RunContent::EndnoteRef(id) => xml.empty_attr_w("w:endnoteReference", "id", id),
         RunContent::NoteRef => {
             // The note's own number is substituted by the renderer; writing the
-            // element keeps the note body round-trippable.
-            xml.empty("w:footnoteRef");
+            // element keeps the note body round-trippable. Which of the two
+            // elements it is depends on the part being written — `w:endnoteRef`
+            // inside `endnotes.xml` — and the model does not record that, so
+            // the context does.
+            match ctx.note_role() {
+                Some(role) => xml.empty(role.reference_element()),
+                None => ctx.report_unsupported(
+                    "w:footnoteRef",
+                    "a note reference marker outside a footnotes or endnotes part",
+                    &strict_ooxml_core::error::SourceLocation::unknown(),
+                ),
+            }
         }
         RunContent::Symbol(symbol) => {
             xml.start("w:sym");

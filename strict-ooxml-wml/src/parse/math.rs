@@ -1266,15 +1266,15 @@ fn parse_delimiter_properties(
             XmlEvent::StartElement { name, attrs } => match name.local() {
                 "begChr" => {
                     let attrs = attrs.clone();
-                    *begin = delimiter_char(parser, &attrs)?;
+                    *begin = delimiter_char(parser, &attrs, *begin)?;
                 }
                 "sepChr" => {
                     let attrs = attrs.clone();
-                    *separator = delimiter_char(parser, &attrs)?;
+                    *separator = delimiter_char(parser, &attrs, *separator)?;
                 }
                 "endChr" => {
                     let attrs = attrs.clone();
-                    *end = delimiter_char(parser, &attrs)?;
+                    *end = delimiter_char(parser, &attrs, *end)?;
                 }
                 "grow" => {
                     *grow = Some(math_on_off(&attrs));
@@ -1299,22 +1299,33 @@ fn parse_delimiter_properties(
 
 /// Reads a `ST_Char` attribute of a delimiter element, consuming the element.
 ///
-/// `None` means the element carried no delimiter: an absent or empty `m:val`
-/// both mean "draw nothing", which is how Word writes `<m:begChr m:val=""/>`.
-fn delimiter_char(parser: &mut PartParser<'_>, attrs: &[Attr]) -> Result<Option<char>> {
-    let raw = math_val(attrs);
-    if raw.is_none() {
+/// §22.1.2.36: `m:val` on `CT_Char` is optional and defaults to the delimiter's
+/// own character, so `<m:begChr/>` means the default `(`, **not** "no
+/// delimiter". Only an explicitly empty `m:val` suppresses it — that is how
+/// Word writes a delimiter with no bracket at all.
+///
+/// The distinction matters beyond fidelity: `default` is what keeps the written
+/// form stable. Reading a valueless `m:begChr` as "no delimiter" turned the
+/// first write into `<m:dPr>` with no `m:begChr`; re-reading *that* restored
+/// the seeded default and the second write spelled it out, so a document with a
+/// valueless delimiter never reached a fixed point.
+fn delimiter_char(
+    parser: &mut PartParser<'_>,
+    attrs: &[Attr],
+    default: Option<char>,
+) -> Result<Option<char>> {
+    if math_val(attrs).is_none() {
         parser.record(
             "m:dPr/char",
             SupportStatus::Partial,
             Some("delimiter character element without m:val".to_owned()),
             Some(parser.location()),
         );
+        parser.skip_element()?;
+        return Ok(default);
     }
-    // An empty `m:val` means "draw nothing"; a missing one falls back to the
-    // caller's default. Either way the element itself is consumed exactly once.
-    let character = math_char(parser, attrs)?;
-    Ok(character)
+    // An empty `m:val` means "draw nothing"; the element is consumed once.
+    math_char(parser, attrs)
 }
 
 /// Parses `m:func` (its start element has been consumed).

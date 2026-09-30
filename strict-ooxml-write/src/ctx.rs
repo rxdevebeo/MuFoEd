@@ -16,6 +16,32 @@ pub const WRITE_LOSS_ID: &str = "W1.unserializable";
 /// Stable id of the writer's "written only in part" class.
 pub const WRITE_PARTIAL_ID: &str = "W2.partial";
 
+/// Which notes part is being written.
+///
+/// [`RunContent::NoteRef`](strict_ooxml_wml::model::inline::RunContent::NoteRef)
+/// covers both `w:footnoteRef` and `w:endnoteRef` — the two differ only in the
+/// part they live in, and the model deliberately does not record which. The
+/// writer does know, because it is writing one part at a time, so it says so
+/// here rather than guessing from the element name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteRole {
+    /// `/word/footnotes.xml` — the element is `w:footnoteRef`.
+    Footnote,
+    /// `/word/endnotes.xml` — the element is `w:endnoteRef`.
+    Endnote,
+}
+
+impl NoteRole {
+    /// The reference element this role writes.
+    #[must_use]
+    pub fn reference_element(self) -> &'static str {
+        match self {
+            Self::Footnote => "w:footnoteRef",
+            Self::Endnote => "w:endnoteRef",
+        }
+    }
+}
+
 /// State shared by every part writer.
 #[derive(Debug)]
 pub struct Ctx<'a> {
@@ -27,6 +53,8 @@ pub struct Ctx<'a> {
     media: BTreeMap<String, String>,
     /// Header/footer part id → the relationship id this write emits.
     header_footers: BTreeMap<String, String>,
+    /// Which notes part is being written, when writing one.
+    note_role: Option<NoteRole>,
 }
 
 impl<'a> Ctx<'a> {
@@ -41,7 +69,24 @@ impl<'a> Ctx<'a> {
             hyperlinks: BTreeMap::new(),
             media: BTreeMap::new(),
             header_footers: BTreeMap::new(),
+            note_role: None,
         }
+    }
+
+    /// Declares which notes part is being written.
+    ///
+    /// The role is what tells [`NoteRole::reference_element`] which of the two
+    /// reference elements to emit; outside a notes part it is unset and a
+    /// `NoteRef` cannot be written at all, which is reported rather than
+    /// guessed.
+    pub fn set_note_role(&mut self, role: NoteRole) {
+        self.note_role = Some(role);
+    }
+
+    /// Returns the notes role, when writing a notes part.
+    #[must_use]
+    pub fn note_role(&self) -> Option<NoteRole> {
+        self.note_role
     }
 
     /// Records the relationship-id maps a package write computed.

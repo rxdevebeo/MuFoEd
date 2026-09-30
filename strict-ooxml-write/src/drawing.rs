@@ -241,21 +241,39 @@ fn document_properties(
     xml.end();
 }
 
+/// The Strict form of `a:graphicData/@uri`, falling back to the default for
+/// this payload when the model carries none.
+fn strict_graphic_uri<'a>(uri: Option<&'a str>, fallback: &'static str) -> &'a str {
+    match uri {
+        Some(value) => strict_ooxml_core::ns::registry::strict_form(value).unwrap_or(value),
+        None => fallback,
+    }
+}
+
 /// Writes `a:graphic` with the payload the model carries.
+///
+/// `a:graphicData/@uri` names a namespace, so it is written in its Strict form
+/// even when the model carries the Transitional one the source document used.
+/// It is a value rather than a declaration, which is exactly why it slipped
+/// through: the conformance check reads declarations, and the normalizer
+/// rewrites declarations, so a picture written with
+/// `schemas.openxmlformats.org/drawingml/2006/picture` in `@uri` was reported
+/// Strict by both. A URI the registry does not know is written as it came —
+/// inventing a Strict name for an unknown namespace would be worse.
 fn graphic(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, graphic_uri: Option<&str>, payload: &Graphic) {
     xml.start("a:graphic");
     xml.start("a:graphicData");
     match payload {
         Graphic::Picture(picture) => {
-            xml.attr("uri", graphic_uri.unwrap_or(URI_PICTURE));
+            xml.attr("uri", strict_graphic_uri(graphic_uri, URI_PICTURE));
             picture_element(ctx, xml, picture);
         }
         Graphic::Shape(shape) => {
-            xml.attr("uri", graphic_uri.unwrap_or(URI_SHAPE));
+            xml.attr("uri", strict_graphic_uri(graphic_uri, URI_SHAPE));
             shape_element(ctx, xml, shape);
         }
         Graphic::Group(group) => {
-            xml.attr("uri", graphic_uri.unwrap_or(URI_GROUP));
+            xml.attr("uri", strict_graphic_uri(graphic_uri, URI_GROUP));
             group_element(ctx, xml, group);
         }
         // A chart or a SmartArt diagram is referenced by relationship ids into
