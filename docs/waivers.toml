@@ -302,3 +302,11 @@ drawing that references them. The model does not have to understand them — the
 writer only has to stop dropping them (`STAGE-8-TASK.md` §3, W7).
 """
 opened = "2026-09-30"
+closed = "2026-09-30"
+closed_by = """
+W7 landed in `strict-ooxml-write`: the parts a `c:chart` or `dgm:relIds`
+reference are copied with their `.rels` and content types, the reference is
+re-pointed, and the exit criterion holds — `strict-profile` is 2 pages before
+and after the write. The waiver stays in the file as a record of what it cost
+(`STAGE-8-TASK.md` §3, W7; ADR-0007; `strict-ooxml-write/tests/passthrough.rs`).
+"""

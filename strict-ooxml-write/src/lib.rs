@@ -63,6 +63,8 @@ pub mod parts;
 pub mod props;
 pub mod xml;
 
+mod passthrough;
+
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::normalize::report::NormalizationReport;
 use strict_ooxml_wml::model::Document;

@@ -33,7 +33,7 @@ pub(crate) fn layout_inline_image(
     };
     match inline.graphic.as_ref() {
         Graphic::Shape(_) | Graphic::Group(_) | Graphic::Other => return None,
-        Graphic::None | Graphic::Picture(_) | Graphic::Chart | Graphic::Diagram => {}
+        Graphic::None | Graphic::Picture(_) | Graphic::Chart(_) | Graphic::Diagram(_) => {}
     }
     let picture = inline.picture();
     let extent = inline.extent.or_else(|| picture.and_then(|p| p.extent));

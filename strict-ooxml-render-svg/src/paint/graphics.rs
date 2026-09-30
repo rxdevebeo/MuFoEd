@@ -42,8 +42,8 @@ pub(crate) fn inline_items(
     match inline.graphic.as_ref() {
         Graphic::Shape(_)
         | Graphic::Group(_)
-        | Graphic::Chart
-        | Graphic::Diagram
+        | Graphic::Chart(_)
+        | Graphic::Diagram(_)
         | Graphic::Other => {}
         Graphic::None | Graphic::Picture(_) => return None,
     }
@@ -67,7 +67,7 @@ pub(crate) fn graphic_items(
         Graphic::Picture(picture) => picture_items(ctx, picture, None, x, y, w, h),
         Graphic::Shape(shape) => shape_items(ctx, shape, x, y, w, h),
         Graphic::Group(group) => group_items(ctx, group, x, y, w, h),
-        Graphic::None | Graphic::Chart | Graphic::Diagram | Graphic::Other => {
+        Graphic::None | Graphic::Chart(_) | Graphic::Diagram(_) | Graphic::Other => {
             vec![placeholder(x, y, w, h)]
         }
     }

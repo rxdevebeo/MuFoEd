@@ -158,9 +158,9 @@ fn pattern_and_no_fill_and_custom_geometry() {
         parsed.fill.as_ref().unwrap(),
         ShapeFill::Pattern { .. }
     ));
-    assert!(
-        document.support.get("a:custGeom").unwrap().status
-            == strict_ooxml_wml::model::SupportStatus::Partial
+    assert_eq!(
+        document.support.get("a:custGeom").unwrap().status,
+        strict_ooxml_wml::model::SupportStatus::Partial
     );
 }
 
@@ -234,7 +234,67 @@ fn chart_and_diagram_graphic_are_classified() {
     let DrawingKind::Inline(inline) = &drawing.kind else {
         panic!()
     };
-    assert!(matches!(inline.graphic.as_ref(), Graphic::Chart));
+    let Graphic::Chart(refs) = inline.graphic.as_ref() else {
+        panic!("a chart is a chart")
+    };
+    // The reference is the whole point: without it a writer cannot re-point the
+    // object at the part it copied, and the only honest options are to drop the
+    // object or to write a reference that dangles.
+    assert_eq!(refs.ids(), vec!["rId1"]);
+}
+
+/// A `dgm:relIds` carries four ids, and the order is the schema's: data, layout,
+/// quick style, colours. XML attributes have no positional meaning, so the parser
+/// fixes the order and the writer reads it back in the same one.
+#[test]
+fn a_diagram_carries_its_four_ids_in_schema_order() {
+    let diagram = "<a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/diagram\"><dgm:relIds xmlns:dgm=\"http://purl.oclc.org/ooxml/drawingml/diagram\" r:cs=\"rId8\" r:qs=\"rId7\" r:lo=\"rId6\" r:dm=\"rId5\"/></a:graphicData>";
+    let body = format!(
+        "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"1\" cy=\"1\"/><wp:docPr id=\"1\" name=\"d\"/><a:graphic>{diagram}</a:graphic></wp:inline></w:drawing></w:r></w:p>"
+    );
+    let parts = document_parts(&body, &[]);
+    let document = parse_parts(&parts).expect("parse");
+    let Block::Paragraph(para) = &document.body.blocks[0] else {
+        panic!()
+    };
+    let Inline::Run(run) = &para.inlines[0] else {
+        panic!()
+    };
+    let RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!()
+    };
+    let DrawingKind::Inline(inline) = &drawing.kind else {
+        panic!()
+    };
+    let Graphic::Diagram(refs) = inline.graphic.as_ref() else {
+        panic!("a diagram is a diagram")
+    };
+    assert_eq!(refs.ids(), vec!["rId5", "rId6", "rId7", "rId8"]);
+}
+
+/// A chart recognised from its `graphicData/@uri` alone carries no ids, and a
+/// writer must treat that as unwritable rather than invent one.
+#[test]
+fn a_chart_without_an_element_carries_no_reference() {
+    let body = "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"1\" cy=\"1\"/><wp:docPr id=\"1\" name=\"c\"/><a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/chart\"/></a:graphic></wp:inline></w:drawing></w:r></w:p>";
+    let parts = document_parts(body, &[]);
+    let document = parse_parts(&parts).expect("parse");
+    let Block::Paragraph(para) = &document.body.blocks[0] else {
+        panic!()
+    };
+    let Inline::Run(run) = &para.inlines[0] else {
+        panic!()
+    };
+    let RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!()
+    };
+    let DrawingKind::Inline(inline) = &drawing.kind else {
+        panic!()
+    };
+    let Graphic::Chart(refs) = inline.graphic.as_ref() else {
+        panic!("the uri says chart")
+    };
+    assert!(refs.is_empty(), "{:?}", refs.ids());
 }
 
 #[test]

@@ -24,6 +24,7 @@ use crate::body::blocks;
 use crate::ctx::Ctx;
 use crate::drawing::namespaces as drawing_namespaces;
 use crate::parts;
+use crate::passthrough;
 use crate::props::section_properties;
 use crate::xml::{XmlWriter, NS_A, NS_M, NS_MC, NS_PIC, NS_R, NS_W, NS_W14, NS_W15, NS_WP};
 
@@ -69,6 +70,8 @@ const CONTENT_TYPE_XML: &str = "application/xml";
 /// A relationship target the source package knows and the model does not.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelationshipInfo {
+    /// The relationship id, as the source's `.rels` part spells it.
+    pub id: String,
     /// Raw target as written in the `.rels` part.
     pub target: String,
     /// Normalized relationship type.
@@ -77,27 +80,74 @@ pub struct RelationshipInfo {
     pub external: bool,
 }
 
+impl RelationshipInfo {
+    /// Reads a relationship of a source package.
+    #[must_use]
+    fn from_relationship(relationship: &Relationship) -> Self {
+        Self {
+            id: relationship.id.clone(),
+            target: relationship.target.clone(),
+            rel_type: relationship.rel_type.clone(),
+            external: relationship.target_mode == TargetMode::External,
+        }
+    }
+}
+
 /// Where a write gets the bytes and the relationships the model does not carry.
 ///
 /// A [`Document`] is self-contained for structure but not for payload: image
-/// bytes live in the package, and a hyperlink's target is only in the `.rels`
-/// part. A caller that built a document from scratch passes [`NoSource`] and
-/// gets a report entry for every reference that cannot be resolved.
+/// bytes live in the package, a hyperlink's target is only in the `.rels` part,
+/// and everything behind a `c:chart` or a `dgm:relIds` reference is a producer's
+/// own XML that the model deliberately does not carry. A caller that built a
+/// document from scratch passes [`NoSource`] and gets a report entry for every
+/// reference that cannot be resolved.
 pub trait Source {
-    /// Reads a media part fully.
+    /// Reads a part fully.
+    ///
+    /// Named for the part, not for its role: the same call serves an image, a
+    /// chart part and an embedded workbook.
     ///
     /// # Errors
     ///
     /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when the
     /// part cannot be read.
-    fn read_media(&self, part: &PartId) -> Result<Vec<u8>>;
+    fn read_part(&self, part: &PartId) -> Result<Vec<u8>>;
 
     /// Looks up a relationship declared by `from`.
     fn relationship(&self, from: &PartId, rel_id: &str) -> Option<RelationshipInfo>;
+
+    /// Every relationship `from` declares, in the order the `.rels` part lists
+    /// them.
+    ///
+    /// This is what lets a write notice a part the source had and the model has
+    /// no reference to — the pass-through audit (W7) is exactly that question.
+    fn relationships(&self, from: &PartId) -> Vec<RelationshipInfo> {
+        let _ = from;
+        Vec::new()
+    }
+
+    /// The content type the source declares for a part, if any.
+    fn content_type(&self, part: &PartId) -> Option<String> {
+        let _ = part;
+        None
+    }
+
+    /// The relationship ids `from` declares, in order.
+    ///
+    /// # Errors
+    ///
+    /// Never; the method is total.
+    #[must_use]
+    fn relationship_ids(&self, from: &PartId) -> Vec<String> {
+        self.relationships(from)
+            .into_iter()
+            .map(|info| info.id)
+            .collect()
+    }
 }
 
 impl Source for strict_ooxml_core::opc::Package {
-    fn read_media(&self, part: &PartId) -> Result<Vec<u8>> {
+    fn read_part(&self, part: &PartId) -> Result<Vec<u8>> {
         self.read_part(part)
     }
 
@@ -106,11 +156,18 @@ impl Source for strict_ooxml_core::opc::Package {
             .relationships(from)
             .iter()
             .find(|rel| rel.id == rel_id)?;
-        Some(RelationshipInfo {
-            target: relationship.target.clone(),
-            rel_type: relationship.rel_type.clone(),
-            external: relationship.target_mode == TargetMode::External,
-        })
+        Some(RelationshipInfo::from_relationship(relationship))
+    }
+
+    fn relationships(&self, from: &PartId) -> Vec<RelationshipInfo> {
+        self.relationships(from)
+            .iter()
+            .map(RelationshipInfo::from_relationship)
+            .collect()
+    }
+
+    fn content_type(&self, part: &PartId) -> Option<String> {
+        self.content_type(part).map(ToOwned::to_owned)
     }
 }
 
@@ -150,7 +207,7 @@ impl MediaBag {
 }
 
 impl Source for MediaBag {
-    fn read_media(&self, part: &PartId) -> Result<Vec<u8>> {
+    fn read_part(&self, part: &PartId) -> Result<Vec<u8>> {
         self.bytes
             .get(part)
             .cloned()
@@ -167,7 +224,7 @@ impl Source for MediaBag {
 pub struct NoSource;
 
 impl Source for NoSource {
-    fn read_media(&self, part: &PartId) -> Result<Vec<u8>> {
+    fn read_part(&self, part: &PartId) -> Result<Vec<u8>> {
         Err(strict_ooxml_core::error::StrictError::MissingPart(
             part.clone(),
         ))
@@ -217,13 +274,14 @@ pub struct WriteOutput {
 
 /// Hands out relationship ids in a fixed order.
 #[derive(Debug, Default)]
-struct RelBuilder {
+pub(crate) struct RelBuilder {
     next: u32,
     relationships: Vec<Relationship>,
 }
 
 impl RelBuilder {
-    fn new() -> Self {
+    /// A builder that starts at `rId1`.
+    pub(crate) fn new() -> Self {
         Self {
             next: 1,
             relationships: Vec::new(),
@@ -231,7 +289,7 @@ impl RelBuilder {
     }
 
     /// Adds a relationship and returns its id.
-    fn add(&mut self, rel_type: &RelType, target: String, external: bool) -> String {
+    pub(crate) fn add(&mut self, rel_type: &RelType, target: String, external: bool) -> String {
         let id = format!("rId{}", self.next);
         self.next += 1;
         self.relationships.push(Relationship {
@@ -247,6 +305,11 @@ impl RelBuilder {
             resolved: None,
         });
         id
+    }
+
+    /// The relationships collected, in the order they were added.
+    pub(crate) fn relationships(&self) -> &[Relationship] {
+        &self.relationships
     }
 }
 
@@ -372,7 +435,26 @@ pub fn write_package(
         }
     }
 
-    ctx = ctx.with_relationships(hyperlink_map, media_map, header_footer_map);
+    // W7: the parts this project does not model - a chart, a SmartArt diagram, a
+    // workbook behind either, custom XML - are copied from the source and the
+    // body's references are re-pointed at them. Without a source package the
+    // references cannot be written at all, and `drawing.rs` says so per object.
+    let pass = passthrough::plan(
+        &mut ctx,
+        source,
+        &mut rels,
+        &main,
+        &passthrough::referenced_ids(&document.body.blocks),
+    );
+    for part in pass.parts() {
+        if let Some(content_type) = &part.content_type {
+            content_types.insert_override(PartId::new(part.name.as_str()), content_type);
+        }
+    }
+
+    ctx = ctx
+        .with_relationships(hyperlink_map, media_map, header_footer_map)
+        .with_passthrough(&pass);
 
     // The parts themselves. Each is written only when the model carries the
     // content for it, so a document does not acquire parts it did not have.
@@ -439,13 +521,17 @@ pub fn write_package(
         }
     }
     for (part, source_part) in &media_parts {
-        add_part(&mut zip, part, source.read_media(source_part)?)?;
+        add_part(&mut zip, part, source.read_part(source_part)?)?;
+    }
+    // W7: the copied parts, each next to its own `.rels`, in name order.
+    for part in pass.parts() {
+        add_part(&mut zip, part.name.as_str(), part.bytes.clone())?;
     }
 
     add_part(
         &mut zip,
         "/word/_rels/document.xml.rels",
-        write_relationships(&rels.relationships).into_bytes(),
+        write_relationships(rels.relationships()).into_bytes(),
     )?;
     add_part(
         &mut zip,

@@ -7,6 +7,8 @@ use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::normalize::report::{LossRecord, NormalizationReport, Severity};
 use strict_ooxml_core::part::PartId;
 
+use crate::passthrough::PassThrough;
+
 /// Stable id of the writer's own loss class.
 ///
 /// It is namespaced with `W` so it can never collide with a normalization
@@ -53,6 +55,8 @@ pub struct Ctx<'a> {
     media: BTreeMap<String, String>,
     /// Header/footer part id → the relationship id this write emits.
     header_footers: BTreeMap<String, String>,
+    /// The pass-through of unmodelled parts, when the package has one.
+    passthrough: Option<PassThrough>,
     /// Which notes part is being written, when writing one.
     note_role: Option<NoteRole>,
 }
@@ -69,6 +73,7 @@ impl<'a> Ctx<'a> {
             hyperlinks: BTreeMap::new(),
             media: BTreeMap::new(),
             header_footers: BTreeMap::new(),
+            passthrough: None,
             note_role: None,
         }
     }
@@ -101,6 +106,24 @@ impl<'a> Ctx<'a> {
         self.media = media;
         self.header_footers = header_footers;
         self
+    }
+
+    /// Attaches the pass-through of unmodelled parts (W7).
+    pub(crate) fn with_passthrough(mut self, passthrough: &PassThrough) -> Self {
+        self.passthrough = Some(passthrough.clone());
+        self
+    }
+
+    /// Returns the relationship id to write for a reference into an unmodelled
+    /// part, when the pass-through resolved it.
+    ///
+    /// `None` is the answer that matters: the part is not in the written package,
+    /// so the reference cannot be written and the caller records the loss.
+    #[must_use]
+    pub fn foreign_rel(&self, old_id: &str) -> Option<&str> {
+        self.passthrough
+            .as_ref()
+            .and_then(|pass| pass.document_rel(old_id))
     }
 
     /// Returns the relationship id to write for a hyperlink that referenced

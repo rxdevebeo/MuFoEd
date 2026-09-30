@@ -4,15 +4,19 @@
 //! The payload of `a:graphicData` is carried by the model, and so is the
 //! namespace URI it was parsed from. The writer re-emits the payload inside a
 //! single `a:graphic/a:graphicData` pair, taking the URI from the model when it
-//! has one and deriving it from the payload otherwise — a chart or a SmartArt
-//! reference is written as the reference alone, because the model does not carry
-//! the chart part itself and inventing one would produce a package that no
-//! reader can open.
+//! has one and deriving it from the payload otherwise.
+//!
+//! A chart (`c:chart`) and a SmartArt diagram (`dgm:relIds`) are *references*
+//! into parts the model does not carry. The reference is written when the
+//! pass-through resolved it (W7: the parts came from the source package and are
+//! in this package too), and dropped with a record when it did not — a
+//! `c:chart` whose `r:id` points at nothing is unreadable content, which is worse
+//! than an absent picture.
 
 use strict_ooxml_wml::model::drawing::{
-    AnchorDrawing, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent, Graphic,
-    GroupShape, GroupTransform, InlineDrawing, PathCommand, Picture, Position, Shape, ShapeColor,
-    ShapeFill, ShapeGeometry, ShapeStroke, SrcRect, TextBox, TextBoxBody, Xfrm,
+    AnchorDrawing, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent, ForeignRefs,
+    Graphic, GroupShape, GroupTransform, InlineDrawing, PathCommand, Picture, Position, Shape,
+    ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, SrcRect, TextBox, TextBoxBody, Xfrm,
 };
 use strict_ooxml_wml::model::values::Emu;
 
@@ -31,13 +35,18 @@ pub const URI_CHART: &str = "http://purl.oclc.org/ooxml/drawingml/chart";
 /// The `graphicData` URI of a SmartArt diagram.
 pub const URI_DIAGRAM: &str = "http://purl.oclc.org/ooxml/drawingml/diagram";
 
+/// The relationship attributes of `dgm:relIds`, in the order the element carries
+/// them: data, layout, quick style, colours. The order is the schema's, and it is
+/// also the order the parser captured them in, so the two halves cannot drift.
+const DIAGRAM_RELS: [&str; 4] = ["dm", "lo", "qs", "cs"];
+
 /// Returns `true` when the payload can be written at all, recording a loss
 /// otherwise.
 ///
-/// A chart (`c:chart`) and a SmartArt diagram (`dgm:relIds`) are *references*
-/// into parts the model does not carry: writing the element without its
-/// `r:id` targets would leave a dangling relationship, which Word reports as
-/// unreadable content. Dropping the object and saying so is the honest option.
+/// A chart and a SmartArt diagram are writable only when every id they carry
+/// resolved to a relationship this write declared. A partial set is refused: a
+/// `dgm:relIds` with three of its four attributes is a diagram Word cannot lay
+/// out, and a missing one is a reference that dangles.
 fn writable(
     ctx: &mut Ctx<'_>,
     graphic: &Graphic,
@@ -45,18 +54,33 @@ fn writable(
 ) -> bool {
     let (feature_id, reason) = match graphic {
         Graphic::Picture(_) | Graphic::Shape(_) | Graphic::Group(_) => return true,
-        Graphic::Chart => (
-            "c:chart",
-            "chart data is not part of the model, so the reference would dangle",
-        ),
-        Graphic::Diagram => (
-            "dgm:relIds",
-            "SmartArt data is not part of the model, so the reference would dangle",
-        ),
+        Graphic::Chart(refs) => match foreign(ctx, refs) {
+            Ok(()) => return true,
+            Err(reason) => ("c:chart", reason),
+        },
+        Graphic::Diagram(refs) => match foreign(ctx, refs) {
+            Ok(()) => return true,
+            Err(reason) => ("dgm:relIds", reason),
+        },
         Graphic::None | Graphic::Other => ("a:graphicData", "unrecognised graphic payload"),
     };
     ctx.report_unsupported(feature_id, reason, location);
     false
+}
+
+/// Whether a foreign reference can be written, and why not when it cannot.
+fn foreign(ctx: &Ctx<'_>, refs: &ForeignRefs) -> Result<(), &'static str> {
+    if refs.is_empty() {
+        // Recognised from `graphicData/@uri` alone: the element that would carry
+        // the id was not in the document, so there is nothing to re-point.
+        return Err("the source document carried no relationship id for it");
+    }
+    for id in refs.ids() {
+        if ctx.foreign_rel(id).is_none() {
+            return Err("the part behind it is not in this package, so the reference would dangle");
+        }
+    }
+    Ok(())
 }
 
 /// Writes `w:drawing`.
@@ -276,12 +300,29 @@ fn graphic(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, graphic_uri: Option<&str>, pa
             xml.attr("uri", strict_graphic_uri(graphic_uri, URI_GROUP));
             group_element(ctx, xml, group);
         }
-        // A chart or a SmartArt diagram is referenced by relationship ids into
-        // parts the model does not carry. Writing the reference alone would
-        // produce a dangling :id, which Word reports as unreadable content —
-        // worse than not drawing the object at all — so these are dropped by
-        // writable before any element is emitted.
-        Graphic::Chart | Graphic::Diagram | Graphic::None | Graphic::Other => {
+        // A chart and a SmartArt diagram are references into parts the model does
+        // not carry. `writable` has already refused the ones whose parts are not
+        // in this package, so by the time we get here every id below resolves to a
+        // relationship the written `.rels` declares.
+        Graphic::Chart(refs) => {
+            xml.attr("uri", strict_graphic_uri(graphic_uri, URI_CHART));
+            xml.start("c:chart");
+            if let Some(id) = refs.ids().first().and_then(|id| ctx.foreign_rel(id)) {
+                xml.attr("r:id", id);
+            }
+            xml.end();
+        }
+        Graphic::Diagram(refs) => {
+            xml.attr("uri", strict_graphic_uri(graphic_uri, URI_DIAGRAM));
+            xml.start("dgm:relIds");
+            for (name, id) in DIAGRAM_RELS.iter().zip(refs.ids()) {
+                if let Some(id) = ctx.foreign_rel(id) {
+                    xml.attr(&format!("r:{name}"), id);
+                }
+            }
+            xml.end();
+        }
+        Graphic::None | Graphic::Other => {
             let _ = graphic_uri;
             xml.end();
             xml.end();

@@ -335,6 +335,45 @@ pub struct GroupShape {
     pub location: SourceLocation,
 }
 
+/// Relationship ids a `c:chart` or a `dgm:relIds` element carries, in document
+/// order.
+///
+/// The parts behind those ids — the chart, the four SmartArt parts, whatever an
+/// embedded workbook hangs off — are **not** in the model: they are a producer's
+/// own XML, and modelling them would be modelling DrawingML charts. What the
+/// model owes a consumer is the reference itself, because a `c:chart` element
+/// whose `r:id` points at nothing is unreadable content, and one that was
+/// silently rewritten into a picture is a lie.
+///
+/// A writer holding the source package copies the parts and re-points the
+/// reference (ADR-0007, W7). A writer without one records the loss, which is
+/// what happened before this type existed.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ForeignRefs {
+    /// The ids, in the order the element carries them: one for `c:chart`
+    /// (`r:id`), four for `dgm:relIds` (`r:dm`, `r:lo`, `r:qs`, `r:cs`).
+    pub rels: Vec<Arc<str>>,
+    /// Source location of the element that carried them.
+    pub location: SourceLocation,
+}
+
+impl ForeignRefs {
+    /// The ids as strings, which is what a writer looks up.
+    #[must_use]
+    pub fn ids(&self) -> Vec<&str> {
+        self.rels.iter().map(std::convert::AsRef::as_ref).collect()
+    }
+
+    /// Whether anything was captured at all.
+    ///
+    /// A chart recognised only from its `graphicData/@uri` has no ids, and a
+    /// writer must treat it as unwritable rather than invent one.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rels.is_empty()
+    }
+}
+
 /// The graphic payload of a drawing (`a:graphicData` content).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Graphic {
@@ -346,10 +385,10 @@ pub enum Graphic {
     Shape(Shape),
     /// A group (`wpg:wgp`).
     Group(GroupShape),
-    /// A chart reference (`c:chart`).
-    Chart,
-    /// A SmartArt diagram reference (`dgm:relIds`).
-    Diagram,
+    /// A chart reference (`c:chart`) and the part ids it points at.
+    Chart(ForeignRefs),
+    /// A SmartArt diagram reference (`dgm:relIds`) and the part ids it points at.
+    Diagram(ForeignRefs),
     /// Another unrecognised graphic.
     Other,
 }

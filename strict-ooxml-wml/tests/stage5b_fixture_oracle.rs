@@ -52,7 +52,11 @@ fn independent_oracle_sees_stage5b_markup() {
     assert!(count("wsp") >= 3, "shapes: {}", count("wsp"));
     assert_eq!(count("txbxContent"), 1);
     assert_eq!(count("pgBorders"), 1);
-    assert!(count("custGeom") == 0);
+    assert_eq!(
+        count("custGeom"),
+        0,
+        "a:custGeom is reported as unsupported, not kept"
+    );
 
     // The fixture uses the *real* Microsoft extension namespaces for shapes and
     // groups (STAGE-5B-REWORK-1 5B-1), keeping ISO namespaces for the core.

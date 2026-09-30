@@ -8,9 +8,9 @@ use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::drawing::{
     AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
-    GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing, MediaItem, MediaKind,
-    PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke,
-    ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap, WrapKind, Xfrm,
+    ForeignRefs, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing, MediaItem,
+    MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry,
+    ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap, WrapKind, Xfrm,
 };
 use crate::model::support::SupportStatus;
 use crate::model::values::{Color, Emu, ThemeColor, ThemeColorRef};
@@ -22,6 +22,17 @@ use crate::{
 };
 
 use super::{attr_in_ns, plain_attr, PartParser};
+
+/// `r:id` on a `c:chart`.
+const R_ID: &str = "id";
+/// `r:dm` on a `dgm:relIds` - the diagram data part.
+const REL_DM: &str = "dm";
+/// `r:lo` on a `dgm:relIds` - the diagram layout part.
+const REL_LO: &str = "lo";
+/// `r:qs` on a `dgm:relIds` - the diagram quick-style part.
+const REL_QS: &str = "qs";
+/// `r:cs` on a `dgm:relIds` - the diagram colour part.
+const REL_CS: &str = "cs";
 
 impl PartParser<'_> {
     /// Parses a `w:drawing` element; its start element has been consumed.
@@ -278,7 +289,10 @@ impl PartParser<'_> {
         let mut graphic = Graphic::None;
         loop {
             match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
+                XmlEvent::StartElement {
+                    name,
+                    attrs: element,
+                } => {
                     if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
                         graphic = Graphic::Picture(self.parse_picture()?);
                     } else if name.local() == "wsp" && is_shape_ns(&name) {
@@ -302,10 +316,20 @@ impl PartParser<'_> {
                         }
                         graphic = Graphic::Group(self.parse_group()?);
                     } else if name.local() == "chart" {
-                        graphic = Graphic::Chart;
+                        // The attributes of *this* element, not of the
+                        // `a:graphicData` that carries it: `r:id` is where the
+                        // chart part is named, and reading the wrong element's
+                        // attributes looks exactly like a document with no
+                        // reference at all.
+                        graphic = Graphic::Chart(self.foreign_refs(&element, &[R_ID]));
                         self.skip_element()?;
                     } else if name.local() == "relIds" {
-                        graphic = Graphic::Diagram;
+                        // `dgm:relIds` carries four ids in a fixed order, and the
+                        // order is the only thing that says which is which: the
+                        // attributes have no positional meaning in XML.
+                        graphic = Graphic::Diagram(
+                            self.foreign_refs(&element, &[REL_DM, REL_LO, REL_QS, REL_CS]),
+                        );
                         self.skip_element()?;
                     } else if is_ns(&name, CHART_STRICT_NS) || is_ns(&name, DIAGRAM_STRICT_NS) {
                         graphic = Graphic::Other;
@@ -323,13 +347,36 @@ impl PartParser<'_> {
         if matches!(graphic, Graphic::None) {
             if let Some(uri) = uri.as_deref() {
                 if uri.contains("/chart") {
-                    graphic = Graphic::Chart;
+                    graphic = Graphic::Chart(ForeignRefs::default());
                 } else if uri.contains("/diagram") {
-                    graphic = Graphic::Diagram;
+                    graphic = Graphic::Diagram(ForeignRefs::default());
                 }
             }
         }
         Ok((uri, graphic))
+    }
+
+    /// Captures the relationship ids a foreign graphic element carries.
+    ///
+    /// `names` is the fixed attribute order the element uses, so the ids come
+    /// out in the order a writer has to write them back in. Only the Strict
+    /// relationships namespace is read, exactly as `a:blip/@r:embed` is read: the
+    /// normalizer has already rewritten a Transitional `r:` by the time a part is
+    /// parsed. A missing attribute is skipped rather than defaulted — `dgm:relIds`
+    /// without `r:lo` is a producer's bug, and a writer that invented an id
+    /// would point at nothing.
+    fn foreign_refs(&mut self, attrs: &[Attr], names: &[&str]) -> ForeignRefs {
+        let mut rels = Vec::new();
+        for name in names {
+            if let Some(value) = attr_in_ns(attrs, RELS_STRICT_NS, name) {
+                let value = value.to_owned();
+                rels.push(self.intern(&value));
+            }
+        }
+        ForeignRefs {
+            rels,
+            location: self.location(),
+        }
     }
 
     /// Parses `pic:pic`.

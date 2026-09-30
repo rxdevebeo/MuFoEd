@@ -525,7 +525,7 @@ fn document_accessors_and_tables() {
     let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"100\"/></w:tblGrid>\
 <w:tr><w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
     let document = parse_parts(&document_parts(body, &[])).expect("parse");
-    assert!(document.support().len() == document.support.len());
+    assert_eq!(document.support().len(), document.support.len());
     assert_eq!(document.media().len(), 0);
     assert!(document.support_debug().contains("support:"));
     assert!(document.body.blocks[0].as_table().is_some());
