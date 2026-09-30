@@ -299,21 +299,118 @@ fn without_the_source_the_reference_is_refused_not_dangling() {
     );
 }
 
-/// A part the source declares and the writer does not produce is named, not
-/// dropped in silence. `docProps` is the case: it is metadata about the document
-/// rather than part of it, and copying a stale `dcterms:modified` would be a
-/// claim this writer cannot support — but silence is not an option (SC-10).
+/// `docProps/core.xml` is a set of statements **about the document** — title,
+/// subject, creator, keywords, description, language, revision, and the dates the
+/// producer recorded — and all of them stay true of the content this write copies.
+/// So it is carried, with the relationship that reaches it, and it is not reported
+/// as a loss (`O-1a`).
+///
+/// The handoff's worry was `dcterms:modified`: a stale date "passed off as a new
+/// one". It is not, for two reasons that are worth stating rather than asserting.
+/// A modification date describes the **content's** history, not this container's,
+/// and the content is what was copied; and a fresh date cannot be written at all,
+/// because SC-1 makes the output reproducible and a clock cannot be part of that.
+/// What *would* be a lie is inventing one.
 #[test]
-fn a_package_property_is_named_rather_than_dropped() {
+fn the_document_properties_survive_a_write() {
+    let (document, package) = fixture();
+    let written = write(&document, Some(&package));
+    let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default())
+        .unwrap_or_else(|error| panic!("reopen: {error}\n{}", written.report));
+
+    let id = PartId::new("/docProps/core.xml");
+    let core = String::from_utf8(reopened.read_part(&id).expect("core.xml")).expect("utf-8");
+    let source_core =
+        String::from_utf8(package.read_part(&id).expect("source core.xml")).expect("utf-8");
+
+    // The values are the producer's, byte for byte.
+    for element in [
+        "dc:title",
+        "dc:creator",
+        "dcterms:created",
+        "dcterms:modified",
+    ] {
+        let value = |text: &str| {
+            let at = text
+                .find(element)
+                .unwrap_or_else(|| panic!("{element} in {text}"));
+            text[at..]
+                .split_once('>')
+                .map(|(_, rest)| rest.split_once('<').map_or("", |(value, _)| value))
+                .unwrap_or_default()
+                .to_owned()
+        };
+        assert_eq!(
+            value(&core),
+            value(&source_core),
+            "{element} is a statement about the document, and it is the producer's"
+        );
+    }
+
+    // The namespace is ours: Strict renamed it, and a package carrying the
+    // Transitional spelling is one every reader has to normalize first. This is the
+    // same exception as the `.rels` namespace, for the same reason — a
+    // declaration is not content.
+    assert!(
+        !core.contains("schemas.openxmlformats.org/package/2006/metadata/core-properties"),
+        "the copied part must carry the Strict core-properties namespace:\n{core}"
+    );
+    assert!(
+        core.contains("purl.oclc.org/ooxml/package/metadata/coreProperties"),
+        "and it must be the Strict one"
+    );
+
+    // The relationship that reaches it, with the Strict type, from the root.
+    let root = reopened.relationships(&PartId::new("/"));
+    let core_rel = root
+        .iter()
+        .find(|rel| rel.target.contains("docProps/core.xml"))
+        .unwrap_or_else(|| panic!("no relationship to core.xml in {root:?}"));
+    assert_eq!(
+        core_rel.raw_type,
+        "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties",
+        "and it is declared with the Strict type"
+    );
+    assert_eq!(
+        reopened.content_type(&id),
+        Some("application/vnd.openxmlformats-package.core-properties+xml"),
+        "with the content type the source declared"
+    );
+    let report = written.report.to_string();
+    assert!(
+        !report.contains("docProps/core.xml"),
+        "a part that survives is not a loss, and it is not named as one:\n{report}"
+    );
+}
+
+/// `docProps/app.xml` is a set of statements about a **rendering**: pages, words,
+/// characters, lines, paragraphs, editing minutes, the template it was built from.
+/// This writer lays nothing out, so it cannot produce those numbers and copying the
+/// producer's would assert a page count for a document nobody re-paginated — so it
+/// is named, and the name says which kind of claim was dropped (SC-10).
+#[test]
+fn the_page_statistics_are_named_rather_than_invented() {
     let (document, package) = fixture();
     let written = write(&document, Some(&package));
     let text = written.report.to_string();
     assert!(
         text.contains("W7.package-properties"),
-        "docProps must be reported:\n{text}"
+        "app.xml must be reported:\n{text}"
     );
-    assert!(text.contains("docProps/core.xml"), "{text}");
     assert!(text.contains("docProps/app.xml"), "{text}");
+    assert!(
+        text.contains("statistics about a rendering this writer does not perform"),
+        "and the reason must say what kind of claim it was:\n{text}"
+    );
+
+    let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default())
+        .unwrap_or_else(|error| panic!("reopen: {error}\n{}", written.report));
+    assert!(
+        reopened
+            .parts()
+            .all(|part| !part.id.as_str().contains("docProps/app.xml")),
+        "a part that is only statistics is better absent than wrong"
+    );
 }
 
 /// A part the source declares but cannot supply is a record, and the rest of the

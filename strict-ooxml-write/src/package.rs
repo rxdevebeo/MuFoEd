@@ -536,14 +536,25 @@ pub fn write_package(
     add_part(
         &mut zip,
         "/_rels/.rels",
-        write_relationships(&[Relationship {
-            id: "rId1".to_owned(),
-            rel_type: RelType::OfficeDocument,
-            raw_type: strict_type_uri(&RelType::OfficeDocument),
-            target: "word/document.xml".to_owned(),
-            target_mode: TargetMode::Internal,
-            resolved: None,
-        }])
+        write_relationships(
+            &std::iter::once(Relationship {
+                id: "rId1".to_owned(),
+                rel_type: RelType::OfficeDocument,
+                raw_type: strict_type_uri(&RelType::OfficeDocument),
+                target: "word/document.xml".to_owned(),
+                target_mode: TargetMode::Internal,
+                resolved: None,
+            })
+            .chain(pass.root_relationships().iter().map(|rel| Relationship {
+                id: rel.id.clone(),
+                rel_type: RelType::Other(rel.raw_type.clone()),
+                raw_type: rel.raw_type.clone(),
+                target: rel.target.clone(),
+                target_mode: TargetMode::Internal,
+                resolved: None,
+            }))
+            .collect::<Vec<_>>(),
+        )
         .into_bytes(),
     )?;
     add_part(

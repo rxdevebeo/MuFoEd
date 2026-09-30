@@ -91,6 +91,24 @@ pub(crate) struct PassThrough {
     document: BTreeMap<String, String>,
     /// The parts to copy, ordered by name.
     parts: Vec<CopiedPart>,
+    /// The package root's own relationships this write emits besides the office
+    /// document, which the writer always writes (`O-1a`).
+    root: Vec<RootRelationship>,
+}
+
+/// One relationship of the package root, to write into `_rels/.rels`.
+///
+/// The id is the one this write hands out, not the source's: nothing in the body
+/// refers to a root relationship, so the source's numbering is not a reference
+/// that has to keep working — and a stable `rId2` is what SC-1 needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RootRelationship {
+    /// The relationship id to write.
+    pub id: String,
+    /// The raw type URI, Strict.
+    pub raw_type: String,
+    /// The target, relative to the package root.
+    pub target: String,
 }
 
 impl PassThrough {
@@ -102,6 +120,11 @@ impl PassThrough {
     /// The parts to copy, ordered by name.
     pub(crate) fn parts(&self) -> &[CopiedPart] {
         &self.parts
+    }
+
+    /// The root relationships to write after the office document.
+    pub(crate) fn root_relationships(&self) -> &[RootRelationship] {
+        &self.root
     }
 }
 
@@ -220,25 +243,78 @@ pub(crate) fn plan(
     out.parts.sort_by(|left, right| left.name.cmp(&right.name));
 
     // Third pass: the package root's own relationships. `_rels/.rels` is written
-    // from scratch with the office-document relationship and nothing else, so
-    // `docProps/core.xml` and `docProps/app.xml` are not in the output. They are
-    // metadata *about* the document rather than part of it, and copying a stale
-    // `dcterms:modified` would be a claim this writer cannot support - but
-    // dropping them in silence is not an option either, so each is named.
+    // from scratch, so everything the source declared there has to be either
+    // carried or named.
+    //
+    // **`docProps/core.xml` is carried** (`O-1a`). It is a set of statements
+    // *about the document*: title, subject, creator, keywords, description,
+    // language, revision, and the dates the producer recorded. All of them stay
+    // true of the content this write copies, so copying them is not a claim — and
+    // `dcterms:modified` in particular is the *content's* history, not this
+    // container's: a fresh date cannot be written anyway, because SC-1 makes the
+    // output reproducible and a clock cannot be part of that.
+    //
+    // **`docProps/app.xml` is not**, and the reason is the difference between the
+    // two parts: `app.xml` is a set of statements about a *rendering* — pages,
+    // words, characters, lines, paragraphs, editing minutes, the template it was
+    // built from. This writer lays nothing out, so it cannot produce those
+    // numbers, and copying the producer's would assert a page count for a document
+    // nobody re-paginated. So it is named instead, and the name says which kind of
+    // claim was dropped.
     for info in source.relationships(&PartId::new("/")) {
         if matches!(info.rel_type, RelType::OfficeDocument) {
             continue;
         }
-        ctx.report_unsupported(
-            "W7.package-properties",
-            &format!(
-                "the package declares {} ({:?}), which this writer does not produce",
-                info.target, info.rel_type
+        let carried = resolve(&PartId::new("/"), &info.target)
+            .filter(|target| target.as_str() == CORE_PROPERTIES_PART);
+        let Some(target) = carried else {
+            ctx.report_unsupported(
+                "W7.package-properties",
+                &format!(
+                    "{} is statistics about a rendering this writer does not perform \
+                     (pages, words, characters, editing time), so its numbers cannot be \
+                     carried and are not invented; the relationship type is {:?}",
+                    info.target, info.rel_type
+                ),
+                &SourceLocation::unknown(),
+            );
+            continue;
+        };
+        match source.read_part(&target) {
+            Ok(bytes) => out.parts.push(CopiedPart {
+                name: target.as_str().to_owned(),
+                bytes: strict_core_properties_namespace(&bytes),
+                content_type: source.content_type(&target),
+            }),
+            Err(error) => ctx.report_unsupported(
+                "W7.package-properties",
+                &format!(
+                    "{} is a statement about the document, but its bytes could not be \
+                     read ({error}), so it is lost rather than half-copied",
+                    info.target
+                ),
+                &SourceLocation::unknown(),
             ),
-            &SourceLocation::unknown(),
-        );
+        }
+        out.root.push(RootRelationship {
+            id: format!("rId{}", out.root.len() + 2),
+            raw_type: core_properties_type_uri().to_owned(),
+            target: target.as_str().trim_start_matches('/').to_owned(),
+        });
     }
     out
+}
+
+/// The one part of `docProps` a write carries (`O-1a`).
+const CORE_PROPERTIES_PART: &str = "/docProps/core.xml";
+
+/// The Strict relationship type of [`CORE_PROPERTIES_PART`].
+///
+/// Written out rather than taken from `RelType::from_uri`, because this type has
+/// no normalized variant: nothing in the body refers to it, so normalizing it
+/// would be a variant only this one use site needs.
+fn core_properties_type_uri() -> &'static str {
+    "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties"
 }
 
 /// The extension every relationship part carries, lowercased for the comparison.
@@ -250,6 +326,50 @@ const TRANSITIONAL_RELS_NS: &[u8] =
 
 /// The Strict one this project writes everywhere else.
 const STRICT_RELS_NS: &[u8] = b"xmlns=\"http://purl.oclc.org/ooxml/package/relationships\"";
+
+/// The core-properties namespace a Transitional producer writes.
+const TRANSITIONAL_CORE_PROPERTIES_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
+
+/// The Strict name ISO/IEC 29500 gives the same part.
+const STRICT_CORE_PROPERTIES_NS: &[u8] =
+    b"http://purl.oclc.org/ooxml/package/metadata/coreProperties";
+
+/// Rewrites the core-properties namespace of a copied `docProps/core.xml`.
+///
+/// **The second and last byte a pass-through changes, and for the same reason as
+/// the first** ([`strict_rels_namespace`]): a namespace *declaration* is not
+/// content. Unlike a chart's internals, this part is one OPC itself defines and
+/// Strict renamed, so a package carrying the Transitional spelling of it is a
+/// package a conformance detector reports as `unknown` — and the writer's promise
+/// is that its output is Strict on the first open
+/// (`normalize_roundtrip.rs::a_written_package_needs_no_second_normalization_pass`,
+/// which is what caught this).
+///
+/// Everything that is *in* the part — `dc:title`, `dc:creator`, `dcterms:created`,
+/// `dcterms:modified`, the revision — is the producer's and stays byte for byte.
+/// Those are the statements the part exists to make, and they are still true of the
+/// document this write copies.
+fn strict_core_properties_namespace(bytes: &[u8]) -> Vec<u8> {
+    replace_all(
+        bytes,
+        TRANSITIONAL_CORE_PROPERTIES_NS,
+        STRICT_CORE_PROPERTIES_NS,
+    )
+}
+
+/// Replaces every occurrence of `from` with `to`.
+fn replace_all(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut rest = bytes;
+    while let Some(at) = find(rest, from) {
+        out.extend_from_slice(&rest[..at]);
+        out.extend_from_slice(to);
+        rest = &rest[at + from.len()..];
+    }
+    out.extend_from_slice(rest);
+    out
+}
 
 /// Rewrites the relationship namespace of a copied `.rels` part.
 ///
@@ -266,15 +386,7 @@ const STRICT_RELS_NS: &[u8] = b"xmlns=\"http://purl.oclc.org/ooxml/package/relat
 /// value is a semantic edit this writer does not make. That part stays the
 /// producer's own bytes, and the trade-off is recorded in ADR-0007.
 fn strict_rels_namespace(bytes: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut rest = bytes;
-    while let Some(at) = find(rest, TRANSITIONAL_RELS_NS) {
-        out.extend_from_slice(&rest[..at]);
-        out.extend_from_slice(STRICT_RELS_NS);
-        rest = &rest[at + TRANSITIONAL_RELS_NS.len()..];
-    }
-    out.extend_from_slice(rest);
-    out
+    replace_all(bytes, TRANSITIONAL_RELS_NS, STRICT_RELS_NS)
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
