@@ -24,6 +24,7 @@ use strict_ooxml_convert::{convert, Mode, PdfOptions, Severity, RECOVERY_STYLE_N
 use strict_ooxml_ocr::traits::{Recovered as Answer, TextRecovery, VisionError};
 use strict_ooxml_pdf::{PdfDocument, PdfLimits, TextLayer};
 use strict_ooxml_wml::model::block::{Block, Paragraph};
+use strict_ooxml_wml::model::ids::StyleId;
 use strict_ooxml_wml::model::inline::{Inline, RunContent};
 
 /// A one-page PDF whose only content is a 1×1 red image, and which therefore has
@@ -106,6 +107,17 @@ fn cmap() -> String {
      /CMapName /Adobe-Identity-UCS def /CMapType 2 def \
      1 begincodespacerange <52> <52> endcodespacerange \
      1 beginbfchar <0052> <0052> endbfchar endcmap \
+     CMapName currentdict /CMap defineresource pop end end"
+        .to_owned()
+}
+
+/// A `ToUnicode` CMap mapping one code to the letter `C`, for the pages that carry
+/// a caption.
+fn cmap_c() -> String {
+    "/CIDInit /ProcSet findresource begin 12 dict begin begincmap \
+     /CMapName /Adobe-Identity-UCS def /CMapType 2 def \
+     1 begincodespacerange <43> <43> endcodespacerange \
+     1 beginbfchar <0043> <0043> endbfchar endcmap \
      CMapName currentdict /CMap defineresource pop end end"
         .to_owned()
 }
@@ -321,6 +333,159 @@ fn recovered_of(blocks: &[Block]) -> Vec<String> {
         .filter(|paragraph| paragraph.props.style.is_some())
         .map(paragraph_text)
         .collect()
+}
+
+/// A page with **real text** and a picture covering a quarter of it: the mixed
+/// page, «a paragraph and a photograph».
+///
+/// The text is the same `ToUnicode` font as `scan_and_text_pdf`, so the page is
+/// genuinely `Readable` — which is the whole premise: the reader is not missing
+/// this page, it is missing the words *inside* the picture.
+fn mixed_page_pdf(height_percent: u32) -> Vec<u8> {
+    // A 200 × 100 page; the picture is `picture_share` of its area, so its width
+    // runs the full 200 pt and its height is the share times the page's height.
+    // A whole number of rows, given as a percentage of the page's height: the
+    // option it exercises is a `f64` ratio, and a fixture that had to cast one
+    // into the other would be the second place in this file where a number is
+    // quietly rounded.
+    let height = height_percent.clamp(1, 100);
+    pdf(&[
+        text("<< /Type /Catalog /Pages 2 0 R >>"),
+        text("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        text(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << \
+             /F1 6 0 R >> /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+        ),
+        stream(
+            format!(
+                "q 200 0 0 {height} 0 0 cm /Im0 Do Q BT /F1 12 Tf 1 0 0 1 10 90 Tm (Caption) Tj ET"
+            )
+            .as_bytes(),
+        ),
+        picture(200, height),
+        text(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 67 /LastChar 67 \
+             /Widths [556] /ToUnicode 7 0 R >>",
+        ),
+        stream(cmap_c().as_bytes()),
+    ])
+}
+
+/// The recovered paragraphs, with the model's own text.
+fn mixed_recovered(height_percent: u32) -> (Vec<String>, String, usize) {
+    let model = Scripted::answering("Text inside the picture");
+    let mut document =
+        PdfDocument::open(&mixed_page_pdf(height_percent), PdfLimits::default()).expect("open");
+    let converted = convert(
+        &mut document,
+        &PdfOptions::default().text_recovery(Some(model.clone())),
+    )
+    .expect("convert");
+    (
+        recovered_of(&converted.document.body.blocks),
+        converted.report.to_string(),
+        model.calls.load(Ordering::SeqCst),
+    )
+}
+
+/// The text inside a big picture on a page we can already read is recovered, and
+/// the page's own text is not asked about again.
+#[test]
+fn a_mixed_page_offers_the_picture_and_not_the_page() {
+    let (recovered, report, calls) = mixed_recovered(50);
+    assert_eq!(calls, 1, "one picture, one call:\n{report}");
+    assert_eq!(
+        recovered,
+        vec!["Text inside the picture".to_owned()],
+        "{report}"
+    );
+}
+
+/// The call is about the **picture**, not about the page: the recovered paragraph
+/// is indented to the picture's left edge, and it is marked as recovered so a
+/// reader of the document can tell.
+#[test]
+fn a_recovered_region_carries_the_picture_indent_and_the_recovered_style() {
+    let model = Scripted::answering("Inside");
+    let mut document = PdfDocument::open(&mixed_page_pdf(50), PdfLimits::default()).expect("open");
+    let converted = convert(
+        &mut document,
+        &PdfOptions::default().text_recovery(Some(model.clone())),
+    )
+    .expect("convert");
+    let paragraphs: Vec<&Paragraph> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(Block::as_paragraph)
+        .filter(|paragraph| paragraph.props.style.is_some())
+        .collect();
+    assert_eq!(paragraphs.len(), 1);
+    // The paragraph refers to the style by id; what a reader of the file sees in
+    // Word's styles pane is the style's *name*, so both are checked: a paragraph
+    // pointing at a style nobody can find in the pane is a mark nobody sees.
+    let style_id = paragraphs[0]
+        .props
+        .style
+        .as_ref()
+        .map_or("", StyleId::as_str);
+    let style = converted
+        .document
+        .styles
+        .get(&StyleId::new(style_id))
+        .unwrap_or_else(|| panic!("the document declares no style {style_id:?}"));
+    assert_eq!(
+        style.name.as_deref(),
+        Some(RECOVERY_STYLE_NAME),
+        "and it is named as recovered"
+    );
+}
+
+/// A picture too small to hold lines of type is not asked about: a logo, a bullet
+/// or a rule is not a paragraph, and thirty calls to be told «no text» is a page of
+/// text turned into an afternoon.
+#[test]
+fn a_small_picture_on_a_readable_page_is_not_asked_about() {
+    let (recovered, report, calls) = mixed_recovered(2);
+    assert_eq!(
+        calls, 0,
+        "2 % of the page is a mark, not a picture of text:\n{report}"
+    );
+    assert!(recovered.is_empty(), "{report}");
+}
+
+/// Vector art is never a candidate, whatever its size: a chart drawn with paths
+/// has its labels as real glyphs, and the reader has them.
+#[test]
+fn a_vector_drawing_on_a_readable_page_is_not_asked_about() {
+    let model = Scripted::answering("Axis labels");
+    let bytes = pdf(&[
+        text("<< /Type /Catalog /Pages 2 0 R >>"),
+        text("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        text(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << \
+             /F1 5 0 R >> >> /Contents 4 0 R >>",
+        ),
+        stream(b"10 10 m 190 90 l 2 w S BT /F1 12 Tf 1 0 0 1 10 90 Tm (Caption) Tj ET"),
+        text(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 67 /LastChar 67 \
+             /Widths [556] /ToUnicode 6 0 R >>",
+        ),
+        stream(cmap_c().as_bytes()),
+    ]);
+    let mut document = PdfDocument::open(&bytes, PdfLimits::default()).expect("open");
+    let converted = convert(
+        &mut document,
+        &PdfOptions::default().text_recovery(Some(model.clone())),
+    )
+    .expect("convert");
+    assert_eq!(
+        model.calls.load(Ordering::SeqCst),
+        0,
+        "there is no picture on this page, only a path and glyphs"
+    );
+    assert!(recovered_of(&converted.document.body.blocks).is_empty());
 }
 
 /// The reader sees the fixture as a page with no text layer, which is the whole

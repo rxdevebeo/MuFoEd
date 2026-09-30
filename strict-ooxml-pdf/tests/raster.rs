@@ -9,6 +9,11 @@
 //! The defaults are named rather than inferred, because a test that says
 //! `&Default::default()` says nothing about which document it is reading.
 #![allow(clippy::doc_markdown)]
+// The whole file is about the `raster` feature, so it is one test with the feature
+// on rather than a file that fails to compile without it. `cargo check --all-targets`
+// with default features (a CI step, added because `strict-ooxml-convert` shipped a
+// build that only compiled with every feature on) is what keeps that honest.
+#![cfg(feature = "raster")]
 
 use std::path::Path;
 

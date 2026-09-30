@@ -70,6 +70,25 @@ pub trait TextRecovery: Send + Sync {
     /// Returns a [`VisionError`] when no answer could be obtained; the caller
     /// records it and continues.
     fn recover_page(&self, page: &Image) -> Result<Option<Recovered>, VisionError>;
+
+    /// Recovers the text **inside one region** of a page whose own text this
+    /// reader already has.
+    ///
+    /// A page of «a paragraph and a photograph» is the case: the paragraph is
+    /// text, the photograph is pixels, and any text printed inside those pixels is
+    /// invisible to a reader no matter how good it is. Defaulting to
+    /// [`TextRecovery::recover_page`] keeps every existing implementation working
+    /// and is the right answer for a model that does not distinguish the two — but
+    /// an implementation with a per-region prompt should override it, because
+    /// «transcribe this page» asks a model to account for the whole page and a
+    /// crop is not a page (`Q-28`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`VisionError`] when no answer could be obtained.
+    fn recover_region(&self, region: &Image) -> Result<Option<Recovered>, VisionError> {
+        self.recover_page(region)
+    }
 }
 
 /// Says what a graphic region is, and describes it in words.

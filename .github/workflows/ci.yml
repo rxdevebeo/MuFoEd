@@ -28,6 +28,13 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      # The gates above build `--all-features`, so a crate that only compiles with
+      # every feature on is invisible to all of them - and `strict-ooxml-convert`
+      # sat that way for a whole increment: `Recovered` carried a type that was
+      # behind `feature = "raster"`, and the default build did not compile. One
+      # check, no features, is what makes the default build a promise again.
+      - name: Check (default features)
+        run: cargo check --workspace --all-targets
       - name: Test
         run: cargo test --workspace --all-features
       - name: WML independent oracle (P-1)

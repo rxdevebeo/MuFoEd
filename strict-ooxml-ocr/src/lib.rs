@@ -36,7 +36,7 @@ pub mod report;
 pub mod traits;
 
 pub use report::{OcrLoss, OcrReport, Severity};
-pub use traits::{FigureClassifier, Recovered, TextRecovery, VisionError};
+pub use traits::{FigureClassifier, FigureKind, Recovered, TextRecovery, VisionError};
 
 /// A PNG of a page or a region, ready to be sent to a model.
 #[derive(Clone, Debug, PartialEq, Eq)]

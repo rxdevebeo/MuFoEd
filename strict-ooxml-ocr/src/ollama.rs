@@ -227,6 +227,20 @@ Preserve the reading order and the line breaks. Do not summarise, do not correct
 spelling, and do not add anything that is not written on the page. If there is no \
 readable text, reply with exactly: NO TEXT";
 
+/// The prompt that asks for the text inside one region of a page.
+///
+/// The difference from [`PAGE_PROMPT`] is one word and it is load-bearing: the
+/// image is a **crop**, and a model told it is looking at a page will account for
+/// the page — inventing a heading, a page number, a caption — and those words then
+/// go into the document as if the page had said them. It is also told that the
+/// rest of the page is already in hand, so the text around the crop is not
+/// repeated back at us.
+const REGION_PROMPT: &str = "Transcribe the text visible inside this image exactly as it \
+appears. The image is one region cropped from a larger page whose other text has already \
+been captured elsewhere, so transcribe only what is inside this image and do not add a \
+heading, a page number, a caption or any other text that is not visible in it. If there \
+is no readable text, reply with exactly: NO TEXT";
+
 /// The prompt that asks what a graphic region is.
 const FIGURE_PROMPT: &str = "This is one region of a document page. Answer with the \
 single word naming what it is - table, diagram, formula, logo, illustration, scan or \
@@ -255,7 +269,18 @@ impl TextRecovery for OllamaVision {
     }
 
     fn recover_page(&self, page: &Image) -> Result<Option<Recovered>, VisionError> {
-        let (text, version) = self.ask(PAGE_PROMPT, page, "")?;
+        self.ask_for_text(PAGE_PROMPT, page)
+    }
+
+    fn recover_region(&self, region: &Image) -> Result<Option<Recovered>, VisionError> {
+        self.ask_for_text(REGION_PROMPT, region)
+    }
+}
+
+impl OllamaVision {
+    /// Asks for a transcription and turns «NO TEXT» into the answer it is.
+    fn ask_for_text(&self, prompt: &str, image: &Image) -> Result<Option<Recovered>, VisionError> {
+        let (text, version) = self.ask(prompt, image, "")?;
         if text.eq_ignore_ascii_case("NO TEXT") {
             return Ok(None);
         }

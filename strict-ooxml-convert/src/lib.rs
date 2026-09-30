@@ -205,6 +205,26 @@ pub struct PdfOptions {
     /// being a bill.
     #[cfg(feature = "raster")]
     pub recovery_max_regions: usize,
+    /// The share of the page a picture must cover before the text *inside* it is
+    /// worth a call, on a page whose own text this converter already has.
+    ///
+    /// Default 0.25 — a quarter of the page. A **share** and not points, because
+    /// the question is whether a picture is a picture *of something* rather than a
+    /// mark on the page, and that scales with the page.
+    ///
+    /// This is the second trigger (`Q-28`), and it is much stricter than the first
+    /// on purpose. A page with no text at all is all candidate; a page whose text is
+    /// complete is candidate only where a raster picture is this big, because
+    /// vector art has its labels as real glyphs and a small picture is a logo, a
+    /// bullet or a rule. Over the foreign corpus: of 106 526 raster pictures on
+    /// 5 142 readable pages, 105 581 are under a tenth of the page and 418 reach a
+    /// quarter — so this number is the whole population the rule can ever offer.
+    ///
+    /// Set [`PdfOptions::figure_classifier`] as well and the classifier gets the
+    /// last word: a picture it calls a diagram, a table, a formula or a logo is a
+    /// figure, and a figure gets a `descr`, not paragraphs guessed from its pixels.
+    #[cfg(feature = "raster")]
+    pub recovery_mixed_min_area_ratio: f64,
 }
 
 /// The name of the paragraph style a recovered paragraph carries, as a reader
@@ -233,6 +253,8 @@ impl Default for PdfOptions {
             recovery_min_region_pt: 24.0,
             #[cfg(feature = "raster")]
             recovery_max_regions: 4,
+            #[cfg(feature = "raster")]
+            recovery_mixed_min_area_ratio: 0.25,
         }
     }
 }
@@ -302,6 +324,15 @@ impl PdfOptions {
     pub fn recovery_regions(mut self, max_regions: usize, min_region_pt: f64) -> Self {
         self.recovery_max_regions = max_regions;
         self.recovery_min_region_pt = min_region_pt;
+        self
+    }
+
+    /// Sets the share of the page a picture must cover before the text inside it
+    /// is asked about, on a page whose text is already read.
+    #[cfg(feature = "raster")]
+    #[must_use]
+    pub fn recovery_mixed_area(mut self, min_area_ratio: f64) -> Self {
+        self.recovery_mixed_min_area_ratio = min_area_ratio;
         self
     }
 }

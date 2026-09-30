@@ -111,7 +111,11 @@ impl Origin {
 /// The region itself is not kept here — its left edge is already the recovered
 /// paragraphs' indent, and the report names the region, its size and its position,
 /// which is where a caller reads them from.
-#[cfg(feature = "raster")]
+///
+/// **Not** behind `feature = "raster"`, unlike everything else in this file:
+/// [`Recovered`] carries these in every build, so a build without the feature
+/// would not compile — and the gates build `--all-features`, so nothing would have
+/// said so. The type costs nothing when it is always empty.
 #[derive(Clone, Debug)]
 pub(crate) struct RecoveredBlock {
     /// What the model said, one paragraph per line it gave.
@@ -172,12 +176,26 @@ pub(crate) fn recover_pages(
         }
     };
     for (index, page) in pages.iter().enumerate() {
-        if page.text_layer() == TextLayer::Readable || !page.has_ink() {
-            // The first is not ours to improve on; the second is a blank page,
-            // which has no text and nothing to read — not a loss, not a call.
+        let readable = page.text_layer() == TextLayer::Readable;
+        if !readable && !page.has_ink() {
+            // No text and nothing drawn: a blank page, which has nothing to read —
+            // not a loss, and not a call.
             continue;
         }
-        for region in regions_of(page, options) {
+        // Which regions, and which call, is the difference between a page with no
+        // text and a page whose text is complete but hides some inside a picture.
+        let (regions, ask) = if readable {
+            let regions = mixed_regions_of(&rasterizer, page, options, report, index);
+            let ask = if regions.is_empty() {
+                Ask::Page
+            } else {
+                Ask::Region
+            };
+            (regions, ask)
+        } else {
+            (regions_of(page, options), Ask::Page)
+        };
+        for region in regions {
             let request = match rasterize(&rasterizer, page, &region, options) {
                 Ok(png) => png,
                 Err(error) => {
@@ -189,7 +207,12 @@ pub(crate) fn recover_pages(
                     continue;
                 }
             };
-            match recovery.recover_page(&strict_ooxml_ocr::Image::png(request)) {
+            let image = strict_ooxml_ocr::Image::png(request);
+            let answer = match ask {
+                Ask::Page => recovery.recover_page(&image),
+                Ask::Region => recovery.recover_region(&image),
+            };
+            match answer {
                 Ok(Some(answer)) => {
                     let paragraphs = paragraphs_of(&answer.text, region.left);
                     report.recovered_pages += 1;
@@ -234,6 +257,18 @@ pub(crate) fn recover_pages(
         }
     }
     out
+}
+
+/// Which of the two methods of [`TextRecovery`] a region is sent to.
+///
+/// A crop is not a page, and the prompt says so (`REGION_PROMPT`): a model told it
+/// is reading a page accounts for the page, and the words it invents for the parts
+/// it cannot see go into the document as if the page had said them.
+#[cfg(feature = "raster")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ask {
+    Page,
+    Region,
 }
 
 /// One region to send to a model.
@@ -314,6 +349,143 @@ fn regions_of(page: &PdfPage, options: &PdfOptions) -> Vec<Region> {
         });
     }
     pictures
+}
+
+/// The pictures of a page whose **text we already have** that might still hide
+/// text of their own (`Q-28`).
+///
+/// The trigger is a second one, and it is deliberately much stricter than the
+/// scan rule. A page with no text is *all* candidate; a page whose text is
+/// complete is candidate only where a **raster** picture is large enough to hold
+/// lines of type, because a picture's text is invisible to a reader however good
+/// the reader is. Everything else is left alone:
+///
+/// - **vector art** is not a candidate at all — a chart drawn with paths has its
+///   labels as real glyphs, and the reader has them;
+/// - a picture below the area floor is a logo, a bullet, a rule or a diagram.
+///
+/// The floor is a **share of the page**, not points, because the question is
+/// whether the picture is a picture *of something* rather than a mark on the page.
+/// Measured over the foreign corpus (`STAGE-8-OPEN.md` `Q-28`): of 106 526 raster
+/// pictures on 5 142 readable pages, **105 581 are under a tenth of the page** —
+/// they are the STM32 manual's diagrams, tiled small — and only **418** reach a
+/// quarter of the page. Those 418 are the population this rule can ever offer, on
+/// 46 documents, and a caller who wants fewer should raise the floor or set
+/// [`PdfOptions::figure_classifier`], whose verdict about a picture is better
+/// evidence than its size.
+///
+/// When a classifier is configured it gets the **last word**: a picture it names a
+/// `diagram`, `table`, `formula` or `logo` is a figure, and this project's answer
+/// for a figure is a `descr` (`FigureClassifier`), not paragraphs of text guessed
+/// out of its pixels.
+#[cfg(feature = "raster")]
+fn mixed_regions_of(
+    rasterizer: &strict_ooxml_pdf::raster::Rasterizer,
+    page: &PdfPage,
+    options: &PdfOptions,
+    report: &mut ConversionReport,
+    index: usize,
+) -> Vec<Region> {
+    let (page_width, page_height) = page.geometry.displayed();
+    let page_area = page_width * page_height;
+    if !page_area.is_finite() || page_area <= 0.0 {
+        return Vec::new();
+    }
+    let mut regions: Vec<Region> = page
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            strict_ooxml_pdf::Item::Image(image) if image.image.is_some() => Some(Region {
+                left: image.x,
+                top: image.y,
+                width: image.width,
+                height: image.height,
+                origin: Origin::Picture,
+            }),
+            _ => None,
+        })
+        .filter(|region| {
+            region.width.is_finite()
+                && region.height.is_finite()
+                && region.width > 0.0
+                && region.height > 0.0
+                && region.width * region.height / page_area >= options.recovery_mixed_min_area_ratio
+        })
+        .collect();
+    regions.sort_by(|left, right| {
+        let left_area = left.width * left.height;
+        let right_area = right.width * right.height;
+        right_area
+            .partial_cmp(&left_area)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(
+                left.top
+                    .partial_cmp(&right.top)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+    });
+    regions.truncate(options.recovery_max_regions);
+    if let Some(classifier) = options.figure_classifier.clone() {
+        regions.retain(|region| {
+            let image = match rasterize(rasterizer, page, region, options) {
+                Ok(png) => strict_ooxml_ocr::Image::png(png),
+                Err(error) => {
+                    report.record(
+                        "text.recovery",
+                        Severity::Lost,
+                        format!(
+                            "page {}: a picture that could not be rasterized ({error}) was not \
+                             classified and not asked about",
+                            index + 1
+                        ),
+                    );
+                    return false;
+                }
+            };
+            match classifier.describe(&image, "") {
+                Ok(answer) => {
+                    let kind = strict_ooxml_ocr::FigureKind::parse(&answer.text);
+                    let wanted = !matches!(
+                        kind,
+                        strict_ooxml_ocr::FigureKind::Diagram
+                            | strict_ooxml_ocr::FigureKind::Table
+                            | strict_ooxml_ocr::FigureKind::Formula
+                            | strict_ooxml_ocr::FigureKind::Logo
+                    );
+                    report.record(
+                        "text.recovery.figure",
+                        Severity::Inferred,
+                        format!(
+                            "page {}: a picture covering {:.0}% of the page was classified as {} \
+                             and {}",
+                            index + 1,
+                            100.0 * region.width * region.height / page_area,
+                            kind,
+                            if wanted {
+                                "its text is worth asking a model for"
+                            } else {
+                                "a figure is described, not transcribed"
+                            }
+                        ),
+                    );
+                    wanted
+                }
+                Err(error) => {
+                    report.record(
+                        "text.recovery.figure",
+                        Severity::Inferred,
+                        format!(
+                            "page {}: a picture could not be classified ({error}), so the size \
+                             floor is the only evidence and it is asked about",
+                            index + 1
+                        ),
+                    );
+                    true
+                }
+            }
+        });
+    }
+    regions
 }
 
 /// Records every page whose text this converter cannot produce.
@@ -476,7 +648,7 @@ pub(crate) fn declare_style(document: &mut Document) {
     });
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "raster"))]
 mod tests {
     use super::{paragraphs_of, RECOVERED_STYLE_ID};
 
