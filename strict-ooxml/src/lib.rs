@@ -31,6 +31,15 @@ use strict_ooxml_wml::model::support::SupportModel;
 
 pub use strict_ooxml_core::error::StrictError;
 pub use strict_ooxml_core::limits::ResourceLimits;
+/// How much a normalization removal matters.
+///
+/// Named apart from the Feature Report's own `Severity`, which grades support
+/// of a construct; this one grades what removing it cost.
+pub use strict_ooxml_core::normalize::Severity as LossSeverity;
+pub use strict_ooxml_core::normalize::{
+    InvariantMode, LossRecord, McePolicy, NormalizationReport, NormalizerOptions,
+    TransitionalNormalizer,
+};
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};

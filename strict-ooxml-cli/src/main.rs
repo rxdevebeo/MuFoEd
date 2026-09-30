@@ -30,10 +30,11 @@
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use strict_ooxml::{
     ConformancePolicy, Feature, FeatureStatus, Location, PageSelection, RenderOptions,
-    StrictDocument,
+    StrictDocument, TransitionalNormalizer,
 };
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::ns::Conformance;
@@ -54,6 +55,7 @@ fn main() -> ExitCode {
         Some("check") => run_check(&args.collect::<Vec<_>>()),
         Some("report") => run_report(&args.collect::<Vec<_>>()),
         Some("render") => run_render(&args.collect::<Vec<_>>()),
+        Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("--help" | "-h") | None => {
             print_usage();
             ExitCode::from(EXIT_OK)
@@ -68,8 +70,75 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render> <file.docx> [--json|--text] [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math]"
+        "usage: strict-ooxml <inspect|check|report|render|normalize> <file.docx> [--json|--text] \
+         [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math] [--transitional]"
     );
+    eprintln!();
+    eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
+    eprintln!("  normalize       open a Transitional package and print the Loss Report");
+}
+
+/// Opens a package, normalizing it when `--transitional` is present.
+///
+/// Returns the options and a handle to the normalizer that was installed, so
+/// the caller can read the loss report — the only record of what
+/// normalization cost.
+fn open_options(transitional: bool) -> (OpenOptions, Option<Arc<TransitionalNormalizer>>) {
+    if !transitional {
+        return (OpenOptions::default(), None);
+    }
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer.clone());
+    (options, Some(normalizer))
+}
+
+/// `normalize`: open a Transitional package through the pipeline and print
+/// what changed and what it cost.
+///
+/// Writes no file. The loss report is the artefact that matters, and writing a
+/// normalized package is a separate concern from opening one.
+fn run_normalize(args: &[String]) -> ExitCode {
+    let Some(file) = args.first() else {
+        eprintln!("error: 'normalize' requires a package path");
+        return ExitCode::from(EXIT_ERROR);
+    };
+    let (options, normalizer) = open_options(true);
+    let Some(normalizer) = normalizer else {
+        return ExitCode::from(EXIT_ERROR);
+    };
+    let outcome = Package::open_path(file, &options);
+    // Read every part so the report covers the whole package rather than only
+    // the parts the walk happened to touch.
+    if let Ok(package) = &outcome {
+        for part in package.parts() {
+            if let Err(error) = package.read_part(&part.id) {
+                eprintln!("warning: {}: {error}", part.id);
+            }
+        }
+    }
+    let report = normalizer.report();
+    println!(
+        "conformance: {:?}",
+        outcome
+            .as_ref()
+            .map_or(Conformance::Unknown, Package::conformance)
+    );
+    print!("{report}");
+    match outcome {
+        Ok(_) => match report.verify_no_silent_loss() {
+            Ok(()) => ExitCode::from(EXIT_OK),
+            Err(reason) => {
+                eprintln!("error: {reason}");
+                ExitCode::from(EXIT_ERROR)
+            }
+        },
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(EXIT_ERROR)
+        }
+    }
 }
 
 fn run_inspect(args: &[String]) -> ExitCode {
@@ -105,71 +174,108 @@ fn run_inspect(args: &[String]) -> ExitCode {
     }
 }
 
+/// Prints the support report and maps it to an exit code.
+///
+/// A blocker is an `unsupported` or `error` feature (ADR-0005); `partial` is a
+/// warning and does not change the exit code. `ok_line` is what to print when
+/// nothing blocks, so a caller can distinguish an input that was already
+/// Strict from one that had to be normalized.
+fn report_support(document: &StrictDocument, ok_line: &str) -> ExitCode {
+    let report = document.support_report();
+    let blockers: Vec<&Feature> = report
+        .features
+        .iter()
+        .filter(|feature| {
+            matches!(
+                feature.status,
+                FeatureStatus::Unsupported | FeatureStatus::Error
+            )
+        })
+        .collect();
+    if blockers.is_empty() {
+        println!("{ok_line}");
+    } else {
+        println!("strict: {} blocker(s) require attention", blockers.len());
+    }
+    println!("overall: {}", report.overall_status);
+    let summary = report.summary;
+    println!(
+        "summary: supported={} partial={} unsupported={} ignored={} error={}",
+        summary.supported, summary.partial, summary.unsupported, summary.ignored, summary.error,
+    );
+    for feature in &blockers {
+        let location = feature.locations.first().map_or("", Location::as_str);
+        println!(
+            "blocker: {} [{}] @ {location}",
+            feature.feature_id, feature.status
+        );
+    }
+    if blockers.is_empty() {
+        ExitCode::from(EXIT_OK)
+    } else {
+        ExitCode::from(EXIT_PROBLEM)
+    }
+}
+
 fn run_check(args: &[String]) -> ExitCode {
     let Some(path) = args.first() else {
         eprintln!("error: 'check' requires a package path");
         return ExitCode::from(EXIT_ERROR);
     };
-    let options = OpenOptions::default();
-    match StrictDocument::open_path(path, &options) {
-        Ok(document) => match document.package().conformance() {
-            Conformance::Strict => {
-                let report = document.support_report();
-                // A blocker is an `unsupported` or `error` feature (ADR-0005).
-                // `partial` is a warning and does not change the exit code.
-                let blockers: Vec<&Feature> = report
-                    .features
-                    .iter()
-                    .filter(|feature| {
-                        matches!(
-                            feature.status,
-                            FeatureStatus::Unsupported | FeatureStatus::Error
-                        )
-                    })
-                    .collect();
-                if blockers.is_empty() {
-                    println!("ok: strict");
-                } else {
-                    println!("strict: {} blocker(s) require attention", blockers.len());
+    let (options, normalizer) = open_options(args.iter().any(|arg| arg == "--transitional"));
+    let code = match StrictDocument::open_path(path, &options) {
+        // `Mixed` and `Unknown` are the expected *starting* state under
+        // normalization, not a verdict: they are what stage T0 sees before any
+        // part is rewritten. Reporting them as errors would make
+        // `--transitional` useless on most real documents. Without a
+        // normalizer they stay errors — a package whose conformance cannot be
+        // determined is not something to report on as strict.
+        Ok(document)
+            if matches!(
+                document.package().conformance(),
+                Conformance::Strict | Conformance::Transitional
+            ) || (normalizer.is_some()
+                && matches!(
+                    document.package().conformance(),
+                    Conformance::Mixed | Conformance::Unknown
+                )) =>
+        {
+            report_support(&document, "ok: strict")
+        }
+        Ok(document) => {
+            match document.package().conformance() {
+                Conformance::Mixed => {
+                    println!("mixed: the package carries Strict and Transitional signals");
                 }
-                println!("overall: {}", report.overall_status);
-                let summary = report.summary;
-                println!(
-                    "summary: supported={} partial={} unsupported={} ignored={} error={}",
-                    summary.supported,
-                    summary.partial,
-                    summary.unsupported,
-                    summary.ignored,
-                    summary.error,
-                );
-                for feature in &blockers {
-                    let location = feature.locations.first().map_or("", Location::as_str);
-                    println!(
-                        "blocker: {} [{}] @ {location}",
-                        feature.feature_id, feature.status
-                    );
-                }
-                if blockers.is_empty() {
-                    ExitCode::from(EXIT_OK)
-                } else {
-                    ExitCode::from(EXIT_PROBLEM)
-                }
+                _ => println!("unknown: conformance could not be determined"),
             }
-            Conformance::Unknown => {
-                println!("unknown: conformance could not be determined");
-                ExitCode::from(EXIT_ERROR)
-            }
-            other => {
-                println!("ok: {other:?}");
-                ExitCode::from(EXIT_OK)
-            }
-        },
+            ExitCode::from(EXIT_ERROR)
+        }
         Err(error @ StrictError::TransitionalNotSupported { .. }) => {
             println!("transitional: {error}");
+            eprintln!("hint: pass --transitional to normalize it to Strict on the way in");
             ExitCode::from(EXIT_PROBLEM)
         }
         Err(error) => {
             eprintln!("error: {error}");
+            ExitCode::from(EXIT_ERROR)
+        }
+    };
+    print_loss(normalizer.as_deref(), code)
+}
+
+fn print_loss(normalizer: Option<&TransitionalNormalizer>, code: ExitCode) -> ExitCode {
+    let Some(normalizer) = normalizer else {
+        return code;
+    };
+    let report = normalizer.report();
+    if !report.is_noop() {
+        eprint!("{report}");
+    }
+    match report.verify_no_silent_loss() {
+        Ok(()) => code,
+        Err(reason) => {
+            eprintln!("error: {reason}");
             ExitCode::from(EXIT_ERROR)
         }
     }
@@ -273,6 +379,9 @@ impl RenderArgs {
             match args[index].as_str() {
                 "--no-floating" => floating = false,
                 "--no-math" => math = false,
+                // Accepting the flag here rather than filtering it out of
+                // `args` keeps one source of truth for what the flag means.
+                "--transitional" => {}
                 "--out" => {
                     index += 1;
                     out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
@@ -325,20 +434,20 @@ fn run_render(args: &[String]) -> ExitCode {
             return ExitCode::from(EXIT_ERROR);
         }
     };
-    let options = OpenOptions::default();
-    match StrictDocument::open_path(&parsed.file, &options) {
+    let (options, normalizer) = open_options(args.iter().any(|arg| arg == "--transitional"));
+    let code = match StrictDocument::open_path(&parsed.file, &options) {
         Ok(document) => render_parsed(&document, &parsed),
         Err(error @ StrictError::TransitionalNotSupported { .. }) => {
-            eprintln!(
-                "error: rendering Transitional documents requires Stage-6 normalization: {error}"
-            );
+            eprintln!("error: {error}");
+            eprintln!("hint: pass --transitional to normalize it to Strict on the way in");
             ExitCode::from(EXIT_ERROR)
         }
         Err(error) => {
             eprintln!("error: {error}");
             ExitCode::from(EXIT_ERROR)
         }
-    }
+    };
+    print_loss(normalizer.as_deref(), code)
 }
 
 /// Renders an already-opened document and writes the result.

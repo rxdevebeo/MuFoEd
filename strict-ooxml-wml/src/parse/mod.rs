@@ -75,10 +75,16 @@ impl Default for ParseOptions {
 /// Parses the WordprocessingML Strict parts of `package` into an immutable
 /// [`Document`].
 ///
-/// Runs both phases (parse + resolve). Only Strict input is accepted: a
-/// Transitional or Mixed package yields [`StrictError::TransitionalNotSupported`]
-/// / [`StrictError::MixedConformance`] regardless of the policy (normalization
-/// is Stage 6).
+/// Runs both phases (parse + resolve). A Transitional package is rejected
+/// unless a normalizer is installed, in which case the parts arrive already
+/// normalized and the same Strict parser handles them (Stage 6).
+///
+/// `Mixed` is not a contradiction here. It is what stage T0 sees *before* any
+/// transformation: a Transitional document whose parts have been rewritten to
+/// different degrees, or a producer that mixed a Strict-native part into a
+/// Transitional package. Under a normalizing policy the normalizer maps every
+/// registered URI into one family, so refusing the input would make the policy
+/// unable to open a single real document — which is the only reason it exists.
 ///
 /// # Errors
 ///
@@ -86,18 +92,25 @@ impl Default for ParseOptions {
 /// resource-limit violation or an unresolved required reference.
 pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Document> {
     let main = package.main_document_part()?.clone();
+    let normalizing = matches!(
+        options.conformance,
+        ConformancePolicy::Normalize | ConformancePolicy::Permissive
+    );
     match package.conformance() {
-        Conformance::Transitional => {
+        Conformance::Transitional if !normalizing => {
             return Err(StrictError::TransitionalNotSupported {
                 location: SourceLocation::new(main, 1, 1, 0),
             });
         }
-        Conformance::Mixed => {
+        Conformance::Mixed if !normalizing => {
             return Err(StrictError::MixedConformance {
                 detail: "both Strict and Transitional signals were detected".to_owned(),
             });
         }
-        Conformance::Strict | Conformance::Unknown => {}
+        Conformance::Strict
+        | Conformance::Transitional
+        | Conformance::Mixed
+        | Conformance::Unknown => {}
     }
 
     let styles_part = find_related_part(package, &main, &RelType::Styles);

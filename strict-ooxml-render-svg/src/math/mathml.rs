@@ -417,6 +417,7 @@ fn synthetic_run(character: char) -> MathRun {
             normal: true,
             ..MathRunProperties::default()
         },
+        run_properties: None,
         text: character.to_string(),
         location: strict_ooxml_core::error::SourceLocation::default(),
     }
@@ -438,6 +439,7 @@ mod tests {
     fn run(text: &str) -> MathNode {
         MathNode::Run(MathRun {
             properties: MathRunProperties::default(),
+            run_properties: None,
             text: text.to_owned(),
             location: location(),
         })

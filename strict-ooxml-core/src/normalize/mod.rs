@@ -1,14 +1,24 @@
 //! Extension point for raw-level Transitional → Strict normalization.
 //!
-//! Stage 1 defines only the [`RawNormalizer`] seam that
+//! Stage 1 defines the [`RawNormalizer`] seam that
 //! [`Package::open_reader`](crate::opc::Package::open_reader) calls between OPC
-//! parsing and namespace resolution. The T1–T8 transformation stages are
+//! parsing and namespace resolution. The T1-T8 transformation stages are
 //! implemented in Stage 6 (`TZ-STRICT-OOXML-RUST.md` §10; stage task S1.13).
+//!
+//! [`report`] carries what normalization changed and what it cost, and is the
+//! basis of criterion SC-4 (no silent loss).
+
+pub mod report;
+pub mod tables;
+pub mod transitional;
 
 use std::borrow::Cow;
 
 use crate::error::Result;
 use crate::part::PartId;
+
+pub use report::{LossRecord, NormalizationReport, Severity, TransformRecord};
+pub use transitional::{InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer};
 
 /// A raw-layer transformation applied to each part before namespace resolution.
 pub trait RawNormalizer: Send + Sync {

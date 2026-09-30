@@ -247,8 +247,16 @@ pub struct MathRunProperties {
 /// A math run (`m:r`) with its text (`m:t`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MathRun {
-    /// Run properties.
+    /// Run properties (`m:rPr`).
     pub properties: MathRunProperties,
+    /// `w:rPr` — the character formatting Word puts on a math run.
+    ///
+    /// ISO/IEC 29500-1 §22.1.2.79 gives `m:r` an optional `w:rPr` alongside
+    /// `m:rPr`, and a Word document that styles a formula through the normal
+    /// character properties writes one on most of its runs. Treating it as a
+    /// foreign element made a third of a real document's runs report as
+    /// unsupported.
+    pub run_properties: Option<Box<RunProperties>>,
     /// The concatenated `m:t` text of the run.
     pub text: String,
     /// Source location.
@@ -910,6 +918,7 @@ mod tests {
     fn run(text: &str) -> MathNode {
         MathNode::Run(MathRun {
             properties: MathRunProperties::default(),
+            run_properties: None,
             text: text.to_owned(),
             location: super::SourceLocation::default(),
         })

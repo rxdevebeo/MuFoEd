@@ -293,13 +293,29 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
     let location = parser.location();
     parser.enter()?;
     let mut properties = MathRunProperties::default();
+    let mut run_properties: Option<Box<crate::model::props::RunProperties>> = None;
     let mut text = String::new();
     loop {
         match parser.next_event()? {
             XmlEvent::StartElement { name, attrs: _ } => {
                 if !is_math(&name) {
-                    // `w:br` inside a math run is a line break: represent it as
-                    // a newline so the renderer honours it.
+                    // `w:rPr` is a legitimate child of `m:r`
+                    // (ISO/IEC 29500-1 §22.1.2.79) and carries the character
+                    // formatting Word applies to a math run. It used to fall
+                    // through to `record_foreign` and be reported
+                    // unsupported, which a real document trips on most of its
+                    // formula runs.
+                    if name.local() == "rPr" && crate::parse::is_wml(&name) {
+                        // `parse_run_properties` consumes the element and its
+                        // end tag, so the shared `skip_element` below must
+                        // not run for it — doing so ate the *next* sibling,
+                        // and the damage only showed up as a truncated
+                        // document several constructs later.
+                        run_properties = Some(Box::new(parser.parse_run_properties()?));
+                        continue;
+                    }
+                    // `w:br` inside a math run is a line break: represent it
+                    // as a newline so the renderer honours it.
                     if name.local() == "br" && crate::parse::is_wml(&name) {
                         text.push('\n');
                     } else {
@@ -330,6 +346,7 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
     parser.leave();
     Ok(MathRun {
         properties,
+        run_properties,
         text,
         location,
     })
@@ -911,14 +928,44 @@ fn parse_superscript(
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<Superscript> {
     let (control, mut arguments) = parse_script(parser, "sSupPr", scope, "sup", "", true)?;
-    let base = arguments.remove(0);
-    let superscript = arguments.remove(0);
+    let base = take_argument(parser, &mut arguments, "m:sSup", "base", &location);
+    let superscript = take_argument(parser, &mut arguments, "m:sSup", "superscript", &location);
     Ok(Superscript {
         control,
         base,
         superscript,
         location,
     })
+}
+
+/// Takes the `index`-th argument of a script construct, or records the
+/// construct as partial and substitutes an empty one.
+/// The script constructs have a fixed arity in the schema, so a producer that
+/// writes `m:sSub` without its subscript is malformed. It used to panic:
+/// `arguments.remove(0)` on a short vector, reached by a real document in the
+/// Transitional corpus. A malformed document is a `Partial` feature and a
+/// rendered page, not a crash — which is what SC-5 asks for.
+fn take_argument(
+    parser: &mut PartParser<'_>,
+    arguments: &mut Vec<MathArgument>,
+    construct: &str,
+    part: &str,
+    location: &strict_ooxml_core::error::SourceLocation,
+) -> MathArgument {
+    if !arguments.is_empty() {
+        return arguments.remove(0);
+    }
+    parser.record(
+        construct,
+        SupportStatus::Partial,
+        Some(format!("{construct} has no {part} argument")),
+        Some(location.clone()),
+    );
+    MathArgument {
+        properties: crate::model::math::ArgumentProperties::default(),
+        nodes: Vec::new(),
+        location: location.clone(),
+    }
 }
 
 /// Parses `m:sSub` (its start element has been consumed).
@@ -928,8 +975,8 @@ fn parse_subscript(
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<Subscript> {
     let (control, mut arguments) = parse_script(parser, "sSubPr", scope, "sub", "", true)?;
-    let base = arguments.remove(0);
-    let subscript = arguments.remove(0);
+    let base = take_argument(parser, &mut arguments, "m:sSub", "base", &location);
+    let subscript = take_argument(parser, &mut arguments, "m:sSub", "subscript", &location);
     Ok(Subscript {
         control,
         base,
@@ -945,9 +992,15 @@ fn parse_sub_superscript(
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<SubSuperscript> {
     let (control, mut arguments) = parse_script(parser, "sSubSupPr", scope, "sub", "sup", true)?;
-    let base = arguments.remove(0);
-    let subscript = arguments.remove(0);
-    let superscript = arguments.remove(0);
+    let base = take_argument(parser, &mut arguments, "m:sSubSup", "base", &location);
+    let subscript = take_argument(parser, &mut arguments, "m:sSubSup", "subscript", &location);
+    let superscript = take_argument(
+        parser,
+        &mut arguments,
+        "m:sSubSup",
+        "superscript",
+        &location,
+    );
     Ok(SubSuperscript {
         control,
         base,

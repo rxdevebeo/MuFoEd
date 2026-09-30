@@ -55,6 +55,7 @@ fn formulas(document: &Document) -> Vec<strict_ooxml_wml::model::math::MathExpre
 fn run(text: &str) -> MathNode {
     MathNode::Run(MathRun {
         properties: MathRunProperties::default(),
+        run_properties: None,
         text: text.to_owned(),
         location: strict_ooxml_core::error::SourceLocation::default(),
     })

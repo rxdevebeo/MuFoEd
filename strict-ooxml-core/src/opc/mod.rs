@@ -85,6 +85,18 @@ impl OpenOptions {
         self.normalization = Some(Arc::new(normalizer));
         self
     }
+
+    /// Installs a normalizer the caller keeps a handle to.
+    ///
+    /// [`Self::normalization`] moves the value into an `Arc`, which loses the
+    /// caller's only way to read the loss report — and the report is the whole
+    /// point of normalizing. This takes the `Arc` instead, so the caller reads
+    /// the same instance the package will.
+    #[must_use]
+    pub fn shared_normalization(mut self, normalizer: Arc<dyn RawNormalizer>) -> Self {
+        self.normalization = Some(normalizer);
+        self
+    }
 }
 
 /// An opened OPC package.
@@ -411,10 +423,19 @@ enum RootNamespace {
     Incomplete,
 }
 
-/// Returns the namespace URI of a part's root element, if any.
+/// Returns the namespace URI a part's root element has **after** any
+/// configured normalization, if any.
 ///
 /// Only a bounded prefix of the part is decompressed; the whole part is read
 /// solely as a fallback when the prefix is inconclusive (rework R7).
+///
+/// A 64 KiB prefix cut lands mid-tag by construction and is not valid XML, so
+/// it is never handed to a rewriter. What the caller needs from a prefix is
+/// only "which namespace will this part be", and the registry answers that
+/// exactly: with a normalizer installed a Transitional URI maps to its Strict
+/// twin, and without one nothing is mapped. Either way the answer is a single
+/// consistent family, which is what keeps detection from seeing Strict and
+/// Transitional in the same pass.
 fn root_namespace(
     zip: &ZipArchive,
     id: &PartId,
@@ -424,17 +445,22 @@ fn root_namespace(
     if zip.entry(id).is_none() {
         return Ok(None);
     }
-    let prefix = apply_normalizer(
-        normalizer,
-        id,
-        read_prefix(zip, id, limits, ROOT_NS_PREFIX_BYTES)?,
-    )?;
+    let project = |uri: String| {
+        if normalizer.is_none() {
+            return uri;
+        }
+        match crate::ns::registry::NamespaceRegistry::global().lookup(&uri) {
+            Some(entry) => entry.strict.map_or_else(|| uri.clone(), str::to_owned),
+            None => uri,
+        }
+    };
+    let prefix = read_prefix(zip, id, limits, ROOT_NS_PREFIX_BYTES)?;
     match scan_root_namespace(prefix, id, limits) {
-        Ok(RootNamespace::Found(ns)) => Ok(ns),
+        Ok(RootNamespace::Found(uri)) => Ok(uri.map(project)),
         Ok(RootNamespace::Incomplete) | Err(_) => {
             let bytes = apply_normalizer(normalizer, id, read_part(zip, id, limits)?)?;
             match scan_root_namespace(bytes, id, limits)? {
-                RootNamespace::Found(ns) => Ok(ns),
+                RootNamespace::Found(uri) => Ok(uri.map(project)),
                 RootNamespace::Incomplete => Ok(None),
             }
         }
@@ -489,6 +515,14 @@ fn enforce_policy(
     main_document: &PartId,
 ) -> Result<()> {
     match conformance {
+        // `Mixed` is T0 observing a package that has *not* been normalized
+        // yet, so under a normalizing policy it is not a contradiction, it is
+        // the expected starting state: a Transitional document whose parts
+        // have been rewritten to different degrees. Normalization resolves it
+        // by mapping every registered URI to one family. Rejecting it here
+        // would make the normalizing policy unable to open a single real
+        // document, which is what it exists for.
+        Conformance::Mixed if options.normalization.is_some() => Ok(()),
         Conformance::Mixed => Err(StrictError::MixedConformance {
             detail: "both Strict and Transitional signals were detected".to_owned(),
         }),
