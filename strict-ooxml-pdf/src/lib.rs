@@ -65,7 +65,7 @@ pub mod text;
 pub use crate::content::{
     Content, Glyph, Item, Matrix, PageGeometry, PlacedImage, RenderMode, Rgb, SubPath, Vector,
 };
-pub use crate::document::{PdfDocument, PdfPage};
+pub use crate::document::{PdfDocument, PdfPage, TextLayer};
 pub use crate::error::{LimitKind, PdfError, PdfLimits};
 pub use crate::fonts::{BaseEncoding, PdfFont, Width};
 pub use crate::image::{Encoded, Reject};

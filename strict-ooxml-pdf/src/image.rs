@@ -224,9 +224,14 @@ pub fn decode_from(
             }
         }
         None | Some(b"FlateDecode") => {
-            let samples = stream
-                .decompressed_content()
-                .map_err(|_| Reject::UnsupportedFilter("flate"))?;
+            // The filter is carried; a stream that will not inflate is a broken
+            // file, and saying "this filter is not carried" for it is a wrong
+            // reason for a real loss — the kind of message that sends somebody to
+            // look for a codec instead of at the file.
+            let samples = stream.decompressed_content().map_err(|_| match first {
+                Some(_) => Reject::Incomplete("flate samples could not be inflated"),
+                None => Reject::Incomplete("samples"),
+            })?;
             let expected = (width as usize)
                 .saturating_mul(height as usize)
                 .saturating_mul(components as usize);

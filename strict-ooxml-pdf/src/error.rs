@@ -76,6 +76,14 @@ pub enum LimitKind {
     PathPoints,
     /// `PdfLimits::max_fonts`, fonts one page may reference.
     Fonts,
+    /// `PdfLimits::max_form_depth`, how deep form XObjects may nest.
+    ///
+    /// A form is content that draws content, and a producer's form that draws
+    /// itself is a loop rather than a document. The bound is on **nesting**, and
+    /// `max_operations` covers the breadth: a form drawn a thousand times inside
+    /// twelve levels is a million operations, and the page is refused for that
+    /// rather than for being deep.
+    FormDepth,
 }
 
 impl LimitKind {
@@ -91,6 +99,7 @@ impl LimitKind {
             Self::ImageBytes => "image_bytes",
             Self::PathPoints => "path_points",
             Self::Fonts => "fonts",
+            Self::FormDepth => "form_depth",
         }
     }
 }
@@ -120,6 +129,12 @@ pub struct PdfLimits {
     pub max_path_points: usize,
     /// Fonts one page may reference. Default: 512.
     pub max_fonts: usize,
+    /// How deep form XObjects may nest. Default: 12.
+    ///
+    /// Deep enough for the real cases (a page of a catalogue is usually one form
+    /// deep, a drawing assembled from parts is two or three) and shallow enough
+    /// that a form which draws itself is refused instead of recursing.
+    pub max_form_depth: usize,
 }
 
 impl Default for PdfLimits {
@@ -133,27 +148,33 @@ impl Default for PdfLimits {
             max_image_bytes: 64 * 1024 * 1024,
             max_path_points: 200_000,
             max_fonts: 512,
+            max_form_depth: 12,
         }
     }
 }
 
 impl PdfLimits {
     /// Returns the error for an exceeded budget.
+    ///
+    /// The limit is widened to `u64` here rather than in the caller, so a budget
+    /// that does not fit a `usize` on this platform is still reported as the
+    /// number the caller set.
     #[must_use]
     pub fn exceeded(&self, kind: LimitKind, actual: u64) -> PdfError {
         let limit = match kind {
-            LimitKind::Pages => self.max_pages,
-            LimitKind::ContentBytes => self.max_content_bytes,
-            LimitKind::Operations => self.max_operations,
-            LimitKind::Glyphs => self.max_glyphs,
-            LimitKind::FontGlyphs => self.max_font_glyphs,
-            LimitKind::ImageBytes => self.max_image_bytes,
-            LimitKind::PathPoints => self.max_path_points,
-            LimitKind::Fonts => self.max_fonts,
+            LimitKind::Pages => self.max_pages as u64,
+            LimitKind::ContentBytes => self.max_content_bytes as u64,
+            LimitKind::Operations => self.max_operations as u64,
+            LimitKind::Glyphs => self.max_glyphs as u64,
+            LimitKind::FontGlyphs => self.max_font_glyphs as u64,
+            LimitKind::ImageBytes => self.max_image_bytes as u64,
+            LimitKind::PathPoints => self.max_path_points as u64,
+            LimitKind::Fonts => self.max_fonts as u64,
+            LimitKind::FormDepth => self.max_form_depth as u64,
         };
         PdfError::LimitExceeded {
             kind,
-            limit: limit as u64,
+            limit,
             actual,
         }
     }

@@ -109,6 +109,12 @@ impl Width {
 }
 
 /// A font, resolved far enough to decode and place text.
+///
+/// The four booleans are four different statements the PDF makes about a font —
+/// is it composite, did the producer name the encoding, did it state a default
+/// width, is the program embedded — and folding them into flags would make the
+/// reader's questions unanswerable rather than the struct tidier.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug)]
 pub struct PdfFont {
     /// The resource name, for diagnostics.
@@ -117,6 +123,17 @@ pub struct PdfFont {
     pub two_byte: bool,
     /// The base encoding of a simple font.
     pub base: BaseEncoding,
+    /// Whether the producer **named** the base encoding (`/Encoding
+    /// /WinAnsiEncoding`).
+    ///
+    /// This is the difference between a mapping the document states and one this
+    /// reader supplies. A character that came out of `/ToUnicode` or
+    /// `/Differences` is stated; a character that came out of a *named* encoding is
+    /// stated too, because the producer said which table to use. A character that
+    /// came out of the fallback — no `/Encoding` at all, or `StandardEncoding`,
+    /// whose upper half this reader approximates with Latin-1 — is a guess, and
+    /// `Glyph::mapped` says so.
+    pub encoding_stated: bool,
     /// `/Differences`: code → glyph name.
     pub differences: BTreeMap<u8, String>,
     /// `ToUnicode`: code → character.
@@ -168,6 +185,7 @@ impl PdfFont {
             name: name.to_owned(),
             two_byte,
             base: BaseEncoding::Standard,
+            encoding_stated: false,
             differences: BTreeMap::new(),
             to_unicode: BTreeMap::new(),
             widths: BTreeMap::new(),
@@ -222,22 +240,7 @@ impl PdfFont {
                 string_of(descendant.get(b"BaseFont").ok(), resolve).unwrap_or_default();
             font.embedded = descendant.get(b"FontDescriptor").is_ok();
         } else {
-            font.base_font =
-                string_of(dictionary.get(b"BaseFont").ok(), resolve).unwrap_or_default();
-            if let Ok(encoding) = dictionary.get(b"Encoding") {
-                read_encoding(encoding, resolve, &mut font.base, &mut font.differences);
-            }
-            read_simple_widths(dictionary, resolve, &mut font.widths);
-            font.embedded = dictionary.get(b"FontDescriptor").is_ok_and(|descriptor| {
-                resolve
-                    .get(descriptor)
-                    .and_then(|value| value.as_dict().ok())
-                    .is_some_and(|descriptor| {
-                        [b"FontFile".as_slice(), b"FontFile2", b"FontFile3"]
-                            .iter()
-                            .any(|key| descriptor.get(key).is_ok())
-                    })
-            });
+            read_simple_font(dictionary, resolve, &mut font);
         }
 
         // The descriptor of a composite font hangs off the CID font, not off the
@@ -275,7 +278,9 @@ impl PdfFont {
     pub fn codes(&self, bytes: &[u8]) -> Vec<u32> {
         let mut out = Vec::with_capacity(bytes.len() / if self.two_byte { 2 } else { 1 });
         if self.two_byte {
-            for pair in bytes.chunks_exact(2) {
+            // `as_chunks` rather than `chunks_exact(2)`: same semantics (a
+            // trailing odd byte is ignored) and it says the chunk size once.
+            for pair in bytes.as_chunks::<2>().0 {
                 out.push(u32::from(u16::from_be_bytes([pair[0], pair[1]])));
             }
         } else {
@@ -336,22 +341,61 @@ impl PdfFont {
     }
 }
 
+/// Reads everything a simple (one-byte) font states about itself.
+///
+/// Split out of [`PdfFont::build`] because that function is at its line budget
+/// and because the two font kinds are genuinely different: a simple font states
+/// an *encoding* and a width per code, a composite one states a descendant font
+/// and a CID default width.
+fn read_simple_font(dictionary: &lopdf::Dictionary, resolve: Resolver<'_>, font: &mut PdfFont) {
+    font.base_font = string_of(dictionary.get(b"BaseFont").ok(), resolve).unwrap_or_default();
+    if let Ok(encoding) = dictionary.get(b"Encoding") {
+        read_encoding(
+            encoding,
+            resolve,
+            &mut font.base,
+            &mut font.differences,
+            &mut font.encoding_stated,
+        );
+    }
+    read_simple_widths(dictionary, resolve, &mut font.widths);
+    font.embedded = dictionary.get(b"FontDescriptor").is_ok_and(|descriptor| {
+        resolve
+            .get(descriptor)
+            .and_then(|value| value.as_dict().ok())
+            .is_some_and(|descriptor| {
+                [b"FontFile".as_slice(), b"FontFile2", b"FontFile3"]
+                    .iter()
+                    .any(|key| descriptor.get(key).is_ok())
+            })
+    });
+}
+
 /// Reads `/Encoding`: a name, or a dictionary with a base plus `/Differences`.
 fn read_encoding(
     encoding: &Object,
     resolve: Resolver<'_>,
     base: &mut BaseEncoding,
     differences: &mut BTreeMap<u8, String>,
+    stated: &mut bool,
 ) {
     let Some(object) = resolve.get(encoding) else {
         return;
     };
     match object {
-        Object::Name(name) => *base = BaseEncoding::from_name(name.as_slice()),
+        Object::Name(name) => {
+            *base = BaseEncoding::from_name(name.as_slice());
+            // The producer named the table, so a character that comes out of it
+            // is a mapping the document states rather than one this reader
+            // guessed. Without this, ordinary Latin text — which is most real
+            // documents — would be reported as unmapped and sent to a model.
+            *stated = true;
+        }
         Object::Dictionary(dictionary) => {
             if let Ok(name) = dictionary.get(b"BaseEncoding") {
                 if let Some(name) = resolve.get(name).and_then(|value| value.as_name().ok()) {
                     *base = BaseEncoding::from_name(name);
+                    *stated = true;
                 }
             }
             if let Ok(items) = dictionary.get(b"Differences") {
@@ -559,7 +603,7 @@ fn read_bfrange(body: &str, out: &mut BTreeMap<u32, char>, limits: &PdfLimits) -
 fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<char>)> {
     let tokens = hex_tokens(body);
     let mut out = Vec::with_capacity(tokens.len() / 2);
-    for pair in tokens.chunks_exact(2) {
+    for pair in tokens.as_chunks::<2>().0 {
         out.push((
             parse_hex(&pair[0]),
             utf16_value(&pair[1]).or_else(|| char::from_u32(parse_hex(&pair[1]).unwrap_or(0))),
@@ -842,7 +886,9 @@ pub fn decode_text_string(bytes: &[u8], format: lopdf::StringFormat) -> String {
         return String::from_utf8_lossy(bytes).into_owned();
     }
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
         .collect();
     let le: Vec<u8> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
@@ -871,7 +917,10 @@ pub fn parse_to_unicode(bytes: &[u8], limits: &PdfLimits) -> Result<BTreeMap<u32
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{glyph_name_to_char, hex_pairs, read_to_unicode, BaseEncoding, PdfFont, PdfLimits};
+    use super::{
+        glyph_name_to_char, hex_pairs, read_encoding, read_to_unicode, resolver, BaseEncoding,
+        PdfFont, PdfLimits,
+    };
 
     fn limits() -> PdfLimits {
         PdfLimits::default()
@@ -957,6 +1006,7 @@ endcmap";
             name: "F1".to_owned(),
             two_byte: false,
             base: BaseEncoding::Standard,
+            encoding_stated: false,
             differences: BTreeMap::new(),
             to_unicode: BTreeMap::new(),
             widths: BTreeMap::new(),
@@ -970,5 +1020,45 @@ endcmap";
         assert!(font.width(65).is_estimated());
         assert!((font.width(65).value() - 500.0).abs() < 1e-9);
         assert_eq!(font.character(65), Some('A'));
+    }
+
+    /// A font that names its encoding has *stated* how to read its codes, and a
+    /// character that comes out of that table is not a guess. The distinction is
+    /// what `Glyph::mapped` reports, and getting it wrong makes a page of plain
+    /// Latin text look unreadable.
+    #[test]
+    fn a_named_encoding_is_a_stated_mapping() {
+        let font = PdfFont {
+            name: "F1".to_owned(),
+            two_byte: false,
+            base: BaseEncoding::Standard,
+            encoding_stated: false,
+            differences: BTreeMap::new(),
+            to_unicode: BTreeMap::new(),
+            widths: BTreeMap::new(),
+            default_width: 1000.0,
+            default_width_stated: false,
+            embedded: false,
+            base_font: "Helvetica".to_owned(),
+            ascent: None,
+            descent: None,
+        };
+        assert!(
+            !font.encoding_stated,
+            "a font with no `/Encoding` states nothing"
+        );
+        let named = lopdf::Object::Name(b"WinAnsiEncoding".to_vec());
+        let mut base = font.base;
+        let mut stated = font.encoding_stated;
+        let mut differences = BTreeMap::new();
+        read_encoding(
+            &named,
+            resolver(&lopdf::Document::new()),
+            &mut base,
+            &mut differences,
+            &mut stated,
+        );
+        assert!(stated);
+        assert_eq!(base, BaseEncoding::WinAnsi);
     }
 }

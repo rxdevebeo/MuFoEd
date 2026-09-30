@@ -91,7 +91,7 @@ impl PdfDocument {
             .get_pages()
             .get(&u32::try_from(number).unwrap_or(0))
             .ok_or_else(|| PdfError::Missing(format!("page {number}")))?;
-        let page = self.read_page(id)?;
+        let page = self.read_page(id, number)?;
         self.report.merge(&page.report);
         Ok(page)
     }
@@ -104,8 +104,8 @@ impl PdfDocument {
     pub fn pages(&mut self) -> Result<Vec<PdfPage>> {
         let ids: Vec<lopdf::ObjectId> = self.document.page_iter().collect();
         let mut out = Vec::with_capacity(ids.len());
-        for id in ids {
-            out.push(self.read_page(id)?);
+        for (index, id) in ids.into_iter().enumerate() {
+            out.push(self.read_page(id, index + 1)?);
         }
         for page in &out {
             self.report.merge(&page.report);
@@ -113,7 +113,14 @@ impl PdfDocument {
         Ok(out)
     }
 
-    fn read_page(&self, id: lopdf::ObjectId) -> Result<PdfPage> {
+    /// Reads one page and stamps it with its own 1-based number.
+    ///
+    /// The number is a parameter rather than something `read_page` works out,
+    /// because lopdf hands out object ids and this crate hands out *page*
+    /// numbers, and every message that names a page — a loss record, a recovery,
+    /// a page range — has to name the page the caller asked for. A page that
+    /// reports itself as page 0 is a page nobody can find in a document.
+    fn read_page(&self, id: lopdf::ObjectId, number: usize) -> Result<PdfPage> {
         let dictionary = self
             .document
             .get_dictionary(id)
@@ -150,7 +157,7 @@ impl PdfDocument {
             }
         }
         Ok(PdfPage {
-            number: 0,
+            number,
             geometry,
             content,
             report,
@@ -170,10 +177,7 @@ impl PdfDocument {
         let mut out: BTreeMap<Vec<u8>, Object> = BTreeMap::new();
         let mut current = id;
         let mut guard = 0;
-        loop {
-            let Ok(dictionary) = self.document.get_dictionary(current) else {
-                break;
-            };
+        while let Ok(dictionary) = self.document.get_dictionary(current) {
             for key in [b"Resources".as_slice(), b"MediaBox", b"CropBox", b"Rotate"] {
                 if let Ok(value) = dictionary.get(key) {
                     out.entry(key.to_vec()).or_insert_with(|| value.clone());
@@ -209,7 +213,75 @@ pub struct PdfPage {
     pub report: crate::report::ReadReport,
 }
 
+/// What a page offers a converter, and what it costs to get more.
+///
+/// Three states, because the two failures are not the same failure: a page with
+/// no glyphs at all is a **scan** and a picture of it is worth reading with a
+/// model, while a page full of glyphs this reader could not map is a **font**
+/// problem — a picture of it shows the text perfectly well, so the model helps
+/// there too, but nothing about the PDF is wrong and nothing about the font
+/// should be reported as if it were.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextLayer {
+    /// The page has at least one glyph this reader could map to a character.
+    Readable,
+    /// The page draws no text at all: a scan, or a picture.
+    Absent,
+    /// The page draws text and none of it could be mapped — an embedded font
+    /// with no usable `ToUnicode`, a broken `CMap`.
+    Unreadable,
+}
+
 impl PdfPage {
+    /// What this page's text layer amounts to (`STAGE-8-TASK.md` §5, C7).
+    ///
+    /// "Readable" means a character came out, not that the page reads well: a
+    /// page of mojibake that mapped to *something* is `Readable`, and the report
+    /// is where a caller learns to distrust it. Glyphs the producer drew
+    /// invisibly (a text layer under a scanned image, which is how a producer
+    /// makes a scan searchable) do **not** count — they are real text to a
+    /// search index and absent to a converter, and pretending otherwise would
+    /// make every OCR-enabled scan come back "already has text".
+    #[must_use]
+    pub fn text_layer(&self) -> TextLayer {
+        let mut glyphs = 0usize;
+        let mut mapped = 0usize;
+        for item in &self.content.items {
+            let Item::Glyph(glyph) = item else {
+                continue;
+            };
+            if !glyph.render_mode.paints() {
+                continue;
+            }
+            glyphs += 1;
+            if glyph.mapped {
+                mapped += 1;
+            }
+        }
+        match (glyphs, mapped) {
+            (0, _) => TextLayer::Absent,
+            (_, 0) => TextLayer::Unreadable,
+            _ => TextLayer::Readable,
+        }
+    }
+
+    /// Whether the page draws anything at all.
+    ///
+    /// A blank page has no text layer either, and sending it to a vision model
+    /// would spend a call to be told there is nothing there. The difference
+    /// matters because "we could not read this" and "there is nothing here" are
+    /// different facts about a document.
+    #[must_use]
+    pub fn has_ink(&self) -> bool {
+        self.content.items.iter().any(|item| match item {
+            // A glyph and a picture are both ink even when the reader could not
+            // decode the picture: an undecodable scan is exactly the case where a
+            // model is the only way left to see the page.
+            Item::Glyph(_) | Item::Image(_) => true,
+            Item::Vector(vector) => !vector.subpaths.is_empty(),
+        })
+    }
+
     /// The text of the page, in drawing order, with items joined by spaces.
     #[must_use]
     pub fn text(&self) -> String {
@@ -336,12 +408,19 @@ fn number_of_object(object: &Object) -> Option<f64> {
     }
 }
 
-/// A page's fonts and images, resolved through the document.
+/// A page's (or a form's) fonts and XObjects, resolved through the document.
+///
+/// A form XObject carries **its own** resource dictionary, and a form that
+/// declares none inherits the page that invoked it (ISO 32000-1 §8.10.2), so the
+/// two are the same type with a parent link rather than two types.
 struct PageResources<'a> {
     document: &'a lopdf::Document,
     fonts: BTreeMap<String, PdfFont>,
     images: BTreeMap<String, lopdf::ObjectId>,
+    forms: BTreeMap<String, lopdf::ObjectId>,
     limits: PdfLimits,
+    /// The resources a form falls back on, when the form declares none itself.
+    parent: Option<&'a PageResources<'a>>,
 }
 
 impl<'a> PageResources<'a> {
@@ -350,9 +429,29 @@ impl<'a> PageResources<'a> {
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
     ) -> Self {
+        Self::load(document, inherited, limits, None)
+    }
+
+    /// Builds the resource set of a form, falling back on `parent`.
+    fn for_form(
+        document: &'a lopdf::Document,
+        inherited: &BTreeMap<Vec<u8>, Object>,
+        limits: PdfLimits,
+        parent: &'a PageResources<'a>,
+    ) -> Self {
+        Self::load(document, inherited, limits, Some(parent))
+    }
+
+    fn load(
+        document: &'a lopdf::Document,
+        inherited: &BTreeMap<Vec<u8>, Object>,
+        limits: PdfLimits,
+        parent: Option<&'a PageResources<'a>>,
+    ) -> Self {
         let resolve = resolver(document);
         let mut fonts = BTreeMap::new();
         let mut images = BTreeMap::new();
+        let mut forms = BTreeMap::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
             .and_then(|value| resolve.get(value))
@@ -362,7 +461,9 @@ impl<'a> PageResources<'a> {
                 document,
                 fonts,
                 images,
+                forms,
                 limits,
+                parent,
             };
         };
 
@@ -371,7 +472,7 @@ impl<'a> PageResources<'a> {
         // the font table is missing never finds the picture. That is the normal
         // case for a scanned document.
         if let Some(fonts_object) = resources.get(b"Font").ok().cloned() {
-            for (name, value) in dictionary_entries(&fonts_object) {
+            for (name, value) in dictionary_entries(resolve, &fonts_object) {
                 let Some(id) = value.as_reference().ok() else {
                     continue;
                 };
@@ -396,24 +497,30 @@ impl<'a> PageResources<'a> {
         }
 
         if let Some(xobjects) = resources.get(b"XObject").ok().cloned() {
-            for (name, value) in dictionary_entries(&xobjects) {
+            for (name, value) in dictionary_entries(resolve, &xobjects) {
                 let Ok(id) = value.as_reference() else {
                     continue;
                 };
-                let is_image = document
+                // An XObject is a picture **or** a form, and the two live in one
+                // table. A reader that only recognises the first half silently
+                // drops every drawing that arrives through the second.
+                let subtype = document
                     .get_object(id)
                     .ok()
                     .and_then(|object| object.as_stream().ok())
-                    .is_some_and(|stream| {
-                        stream
-                            .dict
-                            .get(b"Subtype")
-                            .ok()
-                            .and_then(|value| value.as_name().ok())
-                            == Some(b"Image")
-                    });
-                if is_image {
-                    images.insert(name, id);
+                    .and_then(|stream| stream.dict.get(b"Subtype").ok())
+                    .and_then(|value| value.as_name().ok());
+                match subtype {
+                    Some(b"Form") => {
+                        forms.insert(name, id);
+                    }
+                    // An XObject with no `/Subtype` is an image by the
+                    // specification's default, and treating it as anything else
+                    // would lose a picture on a technicality.
+                    Some(b"Image") | None => {
+                        images.insert(name, id);
+                    }
+                    Some(_) => {}
                 }
             }
         }
@@ -422,13 +529,26 @@ impl<'a> PageResources<'a> {
             document,
             fonts,
             images,
+            forms,
             limits,
+            parent,
         }
     }
 }
 
-fn dictionary_entries(object: &Object) -> Vec<(String, Object)> {
-    let Ok(dictionary) = object.as_dict() else {
+/// The entries of a resource dictionary, dereferencing it first.
+///
+/// `/Font` and `/XObject` are **usually indirect**: Word writes
+/// `/Resources<</Font 17 0 R>>`, and so does every producer that shares one font
+/// table between pages. Reading the entries off the raw object therefore finds
+/// nothing, and the page comes back with no text and no pictures — silently,
+/// because a font that is not in the table is reported as missing and the text
+/// that needed it is simply not drawn.
+fn dictionary_entries(
+    resolve: crate::fonts::Resolver<'_>,
+    object: &Object,
+) -> Vec<(String, Object)> {
+    let Some(dictionary) = resolve.get(object).and_then(|value| value.as_dict().ok()) else {
         return Vec::new();
     };
     dictionary
@@ -439,14 +559,22 @@ fn dictionary_entries(object: &Object) -> Vec<(String, Object)> {
 
 impl ResourceProvider for PageResources<'_> {
     fn font(&self, name: &str) -> Option<&PdfFont> {
-        self.fonts.get(name)
+        // A form's own name first, then the page it was invoked from: a form that
+        // declares three fonts and uses a fourth is legal, and the fourth is the
+        // page's.
+        self.fonts
+            .get(name)
+            .or_else(|| self.parent.and_then(|parent| parent.font(name)))
     }
 
     fn image(&self, name: &str) -> Result<Option<(Encoded, u32, u32)>> {
-        let Some(id) = self.images.get(name) else {
-            return Ok(None);
+        let Some(id) = self.images.get(name).copied() else {
+            return match self.parent {
+                Some(parent) => parent.image(name),
+                None => Ok(None),
+            };
         };
-        match decode_image(*id, self.document, &self.limits) {
+        match decode_image(id, self.document, &self.limits) {
             Ok(image) => Ok(Some(image)),
             Err(error) => Err(PdfError::Missing(error.to_string())),
         }
@@ -454,6 +582,61 @@ impl ResourceProvider for PageResources<'_> {
 
     fn has_xobject(&self, name: &str) -> bool {
         self.images.contains_key(name)
+            || self.forms.contains_key(name)
+            || self.parent.is_some_and(|parent| parent.has_xobject(name))
+    }
+
+    fn is_form(&self, name: &str) -> bool {
+        self.forms.contains_key(name)
+    }
+
+    fn form(&self, name: &str) -> Option<crate::content::Form<'_>> {
+        let id = *self.forms.get(name)?;
+        let stream = self.document.get_object(id).ok()?.as_stream().ok()?;
+        // A form's content is a stream like any other; the reader that decodes
+        // page content decodes this one.
+        let bytes = stream.decompressed_content().ok()?;
+        let operations = lopdf::content::Content::decode(&bytes).ok()?.operations;
+        // `/Matrix` places the form; without it the form is drawn where the CTM
+        // already is, which is the identity multiplied into it.
+        let matrix = stream
+            .dict
+            .get(b"Matrix")
+            .ok()
+            .and_then(|value| {
+                crate::fonts::array_items(value, resolver(self.document))
+                    .iter()
+                    .map(number_of_object)
+                    .collect::<Option<Vec<f64>>>()
+            })
+            .filter(|values| values.len() == 6)
+            .map_or(crate::content::Matrix::IDENTITY, |values| {
+                crate::content::Matrix {
+                    a: values[0],
+                    b: values[1],
+                    c: values[2],
+                    d: values[3],
+                    e: values[4],
+                    f: values[5],
+                }
+            });
+        // A form with no `/Resources` of its own inherits the invoking page's, so
+        // an empty dictionary is treated the same way: a producer that writes
+        // `/Resources <<>>` meant "nothing extra", not "nothing at all".
+        let inherited: BTreeMap<Vec<u8>, Object> = match stream.dict.get(b"Resources").ok() {
+            Some(resources) => {
+                let mut map = BTreeMap::new();
+                map.insert(b"Resources".to_vec(), resources.clone());
+                map
+            }
+            None => BTreeMap::new(),
+        };
+        let child = PageResources::for_form(self.document, &inherited, self.limits, self);
+        Some(crate::content::Form {
+            operations,
+            matrix,
+            resources: std::rc::Rc::new(child),
+        })
     }
 }
 

@@ -113,7 +113,10 @@ impl Matrix {
     pub fn scale_factor(self) -> f64 {
         let x = self.a * self.a + self.b * self.b;
         let y = self.c * self.c + self.d * self.d;
-        ((x + y) / 2.0).sqrt()
+        // `midpoint` rather than `(x + y) / 2.0`: the average of two large
+        // coefficients is the one place here where the naive form can overflow
+        // to infinity, and a scale factor of `inf` places a glyph at infinity.
+        x.midpoint(y).sqrt()
     }
 
     /// Returns `true` when every coefficient is finite.
@@ -492,6 +495,44 @@ pub trait Resources {
     /// Whether an XObject `name` exists at all, so a missing one is not a lookup
     /// failure.
     fn has_xobject(&self, name: &str) -> bool;
+
+    /// Whether `name` is a **form** XObject rather than an image.
+    ///
+    /// The two share one table, so the interpreter has to ask before it decides
+    /// what `Do` means. Kept separate from [`Resources::form`] so the answer costs
+    /// a dictionary lookup rather than decoding a content stream: a page of
+    /// pictures asks this once per picture.
+    fn is_form(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// The form XObject `name`: its content, the matrix that places it, and the
+    /// resources **its own** names resolve against.
+    ///
+    /// `None` for anything that is not a form, and for a provider that does not
+    /// follow forms at all — the default, so a consumer of this trait that only
+    /// has images keeps working.
+    fn form(&self, _name: &str) -> Option<Form<'_>> {
+        None
+    }
+}
+
+/// A form XObject, as far as the interpreter needs it.
+///
+/// A form is not a picture of something: it is **content that draws content**,
+/// with a matrix that places it and a resource dictionary of its own. ISO
+/// 32000-1 §8.10.2: the form's content runs with the graphics state in force at
+/// the `Do`, the CTM multiplied by `/Matrix`, and every name resolved against the
+/// form's `/Resources` — and a form that declares no resources of its own
+/// inherits the page's.
+#[derive(Clone)]
+pub struct Form<'a> {
+    /// The form's content stream, decoded into operations.
+    pub operations: Vec<lopdf::content::Operation>,
+    /// `/Matrix`, or the identity when the form states none.
+    pub matrix: Matrix,
+    /// The resources the form's own names resolve against.
+    pub resources: std::rc::Rc<dyn Resources + 'a>,
 }
 
 /// The result of interpreting one page.
@@ -547,15 +588,51 @@ pub fn interpret(
     limits: PdfLimits,
     tolerance: f64,
 ) -> Result<Content> {
+    let mut budget = 0usize;
+    interpret_from(
+        operations,
+        resources,
+        geometry,
+        limits,
+        tolerance,
+        State::default(),
+        0,
+        &mut budget,
+    )
+}
+
+/// Interprets content that starts from a given graphics state, at a given nesting
+/// depth, drawing against one shared operation budget.
+///
+/// A form XObject is interpreted by a recursive call, and the three extra
+/// parameters are what make that safe and correct: the **seed state** so the form
+/// draws with the colours and pen in force at the `Do` and not with defaults, the
+/// **depth** so a form that draws itself is refused, and the **budget** so the
+/// breadth of nested forms is counted once rather than per level.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+fn interpret_from(
+    operations: &[lopdf::content::Operation],
+    resources: &dyn Resources,
+    geometry: PageGeometry,
+    limits: PdfLimits,
+    tolerance: f64,
+    seed: State,
+    depth: usize,
+    budget: &mut usize,
+) -> Result<Content> {
     let mut out = Content::default();
-    let mut stack: Vec<State> = vec![State::default()];
+    let mut stack: Vec<State> = vec![seed.clone()];
     let mut text = TextState::default();
     let mut path = PathBuilder::default();
-    let mut current = State::default();
+    let mut current = seed;
 
     for operation in operations {
-        if out.items.len() > limits.max_operations {
-            return Err(limits.exceeded(LimitKind::Operations, out.items.len() as u64));
+        // The budget counts **operators across the whole page**, forms included:
+        // a form drawn a thousand times is a thousand times the work, and a
+        // per-invocation count would multiply that by the nesting depth.
+        *budget += 1;
+        if *budget > limits.max_operations {
+            return Err(limits.exceeded(LimitKind::Operations, *budget as u64));
         }
         let operator = operation.operator.as_str();
         let args = &operation.operands;
@@ -953,7 +1030,14 @@ pub fn interpret(
             }
             "Do" => {
                 if let Some(name) = name_at(args, 0) {
-                    place_image(&name, &current, resources, geometry, &mut out);
+                    if resources.is_form(&name) {
+                        place_form(
+                            &name, &current, resources, geometry, limits, tolerance, depth, budget,
+                            &mut out,
+                        )?;
+                    } else {
+                        place_image(&name, &current, resources, geometry, &mut out);
+                    }
                 }
             }
             "BI" => {
@@ -1002,6 +1086,57 @@ fn paint(
         even_odd,
         ctm: state.ctm,
     }));
+}
+
+/// Draws a form XObject: its content, interpreted.
+///
+/// Three things make a form different from a picture, and all three are in here:
+/// the **graphics state** carries over from the `Do` (a form that draws a red
+/// square inherits the colour, not a default), the **CTM** is multiplied by the
+/// form's `/Matrix`, and the **resources** are the form's own, so a name the page
+/// does not declare can still resolve.
+#[allow(clippy::too_many_arguments)]
+fn place_form(
+    name: &str,
+    state: &State,
+    resources: &dyn Resources,
+    geometry: PageGeometry,
+    limits: PdfLimits,
+    tolerance: f64,
+    depth: usize,
+    budget: &mut usize,
+    out: &mut Content,
+) -> Result<()> {
+    if depth >= limits.max_form_depth {
+        return Err(limits.exceeded(LimitKind::FormDepth, depth as u64));
+    }
+    let Some(form) = resources.form(name) else {
+        // The provider said it was a form and then could not produce one, which
+        // is a broken file rather than a missing name; saying so beats drawing
+        // nothing without a word.
+        out.ignored.push(Ignored::new(
+            "pdf.form",
+            format!("form `{name}` could not be read"),
+        ));
+        return Ok(());
+    };
+    let mut seed = state.clone();
+    seed.ctm = Matrix::chain(form.matrix, state.ctm);
+    let content = interpret_from(
+        &form.operations,
+        form.resources.as_ref(),
+        geometry,
+        limits,
+        tolerance,
+        seed,
+        depth + 1,
+        budget,
+    )?;
+    out.items.extend(content.items);
+    out.ignored.extend(content.ignored);
+    out.unmapped_glyphs += content.unmapped_glyphs;
+    out.estimated_widths += content.estimated_widths;
+    Ok(())
 }
 
 /// Places an image XObject into the unit square of its own space.
@@ -1141,8 +1276,16 @@ fn render_glyph(
     let (x, y) = placement.apply(0.0, 0.0);
     let scale = trm.scale_factor();
     let character = font.character(code);
-    let mapped =
-        font.to_unicode.contains_key(&code) || font.differences.contains_key(&(code as u8));
+    // "Mapped" means the *document* said which character this code is:
+    // `/ToUnicode`, a `/Differences` entry, or a **named** base encoding. A
+    // character that came out of the fallback — no `/Encoding`, or
+    // `StandardEncoding`, whose upper half this reader approximates — is a guess,
+    // and the flag is how a caller learns to distrust it. Getting this wrong in
+    // the other direction is worse than it looks: a page of plain Latin text
+    // would be reported as unreadable and sent off to a vision model.
+    let mapped = font.to_unicode.contains_key(&code)
+        || font.differences.contains_key(&(code as u8))
+        || (font.encoding_stated && character.is_some());
     let ch = character.unwrap_or('\u{fffd}');
     if character.is_none() {
         out.unmapped_glyphs += 1;
