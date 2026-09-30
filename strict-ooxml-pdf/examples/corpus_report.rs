@@ -39,7 +39,7 @@ use strict_ooxml_pdf::{PdfDocument, PdfLimits, TextLayer};
 
 fn usage() -> ! {
     eprintln!(
-        "usage: cargo run -p strict-ooxml-pdf --example corpus_report -- <directory> [--raster]"
+        "usage: cargo run -p strict-ooxml-pdf --example corpus_report -- <directory> [--raster] [--losses]"
     );
     std::process::exit(2);
 }
@@ -102,6 +102,11 @@ struct Reading {
     millis: u128,
     /// `(kind, count)` for the losses this file reported.
     losses: Vec<(String, usize)>,
+    /// `((kind, what the reader said), count)`, for the same losses. The counts
+    /// here are the report's own, so a kind that appears on every file and a kind
+    /// that appears on one are told apart by the number, and the *reason* is one
+    /// line away instead of a file opening away.
+    details: Vec<((String, String), usize)>,
     /// `file page` for every page a converter would hand to a model.
     candidates: Vec<String>,
 }
@@ -129,6 +134,7 @@ fn read(path: &Path) -> Option<Reading> {
         cached_bytes: 0,
         millis: 0,
         losses: Vec::new(),
+        details: Vec::new(),
         candidates: Vec::new(),
     };
     for (index, page) in pages.iter().enumerate() {
@@ -165,10 +171,17 @@ fn read(path: &Path) -> Option<Reading> {
         }
     }
     let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
+    // The same losses, but with the reader's own words: "which kind" says there is
+    // a problem, and only "what did it say" says where to look.
+    let mut details: BTreeMap<(String, String), usize> = BTreeMap::new();
     for loss in document.report().losses() {
         *kinds.entry(loss.id.clone()).or_default() += 1;
+        *details
+            .entry((loss.id.clone(), loss.detail.clone()))
+            .or_default() += 1;
     }
     reading.losses = kinds.into_iter().collect();
+    reading.details = details.into_iter().collect();
     reading.distinct_pictures = document.distinct_images();
     reading.cached_bytes = document.cached_image_bytes();
     reading.millis = started.elapsed().as_millis();
@@ -209,12 +222,66 @@ fn print_picture_summary(drawn: usize, distinct: usize, cached: usize) {
     );
 }
 
+/// What the reader said it could not carry: a count per kind, and under each kind
+/// the reasons it gave, most frequent first.
+///
+/// A kind with one reason is one bug. A kind with a hundred reasons is a missing
+/// feature wearing a loss record as a disguise, and the two look identical in a
+/// column of counts.
+fn print_losses(kinds: &BTreeMap<String, usize>, details: &BTreeMap<(String, String), usize>) {
+    if kinds.is_empty() {
+        return;
+    }
+    println!("what the reader said it could not carry, by kind:");
+    let mut kinds: Vec<(&String, &usize)> = kinds.iter().collect();
+    kinds.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
+    for (id, count) in kinds {
+        println!("  {count:>5}  {id}");
+        let mut reasons: Vec<(&String, &usize)> = details
+            .iter()
+            .filter(|((kind, _), _)| kind == id)
+            .map(|((_, reason), count)| (reason, count))
+            .collect();
+        reasons.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
+        for (reason, times) in reasons.iter().take(6) {
+            println!("           {times:>5}  {reason}");
+        }
+        if reasons.len() > 6 {
+            println!("           ... and {} more", reasons.len() - 6);
+        }
+    }
+}
+
+/// One file's own losses, under its row.
+///
+/// The aggregate answers "what did the reader lose across the corpus"; this
+/// answers "in which file", which is the question that has to be answered before
+/// a single one of them is opened.
+fn print_file_losses(reading: &Reading) {
+    if reading.losses.is_empty() {
+        return;
+    }
+    println!("  losses in {}:", reading.name);
+    let kinds: BTreeMap<String, usize> = reading.losses.iter().cloned().collect();
+    let details: BTreeMap<(String, String), usize> = reading
+        .details
+        .iter()
+        .map(|(key, count)| (key.clone(), *count))
+        .collect();
+    print_losses(&kinds, &details);
+    println!();
+}
+
 fn main() {
     let mut raster = false;
+    let mut per_file_losses = false;
     let mut directory: Option<PathBuf> = None;
     for argument in std::env::args().skip(1) {
         match argument.as_str() {
             "--raster" => raster = true,
+            // Which file a loss is in: the aggregate says a reader met 53 unknown
+            // operators, and that is one question too many to open 46 files for.
+            "--losses" => per_file_losses = true,
             "--help" | "-h" => usage(),
             other => directory = Some(PathBuf::from(other)),
         }
@@ -244,6 +311,7 @@ fn main() {
         0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
     );
     let mut candidates: Vec<String> = Vec::new();
+    let mut details: BTreeMap<(String, String), usize> = BTreeMap::new();
     let mut drawn = 0usize;
     let mut distinct = 0usize;
     let mut cached = 0usize;
@@ -255,6 +323,9 @@ fn main() {
         };
         for (kind, count) in &reading.losses {
             *kinds.entry(kind.clone()).or_default() += count;
+        }
+        for (key, count) in &reading.details {
+            *details.entry(key.clone()).or_default() += count;
         }
         candidates.extend(reading.candidates.clone());
         totals.0 += reading.pages;
@@ -269,6 +340,9 @@ fn main() {
         distinct += reading.distinct_pictures;
         cached += reading.cached_bytes;
         print_row(&reading);
+        if per_file_losses {
+            print_file_losses(&reading);
+        }
     }
 
     println!();
@@ -289,27 +363,28 @@ fn main() {
     println!();
     print_picture_summary(drawn, distinct, cached);
     println!();
-    println!("what the reader said it could not carry, by kind:");
-    let mut kinds: Vec<(&String, &usize)> = kinds.iter().collect();
-    kinds.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
-    for (id, count) in kinds {
-        println!("  {count:>5}  {id}");
-    }
-    if !candidates.is_empty() {
-        println!();
-        println!(
-            "pages a converter would hand to a model (ink, no readable text): {}",
-            candidates.len()
-        );
-        for candidate in candidates.iter().take(20) {
-            println!("  {candidate}");
-        }
-        if candidates.len() > 20 {
-            println!("  ... and {} more", candidates.len() - 20);
-        }
-    }
+    print_losses(&kinds, &details);
+    print_candidates(&candidates);
     if raster {
         raster_pages(&files);
+    }
+}
+
+/// The pages a converter would offer to a model, and the first few of them.
+fn print_candidates(candidates: &[String]) {
+    if candidates.is_empty() {
+        return;
+    }
+    println!();
+    println!(
+        "pages a converter would hand to a model (ink, no readable text): {}",
+        candidates.len()
+    );
+    for candidate in candidates.iter().take(20) {
+        println!("  {candidate}");
+    }
+    if candidates.len() > 20 {
+        println!("  ... and {} more", candidates.len() - 20);
     }
 }
 

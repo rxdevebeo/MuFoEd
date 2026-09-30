@@ -1045,9 +1045,20 @@ fn interpret_from(
                     "pdf.inline_image",
                     "inline image is not carried",
                 ));
-                // Skip to the matching `EI` by leaving the rest of the
-                // stream to the next operator; an inline image's data is not
-                // tokenized as operations, so the list is already past it.
+                // **The data is not skipped, and this arm cannot skip it.** The
+                // operations arrive as a flat list that `lopdf` has already
+                // tokenized, and an inline image's samples are inside those
+                // tokens: every `m`/`l`/`re`/`f`/`cm` byte pair in the binary
+                // payload is an operator by the time we see it, and the
+                // interpreter runs it. So a document with an inline image gets
+                // the picture lost *and* whatever geometry its bytes spell out.
+                //
+                // Carrying one means tokenizing the stream ourselves up to `ID`
+                // and then finding the `EI` that is delimited by whitespace
+                // (ISO 32000-1 §8.9.7) — the binary is allowed to contain
+                // anything at all, so no regular tokenizer can skip it. The
+                // corpus has none (checked with an independent reader: 0 of 46
+                // files), so this is a stated gap rather than a measured loss.
             }
             "sh" => out.ignored.push(Ignored::new(
                 "pdf.shading",
@@ -1400,7 +1411,7 @@ pub fn decode_image(
     limits: &PdfLimits,
 ) -> Result<(Encoded, u32, u32)> {
     decode_from(id, document, limits)
-        .map_err(|reject| crate::error::PdfError::Missing(reject.to_string()))
+        .map_err(|reject| crate::error::PdfError::Refused(reject.to_string()))
 }
 
 #[cfg(test)]

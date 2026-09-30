@@ -638,7 +638,7 @@ impl ResourceProvider for PageResources<'_> {
         // is decoded once for the document, not once per draw (Q-26).
         match self.cache.decode(id, self.document, &self.limits) {
             Ok(image) => Ok(Some(image)),
-            Err(error) => Err(PdfError::Missing(error.to_string())),
+            Err(reject) => Err(PdfError::Refused(reject.to_string())),
         }
     }
 

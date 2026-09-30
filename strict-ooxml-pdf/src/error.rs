@@ -27,6 +27,14 @@ pub enum PdfError {
     },
     /// A structure this reader needs is missing (no page tree, no `MediaBox`).
     Missing(String),
+    /// Something was refused, and the reason is a whole sentence.
+    ///
+    /// Not [`PdfError::Missing`]: the structure is *there*, and saying it is
+    /// missing sends whoever reads the report to look for a file that lost a part.
+    /// An image whose `/Length` promises more than the stream holds is a damaged
+    /// file, and this variant does not dress that sentence in a word — the first
+    /// version read «missing image dictionary is missing truncated samples».
+    Refused(String),
 }
 
 impl PdfError {
@@ -50,6 +58,7 @@ impl fmt::Display for PdfError {
                 write!(f, "limit exceeded ({kind}): {actual} > {limit}")
             }
             Self::Missing(what) => write!(f, "missing {what}"),
+            Self::Refused(why) => write!(f, "{why}"),
         }
     }
 }

@@ -143,6 +143,16 @@ pub enum Reject {
     UnsupportedLayout(&'static str),
     /// The dictionary is missing what an image needs.
     Incomplete(&'static str),
+    /// The file itself is broken: the stream is there and does not decode, or it
+    /// decodes to less than the dictionary promised.
+    ///
+    /// Separate from [`Reject::Incomplete`] because the two send a reader of the
+    /// report to different places. "The dictionary is missing `Width`" means the
+    /// producer wrote an image object we cannot read; "the samples are
+    /// truncated" means **this file is damaged**, and the first version of this
+    /// reader reported a broken stream as a missing dictionary — a wrong reason
+    /// for a real loss, which is worse than no reason at all.
+    Broken(&'static str),
     /// The samples exceed the budget.
     TooLarge,
 }
@@ -157,6 +167,7 @@ impl std::fmt::Display for Reject {
                 write!(f, "image layout ({what}) is not carried by this reader")
             }
             Self::Incomplete(what) => write!(f, "image dictionary is missing {what}"),
+            Self::Broken(what) => write!(f, "{what}"),
             Self::TooLarge => f.write_str("image exceeds the decoding budget"),
         }
     }
@@ -363,16 +374,17 @@ fn decode_inner(
             // The filter is carried; a stream that will not inflate is a broken
             // file, and saying "this filter is not carried" for it is a wrong
             // reason for a real loss — the kind of message that sends somebody to
-            // look for a codec instead of at the file.
+            // look for a codec instead of at the file. It is also not a *missing
+            // dictionary*, which is what the same message used to say.
             let samples = stream.decompressed_content().map_err(|_| match first {
-                Some(_) => Reject::Incomplete("flate samples could not be inflated"),
-                None => Reject::Incomplete("samples"),
+                Some(_) => Reject::Broken("flate samples could not be inflated"),
+                None => Reject::Broken("samples are not a decodable stream"),
             })?;
             let expected = (width as usize)
                 .saturating_mul(height as usize)
                 .saturating_mul(components as usize);
             if samples.len() < expected {
-                return Err(Reject::Incomplete("truncated samples"));
+                return Err(Reject::Broken("samples are truncated"));
             }
             if samples.len() > limits.max_image_bytes {
                 return Err(Reject::TooLarge);
