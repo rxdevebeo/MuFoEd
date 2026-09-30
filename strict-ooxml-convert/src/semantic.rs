@@ -25,11 +25,15 @@
 //!
 //! # What is not reconstructed
 //!
-//! Tables. A grid read from ruling lines is a reconstruction of something the
-//! PDF never states, and doing it badly produces a document that *looks* like a
-//! table and is not one. This increment detects a grid and says so
-//! ([`Severity::Unsupported`]) instead of guessing; the cells stay in the
-//! document as paragraphs, which is honest and reversible.
+//! Columns, absolute positioning and vertical alignment: none of them are in the
+//! PDF, and a two-column page is a page whose lines do not continue, which the
+//! paragraph rules already describe honestly.
+//!
+//! Lists too, and for the same reason with a twist: in a PDF a bullet *is* text.
+//! Turning it into a `w:numPr` would mean deleting the character the reader drew
+//! and writing another one in its place, so the marker stays in the text and the
+//! report says nothing was inferred. A later increment may take that on with a
+//! rule for what a marker looks like; until then the text is the truth.
 
 use std::sync::Arc;
 
@@ -48,6 +52,7 @@ use strict_ooxml_wml::model::Document;
 use crate::geometry::section_for;
 use crate::media::MediaCollector;
 use crate::report::{ConversionReport, Severity};
+use crate::tables;
 use crate::{to_half_points, to_twips, PdfOptions};
 
 /// The thresholds that turn geometry into structure.
@@ -94,48 +99,55 @@ pub(crate) fn build(
         report.lines += lines.len();
         let body = body_size(&lines);
         let pitch = body_pitch(&lines);
-        report_grid(page, index, report);
+        let plan = tables::plan(page, index + 1, &lines, &options.tables, report);
 
-        let mut paragraph: Option<Paragraph> = None;
-        let mut previous: Option<&GlyphLine> = None;
-        for line in &lines {
-            let starts_new = previous.map_or(true, |previous| {
-                let gap = line.baseline - previous.baseline;
-                let moved = (line.x - previous.x).abs();
-                gap > pitch * options.paragraphs.paragraph_gap_ratio
-                    || moved > body * options.paragraphs.indent_ratio
-                    || !same_format(previous, line)
-            });
-            if starts_new || paragraph.is_none() {
-                if let Some(finished) = paragraph.take() {
-                    blocks.push(Block::Paragraph(finished));
-                }
-                let heading = heading_level(line, body, &options.paragraphs);
-                if let Some(level) = heading {
-                    report.record(
-                        "heading.inferred",
-                        Severity::Inferred,
-                        format!(
-                            "page {}: {:.1} pt text on a {:.1} pt body became heading {}",
-                            index + 1,
-                            line.size,
-                            body,
-                            level + 1
-                        ),
-                    );
-                }
-                paragraph = Some(new_paragraph(line, heading));
-            } else if let Some(paragraph) = paragraph.as_mut() {
-                set_line_gap(paragraph, line, body);
+        // A table takes the place of the text inside it, and the page's own flow
+        // runs around it: the paragraphs before it, the table, the paragraphs
+        // after. The table sits where its first line was, which is the only
+        // order the page states.
+        let mut flow: Vec<GlyphLine> = Vec::new();
+        for (number, line) in lines.iter().enumerate() {
+            if let Some(table) = plan.starts_table(number) {
+                push_paragraphs(
+                    &mut blocks,
+                    &flow,
+                    body,
+                    pitch,
+                    options,
+                    0.0,
+                    true,
+                    report,
+                    index + 1,
+                );
+                // The paragraphs above the table are done; keeping them would put
+                // the page's text in the document twice.
+                flow.clear();
+                blocks.push(table_block(
+                    &plan.tables[table],
+                    body,
+                    pitch,
+                    options,
+                    report,
+                    index + 1,
+                ));
+                continue;
             }
-            if let Some(paragraph) = paragraph.as_mut() {
-                push_runs(paragraph, line);
+            if plan.inside_table(number) {
+                continue;
             }
-            previous = Some(line);
+            flow.push(line.clone());
         }
-        if let Some(finished) = paragraph.take() {
-            blocks.push(Block::Paragraph(finished));
-        }
+        push_paragraphs(
+            &mut blocks,
+            &flow,
+            body,
+            pitch,
+            options,
+            0.0,
+            true,
+            report,
+            index + 1,
+        );
 
         if options.embed_images {
             blocks.extend(images_of(page, &mut media, report, options));
@@ -166,46 +178,135 @@ pub(crate) fn build(
     (document, media.into_parts())
 }
 
-/// Records that a page carries a ruling grid, which this increment does not
-/// reconstruct.
+/// Turns a run of lines into paragraphs.
 ///
-/// Reporting it is worth more than guessing: a table guessed from its lines
-/// looks like a table in the output and is not one, and the caller cannot tell
-/// the difference without reading this report.
-fn report_grid(page: &PdfPage, index: usize, report: &mut ConversionReport) {
-    let rules = page
-        .items()
-        .iter()
-        .filter(|item| {
-            let strict_ooxml_pdf::Item::Vector(vector) = item else {
-                return false;
-            };
-            // A ruling line is a filled box that is long and thin.
-            let bounds = strict_ooxml_pdf::content::Matrix::IDENTITY;
-            let mut width = 0.0f64;
-            let mut height = 0.0f64;
-            for subpath in &vector.subpaths {
-                for (x, y) in &subpath.points {
-                    let (x, y) = bounds.apply(*x, *y);
-                    width = width.max(x);
-                    height = height.max(y);
-                }
+/// The page's flow and a table cell's content go through this one function, so a
+/// cell is a small document rather than a special case: the same gap, indent and
+/// format rules decide where its paragraphs begin.
+///
+/// `origin` is the x a paragraph's indent is measured from - the page's left
+/// edge in the page's flow, the cell's left edge inside a cell, where an indent
+/// means nothing without it. `allow_headings` is false in a cell: a large first
+/// line in a table is a label, and a heading inside a cell is a claim no PDF
+/// supports.
+#[allow(clippy::too_many_arguments)]
+fn paragraphs_of(
+    lines: &[GlyphLine],
+    body: f64,
+    pitch: f64,
+    options: &PdfOptions,
+    origin: f64,
+    allow_headings: bool,
+    report: &mut ConversionReport,
+    page: usize,
+) -> Vec<Paragraph> {
+    let mut out: Vec<Paragraph> = Vec::new();
+    let mut paragraph: Option<Paragraph> = None;
+    let mut previous: Option<&GlyphLine> = None;
+    for line in lines {
+        let starts_new = previous.is_none_or(|previous| {
+            let gap = line.baseline - previous.baseline;
+            let moved = (line.x - previous.x).abs();
+            gap > pitch * options.paragraphs.paragraph_gap_ratio
+                || moved > body * options.paragraphs.indent_ratio
+                || !same_format(previous, line)
+        });
+        if starts_new || paragraph.is_none() {
+            if let Some(finished) = paragraph.take() {
+                out.push(finished);
             }
-            let thin = width.min(height) < 2.0;
-            thin && width.max(height) > 20.0
-        })
-        .count();
-    if rules >= 4 {
-        report.record(
-            "table.detected",
-            Severity::Unsupported,
-            format!(
-                "page {} carries {rules} ruling lines that look like a table grid; the \\
-                 cells were left as paragraphs",
-                index + 1
-            ),
-        );
+            let heading = if allow_headings {
+                heading_level(line, body, &options.paragraphs)
+            } else {
+                None
+            };
+            if let Some(level) = heading {
+                report.record(
+                    "heading.inferred",
+                    Severity::Inferred,
+                    format!(
+                        "page {page}: {:.1} pt text on a {:.1} pt body became heading {}",
+                        line.size,
+                        body,
+                        level + 1
+                    ),
+                );
+            }
+            paragraph = Some(new_paragraph(line, heading, origin));
+        } else if let Some(paragraph) = paragraph.as_mut() {
+            set_line_gap(paragraph, line, body);
+        }
+        if let Some(paragraph) = paragraph.as_mut() {
+            push_runs(paragraph, line);
+        }
+        previous = Some(line);
     }
+    if let Some(finished) = paragraph {
+        out.push(finished);
+    }
+    out
+}
+
+/// Appends a run of lines to a block list.
+#[allow(clippy::too_many_arguments)]
+fn push_paragraphs(
+    blocks: &mut Vec<Block>,
+    lines: &[GlyphLine],
+    body: f64,
+    pitch: f64,
+    options: &PdfOptions,
+    origin: f64,
+    allow_headings: bool,
+    report: &mut ConversionReport,
+    page: usize,
+) {
+    blocks.extend(
+        paragraphs_of(
+            lines,
+            body,
+            pitch,
+            options,
+            origin,
+            allow_headings,
+            report,
+            page,
+        )
+        .into_iter()
+        .map(Block::Paragraph),
+    );
+}
+
+/// Builds a table's cells into the model, each cell's text as paragraphs.
+fn table_block(
+    planned: &tables::PlannedTable,
+    body: f64,
+    pitch: f64,
+    options: &PdfOptions,
+    report: &mut ConversionReport,
+    page: usize,
+) -> Block {
+    let paragraphs = planned
+        .rows
+        .iter()
+        .map(|row| {
+            row.cells
+                .iter()
+                .map(|cell| {
+                    paragraphs_of(
+                        &cell.lines,
+                        body,
+                        pitch,
+                        options,
+                        cell.left,
+                        false,
+                        report,
+                        page,
+                    )
+                })
+                .collect()
+        })
+        .collect();
+    Block::Table(tables::table_of(planned, paragraphs))
 }
 
 /// The size most of a page's text is set in. Shared with the visual mode, which
@@ -256,7 +357,9 @@ fn body_size(lines: &[GlyphLine]) -> f64 {
             None => sizes.push((key, 1)),
         }
     }
-    sizes.sort_by(|left, right| right.1.cmp(&left.1));
+    // Most common first. `Reverse` makes the intent ("descending") part of the
+    // key instead of a comparison that has to be read backwards.
+    sizes.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
     let key = sizes.first().map_or(0, |(key, _)| *key);
     lines
         .iter()
@@ -309,13 +412,17 @@ fn heading_level(line: &GlyphLine, body: f64, rules: &ParagraphRules) -> Option<
 }
 
 /// A paragraph with no runs yet, carrying the paragraph's own indentation.
-fn new_paragraph(line: &GlyphLine, heading: Option<u8>) -> Paragraph {
+///
+/// `origin` is what the indent is measured from: the page's left edge in the
+/// page's flow, a cell's left edge inside one. An indent from the page's edge
+/// inside a cell would push the text twice as far right as the PDF put it.
+fn new_paragraph(line: &GlyphLine, heading: Option<u8>, origin: f64) -> Paragraph {
     Paragraph {
         props: ParagraphProperties {
             // An indent is the only paragraph-level geometry a PDF states, and
             // keeping it is what stops a converted page from re-flowing.
             indentation: Some(Indentation {
-                start: Some(Twips(to_twips(line.x))),
+                start: Some(Twips(to_twips(line.x - origin))),
                 ..Indentation::default()
             }),
             outline_level: heading,

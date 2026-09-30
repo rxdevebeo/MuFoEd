@@ -4,7 +4,7 @@
 //! stating plainly because it decides which one a caller should ask for.
 //!
 //! - **`Semantic`** reconstructs what the document *is*: paragraphs, runs,
-//!   headings, lists and tables, with the geometry left to the layout engine.
+//!   headings and tables, with the geometry left to the layout engine.
 //!   The result is editable and re-flows; the page break positions are a
 //!   reconstruction, not the original.
 //! - **`Visual`** reconstructs where everything *was*: one section per page
@@ -19,11 +19,11 @@
 //! # What is inferred, and what is given
 //!
 //! The PDF states glyph origins, advances, font sizes, colours, paths and
-//! image boxes exactly. It states nothing about paragraphs, headings, lists or
+//! image boxes exactly. It states nothing about paragraphs, headings or
 //! tables. Every one of those is inferred here, by a named rule with a stated
-//! threshold, and every inference that fails is recorded in
-//! [`ConversionReport`] rather than hidden. A conversion that quietly drops a
-//! diagram is worse than one that says it could not place it.
+//! threshold ([`ParagraphRules`], [`TableRules`]), and every inference is
+//! recorded in [`ConversionReport`] rather than hidden. A conversion that
+//! quietly drops a diagram is worse than one that says it could not place it.
 //!
 //! # Example
 //!
@@ -55,6 +55,7 @@ mod geometry;
 mod media;
 mod report;
 mod semantic;
+mod tables;
 mod visual;
 
 use strict_ooxml_pdf::PdfDocument;
@@ -68,6 +69,7 @@ use strict_ooxml_wml::model::Document;
 
 pub use report::{ConversionLoss, ConversionReport, Severity};
 pub use semantic::ParagraphRules;
+pub use tables::TableRules;
 
 use crate::semantic::ParagraphRules as Rules;
 
@@ -140,6 +142,8 @@ pub struct PdfOptions {
     pub mode: Mode,
     /// The rules that turn lines into paragraphs, in semantic mode.
     pub paragraphs: ParagraphRules,
+    /// The rules that turn ruling lines into tables, in semantic mode.
+    pub tables: TableRules,
     /// Pages to convert; `None` means all of them.
     pub pages: Option<(usize, usize)>,
     /// Whether to embed the images the PDF carries.
@@ -162,6 +166,7 @@ impl Default for PdfOptions {
         Self {
             mode: Mode::default(),
             paragraphs: Rules::default(),
+            tables: TableRules::default(),
             pages: None,
             embed_images: true,
             figure_classifier: None,
@@ -181,6 +186,13 @@ impl PdfOptions {
     #[must_use]
     pub fn paragraphs(mut self, rules: ParagraphRules) -> Self {
         self.paragraphs = rules;
+        self
+    }
+
+    /// Sets the table rules.
+    #[must_use]
+    pub fn tables(mut self, rules: TableRules) -> Self {
+        self.tables = rules;
         self
     }
 
