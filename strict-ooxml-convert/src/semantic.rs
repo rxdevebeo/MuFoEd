@@ -51,6 +51,7 @@ use strict_ooxml_wml::model::Document;
 
 use crate::geometry::section_for;
 use crate::media::MediaCollector;
+use crate::recover::Recovered;
 use crate::report::{ConversionReport, Severity};
 use crate::tables;
 use crate::{to_half_points, to_twips, PdfOptions};
@@ -87,6 +88,7 @@ impl Default for ParagraphRules {
 /// Builds the semantic document.
 pub(crate) fn build(
     pages: &[PdfPage],
+    recovered: &Recovered,
     options: &PdfOptions,
     report: &mut ConversionReport,
 ) -> (Document, Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>) {
@@ -151,6 +153,14 @@ pub(crate) fn build(
 
         if options.embed_images {
             blocks.extend(images_of(page, &mut media, report, options));
+        }
+        // A page a model read stands where the region it came from was: after
+        // whatever the PDF itself gave (nothing, or the caption under the
+        // picture) and before the pictures, indented to the region's left edge.
+        for block in recovered.page(index) {
+            for paragraph in &block.paragraphs {
+                blocks.push(Block::Paragraph(paragraph.clone()));
+            }
         }
         sections.push(crate::Section {
             number: index + 1,

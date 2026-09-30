@@ -11,6 +11,15 @@ readme = false
 keywords = ["pdf", "ooxml", "docx", "convert", "text-extraction"]
 categories = ["text-processing", "parser-implementations"]
 
+[features]
+default = []
+# Reading the text of a page that has none, by rasterizing it and asking a
+# `TextRecovery` (`STAGE-8-TASK.md` §6, O11). Off by default: a page image has
+# to come from somewhere, and that somewhere is a 75-crate software rasterizer.
+# Without it a page this reader cannot read is reported as a loss instead, which
+# is the honest answer and the reason the loss report has that entry.
+raster = ["strict-ooxml-pdf/raster"]
+
 [dependencies]
 # Reading the PDF: pages, glyphs, images, paths.
 strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf" }

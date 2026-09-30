@@ -53,6 +53,7 @@
 
 mod geometry;
 mod media;
+mod recover;
 mod report;
 mod semantic;
 mod tables;
@@ -159,7 +160,57 @@ pub struct PdfOptions {
     /// with the `ocr-ollama` feature off produce the same document as one with it
     /// on when nothing asks for recognition (O4, O6).
     pub figure_classifier: Option<std::sync::Arc<dyn strict_ooxml_ocr::FigureClassifier>>,
+    /// A model that reads the text of a page that has none.
+    ///
+    /// A scanned page has no glyphs, so the only way to get words out of it is to
+    /// show it to something that reads pictures. `None` — the default, and the
+    /// only option without the `raster` feature — means a page this converter
+    /// cannot read is **reported as a loss** rather than guessed at.
+    ///
+    /// Recovered text is marked twice: in the document, by a paragraph style
+    /// whose id is `Recovered` (see [`RECOVERED_STYLE_NAME`]), and in the report,
+    /// by a [`Severity::Recovered`] entry naming the model.
+    #[cfg(feature = "raster")]
+    pub text_recovery: Option<std::sync::Arc<dyn strict_ooxml_ocr::TextRecovery>>,
+    /// Pixels per point of the page image a [`PdfOptions::text_recovery`] model is
+    /// shown. Default 2.0, which is 144 dpi — enough for a model to read body
+    /// text, and cheap enough that a fifty-page scan is not a timeout. A *region*
+    /// gets more than this when the region is small, down to
+    /// [`PdfOptions::recovery_min_region_px`].
+    #[cfg(feature = "raster")]
+    pub recovery_scale: f64,
+    /// Pixels on the long side that a region is given at least.
+    ///
+    /// Default 1200: what a vision model needs to read a line of type, and the
+    /// reason a 40 pt column of text is rasterized at a scale the page would
+    /// never use. It is a **wish**, not an order — see
+    /// [`PdfOptions::recovery_max_pixels`], which is what actually gets spent,
+    /// because the rasterizer draws the page and crops the region out of it.
+    #[cfg(feature = "raster")]
+    pub recovery_min_region_px: f64,
+    /// Pixels one recovery call may allocate. Default 16 Mi (4096²).
+    #[cfg(feature = "raster")]
+    pub recovery_max_pixels: u64,
+    /// The smallest picture, in points on its long side, that is worth sending to
+    /// a model. Default 24 pt.
+    ///
+    /// Below that a picture is a bullet, a logo or a rule, and thirty calls to a
+    /// model to be told «no text» is a page of text turned into an afternoon.
+    #[cfg(feature = "raster")]
+    pub recovery_min_region_pt: f64,
+    /// How many pictures of one page are sent to a model, largest first.
+    ///
+    /// Default 4. A scan is one picture and costs one call; a page of a magazine
+    /// is several, and the cap is where the cost stops being a decision and starts
+    /// being a bill.
+    #[cfg(feature = "raster")]
+    pub recovery_max_regions: usize,
 }
+
+/// The name of the paragraph style a recovered paragraph carries, as a reader
+/// of the converted document sees it in Word's styles pane.
+#[cfg(feature = "raster")]
+pub const RECOVERY_STYLE_NAME: &str = "Recovered from a page image";
 
 impl Default for PdfOptions {
     fn default() -> Self {
@@ -170,6 +221,18 @@ impl Default for PdfOptions {
             pages: None,
             embed_images: true,
             figure_classifier: None,
+            #[cfg(feature = "raster")]
+            text_recovery: None,
+            #[cfg(feature = "raster")]
+            recovery_scale: 2.0,
+            #[cfg(feature = "raster")]
+            recovery_min_region_px: 1200.0,
+            #[cfg(feature = "raster")]
+            recovery_max_pixels: 4096 * 4096,
+            #[cfg(feature = "raster")]
+            recovery_min_region_pt: 24.0,
+            #[cfg(feature = "raster")]
+            recovery_max_regions: 4,
         }
     }
 }
@@ -210,6 +273,35 @@ impl PdfOptions {
         classifier: Option<std::sync::Arc<dyn strict_ooxml_ocr::FigureClassifier>>,
     ) -> Self {
         self.figure_classifier = classifier;
+        self
+    }
+
+    /// Sets the model that reads the text of a page that has none.
+    #[cfg(feature = "raster")]
+    #[must_use]
+    pub fn text_recovery(
+        mut self,
+        recovery: Option<std::sync::Arc<dyn strict_ooxml_ocr::TextRecovery>>,
+    ) -> Self {
+        self.text_recovery = recovery;
+        self
+    }
+
+    /// Sets the scale of the page image a recovery model is shown.
+    #[cfg(feature = "raster")]
+    #[must_use]
+    pub fn recovery_scale(mut self, scale: f64) -> Self {
+        self.recovery_scale = scale;
+        self
+    }
+
+    /// Sets how many pictures of one page a recovery model is shown, and how big
+    /// a picture has to be to be worth showing.
+    #[cfg(feature = "raster")]
+    #[must_use]
+    pub fn recovery_regions(mut self, max_regions: usize, min_region_pt: f64) -> Self {
+        self.recovery_max_regions = max_regions;
+        self.recovery_min_region_pt = min_region_pt;
         self
     }
 }
@@ -302,10 +394,27 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
         report.merge(&page.report);
     }
 
-    let (document, media) = match options.mode {
-        Mode::Semantic => semantic::build(&pages, options, &mut report),
-        Mode::Visual => visual::build(&pages, options, &mut report),
+    // The recovery pass runs after the page reports are folded in and before the
+    // blocks are built, because the recovered paragraphs have to land in the
+    // page's place in the flow — and because a page we cannot read is a fact
+    // about the conversion, not about a paragraph.
+    #[cfg(feature = "raster")]
+    let recovered = recover::recover_pages(pdf, &pages, options, &mut report);
+    #[cfg(not(feature = "raster"))]
+    let recovered = {
+        recover::record_absent(&pages, &mut report);
+        recover::Recovered::default()
     };
+
+    #[cfg_attr(not(feature = "raster"), allow(unused_mut))]
+    let (mut document, media) = match options.mode {
+        Mode::Semantic => semantic::build(&pages, &recovered, options, &mut report),
+        Mode::Visual => visual::build(&pages, &recovered, options, &mut report),
+    };
+    #[cfg(feature = "raster")]
+    if !recovered.is_empty() {
+        recover::declare_style(&mut document);
+    }
     Ok(Converted {
         document,
         report,

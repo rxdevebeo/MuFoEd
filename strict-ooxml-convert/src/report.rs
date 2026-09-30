@@ -19,6 +19,15 @@ pub enum Severity {
     Lost,
     /// The page has a shape the converter does not model at all.
     Unsupported,
+    /// Text that is in the document because a **model read a picture of the
+    /// page**, not because this converter read the page.
+    ///
+    /// Its own severity, because it is neither an inference from geometry nor a
+    /// loss: the text is there, it is the page's text, and nobody can say how
+    /// many characters are wrong. A caller filtering on `Inferred` would miss it,
+    /// and a caller filtering on `Lost` would be told a document is lossy when the
+    /// only questionable thing about it is a model's handwriting.
+    Recovered,
 }
 
 impl fmt::Display for Severity {
@@ -27,6 +36,7 @@ impl fmt::Display for Severity {
             Self::Inferred => "inferred",
             Self::Lost => "lost",
             Self::Unsupported => "unsupported",
+            Self::Recovered => "recovered",
         })
     }
 }
@@ -66,6 +76,8 @@ pub struct ConversionReport {
     pub(crate) images: usize,
     pub(crate) unmapped_glyphs: usize,
     pub(crate) estimated_advances: usize,
+    pub(crate) recovered_pages: usize,
+    pub(crate) recovered_paragraphs: usize,
 }
 
 impl ConversionReport {
@@ -119,6 +131,18 @@ impl ConversionReport {
     #[must_use]
     pub fn estimated_advances(&self) -> usize {
         self.estimated_advances
+    }
+
+    /// Pages whose text came from a model reading a picture of the page.
+    #[must_use]
+    pub fn recovered_pages(&self) -> usize {
+        self.recovered_pages
+    }
+
+    /// Paragraphs that came from a model rather than from the PDF's glyphs.
+    #[must_use]
+    pub fn recovered_paragraphs(&self) -> usize {
+        self.recovered_paragraphs
     }
 
     /// Records a judgement; the same fact twice is one entry with a count.
@@ -183,6 +207,13 @@ impl fmt::Display for ConversionReport {
                 f,
                 "  advances estimated rather than stated: {}",
                 self.estimated_advances
+            )?;
+        }
+        if self.recovered_pages > 0 {
+            writeln!(
+                f,
+                "  pages whose text a model read from a picture: {} ({} paragraph(s))",
+                self.recovered_pages, self.recovered_paragraphs
             )?;
         }
         if self.losses.is_empty() {
