@@ -84,7 +84,7 @@ pub(crate) fn build(
     pages: &[PdfPage],
     options: &PdfOptions,
     report: &mut ConversionReport,
-) -> Document {
+) -> (Document, Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>) {
     let mut media = MediaCollector::new();
     let mut blocks: Vec<Block> = Vec::new();
     let mut sections: Vec<crate::Section> = Vec::new();
@@ -138,7 +138,7 @@ pub(crate) fn build(
         }
 
         if options.embed_images {
-            blocks.extend(images_of(page, &mut media, report));
+            blocks.extend(images_of(page, &mut media, report, options));
         }
         sections.push(crate::Section {
             number: index + 1,
@@ -163,7 +163,7 @@ pub(crate) fn build(
         .filter(|block| matches!(block, Block::Paragraph(_)))
         .count();
     report.images = media.len();
-    document
+    (document, media.into_parts())
 }
 
 /// Records that a page carries a ruling grid, which this increment does not
@@ -233,8 +233,9 @@ pub(crate) fn images_pub(
     page: &PdfPage,
     media: &mut MediaCollector,
     report: &mut ConversionReport,
+    options: &PdfOptions,
 ) -> Vec<Block> {
-    images_of(page, media, report)
+    images_of(page, media, report, options)
 }
 
 /// The size most of a page's text is set in.
@@ -394,11 +395,19 @@ fn run(properties: RunProperties, text: String) -> Inline {
 }
 
 /// A page's images, one centred paragraph each.
+///
+/// When a classifier is supplied, each region is described before it is placed
+/// and the description goes into `wp:docPr/@descr`, which is the field a screen
+/// reader reads. Everything the model said lands in the report first: a
+/// description in a document that the report does not mention is a caption
+/// nobody can audit.
 fn images_of(
     page: &PdfPage,
     media: &mut MediaCollector,
     report: &mut ConversionReport,
+    options: &PdfOptions,
 ) -> Vec<Block> {
+    let page_number = page.number;
     let mut out = Vec::new();
     for item in page.items() {
         let strict_ooxml_pdf::Item::Image(image) = item else {
@@ -413,6 +422,10 @@ fn images_of(
             }
             continue;
         };
+        // The description comes first: it only needs the image, while storing it
+        // needs an encoding, and a failed encoding must not cost the model's
+        // words as well as the picture.
+        let description = describe_region(image, options, report, page_number);
         let part = match media.add(out.len(), encoded) {
             Ok(part) => part,
             Err(reason) => {
@@ -420,9 +433,94 @@ fn images_of(
                 continue;
             }
         };
-        out.push(Block::Paragraph(image_paragraph(image, &part)));
+        out.push(Block::Paragraph(image_paragraph(image, &part, description)));
     }
     out
+}
+
+/// Asks the model what a region is, and records whatever it says.
+///
+/// Four outcomes, four report entries: described, refused, not configured, and
+/// the answer had no usable kind. The last is the one that would be easiest to
+/// miss - a caption that says nothing is not a caption.
+fn describe_region(
+    image: &strict_ooxml_pdf::PlacedImage,
+    options: &PdfOptions,
+    report: &mut ConversionReport,
+    page: usize,
+) -> Option<String> {
+    let Some(classifier) = options.figure_classifier.as_ref() else {
+        // No model: the picture is still placed, and the fact that it was not
+        // described is not recorded on every page - it is a property of the
+        // conversion, stated once by the caller.
+        return None;
+    };
+    let Some(encoded) = image.image.as_ref() else {
+        report.record(
+            "ocr.figure",
+            Severity::Lost,
+            format!(
+                "page {page}: a region had no decodable image, so nothing could be asked about it"
+            ),
+        );
+        return None;
+    };
+    let Ok(bytes) = encoded.to_png() else {
+        report.record(
+            "ocr.figure",
+            Severity::Lost,
+            format!("page {page}: the region could not be re-encoded for a model"),
+        );
+        return None;
+    };
+    let request = strict_ooxml_ocr::Image::png(bytes);
+    match classifier.describe(&request, &format!("page {page}")) {
+        Ok(answer) => {
+            let kind = strict_ooxml_ocr::traits::FigureKind::parse(&answer.text);
+            if kind == strict_ooxml_ocr::traits::FigureKind::Unknown {
+                report.record(
+                    "ocr.figure",
+                    Severity::Unsupported,
+                    format!(
+                        "page {page}: the model's answer named no known kind: {}",
+                        answer.text
+                    ),
+                );
+                return None;
+            }
+            // The first line is the kind, which the caller already used; the
+            // description that goes into the document is the rest.
+            let description = answer
+                .text
+                .split_once('\n')
+                .map_or(answer.text.as_str(), |(_, rest)| rest.trim())
+                .to_owned();
+            report.record(
+                "ocr.figure",
+                Severity::Inferred,
+                format!(
+                    "page {page}: {} {}, described as \\\"{description}\\\" (model {} {})",
+                    kind.as_str(),
+                    if kind == strict_ooxml_ocr::traits::FigureKind::Scan {
+                        "which has no text layer"
+                    } else {
+                        "recognised by a model"
+                    },
+                    answer.model,
+                    answer.version
+                ),
+            );
+            Some(description)
+        }
+        Err(error) => {
+            report.record(
+                "ocr.figure",
+                Severity::Lost,
+                format!("page {page}: {error}"),
+            );
+            None
+        }
+    }
 }
 
 /// A paragraph holding one image, sized in EMU.
@@ -432,6 +530,7 @@ fn images_of(
 fn image_paragraph(
     image: &strict_ooxml_pdf::PlacedImage,
     part: &strict_ooxml_core::part::PartId,
+    description: Option<String>,
 ) -> Paragraph {
     let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
     let extent = Extent {
@@ -450,13 +549,15 @@ fn image_paragraph(
                 doc_pr: Some(strict_ooxml_wml::model::drawing::DocPr {
                     id: None,
                     name: Some(Arc::from("Picture")),
-                    descr: None,
+                    // The field a screen reader reads, and the only place a
+                    // model's words enter the document.
+                    descr: description.clone().map(Arc::from),
                 }),
                 graphic_uri: None,
                 graphic: Box::new(Graphic::Picture(
                     strict_ooxml_wml::model::drawing::Picture {
                         name: Some(Arc::from("Picture")),
-                        descr: None,
+                        descr: description.map(Arc::from),
                         blip: Some(strict_ooxml_wml::model::drawing::BlipRef {
                             embed: None,
                             link: None,

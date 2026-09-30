@@ -44,7 +44,7 @@ pub(crate) fn build(
     pages: &[PdfPage],
     options: &PdfOptions,
     report: &mut ConversionReport,
-) -> Document {
+) -> (Document, Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>) {
     let mut media = MediaCollector::new();
     let mut blocks: Vec<Block> = Vec::new();
     let mut sections: Vec<crate::Section> = Vec::new();
@@ -86,7 +86,7 @@ pub(crate) fn build(
         let _ = (index, body, pitch, TWIPS_PER_POINT);
 
         if options.embed_images {
-            blocks.extend(images_pub(page, &mut media, report));
+            blocks.extend(images_pub(page, &mut media, report, options));
         }
         sections.push(crate::Section {
             number: index + 1,
@@ -111,5 +111,5 @@ pub(crate) fn build(
         .filter(|block| matches!(block, Block::Paragraph(_)))
         .count();
     report.images = media.len();
-    document
+    (document, media.into_parts())
 }

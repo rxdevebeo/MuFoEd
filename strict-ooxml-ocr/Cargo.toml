@@ -1,0 +1,39 @@
+[package]
+name = "strict-ooxml-ocr"
+description = "Optional recognition of scanned pages and graphic regions through a local ollama vision model (STAGE-8-TASK.md phase 8D)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ocr", "pdf", "vision", "ollama", "accessibility"]
+categories = ["text-processing", "api-bindings"]
+
+[features]
+default = []
+# The ollama client. Off by default: a crate that needs neither the network nor
+# a local model server should not pull an HTTP client in, and a build that
+# depends on someone else's daemon is a build that fails on someone else's
+# machine (O1, O6).
+ocr-ollama = ["dep:ureq", "dep:serde_json"]
+
+[dependencies]
+# Re-encoding an image the reader already decoded, so the request carries a PNG.
+png = "0.18"
+ureq = { version = "3", optional = true }
+# The daemon answers JSON and the fields are read by name. Hand-rolling a
+# parser for a payload another program produces is a bug farm, and a
+# dependency that is only pulled when a model is actually used costs nothing.
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+# A mock server in the test itself, so the client is tested without a model and
+# without a network.
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

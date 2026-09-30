@@ -83,9 +83,13 @@ fn round_trip(mode: Mode) -> (String, String, Vec<u8>) {
     let mut reader = PdfDocument::open(&pdf, PdfLimits::default()).expect("open");
     let converted = convert(&mut reader, &PdfOptions::default().mode(mode)).expect("convert");
 
+    let mut bag = strict_ooxml_write::package::MediaBag::new();
+    for (part, bytes) in &converted.media {
+        bag.insert(part.clone(), bytes.clone());
+    }
     let written = strict_ooxml_write::write_package(
         &converted.document,
-        None,
+        Some(&bag),
         &strict_ooxml_write::WriteOptions::default(),
     )
     .expect("write");

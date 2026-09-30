@@ -355,11 +355,8 @@ impl<'a> PageResources<'a> {
         let mut images = BTreeMap::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
-            .or_else(|| {
-                // The direct entry, when the page sets its own resources.
-                inherited.get(b"Resources".as_slice())
-            })
-            .and_then(|value| resolve.get(value).cloned())
+            .and_then(|value| resolve.get(value))
+            .and_then(|value| value.as_dict().ok())
         else {
             return Self {
                 document,
@@ -368,62 +365,59 @@ impl<'a> PageResources<'a> {
                 limits,
             };
         };
-        let Some(fonts_object) = resources
-            .as_dict()
-            .ok()
-            .and_then(|dictionary| dictionary.get(b"Font").ok().cloned())
-        else {
-            return Self {
-                document,
-                fonts,
-                images,
-                limits,
-            };
-        };
-        for (name, value) in dictionary_entries(&fonts_object) {
-            let Some(id) = value.as_reference().ok() else {
-                continue;
-            };
-            let Some(dictionary) = document.get_object(id).ok().and_then(|o| o.as_dict().ok())
-            else {
-                continue;
-            };
-            match PdfFont::build(&name, dictionary, document, &limits) {
-                Ok(font) => {
-                    fonts.insert(name, font);
-                }
-                Err(error) => {
-                    // A font the reader cannot build is not a reason to lose the
-                    // page: the text is recorded as unmapped instead.
-                    let _ = error;
-                }
-            }
-        }
-        if let Some(xobjects) = resources
-            .as_dict()
-            .ok()
-            .and_then(|dictionary| dictionary.get(b"XObject").ok().cloned())
-        {
-            for (name, value) in dictionary_entries(&xobjects) {
-                if let Ok(id) = value.as_reference() {
-                    let is_image = document
-                        .get_object(id)
-                        .ok()
-                        .and_then(|object| object.as_stream().ok())
-                        .is_some_and(|stream| {
-                            stream
-                                .dict
-                                .get(b"Subtype")
-                                .ok()
-                                .and_then(|value| value.as_name().ok())
-                                == Some(b"Image")
-                        });
-                    if is_image {
-                        images.insert(name, id);
+
+        // `/Font` and `/XObject` are independent: a page whose only resource is a
+        // picture has no `/Font` at all, and a reader that stops looking when
+        // the font table is missing never finds the picture. That is the normal
+        // case for a scanned document.
+        if let Some(fonts_object) = resources.get(b"Font").ok().cloned() {
+            for (name, value) in dictionary_entries(&fonts_object) {
+                let Some(id) = value.as_reference().ok() else {
+                    continue;
+                };
+                let Some(dictionary) = document
+                    .get_object(id)
+                    .ok()
+                    .and_then(|object| object.as_dict().ok())
+                else {
+                    continue;
+                };
+                match PdfFont::build(&name, dictionary, document, &limits) {
+                    Ok(font) => {
+                        fonts.insert(name, font);
+                    }
+                    Err(error) => {
+                        // A font the reader cannot build is not a reason to lose
+                        // the page: its text is recorded as unmapped instead.
+                        let _ = error;
                     }
                 }
             }
         }
+
+        if let Some(xobjects) = resources.get(b"XObject").ok().cloned() {
+            for (name, value) in dictionary_entries(&xobjects) {
+                let Ok(id) = value.as_reference() else {
+                    continue;
+                };
+                let is_image = document
+                    .get_object(id)
+                    .ok()
+                    .and_then(|object| object.as_stream().ok())
+                    .is_some_and(|stream| {
+                        stream
+                            .dict
+                            .get(b"Subtype")
+                            .ok()
+                            .and_then(|value| value.as_name().ok())
+                            == Some(b"Image")
+                    });
+                if is_image {
+                    images.insert(name, id);
+                }
+            }
+        }
+
         Self {
             document,
             fonts,

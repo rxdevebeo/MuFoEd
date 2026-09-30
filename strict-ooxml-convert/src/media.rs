@@ -75,6 +75,14 @@ impl MediaCollector {
 
     /// The parts, in insertion order.
     #[must_use]
+    /// The parts and their bytes, for a caller that is about to write them.
+    pub(crate) fn into_parts(self) -> Vec<(PartId, Vec<u8>)> {
+        self.parts
+            .into_iter()
+            .map(|part| (part.part, part.bytes.as_ref().clone()))
+            .collect()
+    }
+
     #[cfg(test)]
     pub(crate) fn parts(&self) -> &[MediaPart] {
         &self.parts

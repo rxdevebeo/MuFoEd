@@ -640,9 +640,15 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
     };
     print!("{}", converted.report);
 
+    // The document references its images by part id; the bytes came out of the
+    // PDF, so they travel with it.
+    let mut bag = strict_ooxml::MediaBag::new();
+    for (part, bytes) in &converted.media {
+        bag.insert(part.clone(), bytes.clone());
+    }
     let written = match strict_ooxml::write_package(
         &converted.document,
-        None,
+        Some(&bag),
         &strict_ooxml::WriteOptions::default(),
     ) {
         Ok(written) => written,

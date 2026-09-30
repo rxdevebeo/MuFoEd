@@ -134,7 +134,7 @@ impl Mode {
 }
 
 /// Everything the conversion needs beyond the PDF.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PdfOptions {
     /// Which document to build.
     pub mode: Mode,
@@ -148,6 +148,13 @@ pub struct PdfOptions {
     /// contain and a caller converting text usually does not want the pages
     /// re-embedded as pictures.
     pub embed_images: bool,
+    /// A model that says what each graphic region is.
+    ///
+    /// `None` - the default - means no model is consulted at all, and a page or
+    /// region that needed one says so in the report. That is what makes a build
+    /// with the `ocr-ollama` feature off produce the same document as one with it
+    /// on when nothing asks for recognition (O4, O6).
+    pub figure_classifier: Option<std::sync::Arc<dyn strict_ooxml_ocr::FigureClassifier>>,
 }
 
 impl Default for PdfOptions {
@@ -157,6 +164,7 @@ impl Default for PdfOptions {
             paragraphs: Rules::default(),
             pages: None,
             embed_images: true,
+            figure_classifier: None,
         }
     }
 }
@@ -182,15 +190,32 @@ impl PdfOptions {
         self.embed_images = embed;
         self
     }
+
+    /// Sets the model that describes graphic regions.
+    #[must_use]
+    pub fn figure_classifier(
+        mut self,
+        classifier: Option<std::sync::Arc<dyn strict_ooxml_ocr::FigureClassifier>>,
+    ) -> Self {
+        self.figure_classifier = classifier;
+        self
+    }
 }
 
-/// A converted document and what the conversion could not do.
+/// A converted document, what the conversion could not do, and the image bytes
+/// it took out of the PDF.
 #[derive(Clone, Debug)]
 pub struct Converted {
     /// The document, ready for `strict-ooxml-write`.
     pub document: Document,
     /// What was inferred and what was given up.
     pub report: ConversionReport,
+    /// The media parts, with the bytes the document's `MediaIndex` names.
+    ///
+    /// A converted document references its images by part id and carries no
+    /// bytes: the model has nowhere to put them. A caller writing the document
+    /// out needs both halves, and this is the other half.
+    pub media: Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>,
 }
 
 /// A failure that stopped the conversion outright.
@@ -265,11 +290,15 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
         report.merge(&page.report);
     }
 
-    let document = match options.mode {
+    let (document, media) = match options.mode {
         Mode::Semantic => semantic::build(&pages, options, &mut report),
         Mode::Visual => visual::build(&pages, options, &mut report),
     };
-    Ok(Converted { document, report })
+    Ok(Converted {
+        document,
+        report,
+        media,
+    })
 }
 
 /// Points to twips, rounded to the nearest twentieth of a point.

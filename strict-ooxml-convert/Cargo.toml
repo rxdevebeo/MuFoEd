@@ -18,6 +18,9 @@ strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 # Part ids and the media content types the writer needs.
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+# Optional recognition of graphic regions (stage 8D). The crate itself has
+# no transport, so this costs nothing until a caller supplies a model.
+strict-ooxml-ocr = { version = "0.1.0", path = "../strict-ooxml-ocr" }
 
 [dev-dependencies]
 # The whole chain, so the conversion is tested as a package a reader can open
@@ -29,6 +32,8 @@ strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-sv
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 # The independent XML oracle for what the writer produced.
 roxmltree = "0.20"
+# The recognition tests build a PNG by hand.
+png = "0.18"
 
 [lints]
 workspace = true

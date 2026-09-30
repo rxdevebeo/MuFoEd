@@ -65,7 +65,7 @@ pub use strict_ooxml_wml::model::Document;
 pub use strict_ooxml_wml::ParseOptions as WmlOptions;
 pub use strict_ooxml_wml::{parse_document, ParseOptions};
 #[cfg(feature = "write")]
-pub use strict_ooxml_write::package::{NoSource, RelationshipInfo, Source};
+pub use strict_ooxml_write::package::{MediaBag, NoSource, RelationshipInfo, Source};
 #[cfg(feature = "write")]
 pub use strict_ooxml_write::{
     dropped_count, verify_no_silent_loss, write_package, WriteOptions, WriteOutput, WriteReport,

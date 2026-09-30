@@ -114,6 +114,54 @@ impl Source for strict_ooxml_core::opc::Package {
     }
 }
 
+/// Media bytes, ready to be written.
+///
+/// The natural home for this is the writer rather than each caller: a
+/// conversion produces a document whose `MediaIndex` names parts the *PDF* holds,
+/// and a caller should not have to know that to close the loop.
+#[derive(Clone, Debug, Default)]
+pub struct MediaBag {
+    bytes: BTreeMap<PartId, Vec<u8>>,
+}
+
+impl MediaBag {
+    /// An empty bag.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds the bytes of one part.
+    pub fn insert(&mut self, part: PartId, bytes: impl Into<Vec<u8>>) {
+        self.bytes.insert(part, bytes.into());
+    }
+
+    /// How many parts the bag holds.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    /// Whether the bag is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+}
+
+impl Source for MediaBag {
+    fn read_media(&self, part: &PartId) -> Result<Vec<u8>> {
+        self.bytes
+            .get(part)
+            .cloned()
+            .ok_or_else(|| strict_ooxml_core::error::StrictError::MissingPart(part.clone()))
+    }
+
+    fn relationship(&self, _from: &PartId, _rel_id: &str) -> Option<RelationshipInfo> {
+        None
+    }
+}
+
 /// A source that has nothing: the model must be self-sufficient.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoSource;
