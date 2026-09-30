@@ -11,11 +11,24 @@ ignore = []
 [licenses]
 version = 2
 confidence-threshold = 0.8
+# Permissive, non-copyleft, and each one here for a stated reason (TZ §16.8 asks
+# for MIT/Apache-2.0; the list has grown by decision, not by accident):
+#
+# - BSD-3-Clause, Unicode-3.0: added with the graphics and font stack.
+# - Zlib, ISC: `foldhash` and `hashbrown` arrive with the PDF rasterizer
+#   (hayro, feature `raster`, ADR-0011), and `ring`/`untrusted`/`rustls-webpki`
+#   with the TLS stack of the OCR client (`ureq`, feature `ocr-ollama`). Both are
+#   permissive and OSI-approved.
+# - CDLA-Permissive-2.0: `webpki-roots`, a root store for the same TLS stack.
+#   It is a data licence, not a code one; the code it ships is ISC/MIT.
 allow = [
     "MIT",
     "Apache-2.0",
     "BSD-3-Clause",
     "Unicode-3.0",
+    "Zlib",
+    "ISC",
+    "CDLA-Permissive-2.0",
 ]
 
 [bans]

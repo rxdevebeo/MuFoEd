@@ -75,6 +75,21 @@ jobs:
       - name: Stage-5 extended-scenario coverage gate (>= 85%)
         run: cargo run -p xtool -- coverage --file coverage/stage5-scenarios.toml --min 85
 
+  msrv:
+    name: msrv (1.92)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@v2
+      # The floor in `Cargo.toml` is a promise; this job is what makes it a fact
+      # (ADR-0011). `--all-features` on purpose: a floor that only holds for the
+      # default build is two floors wearing one name, and the gates above build
+      # everything. `--locked` so the answer is about this tree, not about what
+      # the resolver would pick today.
+      - name: Check (all features, locked)
+        run: cargo check --workspace --all-features --locked
+
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest
