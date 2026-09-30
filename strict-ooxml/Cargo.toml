@@ -12,13 +12,16 @@ keywords = ["ooxml", "docx", "wordprocessingml", "strict"]
 categories = ["parser-implementations"]
 
 [features]
-default = ["report", "svg"]
+default = ["report", "svg", "write"]
 # Stage 4: enables `strict-ooxml-render-svg` and the render methods on
 # `StrictDocument` (TZ §5.4).
 svg = ["dep:strict-ooxml-render-svg"]
 # Stage 3: enables `strict-ooxml-report` and the report methods on
 # `StrictDocument` (TZ §5.4).
 report = ["dep:strict-ooxml-report"]
+# Stage 8A: enables strict-ooxml-write and the write methods on
+# StrictDocument (STAGE-8-TASK.md 3).
+write = ["dep:strict-ooxml-write"]
 # Parallel parsing of independent parts.
 parallel = ["strict-ooxml-wml/parallel"]
 
@@ -27,6 +30,7 @@ strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 strict-ooxml-report = { version = "0.1.0", path = "../strict-ooxml-report", optional = true }
 strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg", optional = true }
+strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write", optional = true }
 
 [[example]]
 name = "support_report"

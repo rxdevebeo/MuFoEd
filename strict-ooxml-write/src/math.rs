@@ -1,0 +1,712 @@
+//! OMML serialization (`m:` namespace, ISO/IEC 29500-1 §22.1).
+//!
+//! Formulas are written structurally, node for node, so a written formula
+//! re-parses into the same tree. The one construct the model does not carry is
+//! the *argument properties* of a bare argument, which the schema makes
+//! optional; those are written only when the model recorded them.
+
+use strict_ooxml_wml::model::math::{
+    MathArgument, MathExpression, MathNode, MathParagraph, MathRun, MathRunProperties,
+};
+
+use crate::ctx::Ctx;
+use crate::xml::XmlWriter;
+
+/// Writes `m:oMath`.
+pub fn math_expression(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, expression: &MathExpression) {
+    xml.start("m:oMath");
+    for child in &expression.nodes {
+        math_node(ctx, xml, child);
+    }
+    xml.end();
+}
+
+/// Writes `m:oMathPara`.
+pub fn math_paragraph(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &MathParagraph) {
+    xml.start("m:oMathPara");
+    if let Some(properties) = &paragraph.properties {
+        if let Some(justification) = properties.justification {
+            xml.start("m:oMathParaPr");
+            xml.empty_attr("m:jc", "m:val", math_justification(justification));
+            xml.end();
+        }
+    }
+    math_expression(ctx, xml, &paragraph.expression);
+    xml.end();
+}
+
+fn math_justification(value: strict_ooxml_wml::model::math::MathJustification) -> &'static str {
+    use strict_ooxml_wml::model::math::MathJustification as J;
+    match value {
+        J::Left => "left",
+        J::CenterGroup => "centerGroup",
+        J::Center => "center",
+        J::Right => "right",
+        J::Default => "default",
+    }
+}
+
+fn alignment(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'static str> {
+    use strict_ooxml_wml::model::math::MathAlignment as A;
+    match value {
+        A::Left => Some("l"),
+        A::Center => Some("ctr"),
+        A::Right => Some("r"),
+        A::Inline => Some("inline"),
+        A::Unset => None,
+    }
+}
+
+fn script(value: strict_ooxml_wml::model::math::MathScript) -> &'static str {
+    use strict_ooxml_wml::model::math::MathScript as S;
+    match value {
+        S::DoubleStruck => "doubleStruck",
+        S::Fraktur => "fraktur",
+        S::Roman => "roman",
+        S::SansSerif => "sansSerif",
+        S::Monospace => "monospace",
+        S::Script => "script",
+    }
+}
+
+fn style(value: strict_ooxml_wml::model::math::MathStyle) -> &'static str {
+    value.as_str()
+}
+
+fn position(value: strict_ooxml_wml::model::math::MathPosition) -> &'static str {
+    use strict_ooxml_wml::model::math::MathPosition as P;
+    match value {
+        P::Top => "top",
+        P::Bottom => "bot",
+        P::Left => "left",
+        P::Right => "right",
+    }
+}
+
+fn vertical_jc(value: strict_ooxml_wml::model::math::MathVerticalJc) -> &'static str {
+    use strict_ooxml_wml::model::math::MathVerticalJc as V;
+    match value {
+        V::Top => "top",
+        V::Bottom => "bot",
+        V::Center => "center",
+    }
+}
+
+fn limit_location(value: strict_ooxml_wml::model::math::LimitLocation) -> &'static str {
+    use strict_ooxml_wml::model::math::LimitLocation as L;
+    match value {
+        L::UnderOver => "undOvr",
+        L::SubSup => "subSup",
+    }
+}
+
+/// Writes one `m:` node.
+fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
+    use MathNode as N;
+    match node {
+        N::Run(run) => math_run(ctx, xml, run),
+        N::Fraction(fraction) => {
+            xml.start("m:f");
+            if fraction.bar_type.is_some() || fraction.small_fraction {
+                xml.start("m:fPr");
+                xml.attr_m_opt("type", fraction.bar_type.as_deref());
+                if fraction.small_fraction {
+                    xml.empty("m:smallFrac");
+                }
+                control(ctx, xml, fraction.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:num", &fraction.numerator);
+            argument(ctx, xml, "m:den", &fraction.denominator);
+            xml.end();
+        }
+        N::Radical(radical) => {
+            xml.start("m:rad");
+            if radical.hide_degree || radical.control.is_some() {
+                xml.start("m:radPr");
+                if radical.hide_degree {
+                    xml.empty("m:degHide");
+                }
+                control(ctx, xml, radical.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:deg", &radical.degree);
+            argument(ctx, xml, "m:e", &radical.radicand);
+            xml.end();
+        }
+        N::Superscript(script) => {
+            xml.start("m:sSup");
+            script_control(ctx, xml, script.control.as_deref());
+            argument(ctx, xml, "m:e", &script.base);
+            argument(ctx, xml, "m:sup", &script.superscript);
+            xml.end();
+        }
+        N::Subscript(script) => {
+            xml.start("m:sSub");
+            script_control(ctx, xml, script.control.as_deref());
+            argument(ctx, xml, "m:e", &script.base);
+            argument(ctx, xml, "m:sub", &script.subscript);
+            xml.end();
+        }
+        N::SubSuperscript(script) => {
+            xml.start("m:sSubSup");
+            script_control(ctx, xml, script.control.as_deref());
+            argument(ctx, xml, "m:e", &script.base);
+            argument(ctx, xml, "m:sub", &script.subscript);
+            argument(ctx, xml, "m:sup", &script.superscript);
+            xml.end();
+        }
+        N::PreScript(script) => {
+            xml.start("m:sPre");
+            script_control(ctx, xml, script.control.as_deref());
+            argument(ctx, xml, "m:sub", &script.subscript);
+            argument(ctx, xml, "m:sup", &script.superscript);
+            argument(ctx, xml, "m:e", &script.base);
+            xml.end();
+        }
+        N::NaryOperator(operator) => {
+            xml.start("m:nary");
+            if operator.chr.is_some()
+                || operator.grow.is_some()
+                || operator.hide_sub
+                || operator.hide_sup
+                || operator.control.is_some()
+            {
+                xml.start("m:naryPr");
+                if let Some(chr) = operator.chr {
+                    xml.empty_attr("m:chr", "m:val", format!("{chr}"));
+                }
+                if let Some(location) = operator.limit_location {
+                    xml.empty_attr("m:limLoc", "m:val", limit_location(location));
+                }
+                if let Some(grow) = operator.grow {
+                    xml.empty_attr("m:grow", "m:val", bool_str(grow));
+                }
+                if operator.hide_sub {
+                    xml.empty("m:subHide");
+                }
+                if operator.hide_sup {
+                    xml.empty("m:supHide");
+                }
+                control(ctx, xml, operator.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:sub", &operator.subscript);
+            argument(ctx, xml, "m:sup", &operator.superscript);
+            argument(ctx, xml, "m:e", &operator.operand);
+            xml.end();
+        }
+        N::Delimiter(delimiter) => {
+            xml.start("m:d");
+            if delimiter.begin.is_some()
+                || delimiter.separator.is_some()
+                || delimiter.end.is_some()
+                || delimiter.grow.is_some()
+                || delimiter.shape.is_some()
+            {
+                xml.start("m:dPr");
+                if let Some(chr) = delimiter.begin {
+                    xml.empty_attr("m:begChr", "m:val", format!("{chr}"));
+                }
+                if let Some(chr) = delimiter.separator {
+                    xml.empty_attr("m:sepChr", "m:val", format!("{chr}"));
+                }
+                if let Some(chr) = delimiter.end {
+                    xml.empty_attr("m:endChr", "m:val", format!("{chr}"));
+                }
+                if let Some(grow) = delimiter.grow {
+                    xml.empty_attr("m:grow", "m:val", bool_str(grow));
+                }
+                if let Some(shape) = &delimiter.shape {
+                    xml.empty_attr("m:shp", "m:val", shape.as_ref());
+                }
+                control(ctx, xml, delimiter.control.as_deref());
+                xml.end();
+            }
+            for item in &delimiter.arguments {
+                argument(ctx, xml, "m:e", item);
+            }
+            xml.end();
+        }
+        N::Function(function) => {
+            xml.start("m:func");
+            function_control(ctx, xml, function.control.as_deref());
+            argument(ctx, xml, "m:fName", &function.name);
+            argument(ctx, xml, "m:e", &function.argument);
+            xml.end();
+        }
+        N::Limit(limit) => {
+            xml.start(if limit.above { "m:limUpp" } else { "m:limLow" });
+            if limit.control.is_some() {
+                xml.start(if limit.above {
+                    "m:limUppPr"
+                } else {
+                    "m:limLowPr"
+                });
+                control(ctx, xml, limit.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:e", &limit.base);
+            argument(ctx, xml, "m:lim", &limit.limit);
+            xml.end();
+        }
+        N::Matrix(matrix) => {
+            xml.start("m:m");
+            if !matrix.columns.is_empty()
+                || matrix.base_justification.is_some()
+                || matrix.hide_placeholders
+                || matrix.column_spacing.is_some()
+                || matrix.column_group_spacing.is_some()
+                || matrix.row_spacing.is_some()
+            {
+                xml.start("m:mPr");
+                if let Some(justification) = matrix.base_justification {
+                    if let Some(value) = alignment(justification) {
+                        xml.empty_attr("m:baseJc", "m:val", value);
+                    }
+                }
+                if matrix.hide_placeholders {
+                    xml.empty("m:plcHide");
+                }
+                if let Some(rule) = &matrix.column_group_rule {
+                    xml.start("m:cGpRule");
+                    xml.attr_m("val", rule.as_ref());
+                    xml.end();
+                }
+                if let Some(spacing) = matrix.column_spacing {
+                    xml.start("m:cSp");
+                    xml.attr_m("val", spacing);
+                    xml.end();
+                }
+                if let Some(spacing) = matrix.column_group_spacing {
+                    xml.start("m:cGp");
+                    xml.attr_m("val", spacing);
+                    xml.end();
+                }
+                if let Some(rule) = &matrix.row_spacing_rule {
+                    xml.start("m:rSpRule");
+                    xml.attr_m("val", rule.as_ref());
+                    xml.end();
+                }
+                if let Some(spacing) = matrix.row_spacing {
+                    xml.start("m:rSp");
+                    xml.attr_m("val", spacing);
+                    xml.end();
+                }
+                if !matrix.columns.is_empty() {
+                    xml.start("m:mcs");
+                    for column in &matrix.columns {
+                        xml.start("m:mc");
+                        if let Some(justification) = column.justification {
+                            if let Some(value) = alignment(justification) {
+                                xml.start("m:mcPr");
+                                xml.empty_attr("m:mcJc", "m:val", value);
+                                if let Some(count) = column.count {
+                                    xml.empty_attr("m:count", "m:val", count);
+                                }
+                                xml.end();
+                            }
+                        }
+                        xml.end();
+                    }
+                    xml.end();
+                }
+                control(ctx, xml, matrix.control.as_deref());
+                xml.end();
+            }
+            for row in &matrix.rows {
+                xml.start("m:mr");
+                for cell in row {
+                    argument(ctx, xml, "m:e", cell);
+                }
+                xml.end();
+            }
+            xml.end();
+        }
+        N::EquationArray(array) => {
+            xml.start("m:eqArr");
+            if array.base_justification.is_some()
+                || array.max_distance.is_some()
+                || array.object_distance.is_some()
+                || array.row_spacing.is_some()
+            {
+                xml.start("m:eqArrPr");
+                if let Some(justification) = array.base_justification {
+                    if let Some(value) = alignment(justification) {
+                        xml.empty_attr("m:baseJc", "m:val", value);
+                    }
+                }
+                if let Some(distance) = array.max_distance {
+                    xml.start("m:maxDist");
+                    xml.attr_m("val", distance);
+                    xml.end();
+                }
+                if let Some(distance) = array.object_distance {
+                    xml.start("m:objDist");
+                    xml.attr_m("val", distance);
+                    xml.end();
+                }
+                if let Some(rule) = &array.row_spacing_rule {
+                    xml.start("m:rSpRule");
+                    xml.attr_m("val", rule.as_ref());
+                    xml.end();
+                }
+                if let Some(spacing) = array.row_spacing {
+                    xml.start("m:rSp");
+                    xml.attr_m("val", spacing);
+                    xml.end();
+                }
+                control(ctx, xml, array.control.as_deref());
+                xml.end();
+            }
+            for row in &array.rows {
+                argument(ctx, xml, "m:e", row);
+            }
+            xml.end();
+        }
+        N::Accent(accent) => {
+            xml.start("m:acc");
+            if accent.chr.is_some() {
+                xml.start("m:accPr");
+                if let Some(chr) = accent.chr {
+                    xml.empty_attr("m:chr", "m:val", format!("{chr}"));
+                }
+                control(ctx, xml, accent.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:e", &accent.base);
+            xml.end();
+        }
+        N::Bar(bar) => {
+            xml.start("m:bar");
+            if bar.position.is_some() || bar.control.is_some() {
+                xml.start("m:barPr");
+                if let Some(value) = bar.position {
+                    xml.empty_attr("m:pos", "m:val", position(value));
+                }
+                control(ctx, xml, bar.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:e", &bar.base);
+            xml.end();
+        }
+        N::GroupCharacter(group) => {
+            xml.start("m:groupChr");
+            if group.chr.is_some()
+                || group.position.is_some()
+                || group.vertical_justification.is_some()
+            {
+                xml.start("m:groupChrPr");
+                if let Some(chr) = group.chr {
+                    xml.empty_attr("m:chr", "m:val", format!("{chr}"));
+                }
+                if let Some(value) = group.position {
+                    xml.empty_attr("m:pos", "m:val", position(value));
+                }
+                if let Some(value) = group.vertical_justification {
+                    xml.empty_attr("m:vertJc", "m:val", vertical_jc(value));
+                }
+                control(ctx, xml, group.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:e", &group.base);
+            xml.end();
+        }
+        N::Boxed(boxed) => {
+            xml.start("m:box");
+            if boxed.alignment.is_some() || boxed.spacing.is_some() {
+                xml.start("m:boxPr");
+                if let Some(value) = boxed.alignment {
+                    if let Some(value) = alignment(value) {
+                        xml.empty_attr("m:aln", "m:val", value);
+                    }
+                }
+                if let Some(spacing) = boxed.spacing {
+                    xml.start("m:sp");
+                    xml.attr_m("val", spacing);
+                    xml.end();
+                }
+                control(ctx, xml, boxed.control.as_deref());
+                xml.end();
+            }
+            argument(ctx, xml, "m:e", &boxed.argument);
+            xml.end();
+        }
+        N::BorderBox(border_box) => {
+            xml.start("m:borderBox");
+            xml.start("m:borderBoxPr");
+            if let Some(value) = border_box.alignment {
+                if let Some(value) = alignment(value) {
+                    xml.empty_attr("m:aln", "m:val", value);
+                }
+            }
+            if let Some(spacing) = border_box.spacing {
+                xml.start("m:sp");
+                xml.attr_m("val", spacing);
+                xml.end();
+            }
+            if border_box.shadow {
+                xml.empty("m:shadow");
+            }
+            if let Some(lines) = border_box.lines {
+                xml.start("m:lines");
+                xml.attr_w("m:val", lines);
+                xml.end();
+            }
+            control(ctx, xml, border_box.control.as_deref());
+            xml.end();
+            for item in &border_box.arguments {
+                argument(ctx, xml, "m:e", item);
+            }
+            xml.end();
+        }
+        N::Phantom(phantom) => {
+            xml.start("m:phant");
+            xml.start("m:phantPr");
+            xml.empty_attr("m:show", "m:val", bool_str(phantom.show));
+            if phantom.transparent {
+                xml.empty("m:transp");
+            }
+            if phantom.zero_width {
+                xml.empty("m:zeroWid");
+            }
+            if phantom.zero_ascent {
+                xml.empty("m:zeroAsc");
+            }
+            if phantom.zero_descent {
+                xml.empty("m:zeroDesc");
+            }
+            if phantom.show_all {
+                xml.empty("m:showAll");
+            }
+            if phantom.rtl {
+                xml.empty("m:rtl");
+            }
+            control(ctx, xml, phantom.control.as_deref());
+            xml.end();
+            argument(ctx, xml, "m:e", &phantom.argument);
+            xml.end();
+        }
+        N::Unknown(unknown) => {
+            ctx.report_unsupported(
+                &format!("m:{}", unknown.local),
+                "formula node kept in the model but not serializable",
+                &unknown.location,
+            );
+        }
+    }
+}
+
+/// Writes one `m:e`-style argument with its optional `m:argPr`.
+fn argument(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, name: &'static str, argument: &MathArgument) {
+    xml.start(name);
+    let properties = &argument.properties;
+    if properties.alignment.is_some()
+        || properties.literal.is_some()
+        || properties.normal.is_some()
+        || properties.script.is_some()
+        || properties.style.is_some()
+    {
+        xml.start("m:argPr");
+        if properties.literal == Some(true) {
+            xml.empty("m:lit");
+        }
+        if properties.normal == Some(true) {
+            xml.empty("m:nor");
+        }
+        if let Some(value) = properties.script {
+            xml.start("m:scr");
+            xml.attr_m("val", script(value));
+            xml.end();
+        }
+        if let Some(value) = properties.style {
+            xml.start("m:sty");
+            xml.attr_m("val", style(value));
+            xml.end();
+        }
+        if let Some(value) = properties.alignment {
+            if let Some(value) = alignment(value) {
+                xml.start("m:aln");
+                xml.attr_m("val", value);
+                xml.end();
+            }
+        }
+        if let Some(control) = properties.control.as_deref() {
+            xml.start("m:ctrlPr");
+            crate::props::run_properties(xml, control, false);
+            xml.end();
+        }
+        xml.end();
+    }
+    for child in &argument.nodes {
+        math_node(ctx, xml, child);
+    }
+    xml.end();
+}
+
+/// Writes `m:ctrlPr` for a construct whose control properties the schema places
+/// directly under the construct's own properties element.
+fn control(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    run_props: Option<&strict_ooxml_wml::model::props::RunProperties>,
+) {
+    let _ = ctx;
+    if let Some(run_props) = run_props {
+        xml.start("m:ctrlPr");
+        crate::props::run_properties(xml, run_props, false);
+        xml.end();
+    }
+}
+
+/// `m:sSupPr`, `m:sSubPr`, `m:sSubSupPr` and `m:sPrePr` carry only `m:ctrlPr`.
+fn script_control(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    run_props: Option<&strict_ooxml_wml::model::props::RunProperties>,
+) {
+    if run_props.is_some() {
+        xml.start("m:sSupPr");
+        control(ctx, xml, run_props);
+        xml.end();
+    }
+}
+
+/// `m:funcPr` carries only `m:ctrlPr`.
+fn function_control(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    run_props: Option<&strict_ooxml_wml::model::props::RunProperties>,
+) {
+    if run_props.is_some() {
+        xml.start("m:funcPr");
+        control(ctx, xml, run_props);
+        xml.end();
+    }
+}
+
+/// Writes `m:r`.
+fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
+    xml.start("m:r");
+    run_properties(ctx, xml, &run.properties);
+    if let Some(run_props) = run.run_properties.as_deref() {
+        xml.start("m:rPr");
+        crate::props::run_properties(xml, run_props, false);
+        xml.end();
+    }
+    xml.start("m:t");
+    xml.text(&run.text);
+    xml.end();
+    xml.end();
+}
+
+fn run_properties(_ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunProperties) {
+    if !properties.literal
+        && !properties.normal
+        && properties.script.is_none()
+        && properties.style.is_none()
+        && properties.alignment.is_none()
+        && properties.control.is_none()
+    {
+        return;
+    }
+    xml.start("m:rPr");
+    if properties.literal {
+        xml.empty("m:lit");
+    }
+    if properties.normal {
+        xml.empty("m:nor");
+    }
+    if let Some(value) = properties.script {
+        xml.start("m:scr");
+        xml.attr_m("val", script(value));
+        xml.end();
+    }
+    if let Some(value) = properties.style {
+        xml.start("m:sty");
+        xml.attr_m("val", style(value));
+        xml.end();
+    }
+    if let Some(value) = properties.alignment {
+        if let Some(value) = alignment(value) {
+            xml.start("m:aln");
+            xml.attr_m("val", value);
+            xml.end();
+        }
+    }
+    if let Some(control) = properties.control.as_deref() {
+        xml.start("m:ctrlPr");
+        crate::props::run_properties(xml, control, false);
+        xml.end();
+    }
+    xml.end();
+}
+
+fn bool_str(value: bool) -> &'static str {
+    if value {
+        "true"
+    } else {
+        "false"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use strict_ooxml_core::normalize::report::NormalizationReport;
+    use strict_ooxml_wml::model::math::{MathExpression, MathNode, MathRun, MathRunProperties};
+
+    use super::math_expression;
+    use crate::ctx::Ctx;
+    use crate::xml::XmlWriter;
+
+    #[test]
+    fn a_plain_run_round_trips() {
+        let expression = MathExpression {
+            nodes: vec![MathNode::Run(MathRun {
+                properties: MathRunProperties::default(),
+                run_properties: None,
+                text: "x+1".to_owned(),
+                location: strict_ooxml_core::error::SourceLocation::unknown(),
+            })],
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        math_expression(&mut ctx, &mut xml, &expression);
+        assert_eq!(
+            xml.finish().expect("balanced"),
+            "<m:oMath><m:r><m:t>x+1</m:t></m:r></m:oMath>\n"
+        );
+        assert!(report.losses().is_empty());
+    }
+
+    #[test]
+    fn run_properties_use_the_math_vocabulary() {
+        let expression = MathExpression {
+            nodes: vec![MathNode::Run(MathRun {
+                properties: MathRunProperties {
+                    literal: true,
+                    normal: false,
+                    r#break: None,
+                    script: Some(strict_ooxml_wml::model::math::MathScript::Fraktur),
+                    style: Some(strict_ooxml_wml::model::math::MathStyle::Bold),
+                    alignment: None,
+                    control: None,
+                },
+                run_properties: None,
+                text: "a".to_owned(),
+                location: strict_ooxml_core::error::SourceLocation::unknown(),
+            })],
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        math_expression(&mut ctx, &mut xml, &expression);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("<m:lit/>"), "{text}");
+        assert!(text.contains("<m:scr m:val=\"fraktur\"/>"), "{text}");
+        assert!(text.contains("<m:sty m:val=\"b\"/>"), "{text}");
+    }
+}

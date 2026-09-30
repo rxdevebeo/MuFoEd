@@ -1,0 +1,26 @@
+[package]
+name = "strict-ooxml-write"
+description = "Serialization of a WordprocessingML Strict document model back to a .docx package (STAGE-8-TASK.md phase 8A)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ooxml", "docx", "wordprocessingml", "writer", "serialization"]
+categories = ["parser-implementations", "encoding"]
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+
+[dev-dependencies]
+# Independent XML parser used only as an oracle by the tests (SC-3).
+roxmltree = "0.20"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true

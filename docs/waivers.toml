@@ -265,3 +265,28 @@ alignment for the over/under-brace group, and the coverage map records this as
 """
 exit = "Implement it, or state the limitation in the coverage map as `unsupported`."
 opened = "2026-09-29"
+
+[[waivers]]
+id = "8A-CHART"
+subject = "8A writing"
+binds = "process:write-chart-passthrough"
+summary = """
+`write` drops `c:chart` and `dgm:relIds` because the model carries neither the
+chart nor the SmartArt data. Measured on `strict-profile`: the original renders
+as 2 pages, the written package as 1 (WPS 12.1.0.28485, `kwpsconvert
+word2photo`); the chart and the diagram frame are gone, the text box inside the
+diagram survives. The loss is reported (`W1.unserializable`) and the CLI exits 1,
+so it is visible, not silent.
+"""
+risk = """
+A rewrite is lossy on any document that carries a chart or a diagram, which is
+most real business documents. The file stays valid and opens in WPS (SC-4), so
+the damage is invisible to anyone who does not read the report.
+"""
+exit = """
+Pass unmodelled parts through from the source package: copy the chart/diagram
+parts, their relationships and their content types verbatim, and keep the
+drawing that references them. The model does not have to understand them — the
+writer only has to stop dropping them (`STAGE-8-TASK.md` §3, W7).
+"""
+opened = "2026-09-30"

@@ -113,6 +113,67 @@ impl ContentTypeIndex {
             .chain(self.overrides.values())
             .map(AsRef::as_ref)
     }
+
+    /// Serializes the index back to `[Content_Types].xml`.
+    ///
+    /// `Default` declarations come first, ordered by extension, then
+    /// `Override` declarations ordered by part name. The ordering is what makes
+    /// the output reproducible: the index is backed by hash maps, whose
+    /// iteration order is not part of any contract (SC-1).
+    #[must_use]
+    pub fn write_xml(&self) -> String {
+        let mut out = String::with_capacity(256 + 96 * (self.len()));
+        out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+        out.push_str(
+            "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
+        );
+
+        let mut defaults: Vec<(&str, &str)> = self
+            .defaults
+            .iter()
+            .map(|(extension, content_type)| (extension.as_ref(), content_type.as_ref()))
+            .collect();
+        defaults.sort_unstable_by_key(|(extension, _)| *extension);
+        for (extension, content_type) in defaults {
+            out.push_str("<Default Extension=\"");
+            escape_into(&mut out, extension);
+            out.push_str("\" ContentType=\"");
+            escape_into(&mut out, content_type);
+            out.push_str("\"/>");
+        }
+
+        let mut overrides: Vec<(&str, &str)> = self
+            .overrides
+            .iter()
+            .map(|(part, content_type)| (part.as_str(), content_type.as_ref()))
+            .collect();
+        overrides.sort_unstable_by_key(|(part, _)| *part);
+        for (part, content_type) in overrides {
+            out.push_str("<Override PartName=\"");
+            escape_into(&mut out, part);
+            out.push_str("\" ContentType=\"");
+            escape_into(&mut out, content_type);
+            out.push_str("\"/>");
+        }
+
+        out.push_str("</Types>\n");
+        out
+    }
+}
+
+/// Escapes an XML attribute value (always written inside double quotes).
+fn escape_into(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            '\t' | '\n' | '\r' => out.push(' '),
+            _ => out.push(ch),
+        }
+    }
 }
 
 fn attr_value<'a>(attrs: &'a [crate::xml::Attr], local: &str) -> Option<&'a str> {
@@ -150,5 +211,43 @@ mod tests {
             index.content_type_for(&PartId::new("/word/media/x.png")),
             None
         );
+    }
+
+    #[test]
+    fn written_xml_is_ordered_and_reparses() {
+        let mut index = ContentTypeIndex::new();
+        // Inserted out of order on purpose: the index is hash-map backed.
+        index.insert_override(
+            PartId::new("/word/styles.xml"),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+        );
+        index.insert_default("png", "image/png");
+        index.insert_default(
+            "rels",
+            "application/vnd.openxmlformats-package.relationships+xml",
+        );
+
+        let xml = index.write_xml();
+        let again = index.write_xml();
+        assert_eq!(xml, again, "write_xml must be reproducible");
+
+        let reparsed = ContentTypeIndex::parse(
+            xml.as_bytes(),
+            PartId::new("/[Content_Types].xml"),
+            &ResourceLimits::default(),
+        )
+        .expect("reparse");
+        assert_eq!(
+            reparsed.content_type_for(&PartId::new("/word/styles.xml")),
+            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml")
+        );
+        assert_eq!(
+            reparsed.content_type_for(&PartId::new("/word/media/a.png")),
+            Some("image/png")
+        );
+
+        let png = xml.find("Extension=\"png\"").expect("png default");
+        let rels = xml.find("Extension=\"rels\"").expect("rels default");
+        assert!(png < rels, "defaults must be ordered by extension");
     }
 }

@@ -241,10 +241,89 @@ fn attr_value<'a>(attrs: &'a [crate::xml::Attr], local: &str) -> Option<&'a str>
         .map(|attr| attr.value.as_str())
 }
 
+/// The relationship type a serializer should emit for `rel_type`.
+///
+/// The reader accepts a Transitional URI, so a round trip through
+/// [`parse_relationships`] followed by this function is what turns a parsed
+/// Transitional graph back into Strict one (ISO/IEC 29500-1 §15.2). The writer
+/// uses the *canonical* form, which is a single URI per relationship kind
+/// rather than the six the Transitional family uses.
+#[must_use]
+pub fn strict_type_uri(rel_type: &RelType) -> String {
+    const BASE: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/";
+    match rel_type {
+        RelType::OfficeDocument => format!("{BASE}officeDocument"),
+        RelType::Styles => format!("{BASE}styles"),
+        RelType::Numbering => format!("{BASE}numbering"),
+        RelType::Settings => format!("{BASE}settings"),
+        RelType::Theme => format!("{BASE}theme"),
+        RelType::FontTable => format!("{BASE}fontTable"),
+        RelType::Image => format!("{BASE}image"),
+        RelType::Hyperlink => format!("{BASE}hyperlink"),
+        RelType::Header => format!("{BASE}header"),
+        RelType::Footer => format!("{BASE}footer"),
+        RelType::Footnotes => format!("{BASE}footnotes"),
+        RelType::Endnotes => format!("{BASE}endnotes"),
+        // An unknown kind keeps the URI it was parsed with: rewriting it into
+        // the Strict base would invent a relationship type that does not exist.
+        RelType::Other(uri) => uri.clone(),
+    }
+}
+
+/// Serializes relationships into a `.rels` document.
+///
+/// Declarations are emitted in the given order — the caller owns determinism,
+/// so this function does not sort. The document is parseable by
+/// [`parse_relationships`].
+#[must_use]
+pub fn write_relationships(relationships: &[Relationship]) -> String {
+    let mut out = String::with_capacity(128 + 160 * relationships.len());
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    out.push_str(
+        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+    );
+    for relationship in relationships {
+        out.push_str("<Relationship Id=\"");
+        escape_into(&mut out, &relationship.id);
+        out.push_str("\" Type=\"");
+        let uri = if relationship.raw_type.is_empty() {
+            strict_type_uri(&relationship.rel_type)
+        } else {
+            relationship.raw_type.clone()
+        };
+        escape_into(&mut out, &uri);
+        out.push_str("\" Target=\"");
+        escape_into(&mut out, &relationship.target);
+        out.push('"');
+        if relationship.target_mode == TargetMode::External {
+            out.push_str(" TargetMode=\"External\"");
+        }
+        out.push_str("/>");
+    }
+    out.push_str("</Relationships>\n");
+    out
+}
+
+/// Escapes an XML attribute value (always written inside double quotes).
+fn escape_into(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            '\t' | '\n' | '\r' => out.push(' '),
+            _ => out.push(ch),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_relationships, source_part_for_rels, RelType, RelationshipGraph, TargetMode,
+        parse_relationships, source_part_for_rels, strict_type_uri, write_relationships, RelType,
+        Relationship, RelationshipGraph, TargetMode,
     };
     use crate::limits::ResourceLimits;
     use crate::part::PartId;
@@ -294,5 +373,47 @@ mod tests {
         assert!(graph.resolve(&source, "rId9").is_err());
         assert_eq!(graph.iter().count(), 1);
         assert!(graph.relationships(&PartId::new("/none")).is_empty());
+    }
+
+    #[test]
+    fn written_relationships_reparse_and_rewrite_to_strict() {
+        let transitional = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="http://example.com" TargetMode="External"/></Relationships>"#;
+        let source = PartId::new("/word/document.xml");
+        let parsed =
+            parse_relationships(transitional, &source, &ResourceLimits::default()).unwrap();
+
+        // The writer emits the Strict twin of every Transitional type.
+        let mut strict = parsed.clone();
+        for relationship in &mut strict {
+            relationship.raw_type = strict_type_uri(&relationship.rel_type);
+        }
+        let xml = write_relationships(&strict);
+        assert!(xml.contains("http://purl.oclc.org/ooxml/officeDocument/relationships/styles"));
+        assert!(!xml.contains("schemas.openxmlformats.org/officeDocument"));
+
+        let again =
+            parse_relationships(xml.as_bytes(), &source, &ResourceLimits::default()).unwrap();
+        assert_eq!(again.len(), 2);
+        assert_eq!(again[0].rel_type, RelType::Styles);
+        assert_eq!(
+            again[0].resolved.as_ref().unwrap().as_str(),
+            "/word/styles.xml"
+        );
+        assert_eq!(again[1].target_mode, TargetMode::External);
+    }
+
+    #[test]
+    fn attribute_values_are_escaped() {
+        let relationship = Relationship {
+            id: "rId&1".to_owned(),
+            rel_type: RelType::Hyperlink,
+            raw_type: strict_type_uri(&RelType::Hyperlink),
+            target: "a\"b&c".to_owned(),
+            target_mode: TargetMode::External,
+            resolved: None,
+        };
+        let xml = write_relationships(&[relationship]);
+        assert!(xml.contains("Id=\"rId&amp;1\""), "{xml}");
+        assert!(xml.contains("Target=\"a&quot;b&amp;c\""), "{xml}");
     }
 }

@@ -13,6 +13,9 @@
 //!   [--no-floating] [--no-math]` — renders Stage-4/5B/5C SVG pages (floating
 //!   heavy objects and OMML formulas can be disabled with `--no-floating` and
 //!   `--no-math`).
+//! - `write <file.docx> --out <file.docx>` — serializes the parsed model back
+//!   to a Strict package (Stage 8A) and prints what the writer could not
+//!   express.
 //!
 //! Exit codes for `check` (per `TZ-STRICT-OOXML-RUST.md` decision G.8 and
 //! `STAGE-3-TASK.md` §7.2):
@@ -55,6 +58,7 @@ fn main() -> ExitCode {
         Some("check") => run_check(&args.collect::<Vec<_>>()),
         Some("report") => run_report(&args.collect::<Vec<_>>()),
         Some("render") => run_render(&args.collect::<Vec<_>>()),
+        Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("--help" | "-h") | None => {
             print_usage();
@@ -70,12 +74,14 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|normalize> <file.docx> [--json|--text] \
-         [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math] [--transitional]"
+        "usage: strict-ooxml <inspect|check|report|render|write|normalize> <file.docx> \
+         [--json|--text] [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math] \
+         [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
+    eprintln!("  write           serialize the model back to a Strict .docx (--out is required)");
 }
 
 /// Opens a package, normalizing it when `--transitional` is present.
@@ -444,6 +450,118 @@ fn run_render(args: &[String]) -> ExitCode {
         }
         Err(error) => {
             eprintln!("error: {error}");
+            ExitCode::from(EXIT_ERROR)
+        }
+    };
+    print_loss(normalizer.as_deref(), code)
+}
+
+/// Parsed `write` command arguments.
+struct WriteArgs {
+    file: String,
+    out: String,
+    transitional: bool,
+}
+
+impl WriteArgs {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        let mut file: Option<String> = None;
+        let mut out: Option<String> = None;
+        let mut transitional = false;
+        let mut index = 0;
+        while index < args.len() {
+            match args[index].as_str() {
+                "--transitional" => transitional = true,
+                "--out" => {
+                    index += 1;
+                    out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
+                }
+                flag if flag.starts_with("--") => {
+                    return Err(format!("unknown option '{flag}'"));
+                }
+                positional => {
+                    if file.is_some() {
+                        return Err("'write' accepts a single file".to_owned());
+                    }
+                    file = Some(positional.to_owned());
+                }
+            }
+            index += 1;
+        }
+        Ok(Self {
+            file: file.ok_or("'write' requires a package path")?,
+            out: out.ok_or("'write' requires --out <path>")?,
+            transitional,
+        })
+    }
+}
+
+/// `write`: serialize the parsed model back to a Strict package (Stage 8A).
+///
+/// The exit code follows the `render` convention: `0` when the package was
+/// written and the writer dropped nothing that reaches the page, `1` when it
+/// was written but something was lost, `2` on failure. A lossy write is still a
+/// usable file, so it is a warning rather than an error — but never a silent
+/// one, which is why the report is printed unconditionally.
+fn run_write(args: &[String]) -> ExitCode {
+    let parsed = match WriteArgs::parse(args) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    let (options, normalizer) = open_options(parsed.transitional);
+    let package = match Package::open_path(&parsed.file, &options) {
+        Ok(package) => package,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    let document = match StrictDocument::from_package(package, &strict_ooxml::WmlOptions::default())
+    {
+        Ok(document) => document,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+
+    let written = match strict_ooxml::write_package(
+        document.document(),
+        Some(document.package()),
+        &strict_ooxml::WriteOptions::default(),
+    ) {
+        Ok(written) => written,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    if let Err(error) = std::fs::write(&parsed.out, &written.bytes) {
+        eprintln!("error: cannot write {}: {error}", parsed.out);
+        return ExitCode::from(EXIT_ERROR);
+    }
+
+    println!(
+        "wrote {} ({} part(s), {} bytes)",
+        parsed.out,
+        written.part_count,
+        written.bytes.len()
+    );
+    let dropped = strict_ooxml::dropped_count(&written.report);
+    if dropped > 0 {
+        eprintln!("warning: {dropped} construct(s) could not be written");
+    }
+    for loss in written.report.losses() {
+        eprintln!("  {loss}");
+    }
+    let code = match strict_ooxml::verify_no_silent_loss(&written.report) {
+        Ok(()) if dropped == 0 => ExitCode::from(EXIT_OK),
+        Ok(()) => ExitCode::from(EXIT_PROBLEM),
+        Err(reason) => {
+            eprintln!("error: {reason}");
             ExitCode::from(EXIT_ERROR)
         }
     };

@@ -7,6 +7,11 @@
 //!
 //! Nothing in this module panics on malformed input: every failure is a
 //! [`StrictError`].
+//!
+//! The counterpart [`write`] module serializes a package back to bytes
+//! deterministically (`STAGE-8-TASK.md` §3, W5).
+
+pub mod write;
 
 use std::collections::HashMap;
 use std::io::{self, Read};

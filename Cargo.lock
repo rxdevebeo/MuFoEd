@@ -1496,6 +1496,7 @@ dependencies = [
  "strict-ooxml-render-svg",
  "strict-ooxml-report",
  "strict-ooxml-wml",
+ "strict-ooxml-write",
 ]
 
 [[package]]
@@ -1548,6 +1549,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "strict-ooxml-view"
+version = "0.1.0"
+dependencies = [
+ "strict-ooxml",
+ "strict-ooxml-core",
+]
+
+[[package]]
 name = "strict-ooxml-wml"
 version = "0.1.0"
 dependencies = [
@@ -1558,6 +1567,15 @@ dependencies = [
  "strict-ooxml-core",
  "toml",
  "zip",
+]
+
+[[package]]
+name = "strict-ooxml-write"
+version = "0.1.0"
+dependencies = [
+ "roxmltree 0.20.0",
+ "strict-ooxml-core",
+ "strict-ooxml-wml",
 ]
 
 [[package]]
