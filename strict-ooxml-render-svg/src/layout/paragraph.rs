@@ -843,9 +843,18 @@ fn finish_line(
     }
     // An inline drawing keeps its full extent: the line grows to hold it, as
     // Word does, instead of being capped like a formula.
+    //
+    // The line **keeps its depth**. A line box has a depth even when its tallest
+    // item has none: the paragraph mark is still a glyph with a descent, and Word
+    // keeps the room for it. Growing only the ascent made every drawing line
+    // exactly as tall as its drawing, and on `07-strict-drawingml-shapes` — four
+    // shapes, no formulas, so nothing here is confounded by the math-font
+    // substitution — that put each block 4 px closer to the next than the
+    // reference has it, which is the whole of that page's 16 px bottom-edge error.
     if line.object_height > 0.0 {
+        let depth = (height - ascent).max(0.0);
         ascent = ascent.max(line.object_height);
-        height = height.max(ascent);
+        height = height.max(ascent + depth);
     }
     for item in &mut line.items {
         item.baseline = ascent;

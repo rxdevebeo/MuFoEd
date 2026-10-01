@@ -268,7 +268,7 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     ("strict-stage5c", 1, 9.0, 18.0),
     ("05-strict-math-simple", 0, 0.0, -2.0),
     ("06-strict-math-display", 0, 0.0, -10.0),
-    ("07-strict-drawingml-shapes", 0, 0.0, -16.0),
+    ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
     ("10-strict-math-eqarr", 0, 0.0, -3.0),
 ];
 

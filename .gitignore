@@ -33,3 +33,6 @@ strict-ooxml-core/tests/docx/
 
 # a hard link to one corpus file, for timing one document repeatedly
 /.tmp-bench/
+
+# page_diff's default output directory
+/.page-diff/
