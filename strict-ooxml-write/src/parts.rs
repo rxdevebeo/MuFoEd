@@ -6,8 +6,6 @@
 //! that had no `numbering.xml` does not acquire one — that is what keeps a
 //! round trip from growing parts it did not have (SC-3).
 
-use std::sync::Arc;
-
 use strict_ooxml_wml::model::document::HeaderFooter;
 use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
@@ -278,16 +276,20 @@ pub fn settings_part(ctx: &mut Ctx<'_>, settings: &Settings) -> String {
 /// The model does not carry a font table, so the part is derived from the faces
 /// the styles and runs actually name. A missing face is not a loss: Word
 /// substitutes it, and the renderer's own font mapping already does the same.
+///
+/// Only `@w:name` is written, because it is the only thing the model knows
+/// (`XS-01`). `CT_Font` requires just that one attribute - `charset`, `family` and
+/// `pitch` are all optional - so the element needs nothing else to be valid, and
+/// the previous version wrote all three as EMPTY elements, which made every
+/// package with a font table carry two schema violations per face: `w:family` and
+/// `w:pitch` are `CT_String` with `w:val` `use="required"`, and `<w:family/>` is
+/// worse than no element at all. Nothing was expressed by those empties, so
+/// nothing is lost by dropping them.
 pub fn font_table_part(ctx: &mut Ctx<'_>, families: &[String]) -> String {
     let mut xml = XmlWriter::new();
     xml.start_root("w:fonts", &WML_NAMESPACES);
     for family in families {
-        xml.start("w:font");
-        xml.attr_w("name", family);
-        xml.empty("w:charset");
-        xml.empty("w:family");
-        xml.empty("w:pitch");
-        xml.end();
+        xml.empty_attr_w("w:font", "name", family);
     }
     xml.end();
     let _ = ctx;
@@ -336,38 +338,99 @@ pub fn theme_part(theme: &Theme) -> String {
         ("a:minorFont", &theme.fonts.minor),
     ] {
         xml.start(name);
-        font_collection(&mut xml, "a:latin", set.latin.as_ref());
-        font_collection(&mut xml, "a:ea", set.east_asia.as_ref());
-        font_collection(&mut xml, "a:cs", set.cs.as_ref());
+        // All three are written, always. `CT_FontCollection` declares `latin`,
+        // `ea` and `cs` with `minOccurs="1"` and no default, so an `a:majorFont`
+        // that carries only the typeface the model happened to hold is invalid
+        // (`XS-03`), and an empty typeface is a legal `xsd:string` that means
+        // "no face for this script" - which is what the model actually knows.
+        font_collection(&mut xml, "a:latin", set.latin.as_deref());
+        font_collection(&mut xml, "a:ea", set.east_asia.as_deref());
+        font_collection(&mut xml, "a:cs", set.cs.as_deref());
         xml.end();
     }
     xml.end();
-    xml.start("a:fmtScheme");
-    xml.attr("name", "strict-ooxml");
-    // The format scheme is required by the schema but contributes nothing the
-    // cascade reads; a minimal fill/line/effect/font set is written so the part
-    // validates.
-    for name in [
-        "a:fillStyleLst",
-        "a:lnStyleLst",
-        "a:effectStyleLst",
-        "a:bgFillStyleLst",
-    ] {
-        xml.start(name);
-        xml.end();
-    }
-    xml.end();
+    format_scheme(&mut xml);
     xml.end();
     xml.end();
     xml.finish().expect("balanced")
 }
 
-fn font_collection(xml: &mut XmlWriter, name: &str, typeface: Option<&Arc<str>>) {
-    if let Some(typeface) = typeface {
-        xml.start(name);
-        xml.attr("typeface", typeface.as_ref());
+/// Writes the smallest `a:fmtScheme` the schema accepts.
+///
+/// `CT_StyleMatrix` requires all four lists, and each list requires THREE entries
+/// - `EG_FillProperties` with `minOccurs="3"`, `a:ln` with `minOccurs="3"`,
+/// `a:effectStyle` with `minOccurs="3"`. The previous version wrote the four
+/// lists empty, which is 88 violations across the corpus, four of them on every
+/// single package, and it is a known gap from stage 8 that was never written into
+/// any report.
+///
+/// The entries carry no information, and that is stated rather than dressed up:
+/// the reader records `a:fmtScheme` as `Partial` with the reason "theme
+/// effects/fills/line styles are not resolved" (`parse/theme.rs`), so the loss is
+/// already declared where it happens. What is written here is the placeholder
+/// shape a theme with no format scheme has - `phClr` is DrawingML's own word for
+/// "the colour the shape supplies", which is exactly the honest answer when the
+/// part knows no fill.
+///
+/// The alternative - not writing `a:fmtScheme` at all - is not available:
+/// `CT_BaseStyles` requires `clrScheme`, `fontScheme` and `fmtScheme`, all three
+/// `minOccurs="1"`, so dropping it would trade 88 violations for 22 and leave a
+/// theme part the schema rejects at its root.
+/// The four fill entries a fill list needs, in schema order.
+///
+/// `EG_FillProperties` carries `minOccurs="3"`, so one is not enough; three
+/// `a:solidFill` over `phClr` is the smallest set that validates.
+fn fill_list(xml: &mut XmlWriter, list: &str) {
+    xml.start(list);
+    for _ in 0..3 {
+        xml.start("a:solidFill");
+        xml.empty_attr("a:schemeClr", "val", "phClr");
         xml.end();
     }
+    xml.end();
+}
+
+fn format_scheme(xml: &mut XmlWriter) {
+    xml.start("a:fmtScheme");
+    xml.attr("name", "strict-ooxml");
+
+    // The four lists in `CT_StyleMatrix`'s order: fillStyleLst, lnStyleLst,
+    // effectStyleLst, bgFillStyleLst. It is a sequence, so the two fill lists
+    // cannot be written next to each other however natural that looks.
+    fill_list(xml, "a:fillStyleLst");
+
+    xml.start("a:lnStyleLst");
+    for width in ["9525", "25400", "38100"] {
+        xml.start("a:ln");
+        xml.attr("w", width);
+        xml.attr("cap", "flat");
+        xml.attr("cmpd", "sng");
+        xml.attr("algn", "ctr");
+        xml.start("a:solidFill");
+        xml.empty_attr("a:schemeClr", "val", "phClr");
+        xml.end();
+        xml.empty("a:prstDash");
+        xml.end();
+    }
+    xml.end();
+
+    xml.start("a:effectStyleLst");
+    for _ in 0..3 {
+        xml.start("a:effectStyle");
+        xml.empty("a:effectLst");
+        xml.end();
+    }
+    xml.end();
+
+    fill_list(xml, "a:bgFillStyleLst");
+
+    xml.end();
+}
+
+fn font_collection(xml: &mut XmlWriter, name: &str, typeface: Option<&str>) {
+    xml.start(name);
+    xml.attr("typeface", typeface.unwrap_or(""));
+    xml.end();
 }
 
 /// Writes `w:footnotes` or `w:endnotes`.

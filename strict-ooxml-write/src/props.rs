@@ -85,7 +85,7 @@ pub fn paragraph_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &Para
         TriState::Absent => {}
     }
     if !borders_empty(&props.borders) {
-        borders_element(xml, "w:pBdr", &props.borders);
+        borders_element(xml, "w:pBdr", &props.borders, EdgeNames::Paragraph);
     }
     if let Some(shading) = &props.shading {
         shading_element(xml, shading);
@@ -285,7 +285,7 @@ pub fn run_properties(xml: &mut XmlWriter, props: &RunProperties) {
         xml.end();
     }
     if !borders_empty(&props.borders) {
-        borders_element(xml, "w:bdr", &props.borders);
+        run_border(xml, &props.borders);
     }
     if let Some(shading) = &props.shading {
         shading_element(xml, shading);
@@ -395,23 +395,38 @@ fn borders_empty(borders: &Borders) -> bool {
         && borders.inside_vertical.is_none()
 }
 
-/// Writes a border container (`w:pBdr`, `w:bdr`, `w:tblBorders`, `w:tcBorders`).
+/// Writes a border container (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
 ///
-/// The schema order differs slightly between the paragraph (`top`, `start`,
-/// `bottom`, `end`, `between`, `bar`) and table (`top`, `start`, `bottom`,
-/// `end`, `insideH`, `insideV`) flavours, and the run border takes a single
-/// edge. The order below is the table one, which the schema order of the
-/// paragraph flavour is a subsequence of, so emitting it everywhere keeps a
-/// part valid for all four containers.
-fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders) {
+/// The horizontal edges have TWO names in Strict, and which one is correct depends
+/// on the container - a fact the schema makes impossible to miss and the writer
+/// got backwards in both directions:
+///
+/// | container | sequence | horizontal edges |
+/// |---|---|---|
+/// | `CT_PBdr` (`w:pBdr`) | top, left, bottom, right, between, bar | `left`/`right` |
+/// | `CT_TblBorders` | top, start, bottom, end, insideH, insideV | `start`/`end` |
+/// | `CT_TcBorders` | the same, plus tl2br, tr2bl | `start`/`end` |
+///
+/// So a paragraph border written `start`/`end` and a table border written
+/// `left`/`right` are each invalid, and the writer used to write `start`/`end`
+/// everywhere on the strength of "Strict renamed left/right" - true of
+/// `CT_TblBorders` and false of `CT_PBdr`, which Strict did not rename. Ten
+/// violations on the corpus (`XS-23`).
+///
+/// `w:bdr` is not in this function because it is not a container at all:
+/// `w:rPr/w:bdr` is a single `CT_Border`, an element with attributes and no
+/// children. See [`run_border`].
+fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: EdgeNames) {
     xml.start(name);
-    // Strict spells the horizontal edges `start`/`end` (ISO/IEC 29500-1
-    // §17.3.1.4); `left`/`right` would be Transitional.
+    let (near, far) = match edges {
+        EdgeNames::Paragraph => ("left", "right"),
+        EdgeNames::Table => ("start", "end"),
+    };
     for (local, edge) in [
         ("top", &borders.top),
-        ("start", &borders.start),
+        (near, &borders.start),
         ("bottom", &borders.bottom),
-        ("end", &borders.end),
+        (far, &borders.end),
         ("insideH", &borders.inside_horizontal),
         ("insideV", &borders.inside_vertical),
     ] {
@@ -422,8 +437,43 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders) {
     xml.end();
 }
 
+/// Which spelling the horizontal edges take in the container being written.
+#[derive(Clone, Copy)]
+enum EdgeNames {
+    /// `CT_PBdr` keeps `left`/`right`.
+    Paragraph,
+    /// `CT_TblBorders` and `CT_TcBorders` use `start`/`end`.
+    Table,
+}
+
+/// Writes `w:rPr/w:bdr`, which is one edge and not a container.
+///
+/// `CT_Border` declares no child elements at all - `w:val`, `w:sz`, `w:space` and
+/// `w:color` are attributes on the element itself. Writing a border COLLECTION
+/// into it, as this writer did, can only ever produce markup no reader accepts.
+///
+/// The model holds a four-edge `Borders` here and there is nowhere in `CT_Border`
+/// to put three of them, so the `top` edge is written and the other three are not
+/// written back. That is a loss, and it is already declared where the information
+/// disappears: the reader records `w:bdr` as `Partial` with the reason "run
+/// borders are not retained" (`wml/src/parse/props.rs`), so a run border never
+/// reaches this code at all through a round trip.
+fn run_border(xml: &mut XmlWriter, borders: &Borders) {
+    let Some(edge) = borders.top.as_ref() else {
+        return;
+    };
+    xml.start("w:bdr");
+    write_border_attributes(xml, edge);
+    xml.end();
+}
+
 fn border_edge(xml: &mut XmlWriter, local: &str, border: &Border) {
     xml.start(&format!("w:{local}"));
+    write_border_attributes(xml, border);
+    xml.end();
+}
+
+fn write_border_attributes(xml: &mut XmlWriter, border: &Border) {
     xml.attr_w("val", border.style.map_or("none", |s| s.as_str()));
     xml.attr_w_opt("sz", border.size.map(|v| v.0));
     xml.attr_w_opt("space", border.space);
@@ -434,7 +484,6 @@ fn border_edge(xml: &mut XmlWriter, local: &str, border: &Border) {
     if border.frame {
         xml.attr_w("frame", "true");
     }
-    xml.end();
 }
 
 fn cell_margins(xml: &mut XmlWriter, name: &str, margins: &CellMargins) {
@@ -454,12 +503,51 @@ fn cell_margins(xml: &mut XmlWriter, name: &str, margins: &CellMargins) {
     ] {
         if let Some(value) = value {
             xml.start(&format!("w:{local}"));
-            xml.attr_w("w", value.0);
+            xml.attr("w:w", tbl_width_value(value.0));
             xml.attr_w("type", "dxa");
             xml.end();
         }
     }
     xml.end();
+}
+
+/// The lexical form of a `CT_TblWidth/@w` measurement (`XS-09`).
+///
+/// The attribute's type is `ST_MeasurementOrPercent`, a union of
+/// `ST_DecimalNumberOrPercent` and `s:ST_UniversalMeasure`. The first of those is
+/// itself only `s:ST_Percentage`, whose pattern is `-?[0-9]+(\.[0-9]+)?%` - it
+/// requires the sign and it has no plain-number branch. So a bare twip count is
+/// not a value this attribute can hold, and 110 corpus violations were exactly
+/// that.
+///
+/// The branch that does fit is the universal measure, whose pattern ends in
+/// `mm|cm|in|pt|pc|pi`, and it is not a workaround: it is what every producer that
+/// writes valid Strict writes. LibreOffice, docx4j and the Open XML SDK fixtures
+/// in the corpus all put points here - `w:tcW w:w="178.05pt" w:type="dxa"` - while
+/// the eight Microsoft conformance fixtures write `w:w="4788"`, which their own
+/// schema rejects. That is the difference between a producer that validates and
+/// one that does not, and it is 20 twips to a point.
+///
+/// Points are exact for twips: the model holds integers, and an integer divided
+/// by 20 has at most two decimals.
+///
+/// [`WidthKind::Pct`] keeps its fiftieths-of-a-percent number bare, because that
+/// is the value every producer writes and no fixture in the corpus uses one; the
+/// schema's percentage branch would need `w:w="50%"`, and whether a consumer
+/// reads that as 50% or as 50 fiftieths-of-a-percent is exactly the kind of
+/// question this project answers by measurement (`Q-E5`), not by guessing.
+fn tbl_width_value(twips: i32) -> String {
+    let points = f64::from(twips) / 20.0;
+    let mut text = format!("{points}");
+    if text.contains('.') {
+        while text.ends_with('0') {
+            text.pop();
+        }
+        if text.ends_with('.') {
+            text.pop();
+        }
+    }
+    format!("{text}pt")
 }
 
 fn width_element(xml: &mut XmlWriter, name: &str, width: &Width) {
@@ -472,7 +560,12 @@ fn width_element(xml: &mut XmlWriter, name: &str, width: &Width) {
     // failed to reparse for exactly this and nothing else.
     xml.attr_w("type", width_kind(width.kind));
     if let Some(value) = width.value {
-        xml.attr_w("w", value);
+        if width.kind == WidthKind::Pct {
+            // `pct` counts fiftieths of a percent; see [`tbl_width_value`].
+            xml.attr_w("w", value);
+        } else {
+            xml.attr("w:w", tbl_width_value(value));
+        }
     }
     xml.end();
 }
@@ -515,13 +608,15 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         xml.empty("w:bidiVisual");
     }
     if let Some(indent) = props.indent {
+        // `w:tblInd` is a `CT_TblWidth` too, so it takes the same lexical form
+        // as a table width - see [`tbl_width_value`].
         xml.start("w:tblInd");
-        xml.attr_w("w", indent.0);
+        xml.attr("w:w", tbl_width_value(indent.0));
         xml.attr_w("type", "dxa");
         xml.end();
     }
     if !borders_empty(&props.borders) {
-        borders_element(xml, "w:tblBorders", &props.borders);
+        borders_element(xml, "w:tblBorders", &props.borders, EdgeNames::Table);
     }
     cell_margins(xml, "w:tblCellMar", &props.cell_margins);
     if let Some(shading) = &props.shading {
@@ -629,7 +724,7 @@ pub fn cell_properties(xml: &mut XmlWriter, props: &CellProperties) {
         }
     }
     if !borders_empty(&props.borders) {
-        borders_element(xml, "w:tcBorders", &props.borders);
+        borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
     }
     if let Some(shading) = &props.shading {
         shading_element(xml, shading);
@@ -766,15 +861,27 @@ fn page_size(xml: &mut XmlWriter, size: &PageSize) {
     xml.end();
 }
 
+/// Writes `w:pgMar`, whose seven attributes are ALL `use="required"`.
+///
+/// `CT_PageMar` declares `top`, `right`, `bottom`, `left`, `header`, `footer` and
+/// `gutter` as required, and the writer wrote whichever ones the model happened
+/// to carry - so a section whose model has no gutter produced a `w:pgMar` with
+/// six attributes and the schema rejected it (`XS-08`). A missing margin is not a
+/// missing margin: Word's own default is 0, and a zero gutter is exactly what the
+/// absence of a gutter means on the page.
 fn page_margins(xml: &mut XmlWriter, margins: &PageMargins) {
     xml.start("w:pgMar");
-    xml.attr_w_opt("top", margins.top.map(|v| v.0));
-    xml.attr_w_opt("right", margins.right.map(|v| v.0));
-    xml.attr_w_opt("bottom", margins.bottom.map(|v| v.0));
-    xml.attr_w_opt("left", margins.left.map(|v| v.0));
-    xml.attr_w_opt("header", margins.header.map(|v| v.0));
-    xml.attr_w_opt("footer", margins.footer.map(|v| v.0));
-    xml.attr_w_opt("gutter", margins.gutter.map(|v| v.0));
+    for (local, value) in [
+        ("top", margins.top),
+        ("right", margins.right),
+        ("bottom", margins.bottom),
+        ("left", margins.left),
+        ("header", margins.header),
+        ("footer", margins.footer),
+        ("gutter", margins.gutter),
+    ] {
+        xml.attr_w(local, value.map_or(0, |v| v.0));
+    }
     xml.end();
 }
 
@@ -894,9 +1001,13 @@ fn bool_str(value: bool) -> &'static str {
 mod tests {
     use strict_ooxml_core::normalize::report::NormalizationReport;
     use strict_ooxml_wml::model::props::{PageMargins, ParagraphProperties};
-    use strict_ooxml_wml::model::values::{Justification, Spacing, Twips};
+    use strict_ooxml_wml::model::values::{
+        Border, BorderStyle, Borders, Color, EighthsPoint, Justification, Spacing, Twips,
+    };
 
-    use super::{paragraph_properties, section_properties};
+    use super::{
+        borders_element, paragraph_properties, section_properties, tbl_width_value, EdgeNames,
+    };
     use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
 
@@ -947,9 +1058,58 @@ mod tests {
         let mut ctx = Ctx::new(&mut report);
         section_properties(&mut ctx, &mut xml, &section);
         let text = xml.finish().expect("balanced");
+        // `CT_PageMar` makes all seven attributes required, and `left`/`right` are
+        // the names it uses - `w:pgMar` was never one of the containers Strict
+        // renamed to start/end, which is the trap `borders_element` fell into.
         assert!(
-            text.contains("<w:pgMar w:top=\"1440\" w:left=\"1800\"/>"),
+            text.contains(
+                "<w:pgMar w:top=\"1440\" w:right=\"0\" w:bottom=\"0\" w:left=\"1800\" \
+                 w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>"
+            ),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_table_width_is_written_as_a_universal_measure() {
+        // `ST_MeasurementOrPercent` has no plain-number branch, so bare twips are
+        // not a value `CT_TblWidth/@w:w` can hold. Twenty twips to a point, and
+        // an integer over twenty has at most two decimals.
+        assert_eq!(tbl_width_value(0), "0pt");
+        assert_eq!(tbl_width_value(108), "5.4pt");
+        assert_eq!(tbl_width_value(20), "1pt");
+        assert_eq!(tbl_width_value(3561), "178.05pt");
+        assert_eq!(tbl_width_value(-100), "-5pt");
+    }
+
+    #[test]
+    fn paragraph_and_table_borders_use_different_edge_names() {
+        let border = Border {
+            style: Some(BorderStyle::Single),
+            size: Some(EighthsPoint(4)),
+            color: Some(Color::new("#000000")),
+            space: None,
+            shadow: false,
+            frame: false,
+        };
+        let borders = Borders {
+            top: Some(border.clone()),
+            bottom: Some(border.clone()),
+            start: Some(border.clone()),
+            end: Some(border),
+            inside_horizontal: None,
+            inside_vertical: None,
+        };
+        let mut xml = XmlWriter::new();
+        borders_element(&mut xml, "w:pBdr", &borders, EdgeNames::Paragraph);
+        let paragraph = xml.finish().expect("balanced");
+        assert!(paragraph.contains("<w:left "), "{paragraph}");
+        assert!(!paragraph.contains("<w:start "), "{paragraph}");
+
+        let mut xml = XmlWriter::new();
+        borders_element(&mut xml, "w:tblBorders", &borders, EdgeNames::Table);
+        let table = xml.finish().expect("balanced");
+        assert!(table.contains("<w:start "), "{table}");
+        assert!(!table.contains("<w:left "), "{table}");
     }
 }

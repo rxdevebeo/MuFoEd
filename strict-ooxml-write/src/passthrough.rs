@@ -65,6 +65,31 @@ pub(crate) const OWNED_TYPES: &[RelType] = &[
     RelType::Endnotes,
 ];
 
+/// A vendor part that is a SHADOW of one this writer regenerates, so it must not
+/// be copied either.
+///
+/// Word 2010 wrote `word/stylesWithEffects.xml` beside `word/styles.xml`: the
+/// same styles in a 2007-compatible spelling, under the relationship type below.
+/// Nothing in the body references it, so the pass-through copied it like any other
+/// unmodelled part — and the copy is a *stale duplicate*: the styles it holds are
+/// the ones the source had, while `word/styles.xml` in the written package is the
+/// model's. On `sdk-tbllayout.docx` the written pair is 2 258 bytes against
+/// 15 668, and Word 2010 prefers the shadow when it is there. So the package
+/// contradicted itself, and it did so silently, which is the failure mode SC-10
+/// exists to prevent.
+///
+/// The part is therefore left out, with a loss recorded, because it is not
+/// content: it is a second copy of a part this write owns. Copying a part we
+/// regenerate is what [`OWNED_TYPES`] already forbids for the part itself; this is
+/// the same rule one shadow further out.
+const SHADOW_REL_TYPES: &[&str] = &[
+    "http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects",
+];
+
+fn is_shadow(info: &RelationshipInfo) -> bool {
+    SHADOW_REL_TYPES.contains(&strict_ooxml_core::opc::rels::strict_type_uri(&info.rel_type).as_str())
+}
+
 /// The most unmodelled parts one write will copy.
 ///
 /// A document does not have hundreds of charts, and a hostile `.rels` graph
@@ -166,6 +191,22 @@ pub(crate) fn plan(
             continue;
         }
         seen.insert(info.id.clone());
+        if is_shadow(&info) {
+            // Recorded as a loss, not dropped in silence (SC-10, ADR-0007): the
+            // part is genuinely not in the written package, and the reason is
+            // the reason a reader would want to know that.
+            ctx.report_unsupported(
+                "W7.stylesWithEffects",
+                &format!(
+                    "{} was not copied: it shadows word/styles.xml, which this write \
+                     regenerates from the model, so a copy would leave the package with a \
+                     second and stale set of styles",
+                    info.target
+                ),
+                &SourceLocation::unknown(),
+            );
+            continue;
+        }
         let id = rels.add(&info.rel_type, info.target.clone(), info.external);
         out.document.insert(info.id.clone(), id);
         if !info.external {

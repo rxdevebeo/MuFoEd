@@ -869,17 +869,30 @@ fn parse_measure_twips(value: &str) -> Option<f64> {
 }
 
 /// Parses `ST_MeasurementOrPercent` (widths, `w:tblInd`, `w:wBefore/After`,
-/// `w:gridCol`): a decimal measurement, or a percentage (`50%`).
+/// `w:gridCol`): a percentage (`50%`), a universal measure (`178.05pt`), or a
+/// bare number in the unit the element's `w:type` implies.
 ///
-/// A percent is converted to the OOXML fiftieths-of-a-percent unit; other forms
-/// are rounded to the nearest integer in the unit implied by the element's
-/// `w:type`.
+/// A percent is converted to the OOXML fiftieths-of-a-percent unit.
+///
+/// The universal-measure branch is not a nicety. `ST_MeasurementOrPercent` is
+/// `union(ST_DecimalNumberOrPercent, s:ST_UniversalMeasure)` and its first branch
+/// is `s:ST_Percentage` alone, whose pattern requires the `%` - so a bare number is
+/// not a value the attribute can hold, and the producers that write valid Strict
+/// write points: LibreOffice and docx4j put `w:tcW w:w="178.05pt"` where the
+/// Microsoft conformance fixtures put `w:w="4788"` and fail their own schema. This
+/// function used to accept only the percentage and the bare number, which meant
+/// every table width, table indent and before/after width in a LibreOffice or
+/// docx4j document was parsed as nothing at all, and the write dropped them in
+/// silence.
 pub(crate) fn parse_measurement_or_percent(value: &str) -> Option<i32> {
     let trimmed = value.trim();
     if let Some(percent) = trimmed.strip_suffix('%') {
         return parse_decimal(percent).map(|number| decimal_to_i32(number * 50.0));
     }
-    parse_decimal(trimmed).map(decimal_to_i32)
+    if let Some(number) = parse_decimal(trimmed) {
+        return Some(decimal_to_i32(number));
+    }
+    parse_measure_twips(trimmed).map(decimal_to_i32)
 }
 
 /// Parses an on/off attribute or a bare element (default `true`).

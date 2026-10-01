@@ -811,6 +811,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--written", help="directory of packages already written by us")
     parser.add_argument("--keep-written", help="write into this directory and keep it")
     parser.add_argument("--cli", help="path to the strict-ooxml binary")
+    parser.add_argument("--no-build", action="store_true", help="use target/release as it is (for a caller that just built it)")
     parser.add_argument("--quiet-messages", action="store_true", help="omit the per-message list")
     args = parser.parse_args(argv)
 
@@ -857,7 +858,7 @@ def main(argv: list[str]) -> int:
     if args.written:
         written_dir = args.written
     else:
-        cli = args.cli or find_cli()
+        cli = find_cli(args)
         destination = keep or tempfile.mkdtemp(prefix="strict-xsd-gate-written-")
         if not keep:
             temporary = destination
@@ -877,17 +878,37 @@ def main(argv: list[str]) -> int:
             shutil.rmtree(temporary, ignore_errors=True)
 
 
-def find_cli() -> str:
+def find_cli(args) -> str:
+    """The writer under test.
+
+    `--cli` names one, for a caller that built it deliberately. Otherwise the
+    binary is REBUILT from this tree before the corpus is written, because a gate
+    that silently measures whatever `target/release` happened to contain is the
+    failure this whole instrument exists to catch: the first run of it here
+    measured a binary from an earlier afternoon and reported the same 435
+    violations after the writer had been fixed, which is indistinguishable from
+    "the fix did not work".
+
+    `--no-build` opts out for a caller who has just built it.
+    """
+    if args.cli:
+        print(f"writer:  {args.cli} (named on the command line, not rebuilt)")
+        return args.cli
     name = "strict-ooxml.exe" if os.name == "nt" else "strict-ooxml"
     built = os.path.join(REPO, "target", "release", name)
-    if os.path.exists(built):
+    if args.no_build:
+        if not os.path.exists(built):
+            raise SystemExit(f"error: --no-build, but there is no {built}")
+        print(f"writer:  {built} (not rebuilt)")
         return built
-    debug = os.path.join(REPO, "target", "debug", name)
-    if os.path.exists(debug):
-        return debug
-    print("building the writer under test ...", flush=True)
-    subprocess.run(["cargo", "build", "-p", "strict-ooxml-cli"], cwd=REPO, check=True)
+    print("writer:  building the writer under test from this tree ...", flush=True)
+    subprocess.run(
+        ["cargo", "build", "--release", "-p", "strict-ooxml-cli"], cwd=REPO, check=True
+    )
+    if not os.path.exists(built):
+        raise SystemExit(f"error: cargo reported success but {built} is not there")
     return built
+
 
 
 def report(args, oracle: Oracle, written_dir: str) -> int:
