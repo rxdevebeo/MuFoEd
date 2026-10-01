@@ -26,7 +26,7 @@ use crate::drawing::namespaces as drawing_namespaces;
 use crate::parts;
 use crate::passthrough;
 use crate::props::section_properties;
-use crate::xml::{XmlWriter, NS_A, NS_M, NS_MC, NS_PIC, NS_R, NS_W, NS_W14, NS_W15, NS_WP};
+use crate::xml::{XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
 
 /// `/word/document.xml`.
 pub const MAIN_DOCUMENT: &str = "/word/document.xml";
@@ -661,6 +661,11 @@ fn document_part(ctx: &mut Ctx<'_>, document: &Document) -> String {
 ///
 /// Order is fixed and duplicates are dropped keeping the first, because a
 /// repeated `xmlns:a` is a hard XML error rather than a redundant declaration.
+///
+/// `mc`, `w14` and `w15` used to be declared here for the extension attributes
+/// the writer wrote, and they are gone with them (ADR-0014): a Strict part that
+/// declares the extension namespace is one invitation away from using it again,
+/// and nothing in `purl.oclc.org` needs any of the three.
 fn namespaces() -> Vec<(&'static str, &'static str)> {
     let mut out: Vec<(&'static str, &'static str)> = Vec::new();
     for (prefix, uri) in [
@@ -670,9 +675,6 @@ fn namespaces() -> Vec<(&'static str, &'static str)> {
         ("a", NS_A),
         ("pic", NS_PIC),
         ("m", NS_M),
-        ("mc", NS_MC),
-        ("w14", NS_W14),
-        ("w15", NS_W15),
     ]
     .into_iter()
     .chain(drawing_namespaces())

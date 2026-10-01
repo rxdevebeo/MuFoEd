@@ -40,32 +40,25 @@ pub fn block_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, block: &Block) {
 /// Writes `w:p`.
 pub fn paragraph_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &Paragraph) {
     xml.start("w:p");
-    // A defect, deliberately left visible until ADR-0014 is implemented: this
-    // writes `w14` attributes into a package we declare Strict. `w14` appears
-    // zero times in the ECMA-376 Strict and Transitional schemas, and Strict
-    // conformance is defined on the *post-MCE* part (ECMA-376 Part 1 §2.1
-    // clause ii), so a conforming processor strips exactly these. Three
-    // further faults in five lines:
+    // ADR-0014: a Strict package carries no extension-namespace attributes, and
+    // `w14` is an extension - it appears zero times in ECMA-376 Part 1 and Part 4,
+    // and Strict conformance is defined on the post-MCE part (Part 1 §2.1 clause
+    // ii), so a conforming processor strips exactly these. Writing them made the
+    // package non-conformant on its own terms, and did it in the worst possible
+    // way: undeclared, so not even an MCE processor could be told to remove them,
+    // and with `00000000` for an absent `textId`, which [MS-DOCX] §2.6.2.4 forbids
+    // outright ("Values MUST be greater than 0 and less than 0x80000000").
     //
-    //   - `w14:paraId` is `w:ST_LongHexNumber` = 8 hex digits, and the model
-    //     never checks that;
-    //   - `00000000` violates [MS-DOCX] §2.6.2.4, "Values MUST be greater than
-    //     0 and less than 0x80000000";
-    //   - no `mc:Ignorable="w14"` is declared, which [MS-DOCX] §2.2.4 makes a
-    //     MUST for interoperability with ISO/IEC 29500 implementations.
-    //
-    // The project's own normalizer disagrees with this writer already:
-    // `core/src/normalize/tables.rs` lists the `w14` namespace in
-    // `IGNORABLE_EXTENSION_NAMESPACES`, i.e. Transitional normalization
-    // *removes* it. See `STAGE-8-OPEN.md` (O-14) and ADR-0014.
-    if let Some(para_id) = &paragraph.para_id {
-        xml.attr("w14:paraId", para_id.as_str());
-        xml.attr(
-            "w14:textId",
-            paragraph
-                .text_id
-                .as_ref()
-                .map_or("00000000", |id| id.as_str()),
+    // The model keeps both fields, because reading them is necessary - `para_id`
+    // identifies a paragraph across saves and an editor needs to know which
+    // paragraph it is looking at. Writing them is the writer's decision, and it
+    // has been made.
+    if paragraph.para_id.is_some() {
+        ctx.report_partial(
+            "w14:paraId",
+            "the paragraph carries w14:paraId/w14:textId, a Microsoft extension absent from \
+             ECMA-376, so a Strict package does not write them (ADR-0014)",
+            &paragraph.location,
         );
     }
     // The four revision ids w:p declares (ISO/IEC 29500-1 17.3.1.9-17.3.1.30).

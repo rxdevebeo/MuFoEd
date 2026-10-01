@@ -18,16 +18,16 @@ use strict_ooxml_wml::model::values::StyleType;
 use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
 use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
-use crate::xml::{XmlWriter, NS_A, NS_R, NS_W, NS_W14};
+use crate::xml::{XmlWriter, NS_A, NS_R, NS_W};
 
 /// The namespace declarations a `w:` part carries.
 ///
-/// `w14` is here because the paragraph writer emits `w14:paraId`/`w14:textId`
-/// (§17.3.1.26) on every paragraph that has them, and a header or footer is
-/// made of paragraphs like any other. Without the declaration those parts were
-/// not well-formed — an unbound prefix — so four documents in the local corpus
-/// produced a header Word could not open.
-const WML_NAMESPACES: [(&str, &str); 3] = [("w", NS_W), ("r", NS_R), ("w14", NS_W14)];
+/// `w14` used to be declared here because the paragraph writer emitted
+/// `w14:paraId`/`w14:textId`, and it is not any more: `w14` is absent from
+/// ECMA-376 entirely and Strict conformance is defined on the post-MCE part, so a
+/// Strict part that declares the namespace is one line away from carrying an
+/// attribute the standard does not have (ADR-0014).
+const WML_NAMESPACES: [(&str, &str); 2] = [("w", NS_W), ("r", NS_R)];
 
 /// The namespace declarations the theme part carries.
 const THEME_NAMESPACES: [(&str, &str); 1] = [("a", NS_A)];
