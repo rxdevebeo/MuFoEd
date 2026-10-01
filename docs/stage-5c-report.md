@@ -161,6 +161,57 @@ ratchet fails if a page drifts further, and fails if a page gets better
 without the pinned value being lowered. Closing the gap is Stage-5C rework —
 the numbers move, not the bound.
 
+### 4.3 The decomposition, measured (2026-10-01)
+
+`07-strict-drawingml-shapes` is now **closed**, and the way it closed changes what
+the rest of the set looks like: it is a page of shapes, with no formula on it, so
+nothing in it is confounded by the math-font substitution.
+
+One line of `finish_line` was the whole of it:
+
+```rust
+ascent = ascent.max(line.object_height);
+height = height.max(ascent);      // <- the depth is thrown away
+```
+
+A line box has a depth even when its tallest item has none — the paragraph mark is
+still a glyph with a descent — so growing only the ascent made every drawing line
+exactly as tall as its drawing. The document's `docDefaults` says
+`<w:spacing w:after="160" w:line="259" w:lineRule="auto"/>`, so the 8 pt paragraph
+spacing landed directly against the bottom of each shape. Growing the ascent and
+keeping the depth (`height = max(natural, ascent + depth)`) moves the page from
+−16 px to **+1 px**, drops it out of the red list and takes it out of AMBER
+(SSIM 0.9805).
+
+What is left on the other three pages is **three separate defects, and they do not
+all point the same way.** Measured against the references with
+`cargo run -p strict-ooxml-render-svg --example page_diff`:
+
+| | reference | ours | what it is |
+|---|---|---|---|
+| `06` gap body → `Heading2` | 27 px | 37 px | we **sum** `w:after` and `w:before`; the reference **collapses** them. The 10.667 px difference is exactly the `after="160"` |
+| `06` gap after a display formula → body | 15 px | 5 px | a math paragraph drops its `w:after` (`paragraph.rs`: `if math_paragraph { 0.0 }` for both sides) |
+| `06` white between a fraction's numerator and its rule | 6 px | 0 px | `FRACTION_PART_SHIFT = 0.40 em`. TeX's `\displaystyle` numerator shift is 0.676 em, and 0.68 leaves the 6 rows the reference leaves |
+| `06` width of the quadratic formula | 120 px (x 348..468) | 97 px | the radical's vinculum is a **synthesized path** whose width follows our radicand; Cambria Math's is a glyph |
+
+**Why the first three are not in the tree yet, although each is individually
+measured.** They interact, and the page totals are the sum of two errors that
+partly cancel. Collapsing the paragraph spacing alone makes `10-strict-math-eqarr`
+worse (−3 → +7 px) because it removes 10 px of *wrong* spacing that was hiding a
+short formula; restoring the math paragraph's `after` alone makes `06` +32 px worse
+for the same reason. Applied together with the 0.68 em shift, `06`'s bottom edge
+goes −10 → **−2 px** and its row-profile correlation 0.756 → **0.922** — but
+`strict-stage5c` p.1 drifts 17 → 20 px, and the ratchet exists to make exactly that
+visible. So the three land as **one** change, together with the fraction geometry,
+or not at all.
+
+**What no layout change can reach** is the last row: the formula's *width* comes
+from a glyph we do not have. §5.1 measured the ceiling that follows from it
+(0.9349…0.9484 before any layout fix), and this is the same fact seen from the
+side. The `formulas` class therefore cannot be closed against the WPS *positions*
+of constructs whose size is a glyph property; it can be closed against the block
+geometry, which is what the three changes above move.
+
 ## 5. Fonts
 
 `STIXTwoMath-Regular.otf` (SIL OFL 1.1) from CTAN `stix2-otf`,

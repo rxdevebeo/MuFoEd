@@ -186,36 +186,51 @@ fn overlay(reference: &[f64], candidate: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// The contiguous runs of rows that carry ink, as `(first, last)`.
+/// The contiguous runs of rows that carry ink, as `(first, last)`, each with the
+/// columns its ink spans.
 ///
-/// The gate's `extent_delta` reads the first and the last of these; printing all of
-/// them is what turns «the bottom edge is 16 px high» into «the gap between blocks
-/// is 4 px short, four times over».
-fn ink_bands(gray: &[f64], width: usize, height: usize) -> Vec<(usize, usize)> {
-    let mut bands = Vec::new();
+/// The gate's `extent_delta` reads the first and the last of these; printing all
+/// of them, with their horizontal span, is what turns «the bottom edge is 16 px
+/// high» into «the gap between blocks is 4 px short, four times over» — and a
+/// band that is narrow tells you *which part* of the page it is.
+fn ink_bands(gray: &[f64], width: usize, height: usize) -> Vec<(usize, usize, usize, usize)> {
+    let mut bands: Vec<(usize, usize, usize, usize)> = Vec::new();
     let mut start = None;
+    let mut left = usize::MAX;
+    let mut right = 0usize;
     for row in 0..height {
         let ink = gray[row * width..(row + 1) * width]
             .iter()
-            .filter(|value| **value < 0.75)
-            .count();
-        match (ink > 0, start) {
-            (true, None) => start = Some(row),
+            .enumerate()
+            .filter(|(_, value)| **value < 0.75)
+            .map(|(column, _)| column);
+        let mut any = false;
+        for column in ink {
+            any = true;
+            left = left.min(column);
+            right = right.max(column);
+        }
+        match (any, start) {
+            (true, None) => {
+                start = Some(row);
+                left = usize::MAX;
+                right = 0;
+            }
             (false, Some(first)) => {
-                bands.push((first, row - 1));
+                bands.push((first, row - 1, left, right));
                 start = None;
             }
             _ => {}
         }
     }
     if let Some(first) = start {
-        bands.push((first, height - 1));
+        bands.push((first, height - 1, left, right));
     }
     bands
 }
 
 /// The gap between each pair of bands, which is the number that accumulates.
-fn band_gaps(bands: &[(usize, usize)]) -> Vec<usize> {
+fn band_gaps(bands: &[(usize, usize, usize, usize)]) -> Vec<usize> {
     bands
         .windows(2)
         .map(|pair| pair[1].0.saturating_sub(pair[0].1))
@@ -292,13 +307,7 @@ fn main() {
 }
 
 /// Writes the four files for one page and prints what the gate would measure.
-fn write_page(
-    stem: &str,
-    page: usize,
-    out: &Path,
-    references: &[PathBuf],
-    rendered: &[Page],
-) {
+fn write_page(stem: &str, page: usize, out: &Path, references: &[PathBuf], rendered: &[Page]) {
     let (width, height, reference) = load_png_gray(&references[page]);
     let candidate = rasterize_gray(&rendered[page].svg, width, height, &fonts_dir());
 
@@ -330,9 +339,15 @@ fn write_page(
     let reference_bands = ink_bands(&reference, width as usize, height as usize);
     let candidate_bands = ink_bands(&candidate, width as usize, height as usize);
     println!("{stem}  {width}x{height}");
-    println!("  reference bands: {reference_bands:?}");
+    println!("  reference bands (row0, row1, x0, x1):");
+    for band in &reference_bands {
+        println!("    {band:?}");
+    }
     println!("    gaps           : {:?}", band_gaps(&reference_bands));
-    println!("  our bands      : {candidate_bands:?}");
+    println!("  our bands (row0, row1, x0, x1):");
+    for band in &candidate_bands {
+        println!("    {band:?}");
+    }
     println!("    gaps           : {:?}", band_gaps(&candidate_bands));
     match (
         ink_centroid(&reference, width as usize, height as usize),
