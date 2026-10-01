@@ -1,0 +1,216 @@
+# The XSD gate's registry of known divergences.
+#
+# `STAGE-10G-TASK.md` G17: an item closes when its MEASURED count is zero. Reading
+# the diff never closes one, and neither does a code review - the audit that
+# produced this file reviewed the writer for a stage and found none of these,
+# because nine of its eleven fixtures were written by this project and our wrong
+# element order happened to be our own fixtures' wrong element order.
+#
+# Matching, for every item, is BOTH of:
+#   - the offending ELEMENT's local name is in `elements`;
+#   - at least one substring in `messages` appears in libxml2's message.
+# Both are needed. The element alone cannot tell `<w:ind>` inside a cell margin
+# from `<w:ind>` inside a paragraph, and the message alone cannot tell one
+# element's violation from another's.
+#
+# `origin` decides what a non-zero count MEANS, and it is the one field that can
+# change what the gate's exit code says:
+#
+#   ours   our writer produced it. The gate fails while it is non-zero. Closing it
+#          means changing the writer, or proving the count is zero.
+#
+#   source the document's producer shipped it and we carry it verbatim. Diagram
+#          parts go through pass-through and are not modelled, so "fixing" them
+#          would mean rewriting bytes we promised to preserve. The gate prints
+#          these, counts them, and does not fail on them - which is G18: `XS-16`
+#          is closed by MARKING THE SOURCE, not by repairing a file that is
+#          someone else's. A count here is a debt we are carrying on purpose.
+
+# --------------------------------------------------------------------------
+# Queue 1-3: the writer, unconditionally
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-01"
+origin = "ours"
+elements = ["family", "pitch"]
+messages = ["is required but missing"]
+summary = "w:fontTable: w:family and w:pitch written without their required w:val"
+
+[[item]]
+id = "XS-02"
+origin = "ours"
+elements = ["fillStyleLst", "lnStyleLst", "effectStyleLst", "bgFillStyleLst"]
+messages = ["Missing child element(s)"]
+summary = "a:fmtScheme: four style lists written empty, and each list requires content"
+
+[[item]]
+id = "XS-03"
+origin = "ours"
+elements = ["majorFont", "minorFont"]
+messages = ["Missing child element(s)"]
+summary = "a:fontScheme: majorFont/minorFont without the mandatory a:ea"
+
+[[item]]
+id = "XS-04"
+origin = "ours"
+elements = ["wrapNone", "wrapTopAndBottom"]
+messages = ["is not allowed"]
+summary = "wp:wrapNone/wrapTopAndBottom carry @distL/@distR, which Strict's empty CT_WrapNone forbids"
+
+[[item]]
+id = "XS-08"
+origin = "ours"
+elements = ["pgMar"]
+messages = ["is required but missing"]
+summary = "w:pgMar without w:gutter/w:header/w:footer, all three use=\"required\""
+
+[[item]]
+id = "XS-09"
+origin = "ours"
+elements = ["top", "start", "bottom", "end", "tblInd", "tblW", "tcW"]
+messages = ["is not a valid value of the union type"]
+summary = "CT_TblWidth/@w written as bare twips; the union accepts only a percentage or a universal measure"
+
+# --------------------------------------------------------------------------
+# Queue 4: element order, one cause in four places
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-06"
+origin = "ours"
+elements = ["compat", "trackRevisions"]
+messages = ["This element is not expected"]
+summary = "w:settings: children out of CT_Settings' xsd:sequence order"
+
+[[item]]
+id = "XS-07"
+origin = "ours"
+elements = ["pBdr", "tabs", "suppressLineNumbers", "pPr", "tblLayout", "textAlignment", "snapToGrid"]
+messages = ["This element is not expected"]
+summary = "w:pPr, w:tblPr and w:style children out of xsd:sequence order"
+
+[[item]]
+id = "XS-23"
+origin = "ours"
+elements = ["left", "right", "start", "end"]
+messages = ["This element is not expected"]
+summary = "border and margin edges under two names: Strict keeps left/right in CT_PBdr and renames them start/end in CT_TblBorders/CT_TcBorders/CT_TcMar"
+
+# --------------------------------------------------------------------------
+# Queue 5: values of the wrong type
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-05"
+origin = "ours"
+elements = ["zoom", "fontSz"]
+messages = ["is not a valid value of the union type"]
+summary = "ST_DecimalNumberOrPercent written without the % sign"
+
+[[item]]
+id = "XS-11"
+origin = "ours"
+elements = ["srcRect"]
+messages = ["is not a valid value of the union type"]
+summary = "a:srcRect edges written without the % sign"
+
+[[item]]
+id = "XS-26"
+origin = "ours"
+elements = ["textDirection", "vAlign", "jc", "lvlJc", "tblLayout"]
+messages = ["is not an element of the set"]
+summary = "enumeration written with its Transitional spelling (w:textDirection 'tbRl' where Strict has 'lrV')"
+
+# --------------------------------------------------------------------------
+# Drawing objects, measured after the audit and numbered here
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-20"
+origin = "ours"
+elements = ["bookmarkStart"]
+messages = ["is required but missing"]
+summary = "w:bookmarkStart without its mandatory w:name"
+
+[[item]]
+id = "XS-21"
+origin = "ours"
+elements = ["positionH", "positionV"]
+messages = ["is required but missing", "Missing child element(s)"]
+summary = "wp:positionH/V without @relativeFrom and without an align or posOffset child"
+
+[[item]]
+id = "XS-22"
+origin = "ours"
+elements = ["wrapSquare", "wrapTight", "wrapThrough"]
+messages = ["is required but missing", "is not allowed"]
+summary = "wp:wrapSquare without @wrapText, and with it written in the WML namespace"
+
+# --------------------------------------------------------------------------
+# Queue 6: OMML
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-12"
+origin = "ours"
+elements = ["type", "scr", "sty", "aln", "mcJc", "baseJc", "defJc", "limLoc", "grow", "subHide", "supHide"]
+messages = ["is not an element of the set", "is not a valid value of the union type"]
+summary = "OMML enumeration written with a value outside the schema's set ('skew' for 'skw', 'ctr' for 'center')"
+
+[[item]]
+id = "XS-13"
+origin = "ours"
+elements = ["chr", "begChr", "endChr"]
+messages = ["is not valid with respect to", "is not a valid value"]
+summary = "m:chr longer than maxLength 1 (a combining sequence)"
+
+[[item]]
+id = "XS-14"
+origin = "ours"
+elements = ["e", "num", "den", "sub", "sup", "lim", "fName"]
+messages = ["Element 'text' is not expected", "is not expected"]
+summary = "text directly inside an element-only OMML argument; it belongs in m:r/m:t"
+
+[[item]]
+id = "XS-15"
+origin = "ours"
+elements = ["count", "lines", "smallFrac", "sty", "mPr", "fPr", "ctrlPr"]
+messages = ["This element is not expected"]
+summary = "OMML children out of their CT_* xsd:sequence order"
+
+# --------------------------------------------------------------------------
+# Queue 7: not our code
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-16"
+origin = "source"
+elements = ["gapWidth", "overlap", "lblOffset"]
+messages = ["is not a valid value of the union type"]
+summary = "chart parts: c:gapWidth/c:overlap/c:lblOffset rejected by ST_GapAmount/ST_Overlap/ST_LblOffset, invalid in the INPUT and carried verbatim"
+
+# --------------------------------------------------------------------------
+# Queue 8: extensions - out of the schema basket by construction
+# --------------------------------------------------------------------------
+
+[[item]]
+id = "XS-17"
+origin = "extension"
+elements = ["paraId", "textId"]
+messages = ["is not allowed"]
+summary = "w14:paraId/w14:textId in a Strict package - ADR-0014; the gate files these in the extension basket, and `strict-ooxml-write/tests/strict_conformance.rs` is the gate that holds the zero"
+
+[[item]]
+id = "XS-18"
+origin = "extension"
+elements = ["wsp", "wgp", "graphicFrame"]
+messages = ["No matching global element declaration available"]
+summary = "wps:wsp inside a:graphicData, whose Strict wildcard is processContents=\"strict\" - ADR-0014"
+
+[[item]]
+id = "XS-19"
+origin = "extension"
+elements = ["anchorId", "editId", "txbxContent"]
+messages = ["is not allowed"]
+summary = "wp14:anchorId/@editId and w:txbxContent in a vendor namespace - ADR-0014"

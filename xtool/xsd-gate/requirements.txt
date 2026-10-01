@@ -1,0 +1,11 @@
+# The XSD gate's own dependency, pinned.
+#
+# It is NOT in the crate graph, and it must not become one: `STAGE-10G-TASK.md`
+# §1 accepted an external oracle precisely because the Rust ecosystem has no XSD
+# validator and binding libxml2 natively is a native dependency this project has
+# refused (ADR-0009). So this file is installed in the CI image, and nothing in
+# Cargo.toml changes.
+#
+# lxml is libxml2's binding, which is what the audit measured with and what
+# resolves the schema `import`s the gate's patched copy depends on.
+lxml==6.0.1

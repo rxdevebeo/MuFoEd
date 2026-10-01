@@ -1,0 +1,57 @@
+# Source of the oracle for `STAGE-10G-TASK.md` (requirements G1, G3, G5, G7, G16).
+#
+# No ECMA byte is vendored in this repository, so this file is the only record of
+# where the schemas come from and of what they must hash to. It is read by
+# `xsd_gate.py`; nothing else reads it.
+#
+# Licence, because the reason matters as much as the URL
+# ------------------------------------------------------
+# ECMA-376-1 5th edition carries no licence grant of its own: its copyright page
+# does not exist (page 2 of the PDF is blank, with no content stream at all) and
+# a search for "BSD" across all 5039 pages returns nothing, so the grant in
+# `Ecma_Policy_on_Submission_Inclusion_and_Licensing_of_Software.pdf` never
+# attaches - that grant requires a legend on the standard's copyright page.
+# What applies is ECMA's default copyright notice, and it is explicit:
+#
+#   "However, the content of this document itself may not be modified in any way,
+#    including by removing the copyright notice or references to Ecma International"
+#
+# and the FAQ on republication requires deliverables to be published "unchanged,
+# and up to date". Consequences, both taken as rules rather than opinions:
+#
+#   - the schemas are downloaded, never vendored, and never modified in place;
+#   - the patched copy lives in the USER'S CACHE beside the pristine extraction;
+#   - `cargo deny` cannot have a green opinion here and is not asked for one: the
+#     notice has no SPDX identifier, so there is nothing for a licence scanner to
+#     recognise - which is exactly why nothing is vendored for it to inspect.
+#
+# See `STAGE-10G-TASK.md` G1, G2, G8 and ADR-0014.
+
+[source]
+# Human name, printed in the gate's header with the tool version (G16).
+name = "ECMA-376-1 5th edition, OfficeOpenXML-XMLSchema-Strict"
+edition = "5th edition, December 2016"
+url = "https://ecma-international.org/wp-content/uploads/ECMA-376-1_5th_edition_december_2016.zip"
+sha256 = "9d0bcad9cf06054785b03762fcfadbf6bab7e54a5f9d69434e34b7fd464d4129"
+bytes = 43501721
+# The member of the outer archive that holds the Strict schema set.
+member = "OfficeOpenXML-XMLSchema-Strict.zip"
+# The set is 21 XSDs and no `xml.xsd` - the absence is load-bearing, and
+# `xsd_gate.py` fails if the count stops matching, because a silently different
+# set is a silently different gate.
+expected_xsd = 21
+
+[patch]
+# `STAGE-10G-TASK.md` G6. `strict/wml.xsd:599, 602, 672` declare these three
+# attributes as `s:ST_OnOff` with `default="off"`, while Strict `ST_OnOff` is
+# `union(xsd:boolean)` - the `on`/`off` enumeration exists in the Transitional set
+# only. Any conformant XSD processor rejects the schema as shipped, and the
+# harness must work around it rather than skip the file, because skipping
+# `wml.xsd` silently skips every part the gate exists to judge. The gate verifies
+# that exactly these three, in exactly this file, are what it patched: a set that
+# grows means the archive changed, and an unnoticed change of the oracle is the
+# failure mode this whole gate was written to prevent.
+file = "wml.xsd"
+count = 3
+attributes = ["beforeAutospacing", "afterAutospacing", "nlCheck"]
+default = "off"

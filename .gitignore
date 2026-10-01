@@ -36,3 +36,7 @@ strict-ooxml-core/tests/docx/
 
 # page_diff's default output directory
 /.page-diff/
+
+# the XSD gate is a Python tool, and Python writes bytecode next to it
+__pycache__/
+*.pyc

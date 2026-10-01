@@ -55,6 +55,14 @@ jobs:
         run: cargo test -p strict-ooxml-render-svg --all-features --test corpus
       - name: Render fidelity (SSIM >= 0.95 vs pinned WPS references)
         run: cargo test -p strict-ooxml-render-svg --all-features --test ssim
+      # The PDF half of the same gate (SC-6, `CORE-QUEUE.md` §1 `O-2`): the same
+      # WPS references, compared against our own PDF rasterized by `hayro` and
+      # read back through our own reader. `--features raster` is named because the
+      # feature is what turns the comparison on, and a gate that silently skipped
+      # itself would be worse than no gate. The first run of it found two defects
+      # in the PDF backend that no other test in the workspace could see.
+      - name: PDF render fidelity (SSIM >= 0.95 vs pinned WPS references)
+        run: cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels
       - name: Real Strict corpus (REWORK-WML-1 + fidelity)
         run: cargo test -p strict-ooxml --all-features --test strict_corpus
       - name: Stage-5 fixture (independent XML oracle + corpus)
@@ -77,10 +85,55 @@ jobs:
           cargo test -p strict-ooxml --all-features --test stage5c_corpus
       - name: Docs
         run: cargo doc --workspace --no-deps
+      # G-6 is cheap, needs no dependency and no network, and it belongs next to
+      # the other gates so a vendored schema cannot slip in unnoticed. The gate
+      # itself runs once, on one OS, in the `xsd-gate` job below: it downloads
+      # 43 MB of ECMA schemas and compiles 2120 drivers, which is not something
+      # to ask three operating systems to do.
+      - name: No ECMA bytes in the tree (G-6)
+        run: python xtool/xsd-gate/no_ecma_bytes.py
       - name: Optional-element coverage gate (>= 90%)
         run: cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 90
       - name: Stage-5 extended-scenario coverage gate (>= 85%)
         run: cargo run -p xtool -- coverage --file coverage/stage5-scenarios.toml --min 85
+
+  xsd-gate:
+    name: XSD gate (ECMA-376 Strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the oracle (never a crate dependency)
+        run: pip install -r xtool/xsd-gate/requirements.txt
+      # The writer under test is built once here and handed to the gate with
+      # `--cli`, so the gate measures a release binary instead of whatever the
+      # workspace happened to leave in target/debug.
+      - name: Build the writer
+        run: cargo build --release -p strict-ooxml-cli
+      # G-14: the gate judges the ASSEMBLED package, so the packages are written
+      # by the same binary CI just built.
+      - name: Write the corpus
+        run: |
+          mkdir -p /tmp/strict-xsd-gate
+          for f in strict-ooxml-core/tests/strict/*.docx; do
+            # Exit 1 means "written, with losses in the report" - which is exactly
+            # the package the gate needs to look at, so it is not a failure here.
+            ./target/release/strict-ooxml write "$f" --out "/tmp/strict-xsd-gate/$(basename "$f")" || true
+          done
+      - name: No ECMA bytes in the tree (G-6)
+        run: python xtool/xsd-gate/no_ecma_bytes.py
+      - name: XSD gate
+        run: python xtool/xsd-gate/xsd_gate.py --written /tmp/strict-xsd-gate --quiet-messages
+      # G-14 of the acceptance: two runs on one corpus must agree. The gate is
+      # cheap enough to do twice and it is the only way to catch an oracle that
+      # answers differently the second time - which is a gate that cannot be
+      # trusted rather than a flaky one.
+      - name: The gate is reproducible (second run, same answer)
+        run: python xtool/xsd-gate/xsd_gate.py --written /tmp/strict-xsd-gate --quiet-messages
 
   msrv:
     name: msrv (1.92)
@@ -130,6 +183,11 @@ jobs:
         run: cargo llvm-cov -p strict-ooxml-report --all-features --fail-under-lines 80
       - name: Coverage (render-svg crate, threshold 80%)
         run: cargo llvm-cov -p strict-ooxml-render-svg --all-features --fail-under-lines 80
+      # The fidelity crate is new and entirely gate arithmetic, so it is measured
+      # like any other crate: a threshold with no coverage behind it is a number
+      # nobody checked.
+      - name: Coverage (fidelity crate, threshold 80%)
+        run: cargo llvm-cov -p strict-ooxml-fidelity --all-features --fail-under-lines 80
 
   fuzz-smoke:
     name: fuzz smoke (nightly)

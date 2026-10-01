@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OUR FILE. No byte of this is ECMA content.
+
+  The Strict archive declares an import for the XML namespace but gives it no
+  `schemaLocation`, and `wml.xsd`, `dml-wordprocessingDrawing.xsd` and
+  `shared-math.xsd` reference `xml:space`/`xml:lang` by `ref=`. libxml2 does not
+  fall back to a built-in table for it, so those three schemas do not compile at
+  all until the import resolves.
+
+  The four attributes below are fixed by the XML Namespaces specification
+  (xml:base, xml:id, xml:lang, xml:space) and its annex on the `space` attribute.
+  Declaring them is a COMPLEMENT to the archive - the notice forbids modifying
+  the deliverable, and nothing here modifies it.
+
+  See `STAGE-10G-TASK.md` G5 and ADR-0014 "One addition, not a modification".
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="http://www.w3.org/XML/1998/namespace"
+            xmlns:xml="http://www.w3.org/XML/1998/namespace"
+            elementFormDefault="qualified"
+            attributeFormDefault="unqualified">
+  <xsd:attribute name="base" type="xsd:anyURI"/>
+  <xsd:attribute name="id" type="xsd:ID"/>
+  <xsd:attribute name="lang" type="xsd:string"/>
+  <xsd:attribute name="space" type="xsd:string"/>
+</xsd:schema>
