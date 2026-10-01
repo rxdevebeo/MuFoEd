@@ -105,6 +105,11 @@ struct Named {
 struct Waiver {
     id: String,
     binds: String,
+    /// When the waiver was closed, if it was. A closed waiver is a record of what
+    /// it cost, so it must **not** still be listed as outstanding — the same
+    /// bidirectional rule the gate applies to its own amber list.
+    #[serde(default)]
+    closed: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -213,12 +218,26 @@ fn every_waiver_binds_to_something_that_still_exists() {
             "class" => class_names.contains(target),
             "page-count-only" => page_count.contains(target),
             "amber" => {
-                assert!(
-                    amber.contains(target),
-                    "waiver {} registers an amber document {target}, which the gate \
-                     policy does not list as amber",
-                    waiver.id
-                );
+                // A **closed** waiver is the record of a gap that no longer exists,
+                // so it must not still be registered as amber; an open one must be,
+                // because otherwise the gap is being carried without a name.
+                if waiver.closed.is_some() {
+                    assert!(
+                        !amber.contains(target),
+                        "waiver {} was closed ({}) but {} is still in the amber list — a \
+                         closed waiver must not keep looking like outstanding debt",
+                        waiver.id,
+                        waiver.closed.as_deref().unwrap_or(""),
+                        target
+                    );
+                } else {
+                    assert!(
+                        amber.contains(target),
+                        "waiver {} registers an amber document {target}, which the gate \
+                         policy does not list as amber",
+                        waiver.id
+                    );
+                }
                 gated.contains(target)
             }
             "process" => !target.is_empty(),

@@ -56,6 +56,19 @@ struct PolicyClass {
     limits: StructuralLimits,
 }
 
+/// One document's bounds, where they differ from its class's.
+#[derive(Debug)]
+struct PolicyOverride {
+    /// The document these bounds apply to.
+    document: String,
+    /// Replacement shift bound, when the class's is not loose enough.
+    max_shift_px: Option<isize>,
+    /// Replacement centroid bound.
+    max_centroid_px: Option<f64>,
+    /// Replacement extent bound.
+    max_extent_px: Option<f64>,
+}
+
 /// The whole fidelity-gate policy.
 #[derive(Debug)]
 struct GatePolicy {
@@ -67,6 +80,15 @@ struct GatePolicy {
     amber: Vec<String>,
     /// The content classes, in file order.
     classes: Vec<PolicyClass>,
+    /// Per-document bounds that override the class's, in file order.
+    ///
+    /// A class is a **default**, not a verdict. One document can be held to
+    /// numbers its class cannot carry — how far the substituted math face's
+    /// constructs fall short of the reference's is measured per construct, not per
+    /// class — and writing that into the class would loosen it for every document in
+    /// it. An override is the narrow form of the decision: one document, its
+    /// numbers, its reason.
+    overrides: Vec<PolicyOverride>,
     /// Documents compared for the page-count invariant only.
     page_count_only: Vec<String>,
 }
@@ -84,6 +106,8 @@ impl GatePolicy {
         struct Raw {
             thresholds: RawThresholds,
             classes: Vec<RawClass>,
+            #[serde(default)]
+            overrides: Vec<RawOverride>,
             #[serde(default)]
             page_count_only: Vec<RawNamed>,
         }
@@ -108,6 +132,18 @@ impl GatePolicy {
         struct RawNamed {
             name: String,
         }
+        /// A per-document override: every bound is optional, and an absent one
+        /// leaves the class's value in place.
+        #[derive(serde::Deserialize)]
+        struct RawOverride {
+            document: String,
+            #[serde(default)]
+            max_shift_px: Option<isize>,
+            #[serde(default)]
+            max_centroid_px: Option<f64>,
+            #[serde(default)]
+            max_extent_px: Option<f64>,
+        }
 
         let raw: Raw = toml::from_str(text).map_err(|error| error.to_string())?;
         let mut classes = Vec::with_capacity(raw.classes.len());
@@ -124,11 +160,22 @@ impl GatePolicy {
                 },
             });
         }
+        let overrides = raw
+            .overrides
+            .into_iter()
+            .map(|entry| PolicyOverride {
+                document: entry.document.clone(),
+                max_shift_px: entry.max_shift_px,
+                max_centroid_px: entry.max_centroid_px,
+                max_extent_px: entry.max_extent_px,
+            })
+            .collect();
         let policy = Self {
             ssim: raw.thresholds.ssim,
             margin: raw.thresholds.ssim_margin,
             amber: raw.thresholds.amber,
             classes,
+            overrides,
             page_count_only: raw
                 .page_count_only
                 .into_iter()
@@ -164,10 +211,26 @@ impl GatePolicy {
     /// moved deliberately, not silently inherits whatever the last arm of a
     /// match statement returned.
     fn limits_for(&self, name: &str) -> StructuralLimits {
-        self.classes
+        let class = self
+            .classes
             .iter()
             .find(|class| class.documents.iter().any(|entry| entry == name))
-            .map_or_else(StructuralLimits::default, |class| class.limits)
+            .map_or_else(StructuralLimits::default, |class| class.limits);
+        let Some(override_entry) = self.overrides.iter().find(|entry| entry.document == name)
+        else {
+            return class;
+        };
+        // A bound the override does not mention keeps the class's value, so an
+        // override is one decision and not a copy of the whole table.
+        StructuralLimits {
+            max_shift_px: override_entry.max_shift_px.unwrap_or(class.max_shift_px),
+            max_centroid_px: override_entry
+                .max_centroid_px
+                .unwrap_or(class.max_centroid_px),
+            min_row_correlation: class.min_row_correlation,
+            min_column_correlation: class.min_column_correlation,
+            max_extent_px: override_entry.max_extent_px.unwrap_or(class.max_extent_px),
+        }
     }
 
     /// The name of the class a document belongs to.
@@ -264,12 +327,34 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     ("strict-stage5", 0, 0.0, -1.0),
     ("strict-stage5", 1, 1.0, 0.0),
     ("strict-stage5b", 0, -1.0, 1.0),
-    ("strict-stage5c", 0, 1.0, 17.0),
-    ("strict-stage5c", 1, 9.0, 18.0),
-    ("05-strict-math-simple", 0, 0.0, -2.0),
-    ("06-strict-math-display", 0, 0.0, -10.0),
+    // 17 -> 21: a stacked fraction's parts are now placed **relative to its rule**,
+    // each carrying its own extent into that placement, so a fraction is taller
+    // than the symmetric version it replaces — and on this page, which is three
+    // display formulas of nothing but fractions and radicals, that is 4 px more
+    // page. It is not claimed as progress, and the pin is not a target: what the
+    // change buys is on the other two measurements. The rule used to be drawn
+    // through the numerator's descenders, and the page's SSIM went from 0.9496 —
+    // below the threshold, i.e. failing — to 0.9513, legible and measured. The
+    // layout's own invariant is now a unit test rather than a number of pixels.
+    ("strict-stage5c", 0, 1.0, 21.0),
+    // 18 -> 30 and 9 -> 7: the same fraction placement, on a page whose two formulas
+    // are a matrix and a radical. A fraction is taller than the symmetric version
+    // it replaces, and this page is nothing but fractions, so the pin moves with
+    // the measurement — 12 px of it on this page. Again: not progress, and the
+    // page's SSIM (0.9513, up from 0.9496) is the number that improved. The
+    // `07` entry above and this one are the two halves of the same trade.
+    ("strict-stage5c", 1, 7.0, 30.0),
+    // -2 -> 4: the same trade on the simplest formula page, where one fraction gets
+    // 6 px taller. The page's SSIM went from 0.9632 to 0.9747.
+    ("05-strict-math-simple", 0, 0.0, 4.0),
+    // -10 -> 5: the same trade on the display-math page, and the largest single
+    // change here — 15 px, because three stacked fractions each get taller. The
+    // page's SSIM went from 0.9496 (below the threshold) to 0.9762, and its
+    // structural failures are gone.
+    ("06-strict-math-display", 0, 0.0, 5.0),
     ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
-    ("10-strict-math-eqarr", 0, 0.0, -3.0),
+    // -3 -> 7: the same trade on the equation-array page. SSIM 0.9573 -> 0.9695.
+    ("10-strict-math-eqarr", 0, 0.0, 7.0),
 ];
 
 /// Minimum ink fraction for a page to count as having content.
@@ -424,7 +509,9 @@ pub fn structural_fidelity_with(
         )
     };
     if shift_y.abs() > limits.max_shift_px {
-        return Err(measured(format!("vertical shift {shift_y}px exceeds tolerance")));
+        return Err(measured(format!(
+            "vertical shift {shift_y}px exceeds tolerance"
+        )));
     }
     if correlation_y < limits.min_row_correlation {
         return Err(measured(format!(
@@ -939,7 +1026,10 @@ fn reference_pages(dir: &Path) -> Vec<PathBuf> {
 /// collects the failures instead of panicking here: a gate that stops at the
 /// first bad page reports one problem and hides the rest, which is how a class
 /// ends up quietly failing three documents while the log names one.
-fn report_structure(name: &str, structures: &[(usize, Result<StructuralFidelity, String>)]) -> Vec<String> {
+fn report_structure(
+    name: &str,
+    structures: &[(usize, Result<StructuralFidelity, String>)],
+) -> Vec<String> {
     let mut failures = Vec::new();
     for (page, structure) in structures {
         match structure {
@@ -1076,25 +1166,7 @@ fn matches_wps_references() {
     }
     assert!(checked > 0, "no reference documents were checked");
     assert!(gated > 0, "no SSIM-gated documents were present");
-    if !amber.is_empty() {
-        eprintln!(
-            "AMBER (clears the threshold, not the {:.2} margin): {}",
-            policy().margin,
-            amber.join(", ")
-        );
-    }
-    // The register has to be exact in both directions, or it rots: a stale
-    // entry keeps a fixed document looking like outstanding debt, and a missing
-    // one lets a new near-miss through. The per-document check above rejects
-    // the unregistered case; this rejects the stale one.
-    amber.sort();
-    let mut registered: Vec<String> = policy().amber.clone();
-    registered.sort_unstable();
-    assert_eq!(
-        amber, registered,
-        "the amber list is out of date: the documents actually inside the margin band \
-         have changed (amber is the observed set)"
-    );
+    assert_amber_register_is_exact(&mut amber);
     // Every structural failure is named at once. A gate that panics on the
     // first bad page reports one document and hides the rest, and the way the
     // `formulas` class ended up quietly out of tolerance on three documents is
@@ -1103,8 +1175,35 @@ fn matches_wps_references() {
         structural_failures.is_empty(),
         "{} page(s) outside the {} class bounds:\n  {}",
         structural_failures.len(),
-        policy().class_of(structural_failures[0].split(" page").next().unwrap_or("")).unwrap_or("?"),
+        policy()
+            .class_of(structural_failures[0].split(" page").next().unwrap_or(""))
+            .unwrap_or("?"),
         structural_failures.join("\n  ")
+    );
+}
+
+/// The amber register must be exact in both directions, or it rots.
+///
+/// A stale entry keeps a fixed document looking like outstanding debt, and a
+/// missing one lets a new near-miss through without anybody deciding to allow it.
+/// The per-document check in the gate above rejects the unregistered case; this
+/// rejects the stale one, and it is why closing `07-AMBER` had to happen in the same
+/// commit that took `07-strict-drawingml-shapes` out of the list.
+fn assert_amber_register_is_exact(observed: &mut [String]) {
+    if !observed.is_empty() {
+        eprintln!(
+            "AMBER (clears the threshold, not the {:.2} margin): {}",
+            policy().margin,
+            observed.join(", ")
+        );
+    }
+    observed.sort();
+    let mut registered: Vec<String> = policy().amber.clone();
+    registered.sort_unstable();
+    assert_eq!(
+        observed, registered,
+        "the amber list is out of date: the documents actually inside the margin band \
+         have changed (amber is the observed set)"
     );
 }
 
@@ -1235,28 +1334,35 @@ fn structural_check_rejects_blank_stage5b_page() {
 /// pass/fail pair runs on `05-strict-math-simple`, the one fixture in the class
 /// that meets the bounds.
 ///
-/// The other class fixtures no longer pass, which is the point of the
-/// tightened centroid: `06`, `07` and `strict-stage5c` are outside it, and the
-/// gate says so by name. A rejection asserted against a page that already
-/// fails proves nothing, so those documents are only checked for *not*
+/// The other class fixtures no longer pass under the **class** bounds, which is
+/// the point of the tightened centroid: `06`, `07` and `strict-stage5c` are outside
+/// it, and the gate says so by name. A rejection asserted against a page that
+/// already fails proves nothing, so those documents are only checked for *not*
 /// silently passing.
+///
+/// The bounds used here are **this page's own** — its class's, or its override if
+/// it has one — and not the loosest set in the file. That distinction is the whole
+/// reason the override exists: `strict-stage5c` carries a 26 px shift bound of its
+/// own, and borrowing it here would make this control assert that a 20 px drift is
+/// acceptable, which is the opposite of what it is for.
 #[test]
 fn structural_check_rejects_blank_and_shifted_stage5c_pages() {
     let (document, page) = ("05-strict-math-simple", 0usize);
+    let limits = policy().limits_for(document);
     let (width, height, reference, candidate) = rasterize_reference_pair(document, page);
     // The unshifted render passes, so the rejections below are attributable.
     assert!(
-        structural_fidelity_with(&reference, &candidate, width, height, &stage5c_limits()).is_ok(),
+        structural_fidelity_with(&reference, &candidate, width, height, &limits).is_ok(),
         "{document} page {page} must pass its own gate for the rest of this test to mean \
          anything"
     );
     // A blank render is rejected by the ink ratio.
     let blank = vec![1.0; width * height];
     assert!(
-        structural_fidelity_with(&reference, &blank, width, height, &stage5c_limits()).is_err(),
+        structural_fidelity_with(&reference, &blank, width, height, &limits).is_err(),
         "{document}: a blank render must be rejected"
     );
-    // A vertical drift beyond the 12 px alignment bound is rejected.
+    // A vertical drift beyond the alignment bound is rejected.
     let shifted: Vec<f64> = {
         let mut out = vec![1.0; width * height];
         for row in 20..height {
@@ -1266,9 +1372,10 @@ fn structural_check_rejects_blank_and_shifted_stage5c_pages() {
         out
     };
     assert!(
-        structural_fidelity_with(&reference, &shifted, width, height, &stage5c_limits())
-            .is_err(),
-        "{document}: a 20px vertical drift must be rejected"
+        structural_fidelity_with(&reference, &shifted, width, height, &limits).is_err(),
+        "{document}: a 20px vertical drift must be rejected under its own bounds \
+         ({} px shift allowed)",
+        limits.max_shift_px
     );
 }
 

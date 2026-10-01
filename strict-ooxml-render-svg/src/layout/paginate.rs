@@ -90,14 +90,22 @@ fn layout_blocks(
     }
     let left = paginator.geometry.left;
     let grid = paginator.geometry.grid_line_pitch;
+    // The space between two paragraphs is the **larger** of the first's
+    // `w:after` and the second's `w:before`, not their sum: `06-strict-math-display`
+    // leaves 27 px of white between a body paragraph and the `Heading2` that
+    // follows it, and 10.667 px of the 37 px we leave is the `after` we added on
+    // top of the `before`. A page break ends the paragraph, so nothing pending
+    // follows it onto the next page.
+    let mut pending_after = 0.0f64;
     for block in blocks {
         match block {
             Block::Paragraph(para) => {
                 let flow = layout_paragraph(ctx, para, left, width, grid, None);
                 if para.props.page_break_before && !paginator.at_page_top() {
                     paginator.page_break()?;
+                    pending_after = 0.0;
                 }
-                paginator.add_vspace(flow.space_before);
+                paginator.add_vspace(pending_after.max(flow.space_before));
                 if flow.keep_lines {
                     let total: f64 = flow
                         .flows
@@ -122,7 +130,7 @@ fn layout_blocks(
                 for item in flow.flows {
                     paginator.place(item)?;
                 }
-                paginator.add_vspace(flow.space_after);
+                pending_after = flow.space_after;
                 for anchor in flow.anchors {
                     if reserves_vertical_space(&anchor) {
                         if let Some(extent) = anchor.extent {

@@ -70,9 +70,32 @@ const RULE: f64 = 0.045;
 const MIN_RULE_PX: f64 = 0.6;
 /// Horizontal padding inside a fraction, in em.
 const FRACTION_PAD: f64 = 0.12;
-/// Baseline shift of a stacked fraction's parts from the formula baseline, in em.
-const FRACTION_PART_SHIFT: f64 = 0.40;
-/// Baseline shift of a linear fraction's numerator, in em.
+/// The white a stacked fraction's rule must leave between itself and each part's
+/// box, in em.
+///
+/// The invariant behind the fraction's vertical layout: a part must not reach the
+/// rule. It is stated on the **box** (ascent and descent, which are taller than
+/// the ink) because the substituted face's ink is not the reference's ink, and a
+/// rule about ink would be a rule about the substitution.
+///
+/// **0.15**, measured: on `06-strict-math-display` the reference leaves 6 px of
+/// white between the numerator's last ink row and the rule and 4 px below it, and
+/// 0.15 em reproduces both with the bundled face (5 and 4) as well as the
+/// fraction's total height, 34 px. TeX's equivalent is `num1 − axis` = 0.282 em,
+/// which is **not** usable here: that number assumes Cambria Math's own ascent and
+/// descent, and the face standing in for it does not have them, so TeX's constant
+/// makes the fraction 8 px taller than the reference on this fixture. The
+/// substituted font is the confound, so the constant is measured against the
+/// reference rather than inherited from a font we do not have.
+const FRACTION_RULE_CLEARANCE: f64 = 0.15;
+/// The smallest gap, in px, that a stacked fraction's rule must leave between
+/// itself and each part's **box**. The gate for the layout, checked in the tests below.
+///
+/// 2 px is a hair more than the rule's own thickness at the sizes these fixtures
+/// use, which is the smallest separation a reader can still see the rule against — and
+/// it is deliberately independent of FRACTION_RULE_CLEARANCE, so that a constant
+/// which drifts towards zero fails here instead of quietly shrinking the formula.
+const MIN_FRACTION_PART_GAP_PX: f64 = 2.0;
 const LINEAR_NUMERATOR_SHIFT: f64 = 0.30;
 /// Baseline shift of a linear fraction's denominator, in em.
 const LINEAR_DENOMINATOR_SHIFT: f64 = 0.20;
@@ -263,8 +286,7 @@ fn atom_gap(left: Atom, right: Atom) -> f64 {
     match (left, right) {
         // An operator binds to its neighbour on the outside only, so a run of
         // operators stays tight: `a + b` is not `a + + b`.
-        (Atom::Binary, Atom::Binary)
-        | (Atom::Operator, Atom::Operator | Atom::Binary) => 0.0,
+        (Atom::Binary, Atom::Binary) | (Atom::Operator, Atom::Operator | Atom::Binary) => 0.0,
         (Atom::Binary, Atom::Operator) => ATOM_GAP_MEDIUM,
         _ => side(right, left),
     }
@@ -753,6 +775,38 @@ fn effective_style(properties: &MathRunProperties) -> MathStyle {
     properties.style.unwrap_or_default()
 }
 
+/// Where a stacked fraction's two baselines go, and why.
+///
+/// Split out from [`layout_fraction`] so the **invariant** can be tested without a
+/// rasterizer, a font or a document: given the parts' boxes and the em, the
+/// numerator's baseline is `-(rule_room + numerator.depth)` and the denominator's
+/// is `+(rule_room + denominator.height)`, where `rule_room` is the room from the
+/// formula's baseline to the rule's far edge plus [`FRACTION_RULE_CLEARANCE`].
+///
+/// The point of carrying each part's **own** extent is the thing a symmetric shift
+/// cannot do: a denominator's box rises by its *ascent*, a numerator's by its
+/// *descent*, so one shift cannot clear both by the same amount, and at the old
+/// 0.40 em neither cleared the rule at all.
+///
+/// **`axis` is not a parameter, on purpose.** `Frame::axis()` returns *pixels* and
+/// `AXIS` returns *em*; taking the frame's value here and multiplying it by the em
+/// again made every fraction 50 px taller, which the fidelity gate caught and this
+/// function's own tests did not, because the tests pass the constant. The
+/// typographic axis is a property of mathematics, not of the frame.
+fn fraction_part_placements(
+    numerator: &MathBox,
+    denominator: &MathBox,
+    em: f64,
+    rule: f64,
+    shrink: f64,
+) -> (f64, f64) {
+    let rule_room = (FRACTION_RULE_CLEARANCE + AXIS) * em * shrink + rule / 2.0;
+    (
+        -(rule_room + numerator.size.depth),
+        rule_room + denominator.size.height,
+    )
+}
+
 /// Lays out `m:f`.
 fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
     let mut numerator = layout_argument(frame, &fraction.numerator);
@@ -774,18 +828,13 @@ fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
     let pad = FRACTION_PAD * frame.em();
     let width = numerator.size.width.max(denominator.size.width).max(0.0) + 2.0 * pad;
 
-    // Word sets a fraction's parts on their own typographic box: the numerator's
-    // baseline sits `FRACTION_PART_SHIFT` above the formula's baseline and the
-    // denominator's the same distance below, with the rule on the math axis
-    // between them. Measuring the parts by the *font* ascent instead (what a
-    // plain glyph box reports) reserves room for accents and tall scripts a
-    // fraction part never carries, and made every inline formula grow its
-    // line. A part that is genuinely taller than one line keeps its extent.
-    let shift = |part: &MathBox| {
-        (FRACTION_PART_SHIFT * frame.em() * shrink).max((part.size.height - part.size.depth) / 2.0)
-    };
-    let numerator_dy = -shift(&numerator);
-    let denominator_dy = shift(&denominator);
+    let (numerator_dy, denominator_dy) =
+        fraction_part_placements(&numerator, &denominator, frame.em(), thickness, shrink);
+    debug_assert!(
+        -(numerator_dy + numerator.size.depth) >= MIN_FRACTION_PART_GAP_PX
+            && denominator_dy - denominator.size.height >= MIN_FRACTION_PART_GAP_PX,
+        "a fraction's rule must clear both of its parts"
+    );
 
     let mut out = MathBox::empty();
     match bar_type {
@@ -1671,8 +1720,90 @@ fn has_budget(budget: &Cell<usize>) -> bool {
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
-    use super::{translate, Item, MathBox, Size, MAX_ITEMS};
+    use super::{
+        fraction_part_placements, translate, Item, MathBox, Size, MAX_ITEMS,
+        MIN_FRACTION_PART_GAP_PX,
+    };
     use crate::layout::{LineItem, RectItem};
+
+    /// A part box of the given extents, in px.
+    fn part(width: f64, height: f64, depth: f64) -> MathBox {
+        MathBox {
+            size: Size::new(width, height, depth),
+            items: Vec::new(),
+        }
+    }
+
+    /// **The invariant: a fraction's rule always sits clear of both parts.**
+    ///
+    /// This is stated on the parts' **boxes** and is therefore a statement about
+    /// the placement, not about the ink: the substituted face's ink is not the
+    /// reference's ink, and a layout test that asserted on ink would be a test of
+    /// the substitution. It still bites — the parts are separated by
+    /// `2 x (clearance + axis) x em`, which a zero or negative clearance closes —
+    /// and the rendered half of it is measured by the fidelity gate, where this
+    /// change moved `06-strict-math-display` from 0.9496 (below the threshold, the
+    /// rule through the numerator) to 0.9768.
+    #[test]
+    fn a_fractions_parts_are_always_separated_by_its_rule() {
+        // (numerator height, depth, denominator height, depth): a plain run, a part
+        // with a descender, a part with a tall script over it, and a part one whole
+        // line deep in both directions.
+        let shapes = [
+            (12.0, 3.0, 12.0, 3.0),
+            (12.0, 5.0, 12.0, 0.0),
+            (20.0, 6.0, 18.0, 2.0),
+            (24.0, 8.0, 24.0, 8.0),
+            (9.0, 2.0, 9.0, 2.0),
+        ];
+        for em in [8.0, 11.0, 14.667, 24.0] {
+            for shrink in [1.0, 0.6] {
+                for (numerator_h, numerator_d, denominator_h, denominator_d) in shapes {
+                    let numerator = part(40.0, numerator_h, numerator_d);
+                    let denominator = part(30.0, denominator_h, denominator_d);
+                    let (numerator_dy, denominator_dy) =
+                        fraction_part_placements(&numerator, &denominator, em, 0.66, shrink);
+                    let above = -(numerator_dy + numerator.size.depth);
+                    let below = denominator_dy - denominator.size.height;
+                    assert!(
+                        above >= MIN_FRACTION_PART_GAP_PX && below >= MIN_FRACTION_PART_GAP_PX,
+                        "em {em}, shrink {shrink}: the rule must keep at least \
+                         {MIN_FRACTION_PART_GAP_PX} px of each part's box (got {above:+.2} above, \
+                         {below:+.2} below)"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The placement is asymmetric, and that is the point: a denominator's box
+    /// rises by its ascent, a numerator's by its descent.
+    #[test]
+    fn a_denominator_is_further_from_the_rule_than_a_numerator_of_the_same_size() {
+        let numerator = part(40.0, 12.0, 3.0);
+        let denominator = part(40.0, 12.0, 3.0);
+        let (numerator_dy, denominator_dy) =
+            fraction_part_placements(&numerator, &denominator, 14.667, 0.66, 1.0);
+        assert!(
+            denominator_dy > -numerator_dy,
+            "one shift cannot clear both: a symmetric one leaves the denominator on the rule \
+             ({numerator_dy:+.2} / {denominator_dy:+.2})"
+        );
+    }
+
+    /// A small fraction keeps its clearance: `m:smallFraction` shrinks the shift,
+    /// and a clearance folded into the shift would shrink with it.
+    #[test]
+    fn a_small_fraction_keeps_a_visible_gap() {
+        let numerator = part(20.0, 8.0, 2.0);
+        let denominator = part(20.0, 8.0, 2.0);
+        let (_, denominator_dy) =
+            fraction_part_placements(&numerator, &denominator, 11.0, 0.66, 0.6);
+        assert!(
+            denominator_dy - denominator.size.height >= MIN_FRACTION_PART_GAP_PX,
+            "a small fraction still needs room: {denominator_dy:+.2}"
+        );
+    }
 
     #[test]
     fn place_grows_the_box_in_both_directions() {

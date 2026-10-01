@@ -146,7 +146,14 @@ pub(crate) fn layout_paragraph(
         flows: flows.0,
         anchors: flows.1,
         space_before: if math_paragraph { 0.0 } else { space_before },
-        space_after: if math_paragraph { 0.0 } else { space_after },
+        // `w:after` is **kept** for a math paragraph, and the reference says so: the
+        // gap between the last display formula on `06-strict-math-display` and the
+        // paragraph below it is 15 px in the reference and 5 px in ours, and
+        // 10.667 px is exactly the document's `w:after="160"`. A formula's own
+        // descent separates it from what comes *before* it; what comes after it is
+        // ordinary paragraph spacing, and dropping it is how the text under a
+        // formula once ended up a line too high.
+        space_after,
         keep_lines: computed.keep_lines,
     }
 }

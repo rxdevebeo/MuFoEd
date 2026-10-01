@@ -19,9 +19,9 @@
 # rot into a list of resolved problems still described as open.
 
 [meta]
-revision = "2026-09-29"
+revision = "2026-10-01"
 policy = "GATE-STRATEGY.md §2"
-source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md"
+source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md"
 
 # ---------------------------------------------------------------------------
 # Bound by the gate itself. Removing one of these is a change in what the
@@ -153,14 +153,32 @@ binds = "amber:07-strict-drawingml-shapes"
 summary = "Worst SSIM 0.9568, clearing the 0.95 criterion by 0.0068."
 risk = """
 Same runtime sensitivity as 5C-AMBER. The underlying drift is the opposite
-sign to the rest of the class — the page is 16 px *shorter* than the
-reference — which is what identifies the block box, not one oversized
+sign to the rest of the class - the page is 16 px *shorter* than the
+reference - which is what identifies the block box, not one oversized
 operator, as the cause.
 """
 exit = """
-Same block-geometry fix as 5C-C4.
+Closed 2026-10-01 without the block-geometry rework the entry expected, because
+the cause was one line and it was not the block box. A line that grows for an
+inline drawing grew its *ascent* and set `height = max(natural, ascent)`, which
+discards the line's depth: a line box has a depth even when its tallest item has
+none, because the paragraph mark is still a glyph with a descent. So the 8 pt
+`w:after` of this document's `docDefaults` landed directly against the bottom of
+each shape instead of below the line's descent.
+
+Growing the ascent and keeping the depth moves the page's bottom ink edge from
+-16 px to +1 px, which is inside the 2 px default, and its worst SSIM from
+0.9709 to 0.9805 - clear of the 0.01 margin, so it leaves the amber list.
 """
 opened = "2026-09-29"
+closed = "2026-10-01"
+closed_by = """
+`finish_line` in `strict-ooxml-render-svg/src/layout/paragraph.rs`:
+`height = max(natural, ascent + depth)` instead of `max(natural, ascent)`.
+`EXTENT_RATCHET` pins the page at +1 px, and the gate no longer lists it as
+amber (2026-10-01). Measured with
+`cargo run -p strict-ooxml-render-svg --example page_diff -- 07-strict-drawingml-shapes 0`.
+"""
 
 [[waivers]]
 id = "CHARTS"
@@ -264,6 +282,77 @@ Either provision a Linux host for long runs, or accept the nightly sessions
 explicitly with the depth written down.
 """
 opened = "2026-09-29"
+
+[[waivers]]
+id = "DJVU-PATENT"
+subject = "9A DjVu reading"
+binds = "process:djvu-patents"
+summary = """
+Importing DjVu means implementing a format whose reference library has shipped
+under GPL-2.0 since 1999, with a LizardTech grant over "the LIZARDTECH ORIGINAL
+CODE or of programs derived from" it. This project links neither: it depends on
+the MIT-licensed `djvu-iff`/`djvu-zp`/`djvu-bzz` crates and writes the container,
+the zone tree and the mapping itself from the published specification
+(DjVu Reference v3, November 2005, status "Released"). No freedom-to-operate
+search was commissioned.
+"""
+risk = """
+Three unknowns, accepted by the owner on 2026-10-01 rather than researched
+(`STAGE-9-TASK.md` §2.2.6):
+
+1. The header of every `libdjvu/*.cpp` says "protected by U.S. Pat. No. 6,058,214
+   and patents pending" — as of the 2007 amendment. The pending set was never
+   enumerated. An assignment search over LizardTech, Celartem, Celartem
+   Technology, Celartern, Dalen, Access Software and GeoWGS84 found no DjVu
+   codec patent, but the search was incomplete.
+2. US 5,900,953 (foreground/background separation — the conceptual core of the
+   format) reads NOT_ACTIVE in the US and ACTIVE in Canada; the Canadian record
+   was not retrieved.
+3. EP 1,050,014 and the EP/KR/CA family members of the US 9,830,535 continuation
+   chain read ACTIVE; none was retrieved.
+
+What is *not* open: US 6,058,214 expired 2019-01-19 (35 U.S.C. 154(a)(2), twenty
+years from the 1999-01-19 filing), and its sole independent claim is an *encoding*
+method — the decoder "can be decoded according to normal wavelet techniques
+regardless of the mask" — so a read-only implementation does not practise it at
+any term. Writing DjVu is therefore out of scope by design, not by taste. The
+underlying method is published science (Bottou et al., JEI 7(3):410-425, 1998).
+"""
+exit = """
+Either commission an FTO search over the assignees named above and close the
+three unknowns, or accept the residual risk in writing at the point where this
+project first plans *commercial* distribution — at which point a written opinion
+from a patent attorney becomes mandatory rather than optional. Until then the
+provenance table in ADR-0012 (module -> source) is what makes this project's
+clean-room position checkable, and it is maintained from that ADR.
+"""
+opened = "2026-10-01"
+
+[[waivers]]
+id = "DJVU-TM"
+subject = "9A DjVu reading"
+binds = "process:djvu-trademark"
+summary = """
+The "DjVu" word mark (USPTO serial 75449497, registered 2000-06-27 as
+2,362,884) was cancelled 2011-01-28 for failure to file a Section 8 declaration.
+Cancellation removes the registration, not common-law rights, and the mark has
+been used continuously since 1998; no foreign registration was checked (EUIPO and
+WIPO are JS-gated). The owner decided on 2026-10-01 to use the name referentially
+only.
+"""
+risk = """
+A rights holder could object to the use of the name, and the realistic damage is
+a takedown of the repository or package listing — time and credibility, not
+damages. It would not be a defect in the code or the conversion.
+"""
+exit = """
+Keep the name out of the product identity and put an affiliation disclaimer in
+`README.md` and `strict-ooxml-djvu/README.md`: "reads DjVu files" and the format
+name only, never as a brand for this project, no logo, no certification mark. If
+the project ever needs a clearance opinion for commercial distribution, this is
+the entry that points at it.
+"""
+opened = "2026-10-01"
 
 [[waivers]]
 id = "VERTJC"
