@@ -693,7 +693,7 @@ fn stage5_docx() -> Vec<u8> {
 <w:p><w:pPr><w:numPr><w:ilvl w:val=\"1\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Sub item A</w:t></w:r></w:p>\
 <w:p><w:pPr><w:numPr><w:ilvl w:val=\"1\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Sub item B</w:t></w:r></w:p>\
 <w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Heading Two</w:t></w:r></w:p>\
-<w:tbl><w:tblPr><w:tblW w:w=\"8000\" w:type=\"dxa\"/></w:tblPr>\
+<w:tbl><w:tblPr><w:tblW w:w=\"400pt\" w:type=\"dxa\"/></w:tblPr>\
 <w:tblGrid><w:gridCol w:w=\"2666\"/><w:gridCol w:w=\"2666\"/><w:gridCol w:w=\"2668\"/></w:tblGrid>\
 <w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:gridSpan w:val=\"3\"/><w:shd w:val=\"clear\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:r><w:t>Merged header</w:t></w:r></w:p></w:tc></w:tr>\
 <w:tr><w:tc><w:tcPr><w:vMerge w:val=\"restart\"/></w:tcPr><w:p><w:r><w:t>VMerge</w:t></w:r></w:p></w:tc>\
@@ -710,13 +710,15 @@ fn stage5_docx() -> Vec<u8> {
 <w:r><w:t xml:space=\"preserve\"> and an endnote</w:t></w:r><w:r><w:endnoteReference w:id=\"1\"/></w:r></w:p>\
 <w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\
 <w:p><w:r><w:t>Second page body</w:t></w:r></w:p>\
-<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
-<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\"/>\
+<w:sectPr>\
 <w:headerReference w:type=\"default\" r:id=\"rIdHeader1\"/>\
 <w:headerReference w:type=\"even\" r:id=\"rIdHeader2\"/>\
 <w:footerReference w:type=\"default\" r:id=\"rIdFooter1\"/>\
+<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>\
+<w:titlePg/>\
 <w:docGrid w:type=\"lines\" w:linePitch=\"360\"/>\
-<w:titlePg/></w:sectPr>\
+</w:sectPr>\
 </w:body></w:document>"
     );
 
@@ -756,8 +758,13 @@ fn stage5_docx() -> Vec<u8> {
 <a:hlink><a:srgbClr val=\"0563C1\"/></a:hlink>\
 <a:folHlink><a:srgbClr val=\"954F72\"/></a:folHlink>\
 </a:clrScheme>\
-<a:fontScheme name=\"Office\"><a:majorFont><a:latin typeface=\"Cambria\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/></a:minorFont></a:fontScheme>\
-<a:fmtScheme name=\"Office\"/>\
+<a:fontScheme name=\"Office\"><a:majorFont><a:latin typeface=\"Cambria\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:minorFont></a:fontScheme>\
+<a:fmtScheme name=\"Office\">\
+<a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:fillStyleLst>\
+<a:lnStyleLst><a:ln w=\"9525\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:prstDash/></a:ln><a:ln w=\"25400\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:prstDash/></a:ln><a:ln w=\"38100\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:prstDash/></a:ln></a:lnStyleLst>\
+<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>\
+<a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:bgFillStyleLst>\
+</a:fmtScheme>\
 </a:themeElements></a:theme>"
     );
     let footnotes = format!(
@@ -863,8 +870,8 @@ fn stage5b_docx() -> Vec<u8> {
         rect("Left", "70AD47", 0),
         rect("Right", "ED7D31", 1_371_600)
     );
-    let picture = "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"5\" name=\"img\" descr=\"anchor image\"/></pic:nvPicPr>\
-<pic:blipFill><a:blip r:embed=\"rIdImage1\"/><a:srcRect l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+    let picture = "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"5\" name=\"img\" descr=\"anchor image\"/><pic:cNvPicPr/></pic:nvPicPr>\
+<pic:blipFill><a:blip r:embed=\"rIdImage1\"/><a:srcRect l=\"0%\" t=\"0%\" r=\"0%\" b=\"0%\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
 <pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm>\
 <a:prstGeom prst=\"rect\"/></pic:spPr></pic:pic>";
 
@@ -874,7 +881,7 @@ fn stage5b_docx() -> Vec<u8> {
 <w:p><w:r><w:t>Stage 5B floating objects</w:t></w:r></w:p>\
 {}{}{}{}\
 <w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
-<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>\
 <w:pgBorders w:offsetFrom=\"page\">\
 <w:top w:val=\"single\" w:sz=\"16\" w:space=\"24\" w:color=\"1F3864\"/>\
 <w:left w:val=\"single\" w:sz=\"16\" w:space=\"24\" w:color=\"1F3864\"/>\
@@ -1037,7 +1044,7 @@ fn stage5c_docx() -> Vec<u8> {
         format!(
             "<m:rad><m:radPr><m:degHide m:val=\"1\"/></m:radPr>\
 <m:deg/><m:e>{}</m:e></m:rad>",
-            arg(&format!("{}2+1", r("x")))
+            arg(&format!("{}{}", r("x"), r("2+1")))
         ),
         format!(
             "<m:rad><m:deg>{}</m:deg><m:e>{}</m:e></m:rad>",
@@ -1092,8 +1099,11 @@ fn stage5c_docx() -> Vec<u8> {
             arg(&r("z")),
         ),
         format!(
-            "<m:d><m:dPr><m:grow m:val=\"0\"/><m:begChr m:val=\"\"/>\
-<m:endChr m:val=\"\"/></m:dPr><m:e>{}</m:e></m:d>",
+            // CT_DPr is `begChr?, sepChr?, endChr?, grow?, shp?, ctrlPr?` - the
+            // characters come first and `m:grow` last. The fixture wrote grow
+            // first, which is "This element is not expected" against the schema.
+            "<m:d><m:dPr><m:begChr m:val=\"\"/>\
+<m:endChr m:val=\"\"/><m:grow m:val=\"0\"/></m:dPr><m:e>{}</m:e></m:d>",
             arg(&format!("{}{}", r("f"), r("(x)"))),
         ),
     ));
@@ -1139,11 +1149,13 @@ fn stage5c_docx() -> Vec<u8> {
     ));
     let system = omath(&format!(
         "<m:d><m:dPr><m:begChr m:val=\"{{\"/><m:endChr m:val=\"\"/></m:dPr>\
-<m:e><m:eqArr><m:eqArrPr><m:rSpRule m:val=\"1\"/><m:rSp m:val=\"120\"/>\
-<m:maxDist m:val=\"0\"/><m:objDist m:val=\"1\"/>\
+<m:e><m:eqArr><m:eqArrPr><m:maxDist m:val=\"0\"/><m:objDist m:val=\"1\"/>\
+<m:rSpRule m:val=\"1\"/><m:rSp m:val=\"120\"/>\
 </m:eqArrPr><m:e>{}</m:e><m:e>{}</m:e></m:eqArr></m:e></m:d>",
-        arg(&format!("{} + {} = {}", r("2"), r("3"), r("5"))),
-        arg(&format!("{} = {}", r("x"), r("1"))),
+        // `m:e` is element-only: the ` + ` and ` = ` are CHARACTER DATA between
+        // runs, which the schema rejects outright. They belong in m:t.
+        arg(&format!("{}{}{}{}", r("2"), r(" + "), r("="), r("5"))),
+        arg(&format!("{}{}{}", r("x"), r(" = "), r("1"))),
     ));
 
     // 8. `m:acc`, `m:bar` (top and bottom), `m:groupChr` (over and under),
@@ -1151,7 +1163,10 @@ fn stage5c_docx() -> Vec<u8> {
     let decorations = omath(&format!(
         "{}{}{}{}{}{}",
         format!(
-            "<m:acc><m:accPr><m:chr m:val=\"x̂\"/></m:accPr>\
+            // `m:chr/@m:val` is `maxLength="1"`, and `x` plus a COMBINING circumflex
+            // is two code points - a schema violation, not an accent. The accent
+            // OMML can express is the single caret.
+            "<m:acc><m:accPr><m:chr m:val=\"^\"/></m:accPr>\
 <m:e>{}</m:e></m:acc>",
             arg(&r("v")),
         ),
@@ -1164,14 +1179,15 @@ fn stage5c_docx() -> Vec<u8> {
             arg(&r("y")),
         ),
         format!(
-            "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏞\"/><m:vertJc m:val=\"bot\"/>\
-<m:pos m:val=\"top\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
-            arg(&format!("{}2", r("z"))),
+            // CT_GroupChrPr is `chr?, pos?, vertJc?, ctrlPr?` - pos before vertJc.
+            "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏞\"/><m:pos m:val=\"top\"/>\
+<m:vertJc m:val=\"bot\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
+            arg(&format!("{}{}", r("z"), r("2"))),
         ),
         format!(
             "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏟\"/>\
 <m:pos m:val=\"bot\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
-            arg(&format!("{}2", r("z"))),
+            arg(&format!("{}{}", r("z"), r("2"))),
         ),
         format!(
             "<m:box><m:boxPr><m:aln/></m:boxPr><m:e>{}</m:e></m:box>\
@@ -1193,14 +1209,14 @@ fn stage5c_docx() -> Vec<u8> {
         rpr("<m:sty m:val=\"b\"/>", "b"),
         rpr("<m:sty m:val=\"bi\"/>", "bi"),
     ));
-    // `CT_OMathArgPr` declares only `m:argSz`, so the argument here carries
-    // `m:defJc` alone: `m:sty` inside `m:argPr` is the element the schema rejects
-    // with "This element is not expected. Expected is ( argSz )".
+    // `CT_OMathArgPr` declares exactly one child, `m:argSz`. Neither `m:defJc` nor
+    // `m:sty` is in it, and both are what the schema answers "This element is not
+    // expected. Expected is ( argSz )" to - so the argument here carries an empty
+    // `m:argPr` and the alignment lives where OMML puts it, on the matrix.
     let arg_properties = omath(&format!(
         "<m:m><m:mPr><m:baseJc m:val=\"bottom\"/><m:mcs><m:mc><m:mcPr><m:mcJc m:val=\"right\"/></m:mcPr>\
-</m:mc></m:mcs></m:mPr><m:mr><m:e><m:argPr><m:defJc m:val=\"right\"/>\
-</m:argPr>{}</m:e></m:mr></m:m>",
-        r("aligned"),
+</m:mc></m:mcs></m:mPr><m:mr><m:e><m:argPr/>{}</m:e></m:mr></m:m>",
+        rpr("<m:sty m:val=\"i\"/>", "aligned"),
     ));
 
     let body = format!(
@@ -1256,7 +1272,7 @@ fn stage5c_docx() -> Vec<u8> {
 <w:document xmlns:w=\"{W_NS}\" xmlns:m=\"{M_NS}\"><w:body>{body}\
 <w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
 <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
-w:header=\"720\" w:footer=\"720\"/></w:sectPr></w:body></w:document>"
+w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr></w:body></w:document>"
     );
 
     let content_types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
