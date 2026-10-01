@@ -21,7 +21,7 @@ use strict_ooxml_wml::model::drawing::{
 };
 use strict_ooxml_wml::model::ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 use strict_ooxml_wml::model::inline::{
-    Bookmark, BookmarkId, CommentId, OpaqueInline, Run, RunContent, TextNode,
+    Bookmark, CommentId, OpaqueInline, Run, RunContent, TextNode,
 };
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 use strict_ooxml_wml::model::props::{NumPr, ParagraphProperties, Section};

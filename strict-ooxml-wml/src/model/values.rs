@@ -384,20 +384,32 @@ strict_enum! {
 }
 
 strict_enum! {
-    /// `ST_TextDirection` — cell/paragraph text flow direction.
+    /// `ST_TextDirection` - cell/paragraph text flow direction.
+    ///
+    /// The variant names are the **Transitional** spellings, because they read,
+    /// and the lexical values are the **Strict** ones, because those are what
+    /// `ST_TextDirection` enumerates: `tb`, `rl`, `lr`, `tbV`, `rlV`, `lrV`
+    /// (`wml.xsd`, and ECMA-376 Part 1 §17.18.93). The two families name the
+    /// same six directions.
+    ///
+    /// The writer used to emit the Transitional spelling, which is a value the
+    /// Strict type does not have, so every written `w:textDirection` was rejected
+    /// by the schema; and the reader matched none of the six Strict values, so a
+    /// real Strict document's direction was recorded as an unknown enum and then
+    /// written back in the spelling the schema rejects (`XS-26`).
     pub enum TextDirection {
-        /// `lrTb`.
-        LrTb => "lrTb",
-        /// `tbRl`.
-        TbRl => "tbRl",
-        /// `btLr`.
-        BtLr => "btLr",
-        /// `lrTbV`.
-        LrTbV => "lrTbV",
-        /// `tbRlV`.
-        TbRlV => "tbRlV",
-        /// `tbLrV`.
-        TbLrV => "tbLrV",
+        /// `tb` — top to bottom, left to right (Transitional `lrTb`).
+        LrTb => "tb",
+        /// `rl` — top to bottom, right to left (Transitional `tbRl`).
+        TbRl => "rl",
+        /// `lr` — bottom to top, left to right (Transitional `btLr`).
+        BtLr => "lr",
+        /// `tbV` — rotated (Transitional `lrTbV`).
+        LrTbV => "tbV",
+        /// `rlV` — rotated (Transitional `tbRlV`).
+        TbRlV => "rlV",
+        /// `lrV` — rotated (Transitional `tbLrV`).
+        TbLrV => "lrV",
     }
 }
 

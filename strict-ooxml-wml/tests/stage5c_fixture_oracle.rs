@@ -128,16 +128,14 @@ fn the_fixture_contains_every_construct_of_the_order() {
         assert!(count(construct) >= 1, "construct {construct} is missing");
     }
     // §3.1: the property elements of §3.1's last bullet.
-    for property in [
-        "maxDist",
-        "objDist",
-        "baseJc",
-        "lit",
-        "smallFrac",
-        "type",
-        "pos",
-        "jc",
-    ] {
+    //
+    // `m:smallFrac` used to be asserted here. It is not in this list any more
+    // because `CT_FPr` does not declare it: the sequence is `m:type?, m:ctrlPr?`
+    // and nothing else, so a fixture carrying it is a fixture the official schema
+    // rejects, and a gate whose own fixture is invalid has a zero that means
+    // nothing. The XSD gate measures this fixture against the real schema on
+    // every run, so the omission is checked there rather than asserted here.
+    for property in ["maxDist", "objDist", "baseJc", "lit", "type", "pos", "jc"] {
         assert!(count(property) >= 1, "property {property} is missing");
     }
     // The fixture must not contain a Transitional construct: every OMML element

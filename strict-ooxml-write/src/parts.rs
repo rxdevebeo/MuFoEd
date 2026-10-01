@@ -118,10 +118,8 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
             "semiHidden" if style.hidden => xml.empty("w:semiHidden"),
             "pPr" => paragraph_properties(ctx, xml, &style.paragraph),
             "rPr" => run_properties(xml, &style.run),
-            "tblPr" => {
-                if style.style_type == StyleType::Table {
-                    table_properties(xml, &style.table);
-                }
+            "tblPr" if style.style_type == StyleType::Table => {
+                table_properties(xml, &style.table);
             }
             _ => {}
         }
@@ -423,12 +421,12 @@ pub fn theme_part(theme: &Theme) -> String {
 
 /// Writes the smallest `a:fmtScheme` the schema accepts.
 ///
-/// `CT_StyleMatrix` requires all four lists, and each list requires THREE entries
-/// - `EG_FillProperties` with `minOccurs="3"`, `a:ln` with `minOccurs="3"`,
-/// `a:effectStyle` with `minOccurs="3"`. The previous version wrote the four
-/// lists empty, which is 88 violations across the corpus, four of them on every
-/// single package, and it is a known gap from stage 8 that was never written into
-/// any report.
+/// `CT_StyleMatrix` requires all four lists, and each list requires THREE
+/// entries - `EG_FillProperties` with `minOccurs="3"`, `a:ln` with
+/// `minOccurs="3"`, `a:effectStyle` with `minOccurs="3"`. The previous version
+/// wrote the four lists empty, which is 88 violations across the corpus, four of
+/// them on every single package, and it is a known gap from stage 8 that was
+/// never written into any report.
 ///
 /// The entries carry no information, and that is stated rather than dressed up:
 /// the reader records `a:fmtScheme` as `Partial` with the reason "theme

@@ -39,7 +39,7 @@ fn parses_rich_paragraph_properties() {
 <w:tabs><w:tab w:pos=\"720\" w:val=\"center\" w:leader=\"dot\"/><w:tab w:pos=\"-1\" w:val=\"clear\"/></w:tabs>\
 <w:spacing w:before=\"120\" w:after=\"240\" w:line=\"360\" w:lineRule=\"exact\" w:beforeAutospacing=\"1\" w:afterAutospacing=\"on\"/>\
 <w:ind w:start=\"720\" w:end=\"360\" w:hanging=\"180\" w:startChars=\"100\" w:endChars=\"50\" w:firstLineChars=\"0\" w:hangingChars=\"25\"/>\
-<w:jc w:val=\"both\"/><w:outlineLvl w:val=\"2\"/><w:textDirection w:val=\"tbRl\"/>\
+<w:jc w:val=\"both\"/><w:outlineLvl w:val=\"2\"/><w:textDirection w:val=\"rl\"/>\
 <w:wordWrap w:val=\"false\"/><w:snapToGrid w:val=\"true\"/><w:widowControl w:val=\"0\"/>\
 <w:bidi/><w:contextualSpacing/><w:suppressLineNumbers/><w:keepLines/><w:keepNext/><w:pageBreakBefore/>\
 <w:numPr><w:ilvl w:val=\"3\"/><w:numId w:val=\"9\"/></w:numPr>\
@@ -160,7 +160,7 @@ fn parses_rich_table_properties() {
 <w:gridBefore w:val=\"1\"/><w:gridAfter w:val=\"1\"/><w:wBefore w:w=\"100\" w:type=\"dxa\"/><w:wAfter w:w=\"100\" w:type=\"dxa\"/>\
 <w:rsid w:val=\"00AB\"/><w:tblCellMar><w:top w:w=\"5\"/></w:tblCellMar></w:trPr>\
 <w:tc><w:tcPr><w:tcW w:w=\"2500\" w:type=\"dxa\"/><w:gridSpan w:val=\"2\"/><w:vMerge w:val=\"continue\"/>\
-<w:vAlign w:val=\"center\"/><w:textDirection w:val=\"btLr\"/><w:noWrap/><w:hideMark/><w:tcFitText/>\
+<w:vAlign w:val=\"center\"/><w:textDirection w:val=\"lr\"/><w:noWrap/><w:hideMark/><w:tcFitText/>\
 <w:tcBorders><w:top w:val=\"single\"/></w:tcBorders><w:shd w:val=\"clear\" w:fill=\"FFFFFF\"/>\
 <w:tcMar><w:top w:w=\"11\"/><w:start w:w=\"22\"/><w:bottom w:w=\"11\"/><w:end w:w=\"22\"/></w:tcMar>\
 </w:tcPr><w:p/></w:tc></w:tr></w:tbl>";
@@ -215,7 +215,7 @@ fn parses_rich_table_properties() {
 fn parses_richer_section_properties() {
     let body = "<w:p/><w:sectPr>\
 <w:lnNumType w:countBy=\"5\" w:start=\"1\" w:restart=\"newPage\" w:distance=\"240\"/>\
-<w:rtlGutter/><w:gutterAtTop/><w:bidi/><w:vAlign w:val=\"bottom\"/><w:textDirection w:val=\"lrTb\"/>\
+<w:rtlGutter/><w:gutterAtTop/><w:bidi/><w:vAlign w:val=\"bottom\"/><w:textDirection w:val=\"tb\"/>\
 <w:pgBorders><w:top w:val=\"single\"/></w:pgBorders>\
 <w:cols w:num=\"2\" w:space=\"425\" w:equalWidth=\"false\" w:sep=\"true\"><w:col w:w=\"4000\"/></w:cols>\
 </w:sectPr>";

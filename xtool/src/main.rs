@@ -974,7 +974,11 @@ fn stage5c_docx() -> Vec<u8> {
         format!("<w:p>{formula}</w:p>")
     }
 
-    // 1. `m:f`: bar, noBar, lin (with `m:smallFrac`) and skew, plus `m:ctrlPr`.
+    // 1. `m:f`: bar, noBar, lin and skw, plus `m:ctrlPr`. `ST_FType` spells the
+    // skewed fraction `skw`, and `CT_FPr` has no `m:smallFrac` at all - so a
+    // fixture carrying either would make the XSD gate's own baseline a number
+    // nobody can reproduce, and a gate whose own fixture is invalid is a gate
+    // whose zero means nothing.
     let fraction_bar = omath(&format!(
         "<m:f><m:fPr><m:ctrlPr><w:rPr><w:i/></w:rPr></m:ctrlPr></m:fPr>\
 <m:num>{}</m:num><m:den>{}</m:den></m:f>",
@@ -988,13 +992,13 @@ fn stage5c_docx() -> Vec<u8> {
         arg(&r("1")),
     ));
     let fraction_lin = omath(&format!(
-        "<m:f><m:fPr><m:type m:val=\"lin\"/><m:smallFrac m:val=\"1\"/></m:fPr>\
+        "<m:f><m:fPr><m:type m:val=\"lin\"/></m:fPr>\
 <m:num>{}</m:num><m:den>{}</m:den></m:f>",
         arg(&r("n")),
         arg(&r("k")),
     ));
     let fraction_skew = omath(&format!(
-        "<m:f><m:fPr><m:type m:val=\"skew\"/></m:fPr>\
+        "<m:f><m:fPr><m:type m:val=\"skw\"/></m:fPr>\
 <m:num>{}</m:num><m:den>{}</m:den></m:f>",
         arg(&r("d")),
         arg(&r("y")),
@@ -1170,14 +1174,12 @@ fn stage5c_docx() -> Vec<u8> {
             arg(&format!("{}2", r("z"))),
         ),
         format!(
-            "<m:box><m:boxPr><m:aln m:val=\"center\"/></m:boxPr><m:e>{}</m:e></m:box>\
-<m:borderBox><m:borderBoxPr><m:lines m:val=\"1\"/>\
-<m:shadow m:val=\"0\"/></m:borderBoxPr><m:e>{}</m:e><m:e>{}</m:e></m:borderBox>\
+            "<m:box><m:boxPr><m:aln/></m:boxPr><m:e>{}</m:e></m:box>\
+<m:borderBox><m:borderBoxPr><m:strikeH/></m:borderBoxPr><m:e>{}</m:e></m:borderBox>\
 <m:phant><m:phantPr><m:show m:val=\"0\"/><m:zeroWid m:val=\"0\"/>\
 </m:phantPr><m:e>{}</m:e></m:phant>",
             arg(&r("box")),
             arg(&r("a")),
-            arg(&r("b")),
             arg(&r("p")),
         ),
     ));
@@ -1187,14 +1189,17 @@ fn stage5c_docx() -> Vec<u8> {
         "{}{}{}{}{}",
         rpr("<m:nor m:val=\"1\"/>", "nor"),
         rpr("<m:lit m:val=\"1\"/>", "lit"),
-        rpr("<m:scr m:val=\"doubleStruck\"/>", "ds"),
+        rpr("<m:scr m:val=\"double-struck\"/>", "ds"),
         rpr("<m:sty m:val=\"b\"/>", "b"),
         rpr("<m:sty m:val=\"bi\"/>", "bi"),
     ));
+    // `CT_OMathArgPr` declares only `m:argSz`, so the argument here carries
+    // `m:defJc` alone: `m:sty` inside `m:argPr` is the element the schema rejects
+    // with "This element is not expected. Expected is ( argSz )".
     let arg_properties = omath(&format!(
-        "<m:m><m:mPr><m:baseJc m:val=\"right\"/><m:mcs><m:mc><m:mcPr><m:mcJc m:val=\"right\"/></m:mcPr>\
+        "<m:m><m:mPr><m:baseJc m:val=\"bottom\"/><m:mcs><m:mc><m:mcPr><m:mcJc m:val=\"right\"/></m:mcPr>\
 </m:mc></m:mcs></m:mPr><m:mr><m:e><m:argPr><m:defJc m:val=\"right\"/>\
-<m:sty m:val=\"i\"/></m:argPr>{}</m:e></m:mr></m:m>",
+</m:argPr>{}</m:e></m:mr></m:m>",
         r("aligned"),
     ));
 

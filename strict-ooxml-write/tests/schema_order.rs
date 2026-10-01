@@ -149,9 +149,12 @@ fn every_container_follows_the_order_the_schema_declares() {
         let Ok(document) = parse_document(&package, &ParseOptions::default()) else {
             continue;
         };
-        let written =
-            strict_ooxml_write::write_bytes(&document, Some(&package), &Default::default())
-                .expect("write the corpus document");
+        let written = strict_ooxml_write::write_bytes(
+            &document,
+            Some(&package),
+            &strict_ooxml_write::WriteOptions::default(),
+        )
+        .expect("write the corpus document");
         let Ok(repacked) = Package::open_reader(written.as_slice(), &options) else {
             continue;
         };
@@ -160,7 +163,12 @@ fn every_container_follows_the_order_the_schema_declares() {
             let Some(part_name) = part_name.strip_prefix("/") else {
                 continue;
             };
-            if !part_name.starts_with("word/") || !part_name.ends_with(".xml") {
+            if !part_name.to_ascii_lowercase().starts_with("word/")
+                || Path::new(part_name)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    != Some("xml")
+            {
                 continue;
             }
             let Ok(bytes) = repacked.read_part(&part.id) else {
@@ -221,17 +229,24 @@ fn the_written_corpus_settles_in_one_generation() {
         let Ok(document) = parse_document(&package, &ParseOptions::default()) else {
             continue;
         };
-        let first = strict_ooxml_write::write_bytes(&document, Some(&package), &Default::default())
-            .expect("write");
+        let first = strict_ooxml_write::write_bytes(
+            &document,
+            Some(&package),
+            &strict_ooxml_write::WriteOptions::default(),
+        )
+        .expect("write");
         let Ok(reopened) = Package::open_reader(first.as_slice(), &options) else {
             continue;
         };
         let Ok(reparsed) = parse_document(&reopened, &ParseOptions::default()) else {
             continue;
         };
-        let second =
-            strict_ooxml_write::write_bytes(&reparsed, Some(&reopened), &Default::default())
-                .expect("write");
+        let second = strict_ooxml_write::write_bytes(
+            &reparsed,
+            Some(&reopened),
+            &strict_ooxml_write::WriteOptions::default(),
+        )
+        .expect("write");
         assert_eq!(
             first, second,
             "{name}: the written package is not a fixed point"

@@ -5,8 +5,10 @@
 //! the *argument properties* of a bare argument, which the schema makes
 //! optional; those are written only when the model recorded them.
 
+use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_wml::model::math::{
-    MathArgument, MathExpression, MathNode, MathParagraph, MathRun, MathRunProperties,
+    MathAlignment, MathArgument, MathExpression, MathNode, MathParagraph, MathRun,
+    MathRunProperties,
 };
 
 use crate::ctx::Ctx;
@@ -46,13 +48,41 @@ fn math_justification(value: strict_ooxml_wml::model::math::MathJustification) -
     }
 }
 
-fn alignment(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'static str> {
+/// The two alignment vocabularies of OMML, which are two different sets, plus
+/// the element that is neither.
+///
+/// One function used to spell both the same way, writing `ctr`, `l` and `r`
+/// everywhere, and every one of those values is outside the set its element
+/// declares (`XS-12`):
+///
+/// | element | type | set |
+/// |---|---|---|
+/// | `m:mcJc` | `CT_XAlign` | left, center, right, inside, outside |
+/// | `m:baseJc` | `CT_YAlign` | inline, top, center, bottom, inside, outside |
+/// | `m:aln` | `CT_OnOff` | a toggle, not an alignment |
+///
+/// `m:aln` is the odd one out and the reason this cannot be one lookup table:
+/// `CT_OnOff` carries a boolean, and the model holds a justification there. There
+/// is no lexical form that says WHICH side, so the side is recorded as lost and
+/// the toggle is written - which is all the element can say.
+fn x_align(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'static str> {
     use strict_ooxml_wml::model::math::MathAlignment as A;
     match value {
-        A::Left => Some("l"),
-        A::Center => Some("ctr"),
-        A::Right => Some("r"),
-        A::Inline => Some("inline"),
+        A::Left => Some("left"),
+        A::Center => Some("center"),
+        A::Right => Some("right"),
+        A::Inline => Some("inside"),
+        A::Unset => None,
+    }
+}
+
+fn y_align(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'static str> {
+    use strict_ooxml_wml::model::math::MathAlignment as A;
+    match value {
+        A::Left => Some("inline"),
+        A::Center => Some("center"),
+        A::Right => Some("bottom"),
+        A::Inline => Some("inside"),
         A::Unset => None,
     }
 }
@@ -60,10 +90,12 @@ fn alignment(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'st
 fn script(value: strict_ooxml_wml::model::math::MathScript) -> &'static str {
     use strict_ooxml_wml::model::math::MathScript as S;
     match value {
-        S::DoubleStruck => "doubleStruck",
+        // `ST_Script` hyphenates both of these, and the writer spelled them
+        // without the hyphen.
+        S::DoubleStruck => "double-struck",
         S::Fraktur => "fraktur",
         S::Roman => "roman",
-        S::SansSerif => "sansSerif",
+        S::SansSerif => "sans-serif",
         S::Monospace => "monospace",
         S::Script => "script",
     }
@@ -107,7 +139,8 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
         N::Run(run) => math_run(ctx, xml, run),
         N::Fraction(fraction) => {
             xml.start("m:f");
-            if fraction.bar_type.is_some() || fraction.small_fraction {
+            if fraction.bar_type.is_some() || fraction.small_fraction || fraction.control.is_some()
+            {
                 xml.start("m:fPr");
                 // §22.1.2.f: `CT_FPr` is the sequence `m:type?, m:ctrlPr?`,
                 // and `m:type` is an *element* (`CT_FType`, carrying `m:val`).
@@ -120,7 +153,17 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
                     xml.end();
                 }
                 if fraction.small_fraction {
-                    xml.empty("m:smallFrac");
+                    // `m:smallFrac` is not a `CT_FPr` child in Strict: the
+                    // sequence is `m:type?, m:ctrlPr?` and nothing else. The
+                    // smallest fraction is `m:type m:val="lin"` with a small
+                    // font, and the font is the run's business, so the request
+                    // is recorded rather than invented.
+                    ctx.report_partial(
+                        "m:smallFrac",
+                        "a fraction asked to be set small, but CT_FPr declares only m:type \
+                         and m:ctrlPr; the request is not written and cannot be recovered",
+                        &fraction.location,
+                    );
                 }
                 control(ctx, xml, fraction.control.as_deref());
                 xml.end();
@@ -273,7 +316,7 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
             {
                 xml.start("m:mPr");
                 if let Some(justification) = matrix.base_justification {
-                    if let Some(value) = alignment(justification) {
+                    if let Some(value) = y_align(justification) {
                         xml.empty_attr("m:baseJc", "m:val", value);
                     }
                 }
@@ -309,15 +352,21 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
                     xml.start("m:mcs");
                     for column in &matrix.columns {
                         xml.start("m:mc");
-                        if let Some(justification) = column.justification {
-                            if let Some(value) = alignment(justification) {
-                                xml.start("m:mcPr");
-                                xml.empty_attr("m:mcJc", "m:val", value);
-                                if let Some(count) = column.count {
-                                    xml.empty_attr("m:count", "m:val", count);
-                                }
-                                xml.end();
+                        if column.justification.is_some() || column.count.is_some() {
+                            // `CT_MC` holds one `m:mcPr`, and `CT_MCPr` is the
+                            // sequence `m:count?, m:mcJc?` - the count comes
+                            // first. The writer wrote `m:mcJc` and `m:count` as
+                            // children of `m:mc` with no `m:mcPr` and in the
+                            // other order, so every matrix column with a count
+                            // was "This element is not expected" (`XS-15`).
+                            xml.start("m:mcPr");
+                            if let Some(count) = column.count {
+                                xml.empty_attr("m:count", "m:val", count);
                             }
+                            if let Some(value) = column.justification.and_then(x_align) {
+                                xml.empty_attr("m:mcJc", "m:val", value);
+                            }
+                            xml.end();
                         }
                         xml.end();
                     }
@@ -344,7 +393,7 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
             {
                 xml.start("m:eqArrPr");
                 if let Some(justification) = array.base_justification {
-                    if let Some(value) = alignment(justification) {
+                    if let Some(value) = y_align(justification) {
                         xml.empty_attr("m:baseJc", "m:val", value);
                     }
                 }
@@ -429,14 +478,24 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
             if boxed.alignment.is_some() || boxed.spacing.is_some() {
                 xml.start("m:boxPr");
                 if let Some(value) = boxed.alignment {
-                    if let Some(value) = alignment(value) {
-                        xml.empty_attr("m:aln", "m:val", value);
+                    if value != MathAlignment::Unset {
+                        // `CT_OnOff`, like every `m:aln`: the toggle is the
+                        // assertion, and which side it meant has no lexical form.
+                        xml.empty("m:aln");
                     }
                 }
-                if let Some(spacing) = boxed.spacing {
-                    xml.start("m:sp");
-                    xml.attr_m("val", spacing);
-                    xml.end();
+                if boxed.spacing.is_some() {
+                    // `CT_BoxPr` declares opEmu, noBreak, diff, brk, aln and
+                    // ctrlPr. There is no `m:sp`, so the requested spacing has
+                    // nowhere to go in this container.
+                    ctx.report_partial(
+                        "m:boxPr/m:sp",
+                        &format!(
+                            "CT_BoxPr declares no m:sp, so the box's spacing ({}) is not written",
+                            boxed.spacing.unwrap_or_default()
+                        ),
+                        &boxed.location,
+                    );
                 }
                 control(ctx, xml, boxed.control.as_deref());
                 xml.end();
@@ -448,7 +507,7 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
             xml.start("m:borderBox");
             xml.start("m:borderBoxPr");
             if let Some(value) = border_box.alignment {
-                if let Some(value) = alignment(value) {
+                if let Some(value) = x_align(value) {
                     xml.empty_attr("m:aln", "m:val", value);
                 }
             }
@@ -514,44 +573,59 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
 }
 
 /// Writes one `m:e`-style argument with its optional `m:argPr`.
+///
+/// `CT_OMathArgPr` declares exactly one child: `m:argSz`. The five properties
+/// this model keeps on an argument - `lit`, `nor`, `scr`, `sty`, `aln` - are RUN
+/// properties, `CT_RPR` children, and OMML puts them on the argument's runs
+/// rather than on the argument. The writer used to write them into `m:argPr`
+/// anyway, which the schema rejects with "This element is not expected" and
+/// which the reader then dropped on the next parse - so a formula's script and
+/// style did not survive a round trip (`XS-15`).
+///
+/// They are not relocated here. Moving them onto a run means deciding which run,
+/// and the choice changes nothing in the model and something on the page; so the
+/// part the schema allows is written and the rest is recorded, per ADR-0007.
 fn argument(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, name: &'static str, argument: &MathArgument) {
-    xml.start(name);
     let properties = &argument.properties;
-    if properties.alignment.is_some()
-        || properties.literal.is_some()
-        || properties.normal.is_some()
-        || properties.script.is_some()
-        || properties.style.is_some()
-    {
-        xml.start("m:argPr");
-        if properties.literal == Some(true) {
-            xml.empty("m:lit");
+    let inexpressible = [
+        ("m:lit", properties.literal == Some(true)),
+        ("m:nor", properties.normal == Some(true)),
+        ("m:scr", properties.script.is_some()),
+        ("m:sty", properties.style.is_some()),
+        (
+            "m:aln",
+            properties
+                .alignment
+                .is_some_and(|value| value != MathAlignment::Unset),
+        ),
+        ("m:brk", properties.r#break.is_some()),
+    ];
+    let inexpressible: Vec<&str> = inexpressible
+        .iter()
+        .filter_map(|(child, present)| present.then_some(*child))
+        .collect();
+
+    xml.start(name);
+    if inexpressible.is_empty() && properties.control.is_none() {
+        for child in &argument.nodes {
+            math_node(ctx, xml, child);
         }
-        if properties.normal == Some(true) {
-            xml.empty("m:nor");
-        }
-        if let Some(value) = properties.script {
-            xml.start("m:scr");
-            xml.attr_m("val", script(value));
-            xml.end();
-        }
-        if let Some(value) = properties.style {
-            xml.start("m:sty");
-            xml.attr_m("val", style(value));
-            xml.end();
-        }
-        if let Some(value) = properties.alignment {
-            if let Some(value) = alignment(value) {
-                xml.start("m:aln");
-                xml.attr_m("val", value);
-                xml.end();
-            }
-        }
-        if let Some(control) = properties.control.as_deref() {
-            xml.start("m:ctrlPr");
-            crate::props::run_properties(xml, control);
-            xml.end();
-        }
+        xml.end();
+        return;
+    }
+    if !inexpressible.is_empty() {
+        ctx.report_partial(
+            "m:argPr",
+            &format!(
+                "{inexpressible:?} are run properties, and CT_OMathArgPr declares only m:argSz; \
+                 OMML puts them on the argument's runs, so they are not written here"
+            ),
+            &argument.location,
+        );
+    }
+    if properties.control.is_some() {
+        xml.start("m:ctrlPr");
+        crate::props::run_properties(xml, properties.control.as_deref().expect("checked"));
         xml.end();
     }
     for child in &argument.nodes {
@@ -632,7 +706,7 @@ fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
     xml.end();
 }
 
-fn run_properties(_ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunProperties) {
+fn run_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunProperties) {
     if !properties.literal
         && !properties.normal
         && properties.script.is_none()
@@ -660,10 +734,20 @@ fn run_properties(_ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunP
         xml.end();
     }
     if let Some(value) = properties.alignment {
-        if let Some(value) = alignment(value) {
-            xml.start("m:aln");
-            xml.attr_m("val", value);
-            xml.end();
+        if value != MathAlignment::Unset {
+            // `m:aln` is `CT_OnOff`: the element is the assertion, and
+            // `m:val` is a boolean. There is no lexical form that says which
+            // side, so the toggle is written bare and the side is recorded
+            // where the record can be read next to the loss.
+            ctx.report_partial(
+                "m:aln",
+                &format!(
+                    "the alignment is {value:?}, but m:aln is an on/off property; the toggle is \
+                     written and which side the argument aligned to is not recoverable from it"
+                ),
+                &SourceLocation::unknown(),
+            );
+            xml.empty("m:aln");
         }
     }
     if let Some(control) = properties.control.as_deref() {
