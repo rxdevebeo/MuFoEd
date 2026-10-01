@@ -3,8 +3,17 @@
 //! Element order inside these containers is **not** free. ISO/IEC 29500-1
 //! declares them as `xsd:sequence`, so a writer that emits them in the order
 //! that happens to be convenient produces a part that fails validation even
-//! though every value is right. The order below is the schema order, and
-//! [`PROPS_ORDER_NOTE`] records why it is spelled out rather than derived.
+//! though every value is right.
+//!
+//! The order itself is not written out in each function. It lives in
+//! [`crate::order`], transcribed from `strict/wml.xsd`, and every container here
+//! emits through [`schema_child`], which asks that table where a child goes
+//! instead of relying on the order the statements below happen to appear in.
+//! `STAGE-10G-TASK.md` G21 asks for exactly this: the order comes from the
+//! schema, in one place, rather than being repaired one misordered element at a
+//! time - because every property added to the model in the wrong spot was a new
+//! violation, and the two elements that happened to be measured were the only
+//! ones anyone knew about.
 
 use strict_ooxml_wml::model::notes::NoteProperties;
 use strict_ooxml_wml::model::props::{
@@ -18,12 +27,29 @@ use strict_ooxml_wml::model::values::{
 };
 
 use crate::ctx::Ctx;
+use crate::order;
 use crate::xml::XmlWriter;
 
-/// Why the child order in this module is hand-written.
-pub const PROPS_ORDER_NOTE: &str = "ISO/IEC 29500-1 declares property children as xsd:sequence; \
-                                    emitting them in schema order is what keeps a written part \
-                                    valid, so the order is explicit rather than sorted";
+/// Emits a container's children in the order `sequence` declares.
+///
+/// `write` is called once per name the sequence declares, in that order, and
+/// writes that child when the model has one. Nothing is sorted at run time and
+/// nothing is collected: the order IS the loop, so the code below cannot express
+/// a child in the wrong position - it can only say what each child is.
+///
+/// A name the writer does not implement is simply never written, which is what
+/// lets the table be transcribed in full from the schema (`w:settings` has
+/// ninety-four children and the writer produces a dozen) without the writer
+/// having to know about the other eighty-two.
+fn schema_order(
+    xml: &mut XmlWriter,
+    sequence: &[&str],
+    mut write: impl FnMut(&str, &mut XmlWriter),
+) {
+    for name in sequence {
+        write(name, xml);
+    }
+}
 
 /// Writes `w:pPr`, or nothing when no property is set.
 ///
@@ -39,92 +65,127 @@ pub fn paragraph_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &Para
         return;
     }
     xml.start("w:pPr");
-
-    if let Some(style) = &props.style {
-        xml.empty_attr_w("w:pStyle", "val", style.as_str());
-    }
-    if props.keep_next {
-        xml.empty("w:keepNext");
-    }
-    if props.keep_lines {
-        xml.empty("w:keepLines");
-    }
-    if props.page_break_before {
-        xml.empty("w:pageBreakBefore");
-    }
-    if let Some(spacing) = &props.spacing {
-        spacing_element(xml, spacing);
-    }
-    if let Some(indentation) = &props.indentation {
-        indentation_element(xml, indentation);
-    }
-    match props.widow_control {
-        TriState::On => xml.empty_attr_w("w:widowControl", "val", "true"),
-        TriState::Off => xml.empty_attr_w("w:widowControl", "val", "false"),
-        TriState::Absent => {}
-    }
-    if props.bidi {
-        xml.empty("w:bidi");
-    }
-    if let Some(level) = props.outline_level {
-        xml.empty_attr_w("w:outlineLvl", "val", level);
-    }
-    if !props.tabs.is_empty() {
-        xml.start("w:tabs");
-        for tab in &props.tabs {
-            tab_stop(xml, tab);
-        }
-        xml.end();
-    }
-    if props.suppress_line_numbers {
-        xml.empty("w:suppressLineNumbers");
-    }
-    match props.snap_to_grid {
-        TriState::On => xml.empty_attr_w("w:snapToGrid", "val", "true"),
-        TriState::Off => xml.empty_attr_w("w:snapToGrid", "val", "false"),
-        TriState::Absent => {}
-    }
-    if !borders_empty(&props.borders) {
-        borders_element(xml, "w:pBdr", &props.borders, EdgeNames::Paragraph);
-    }
-    if let Some(shading) = &props.shading {
-        shading_element(xml, shading);
-    }
-    if let Some(numbering) = &props.numbering {
-        if numbering.num_id.is_some() || numbering.ilvl.is_some() {
-            xml.start("w:numPr");
-            if let Some(ilvl) = numbering.ilvl {
-                xml.empty_attr_w("w:ilvl", "val", ilvl.0);
-            }
-            if let Some(num_id) = numbering.num_id {
-                xml.empty_attr_w("w:numId", "val", num_id.0);
-            }
-            xml.end();
-        }
-    }
-    if let Some(alignment) = &props.alignment {
-        xml.empty_attr_w("w:jc", "val", alignment.as_str());
-    }
-    if let Some(direction) = &props.text_direction {
-        xml.empty_attr_w("w:textDirection", "val", direction.as_str());
-    }
-    if props.contextual_spacing {
-        xml.empty("w:contextualSpacing");
-    }
-    match props.word_wrap {
-        TriState::On => xml.empty_attr_w("w:wordWrap", "val", "true"),
-        TriState::Off => xml.empty_attr_w("w:wordWrap", "val", "false"),
-        TriState::Absent => {}
-    }
-    if let Some(run_props) = &props.run_props {
-        // `w:rPr` inside `w:pPr` marks the paragraph mark itself.
-        run_properties(xml, run_props);
-    }
-    if let Some(section) = &props.section {
-        section_properties(ctx, xml, section);
-    }
-
+    schema_order(xml, order::PPR, |name, xml| {
+        paragraph_child(ctx, xml, props, name);
+    });
     xml.end();
+}
+
+/// Writes the `w:pPr` child called `name`, when the model has it.
+fn paragraph_child(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    props: &ParagraphProperties,
+    name: &str,
+) {
+    match name {
+        "pStyle" => {
+            if let Some(style) = &props.style {
+                xml.empty_attr_w("w:pStyle", "val", style.as_str());
+            }
+        }
+        "keepNext" if props.keep_next => xml.empty("w:keepNext"),
+        "keepLines" if props.keep_lines => xml.empty("w:keepLines"),
+        "pageBreakBefore" if props.page_break_before => xml.empty("w:pageBreakBefore"),
+        "widowControl" => match props.widow_control {
+            TriState::On => xml.empty_attr_w("w:widowControl", "val", "true"),
+            TriState::Off => xml.empty_attr_w("w:widowControl", "val", "false"),
+            TriState::Absent => {}
+        },
+        "numPr" => {
+            if let Some(numbering) = &props.numbering {
+                if numbering.num_id.is_some() || numbering.ilvl.is_some() {
+                    xml.start("w:numPr");
+                    if let Some(ilvl) = numbering.ilvl {
+                        xml.empty_attr_w("w:ilvl", "val", ilvl.0);
+                    }
+                    if let Some(num_id) = numbering.num_id {
+                        xml.empty_attr_w("w:numId", "val", num_id.0);
+                    }
+                    xml.end();
+                }
+            }
+        }
+        "suppressLineNumbers" if props.suppress_line_numbers => {
+            xml.empty("w:suppressLineNumbers");
+        }
+        "pBdr" => {
+            if !borders_empty(&props.borders) {
+                borders_element(xml, "w:pBdr", &props.borders, EdgeNames::Paragraph);
+            }
+        }
+        "shd" => {
+            if let Some(shading) = &props.shading {
+                shading_element(xml, shading);
+            }
+        }
+        "tabs" => {
+            if !props.tabs.is_empty() {
+                xml.start("w:tabs");
+                for tab in &props.tabs {
+                    tab_stop(xml, tab);
+                }
+                xml.end();
+            }
+        }
+        "wordWrap" => match props.word_wrap {
+            TriState::On => xml.empty_attr_w("w:wordWrap", "val", "true"),
+            TriState::Off => xml.empty_attr_w("w:wordWrap", "val", "false"),
+            TriState::Absent => {}
+        },
+        "bidi" if props.bidi => xml.empty("w:bidi"),
+        "snapToGrid" => match props.snap_to_grid {
+            TriState::On => xml.empty_attr_w("w:snapToGrid", "val", "true"),
+            TriState::Off => xml.empty_attr_w("w:snapToGrid", "val", "false"),
+            TriState::Absent => {}
+        },
+        "spacing" => {
+            if let Some(spacing) = &props.spacing {
+                spacing_element(xml, spacing);
+            }
+        }
+        "ind" => {
+            if let Some(indentation) = &props.indentation {
+                indentation_element(xml, indentation);
+            }
+        }
+        "contextualSpacing" if props.contextual_spacing => xml.empty("w:contextualSpacing"),
+        "jc" => {
+            if let Some(alignment) = &props.alignment {
+                xml.empty_attr_w("w:jc", "val", alignment.as_str());
+            }
+        }
+        "textDirection" => {
+            if let Some(direction) = &props.text_direction {
+                xml.empty_attr_w("w:textDirection", "val", direction.as_str());
+            }
+        }
+        "outlineLvl" => {
+            if let Some(level) = props.outline_level {
+                xml.empty_attr_w("w:outlineLvl", "val", level);
+            }
+        }
+        "rPr" => {
+            if let Some(run_props) = &props.run_props {
+                // `w:rPr` here marks the paragraph mark itself. It is written only
+                // when it carries something: an empty `<w:rPr/>` is legal and means
+                // nothing, and the reader does not read one back - so writing it
+                // made the document change on every round trip. `w:del` inside a
+                // paragraph mark's `w:rPr` is a revision marker this model does not
+                // keep, and the emptiness check is what stops it from masquerading
+                // as content that survived.
+                if !is_empty_run(run_props) {
+                    run_properties(xml, run_props);
+                }
+            }
+        }
+        "sectPr" => {
+            if let Some(section) = &props.section {
+                section_properties(ctx, xml, section);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Returns `true` when writing `props` would produce an empty `w:pPr`.
@@ -134,7 +195,14 @@ pub fn paragraph_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &Para
 fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
     props.style.is_none()
         && props.alignment.is_none()
-        && props.numbering.is_none()
+        // A `w:numPr` with neither `w:numId` nor `w:ilvl` writes nothing, so it
+        // must not count as content: it used to, and a producer that left an empty
+        // `<w:numPr/>` in the markup got a `<w:pPr/>` back - legal, pointless, and
+        // the reason a written document did not settle in one generation.
+        && props
+            .numbering
+            .as_ref()
+            .is_none_or(|numbering| numbering.num_id.is_none() && numbering.ilvl.is_none())
         && props.spacing.is_none()
         && props.indentation.is_none()
         && borders_empty(&props.borders)
@@ -146,7 +214,7 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && props.widow_control == TriState::Absent
         && props.outline_level.is_none()
         && !props.bidi
-        && props.run_props.is_none()
+        && props.run_props.as_ref().is_none_or(is_empty_run)
         && props.section.is_none()
         && props.text_direction.is_none()
         && !props.suppress_line_numbers
@@ -598,47 +666,71 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         return;
     }
     xml.start("w:tblPr");
-    if let Some(style) = &props.style {
-        xml.empty_attr_w("w:tblStyle", "val", style.as_str());
-    }
-    if let Some(width) = &props.width {
-        width_element(xml, "w:tblW", width);
-    }
-    if props.bidi_visual {
-        xml.empty("w:bidiVisual");
-    }
-    if let Some(indent) = props.indent {
-        // `w:tblInd` is a `CT_TblWidth` too, so it takes the same lexical form
-        // as a table width - see [`tbl_width_value`].
-        xml.start("w:tblInd");
-        xml.attr("w:w", tbl_width_value(indent.0));
-        xml.attr_w("type", "dxa");
-        xml.end();
-    }
-    if !borders_empty(&props.borders) {
-        borders_element(xml, "w:tblBorders", &props.borders, EdgeNames::Table);
-    }
-    cell_margins(xml, "w:tblCellMar", &props.cell_margins);
-    if let Some(shading) = &props.shading {
-        shading_element(xml, shading);
-    }
-    if let Some(look) = &props.look {
-        xml.start("w:tblLook");
-        xml.attr_w("firstRow", bool_str(look.first_row));
-        xml.attr_w("lastRow", bool_str(look.last_row));
-        xml.attr_w("firstColumn", bool_str(look.first_column));
-        xml.attr_w("lastColumn", bool_str(look.last_column));
-        xml.attr_w("noHBand", bool_str(look.no_h_band));
-        xml.attr_w("noVBand", bool_str(look.no_v_band));
-        xml.end();
-    }
-    if let Some(alignment) = &props.alignment {
-        xml.empty_attr_w("w:jc", "val", alignment.as_str());
-    }
-    if let Some(layout) = &props.layout {
-        xml.empty_attr_w("w:tblLayout", "type", layout.as_str());
-    }
+    schema_order(xml, order::TBLPR, |name, xml| {
+        table_child(xml, props, name);
+    });
     xml.end();
+}
+
+/// Writes the `w:tblPr` child called `name`, when the model has it.
+fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
+    match name {
+        "tblStyle" => {
+            if let Some(style) = &props.style {
+                xml.empty_attr_w("w:tblStyle", "val", style.as_str());
+            }
+        }
+        "bidiVisual" if props.bidi_visual => xml.empty("w:bidiVisual"),
+        "tblW" => {
+            if let Some(width) = &props.width {
+                width_element(xml, "w:tblW", width);
+            }
+        }
+        "jc" => {
+            if let Some(alignment) = &props.alignment {
+                xml.empty_attr_w("w:jc", "val", alignment.as_str());
+            }
+        }
+        "tblInd" => {
+            if let Some(indent) = props.indent {
+                // `w:tblInd` is a `CT_TblWidth` too, so it takes the same lexical
+                // form as a table width - see [`tbl_width_value`].
+                xml.start("w:tblInd");
+                xml.attr("w:w", tbl_width_value(indent.0));
+                xml.attr_w("type", "dxa");
+                xml.end();
+            }
+        }
+        "tblBorders" => {
+            if !borders_empty(&props.borders) {
+                borders_element(xml, "w:tblBorders", &props.borders, EdgeNames::Table);
+            }
+        }
+        "shd" => {
+            if let Some(shading) = &props.shading {
+                shading_element(xml, shading);
+            }
+        }
+        "tblLayout" => {
+            if let Some(layout) = &props.layout {
+                xml.empty_attr_w("w:tblLayout", "type", layout.as_str());
+            }
+        }
+        "tblCellMar" => cell_margins(xml, "w:tblCellMar", &props.cell_margins),
+        "tblLook" => {
+            if let Some(look) = &props.look {
+                xml.start("w:tblLook");
+                xml.attr_w("firstRow", bool_str(look.first_row));
+                xml.attr_w("lastRow", bool_str(look.last_row));
+                xml.attr_w("firstColumn", bool_str(look.first_column));
+                xml.attr_w("lastColumn", bool_str(look.last_column));
+                xml.attr_w("noHBand", bool_str(look.no_h_band));
+                xml.attr_w("noVBand", bool_str(look.no_v_band));
+                xml.end();
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Writes `w:trPr`.
@@ -658,34 +750,49 @@ pub fn row_properties(xml: &mut XmlWriter, props: &RowProperties) {
         return;
     }
     xml.start("w:trPr");
-    if props.cant_split {
-        xml.empty("w:cantSplit");
-    }
-    if props.header {
-        xml.empty("w:tblHeader");
-    }
-    if let Some(height) = &props.height {
-        xml.start("w:trHeight");
-        xml.attr_w_opt("val", height.value.map(|v| v.0));
-        if let Some(rule) = &height.rule {
-            xml.attr_w("hRule", rule.as_str());
-        }
-        xml.end();
-    }
-    if let Some(before) = props.grid_before {
-        xml.empty_attr_w("w:gridBefore", "val", before);
-    }
-    if let Some(after) = props.grid_after {
-        xml.empty_attr_w("w:gridAfter", "val", after);
-    }
-    if let Some(width) = &props.width_before {
-        width_element(xml, "w:wBefore", width);
-    }
-    if let Some(width) = &props.width_after {
-        width_element(xml, "w:wAfter", width);
-    }
-    cell_margins(xml, "w:tblCellMar", &props.cell_margins);
+    schema_order(xml, order::TRPR, |name, xml| {
+        row_child(xml, props, name);
+    });
     xml.end();
+}
+
+/// Writes the `w:trPr` child called `name`, when the model has it.
+fn row_child(xml: &mut XmlWriter, props: &RowProperties, name: &str) {
+    match name {
+        "gridBefore" => {
+            if let Some(before) = props.grid_before {
+                xml.empty_attr_w("w:gridBefore", "val", before);
+            }
+        }
+        "gridAfter" => {
+            if let Some(after) = props.grid_after {
+                xml.empty_attr_w("w:gridAfter", "val", after);
+            }
+        }
+        "wBefore" => {
+            if let Some(width) = &props.width_before {
+                width_element(xml, "w:wBefore", width);
+            }
+        }
+        "wAfter" => {
+            if let Some(width) = &props.width_after {
+                width_element(xml, "w:wAfter", width);
+            }
+        }
+        "cantSplit" if props.cant_split => xml.empty("w:cantSplit"),
+        "trHeight" => {
+            if let Some(height) = &props.height {
+                xml.start("w:trHeight");
+                xml.attr_w_opt("val", height.value.map(|v| v.0));
+                if let Some(rule) = &height.rule {
+                    xml.attr_w("hRule", rule.as_str());
+                }
+                xml.end();
+            }
+        }
+        "tblHeader" if props.header => xml.empty("w:tblHeader"),
+        _ => {}
+    }
 }
 
 /// Writes `w:tcPr`.
@@ -708,44 +815,62 @@ pub fn cell_properties(xml: &mut XmlWriter, props: &CellProperties) {
         return;
     }
     xml.start("w:tcPr");
-    if let Some(width) = &props.width {
-        width_element(xml, "w:tcW", width);
-    }
-    if let Some(span) = props.grid_span {
-        xml.empty_attr_w("w:gridSpan", "val", span);
-    }
-    if let Some(merge) = &props.vertical_merge {
-        // `continue` is the schema default and is written bare; spelling it out
-        // would be equally valid but is not what Word emits.
-        if *merge == strict_ooxml_wml::model::values::VerticalMerge::Restart {
-            xml.empty_attr_w("w:vMerge", "val", "restart");
-        } else {
-            xml.empty("w:vMerge");
-        }
-    }
-    if !borders_empty(&props.borders) {
-        borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
-    }
-    if let Some(shading) = &props.shading {
-        shading_element(xml, shading);
-    }
-    if props.no_wrap {
-        xml.empty("w:noWrap");
-    }
-    if let Some(direction) = &props.text_direction {
-        xml.empty_attr_w("w:textDirection", "val", direction.as_str());
-    }
-    if let Some(align) = &props.vertical_align {
-        xml.empty_attr_w("w:vAlign", "val", align.as_str());
-    }
-    cell_margins(xml, "w:tcMar", &props.margins);
-    if props.hide_mark {
-        xml.empty("w:hideMark");
-    }
-    if props.fit_text {
-        xml.empty("w:tcFitText");
-    }
+    schema_order(xml, order::TCPR, |name, xml| {
+        cell_child(xml, props, name);
+    });
     xml.end();
+}
+
+/// Writes the `w:tcPr` child called `name`, when the model has it.
+fn cell_child(xml: &mut XmlWriter, props: &CellProperties, name: &str) {
+    match name {
+        "tcW" => {
+            if let Some(width) = &props.width {
+                width_element(xml, "w:tcW", width);
+            }
+        }
+        "gridSpan" => {
+            if let Some(span) = props.grid_span {
+                xml.empty_attr_w("w:gridSpan", "val", span);
+            }
+        }
+        "vMerge" => {
+            if let Some(merge) = &props.vertical_merge {
+                // `continue` is the schema default and is written bare; spelling
+                // it out would be equally valid but is not what Word emits.
+                if *merge == strict_ooxml_wml::model::values::VerticalMerge::Restart {
+                    xml.empty_attr_w("w:vMerge", "val", "restart");
+                } else {
+                    xml.empty("w:vMerge");
+                }
+            }
+        }
+        "tcBorders" => {
+            if !borders_empty(&props.borders) {
+                borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
+            }
+        }
+        "shd" => {
+            if let Some(shading) = &props.shading {
+                shading_element(xml, shading);
+            }
+        }
+        "noWrap" if props.no_wrap => xml.empty("w:noWrap"),
+        "tcMar" => cell_margins(xml, "w:tcMar", &props.margins),
+        "textDirection" => {
+            if let Some(direction) = &props.text_direction {
+                xml.empty_attr_w("w:textDirection", "val", direction.as_str());
+            }
+        }
+        "tcFitText" if props.fit_text => xml.empty("w:tcFitText"),
+        "vAlign" => {
+            if let Some(align) = &props.vertical_align {
+                xml.empty_attr_w("w:vAlign", "val", align.as_str());
+            }
+        }
+        "hideMark" if props.hide_mark => xml.empty("w:hideMark"),
+        _ => {}
+    }
 }
 
 /// Writes `w:sectPr`.

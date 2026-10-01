@@ -11,8 +11,8 @@ use crate::model::block::{AltChunkInfo, Block, OpaqueBlock, Paragraph, SdtContai
 use crate::model::document::Body;
 use crate::model::ids::{ParaId, TextId};
 use crate::model::inline::{
-    Bookmark, BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent,
-    Symbol, TextNode,
+    Bookmark, BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run,
+    RunContent, Symbol, TextNode,
 };
 use crate::model::props::{ParagraphProperties, Section};
 use crate::model::support::SupportStatus;

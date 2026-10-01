@@ -648,6 +648,122 @@ def classify(namespace: str | None, oracle: Oracle) -> str:
 
 
 # --------------------------------------------------------------------------
+# The writer's order table, checked against the schema it claims to transcribe
+# --------------------------------------------------------------------------
+
+# `strict-ooxml-write/src/order.rs` states the `xsd:sequence` of each property
+# container in one place, so a new property cannot be added in a slot the schema
+# does not have (G21). The order module's own test proves the WRITER follows that
+# table; this proves the table matches the schema, which is the half a Rust test
+# cannot reach without the schemas in the crate graph - and putting them there is
+# exactly what the licence forbids.
+ORDER_SOURCE = os.path.join(REPO, "strict-ooxml-write", "src", "order.rs")
+
+# Constant -> the schema type it transcribes. An `xsd:extension` contributes its
+# own children AFTER the base's, which is how the writer's table reads too.
+ORDER_TYPES = {
+    "PPR": "CT_PPr",
+    "SETTINGS": "CT_Settings",
+    "TBLPR": "CT_TblPr",
+    "TCPR": "CT_TcPr",
+    "TRPR": "CT_TrPr",
+    "STYLE": "CT_Style",
+    "LVL": "CT_Lvl",
+}
+
+RE_CONSTANT = re.compile(
+    r"pub const (?P<name>[A-Z]+): &\[&str\] = &\[(?P<body>.*?)\];", re.S
+)
+
+
+def declared_sequences() -> dict[str, list[str]]:
+    """The order tables as the Rust module states them."""
+    text = open(ORDER_SOURCE, encoding="utf-8").read()
+    out: dict[str, list[str]] = {}
+    for match in RE_CONSTANT.finditer(text):
+        out[match.group("name")] = re.findall(r'"([^"]+)"', match.group("body"))
+    return out
+
+
+def schema_sequences(directory: str) -> dict[str, list[str]]:
+    """The `xsd:sequence` of each type, resolving `xsd:extension` bases."""
+    tree = etree.parse(os.path.join(directory, "wml.xsd"))
+    types = {
+        node.get("name"): node
+        for node in tree.getroot().iter(f"{{{XSDNS}}}complexType")
+        if node.get("name")
+    }
+
+    def order_of(name: str, seen: frozenset[str] = frozenset()) -> list[str]:
+        if name in seen:
+            raise SystemExit(f"error: {name} extends itself")
+        node = types.get(name)
+        if node is None:
+            raise SystemExit(f"error: the schema has no complexType named {name}")
+        extension = next(iter(node.iter(f"{{{XSDNS}}}extension")), None)
+        if extension is not None:
+            base = extension.get("base")
+            inherited = order_of(base, seen | {name}) if base else []
+            own = [element.get("name") for element in extension.iter(f"{{{XSDNS}}}element")]
+            return inherited + [item for item in own if item]
+        return [
+            element.get("name")
+            for element in node.iter(f"{{{XSDNS}}}element")
+            if element.get("name")
+        ]
+
+    return {name: order_of(name) for name in ORDER_TYPES.values()}
+
+
+def check_order_tables(directory: str) -> list[str]:
+    """Compares the writer's order tables with the schema, and says what differs."""
+    declared = declared_sequences()
+    actual = schema_sequences(directory)
+    problems: list[str] = []
+    for constant, schema_type in ORDER_TYPES.items():
+        if constant not in declared:
+            problems.append(f"{constant}: the writer's order module does not declare it")
+            continue
+        want = actual[schema_type]
+        got = declared[constant]
+        missing = [name for name in want if name not in got]
+        extra = [name for name in got if name not in want]
+        if missing:
+            problems.append(
+                f"{constant} ({schema_type}): the schema declares {missing} and the table omits "
+                "them - a child the writer could place and the table cannot"
+            )
+        if extra:
+            problems.append(
+                f"{constant} ({schema_type}): the table declares {extra}, which the schema does "
+                "not - names the writer would place in a slot the schema has no room for"
+            )
+        # The relative order of the names both tables hold is the part that makes
+        # a written part valid, so it is compared directly.
+        common = [name for name in want if name in got]
+        ordered = [name for name in got if name in want]
+        if common != ordered:
+            problems.append(
+                f"{constant} ({schema_type}): the table's order differs from the schema's"
+            )
+    return problems
+
+
+def report_order_tables(directory: str) -> bool:
+    print("\n=== the writer's order tables against the schema (G21)")
+    declared = declared_sequences()
+    actual = schema_sequences(directory)
+    for constant, schema_type in ORDER_TYPES.items():
+        want, got = actual[schema_type], declared.get(constant, [])
+        print(f"  {constant:<9} {schema_type:<12} schema {len(want):>2} child(ren), table {len(got):>2}")
+    problems = check_order_tables(directory)
+    for problem in problems:
+        print(f"  MISMATCH: {problem}")
+    print(f"  {'ok' if not problems else 'FAILED'}: the order is stated once and matches")
+    return not problems
+
+
+# --------------------------------------------------------------------------
 # 4. The corpus, and what our writer made of it
 # --------------------------------------------------------------------------
 
@@ -852,6 +968,16 @@ def main(argv: list[str]) -> int:
     if not run_controls(oracle):
         print("\ncontrol: FAILED - the gate cannot tell valid from invalid", file=sys.stderr)
         return EXIT_UNMEASURABLE
+
+    if not report_order_tables(directory):
+        print(
+            "\nrefusing to report numbers: the writer states its element order in one table, "
+            "and that\ntable no longer matches the schema it was taken from. The numbers below "
+            "would be\nmeasured against a document whose order is nobody's.",
+            file=sys.stderr,
+        )
+        return EXIT_UNMEASURABLE
+
 
     keep = args.keep_written
     temporary = None

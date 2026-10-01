@@ -86,9 +86,25 @@ impl PartParser<'_> {
     }
 
     /// Parses a `w:zoom` element.
+    ///
+    /// `w:zoom/@w:percent` is `ST_DecimalNumberOrPercent`, whose only branch is
+    /// `s:ST_Percentage` - so the schema's valid lexical form carries the sign
+    /// (`93%`), while every producer that writes the bare number writes one their
+    /// own schema rejects. Both spellings mean the same thing: a percentage of
+    /// the normal size. Parsing only the bare form, as this used to, turned a
+    /// producer's `93%` into "no zoom at all" and the next write put `100%` in
+    /// its place - a document that drifted towards full size on every round trip.
     fn parse_zoom(attrs: &[Attr]) -> Zoom {
         Zoom {
-            percent: wml_attr(attrs, "percent").and_then(|value| value.trim().parse().ok()),
+            percent: wml_attr(attrs, "percent").and_then(|value| {
+                value
+                    .trim()
+                    .strip_suffix('%')
+                    .unwrap_or(value.trim())
+                    .trim()
+                    .parse()
+                    .ok()
+            }),
             kind: val_attr(attrs).and_then(DocumentZoom::from_strict),
         }
     }

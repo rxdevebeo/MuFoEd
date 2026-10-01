@@ -58,6 +58,7 @@ pub mod body;
 pub mod ctx;
 pub mod drawing;
 pub mod math;
+pub mod order;
 pub mod package;
 pub mod parts;
 pub mod props;

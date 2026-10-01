@@ -82,12 +82,12 @@ pub(crate) const OWNED_TYPES: &[RelType] = &[
 /// content: it is a second copy of a part this write owns. Copying a part we
 /// regenerate is what [`OWNED_TYPES`] already forbids for the part itself; this is
 /// the same rule one shadow further out.
-const SHADOW_REL_TYPES: &[&str] = &[
-    "http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects",
-];
+const SHADOW_REL_TYPES: &[&str] =
+    &["http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects"];
 
 fn is_shadow(info: &RelationshipInfo) -> bool {
-    SHADOW_REL_TYPES.contains(&strict_ooxml_core::opc::rels::strict_type_uri(&info.rel_type).as_str())
+    SHADOW_REL_TYPES
+        .contains(&strict_ooxml_core::opc::rels::strict_type_uri(&info.rel_type).as_str())
 }
 
 /// The most unmodelled parts one write will copy.

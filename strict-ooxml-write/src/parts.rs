@@ -72,32 +72,60 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
     xml.start("w:style");
     xml.attr_w("type", style_type_name(style.style_type));
     xml.attr_w("styleId", style.id.as_str());
+    // `w:default` is an ATTRIBUTE of `w:style`, not one of its children, so it
+    // is written here rather than in the loop below.
     if style.is_default {
         xml.attr_w("default", "true");
     }
-    if let Some(name) = &style.name {
-        xml.empty_attr_w("w:name", "val", name.as_ref());
+    // `CT_Style` is an xsd:sequence too, and it is one of the two places where
+    // the writer's order was simply not the schema's: `w:rPr` comes BEFORE
+    // `w:tblPr`, and the paragraph properties were emitted between them, so a
+    // style with both a run default and a table default produced `w:pPr` after
+    // `w:tblPr` and the schema answered "This element is not expected" (`XS-07`).
+    // The order is [`strict_ooxml_write::order::STYLE`] and this loop is it.
+    for name in crate::order::STYLE {
+        match *name {
+            "name" => {
+                if let Some(name) = &style.name {
+                    xml.empty_attr_w("w:name", "val", name.as_ref());
+                }
+            }
+            "basedOn" => {
+                if let Some(based_on) = &style.based_on {
+                    xml.empty_attr_w("w:basedOn", "val", based_on.as_str());
+                }
+            }
+            "next" => {
+                if let Some(next) = &style.next {
+                    xml.empty_attr_w("w:next", "val", next.as_str());
+                }
+            }
+            "link" => {
+                if let Some(link) = &style.link {
+                    xml.empty_attr_w("w:link", "val", link.as_str());
+                }
+            }
+            "uiPriority" => {
+                if let Some(priority) = style.ui_priority {
+                    xml.empty_attr_w("w:uiPriority", "val", priority);
+                }
+            }
+            // Keyed on `semiHidden`, not on `hidden`: `CT_Style` declares BOTH,
+            // and the model's `hidden` flag has always been written as
+            // `w:semiHidden`. Arming this on `hidden` put the element two slots
+            // before `w:uiPriority` - which is how the new order test found it
+            // on its first run.
+            "semiHidden" if style.hidden => xml.empty("w:semiHidden"),
+            "pPr" => paragraph_properties(ctx, xml, &style.paragraph),
+            "rPr" => run_properties(xml, &style.run),
+            "tblPr" => {
+                if style.style_type == StyleType::Table {
+                    table_properties(xml, &style.table);
+                }
+            }
+            _ => {}
+        }
     }
-    if let Some(based_on) = &style.based_on {
-        xml.empty_attr_w("w:basedOn", "val", based_on.as_str());
-    }
-    if let Some(next) = &style.next {
-        xml.empty_attr_w("w:next", "val", next.as_str());
-    }
-    if let Some(link) = &style.link {
-        xml.empty_attr_w("w:link", "val", link.as_str());
-    }
-    if let Some(priority) = style.ui_priority {
-        xml.empty_attr_w("w:uiPriority", "val", priority);
-    }
-    if style.hidden {
-        xml.empty("w:semiHidden");
-    }
-    if style.style_type == StyleType::Table {
-        table_properties(xml, &style.table);
-    }
-    paragraph_properties(ctx, xml, &style.paragraph);
-    run_properties(xml, &style.run);
     let _ = ctx;
     xml.end();
 }
@@ -185,90 +213,128 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
 }
 
 /// Writes `w:settings`.
+///
+/// The children go out in the order `CT_Settings` declares, which is
+/// [`crate::order::SETTINGS`], and the loop below IS that order. It matters for
+/// one child in particular: `w:compat` is declared after `w:footnotePr` and
+/// `w:endnotePr` and before `w:themeFontLang`, and the writer used to put it
+/// last of all - so `w:compat` was the element libxml2 named in every one of the
+/// sixteen "This element is not expected" messages `w:settings` produced across
+/// the corpus (`XS-06`). `w:compat` is not a Transitional leftover: it is declared
+/// in Strict at `wml.xsd:2815`.
 pub fn settings_part(ctx: &mut Ctx<'_>, settings: &Settings) -> String {
     let mut xml = XmlWriter::new();
     xml.start_root("w:settings", &WML_NAMESPACES);
-    if let Some(zoom) = settings.zoom {
-        xml.start("w:zoom");
-        xml.attr_w("percent", zoom.percent.unwrap_or(100));
-        if let Some(kind) = zoom.kind {
-            let value = match kind {
-                strict_ooxml_wml::model::settings::DocumentZoom::None => "none",
-                strict_ooxml_wml::model::settings::DocumentZoom::FullPage => "fullPage",
-                strict_ooxml_wml::model::settings::DocumentZoom::BestFit => "bestFit",
-                strict_ooxml_wml::model::settings::DocumentZoom::TextFit => "textFit",
-            };
-            xml.attr_w("val", value);
-        }
-        xml.end();
+    for name in crate::order::SETTINGS {
+        settings_child(ctx, &mut xml, settings, name);
     }
-    if settings.even_and_odd_headers {
-        xml.empty("w:evenAndOddHeaders");
-    }
-    if settings.display_background_shape {
-        xml.empty("w:displayBackgroundShape");
-    }
-    if let Some(stop) = settings.default_tab_stop {
-        xml.empty_attr_w("w:defaultTabStop", "val", stop.0);
-    }
-    if settings.auto_hyphenation {
-        xml.empty("w:autoHyphenation");
-    }
-    if settings.do_not_hyphenate_caps {
-        xml.empty("w:doNotHyphenateCaps");
-    }
-    if let Some(zone) = settings.hyphenation_zone {
-        xml.empty_attr_w("w:hyphenationZone", "val", zone.0);
-    }
-    if let Some(edit) = &settings.document_protection {
-        xml.empty_attr_w("w:documentProtection", "edit", edit.as_ref());
-    }
-    if settings.hide_spelling_errors {
-        xml.empty("w:hideSpellingErrors");
-    }
-    if settings.hide_grammatical_errors {
-        xml.empty("w:hideGrammaticalErrors");
-    }
-    if settings.proofing {
-        xml.empty("w:proofState");
-    }
-    if settings.track_revisions {
-        xml.empty("w:trackRevisions");
-    }
-    if !settings.footnote_properties.is_empty() {
-        note_properties(&mut xml, "w:footnotePr", &settings.footnote_properties);
-    }
-    if !settings.endnote_properties.is_empty() {
-        note_properties(&mut xml, "w:endnotePr", &settings.endnote_properties);
-    }
-    if let Some(language) = &settings.theme_font_lang {
-        xml.empty_attr_w("w:themeFontLang", "val", language.as_ref());
-    }
-    if let Some(symbol) = &settings.decimal_symbol {
-        xml.empty_attr_w("w:decimalSymbol", "val", symbol.as_ref());
-    }
-    if let Some(separator) = &settings.list_separator {
-        xml.empty_attr_w("w:listSeparator", "val", separator.as_ref());
-    }
-    if settings.mirror_margins {
-        xml.empty("w:mirrorMargins");
-    }
-    if !settings.compatibility.is_empty() {
-        xml.start("w:compat");
-        // w:compat holds w:compatSetting elements keyed by name, which is
-        // what the reader records; writing the key as an element name would
-        // produce markup no reader recognises.
-        for (name, value) in &settings.compatibility {
-            xml.start("w:compatSetting");
-            xml.attr_w("name", name.as_ref());
-            xml.attr_w("val", value.as_ref());
-            xml.end();
-        }
-        xml.end();
-    }
-    let _ = ctx;
     xml.end();
     xml.finish().expect("balanced")
+}
+
+/// Writes the `w:settings` child called `name`, when the model has it.
+fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, name: &str) {
+    match name {
+        "zoom" => {
+            if let Some(zoom) = settings.zoom {
+                xml.start("w:zoom");
+                // `ST_DecimalNumberOrPercent` is `union(s:ST_Percentage)` and
+                // `s:ST_Percentage`'s pattern requires the sign - `100` is not a
+                // value this attribute can hold and `100%` is (`XS-05`). Every
+                // producer in the corpus that writes valid Strict writes the sign:
+                // LibreOffice, docx4j and the Open XML SDK fixtures all write
+                // `w:percent="100%"`, and the ones that write `100` fail their own
+                // schema.
+                xml.attr("w:percent", format!("{}%", zoom.percent.unwrap_or(100)));
+                if let Some(kind) = zoom.kind {
+                    let value = match kind {
+                        strict_ooxml_wml::model::settings::DocumentZoom::None => "none",
+                        strict_ooxml_wml::model::settings::DocumentZoom::FullPage => "fullPage",
+                        strict_ooxml_wml::model::settings::DocumentZoom::BestFit => "bestFit",
+                        strict_ooxml_wml::model::settings::DocumentZoom::TextFit => "textFit",
+                    };
+                    xml.attr_w("val", value);
+                }
+                xml.end();
+            }
+        }
+        "displayBackgroundShape" if settings.display_background_shape => {
+            xml.empty("w:displayBackgroundShape");
+        }
+        "hideSpellingErrors" if settings.hide_spelling_errors => {
+            xml.empty("w:hideSpellingErrors");
+        }
+        "hideGrammaticalErrors" if settings.hide_grammatical_errors => {
+            xml.empty("w:hideGrammaticalErrors");
+        }
+        "proofState" if settings.proofing => xml.empty("w:proofState"),
+        "trackRevisions" if settings.track_revisions => xml.empty("w:trackRevisions"),
+        "documentProtection" => {
+            if let Some(edit) = &settings.document_protection {
+                xml.empty_attr_w("w:documentProtection", "edit", edit.as_ref());
+            }
+        }
+        "defaultTabStop" => {
+            if let Some(stop) = settings.default_tab_stop {
+                xml.empty_attr_w("w:defaultTabStop", "val", stop.0);
+            }
+        }
+        "autoHyphenation" if settings.auto_hyphenation => xml.empty("w:autoHyphenation"),
+        "hyphenationZone" => {
+            if let Some(zone) = settings.hyphenation_zone {
+                xml.empty_attr_w("w:hyphenationZone", "val", zone.0);
+            }
+        }
+        "doNotHyphenateCaps" if settings.do_not_hyphenate_caps => {
+            xml.empty("w:doNotHyphenateCaps");
+        }
+        "evenAndOddHeaders" if settings.even_and_odd_headers => {
+            xml.empty("w:evenAndOddHeaders");
+        }
+        "mirrorMargins" if settings.mirror_margins => xml.empty("w:mirrorMargins"),
+        "footnotePr" => {
+            if !settings.footnote_properties.is_empty() {
+                note_properties(xml, "w:footnotePr", &settings.footnote_properties);
+            }
+        }
+        "endnotePr" => {
+            if !settings.endnote_properties.is_empty() {
+                note_properties(xml, "w:endnotePr", &settings.endnote_properties);
+            }
+        }
+        "compat" => {
+            if !settings.compatibility.is_empty() {
+                xml.start("w:compat");
+                // w:compat holds w:compatSetting elements keyed by name, which is
+                // what the reader records; writing the key as an element name would
+                // produce markup no reader recognises.
+                for (name, value) in &settings.compatibility {
+                    xml.start("w:compatSetting");
+                    xml.attr_w("name", name.as_ref());
+                    xml.attr_w("val", value.as_ref());
+                    xml.end();
+                }
+                xml.end();
+            }
+        }
+        "themeFontLang" => {
+            if let Some(language) = &settings.theme_font_lang {
+                xml.empty_attr_w("w:themeFontLang", "val", language.as_ref());
+            }
+        }
+        "decimalSymbol" => {
+            if let Some(symbol) = &settings.decimal_symbol {
+                xml.empty_attr_w("w:decimalSymbol", "val", symbol.as_ref());
+            }
+        }
+        "listSeparator" => {
+            if let Some(separator) = &settings.list_separator {
+                xml.empty_attr_w("w:listSeparator", "val", separator.as_ref());
+            }
+        }
+        _ => {}
+    }
+    let _ = ctx;
 }
 
 /// Writes `w:fontTable` listing the faces the document references.

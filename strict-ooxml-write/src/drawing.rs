@@ -335,10 +335,7 @@ fn wrap_element(
                     location,
                 );
             }
-            xml.attr(
-                "wrapText",
-                wrap.wrap_text.as_deref().unwrap_or("bothSides"),
-            );
+            xml.attr("wrapText", wrap.wrap_text.as_deref().unwrap_or("bothSides"));
             if wrap.kind != K::Tight && wrap.kind != K::Through {
                 xml.attr("distT", wrap.dist_top.unwrap_or(0));
                 xml.attr("distB", wrap.dist_bottom.unwrap_or(0));
