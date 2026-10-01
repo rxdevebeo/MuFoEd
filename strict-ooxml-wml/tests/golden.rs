@@ -205,8 +205,13 @@ fn dump_inline(out: &mut String, inline: &Inline, depth: usize) {
             let _ = writeln!(out, "field instr={}", instruction.trim());
         }
         Inline::Drawing(drawing) => dump_drawing(out, drawing),
-        Inline::BookmarkStart(id) => {
-            let _ = writeln!(out, "bookmarkStart id={}", id.as_str());
+        Inline::BookmarkStart(bookmark) => {
+            let _ = writeln!(
+                out,
+                "bookmarkStart id={} name={}",
+                bookmark.id.as_str(),
+                bookmark.name
+            );
         }
         Inline::BookmarkEnd(id) => {
             let _ = writeln!(out, "bookmarkEnd id={}", id.as_str());

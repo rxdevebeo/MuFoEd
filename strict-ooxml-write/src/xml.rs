@@ -43,6 +43,12 @@ pub struct XmlWriter {
     out: String,
     /// Byte offset of each open element's name inside `out`.
     open: Vec<usize>,
+    /// For each open element, whether its start tag has been closed with `>`.
+    ///
+    /// An element whose tag is still open when `end()` arrives is written
+    /// self-closing, so this is exactly "this element already has a child or
+    /// character data". Attributes do not set it.
+    tag_open: Vec<bool>,
     max_depth: usize,
     overflowed: bool,
     /// A start tag has been opened and still needs its closing `>`.
@@ -74,6 +80,7 @@ impl XmlWriter {
         Self {
             out: String::with_capacity(4096),
             open: Vec::new(),
+            tag_open: Vec::new(),
             max_depth,
             overflowed: false,
             pending_tag: false,
@@ -90,6 +97,9 @@ impl XmlWriter {
         if self.pending_tag {
             self.out.push('>');
             self.pending_tag = false;
+            if let Some(open) = self.tag_open.last_mut() {
+                *open = true;
+            }
         }
     }
 
@@ -111,6 +121,7 @@ impl XmlWriter {
         }
         self.out.push('<');
         self.open.push(self.out.len());
+        self.tag_open.push(false);
         self.out.push_str(name);
         self.pending_tag = true;
     }
@@ -191,6 +202,7 @@ impl XmlWriter {
         let Some(name_start) = self.open.pop() else {
             return;
         };
+        self.tag_open.pop();
         if self.pending_tag {
             self.pending_tag = false;
             self.out.push_str("/>");
@@ -237,6 +249,16 @@ impl XmlWriter {
     #[must_use]
     pub fn has_open_elements(&self) -> bool {
         !self.open.is_empty()
+    }
+
+    /// Returns `true` when the innermost open element has content or attributes.
+    ///
+    /// Written as `start` + nothing leaves the tag pending and the element
+    /// self-closing, so `<wp:positionH/>` is what comes out; a caller that has to
+    /// fill a required child needs to know that before calling `end`.
+    #[must_use]
+    pub fn has_content(&self) -> bool {
+        self.tag_open.last().copied().unwrap_or(false)
     }
 
     /// Returns the nesting depth reached.

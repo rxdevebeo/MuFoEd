@@ -40,6 +40,24 @@ pub fn block_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, block: &Block) {
 /// Writes `w:p`.
 pub fn paragraph_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &Paragraph) {
     xml.start("w:p");
+    // A defect, deliberately left visible until ADR-0014 is implemented: this
+    // writes `w14` attributes into a package we declare Strict. `w14` appears
+    // zero times in the ECMA-376 Strict and Transitional schemas, and Strict
+    // conformance is defined on the *post-MCE* part (ECMA-376 Part 1 §2.1
+    // clause ii), so a conforming processor strips exactly these. Three
+    // further faults in five lines:
+    //
+    //   - `w14:paraId` is `w:ST_LongHexNumber` = 8 hex digits, and the model
+    //     never checks that;
+    //   - `00000000` violates [MS-DOCX] §2.6.2.4, "Values MUST be greater than
+    //     0 and less than 0x80000000";
+    //   - no `mc:Ignorable="w14"` is declared, which [MS-DOCX] §2.2.4 makes a
+    //     MUST for interoperability with ISO/IEC 29500 implementations.
+    //
+    // The project's own normalizer disagrees with this writer already:
+    // `core/src/normalize/tables.rs` lists the `w14` namespace in
+    // `IGNORABLE_EXTENSION_NAMESPACES`, i.e. Transitional normalization
+    // *removes* it. See `STAGE-8-OPEN.md` (O-14) and ADR-0014.
     if let Some(para_id) = &paragraph.para_id {
         xml.attr("w14:paraId", para_id.as_str());
         xml.attr(
@@ -122,9 +140,15 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
                 inline_item(ctx, xml, child);
             }
         }
-        Inline::BookmarkStart(id) => {
+        Inline::BookmarkStart(bookmark) => {
             xml.start("w:bookmarkStart");
-            xml.attr_w("id", id.as_str());
+            xml.attr_w("id", bookmark.id.as_str());
+            // `CT_Bookmark` makes `w:name` required. The writer wrote the id alone,
+            // which is invalid AND wrong: the id pairs the start with its end,
+            // while the name is what `w:hyperlink/@w:anchor` and a REF field point
+            // at, so every internal link into a bookmark lost its destination
+            // (`XS-20`).
+            xml.attr_w("name", bookmark.name.as_ref());
             xml.end();
         }
         Inline::BookmarkEnd(id) => {

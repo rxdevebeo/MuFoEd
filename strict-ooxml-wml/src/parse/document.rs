@@ -11,7 +11,7 @@ use crate::model::block::{AltChunkInfo, Block, OpaqueBlock, Paragraph, SdtContai
 use crate::model::document::Body;
 use crate::model::ids::{ParaId, TextId};
 use crate::model::inline::{
-    BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent,
+    Bookmark, BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent,
     Symbol, TextNode,
 };
 use crate::model::props::{ParagraphProperties, Section};
@@ -243,9 +243,20 @@ impl PartParser<'_> {
             InlineKind::Field => out.push(Inline::Field(self.parse_fld_simple(attrs)?)),
             InlineKind::Drawing => out.push(Inline::Drawing(self.parse_drawing()?)),
             InlineKind::BookmarkStart => {
+                // Both attributes are read, and they are not the same attribute:
+                // `w:id` pairs the start with its end, `w:name` is what a
+                // hyperlink anchor and a REF field target. Keeping only the id
+                // made every internal link lose its destination and made the
+                // written element schema-invalid (`CT_Bookmark` requires the
+                // name). A producer that wrote no name is recorded rather than
+                // patched here.
                 let id = wml_attr(attrs, "id").or_else(|| wml_attr(attrs, "name"));
                 if let Some(id) = id {
-                    out.push(Inline::BookmarkStart(BookmarkId::new(id)));
+                    let name = wml_attr(attrs, "name").unwrap_or_default();
+                    if name.is_empty() {
+                        self.record_value("w:bookmarkStart/@w:name", "", &self.location());
+                    }
+                    out.push(Inline::BookmarkStart(Bookmark::new(id, name)));
                 }
                 self.skip_element()?;
             }

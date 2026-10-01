@@ -166,14 +166,45 @@ pub fn anchor_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, anchor: &AnchorDra
     xml.attr("x", "0");
     xml.attr("y", "0");
     xml.end();
-    position_element(xml, "wp:positionH", anchor.position_h.as_ref());
-    position_element(xml, "wp:positionV", anchor.position_v.as_ref());
-    if let Some(extent) = &anchor.extent {
-        extent_element(xml, "wp:extent", extent);
+    position_element(
+        ctx,
+        xml,
+        "wp:positionH",
+        anchor.position_h.as_ref(),
+        "column",
+        &anchor.location,
+    );
+    position_element(
+        ctx,
+        xml,
+        "wp:positionV",
+        anchor.position_v.as_ref(),
+        "paragraph",
+        &anchor.location,
+    );
+    match &anchor.extent {
+        Some(extent) => extent_element(xml, "wp:extent", extent),
+        None => {
+            // `CT_Anchor` requires `wp:extent`; without it the element is invalid
+            // however the rest of the anchor is shaped.
+            ctx.report_partial(
+                "wp:extent",
+                "the floating drawing declared no extent; a zero extent is written",
+                &anchor.location,
+            );
+            extent_element(
+                xml,
+                "wp:extent",
+                &Extent {
+                    cx: Emu(0),
+                    cy: Emu(0),
+                },
+            );
+        }
     }
     effect_extent(xml, anchor.effect_extent.as_ref());
     if let Some(wrap) = &anchor.wrap {
-        wrap_element(xml, wrap);
+        wrap_element(ctx, xml, wrap, &anchor.location);
     }
     document_properties(ctx, xml, &anchor.doc_pr, "Shape", &anchor.location);
     graphic(
@@ -185,13 +216,45 @@ pub fn anchor_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, anchor: &AnchorDra
     xml.end();
 }
 
-fn position_element(xml: &mut XmlWriter, name: &'static str, position: Option<&Position>) {
+/// Writes `wp:positionH`/`wp:positionV`.
+///
+/// `CT_PosH` and `CT_PosV` make `@relativeFrom` `use="required"` and require a
+/// `xsd:choice` of exactly one `wp:align` or `wp:posOffset`. The writer wrote the
+/// attribute only when the model had one and the child only when the model had
+/// one, so an anchor whose position came from a producer that relies on defaults
+/// produced `<wp:positionH/>`: two violations each, ten on the corpus, and 20 in
+/// total for the pair (`XS-21`).
+///
+/// The two axes do not share a base vocabulary. `ST_RelFromH` has `column` and
+/// `ST_RelFromV` has `paragraph`, and neither has the other's, so the fallback is
+/// a parameter: `column` on the horizontal axis is a value the vertical one
+/// rejects.
+fn position_element(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    name: &'static str,
+    position: Option<&Position>,
+    default_base: &str,
+    location: &strict_ooxml_core::error::SourceLocation,
+) {
     xml.start(name);
-    if let Some(position) = position {
-        xml.attr(
-            "relativeFrom",
-            position.relative_from.as_deref().unwrap_or("column"),
+    if position.and_then(|p| p.relative_from.as_deref()).is_none() {
+        ctx.report_partial(
+            name,
+            &format!(
+                "the anchor's position named no base; `{default_base}` is written, which \
+                 the element requires and which a floating object means without one"
+            ),
+            location,
         );
+    }
+    xml.attr(
+        "relativeFrom",
+        position
+            .and_then(|p| p.relative_from.as_deref())
+            .unwrap_or(default_base),
+    );
+    if let Some(position) = position {
         if let Some(align) = &position.align {
             xml.start("wp:align");
             xml.text(align);
@@ -202,10 +265,49 @@ fn position_element(xml: &mut XmlWriter, name: &'static str, position: Option<&P
             xml.end();
         }
     }
+    if !xml.has_content() {
+        // The choice is required, so an element without one of the two is invalid
+        // whatever it says about the base. A zero offset is the position the
+        // element would have had anyway, and it is recorded.
+        ctx.report_partial(
+            name,
+            "the anchor's position named neither an alignment nor an offset; a zero \
+             offset is written, because the schema requires one of the two",
+            location,
+        );
+        xml.start("wp:posOffset");
+        xml.text("0");
+        xml.end();
+    }
     xml.end();
 }
 
-fn wrap_element(xml: &mut XmlWriter, wrap: &strict_ooxml_wml::model::drawing::Wrap) {
+/// Writes `wp:wrap*`.
+///
+/// The five wrap elements do not share a shape, and the writer gave them all the
+/// attributes of the widest one. Two facts the schema makes unmissable:
+///
+/// - `CT_WrapNone` is `<xsd:complexType name="CT_WrapNone"/>` - **no attributes
+///   at all**. The side distances belong to `wp:anchor`, which carries all four.
+///   Writing `distL`/`distR` on it is 28 violations on the corpus (`XS-04`).
+/// - `CT_WrapTopBottom` has exactly `distT` and `distB`. Its distances are
+///   vertical; there is no horizontal distance to write on it.
+///
+/// `CT_WrapSquare`, `CT_WrapTight` and `CT_WrapThrough` are the ones that take
+/// `@wrapText`, and they take it **unqualified** - `wrapText`, not `w:wrapText`,
+/// which is what the writer emitted and what the schema rejected (`XS-22`). It is
+/// `use="required"`, so a model without one gets `bothSides` and a record.
+///
+/// `CT_WrapTight` and `CT_WrapThrough` also require a `wp:wrapPolygon` child,
+/// which this model does not carry. The element is written and the missing polygon
+/// is reported: writing the wrap element is better than dropping the anchor, and
+/// a wrap with no polygon is what the producer's own default resolves to.
+fn wrap_element(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    wrap: &strict_ooxml_wml::model::drawing::Wrap,
+    location: &strict_ooxml_core::error::SourceLocation,
+) {
     use strict_ooxml_wml::model::drawing::WrapKind as K;
     let name = match wrap.kind {
         K::None => "wp:wrapNone",
@@ -215,9 +317,44 @@ fn wrap_element(xml: &mut XmlWriter, wrap: &strict_ooxml_wml::model::drawing::Wr
         K::TopAndBottom => "wp:wrapTopAndBottom",
     };
     xml.start(name);
-    xml.attr_w_opt("wrapText", wrap.wrap_text.as_deref());
-    xml.attr("distL", wrap.dist_left.unwrap_or(0));
-    xml.attr("distR", wrap.dist_right.unwrap_or(0));
+    match wrap.kind {
+        K::None => {
+            // No attributes exist on CT_WrapNone. The distances the model carries
+            // were written on wp:anchor, where the schema puts them.
+        }
+        K::TopAndBottom => {
+            xml.attr("distT", wrap.dist_top.unwrap_or(0));
+            xml.attr("distB", wrap.dist_bottom.unwrap_or(0));
+        }
+        K::Square | K::Tight | K::Through => {
+            if wrap.wrap_text.is_none() {
+                ctx.report_partial(
+                    name,
+                    "the wrap named no side; `bothSides` is written, which the schema \
+                     requires and which is what a wrap means without a choice",
+                    location,
+                );
+            }
+            xml.attr(
+                "wrapText",
+                wrap.wrap_text.as_deref().unwrap_or("bothSides"),
+            );
+            if wrap.kind != K::Tight && wrap.kind != K::Through {
+                xml.attr("distT", wrap.dist_top.unwrap_or(0));
+                xml.attr("distB", wrap.dist_bottom.unwrap_or(0));
+            }
+            xml.attr("distL", wrap.dist_left.unwrap_or(0));
+            xml.attr("distR", wrap.dist_right.unwrap_or(0));
+            if matches!(wrap.kind, K::Tight | K::Through) {
+                ctx.report_partial(
+                    name,
+                    "a tight or through wrap needs its wp:wrapPolygon; the model does \
+                     not carry one, so the wrap is written without it",
+                    location,
+                );
+            }
+        }
+    }
     xml.end();
 }
 

@@ -128,6 +128,32 @@ impl BookmarkId {
     }
 }
 
+/// A `w:bookmarkStart`: the id that pairs it with its end, and the name.
+///
+/// Two attributes, two jobs, and the model used to keep only one of them. `w:id`
+/// is what pairs the start with its `w:bookmarkEnd`; `w:name` is what a
+/// `w:hyperlink/@w:anchor` and a `REF` field point at - it is the bookmark's
+/// identity to everything outside the pair. Writing the id alone made the element
+/// schema-invalid (`CT_Bookmark` makes `w:name` `use="required"`, `XS-20`) and
+/// would have broken every internal link, so the name is carried.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Bookmark {
+    /// `w:id`, pairing the start with its end.
+    pub id: BookmarkId,
+    /// `w:name`, the bookmark's name in the document.
+    pub name: Arc<str>,
+}
+
+impl Bookmark {
+    /// Creates a bookmark from its id and name.
+    pub fn new(id: impl Into<Arc<str>>, name: impl Into<Arc<str>>) -> Self {
+        Self {
+            id: BookmarkId::new(id),
+            name: name.into(),
+        }
+    }
+}
+
 /// Identifier of a comment range mark (`w:commentRangeStart` and friends).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CommentId(Arc<str>);
@@ -187,8 +213,8 @@ pub enum Inline {
     Tab,
     /// Inline structured document tag.
     SdtInline(SdtContainer),
-    /// Bookmark start.
-    BookmarkStart(BookmarkId),
+    /// Bookmark start, with the id and the name.
+    BookmarkStart(Bookmark),
     /// Bookmark end.
     BookmarkEnd(BookmarkId),
     /// Comment range start (comment bodies are Stage 5).

@@ -21,7 +21,7 @@ use strict_ooxml_wml::model::drawing::{
 };
 use strict_ooxml_wml::model::ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 use strict_ooxml_wml::model::inline::{
-    BookmarkId, CommentId, OpaqueInline, Run, RunContent, TextNode,
+    Bookmark, BookmarkId, CommentId, OpaqueInline, Run, RunContent, TextNode,
 };
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 use strict_ooxml_wml::model::props::{NumPr, ParagraphProperties, Section};
@@ -477,7 +477,7 @@ fn block_and_inline_accessors() {
                 })],
                 location: location(),
             }),
-            strict_ooxml_wml::model::inline::Inline::BookmarkStart(BookmarkId::new("b")),
+            strict_ooxml_wml::model::inline::Inline::BookmarkStart(Bookmark::new("b", "b")),
         ],
         rsids: strict_ooxml_wml::model::values::Rsids::default(),
         para_id: Some(ParaId::new("1")),
