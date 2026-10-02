@@ -139,6 +139,14 @@ pub struct RenderOptions {
     /// drawn. Setting it to `false` skips them (the parser still models them,
     /// so the Feature Report is unchanged).
     pub math: bool,
+    /// Resource limits, including the block-nesting bound.
+    ///
+    /// The renderer takes its budget from the same `ResourceLimits` the reader
+    /// used, so a document that parsed cannot fail to render on depth alone - and
+    /// a `Document` built programmatically, which never met the parser's bound at
+    /// all, is held to the same number instead of to whatever constant the layout
+    /// happened to carry.
+    pub limits: strict_ooxml_core::limits::ResourceLimits,
 }
 
 impl Default for RenderOptions {
@@ -151,6 +159,7 @@ impl Default for RenderOptions {
             background: true,
             floating: true,
             math: true,
+            limits: strict_ooxml_core::limits::ResourceLimits::default(),
         }
     }
 }
@@ -238,6 +247,7 @@ pub fn place_pages(
         media_mode: options.media,
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
+        block_depth: std::cell::Cell::new(0),
     };
     Ok(layout::paginate::layout_document(&context)?.pages)
 }
@@ -273,6 +283,7 @@ pub fn render_with_media(
         media_mode: options.media,
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
+        block_depth: std::cell::Cell::new(0),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
 
@@ -294,7 +305,7 @@ pub fn render_with_media(
 
 #[cfg(test)]
 mod tests {
-    use super::{PageSelection, RenderOptions};
+    use super::{render, PageSelection, RenderOptions};
 
     #[test]
     fn page_selection_contains() {
@@ -317,5 +328,108 @@ mod tests {
         // Invalid scales are ignored.
         assert!((RenderOptions::default().scale(f64::NAN).scale - 96.0).abs() < 1e-9);
         let _ = format!("{:?}", options.media);
+    }
+
+    /// Builds a document whose body is `depth` nested tables.
+    ///
+    /// Assembled field by field because none of the block types derive
+    /// `Default`: a `Document` is what a parser produces, and the point of this
+    /// fixture is the case the parser cannot produce - a model that reached the
+    /// renderer without ever meeting the reader's bound.
+    fn nested_tables(depth: usize) -> strict_ooxml_wml::model::Document {
+        use strict_ooxml_core::error::SourceLocation;
+        use strict_ooxml_core::part::PartId;
+        use strict_ooxml_wml::model::block::{Block, Paragraph, Table, TableCell, TableRow};
+        use strict_ooxml_wml::model::props::{
+            CellProperties, ParagraphProperties, RowProperties, TableProperties,
+        };
+        use strict_ooxml_wml::model::support::SupportModel;
+        use strict_ooxml_wml::model::values::Rsids;
+        use strict_ooxml_wml::model::{
+            Body, Document, DocumentSource, FontTable, MediaIndex, NoteTable, NumberingTable,
+            Settings, StyleTable,
+        };
+
+        let location = || SourceLocation::new(PartId::new("/word/document.xml"), 1, 1, 0);
+        let mut blocks = vec![Block::Paragraph(Paragraph {
+            props: ParagraphProperties::default(),
+            inlines: Vec::new(),
+            rsids: Rsids::default(),
+            para_id: None,
+            text_id: None,
+            location: location(),
+        })];
+        for _ in 0..depth {
+            blocks = vec![Block::Table(Table {
+                props: TableProperties::default(),
+                grid: Vec::new(),
+                rows: vec![TableRow {
+                    props: RowProperties::default(),
+                    cells: vec![TableCell {
+                        props: CellProperties::default(),
+                        blocks,
+                        location: location(),
+                    }],
+                    location: location(),
+                }],
+                location: location(),
+            })];
+        }
+        Document {
+            body: Body { blocks },
+            styles: StyleTable::default(),
+            numbering: NumberingTable::default(),
+            footnotes: NoteTable::default(),
+            endnotes: NoteTable::default(),
+            settings: Settings::default(),
+            theme: None,
+            font_table: Option::<FontTable>::None,
+            sections: Vec::new(),
+            headers_footers: Vec::new(),
+            media: MediaIndex::new(),
+            support: SupportModel::new(),
+            source: DocumentSource {
+                main_document: PartId::new("/word/document.xml"),
+                styles: None,
+                numbering: None,
+                settings: None,
+                font_table: None,
+                footnotes: None,
+                endnotes: None,
+                theme: None,
+            },
+        }
+    }
+
+    #[test]
+    fn a_programmatically_built_document_is_held_to_the_same_block_budget() {
+        // A `Document` built in code never met the parser's bound, so the layout
+        // has to enforce the reader's number itself. Without this the two disagree
+        // and a model the writer would refuse still reaches the stack.
+        let options = RenderOptions::default();
+        assert!(render(&nested_tables(12), &options).is_ok());
+
+        let deep = render(&nested_tables(13), &options);
+        let message = deep
+            .expect_err("thirteen levels must be refused")
+            .to_string();
+        assert!(message.contains("block nesting"), "{message}");
+    }
+
+    #[test]
+    fn the_render_budget_is_the_callers() {
+        let document = nested_tables(3);
+        let options = RenderOptions {
+            limits: strict_ooxml_core::limits::ResourceLimits {
+                max_block_nesting: 2,
+                ..strict_ooxml_core::limits::ResourceLimits::default()
+            },
+            ..RenderOptions::default()
+        };
+        assert!(render(&document, &RenderOptions::default()).is_ok());
+        let message = render(&document, &options)
+            .expect_err("three levels against a budget of two")
+            .to_string();
+        assert!(message.contains("block nesting"), "{message}");
     }
 }

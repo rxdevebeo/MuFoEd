@@ -37,8 +37,11 @@ impl PartParser<'_> {
             None,
             Some(location.clone()),
         );
-        // `parse_block_children` consumes the root's matching end element.
-        let (blocks, _sections) = self.parse_block_children()?;
+        // `parse_block_children` consumes the root's matching end element. A header is
+        // one level of block nesting: a table in a header nests no shallower than
+        // a table in the body, and the header's own stack frame is paid for on
+        // top of the body's.
+        let (blocks, _sections) = self.nested_block(PartParser::parse_block_children)?;
         self.expect_end_of_part()?;
         self.leave();
         Ok((blocks, location))

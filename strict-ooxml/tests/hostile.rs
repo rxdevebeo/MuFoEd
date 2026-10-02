@@ -337,6 +337,227 @@ mod xml {
 
 mod nesting {
     //! AUD-05, AUD-07: nested blocks against `max_block_nesting`.
+
+    use super::*;
+    use strict_ooxml_core::error::{LimitKind, StrictError};
+    use strict_ooxml_testkit::xml::{nested, nested_tables, nested_text_boxes};
+
+    /// One table per level, the innermost holding `inner`.
+    fn tables(depth: usize) -> DocxBuilder {
+        DocxBuilder::strict().body(&nested_tables(depth, "<w:p><w:r><w:t>x</w:t></w:r></w:p>"))
+    }
+
+    /// One text box per level, the innermost holding `inner`.
+    fn text_boxes(depth: usize) -> DocxBuilder {
+        DocxBuilder::strict().body(&nested_text_boxes(
+            depth,
+            "<w:p><w:r><w:t>x</w:t></w:r></w:p>",
+        ))
+    }
+
+    fn open_ok(builder: DocxBuilder) -> StrictDocument {
+        assert_survives("open", move || {
+            StrictDocument::open_reader(Cursor::new(builder.build()), &OpenOptions::default())
+                .expect("open")
+        })
+    }
+
+    /// The `LimitKind` of the error opening `builder` produced.
+    fn open_limit(builder: DocxBuilder) -> LimitKind {
+        let error = assert_survives("open", move || {
+            open(builder.build(), &OpenOptions::default())
+        });
+        match error {
+            StrictError::LimitExceeded { kind, .. } => kind,
+            other => panic!("expected LimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn twelve_nested_tables_parse_and_survive_the_whole_pipeline() {
+        let document = open_ok(tables(12));
+        assert_survives("pipeline at depth 12", move || {
+            let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+            assert!(svg.is_ok(), "render_svg: {svg:?}");
+            let written = strict_ooxml::write_package(
+                document.document(),
+                Some(document.package()),
+                &strict_ooxml::WriteOptions::default(),
+            );
+            assert!(written.is_ok(), "write_package");
+        });
+    }
+
+    #[test]
+    fn thirteen_nested_tables_are_refused_by_kind() {
+        assert_eq!(open_limit(tables(13)), LimitKind::BlockNesting);
+    }
+
+    #[test]
+    fn two_hundred_nested_tables_are_refused_rather_than_overflowing_the_stack() {
+        // The stack on this thread is 1 MiB, the size of a Windows main thread.
+        // Before AUD-05 this was an abort, not an error.
+        assert_eq!(open_limit(tables(200)), LimitKind::BlockNesting);
+    }
+
+    #[test]
+    fn six_nested_text_boxes_survive_the_whole_pipeline() {
+        // Six is not a smaller ambition than twelve, it is what a 1 MiB stack
+        // carries in a debug build: measured, the parser spends 125 KB of stack
+        // per text box, because a text box is a paragraph, a run, a drawing, an
+        // inline, a graphic, a graphic-data, a shape, a text box and a block
+        // children frame, and the debug build does not optimise any of them away.
+        // Twelve is reached in release (measured), and tables reach twelve in
+        // both - see `twelve_nested_tables_parse_and_survive_the_whole_pipeline`.
+        // The gap is recorded as an open question in REWORK-AUDIT-2026-10.
+        let document = open_ok(text_boxes(6));
+        assert_survives("pipeline at six text boxes", move || {
+            let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+            assert!(svg.is_ok(), "render_svg: {svg:?}");
+            let written = strict_ooxml::write_package(
+                document.document(),
+                Some(document.package()),
+                &strict_ooxml::WriteOptions::default(),
+            );
+            assert!(written.is_ok(), "write_package");
+        });
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn thirteen_nested_text_boxes_are_refused_by_kind() {
+        // Release only, and the reason is measured rather than assumed: in debug
+        // the stack runs out around depth 7, before the counter can reach 13, so
+        // the same input would abort the process instead of being refused. In
+        // release the counter is what stops it, which is the property under test.
+        assert_eq!(open_limit(text_boxes(13)), LimitKind::BlockNesting);
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn twelve_nested_text_boxes_reach_the_renderer() {
+        let document = open_ok(text_boxes(12));
+        assert_survives("render twelve text boxes", move || {
+            let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+            assert!(svg.is_ok(), "render_svg: {svg:?}");
+        });
+    }
+
+    #[test]
+    fn the_counter_is_one_for_the_whole_chain_not_one_per_container_kind() {
+        // A table and a content control in rotation: six of each is twelve levels
+        // and fits, seven of each is refused at the thirteenth. Counting each
+        // kind against its own budget would let twenty-four through.
+        let mixed = |depth: usize| {
+            let body = nested(
+                concat!(
+                    "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc>",
+                    "<w:sdt><w:sdtContent>",
+                ),
+                concat!(
+                    "</w:sdtContent></w:sdt><w:p/>",
+                    "</w:tc></w:tr></w:tbl><w:p/>"
+                ),
+                "<w:p><w:r><w:t>x</w:t></w:r></w:p>",
+                depth,
+            );
+            DocxBuilder::strict().body(&body)
+        };
+        assert_survives("open mixed", move || {
+            open_ok(mixed(6));
+        });
+        assert_eq!(open_limit(mixed(7)), LimitKind::BlockNesting);
+    }
+
+    #[test]
+    fn a_table_in_a_header_nests_into_the_same_budget() {
+        let header = strict_ooxml_testkit::docx::part_xml(
+            strict_ooxml_testkit::docx::Family::Strict,
+            "w:hdr",
+            &nested_tables(11, "<w:p><w:r><w:t>h</w:t></w:r></w:p>"),
+        );
+        let body =
+            "<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdHeader\"/></w:sectPr>";
+        let bytes = DocxBuilder::strict()
+            .body(body)
+            .part("word/header1.xml", header)
+            .rel(
+                "rIdHeader",
+                &strict_ooxml_testkit::docx::Family::Strict.rel_type("header"),
+                "header1.xml",
+            )
+            .build();
+        assert_survives("open deep header", move || {
+            StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default()).expect("open");
+        });
+
+        let header14 = strict_ooxml_testkit::docx::part_xml(
+            strict_ooxml_testkit::docx::Family::Strict,
+            "w:hdr",
+            &nested_tables(13, "<w:p><w:r><w:t>h</w:t></w:r></w:p>"),
+        );
+        let bytes = DocxBuilder::strict()
+            .body(body)
+            .part("word/header1.xml", header14)
+            .rel(
+                "rIdHeader",
+                &strict_ooxml_testkit::docx::Family::Strict.rel_type("header"),
+                "header1.xml",
+            )
+            .build();
+        let error = assert_survives("open deeper header", move || {
+            open(bytes, &OpenOptions::default())
+        });
+        match error {
+            StrictError::LimitExceeded {
+                kind: LimitKind::BlockNesting,
+                limit,
+                actual,
+            } => {
+                assert_eq!((limit, actual), (12, 13), "{error:?}");
+            }
+            other => panic!("expected BlockNesting, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_limit_is_configurable() {
+        // Four tables are an ordinary document under the default budget of 12
+        // and hostile input under a budget of 3, so this also pins that the
+        // bound is the caller's and not a constant inside the parser.
+        assert_survives("four under the default budget", move || {
+            open_ok(tables(4));
+        });
+
+        let tight = OpenOptions::default().limits(strict_ooxml_core::limits::ResourceLimits {
+            max_block_nesting: 3,
+            ..strict_ooxml_core::limits::ResourceLimits::default()
+        });
+        let three = tables(3).build();
+        let four = tables(4).build();
+        let error = assert_survives("tables against a budget of three", move || {
+            StrictDocument::open_reader(Cursor::new(three), &tight).expect("three fit");
+            open(four, &tight)
+        });
+        match error {
+            StrictError::LimitExceeded {
+                kind: LimitKind::BlockNesting,
+                limit,
+                actual,
+            } => assert_eq!((limit, actual), (3, 4), "{error:?}"),
+            other => panic!("expected BlockNesting, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn twelve_nested_tables_reach_the_pdf_backend_too() {
+        let document = open_ok(tables(12));
+        assert_survives("pdf at depth 12", move || {
+            let pdf = document.render_pdf(&strict_ooxml::RenderOptions::default());
+            assert!(pdf.is_ok(), "render_pdf: {pdf:?}");
+        });
+    }
 }
 
 mod math {

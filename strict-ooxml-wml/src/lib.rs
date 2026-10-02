@@ -43,6 +43,7 @@
 )]
 
 pub mod model;
+pub mod nesting;
 pub mod parse;
 pub mod resolve;
 

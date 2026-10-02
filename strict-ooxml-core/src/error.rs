@@ -45,6 +45,13 @@ pub enum LimitKind {
     RelationshipDepth,
     /// `ResourceLimits::max_parts`.
     Parts,
+    /// `ResourceLimits::max_block_nesting`.
+    ///
+    /// Not the same bound as [`XmlDepth`](Self::XmlDepth): this one counts block
+    /// containers, of which an XML level holds at most one but a paragraph adds
+    /// none, so a document can be well inside 256 XML levels and still overflow
+    /// a 1 MiB stack by nesting tables.
+    BlockNesting,
     /// The per-formula node budget enforced by the OMML parser
     /// (`STAGE-5C-TASK.md` §5.1). Not a `ResourceLimits` field: the bound
     /// applies to one `m:oMath`, not to the whole package.
@@ -69,6 +76,7 @@ impl LimitKind {
             Self::TextLen => "text_len",
             Self::RelationshipDepth => "relationship_depth",
             Self::Parts => "parts",
+            Self::BlockNesting => "block_nesting",
             Self::MathNodes => "math_nodes",
             Self::MathDepth => "math_depth",
         }

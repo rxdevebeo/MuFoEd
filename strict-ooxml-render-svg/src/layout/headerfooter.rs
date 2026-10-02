@@ -163,6 +163,8 @@ fn layout_region(
 ) -> (Vec<Item>, f64) {
     let mut items = Vec::new();
     let mut y = 0.0;
-    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 0, None);
+    // A header is a block container of its own, so its content starts at 1 -
+    // the same budget the reader counted it against, and not a fresh zero.
+    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 1, None);
     (items, y)
 }

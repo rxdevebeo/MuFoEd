@@ -58,16 +58,23 @@ struct RawRow {
 }
 
 /// Lays out a table into per-row flows.
+///
+/// `depth` is the number of block containers already open; a cell's content is
+/// one level deeper.
 #[must_use]
 pub(crate) fn layout_table(
     ctx: &LayoutContext<'_>,
     table: &Table,
     content_left: f64,
     content_width: f64,
+    depth: u32,
 ) -> Vec<Flow> {
     let scale = ctx.options.scale;
     let column_count = column_count(table);
     if column_count == 0 {
+        return Vec::new();
+    }
+    if depth.saturating_add(1) > ctx.options.limits.max_block_nesting {
         return Vec::new();
     }
     let widths = column_widths(ctx, table, column_count, content_width);
@@ -89,7 +96,7 @@ pub(crate) fn layout_table(
             let margins = effective_margins(ctx, table, row, cell);
             let content_width = (width - margins.0 - margins.1).max(1.0);
             let (items, content_height) =
-                layout_cell_content(ctx, &cell.blocks, x + margins.0, content_width);
+                layout_cell_content(ctx, &cell.blocks, x + margins.0, content_width, depth + 1);
             let height = content_height + margins.2 + margins.3;
             max_content = max_content.max(height);
             cells.push(RawCell {
@@ -306,14 +313,26 @@ fn layout_cell_content(
     blocks: &[Block],
     left: f64,
     width: f64,
+    depth: u32,
 ) -> (Vec<Item>, f64) {
     let mut items = Vec::new();
     let mut y = 0.0;
-    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 0, None);
+    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, depth, None);
     (items, y)
 }
 
 /// Stacks blocks vertically (used inside cells; page breaks are ignored).
+///
+/// `depth` is how many block containers are already open above this point. It
+/// was a literal `0` at three of the four call sites before AUD-05, so the
+/// `depth > 8` guard counted from the nearest cell rather than from the
+/// document: a text box inside a table cell inside a table looked like depth 1
+/// however deep the document was, and eight of them overflowed a 1 MiB stack.
+///
+/// Exceeding the bound is an error rather than a silent `return`: the caller
+/// that has a `Result` reports `RenderError::LimitExceeded`, and the ones that
+/// do not (`layout_cell_content`, `layout_table`) are themselves under a caller
+/// that does.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_blocks_inline(
     ctx: &LayoutContext<'_>,
@@ -322,12 +341,13 @@ pub(crate) fn layout_blocks_inline(
     width: f64,
     y: &mut f64,
     items: &mut Vec<Item>,
-    depth: usize,
+    depth: u32,
     note_marker: Option<&str>,
 ) {
-    if depth > 8 {
+    if depth > ctx.options.limits.max_block_nesting {
         return;
     }
+    ctx.set_block_depth(depth);
     for block in blocks {
         match block {
             Block::Paragraph(para) => {
@@ -368,7 +388,7 @@ pub(crate) fn layout_blocks_inline(
                 *y += flow.space_after;
             }
             Block::Table(table) => {
-                for flow in layout_table(ctx, table, left, width) {
+                for flow in layout_table(ctx, table, left, width, depth) {
                     if let Flow::Block {
                         items: block_items,
                         height,

@@ -181,6 +181,84 @@ fn depth_limit_is_enforced_without_panic() {
     );
 }
 
+/// `depth` tables, each holding the next in its only cell.
+fn tables(depth: usize) -> String {
+    let mut out = String::new();
+    for _ in 0..depth {
+        out.push_str("<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc>");
+    }
+    out.push_str("<w:p/>");
+    for _ in 0..depth {
+        out.push_str("</w:tc></w:tr></w:tbl><w:p/>");
+    }
+    out
+}
+
+#[test]
+fn block_nesting_is_bounded_by_its_own_limit_not_by_xml_depth() {
+    // Twelve tables are thirty-odd XML elements per level - far inside
+    // `max_xml_depth` of 256 - and they used to be accepted at any depth, which
+    // is how forty of them overflowed a 1 MiB stack. The bound is its own field
+    // because the two answer different questions.
+    let twelve = parse_with_limits(&document_parts(&tables(12), &[]), ResourceLimits::default())
+        .expect("twelve tables fit the default budget");
+    assert!(
+        matches!(twelve.body.blocks.first(), Some(Block::Table(_))),
+        "the body opens with the outermost table: {:?}",
+        twelve.body.blocks.len()
+    );
+
+    let limits = ResourceLimits {
+        max_block_nesting: 4,
+        ..ResourceLimits::default()
+    };
+    let result = parse_with_limits(&document_parts(&tables(5), &[]), limits);
+    match result {
+        Err(StrictError::LimitExceeded {
+            kind: LimitKind::BlockNesting,
+            limit,
+            actual,
+        }) => assert_eq!((limit, actual), (4, 5)),
+        other => panic!("expected BlockNesting, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_block_counter_is_shared_across_container_kinds() {
+    // A table and a content control in rotation: six of each is twelve levels
+    // and fits. Two independent counters would let twenty-four through.
+    let mut body = String::new();
+    for _ in 0..6 {
+        body.push_str("<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc><w:sdt><w:sdtContent>");
+    }
+    body.push_str("<w:p/>");
+    for _ in 0..6 {
+        body.push_str("</w:sdtContent></w:sdt></w:tc></w:tr></w:tbl><w:p/>");
+    }
+    parse_with_limits(&document_parts(&body, &[]), ResourceLimits::default())
+        .expect("twelve levels of mixed containers fit");
+
+    let mut too_deep = String::new();
+    for _ in 0..7 {
+        too_deep.push_str("<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc><w:sdt><w:sdtContent>");
+    }
+    too_deep.push_str("<w:p/>");
+    for _ in 0..7 {
+        too_deep.push_str("</w:sdtContent></w:sdt></w:tc></w:tr></w:tbl><w:p/>");
+    }
+    let result = parse_with_limits(&document_parts(&too_deep, &[]), ResourceLimits::default());
+    assert!(
+        matches!(
+            result,
+            Err(StrictError::LimitExceeded {
+                kind: LimitKind::BlockNesting,
+                ..
+            })
+        ),
+        "the thirteenth level must be refused, got {result:?}"
+    );
+}
+
 #[test]
 fn truncated_document_is_an_error_not_a_panic() {
     let document = format!("<w:document xmlns:w=\"{W_NS}\"><w:body><w:p><w:r><w:t>x").into_bytes();

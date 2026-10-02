@@ -88,7 +88,29 @@ impl PartParser<'_> {
     }
 
     /// Dispatches one block element (start already consumed) into `blocks`.
+    ///
+    /// Every block-level element in the document arrives here - body children,
+    /// table-cell children, the children of a structured document tag - so this
+    /// is the one place where block nesting can be counted for all of them
+    /// without each parser remembering to.
     pub(crate) fn parse_block_element_into(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        blocks: &mut Vec<Block>,
+        sections: &mut Vec<Section>,
+    ) -> Result<()> {
+        if PartParser::counts_block_nesting(name) {
+            return self.nested_block(|parser| {
+                parser.dispatch_block_element(name, attrs, blocks, sections)
+            });
+        }
+        self.dispatch_block_element(name, attrs, blocks, sections)
+    }
+
+    /// The body of [`parse_block_element_into`](Self::parse_block_element_into),
+    /// with the nesting count already opened by the caller.
+    fn dispatch_block_element(
         &mut self,
         name: &QName,
         attrs: &[Attr],

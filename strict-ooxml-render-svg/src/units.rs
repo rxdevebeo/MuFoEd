@@ -57,6 +57,25 @@ pub fn finite(value: f64) -> f64 {
     }
 }
 
+/// Converts a float to `i64`, saturating instead of trapping.
+///
+/// `f64 as i64` saturates too, but it is unspecified whether a value outside the
+/// range saturates or is undefined, and it maps `NaN` to `0` without saying so.
+/// G-2 of the rework plan requires one named function for every `f64 → целое`
+/// conversion of a value derived from input, and this is it: `NaN` becomes `0`,
+/// `+∞` becomes [`i64::MAX`], `-∞` becomes [`i64::MIN`], and everything else
+/// truncates toward zero and saturates.
+///
+/// Also re-exported by `strict-ooxml-render-pdf`, which converts the same kind
+/// of numbers on the same page and must not invent a second rule.
+#[must_use]
+pub fn to_i64_saturating(value: f64) -> i64 {
+    if value.is_nan() {
+        return 0;
+    }
+    value.clamp(i64::MIN as f64, i64::MAX as f64) as i64
+}
+
 /// Formats a number deterministically (millipixel precision, no `-0`).
 ///
 /// Non-finite values render as `0`. Integers render without a decimal part.
@@ -80,7 +99,9 @@ pub fn fmt_num(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{eighths_point_to_px, emu_to_px, fmt_num, half_points_to_px, twips_to_px};
+    use super::{
+        eighths_point_to_px, emu_to_px, fmt_num, half_points_to_px, to_i64_saturating, twips_to_px,
+    };
 
     #[test]
     fn conversions_at_96_dpi() {
@@ -100,5 +121,23 @@ mod tests {
         assert_eq!(fmt_num(f64::NAN), "0");
         assert_eq!(fmt_num(f64::INFINITY), "0");
         assert_eq!(fmt_num(-0.0004), "0");
+    }
+
+    #[test]
+    fn to_i64_saturating_is_total() {
+        assert_eq!(to_i64_saturating(0.0), 0);
+        assert_eq!(to_i64_saturating(-0.0), 0);
+        assert_eq!(to_i64_saturating(12.9), 12);
+        assert_eq!(to_i64_saturating(-12.9), -12);
+        assert_eq!(to_i64_saturating(f64::NAN), 0);
+        assert_eq!(to_i64_saturating(f64::INFINITY), i64::MAX);
+        assert_eq!(to_i64_saturating(f64::NEG_INFINITY), i64::MIN);
+        assert_eq!(to_i64_saturating(f64::MAX), i64::MAX);
+        assert_eq!(to_i64_saturating(f64::MIN), i64::MIN);
+        assert_eq!(to_i64_saturating(i64::MAX as f64), i64::MAX);
+        // The boundary of saturation, not of the conversion: one ULP above
+        // `i64::MAX as f64` rounds back down, and the clamp is what makes the
+        // answer the same either way.
+        assert_eq!(to_i64_saturating(i64::MAX as f64 + 1.0), i64::MAX);
     }
 }

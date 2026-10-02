@@ -56,6 +56,23 @@ pub struct ResourceLimits {
     pub max_rel_depth: u32,
     /// Maximum number of accessible package parts. Default: 4096.
     pub max_parts: usize,
+    /// Maximum nesting of block containers. Default: 12.
+    ///
+    /// A *block container* is an element whose children are themselves blocks:
+    /// `w:tbl`, a block-level `w:sdt`, `w:customXml`, `w:txbxContent`, a
+    /// `w:footnote`/`w:endnote`/`w:comment` body, and `w:hdr`/`w:ftr`.
+    ///
+    /// This is not [`max_xml_depth`](Self::max_xml_depth) and it exists because
+    /// 256 is far past what the stack can take: a table cell is roughly seven
+    /// XML elements deep, so 256 XML levels is about 36 nested tables - which
+    /// overflowed a 1 MiB stack, and 1 MiB is the main thread on Windows. Word
+    /// itself draws a nested-table hierarchy as a flat one past a couple of
+    /// levels, so no real document is refused by 12.
+    ///
+    /// Exceeding it is `LimitKind::BlockNesting` and refuses the whole document:
+    /// a document nested that deeply is hostile input, not a document with a
+    /// difficult corner.
+    pub max_block_nesting: u32,
 }
 
 impl Default for ResourceLimits {
@@ -71,6 +88,7 @@ impl Default for ResourceLimits {
             max_text_len: 64 * 1024 * 1024,
             max_rel_depth: 32,
             max_parts: 4096,
+            max_block_nesting: 12,
         }
     }
 }
@@ -92,6 +110,7 @@ mod tests {
         assert_eq!(limits.max_text_len, 64 * 1024 * 1024);
         assert_eq!(limits.max_rel_depth, 32);
         assert_eq!(limits.max_parts, 4096);
+        assert_eq!(limits.max_block_nesting, 12);
     }
 
     #[test]

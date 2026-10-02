@@ -371,6 +371,15 @@ pub fn write_package(
     options: &WriteOptions,
 ) -> Result<WriteOutput> {
     let source = source.unwrap_or(&NoSource);
+    // Before anything is serialized: a model nested past the block budget would
+    // recurse the serializer as deep as the model goes, and the reader that
+    // produced it would never have let it exist. A model built in code has had no
+    // such reader, so this is the first place that can say no (AUD-05 п.3).
+    crate::body::check_block_nesting(&document.body.blocks, options.limits.max_block_nesting)
+        .map_err(|error| StrictError::Write {
+            part: PartId::new(MAIN_DOCUMENT),
+            detail: error.to_string(),
+        })?;
     let mut report = crate::WriteReport::new();
     let mut ctx = Ctx::new(&mut report);
 

@@ -31,6 +31,22 @@ const ENDNOTE_SEPARATOR_GAP: f64 = 8.0;
 
 /// Lays out the whole document into pages.
 pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
+    // The model's block nesting, checked before a single item is placed (AUD-05
+    // п.2). A `Document` built in code never met the reader's bound, so this is
+    // the only place the renderer can refuse one; and the check has to come
+    // before the layout because the layout's own depth guard answers an
+    // over-deep document by laying out less of it, which is a wrong page rather
+    // than a wrong answer.
+    strict_ooxml_wml::nesting::check_document_with(ctx.document, &ctx.options.limits).map_err(
+        |exceeded| {
+            crate::error::RenderError::LimitExceeded {
+                what: "block nesting",
+                limit: u64::from(exceeded.limit),
+                actual: u64::from(exceeded.actual),
+            }
+            .into_strict()
+        },
+    )?;
     // First pass: count pages. If no computed field is present, it is final.
     let (layout, has_fields) = layout_once(ctx, 1)?;
     if !has_fields {
@@ -83,11 +99,22 @@ fn layout_blocks(
     blocks: &[Block],
     width: f64,
     paginator: &mut Paginator<'_>,
-    depth: usize,
+    depth: u32,
 ) -> Result<()> {
-    if depth > 16 {
-        return Ok(());
+    // The page body is depth 0; a content control inside it is 1, and a table
+    // cell inside that is 2. The bound is the reader's, checked up front in
+    // `layout_document`; this arm is the layout's own guard, and it stays
+    // because a future container the model walk does not know about would
+    // otherwise have nothing between it and the stack.
+    if depth > ctx.options.limits.max_block_nesting {
+        return Err(crate::error::RenderError::LimitExceeded {
+            what: "block nesting",
+            limit: u64::from(ctx.options.limits.max_block_nesting),
+            actual: u64::from(depth),
+        }
+        .into_strict());
     }
+    ctx.set_block_depth(depth);
     let left = paginator.geometry.left;
     let grid = paginator.geometry.grid_line_pitch;
     // The space between two paragraphs is the **larger** of the first's
@@ -148,7 +175,7 @@ fn layout_blocks(
                 }
             }
             Block::Table(table) => {
-                let flows = layout_table(ctx, table, left, width);
+                let flows = layout_table(ctx, table, left, width, depth);
                 paginator.set_table_headers(&flows);
                 for flow in flows {
                     paginator.place(flow)?;
@@ -197,12 +224,16 @@ fn append_endnotes(ctx: &LayoutContext<'_>, paginator: &mut Paginator<'_>) -> Re
             .endnote_number(id)
             .map(|(number, format)| format.format(number))
             .unwrap_or_default();
-        append_note_blocks(ctx, &note.blocks, left, width, &marker, paginator)?;
+        append_note_blocks(ctx, &note.blocks, left, width, &marker, paginator, 1)?;
     }
     Ok(())
 }
 
 /// Appends one endnote's blocks to the flow.
+///
+/// `depth` starts at 1: an endnote body is a block container of its own, and a
+/// table inside it nests from there rather than from the page.
+#[allow(clippy::too_many_arguments)]
 fn append_note_blocks(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
@@ -210,7 +241,17 @@ fn append_note_blocks(
     width: f64,
     marker: &str,
     paginator: &mut Paginator<'_>,
+    depth: u32,
 ) -> Result<()> {
+    if depth > ctx.options.limits.max_block_nesting {
+        return Err(crate::error::RenderError::LimitExceeded {
+            what: "block nesting",
+            limit: u64::from(ctx.options.limits.max_block_nesting),
+            actual: u64::from(depth),
+        }
+        .into_strict());
+    }
+    ctx.set_block_depth(depth);
     let grid = paginator.geometry.grid_line_pitch;
     for block in blocks {
         match block {
@@ -223,12 +264,12 @@ fn append_note_blocks(
                 paginator.add_vspace(flow.space_after);
             }
             Block::Table(table) => {
-                for flow in layout_table(ctx, table, left, width) {
+                for flow in layout_table(ctx, table, left, width, depth) {
                     paginator.place(flow)?;
                 }
             }
             Block::SdtBlock(sdt) => {
-                append_note_blocks(ctx, &sdt.blocks, left, width, marker, paginator)?;
+                append_note_blocks(ctx, &sdt.blocks, left, width, marker, paginator, depth + 1)?;
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }

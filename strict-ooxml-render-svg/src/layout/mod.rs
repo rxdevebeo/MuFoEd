@@ -374,6 +374,29 @@ pub(crate) struct LayoutContext<'a> {
     pub note_numbers: crate::notes::NoteNumbering,
     /// List numbering markers by paragraph location.
     pub numbering: crate::numbering::NumberingMarkers,
+    /// How many block containers are open where the painter will next look.
+    ///
+    /// The depth travels as a parameter through `layout_blocks_inline`,
+    /// `layout_table` and `layout_cell_content`, and it is *also* published here
+    /// because one recursion does not go through them: a text box is laid out from
+    /// the paint stage (`paint::graphics::anchor_items`), which is reached from
+    /// paragraph layout and would otherwise need the depth threaded through every
+    /// inline painter to reach it. One number, written at the one place that owns
+    /// the recursion and read where the parameter is not in scope, is better than
+    /// a second, drifting copy of it in each painter.
+    pub(crate) block_depth: std::cell::Cell<u32>,
+}
+
+impl LayoutContext<'_> {
+    /// Records how deep the block recursion is for callers reached from paint.
+    pub(crate) fn set_block_depth(&self, depth: u32) {
+        self.block_depth.set(depth);
+    }
+
+    /// The depth recorded by [`set_block_depth`](Self::set_block_depth).
+    pub(crate) fn block_depth(&self) -> u32 {
+        self.block_depth.get()
+    }
 }
 
 impl LayoutContext<'_> {

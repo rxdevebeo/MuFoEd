@@ -608,6 +608,17 @@ pub(crate) struct PartParser<'a> {
     pub(crate) media: MediaIndex,
     pub(crate) max_depth: u32,
     pub(crate) depth: u32,
+    /// Deepest block-container nesting seen so far, and the bound it is held to.
+    ///
+    /// Kept apart from [`depth`](Self::depth) on purpose: `depth` counts XML
+    /// elements the parser recursed through, and a table cell is seven of them
+    /// before the next table starts. A document of 40 nested tables is 280 XML
+    /// levels - past `max_xml_depth`, but the overflow happens long before that,
+    /// because each level is a stack frame of parser state. This counter counts
+    /// the containers themselves, and 12 of them is what a 1 MiB stack (the main
+    /// thread on Windows) takes with room to spare.
+    pub(crate) block_depth: u32,
+    pub(crate) max_block_nesting: u32,
     /// `w:gutterAtTop` seen inside a `w:sectPr`, where Transitional puts it.
     ///
     /// Strict has no slot for it there - `EG_SectPrContents` does not declare it
@@ -640,6 +651,8 @@ impl<'a> PartParser<'a> {
             media: MediaIndex::new(),
             max_depth,
             depth: 0,
+            block_depth: 0,
+            max_block_nesting: limits.max_block_nesting,
             section_gutter_at_top: false,
         })
     }
@@ -777,6 +790,49 @@ impl<'a> PartParser<'a> {
                 XmlEvent::Text(_) | XmlEvent::CData(_) => {}
             }
         }
+    }
+
+    /// Runs `f` inside one level of block nesting.
+    ///
+    /// The counter is left alone on every path out, so a part that fails
+    /// half-way through does not leave the parser deeper than it found it — the
+    /// same property [`enter`/`leave`](Self::nested) has to earn by hand.
+    ///
+    /// The check is on entry and the error is for the whole document rather than
+    /// a skipped subtree: a document nested past the limit is hostile input, and
+    /// silently flattening its tables would be a report nobody reads.
+    pub(crate) fn nested_block<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        let depth = self.block_depth.saturating_add(1);
+        if depth > self.max_block_nesting {
+            return Err(StrictError::LimitExceeded {
+                kind: strict_ooxml_core::error::LimitKind::BlockNesting,
+                limit: u64::from(self.max_block_nesting),
+                actual: u64::from(depth),
+            });
+        }
+        self.block_depth = depth;
+        let out = f(self);
+        self.block_depth = self.block_depth.saturating_sub(1);
+        out
+    }
+
+    /// Whether `name` opens a container whose children are themselves blocks.
+    ///
+    /// The list is what [`PartParser::nested_block`] counts. `w:sdt` is here
+    /// rather than `w:sdtContent` because the count is taken at block dispatch,
+    /// where the two are the same element; a row-level or cell-level `w:sdt`
+    /// holds rows and cells, not blocks, and is dispatched elsewhere.
+    ///
+    /// `w:comment` is listed by the plan and absent from the table because no
+    /// `comments.xml` is read yet (`CORE-QUEUE.md`): there is no recursion to
+    /// count. `v:textbox` is absent for the same reason from the other side -
+    /// the normalizer rewrites VML to DrawingML, and an unnormalized VML shape
+    /// is skipped whole.
+    pub(crate) fn counts_block_nesting(name: &QName) -> bool {
+        matches!(
+            name.local(),
+            "tbl" | "sdt" | "customXml" | "txbxContent" | "footnote" | "endnote"
+        )
     }
 
     /// Recursion guard: rejects input deeper than the configured XML limit.

@@ -6,8 +6,32 @@ use strict_ooxml_wml::model::values::{BreakKind, Space};
 
 use crate::ctx::Ctx;
 use crate::props::{cell_properties, paragraph_properties, row_properties, table_properties};
-use crate::xml::XmlWriter;
+use crate::xml::{WriteError, XmlWriter};
 
+/// Checks the model against the writer's block-nesting budget.
+///
+/// The walk itself lives in the crate that owns the model
+/// ([`strict_ooxml_wml::nesting`]), because the reader counts the same
+/// containers on the way in and three implementations of one rule would
+/// eventually disagree - and a writer that is more permissive than its reader
+/// produces a package the reader refuses.
+///
+/// A separate walk rather than a counter inside [`blocks`]: the serializer
+/// returns `()` and its arms are twenty deep, so threading a `Result` through
+/// them would touch every call site to add a check the value cannot reach.
+///
+/// # Errors
+///
+/// Returns [`WriteError::BlockNesting`] when `blocks` nests a block container
+/// deeper than `limit`.
+pub fn check_block_nesting(blocks: &[Block], limit: u32) -> Result<(), WriteError> {
+    strict_ooxml_wml::nesting::check_blocks(blocks, limit).map_err(|exceeded| {
+        WriteError::BlockNesting {
+            limit: exceeded.limit,
+            actual: exceeded.actual,
+        }
+    })
+}
 /// Writes a sequence of block-level items.
 pub fn blocks(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, blocks: &[Block]) {
     for block in blocks {

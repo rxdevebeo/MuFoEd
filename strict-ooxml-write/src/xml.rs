@@ -387,6 +387,18 @@ pub enum WriteError {
     DepthExceeded(usize),
     /// An element was left open when the part was finished.
     Unbalanced(usize),
+    /// The model nested block containers deeper than the budget.
+    ///
+    /// Not `DepthExceeded`: that one counts XML elements the serializer opened,
+    /// this one counts `w:tbl`, block-level `w:sdt` and text boxes in the model -
+    /// the same containers [`ResourceLimits::max_block_nesting`] bounds on the
+    /// way in, checked here because a model built in code never met the reader.
+    BlockNesting {
+        /// Configured bound.
+        limit: u32,
+        /// Observed nesting.
+        actual: u32,
+    },
 }
 
 impl Display for WriteError {
@@ -396,6 +408,10 @@ impl Display for WriteError {
                 write!(f, "XML nesting deeper than the writer budget of {limit}")
             }
             Self::Unbalanced(open) => write!(f, "{open} XML element(s) left open"),
+            Self::BlockNesting { limit, actual } => write!(
+                f,
+                "block nesting {actual} deeper than the budget of {limit}"
+            ),
         }
     }
 }

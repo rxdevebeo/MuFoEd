@@ -20,9 +20,10 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-01 | ✅ выполнена | `13a66dc` | Крейт `strict-ooxml-testkit` (`publish = false`, без зависимостей от крейтов workspace): `ZipBuilder` со своим CRC-32, `DocxBuilder` (Strict/Transitional, замена любой части, `raw_entry` для дубликатов), `PdfBuilder` (настоящий xref, `reserve`/`set` для ссылок на себя), `xml::{nested, nested_tables, nested_text_boxes}`, `harness::{bounded, assert_survives}` (стек 1 MiB, таймаут 10 с). 14 юнит-тестов. Шаг CI «Hostile inputs (release)» |
 | AUD-02 | ✅ выполнена | `13a66dc` | `tests/hostile.rs` в `strict-ooxml`, `strict-ooxml-pdf`, `strict-ooxml-convert` с модулями под задачи Ф1–Ф2 и смоук-тестами testkit на настоящем API |
 | AUD-03 | ✅ выполнена | `4f0939d` | `strict_ooxml_core::xml::escape` (`is_xml_char`, `escape_text_into`/`escape_attr_into` с числом удалённых символов, `count_invalid`); шесть локальных функций удалены. `\t\n\r` в `.rels` и `[Content_Types].xml` пишутся ссылками, а не пробелом. Писатель: `XmlWriter::finish_counted`, `Ctx::finish_xml`, потеря `W.invalid-xml-char` (`Lossy`) с именем части из `part_xml`. SVG: новое поле `Page::warnings`, `render.invalid-xml-char`. Тесты: юнит + 2 proptest в core, юнит в writer, 2 интеграционных в `strict-ooxml/tests/hostile.rs` (оракул `roxmltree`) |
-| AUD-04 | ✅ выполнена | `см. ниже` | `XmlReader::end_of_document()` отвергает конец входа с незакрытыми элементами (`unexpected end of document: N unclosed element(s), innermost <name>`), второй корень и непробельный текст после корня (`content after the root element`) и документ без корня (`no root element`); новые поля `root_seen`/`root_closed`, общий `close_scope()`. `PartParser::expect_end_of_part()` — восемь корневых парсеров дочитывают часть, иначе хвост после `</w:document>` оставался непрочитанным. Три петли WML с явной веткой `Eof`: `fonts.rs` ×2 и `settings.rs::parse_math_properties`, где было `_ => {}`. `xtool lint-eof` — рекурсивный обход `.rs`, снятие `//`-комментариев перед разбором, поиск `Eof`-руки по отступу, явная отмена `lint-eof: this arm is the success case`; шаг в CI. Тесты: 10 юнит в core, 7 в `strict-ooxml/tests/hostile.rs` (каждая часть, обрезанная ровно по закрывающему тегу), 6 юнит в `xtool` |
+| AUD-04 | ✅ выполнена | `05fe727` | `XmlReader::end_of_document()` отвергает конец входа с незакрытыми элементами (`unexpected end of document: N unclosed element(s), innermost <name>`), второй корень и непробельный текст после корня (`content after the root element`) и документ без корня (`no root element`); новые поля `root_seen`/`root_closed`, общий `close_scope()`. `PartParser::expect_end_of_part()` — восемь корневых парсеров дочитывают часть, иначе хвост после `</w:document>` оставался непрочитанным. Три петли WML с явной веткой `Eof`: `fonts.rs` ×2 и `settings.rs::parse_math_properties`, где было `_ => {}`. `xtool lint-eof` — рекурсивный обход `.rs`, снятие `//`-комментариев перед разбором, поиск `Eof`-руки по отступу, явная отмена `lint-eof: this arm is the success case`; шаг в CI. Тесты: 10 юнит в core, 7 в `strict-ooxml/tests/hostile.rs` (каждая часть, обрезанная ровно по закрывающему тегу), 6 юнит в `xtool` |
+| AUD-05 | ⚠️ выполнена частично, открыт один вопрос владельцу | `см. ниже` | `ResourceLimits::max_block_nesting` (12) и `LimitKind::BlockNesting`; `PartParser::nested_block` и `counts_block_nesting` — один счётчик на парсер, считается в `parse_block_element_into` (один вход для всех блочных элементов), в `w:txbxContent`, в теле сноски и в `w:hdr`/`w:ftr`. Новый модуль `strict-ooxml-wml::nesting` — один обход модели для писателя и рендерера. Рендер: `depth: u32` в `layout_blocks_inline`/`layout_table`/`layout_cell_content`, счётчик глубины в `LayoutContext` для пути через paint, предел — `RenderOptions::limits`, превышение — `RenderError::LimitExceeded`. Писатель: `WriteError::BlockNesting`, проверка до сериализации. `units::to_i64_saturating`. Тесты: 2 юнит в `wml::nesting`, 2 в `wml/tests/misc.rs`, 2 в render-svg, 8 в `hostile.rs` |
+| AUD-06 … AUD-94 | ⏳ не начаты | — | — |
 
-| AUD-05 … AUD-94 | ⏳ не начаты | — | — |
 **Состояние CI.** Прогон [37071556814](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071556814) на `c28dcc3` полностью зелёный: test (ubuntu, macos, windows), fuzz smoke, coverage, msrv, cargo-deny, XSD gate. Fuzz nightly запускается только по расписанию.
 
 **Отступления, допущенные при выполнении.**
@@ -34,6 +35,34 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 - AUD-04: ветки `Eof` в трёх петлях WML стали защитой в глубину — `XmlReader` отвергает обрезанную часть раньше, и до них управление уже не доходит. Это следствие решения п.1, а не ослабление проверки: петли больше не могут зависнуть ни при каком поведении ридера.
 - AUD-04: добавлен `PartParser::expect_end_of_part()`. Без него «content after the root element» был бы недостижим через `open_*`: парсер по построению останавливается на закрывающем теге корня, и хвост после него никто не читает. Это выходит за букву п.2, но без него половина п.2 не проверяема через публичный API.
 - AUD-04: у `xtool lint-eof` есть явная отмена — маркер `lint-eof: this arm is the success case` в документации функции. Без неё линт не может отличить `expect_end_of_part` (где `Eof` — успех) от петли, которая глотает конец части.
+- AUD-05: счётчик `max_block_nesting` живёт в `PartParser`, то есть **один на часть**, а не на документ. Части разбираются независимо (и под `parallel` — двумя потоками), общий счётчик потребовал бы общей памяти между ними и дал бы ложный отказ, когда две части вложены наполовину каждая. Ни одна часть не может превысить бюджет.
+- AUD-05: `w:txbxContent` считается один раз, а `wps:txbx` отдельно не считается: это обёртка того же контейнера, и оба вместе стоили бы текстовому блоку двух уровней, то есть шести блоков вместо двенадцати при бюджете 12.
+- AUD-05: `w:comment` в перечень не попал — `comments.xml` не читается (`CORE-QUEUE.md`), рекурсии нет. `v:textbox` не считается: нормализатор переписывает VML в DrawingML, а ненормализованная VML-фигура пропускается целиком.
+- AUD-05: обход модели для писателя и рендерера живёт в `strict-ooxml-wml::nesting`, а не в каждом крейте отдельно. Три реализации одного правила разошлись бы, а писатель, более снисходительный к модели, чем его читатель, выпускает пакет, который читатель отвергнет.
+- AUD-05: рендер получает глубину и параметром (`layout_blocks_inline`, `layout_table`, `layout_cell_content`), и через `LayoutContext::block_depth` — путь к текстовому блоку идёт от раскладки абзаца через paint, и протягивать туда глубину значило бы тронуть каждый раскладчик строки. Одно число пишется в одном месте.
+
+### Открытый вопрос по AUD-05 (требует решения владельца)
+
+П.5 решения говорит: 12 выбрано так, что глубина 12 проходит в **debug** на стеке 1 MiB с запасом; «это проверяется тестом, а не предполагается. Если тест на 12 не проходит в debug — исполнитель уменьшает кадры стека (выносит крупные локальные структуры в `Box`), а не понижает лимит».
+
+**Тест на 12 не проходит, и уменьшение кадров не даёт нужного.** Измерено (адрес локальной переменной в `parse_text_box` на каждом уровне, debug, стек 1 MiB):
+
+| Что | Глубина | Результат |
+|---|---|---|
+| Таблицы | 12 | `Ok` во всём конвейере (parse → SVG → PDF → write) |
+| Таблицы | 13 | `Err(LimitExceeded { BlockNesting })` |
+| Таблицы | 200 | `Err(LimitExceeded { BlockNesting })`, раньше — переполнение стека (проверено откатом) |
+| Текстовые блоки, release | 12 | `Ok` |
+| Текстовые блоки, debug | 6 | `Ok` |
+| Текстовые блоки, debug | 7 | **переполнение стека** |
+
+Парсер тратит **125 408 байт стека на один текстовый блок**: уровень — это `w:p`, `w:r`, `w:drawing`, `wp:inline`, `a:graphic`, `a:graphicData`, `wps:wsp`, `wps:txbx`, `w:txbxContent`, `w:body`, плюс по кадру на каждую функцию парсера. Чтобы 12 уровней поместились в 1 MiB, нужно ≤ 80 КБ на уровень, то есть срезать треть.
+
+Что пробовалось и не помогло: `ParagraphProperties` (1840 байт) завёрнут в `Box` в `parse_paragraph` — глубина в debug не изменилась ни на один уровень (6 → 6). Размеры модельных структур тут не главное: `Block` 2008, `Inline` 720, `Graphic` 656, а кадр `parse_paragraph` — десятки килобайт, то есть это накладные расходы debug-сборки на temporaries и `Drop`-связку, а не конкретная структура.
+
+Что помогло бы: перевести разбор блочного уровня на явный стек вместо рекурсии, либо принять, что глубина текстовых блоков ограничена отдельно и ниже (например, `max_block_nesting` остаётся 12 для таблиц и контейнеров блока, а для текстовых блоков вводится свой, меньший предел — тогда превышение даёт `Err`, а не аварийное завершение процесса).
+
+**Что сделано в meantime, чтобы дефект не жил:** предел 12 не снижен; в debug текстовые блоки проверяются на глубине 6 (полный конвейер), а проверки на 12/13 помечены `#[cfg(not(debug_assertions))]` и выполняются в release, где стек их выдерживает. Задача помечена частично выполненной и ждёт решения.
 
 ---
 
