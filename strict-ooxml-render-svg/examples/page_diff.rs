@@ -49,6 +49,7 @@
 use std::path::{Path, PathBuf};
 
 use strict_ooxml_core::opc::{OpenOptions, Package};
+use strict_ooxml_fidelity::Gray;
 use strict_ooxml_render_svg::{render_with_media, Page, RenderOptions};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
@@ -79,55 +80,18 @@ fn reference_pages(dir: &Path) -> Vec<PathBuf> {
     pages
 }
 
-/// Decodes a PNG into `(width, height, grayscale)` — the gate's decode, copied
-/// because it is ten lines and an example cannot import a test file.
-fn load_png_gray(path: &Path) -> (u32, u32, Vec<f64>) {
-    let file = std::io::BufReader::new(std::fs::File::open(path).expect("open reference png"));
-    let mut reader = png::Decoder::new(file).read_info().expect("read png info");
-    let mut buffer = vec![
-        0u8;
-        reader
-            .output_buffer_size()
-            .expect("png output size is known")
-    ];
-    let info = reader.next_frame(&mut buffer).expect("decode png frame");
-    assert_eq!(
-        info.bit_depth,
-        png::BitDepth::Eight,
-        "reference must be 8-bit"
-    );
-    let (width, height) = (info.width, info.height);
-    let pixels = (width * height) as usize;
-    let mut out = Vec::with_capacity(pixels);
-    for index in 0..pixels {
-        let (r, g, b) = match info.color_type {
-            png::ColorType::Rgb => (
-                buffer[index * 3],
-                buffer[index * 3 + 1],
-                buffer[index * 3 + 2],
-            ),
-            png::ColorType::Rgba => (
-                buffer[index * 4],
-                buffer[index * 4 + 1],
-                buffer[index * 4 + 2],
-            ),
-            png::ColorType::Grayscale => {
-                let value = buffer[index];
-                (value, value, value)
-            }
-            png::ColorType::GrayscaleAlpha => {
-                let value = buffer[index * 2];
-                (value, value, value)
-            }
-            png::ColorType::Indexed => panic!("indexed reference PNG is unsupported"),
-        };
-        out.push((0.2126 * f64::from(r) + 0.7152 * f64::from(g) + 0.0722 * f64::from(b)) / 255.0);
-    }
-    (width, height, out)
+/// Decodes a PNG into a [`Gray`] page — the gate's decode.
+///
+/// It is `strict_ooxml_fidelity::load_png_gray` and not a copy of it: this tool
+/// exists to be read next to the gate's numbers, and a tool that decodes a
+/// reference slightly differently from the gate that judged it is a tool whose
+/// pictures and its numbers disagree.
+fn load_png_gray(path: &Path) -> Gray {
+    strict_ooxml_fidelity::load_png_gray(path).unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// Rasterizes our SVG at the reference's resolution, through `resvg`.
-fn rasterize_gray(svg: &str, width: u32, height: u32, fonts: &Path) -> Vec<f64> {
+fn rasterize_gray(svg: &str, width: u32, height: u32, fonts: &Path) -> Gray {
     let mut options = resvg::usvg::Options::default();
     options.fontdb_mut().load_fonts_dir(fonts);
     let tree = resvg::usvg::Tree::from_str(svg, &options).expect("parse our SVG");
@@ -138,27 +102,21 @@ fn rasterize_gray(svg: &str, width: u32, height: u32, fonts: &Path) -> Vec<f64> 
         f32::from(u16::try_from(height).expect("height fits u16")) / size.height(),
     );
     resvg::render(&tree, transform, &mut pixmap.as_mut());
-    let data = pixmap.data();
-    (0..(width * height) as usize)
-        .map(|index| {
-            let alpha = u16::from(data[index * 4 + 3]);
-            let composite = |channel: u8| f64::from(u16::from(channel) + (255 - alpha));
-            let r = composite(data[index * 4]);
-            let g = composite(data[index * 4 + 1]);
-            let b = composite(data[index * 4 + 2]);
-            (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
-        })
-        .collect()
+    strict_ooxml_fidelity::from_rgba8(pixmap.data(), width as usize, height as usize)
 }
 
-fn write_gray(path: &Path, gray: &[f64], width: u32, height: u32) {
-    let mut bytes = Vec::with_capacity(gray.len() * 3);
-    for value in gray {
+fn write_gray(path: &Path, page: &Gray) {
+    let mut bytes = Vec::with_capacity(page.pixels().len() * 3);
+    for value in page.pixels() {
         let level = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
         bytes.extend_from_slice(&[level, level, level]);
     }
     let file = std::fs::File::create(path).expect("create png");
-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+    let mut encoder = png::Encoder::new(
+        std::io::BufWriter::new(file),
+        page.width() as u32,
+        page.height() as u32,
+    );
     encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
     encoder
@@ -169,46 +127,45 @@ fn write_gray(path: &Path, gray: &[f64], width: u32, height: u32) {
 }
 
 /// Both images' ink drawn over each other: red ours, blue the reference.
-fn overlay(reference: &[f64], candidate: &[f64]) -> Vec<f64> {
+fn overlay(reference: &Gray, candidate: &Gray) -> Gray {
     const INK: f64 = 0.75;
-    reference
+    let pixels = reference
+        .pixels()
         .iter()
-        .zip(candidate)
-        .map(|(reference, candidate)| {
-            let (reference, candidate) = (*reference, *candidate);
-            match (reference < INK, candidate < INK) {
+        .zip(candidate.pixels())
+        .map(
+            |(reference, candidate)| match (reference < &INK, candidate < &INK) {
                 (false, false) => 1.0,
                 (true, true) => 0.0,
                 (true, false) => 1.0 - candidate,
                 (false, true) => 1.0 - reference,
-            }
-        })
-        .collect()
+            },
+        )
+        .collect();
+    Gray::new(reference.width(), reference.height(), pixels)
 }
 
-/// The contiguous runs of rows that carry ink, as `(first, last)`, each with the
-/// columns its ink spans.
+/// The contiguous runs of rows that carry ink, as `(first, last, x0, x1)`, each
+/// with the columns its ink spans.
 ///
 /// The gate's `extent_delta` reads the first and the last of these; printing all
 /// of them, with their horizontal span, is what turns «the bottom edge is 16 px
 /// high» into «the gap between blocks is 4 px short, four times over» — and a
 /// band that is narrow tells you *which part* of the page it is.
-fn ink_bands(gray: &[f64], width: usize, height: usize) -> Vec<(usize, usize, usize, usize)> {
+fn ink_bands(page: &Gray) -> Vec<(usize, usize, usize, usize)> {
+    let (width, height) = (page.width(), page.height());
     let mut bands: Vec<(usize, usize, usize, usize)> = Vec::new();
     let mut start = None;
     let mut left = usize::MAX;
     let mut right = 0usize;
     for row in 0..height {
-        let ink = gray[row * width..(row + 1) * width]
-            .iter()
-            .enumerate()
-            .filter(|(_, value)| **value < 0.75)
-            .map(|(column, _)| column);
         let mut any = false;
-        for column in ink {
-            any = true;
-            left = left.min(column);
-            right = right.max(column);
+        for column in 0..width {
+            if page.at(column, row) < 0.75 {
+                any = true;
+                left = left.min(column);
+                right = right.max(column);
+            }
         }
         match (any, start) {
             (true, None) => {
@@ -237,14 +194,20 @@ fn band_gaps(bands: &[(usize, usize, usize, usize)]) -> Vec<usize> {
         .collect()
 }
 
-/// The ink centre of mass, the same definition the gate uses.
-fn ink_centroid(gray: &[f64], width: usize, height: usize) -> Option<(f64, f64)> {
+/// The ink centre of mass at this tool's own ink level.
+///
+/// The gate uses `INK_LEVEL = 0.5`; this tool uses 0.75 because it is looking at
+/// *shapes* as much as text, and a light fill counts as content here. The
+/// difference is stated rather than hidden, because a number printed next to the
+/// gate's numbers has to say which of them it is.
+fn ink_centroid(page: &Gray) -> Option<(f64, f64)> {
+    let (width, height) = (page.width(), page.height());
     let mut sum_x = 0.0;
     let mut sum_y = 0.0;
     let mut count = 0u64;
     for row in 0..height {
         for column in 0..width {
-            if gray[row * width + column] < 0.75 {
+            if page.at(column, row) < 0.75 {
                 sum_x += column as f64;
                 sum_y += row as f64;
                 count += 1;
@@ -308,7 +271,8 @@ fn main() {
 
 /// Writes the four files for one page and prints what the gate would measure.
 fn write_page(stem: &str, page: usize, out: &Path, references: &[PathBuf], rendered: &[Page]) {
-    let (width, height, reference) = load_png_gray(&references[page]);
+    let reference = load_png_gray(&references[page]);
+    let (width, height) = (reference.width() as u32, reference.height() as u32);
     let candidate = rasterize_gray(&rendered[page].svg, width, height, &fonts_dir());
 
     let stem = format!("{stem}-p{page}");
@@ -317,27 +281,15 @@ fn write_page(stem: &str, page: usize, out: &Path, references: &[PathBuf], rende
         rendered[page].svg.as_bytes(),
     )
     .expect("write our SVG");
-    write_gray(
-        &out.join(format!("{stem}-ref.png")),
-        &reference,
-        width,
-        height,
-    );
-    write_gray(
-        &out.join(format!("{stem}-ours.png")),
-        &candidate,
-        width,
-        height,
-    );
+    write_gray(&out.join(format!("{stem}-ref.png")), &reference);
+    write_gray(&out.join(format!("{stem}-ours.png")), &candidate);
     write_gray(
         &out.join(format!("{stem}-overlay.png")),
         &overlay(&reference, &candidate),
-        width,
-        height,
     );
 
-    let reference_bands = ink_bands(&reference, width as usize, height as usize);
-    let candidate_bands = ink_bands(&candidate, width as usize, height as usize);
+    let reference_bands = ink_bands(&reference);
+    let candidate_bands = ink_bands(&candidate);
     println!("{stem}  {width}x{height}");
     println!("  reference bands (row0, row1, x0, x1):");
     for band in &reference_bands {
@@ -349,10 +301,7 @@ fn write_page(stem: &str, page: usize, out: &Path, references: &[PathBuf], rende
         println!("    {band:?}");
     }
     println!("    gaps           : {:?}", band_gaps(&candidate_bands));
-    match (
-        ink_centroid(&reference, width as usize, height as usize),
-        ink_centroid(&candidate, width as usize, height as usize),
-    ) {
+    match (ink_centroid(&reference), ink_centroid(&candidate)) {
         (Some((rx, ry)), Some((cx, cy))) => println!(
             "  centroid: ours ({cx:.2},{cy:.2}) - reference ({rx:.2},{ry:.2}) = ({:.2},{:.2})",
             cx - rx,

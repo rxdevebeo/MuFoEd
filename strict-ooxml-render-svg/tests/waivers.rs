@@ -14,6 +14,10 @@
 //!    still exists, so a resolved problem cannot linger as an open one;
 //! 3. the `binds` targets are spelled like a target, so a typo cannot turn a
 //!    machine-checked waiver into an unchecked one.
+//!
+//! Since stage 8 there are **two** gates over the same references — the SVG one
+//! and the PDF one — so there are two bound sets and two amber registers, and
+//! both are checked here. See `CORE-QUEUE.md` §1.
 
 #![allow(clippy::uninlined_format_args)]
 
@@ -85,15 +89,85 @@ impl PolicyClass {
 #[derive(Debug, serde::Deserialize)]
 struct Policy {
     thresholds: Thresholds,
+    /// The PDF backend's own fidelity criterion. A file without one inherits the
+    /// SVG gate's, which is what `strict-ooxml-fidelity::policy` does too.
+    #[serde(default = "same_as_svg")]
+    pdf: Thresholds,
     classes: Vec<PolicyClass>,
+    #[serde(default)]
+    pdf_classes: Vec<PdfClassLimits>,
     #[serde(default)]
     page_count_only: Vec<Named>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Default, serde::Deserialize)]
 struct Thresholds {
     #[serde(default)]
     amber: Vec<String>,
+}
+
+/// A policy file with no `[pdf]` table is read as if it had the SVG gate's amber
+/// list, so a file written before the PDF gate existed still says something true.
+fn same_as_svg() -> Thresholds {
+    Thresholds::default()
+}
+
+/// One `[[pdf_classes]]` entry: the PDF backend's bounds for a class, where they
+/// differ from that class's own.
+#[derive(Debug, serde::Deserialize)]
+struct PdfClassLimits {
+    class: String,
+    #[serde(default)]
+    max_shift_px: Option<i64>,
+    #[serde(default)]
+    max_centroid_px: Option<f64>,
+    #[serde(default)]
+    min_row_correlation: Option<f64>,
+    #[serde(default)]
+    min_column_correlation: Option<f64>,
+    #[serde(default)]
+    max_extent_px: Option<f64>,
+}
+
+impl PdfClassLimits {
+    /// Whether any bound is looser than the strict default.
+    fn is_loosened(&self) -> bool {
+        self.max_shift_px
+            .is_some_and(|value| value > STRICT_MAX_SHIFT_PX)
+            || self
+                .max_centroid_px
+                .is_some_and(|value| value > STRICT_MAX_CENTROID_PX)
+            || self
+                .min_row_correlation
+                .is_some_and(|value| value < STRICT_MIN_ROW_CORRELATION)
+            || self
+                .min_column_correlation
+                .is_some_and(|value| value < STRICT_MIN_COLUMN_CORRELATION)
+            || self
+                .max_extent_px
+                .is_some_and(|value| value > STRICT_MAX_EXTENT_PX)
+    }
+
+    /// The bounds that are looser than the strict default.
+    fn loosened_bounds(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(value) = self.max_shift_px {
+            out.push(format!("max_shift_px={value}"));
+        }
+        if let Some(value) = self.max_centroid_px {
+            out.push(format!("max_centroid_px={value}"));
+        }
+        if let Some(value) = self.min_row_correlation {
+            out.push(format!("min_row_correlation={value}"));
+        }
+        if let Some(value) = self.min_column_correlation {
+            out.push(format!("min_column_correlation={value}"));
+        }
+        if let Some(value) = self.max_extent_px {
+            out.push(format!("max_extent_px={value}"));
+        }
+        out
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -206,6 +280,12 @@ fn every_waiver_binds_to_something_that_still_exists() {
         .flat_map(|class| class.documents.iter().map(String::as_str))
         .collect();
     let amber: BTreeSet<&str> = policy.thresholds.amber.iter().map(String::as_str).collect();
+    let pdf_amber: BTreeSet<&str> = policy.pdf.amber.iter().map(String::as_str).collect();
+    let pdf_classes: BTreeSet<&str> = policy
+        .pdf_classes
+        .iter()
+        .map(|entry| entry.class.as_str())
+        .collect();
 
     for waiver in registry().waivers {
         let Some((kind, target)) = waiver.binds.split_once(':') else {
@@ -217,14 +297,15 @@ fn every_waiver_binds_to_something_that_still_exists() {
         let exists = match kind {
             "class" => class_names.contains(target),
             "page-count-only" => page_count.contains(target),
-            "amber" => {
+            "amber" | "pdf-amber" => {
+                let listed = if kind == "amber" { &amber } else { &pdf_amber };
                 // A **closed** waiver is the record of a gap that no longer exists,
                 // so it must not still be registered as amber; an open one must be,
                 // because otherwise the gap is being carried without a name.
                 if waiver.closed.is_some() {
                     assert!(
-                        !amber.contains(target),
-                        "waiver {} was closed ({}) but {} is still in the amber list — a \
+                        !listed.contains(target),
+                        "waiver {} was closed ({}) but {} is still in the {kind} list — a \
                          closed waiver must not keep looking like outstanding debt",
                         waiver.id,
                         waiver.closed.as_deref().unwrap_or(""),
@@ -232,18 +313,22 @@ fn every_waiver_binds_to_something_that_still_exists() {
                     );
                 } else {
                     assert!(
-                        amber.contains(target),
+                        listed.contains(target),
                         "waiver {} registers an amber document {target}, which the gate \
-                         policy does not list as amber",
+                         policy does not list in {kind}",
                         waiver.id
                     );
                 }
                 gated.contains(target)
             }
+            // A PDF class's bounds differ from its own only where the policy file
+            // says so, so the target has to be a class the policy has an entry
+            // for — the same reason `class:` does.
+            "pdf-class" => pdf_classes.contains(target),
             "process" => !target.is_empty(),
             other => panic!(
                 "waiver {} uses the unknown binds kind {other:?}; \
-                 the vocabulary is class|page-count-only|amber|process",
+                 the vocabulary is class|page-count-only|amber|pdf-amber|pdf-class|process",
                 waiver.id
             ),
         };
@@ -276,6 +361,79 @@ fn every_amber_document_has_a_waiver() {
              (binds = \"amber:{document}\")"
         );
     }
+}
+
+/// The PDF backend's own amber list is held to the same rule.
+///
+/// It is a separate list because it is a separate renderer with a separate
+/// threshold, and a document can be amber in one and not the other. What it must
+/// not do is be amber for a reason nobody wrote down.
+#[test]
+fn every_pdf_amber_document_has_a_waiver() {
+    let registry = registry();
+    let waived: BTreeSet<&str> = registry
+        .waivers
+        .iter()
+        .filter_map(|waiver| waiver.binds.strip_prefix("pdf-amber:"))
+        .collect();
+    for document in &policy().pdf.amber {
+        assert!(
+            waived.contains(document.as_str()),
+            "{document} is in the PDF gate's amber list but has no waiver \
+             (binds = \"pdf-amber:{document}\")"
+        );
+    }
+}
+
+/// Every class the PDF gate holds to a looser bound than its own has a waiver.
+///
+/// A structural bound is a statement about a renderer, and a second renderer
+/// measuring the same page differently is expected — but each loosening is still
+/// a place where the work is accepted below what the criteria ask for, so each one
+/// is named.
+#[test]
+fn every_loosened_pdf_class_has_a_waiver() {
+    let registry = registry();
+    let waived: BTreeSet<&str> = registry
+        .waivers
+        .iter()
+        .filter_map(|waiver| waiver.binds.strip_prefix("pdf-class:"))
+        .collect();
+    for entry in &policy().pdf_classes {
+        if !entry.is_loosened() {
+            continue;
+        }
+        assert!(
+            waived.contains(entry.class.as_str()),
+            "the PDF gate loosens {} for class {} but there is no waiver in \
+             docs/waivers.toml (binds = \"pdf-class:{}\")",
+            entry.loosened_bounds().join(", "),
+            entry.class,
+            entry.class
+        );
+    }
+}
+
+/// The PDF gate's structural bounds must actually differ from the SVG gate's
+/// somewhere, or the second table is decoration.
+///
+/// This is the direction that would otherwise go unchecked: adding a
+/// `[[pdf_classes]]` entry whose numbers equal the class's own buys nothing and
+/// costs a reader a paragraph of explanation.
+#[test]
+fn the_pdf_classes_table_is_not_a_copy_of_the_classes_table() {
+    let policy = policy();
+    let redundant: Vec<&str> = policy
+        .pdf_classes
+        .iter()
+        .filter(|entry| entry.loosened_bounds().is_empty())
+        .map(|entry| entry.class.as_str())
+        .collect();
+    assert!(
+        redundant.is_empty(),
+        "these [[pdf_classes]] entries name bounds identical to their class's, so they \
+         loosen nothing and only add a reader's work: {redundant:?}"
+    );
 }
 
 /// Waiver ids are unique and non-empty; a duplicate id makes "the waiver for

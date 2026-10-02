@@ -2235,6 +2235,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "strict-ooxml-fidelity"
+version = "0.1.0"
+dependencies = [
+ "png",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "strict-ooxml-ocr"
 version = "0.1.0"
 dependencies = [
@@ -2253,6 +2262,7 @@ dependencies = [
  "miniz_oxide 0.8.9",
  "png",
  "strict-ooxml-core",
+ "strict-ooxml-fidelity",
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
  "strict-ooxml-wml",
@@ -2284,6 +2294,7 @@ dependencies = [
  "serde",
  "skrifa 0.44.0",
  "strict-ooxml-core",
+ "strict-ooxml-fidelity",
  "strict-ooxml-wml",
  "toml",
 ]

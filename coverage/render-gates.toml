@@ -41,6 +41,47 @@ ssim_margin = 0.01
 amber = ["strict-stage5c"]
 
 # ---------------------------------------------------------------------------
+# The same criterion for the PDF backend (SC-6's pixel half, O-2).
+#
+# Written **before** the first run, on purpose: GATE-STRATEGY §3.1 is «порог
+# ставится ДО реализации», and a threshold fitted to the number it is about to
+# see is not a threshold. It is 0.95 for the reason it is 0.95 for the SVG
+# backend — the same WPS references, the same content classes, the same
+# meaning.
+#
+# Why a second table at all, when the first one says 0.95 too: the two gates
+# measure two *renderers*. `resvg` rasterizes our SVG; `hayro` rasterizes the
+# PDF our own writer produced. A threshold is honest only against the renderer
+# it was measured with, and a pixel budget that silently follows a new renderer
+# into a new set of numbers is how a gate stops being a gate.
+#
+# `pdf.ssim_margin` is the SVG gate's 0.01: a score that clears 0.95 by three
+# thousandths is inside one rasterizer's build-to-build noise, whichever
+# rasterizer it is.
+#
+# `pdf.amber` is the measured result, written down rather than rounded away
+# (`CORE-QUEUE.md` §1.3):
+#
+# - `strict-stage5c` **0.9511** — two display formulas, the class where the
+#   Cambria Math -> STIX Two Math substitution is at its largest. It clears the
+#   threshold by 0.0011, which is inside the noise, so it is amber rather than a
+#   pass. Note that the queue predicted this class would come out *below* 0.95
+#   and named the reason as unembedded fonts (`L-3`); that reason was wrong — the
+#   PDF backend embeds every face it uses (`every_used_font_is_embedded`), so the
+#   rasterizer draws our own subset — and the measurement is above the threshold.
+# - `strict-stage5b` **0.9595** — floating drawing objects, and the page whose
+#   page-border frame the centroid cannot see past (see `[[pdf_classes]]`).
+#
+# Every other page clears the threshold by more than the margin: `05` 0.9750,
+# `06` 0.9764, `07` 0.9842, `10` 0.9694, `strict-text` 0.9782,
+# `strict-text-grid` 0.9723, `strict-stage5` 0.9803.
+# ---------------------------------------------------------------------------
+[pdf]
+ssim = 0.95
+ssim_margin = 0.01
+amber = ["strict-stage5b", "strict-stage5c"]
+
+# ---------------------------------------------------------------------------
 # Classes. `documents` is the class membership: it replaces the match
 # statement that used to decide which fixture got which limits, so a new
 # fixture has to declare its class rather than fall into a default.
@@ -56,6 +97,12 @@ default bounds are met by every page in this class at 0-1 px.
 documents = ["strict-text", "strict-text-grid"]
 max_shift_px = 2
 max_centroid_px = 2.5
+# The same 2.5 for the frame-free centroid. The two measures differ only on a
+# page with a page border, and this class has none, so they see the same ink
+# here - measured: the largest content centroid on this class is 1.83 px (SVG)
+# and 2.50 px (PDF, where the `/W` rounding of Q-5 shows up; see
+# `[[pdf_classes]]`).
+max_content_centroid_px = 2.5
 min_row_correlation = 0.90
 min_column_correlation = 0.85
 max_extent_px = 2.0
@@ -71,6 +118,9 @@ stay at the default. Measured extent drift: 0-1 px.
 documents = ["strict-stage5"]
 max_shift_px = 2
 max_centroid_px = 3.0
+# No page border, so the same measure as above; measured 2.84 px (SVG) and
+# 3.72 px (PDF, again the `/W` rounding).
+max_content_centroid_px = 3.0
 min_row_correlation = 0.75
 min_column_correlation = 0.70
 max_extent_px = 2.0
@@ -87,6 +137,12 @@ blank check and the shift bound are unchanged. Measured extent drift: 1 px.
 documents = ["strict-stage5b"]
 max_shift_px = 2
 max_centroid_px = 8.0
+# **The only class in this file where the two centroid measures differ**, because
+# it is the only one with a page border. On the SVG path both are 0.57 px from the
+# reference: `resvg` antialyses this frame the way WPS did. On the PDF path the
+# plain centroid is 38.76 px from it and the content centroid 0.11 px, and that
+# gap is the entire `[[pdf_classes]]` graphics entry below.
+max_content_centroid_px = 8.0
 min_row_correlation = 0.60
 min_column_correlation = 0.50
 max_extent_px = 2.0
@@ -148,6 +204,9 @@ documents = [
 ]
 max_shift_px = 12
 max_centroid_px = 25.0
+# No page border, so the same measure as above; the largest is 29.48 px on
+# `strict-stage5c` page 2, which its own override carries.
+max_content_centroid_px = 25.0
 min_row_correlation = 0.45
 min_column_correlation = 0.40
 max_extent_px = 18.0
@@ -168,9 +227,78 @@ max_extent_px = 18.0
 # per page: `EXTENT_RATCHET` pins every page's ink extent exactly.
 [[overrides]]
 document = "strict-stage5c"
+# 32.0 -> 33.0, and the page's content centroid is now 32.06 px from the reference,
+# up from the 29.48 this table was written for. The cause is the fixture, not the
+# layout: the stage-5C formula fixture carried markup the official schema rejects
+# (`m:e` is element-only, so the ` + ` and ` = ` of the equation array were
+# character data between runs) and putting that text in `m:t` where the ink
+# belongs moved the line by a pixel. The reference page is unchanged; the pin moved
+# because what we draw on it did. `xtool/xsd-gate` measures this fixture against
+# the real schema on every run, which is how the markup was found.
 max_shift_px = 26
-max_centroid_px = 32.0
-max_extent_px = 34.0
+max_centroid_px = 33.0
+max_content_centroid_px = 33.0
+max_extent_px = 35.0
+
+# ---------------------------------------------------------------------------
+# Per-class structural bounds for the PDF backend.
+#
+# A bound is a statement about a *renderer*, not about a document: the ink
+# centroid of the same page differs between `resvg` (which rasterizes our SVG) and
+# `hayro` (which rasterizes the PDF we wrote), because the two antialias a long
+# thin stroke differently. Class membership stays shared — a page is in the same
+# content class whichever backend draws it — and only the numbers differ here. A
+# class with no entry below is held to the numbers its `[[classes]]` entry gives.
+#
+# `max_content_centroid_px` exists for exactly this table, and the reason is
+# written down rather than discovered again:
+#
+# - `text`, `max_centroid_px = 3.0` (measured 2.50 on `strict-text`). This one is
+#   not rasterizer noise: it is Q-5, measured. The PDF writer rounds every glyph's
+#   `/W` advance to whole 1000-units, so a line's last word sits up to half a
+#   thousandth of an em out, the error accumulates along the line, and the whole
+#   line's ink ends a couple of pixels from where `resvg` puts it. The SVG gate
+#   sees the exact advances and does not drift. 2.50 is the accumulated drift;
+#   3.0 is the bound.
+#
+# - `mixed`, `max_centroid_px = 4.0` (measured 3.72 on `strict-stage5` page 2).
+#   The same accumulation, on a page whose tables and notes give the ink less
+#   weight to average over.
+#
+# - `graphics`, `max_centroid_px = 40.0` (measured 24.99 / 38.76 on
+#   `strict-stage5b`) **and `max_content_centroid_px = 8.0`** (measured 3.95 /
+#   0.11). The first is not a fidelity claim and the second is what holds the
+#   page.
+#
+#   `strict-stage5b` is mostly a page border: a 2.67 px stroke down all four edges.
+#   Its ink is symmetric, so the centroid of the *page* sits near the middle, and a
+#   one-pixel difference in one edge of the frame — which is all `resvg` and
+#   `hayro` disagree about on a long thin stroke — moves that mean by tens of
+#   pixels. The content centroid drops the frame (it detects a page frame as a
+#   hollow rectangle of ink and measures what is inside it), and the two renders
+#   then agree to 3.95 px in x and 0.11 px in y.
+#
+#   Two cheaper fixes were tried and **measured not to work**, which is why they
+#   are named here rather than proposed again: a rank trim (drop the outermost 5 %
+#   of the ink on each axis) makes it *worse*, 27.71 / 43.02, because the frame is
+#   30 % of that page's ink rather than 5 %; and cropping a fixed margin works only
+#   at about 40 px on that document, which is that document's margin rather than a
+#   property of anything. The frame detector needs neither.
+# ---------------------------------------------------------------------------
+[[pdf_classes]]
+class = "text"
+max_centroid_px = 3.0
+max_content_centroid_px = 3.0
+
+[[pdf_classes]]
+class = "mixed"
+max_centroid_px = 4.0
+max_content_centroid_px = 4.0
+
+[[pdf_classes]]
+class = "graphics"
+max_centroid_px = 40.0
+max_content_centroid_px = 8.0
 
 # ---------------------------------------------------------------------------
 # Page-count-only documents.

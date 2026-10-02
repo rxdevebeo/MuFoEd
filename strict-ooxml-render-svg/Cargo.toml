@@ -28,11 +28,16 @@ roxmltree = "0.20"
 criterion = "0.5"
 # Rasterize our SVG for the SSIM harness (S4F.5).
 resvg.workspace = true
-# Decode the WPS reference PNGs for the SSIM harness.
+# Re-encode a page as a PNG for `examples/page_diff.rs`. The gate's own decoder
+# lives in `strict-ooxml-fidelity`; this is the writer of the pictures the tool
+# leaves on disk.
 png.workspace = true
-# Read the fidelity-gate policy from `coverage/render-gates.toml` (GATE-STRATEGY
-# §5/§6): thresholds are data with their justification beside them, not
-# constants buried in a test.
+# Read the fidelity-gate policy from `coverage/render-gates.toml` and run the
+# gate's arithmetic (GATE-STRATEGY §5/§6). The PDF gate measures the same
+# references through a second renderer, so the measurement is one crate's.
+strict-ooxml-fidelity = { version = "0.1.0", path = "../strict-ooxml-fidelity" }
+# `tests/waivers.rs` reads `docs/waivers.toml` the same way the gate's own policy
+# file is read: a threshold or a waiver is data, not a constant in a test.
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 

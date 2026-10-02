@@ -1,0 +1,28 @@
+[package]
+name = "strict-ooxml-fidelity"
+description = "The visual-fidelity gate: SSIM, structural ink checks and the policy they are held to"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+keywords = ["ssim", "fidelity", "gate", "ooxml"]
+categories = ["development-tools::testing", "graphics"]
+
+[dependencies]
+# Decoding the committed WPS reference PNGs into the grayscale both gates
+# compare. It is a dependency of the *gate*, not of a renderer, and it is the
+# only way the two gates can be sure they compared the same pixels.
+png.workspace = true
+# `coverage/render-gates.toml`: thresholds are data with their justification
+# beside them (GATE-STRATEGY §5, §6), not constants buried in a test.
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

@@ -50,9 +50,33 @@ strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
 strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pdf" }
+# The pixel gate (SC-6's second half) needs the same SSIM and the same ink checks
+# the SVG gate uses: one definition of "fidelity", two renderers.
+strict-ooxml-fidelity = { version = "0.1.0", path = "../strict-ooxml-fidelity" }
+
+# The pixel gate and its instrument need a rasterizer, and the `raster` feature is
+# what turns one on. They are declared with `required-features` rather than
+# switched off inside their source, because a gate that silently skips itself is
+# worse than no gate: with this, `cargo test -p strict-ooxml-pdf` says nothing and
+# `cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels` says
+# everything.
+#
+# The example is `pdf_page_diff` and not `page_diff`, which is
+# `strict-ooxml-render-svg`'s: cargo writes every workspace member's examples to
+# one `target/debug/examples/`, so two crates with the same example name link
+# into the same `.exe` and one of them fails with LNK1104 at random. That is a
+# build that breaks intermittently, which is worse than a failing test.
+[[test]]
+name = "pdf_pixels"
+required-features = ["raster"]
+
+[[example]]
+name = "pdf_page_diff"
+required-features = ["raster"]
 
 [lints]
 workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
+

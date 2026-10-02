@@ -17,7 +17,9 @@ use std::path::Path;
 
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_render_pdf::{render, render_with_source, PdfReport};
-use strict_ooxml_render_svg::{place_pages, render_with_media, MediaSource, RenderOptions};
+use strict_ooxml_render_svg::{
+    layout::Item, place_pages, render_with_media, MediaSource, RenderOptions,
+};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
 /// The Strict documents the render runs on.
@@ -29,6 +31,9 @@ fn corpus() -> Vec<(&'static str, Vec<u8>)> {
         ("strict-profile", "strict-profile.docx"),
         ("strict-math", "05-strict-math-simple.docx"),
         ("strict-shapes", "07-strict-drawingml-shapes.docx"),
+        // Rounded rectangles and a page border: the fixture whose arcs were
+        // dropped from every PDF until the pixel gate measured the page.
+        ("strict-stage5b", "strict-stage5b.docx"),
     ] {
         if let Ok(bytes) = std::fs::read(root.join(file)) {
             out.push((name, bytes));
@@ -272,6 +277,72 @@ fn the_source_package_is_strict() {
     }
 }
 
+/// Every picture's resource name in the rendered file is unique, and every name
+/// the content stream draws with is one the page's `/XObject` dictionary answers
+/// to.
+///
+/// Two pictures whose part names clean to the same resource name —
+/// `/word/media/a-b.png` and `/word/media/a_b.png` — would otherwise get one name
+/// between them, and a page's `/XObject` dictionary written with both is a
+/// dictionary with two entries under one key: the file still opens, and one of the
+/// two pictures is simply not drawn. That is the failure `STAGE-8-OPEN.md` Q-4
+/// predicted.
+///
+/// The rule that resolves it is tested where it lives, in `name_the_images`'s unit
+/// test in `src/document.rs`. What is checked here is the property on real output,
+/// read back by `lopdf` — the oracle the rest of this file uses, and one that
+/// shares no code with the writer.
+#[test]
+fn every_image_resource_name_is_unique_and_drawn() {
+    for (name, bytes) in corpus() {
+        let (pdf, _svg, _report) = to_pdf(&bytes);
+        let document =
+            lopdf::Document::load_mem(&pdf).unwrap_or_else(|error| panic!("{name}: {error}"));
+        let mut seen: Vec<String> = Vec::new();
+        let mut drawn: Vec<String> = Vec::new();
+        for id in document.page_iter() {
+            let content = String::from_utf8_lossy(&document.get_page_content(id)).into_owned();
+            // Every `/Im… Do` the stream draws.
+            for token in content.split_whitespace() {
+                if let Some(resource) = token.strip_prefix('/') {
+                    if let Some(name) = resource.strip_suffix("Do") {
+                        assert!(
+                            name.starts_with("Im"),
+                            "{name}: a name that is not ours came from the writer: {token}"
+                        );
+                        drawn.push(name.to_owned());
+                    }
+                }
+            }
+            // Every `/XObject` entry the page offers, and each name at most once.
+            let Ok(resources) = document
+                .get_dictionary(id)
+                .and_then(|dictionary| dictionary.get(b"Resources"))
+                .and_then(lopdf::Object::as_dict)
+                .and_then(|objects| objects.get(b"XObject"))
+                .and_then(lopdf::Object::as_dict)
+            else {
+                continue;
+            };
+            for key in resources.iter().map(|(key, _)| key) {
+                let key = String::from_utf8_lossy(key).into_owned();
+                assert!(
+                    !seen.contains(&key),
+                    "{name}: resource {key} is written twice, so one of the two pictures is \
+                     never drawn"
+                );
+                seen.push(key);
+            }
+        }
+        for resource in &drawn {
+            assert!(
+                seen.iter().any(|key| key == resource),
+                "{name}: the content stream draws /{resource} and no /XObject entry answers to it"
+            );
+        }
+    }
+}
+
 /// The media source the render is given is the one the crate defines, so the
 /// meta-crate can pass its own package without an adapter.
 #[test]
@@ -280,4 +351,67 @@ fn the_package_is_a_media_source() {
     for (_name, bytes) in corpus() {
         assert_source(&open(&bytes));
     }
+}
+
+/// The path data the layout emits must stay inside the grammar
+/// `strict-ooxml-render-pdf/src/path.rs` parses.
+///
+/// The parser skips a command it does not know instead of failing, which is the
+/// right behaviour for a drawing and a terrible way to find out that a drawing
+/// lost a corner: the PDF is still a valid page, just a different one. `A` was
+/// skipped like that until stage 8's PDF pixel gate measured the page and found
+/// that every rounded rectangle in every PDF this crate wrote had square
+/// corners, and that `07-strict-drawingml-shapes`' circle was not there at all.
+///
+/// So the claim "`Q`, `T`, `S` and `R` are not emitted by any producer" is
+/// **checked** here rather than asserted in a doc comment. The day a producer
+/// emits one, this test names it and the parser has to grow.
+#[test]
+fn every_producer_path_uses_only_the_supported_commands() {
+    /// The commands `path.rs` parses. `M`, `L`, `H`, `V`, `C` and `A`, in either
+    /// case; a lowercase command after a `moveto` means the implicit-lineto form
+    /// of the same grammar and parses.
+    const SUPPORTED: &[char] = &[
+        'M', 'm', 'L', 'l', 'H', 'h', 'V', 'v', 'C', 'c', 'A', 'a', 'Z', 'z',
+    ];
+
+    let mut unsupported: Vec<(String, char)> = Vec::new();
+    let mut arcs = 0usize;
+    for (name, bytes) in corpus() {
+        let package = open(&bytes);
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        let pages =
+            place_pages(&document, &RenderOptions::default(), Some(&package)).expect("place");
+        for page in &pages {
+            for item in &page.items {
+                let Item::Path(shape) = item else {
+                    continue;
+                };
+                for ch in shape.d.chars() {
+                    if !ch.is_ascii_alphabetic() {
+                        continue;
+                    }
+                    if ch == 'A' || ch == 'a' {
+                        arcs += 1;
+                    }
+                    if !SUPPORTED.contains(&ch) {
+                        unsupported.push((name.to_owned(), ch));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        unsupported.is_empty(),
+        "the layout emits path commands `src/path.rs` does not parse, so the PDF silently \
+         drops that geometry: {unsupported:?}"
+    );
+    // The other direction too: a parser that quietly stopped reading `A` would
+    // pass the test above, and the corners would be gone with nothing failing.
+    // So the corpus has to actually carry the geometry this test watches.
+    assert!(
+        arcs >= 4,
+        "the corpus is expected to carry elliptical arcs and carried {arcs}: a fixture \
+         change has removed the geometry this test exists to watch"
+    );
 }

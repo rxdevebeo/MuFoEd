@@ -21,9 +21,9 @@ use std::cell::Cell;
 use strict_ooxml_wml::model::math::{
     Accent, Bar, BorderBox, Boxed, Delimiter, EquationArray, Fraction, Function, GroupCharacter,
     LimitLocation, MathAlignment, MathArgument, MathExpression, MathJustification, MathLimit,
-    MathNode, MathParagraph, MathPosition, MathRun, MathRunProperties, MathStyle, Matrix,
-    MatrixColumn, NaryOperator, Phantom, PreScript, Radical, SubSuperscript, Subscript,
-    Superscript,
+    MathNode, MathParagraph, MathPosition, MathRun, MathRunProperties, MathStyle,
+    MathVerticalAlign, Matrix, MatrixColumn, NaryOperator, Phantom, PreScript, Radical,
+    SubSuperscript, Subscript, Superscript,
 };
 use strict_ooxml_wml::model::props::RunProperties;
 
@@ -1320,7 +1320,16 @@ struct Grid {
     column_gap: f64,
     /// Distance between consecutive row baselines, in px.
     row_pitch: f64,
-    base: Option<MathAlignment>,
+    /// `m:baseJc`, read and carried.
+    ///
+    /// Not consulted yet, and deliberately left in place rather than deleted: it
+    /// places the block vertically among its neighbours, which is a rendering
+    /// feature this stage did not build. Removing it would have thrown away the
+    /// information, and keeping it silently unused would be a lie in the other
+    /// direction. Its one previous use was a bug - it was being read as a
+    /// *horizontal* column alignment - and that is what E1 fixed.
+    #[allow(dead_code)]
+    base: Option<MathVerticalAlign>,
     per_column: Vec<MatrixColumn>,
 }
 
@@ -1332,7 +1341,7 @@ impl Grid {
         column_gap: f64,
         row_pitch: f64,
         row_ascent: f64,
-        base: Option<MathAlignment>,
+        base: Option<MathVerticalAlign>,
         per_column: Vec<MatrixColumn>,
     ) -> Self {
         let mut column_widths = vec![0.0f64; column_count];
@@ -1367,12 +1376,22 @@ impl Grid {
         }
     }
 
-    /// The alignment of one column: `m:mcJc`, then `m:baseJc`, then centred.
+    /// The horizontal alignment of one column: `m:mcJc`, then centred.
+    ///
+    /// `m:baseJc` is deliberately **not** a fallback here. It is a `CT_YAlign`:
+    /// it places the matrix or equation array vertically among its neighbours,
+    /// and it has nothing to say about how a column's cells line up across.
+    /// Using it as a horizontal alignment meant `Left` rendered as `inline` and
+    /// `Right` as `bottom`, and then only `Center` and `Right` were honoured at
+    /// all - so a document asking for a column at the right got one centred.
+    ///
+    /// `base` is still carried, and correctly typed; making it move the block
+    /// vertically is a rendering feature rather than a fix, and is recorded as
+    /// such instead of being approximated here.
     fn column_alignment(&self, column: usize) -> MathAlignment {
         self.per_column
             .get(column)
             .and_then(|spec| spec.justification)
-            .or(self.base)
             .unwrap_or(MathAlignment::Center)
     }
 

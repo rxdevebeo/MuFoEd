@@ -13,6 +13,7 @@ members = [
     "strict-ooxml-core",
     "strict-ooxml-wml",
     "strict-ooxml-report",
+    "strict-ooxml-fidelity",
     "strict-ooxml-render-svg",
     "strict-ooxml-render-pdf",
     "strict-ooxml-pdf",

@@ -54,9 +54,28 @@ impl PdfReport {
     }
 
     /// The losses, in the order they were found.
+    ///
+    /// **That order is discovery order, and it is not the order to read them in.**
+    /// It is what SC-1 requires — two renders of one document produce the same
+    /// bytes, which this order makes true — and it says nothing about how much a
+    /// loss matters: a document that dropped the whole body and a document that
+    /// lost one picture produce reports whose severity order is the reverse of
+    /// their importance order. Use [`Self::losses_by_severity`] to read it, and
+    /// keep this one for reproducibility and for tests.
     #[must_use]
     pub fn losses(&self) -> &[PdfLoss] {
         &self.losses
+    }
+
+    /// The losses, worst first, ties in discovery order.
+    ///
+    /// Sorting is stable, so two losses of the same severity keep the order they
+    /// were found in and the output is as reproducible as the input.
+    #[must_use]
+    pub fn losses_by_severity(&self) -> Vec<&PdfLoss> {
+        let mut out: Vec<&PdfLoss> = self.losses.iter().collect();
+        out.sort_by_key(|loss| std::cmp::Reverse(loss.severity));
+        out
     }
 
     /// Whether nothing was lost.
@@ -124,6 +143,20 @@ impl PdfReport {
         );
     }
 
+    /// Records a shape whose outline did not resolve.
+    ///
+    /// This exists because "it cannot happen" is not a report. The content stream
+    /// writer has no arc operator, so an outline that still holds an arc there
+    /// would be silently undrawable; the arm that would have to draw it calls
+    /// this instead, and the render's losses then say so.
+    pub fn record_unresolved_outline(&mut self, reason: &str) {
+        self.push(
+            "pdf.shape.unresolved_outline",
+            format!("{reason}, so its outline is not in the PDF"),
+            Severity::Placeholder,
+        );
+    }
+
     /// Records a face that could not be subset or embedded.
     pub fn record_font_error(&mut self, key: &FaceKey, error: &FontError) {
         self.push(
@@ -163,7 +196,10 @@ impl fmt::Display for PdfReport {
         for (severity, count) in self.severity_counts() {
             writeln!(f, "  {severity}: {count}")?;
         }
-        for loss in &self.losses {
+        // Worst first: this is the text a person reads, and the whole point of a
+        // severity is that it orders what to look at. The counts above carry the
+        // same numbers, so nothing is lost by showing the lines out of order.
+        for loss in self.losses_by_severity() {
             writeln!(f, "  [{}] {}: {}", loss.id, loss.severity, loss.detail)?;
         }
         Ok(())
@@ -208,5 +244,52 @@ mod tests {
             vec![(Severity::Placeholder, 2), (Severity::Text, 1)]
         );
         assert!(report.to_string().contains("pdf.font.missing"));
+    }
+
+    #[test]
+    fn the_report_is_read_worst_first() {
+        // A document that lost its text entirely and one that lost a picture:
+        // discovery order puts the placeholder second, which is the wrong order
+        // to read them in.
+        let mut report = PdfReport::new();
+        report.record_placeholder("");
+        report.record_missing_face("Segoe UI");
+        let ids: Vec<&str> = report
+            .losses_by_severity()
+            .iter()
+            .map(|loss| loss.id)
+            .collect();
+        assert_eq!(ids, vec!["pdf.font.missing", "pdf.image.no_source"]);
+        let text = report.to_string();
+        assert!(
+            text.find("pdf.font.missing") < text.find("pdf.image.no_source"),
+            "the printed report must lead with the worst loss: {text}"
+        );
+        // The discovery order is still there for SC-1, which is what it is for.
+        assert_eq!(report.losses()[0].id, "pdf.image.no_source");
+    }
+
+    #[test]
+    fn a_stable_sort_keeps_discovery_order_within_a_severity() {
+        let mut report = PdfReport::new();
+        report.record_placeholder("first");
+        report.record_placeholder("second");
+        report.record_placeholder("third");
+        let details: Vec<&str> = report
+            .losses_by_severity()
+            .iter()
+            .map(|loss| loss.detail.as_str())
+            .collect();
+        assert_eq!(details.len(), 3);
+        assert!(details[0].starts_with("picture 'first'"), "{details:?}");
+        assert!(details[1].starts_with("picture 'second'"), "{details:?}");
+        assert!(details[2].starts_with("picture 'third'"), "{details:?}");
+    }
+
+    #[test]
+    fn a_clean_report_says_so_and_has_nothing_to_sort() {
+        let report = PdfReport::new();
+        assert!(report.losses_by_severity().is_empty());
+        assert_eq!(report.to_string(), "nothing lost\n");
     }
 }

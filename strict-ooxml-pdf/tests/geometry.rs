@@ -424,6 +424,107 @@ fn an_absent_dw_is_an_estimate_not_a_declaration() {
     );
 }
 
+/// The geometry oracle runs on the drawing fixtures too.
+///
+/// `strict-stage5b` is here for a reason: it is the page whose shapes were
+/// written a whole shape-height too low, and the only test that noticed was the
+/// pixel gate (`tests/pdf_pixels.rs`), which reported a number nobody could act
+/// on. This oracle names the shape.
+///
+/// The check is by **position, matched by position**, not by index: the PDF also
+/// carries the page's white background as a path, so the two lists are not the
+/// same length and the shape is found by where it landed rather than by counting.
+#[test]
+fn shape_geometry_survives_into_the_pdf() {
+    for fixture in ["07-strict-drawingml-shapes", "strict-stage5b"] {
+        let (placed, read_back) = round_trip(
+            &std::fs::read(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join(format!("../strict-ooxml-core/tests/strict/{fixture}.docx")),
+            )
+            .unwrap_or_else(|error| panic!("{fixture}: {error}")),
+        );
+        let mut checked = 0usize;
+        for (index, page) in placed.iter().enumerate() {
+            let layout_shapes: Vec<&strict_ooxml_render_svg::layout::PathItem> = page
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    // A path with neither a fill nor a stroke draws nothing, and
+                    // the writer correctly omits it — `strict-stage5b` carries one
+                    // such outline. Comparing it would be comparing against a
+                    // shape the PDF is *right* not to have.
+                    strict_ooxml_render_svg::layout::Item::Path(shape)
+                        if shape.fill.as_deref().is_some_and(|c| !c.is_empty())
+                            || shape.stroke.as_deref().is_some_and(|c| !c.is_empty()) =>
+                    {
+                        Some(shape)
+                    }
+                    _ => None,
+                })
+                .collect();
+            let vectors: Vec<(f64, f64, f64, f64)> = read_back[index]
+                .items()
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Vector(vector) => {
+                        Some(vector_box(vector, read_back[index].geometry.height))
+                    }
+                    _ => None,
+                })
+                .collect();
+            for shape in layout_shapes {
+                let expected = (to_pt(shape.x), to_pt(shape.y));
+                let found = vectors.iter().any(|(x, y, ..)| {
+                    (x - expected.0).abs() < 0.01 && (y - expected.1).abs() < 0.01
+                });
+                assert!(
+                    found,
+                    "{fixture} page {index}: the layout put a shape at x={:.3} y={:.3} pt and \
+                     no path in the PDF starts there (the PDF's path origins are {vectors:?})",
+                    expected.0, expected.1
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "{fixture}: no shape was compared, so the oracle proves nothing"
+        );
+    }
+}
+
+/// The page-space box `(x, y, w, h)` of a path the reader recovered, in points
+/// from the page's top-left.
+///
+/// The reader keeps a path's own coordinates and the `ctm` that places it, so the
+/// box is the transformed extent of the points — which is what a drawing program
+/// would compute, and what a defect in the translation shows up in. PDF's y points
+/// up from the bottom of a `page_height`-point sheet, so the flip back to "points
+/// from the top" is `page_height - y`, the same convention every other coordinate
+/// in this crate uses.
+fn vector_box(vector: &strict_ooxml_pdf::Vector, page_height: f64) -> (f64, f64, f64, f64) {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for subpath in &vector.subpaths {
+        for (x, y) in &subpath.points {
+            let matrix = vector.ctm;
+            let page_x = matrix.a * x + matrix.c * y + matrix.e;
+            let page_y = page_height - (matrix.b * x + matrix.d * y + matrix.f);
+            min_x = min_x.min(page_x);
+            min_y = min_y.min(page_y);
+            max_x = max_x.max(page_x);
+            max_y = max_y.max(page_y);
+        }
+    }
+    if !min_x.is_finite() {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+    (min_x, min_y, max_x - min_x, max_y - min_y)
+}
+
 /// A PDF from another writer, if one is pointed at.
 ///
 /// The four checks above came from feeding a reader a Chromium export and seeing

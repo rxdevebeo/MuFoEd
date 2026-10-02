@@ -30,6 +30,11 @@
 //!   appears on every file is a feature we do not have; a kind that appears on
 //!   one file is worth opening that file and looking.
 
+// Rates are arithmetic over counts that fit a `u64` by any margin, and a page
+// count divided by `u128` milliseconds is the only 128-bit number in the file.
+// Both are far inside `f64`'s exact range, so the conversions are deliberate.
+#![allow(clippy::cast_precision_loss)]
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -191,10 +196,14 @@ fn read(path: &Path) -> Option<Reading> {
 /// One file's row of numbers.
 ///
 /// Its own function, because the row and the header must agree on their columns
-/// and a table nobody can line up is a table nobody reads.
+/// and a table nobody can line up is a table nobody reads. The last column is a
+/// **rate**, not a duration: `STAGE-8-OPEN.md` Q-29 asks how fast reading is, and
+/// "how long did this file take" cannot be compared across a 160-page handbook and
+/// a one-page invoice. Milliseconds stay as their own column, because a fast rate
+/// over one page is still a slow file.
 fn print_row(reading: &Reading) {
     println!(
-        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>8} {:>7}",
+        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>8} {:>7} {:>8}",
         reading.name,
         reading.pages,
         reading.glyphs,
@@ -204,8 +213,21 @@ fn print_row(reading: &Reading) {
         reading.pictures,
         reading.broken_pictures,
         reading.distinct_pictures,
-        reading.millis
+        reading.millis,
+        pages_per_second(reading.pages, reading.millis)
     );
+}
+
+/// The reading rate, in pages per second, to one decimal.
+///
+/// A file that read in under ten milliseconds has no rate worth quoting — it is
+/// one page and the number is the clock's resolution — so it reads `-`, the same
+/// way a count of nothing reads `0`.
+fn pages_per_second(pages: usize, millis: u128) -> String {
+    if pages == 0 || millis < 10 {
+        return "-".to_owned();
+    }
+    format!("{:.1}", pages as f64 / (millis as f64 / 1000.0))
 }
 
 /// How the reading time and the picture cache add up.
@@ -220,6 +242,66 @@ fn print_picture_summary(drawn: usize, distinct: usize, cached: usize) {
         cached / MIB,
         (cached % MIB) / 1024
     );
+}
+
+/// The one number `STAGE-8-OPEN.md` Q-29 asks for: how fast the reader reads.
+///
+/// Pages per second, and glyphs per second beside it, because "fast" has two
+/// meanings on a PDF — a technical manual is many sparse pages, an atlas is few
+/// dense ones, and a rate in pages alone would let an optimisation pass by making
+/// the interpretation cheaper while the glyphs got more expensive.
+fn print_rate_summary(pages: usize, glyphs: usize, millis: u128, files: usize) {
+    if pages == 0 || millis == 0 {
+        println!("reading rate: nothing was read");
+        return;
+    }
+    let seconds = millis as f64 / 1000.0;
+    println!(
+        "reading rate: {pages} page(s) in {seconds:.1} s over {files} file(s) = \
+         **{:.1} page(s)/s**, {:.0} glyph(s)/s",
+        pages as f64 / seconds,
+        glyphs as f64 / seconds
+    );
+}
+
+/// The slowest files, worst first: what "large file" actually costs.
+///
+/// A corpus-wide average hides the answer to Q-29, because one 2928-page
+/// reference manual and 45 small files average into a number that describes
+/// neither. These are the ones a reader is judged on.
+fn print_slowest(readings: &[Reading]) {
+    if readings.is_empty() {
+        return;
+    }
+    let mut ranked: Vec<&Reading> = readings.iter().collect();
+    ranked.sort_by(|left, right| {
+        let left_rate = left.pages as f64 / (left.millis.max(1) as f64 / 1000.0);
+        let right_rate = right.pages as f64 / (right.millis.max(1) as f64 / 1000.0);
+        left_rate
+            .partial_cmp(&right_rate)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| right.millis.cmp(&left.millis))
+    });
+    println!();
+    println!("slowest first (a rate is not a size: the top of this list is what a user waits on):");
+    for reading in ranked.iter().take(10) {
+        let glyphs_per_second = if reading.millis == 0 {
+            "-".to_owned()
+        } else {
+            format!(
+                "{:.0}",
+                reading.glyphs as f64 / (reading.millis as f64 / 1000.0)
+            )
+        };
+        println!(
+            "  {:<40} {:>5} page(s) {:>7} ms  {:>8} page(s)/s  {:>7} glyph(s)/s",
+            reading.name,
+            reading.pages,
+            reading.millis,
+            pages_per_second(reading.pages, reading.millis),
+            glyphs_per_second
+        );
+    }
 }
 
 /// What the reader said it could not carry: a count per kind, and under each kind
@@ -294,7 +376,7 @@ fn main() {
     }
 
     println!(
-        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>8} {:>7}",
+        "{:<40} {:>5} {:>8} {:>7} {:>5} {:>4} {:>6} {:>8} {:>8} {:>7} {:>8}",
         "file",
         "pages",
         "glyphs",
@@ -304,7 +386,8 @@ fn main() {
         "pics",
         "broken",
         "distinct",
-        "read ms"
+        "read ms",
+        "pages/s"
     );
     let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
     let mut totals = (
@@ -315,6 +398,8 @@ fn main() {
     let mut drawn = 0usize;
     let mut distinct = 0usize;
     let mut cached = 0usize;
+    let mut total_millis = 0u128;
+    let mut measured: Vec<Reading> = Vec::new();
     for path in &files {
         let Some(reading) = read(path) else {
             println!("{:<40} refused or unreadable", path.display());
@@ -339,10 +424,12 @@ fn main() {
         drawn += reading.pictures;
         distinct += reading.distinct_pictures;
         cached += reading.cached_bytes;
+        total_millis += reading.millis;
         print_row(&reading);
         if per_file_losses {
             print_file_losses(&reading);
         }
+        measured.push(reading);
     }
 
     println!();
@@ -362,6 +449,8 @@ fn main() {
     );
     println!();
     print_picture_summary(drawn, distinct, cached);
+    print_rate_summary(totals.0, totals.1, total_millis, files.len() - totals.8);
+    print_slowest(&measured);
     println!();
     print_losses(&kinds, &details);
     print_candidates(&candidates);

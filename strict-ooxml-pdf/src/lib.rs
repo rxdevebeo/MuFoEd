@@ -34,8 +34,9 @@
 //! ## State of the phase
 //!
 //! Landed: the resource budget, the font layer, the content interpreter, images
-//! and path flattening. Not landed: the fixtures corpus and the round trip
-//! against a PDF this workspace wrote — see `STAGE-8-OPEN.md` (O-9).
+//! and path flattening; the corpus round trip against a PDF this workspace wrote
+//! (`O-9`); and the pixel gate over the WPS references (`O-2`), which reads this
+//! crate's own output back and rasterizes it. See `STAGE-8-OPEN.md`.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]

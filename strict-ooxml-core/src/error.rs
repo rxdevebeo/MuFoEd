@@ -241,6 +241,21 @@ pub enum StrictError {
     /// The requested operation or feature is not implemented yet.
     #[error("unsupported: {0}")]
     Unsupported(String),
+    /// A part could not be serialised: the writer left an element open, or the
+    /// document nested deeper than the writer's budget.
+    ///
+    /// Not `InvalidXml`, which would blame the input: the input parsed, and it
+    /// was the walk over the model that failed. Carrying the part matters,
+    /// because the writer builds each part independently and the failure names
+    /// exactly one of them (`STAGE-10-TASK.md` E34 — this replaces twenty
+    /// `.expect("balanced")` sites that turned a reportable failure into a panic).
+    #[error("could not serialise {part}: {detail}")]
+    Write {
+        /// The part being written when the writer gave up.
+        part: PartId,
+        /// What the writer reported.
+        detail: String,
+    },
 }
 
 #[cfg(test)]

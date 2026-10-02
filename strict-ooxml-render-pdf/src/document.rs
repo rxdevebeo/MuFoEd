@@ -53,6 +53,8 @@ struct PageWriter<'a> {
     scale: f64,
     fonts: &'a [PlacedFont],
     media: Option<&'a dyn MediaSource>,
+    /// The document's image resource names, fixed before any content is written.
+    names: &'a BTreeMap<PartId, String>,
     images: BTreeMap<PartId, String>,
     report: &'a mut PdfReport,
 }
@@ -80,6 +82,17 @@ pub fn render_with_source(
     let scale = options.scale;
     let mut report = PdfReport::new();
     let fonts = collect_fonts(pages, &mut report);
+    // One name per picture, for the whole document, fixed before anything is
+    // written: the content stream says `/Im… Do` and the page's `/XObject`
+    // dictionary has to answer to that same name, and a name chosen twice is a
+    // dictionary with two entries under one key — a malformed page where one of
+    // the two pictures is simply not there.
+    let image_names = name_the_images(pages.iter().flat_map(|page| page.items.iter()).filter_map(
+        |item| match item {
+            Item::Image(image) => image.part.as_ref(),
+            _ => None,
+        },
+    ));
 
     // Pass one: content streams and the images each page needs.
     let mut streams: Vec<(Vec<u8>, BTreeMap<PartId, String>)> = Vec::with_capacity(pages.len());
@@ -90,6 +103,7 @@ pub fn render_with_source(
             scale,
             fonts: &fonts,
             media,
+            names: &image_names,
             images: BTreeMap::new(),
             report: &mut report,
         };
@@ -174,7 +188,10 @@ pub fn render_with_source(
             {
                 let mut xobjects = resources.x_objects();
                 for (part, (id, _)) in &objects.images {
-                    xobjects.pair(Name(image_resource_name(part).as_bytes()), *id);
+                    let name = image_names.get(part).unwrap_or_else(|| {
+                        panic!("{} was named before it was drawn", part.as_str())
+                    });
+                    xobjects.pair(Name(name.as_bytes()), *id);
                 }
             }
         }
@@ -420,10 +437,15 @@ impl PageWriter<'_> {
             );
             inner = about_centre;
         }
-        let matrix = Matrix::chain(
-            inner,
-            Matrix::translate(self.x(shape.x), self.y(shape.y + shape.h)),
-        );
+        // The path's local box has `y` pointing **down**, so local `y = 0` is the
+        // shape's *top* edge, and the y scale is negated to match PDF. That makes
+        // the translation the shape's own top edge in PDF coordinates — the same
+        // `self.y(shape.y)` every other item uses. Adding `shape.h` here instead
+        // drew every DrawingML shape one shape-height too low, which is not a
+        // subtle drift: it put a rounded rectangle on the wrong line of the page
+        // and no structural bound was looking for it until the PDF pixel gate
+        // (`CORE-QUEUE.md` §1) compared the two backends.
+        let matrix = Matrix::chain(inner, Matrix::translate(self.x(shape.x), self.y(shape.y)));
         self.content.save_state();
         self.content.transform(matrix.to_array());
         for segment in &segments {
@@ -437,6 +459,14 @@ impl PageWriter<'_> {
                 Segment::CurveTo(x1, y1, x2, y2, x, y) => {
                     self.content.cubic_to(
                         x1 as f32, y1 as f32, x2 as f32, y2 as f32, x as f32, y as f32,
+                    );
+                }
+                // `resolve` turns every arc into cubics before anything is drawn,
+                // so an arc reaching the content stream means the resolver was
+                // bypassed — and PDF has no operator for it.
+                Segment::Arc { .. } => {
+                    self.report.record_unresolved_outline(
+                        "a shape's outline still holds an elliptical arc",
                     );
                 }
                 Segment::Close => {
@@ -473,7 +503,11 @@ impl PageWriter<'_> {
             self.report.record_placeholder(&image.alt);
             return;
         }
-        let name = image_resource_name(part);
+        let name = self
+            .names
+            .get(part)
+            .unwrap_or_else(|| panic!("{} was named before it was drawn", part.as_str()))
+            .clone();
         self.images.insert(part.clone(), name.clone());
         self.content.save_state();
         self.content.transform([
@@ -558,8 +592,45 @@ fn finish(content: &mut Content, fill: bool, stroke: bool) {
     }
 }
 
-/// The resource name of an image, derived from its part so the same picture on
-/// two pages is one object.
+/// Every picture in the document, named once, before anything is written.
+///
+/// The base name comes from the part, because it is what makes a content stream
+/// readable (`/Im_word_media_image1_png Do` says which picture is drawn) and
+/// because the same part on two pages must be one object. Cleaning a part name
+/// into a resource name is lossy, though: `/word/media/a-b.png` and
+/// `/word/media/a_b.png` are two pictures and one name, and a page's `/XObject`
+/// dictionary written with both is a dictionary with two entries under one key —
+/// well formed enough to open, and one picture short.
+///
+/// So a collision gets a counter, in first-seen order. First-seen rather than
+/// sorted because the walk that draws the pages is the one that establishes which
+/// picture came first, and a name that depends on nothing but the document is
+/// what keeps SC-1 (two renders, the same bytes) true.
+fn name_the_images<'a>(parts: impl Iterator<Item = &'a PartId>) -> BTreeMap<PartId, String> {
+    let mut taken: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut names: BTreeMap<PartId, String> = BTreeMap::new();
+    for part in parts {
+        if names.contains_key(part) {
+            continue;
+        }
+        let base = image_resource_name(part);
+        let mut name = base.clone();
+        let mut counter = 1u32;
+        while taken.contains(&name) {
+            counter += 1;
+            name = format!("{base}_{counter}");
+        }
+        taken.insert(name.clone());
+        names.insert(part.clone(), name);
+    }
+    names
+}
+
+/// The resource name an image would have, derived from its part.
+///
+/// Kept separate from the uniqueness decision above: this is the part, cleaned,
+/// and the collision test is about what happens when two parts clean to the same
+/// thing.
 fn image_resource_name(part: &PartId) -> String {
     let mut out = String::from("Im");
     for ch in part.as_str().chars() {
@@ -746,5 +817,100 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         type0.encoding_cmap(identity_id);
         type0.descendant_font(cid_id);
         type0.to_unicode(to_unicode_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{image_resource_name, name_the_images};
+    use std::collections::BTreeMap;
+    use strict_ooxml_core::part::PartId;
+
+    fn ids(parts: &[&str]) -> Vec<PartId> {
+        parts.iter().map(|part| PartId::new(*part)).collect()
+    }
+
+    fn names_for(parts: &[&str]) -> BTreeMap<PartId, String> {
+        let parts = ids(parts);
+        name_the_images(parts.iter())
+    }
+
+    #[test]
+    fn a_part_keeps_its_readable_name() {
+        let names = names_for(&["/word/media/image1.png"]);
+        assert_eq!(
+            names[&PartId::new("/word/media/image1.png")],
+            "Im_word_media_image1_png"
+        );
+    }
+
+    #[test]
+    fn two_parts_that_clean_alike_get_different_names() {
+        // The collision `STAGE-8-OPEN.md` Q-4 predicted: cleaning a part name
+        // into a PDF resource name is lossy, and these two files are one name.
+        // Written as they were, the page's `/XObject` dictionary holds two
+        // entries under one key and one of the pictures is never drawn.
+        let names = names_for(&["/word/media/a-b.png", "/word/media/a_b.png"]);
+        assert_eq!(names.len(), 2);
+        let values: Vec<&String> = names.values().collect();
+        assert_ne!(values[0], values[1], "the collision survived: {names:?}");
+        assert_eq!(values[0], "Im_word_media_a_b_png");
+        assert_eq!(values[1], "Im_word_media_a_b_png_2");
+    }
+
+    #[test]
+    fn the_first_part_to_arrive_keeps_the_unsuffixed_name() {
+        // First-seen order is the contract, because the walk that draws the pages
+        // is what fixes it and a name that depends on nothing but the document is
+        // what keeps two renders byte-identical (SC-1).
+        let names = names_for(&["/word/media/a_b.png", "/word/media/a-b.png"]);
+        assert_eq!(
+            names[&PartId::new("/word/media/a_b.png")],
+            "Im_word_media_a_b_png"
+        );
+        assert_eq!(
+            names[&PartId::new("/word/media/a-b.png")],
+            "Im_word_media_a_b_png_2"
+        );
+    }
+
+    #[test]
+    fn the_same_part_repeated_is_one_picture_with_one_name() {
+        let names = names_for(&[
+            "/word/media/image1.png",
+            "/word/media/image1.png",
+            "/word/media/image1.png",
+        ]);
+        assert_eq!(names.len(), 1, "a repeat is the same picture: {names:?}");
+    }
+
+    #[test]
+    fn three_parts_that_clean_alike_all_get_a_name() {
+        let names = names_for(&[
+            "/word/media/a b.png",
+            "/word/media/a-b.png",
+            "/word/media/a.b.png",
+        ]);
+        let mut values: Vec<&String> = names.values().collect();
+        values.sort();
+        assert_eq!(values.len(), 3);
+        assert_eq!(
+            values,
+            vec![
+                "Im_word_media_a_b_png",
+                "Im_word_media_a_b_png_2",
+                "Im_word_media_a_b_png_3"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_part_name_is_only_cleaned_never_reordered() {
+        // The name is derived, not generated: a reader of a content stream has to
+        // be able to tell which picture `/Im… Do` draws.
+        assert_eq!(
+            image_resource_name(&PartId::new("/word/media/i'm a ~pic~.PNG")),
+            "Im_word_media_i_m_a__pic__PNG"
+        );
     }
 }
