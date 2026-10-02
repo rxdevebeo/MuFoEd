@@ -82,6 +82,14 @@ pub const RENAMES: &[Rename] = &[
     edge("tblBorders", "right", "end", "CT_TblBorders"),
     edge("tcBorders", "left", "start", "CT_TcBorders"),
     edge("tcBorders", "right", "end", "CT_TcBorders"),
+    // ---- `CT_Charset` declares one attribute and it is not `w:val` -------
+    //
+    // Three hundred and eighteen occurrences in forty-one corpus documents, all
+    // of them in `w:font`, which IS a regenerated part - so the writer's font
+    // table was always conformant and the normalizer was never asked. A pass-
+    // through part that carried a `w:charset` would not be, which is the same
+    // blind spot as the four value forms.
+    attribute("charset", "val", "characterSet", "CT_Charset"),
     // ---- margins: `CT_TblCellMar` and `CT_TcMar` declare start/end -------
     edge("tblCellMar", "left", "start", "CT_TblCellMar"),
     edge("tblCellMar", "right", "end", "CT_TblCellMar"),
@@ -398,6 +406,105 @@ pub const REPRODUCED_EXTENSION_NAMESPACES: &[&str] = &[
     "http://schemas.microsoft.com/office/drawing/2010/main",
     "http://schemas.microsoft.com/office/drawing/2014/main",
 ];
+
+/// `ST_MeasurementOrPercent` carriers: the element, and whether it is a bare
+/// `w:@w:w` or an edge of a margin or border container.
+///
+/// Fifteen thousand bare twips in the corpus, and Strict's
+/// `ST_MeasurementOrPercent` is `union(ST_DecimalNumberOrPercent,
+/// s:ST_UniversalMeasure)` while `ST_UniversalMeasure`'s pattern is
+/// `-?[0-9]+(\.[0-9]+)?(mm|cm|in|pt|pc|pi)` - **twip is not a unit it accepts**.
+/// So there is no spelling to add; the number has to be converted. One twip is
+/// 1/20 of a point, which is exact in two decimals, so the conversion loses
+/// nothing: 2200 becomes 110pt and 17663 becomes 883.15pt.
+///
+/// The four containers are listed by name because an edge is only a measure in
+/// one of them. `w:left` inside `w:ind` is `ST_TwipsMeasure` and stays a bare
+/// number; `w:left` inside `w:tblCellMar` is not.
+pub const MEASURE_OR_PERCENT: &[(&str, bool)] = &[
+    // (name, is_container): a container is matched against the PARENT, because
+    // the measure is on one of its edges; the rest are matched against the element
+    // that holds `@w:w` directly. The flag is `is_container`, and it was written
+    // backwards the first time - which is why the rule fired nine times on the
+    // corpus and the nine were the only cases where an edge happened to be named
+    // like a container's child.
+    ("tblW", false),
+    ("tcW", false),
+    ("tblInd", false),
+    ("wBefore", false),
+    ("wAfter", false),
+    ("tblCellSpacing", false),
+    ("tblBorders", true),
+    ("tcBorders", true),
+    ("tblCellMar", true),
+    ("tcMar", true),
+];
+
+/// Twips to the universal measure Strict accepts, or `None` when the value is
+/// already conformant.
+///
+/// Returns `None` for anything carrying a unit or a `%`, so a producer that got
+/// this right is left alone, and for a value that is not a bare number at all -
+/// which the XSD gate then names, rather than this guessing.
+#[must_use]
+pub fn twips_to_universal(value: &str) -> Option<String> {
+    if value.is_empty()
+        || value.contains('%')
+        || value.contains(|c: char| c.is_ascii_alphabetic() || c == ':')
+    {
+        return None;
+    }
+    let twips: i64 = value.parse().ok()?;
+    // Exactly two decimal places, because one twip is 1/20 of a point and 1/100
+    // of a point is 1/500 twip - so hundredths are the finest unit that can
+    // represent every twip value without loss. The trailing zero is then trimmed,
+    // because `5.40pt` and `5.4pt` are the same number and a document that reads
+    // `5.4pt` is the one a producer would have written.
+    let hundredths = twips * 5;
+    let whole = hundredths / 100;
+    let rest = (hundredths % 100).abs();
+    if rest == 0 {
+        return Some(format!("{whole}pt"));
+    }
+    let fraction = format!("{rest:02}");
+    Some(format!("{whole}.{}pt", fraction.trim_end_matches('0')))
+}
+
+/// `ST_TextScale`: a bare number where Strict's pattern wants a `%`.
+///
+/// `ST_TextScalePercent` is `0*(600|([0-5]?[0-9]?[0-9]))%`, so 82 and 135 both
+/// need the sign and 601 would need clamping - which this does not do, because a
+/// value outside the set is a measurement for the XSD gate and not a repair.
+#[must_use]
+pub fn text_scale_percent(value: &str) -> Option<String> {
+    if value.ends_with('%') {
+        return None;
+    }
+    let number: i64 = value.parse().ok()?;
+    number.checked_mul(0)?;
+    Some(format!("{number}%"))
+}
+
+/// `ST_DecimalNumberOrPercent` on `w:zoom/@w:percent`, the same shape as
+/// [`text_scale_percent`] and kept separate because they are different types on
+/// different elements and a rule that silently grew to cover both would stop
+/// being checkable against either.
+#[must_use]
+pub fn decimal_or_percent(value: &str) -> Option<String> {
+    text_scale_percent(value)
+}
+
+/// Whether an element/parent pair carries a bare `ST_MeasurementOrPercent`.
+#[must_use]
+pub fn is_measure_carrier(element: &str, parent: &str) -> bool {
+    MEASURE_OR_PERCENT.iter().any(|(name, is_container)| {
+        if *is_container {
+            *name == parent
+        } else {
+            *name == element
+        }
+    })
+}
 
 /// Looks up a removal by local name.
 #[must_use]

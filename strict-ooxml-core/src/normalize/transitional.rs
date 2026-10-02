@@ -558,11 +558,29 @@ impl TransitionalNormalizer {
                     return Ok(());
                 }
                 match Self::rewrite_start(&start, context, report) {
-                    Rewritten::Keep(rewritten) => write_empty(writer, &rewritten)
-                        .map_err(|error| xml_error(&context.part, error.to_string())),
+                    // `rewrite_start` pushes onto the open-element stack, and for
+                    // an `Event::Empty` there is no `Event::End` to pop it - a
+                    // self-closing tag is one event, not two. Without this the
+                    // stack grew by one per empty tag and `parent_local()` returned
+                    // the PREVIOUS SIBLING for every element after the first, which
+                    // is what made the container-keyed rules fire on nothing: a
+                    // `w:left` following a `w:top` inside `w:tblCellMar` was asked
+                    // whether `w:top` renames `w:left`, and no table has that entry.
+                    //
+                    // The pop is after the write so a failed write leaves the stack
+                    // as it was rather than unwinding a caller that will bail out.
+                    Rewritten::Keep(rewritten) => {
+                        let written = write_empty(writer, &rewritten)
+                            .map_err(|error| xml_error(&context.part, error.to_string()));
+                        context.pop_element();
+                        written
+                    }
                     // A self-closing tag has no subtree: the decision is the
                     // whole removal.
-                    Rewritten::Drop => Ok(()),
+                    Rewritten::Drop => {
+                        context.pop_element();
+                        Ok(())
+                    }
                 }
             }
             Event::End(end) => {
@@ -689,6 +707,10 @@ impl TransitionalNormalizer {
         };
         let drop_w_val = tbl_look.is_some();
         copy_attributes(start, drop_w_val, &mut buffer, context, report);
+        // ---- T4: `CT_PageMar`'s three required attributes ----------------
+        if is_wml(&element_uri) && local == "pgMar" {
+            synthesize_page_margin(context, start, &element_uri, &mut buffer, report);
+        }
         // ---- T4: the six attributes the bit mask becomes ---------------
         //
         // Only the ones the producer did not already write. Word emits
@@ -1589,8 +1611,16 @@ fn rewrite_attribute(
         return RewrittenAttribute::Drop;
     };
     let element = context.pending_element.clone();
-    let value =
-        mapped_value(&element, new_local, &effective_uri, &decoded, report).unwrap_or(decoded);
+    let parent = context.pending_parent.clone();
+    let value = mapped_value(
+        &element,
+        &parent,
+        new_local,
+        &effective_uri,
+        &decoded,
+        report,
+    )
+    .unwrap_or(decoded);
     RewrittenAttribute::Keep(out_key, value)
 }
 
@@ -1647,6 +1677,47 @@ fn clean_mce_attribute(context: &PartContext, local: &str, value: &str) -> Optio
 ///
 /// `None` also covers "there is no `@w:val` at all", which is a Strict `w:tblLook`
 /// arriving in a Transitional part and needs no record.
+/// Adds the three `CT_PageMar` attributes Strict declares `use="required"`.
+///
+/// `w:gutter`, `w:header` and `w:footer`, none of which eight corpus documents
+/// write - usually all three at once, because the producer is a tool that emits a
+/// page margin as four numbers and stops.
+///
+/// A missing attribute has no value to map, which is why this is not a
+/// `mapped_value` rule and why it is the only one of the four value forms that
+/// lives at the element.
+///
+/// The defaults are Word's: no gutter, and half an inch of header and footer,
+/// which is 720 twips. `s:ST_TwipsMeasure` is
+/// `union(ST_UnsignedDecimalNumber, ST_PositiveUniversalMeasure)`, so a bare number
+/// is conformant and no unit is written - adding `twip` would be the mirror of
+/// the mistake this project made once already, in the other direction.
+fn synthesize_page_margin(
+    context: &mut PartContext,
+    start: &BytesStart<'_>,
+    element_uri: &str,
+    buffer: &mut BytesStart<'static>,
+    report: &mut NormalizationReport,
+) {
+    let present: Vec<Vec<u8>> = start
+        .attributes()
+        .flatten()
+        .map(|attribute| attribute.key.as_ref().to_vec())
+        .collect();
+    for (attribute, default) in [("gutter", "0"), ("header", "720"), ("footer", "720")] {
+        if present
+            .iter()
+            .any(|key| key.ends_with(attribute.as_bytes()))
+        {
+            continue;
+        }
+        let prefix = context.prefix_for(element_uri);
+        let key = PartContext::qualified_name(&prefix, attribute);
+        buffer.push_attribute((key.as_str(), default));
+        report.record_mapping("T4.pageMargin", attribute, default);
+    }
+}
+
 fn decode_and_report_tbl_look(
     start: &BytesStart<'_>,
     context: &PartContext,
@@ -1728,6 +1799,7 @@ fn decode_tbl_look(start: &BytesStart<'_>, context: &PartContext) -> Option<TblL
 /// applies and the original must therefore be kept.
 fn mapped_value(
     element: &str,
+    parent: &str,
     local: &str,
     uri: &str,
     value: &str,
@@ -1738,6 +1810,40 @@ fn mapped_value(
         if let Some(mapped) = tables::map_value(element, local, value) {
             report.record_mapping("T4.value", value, mapped);
             return Some(mapped.to_owned());
+        }
+        // ---- T4: a value whose TYPE Strict spells differently -----------
+        //
+        // Four forms, and all four were absent from this function, which is why
+        // every one of them was closed in the WRITER rather than here: the parts
+        // that carry them are regenerated, so the census measured the writer and
+        // the normalizer was never asked. They are here because pass-through
+        // parts are not regenerated - a table in a header this writer does not
+        // model comes out byte-identical and non-Strict.
+        //
+        // The parent is part of the key for one of them: `w:left` inside
+        // `w:tblCellMar` is `ST_MeasurementOrPercent` and `w:left` inside `w:ind`
+        // is `ST_TwipsMeasure`, which a bare number satisfies. Matching on the
+        // element name alone would corrupt every indentation in the document.
+        if local == "w" && tables::is_measure_carrier(element, parent) {
+            if let Some(mapped) = tables::twips_to_universal(value) {
+                report.record_mapping("T4.measure", value, &mapped);
+                return Some(mapped);
+            }
+        }
+        // `w:rPr/w:w/@w:val` is `ST_TextScale`; `w:zoom/@w:percent` is
+        // `ST_DecimalNumberOrPercent`. Same shape, different types on different
+        // elements, so they stay separate rules.
+        if local == "val" && element == "w" && parent == "rPr" {
+            if let Some(mapped) = tables::text_scale_percent(value) {
+                report.record_mapping("T4.textScale", value, &mapped);
+                return Some(mapped);
+            }
+        }
+        if local == "percent" && element == "zoom" {
+            if let Some(mapped) = tables::decimal_or_percent(value) {
+                report.record_mapping("T4.percent", value, &mapped);
+                return Some(mapped);
+            }
         }
     }
     // ---- T2: a relationship-type or content-type URI -------------------
@@ -2999,6 +3105,95 @@ mod tests {
         );
     }
 
+    /// The five value forms Strict spells differently, in one pass-through part.
+    ///
+    /// **Pass-through is the only place these are testable end to end.** Every one
+    /// of them occurs in the corpus only inside parts the writer REGENERATES -
+    /// `document.xml`, `styles.xml`, `numbering.xml`, `fontTable.xml` - where the
+    /// writer's own spelling is conformant and the normalizer is never asked. So a
+    /// corpus gate measured the writer for all four of them and reported a clean
+    /// zero on rules that did not exist. `word/header2.xml` is not regenerated, and
+    /// a table in it comes out of this pipeline byte-for-byte whatever this function
+    /// does, which is what makes it the fixture.
+    #[test]
+    fn the_five_value_forms_are_converted_in_a_pass_through_part() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+ <w:tbl>
+  <w:tblPr>
+   <w:tblW w:w="2200" w:type="dxa"/>
+   <w:tblInd w:w="17663" w:type="dxa"/>
+   <w:tblCellMar>
+    <w:top w:w="0" w:type="dxa"/>
+    <w:start w:w="108" w:type="dxa"/>
+    <w:bottom w:w="0" w:type="dxa"/>
+    <w:end w:w="108" w:type="dxa"/>
+   </w:tblCellMar>
+  </w:tblPr>
+  <w:tblGrid><w:gridCol w:w="2200"/></w:tblGrid>
+ </w:tbl>
+ <w:p><w:pPr><w:spacing w:before="240"/></w:pPr><w:r><w:rPr><w:w w:val="90"/></w:rPr><w:t>x</w:t></w:r></w:p>
+ <w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+</w:hdr>"#;
+        let output = normalizer
+            .normalize(&PartId::new("/word/header2.xml"), source.as_bytes())
+            .unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+
+        // 1. ST_MeasurementOrPercent. `ST_UniversalMeasure`'s pattern is
+        //    `-?[0-9]+(\.[0-9]+)?(mm|cm|in|pt|pc|pi)` - there is no `twip`, so the
+        //    number is converted rather than suffixed. One twip is 1/20 pt.
+        assert!(text.contains(r#"<w:tblW w:w="110pt""#), "{text}");
+        // 17663 twips is not a whole number of points and must not be rounded.
+        assert!(text.contains(r#"<w:tblInd w:w="883.15pt""#), "{text}");
+        assert!(text.contains(r#"<w:top w:w="0pt""#), "{text}");
+        // `w:wBefore`/`w:wAfter` share the type; this checks the OTHER edge of
+        // the same container, which is what a one-sided rule would miss.
+        assert!(text.contains(r#"<w:start w:w="5.4pt""#), "{text}");
+
+        // 2. ST_TextScale on `w:rPr/w:w/@w:val`.
+        assert!(text.contains(r#"<w:w w:val="90%"/>"#), "{text}");
+
+        // 3. A `w:spacing` edge is ST_TwipsMeasure, NOT a universal measure, and
+        //    must stay a bare number. This is the negative half: matching on the
+        //    attribute name alone would corrupt every measurement in the document.
+        assert!(
+            text.contains(r#"<w:spacing w:before="240"/>"#),
+            "ST_TwipsMeasure keeps its bare number: {text}"
+        );
+
+        // 4. CT_PageMar's three required attributes, synthesised.
+        assert!(text.contains(r#"w:gutter="0""#), "{text}");
+        assert!(text.contains(r#"w:header="720""#), "{text}");
+        assert!(text.contains(r#"w:footer="720""#), "{text}");
+    }
+
+    /// `w:charset/@w:val` becomes `@w:characterSet`.
+    ///
+    /// `CT_Charset` declares one attribute and it is not `@w:val`, so this is a
+    /// RENAME rather than a value map, and it belongs in `RENAMES` where the
+    /// container-keyed half can be reasoned about with the other three.
+    #[test]
+    fn a_charset_value_becomes_the_attribute_strict_declares() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+ <w:docDefaults><w:rPrDefault><w:rPr><w:charset w:val="CC"/></w:rPr></w:rPrDefault></w:docDefaults>
+</w:styles>"#;
+        let output = normalizer
+            .normalize(&PartId::new("/word/styles.xml"), source.as_bytes())
+            .unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(
+            text.contains(r#"<w:charset w:characterSet="CC"/>"#),
+            "{text}"
+        );
+        assert!(
+            !text.contains(r#"w:val="CC""#),
+            "and not the old name: {text}"
+        );
+    }
+
     /// A block with no understood choice and **no** `mc:Fallback` resolves to
     /// nothing, and that is a removal — so it is counted and named.
     ///
@@ -3020,9 +3215,16 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(output.into_owned()).unwrap();
         assert!(!text.contains("typoFeatureVersion"), "it is gone: {text}");
+        // `100%`, not `100`. `ST_DecimalNumberOrPercent` is a union of
+        // `s:ST_Percentage` alone and `ST_Percentage`'s pattern is
+        // `-?[0-9]+(\.[0-9]+)?%`, so a bare number is not a value this attribute can
+        // hold. The assertion used to require the Transitional spelling, which is
+        // the same defect the census item this rule closes describes - the corpus
+        // is written by producers that fail their own schema, and a normalizer
+        // that agrees with them is not a normalizer.
         assert!(
-            text.contains(r#"<w:zoom w:percent="100"/>"#),
-            "and nothing else is: {text}"
+            text.contains(r#"<w:zoom w:percent="100%"/>"#),
+            "and the percent gets the sign Strict requires: {text}"
         );
         let report = normalizer.report();
         assert_eq!(report.lossy_count(), 1, "one removal: {report}");
