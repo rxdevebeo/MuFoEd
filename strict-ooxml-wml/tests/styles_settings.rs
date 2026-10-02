@@ -201,3 +201,59 @@ fn auxiliary_parts_absent_by_default() {
         strict_ooxml_wml::model::settings::Settings::default()
     );
 }
+
+/// `m:mathPr` is the one child of `w:settings` in another namespace.
+///
+/// The settings parser drops everything that is not `wml`, and this block was
+/// dropped with it - twelve elements gone from forty corpus documents, none of
+/// them named. The test is named for the namespace rather than the element
+/// because the element is fine; the filter was the defect.
+#[test]
+fn math_properties_survive_the_non_wml_filter() {
+    let document = parse_aux(
+        None,
+        None,
+        Some(
+            r#"<w:settings xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"
+  xmlns:m="http://purl.oclc.org/ooxml/officeDocument/math">
+  <m:mathPr>
+    <m:mathFont m:val="Cambria Math"/>
+    <m:brkBin m:val="before"/>
+    <m:brkBinSub m:val="--"/>
+    <m:smallFrac m:val="0"/>
+    <m:dispDef/>
+    <m:lMargin m:val="0"/>
+    <m:rMargin m:val="0"/>
+    <m:defJc m:val="centerGroup"/>
+    <m:wrapIndent m:val="1440"/>
+    <m:intLim m:val="subSup"/>
+    <m:naryLim m:val="undOvr"/>
+  </m:mathPr>
+</w:settings>"#,
+        ),
+    );
+    let mathematics = document
+        .settings
+        .math_properties
+        .expect("m:mathPr is parsed, not skipped as foreign markup");
+    assert_eq!(mathematics.math_font.as_deref(), Some("Cambria Math"));
+    assert_eq!(mathematics.break_binary_operator.as_deref(), Some("before"));
+    assert_eq!(
+        mathematics.default_justification.as_deref(),
+        Some("centerGroup")
+    );
+    assert_eq!(mathematics.integral_limit.as_deref(), Some("subSup"));
+    // `m:wrapIndent` is nested in an `xsd:choice` inside the sequence, so a
+    // model built from the sequence's direct children would have no field for it
+    // and it would be dropped on the round trip - which is how 40 documents lost
+    // it even after the block itself started being parsed.
+    assert_eq!(
+        mathematics.wrap_indent.as_deref(),
+        Some("1440"),
+        "the choice arm must be modelled, not just the direct children"
+    );
+    assert!(mathematics.pre_space.is_none());
+    // A bare `<m:dispDef/>` is `CT_OnOff` and means on; recording it as absent
+    // would turn a set flag off on the next write.
+    assert_eq!(mathematics.display_default.as_deref(), Some("1"));
+}

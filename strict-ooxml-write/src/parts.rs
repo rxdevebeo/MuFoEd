@@ -11,7 +11,7 @@ use strict_ooxml_wml::model::ids::Ilvl;
 use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, NumberingTable};
-use strict_ooxml_wml::model::settings::Settings;
+use strict_ooxml_wml::model::settings::{MathProperties, Settings};
 use strict_ooxml_wml::model::styles::{DocDefaults, Style, StyleTable};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::StyleType;
@@ -19,7 +19,7 @@ use strict_ooxml_wml::model::values::StyleType;
 use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
 use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
-use crate::xml::{WriteError, XmlWriter, NS_A, NS_PIC, NS_R, NS_W, NS_WP};
+use crate::xml::{WriteError, XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
 use strict_ooxml_wml::model::fonts::{EmbedKind, FontTable};
 use strict_ooxml_wml::parse::LOST_FONT_PART;
 
@@ -30,7 +30,15 @@ use strict_ooxml_wml::parse::LOST_FONT_PART;
 /// ECMA-376 entirely and Strict conformance is defined on the post-MCE part, so a
 /// Strict part that declares the namespace is one line away from carrying an
 /// attribute the standard does not have (ADR-0014).
-const WML_NAMESPACES: [(&str, &str); 2] = [("w", NS_W), ("r", NS_R)];
+/// `w:` and `r:`, plus `m:` for `m:mathPr`.
+///
+/// The maths vocabulary is listed here for the same reason `wp`/`a`/`pic` are
+/// listed on a header that may hold a drawing: `start_root` filters declarations
+/// down to the prefixes the part actually used, so naming `m` costs a document
+/// that has no `m:mathPr` nothing, and a document that has one gets it declared.
+/// Without the entry the writer emitted `<m:mathPr>` into a root that did not
+/// declare the prefix, and the part did not parse at all.
+const WML_NAMESPACES: [(&str, &str); 3] = [("w", NS_W), ("r", NS_R), ("m", NS_M)];
 
 /// The namespaces a part that can hold **block or inline content** may use.
 ///
@@ -307,6 +315,50 @@ pub fn settings_part(
 }
 
 /// Writes the `w:settings` child called `name`, when the model has it.
+/// Writes `m:mathPr` and its children.
+///
+/// The order below IS `CT_MathPr`'s `xsd:sequence` - `mathFont`, `brkBin`,
+/// `brkBinSub`, `smallFrac`, `dispDef`, `lMargin`, `rMargin`, `defJc`, `preSp`,
+/// `postSp`, `interSp`, `intraSp`, then the `xsd:choice` of `wrapIndent` /
+/// `wrapRight`, then `intLim`, `naryLim` - and it is neither alphabetical nor
+/// the order the fields are read in by anything else. `brkBinSub` sorts before
+/// `brkBin`, `intLim` before `intraSp`, and the choice is nested one level below
+/// the sequence so a reader of the sequence's direct children never sees it.
+///
+/// Every child is written only when the model holds it, because all of them are
+/// optional: writing an empty `m:preSp` would be a value the producer never
+/// chose. `wrapIndent` and `wrapRight` are arms of one choice, and the model
+/// keeps both — the schema, not the parser, decides that a document with both is
+/// invalid, and a malformed value the XSD gate names beats a value silently
+/// dropped.
+fn math_properties(xml: &mut XmlWriter, properties: &MathProperties) {
+    xml.start("m:mathPr");
+    let children: [(&str, &Option<std::sync::Arc<str>>); 16] = [
+        ("m:mathFont", &properties.math_font),
+        ("m:brkBin", &properties.break_binary_operator),
+        ("m:brkBinSub", &properties.break_binary_sub),
+        ("m:smallFrac", &properties.small_fraction),
+        ("m:dispDef", &properties.display_default),
+        ("m:lMargin", &properties.left_margin),
+        ("m:rMargin", &properties.right_margin),
+        ("m:defJc", &properties.default_justification),
+        ("m:preSp", &properties.pre_space),
+        ("m:postSp", &properties.post_space),
+        ("m:interSp", &properties.inter_space),
+        ("m:intraSp", &properties.intra_space),
+        ("m:wrapIndent", &properties.wrap_indent),
+        ("m:wrapRight", &properties.wrap_right),
+        ("m:intLim", &properties.integral_limit),
+        ("m:naryLim", &properties.nary_limit),
+    ];
+    for (name, value) in children {
+        if let Some(value) = value {
+            xml.empty_attr(name, "m:val", value.as_ref());
+        }
+    }
+    xml.end();
+}
+
 fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, name: &str) {
     match name {
         "zoom" => {
@@ -393,6 +445,11 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
                     xml.end();
                 }
                 xml.end();
+            }
+        }
+        "mathPr" => {
+            if let Some(mathematics) = &settings.math_properties {
+                math_properties(xml, mathematics);
             }
         }
         "themeFontLang" => {

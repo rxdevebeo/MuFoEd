@@ -3,10 +3,10 @@
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::settings::{DocumentZoom, Settings, Zoom};
+use crate::model::settings::{DocumentZoom, MathProperties, Settings, Zoom};
 use crate::model::values::Twips;
 
-use super::{is_wml, parse_i32, val_attr, wml_attr, PartParser};
+use super::{attr_in_ns, is_math, is_wml, parse_i32, val_attr, wml_attr, PartParser};
 
 impl PartParser<'_> {
     /// Parses a `settings.xml` part.
@@ -17,6 +17,16 @@ impl PartParser<'_> {
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
+                    // `m:mathPr` is the one child of `w:settings` in another
+                    // namespace, and it is the ONLY reason this branch exists:
+                    // the guard below drops everything that is not `wml`, so the
+                    // whole block was recorded as foreign markup and thrown away
+                    // in forty corpus documents. Checked before the guard, because
+                    // after it there is nothing left to check.
+                    if name.local() == "mathPr" {
+                        settings.math_properties = Some(self.parse_math_properties()?);
+                        continue;
+                    }
                     if !is_wml(&name) {
                         self.record_foreign(&name);
                         self.skip_element()?;
@@ -110,6 +120,70 @@ impl PartParser<'_> {
             }),
             kind: val_attr(attrs).and_then(DocumentZoom::from_strict),
         }
+    }
+
+    /// Parses an `m:mathPr` block into [`MathProperties`].
+    ///
+    /// Every child is `m:val` and every one of them is optional in
+    /// `CT_MathPr`, so this is a straight name-to-field map. The value stays a
+    /// string on purpose: the fourteen are seven distinct simple types
+    /// (`CT_String`, `CT_OnOff`, `CT_TwipsMeasure`, `CT_OMathJc`, `CT_LimLoc`),
+    /// a corpus carries exactly one legal spelling of each, and a model that
+    /// cannot hold an out-of-set value would have to drop it - which is the loss
+    /// this block exists to stop. A malformed value is carried verbatim and the
+    /// XSD gate names it, which is the project's rule: a named bad value is a
+    /// measurement, a silently defaulted one is not.
+    fn parse_math_properties(&mut self) -> Result<MathProperties> {
+        self.enter()?;
+        let mut properties = MathProperties::default();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if !is_math(&name) {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                        continue;
+                    }
+                    // `m:dispDef` is an on/off flag the producer may write bare,
+                    // so the element's presence is the signal and @m:val refines it.
+                    let value = attr_in_ns(&attrs, crate::MATH_STRICT_NS, "val");
+                    let slot = match name.local() {
+                        "mathFont" => &mut properties.math_font,
+                        "brkBin" => &mut properties.break_binary_operator,
+                        "brkBinSub" => &mut properties.break_binary_sub,
+                        "smallFrac" => &mut properties.small_fraction,
+                        "dispDef" => &mut properties.display_default,
+                        "lMargin" => &mut properties.left_margin,
+                        "rMargin" => &mut properties.right_margin,
+                        "defJc" => &mut properties.default_justification,
+                        "preSp" => &mut properties.pre_space,
+                        "postSp" => &mut properties.post_space,
+                        "interSp" => &mut properties.inter_space,
+                        "intraSp" => &mut properties.intra_space,
+                        "wrapIndent" => &mut properties.wrap_indent,
+                        "wrapRight" => &mut properties.wrap_right,
+                        "intLim" => &mut properties.integral_limit,
+                        "naryLim" => &mut properties.nary_limit,
+                        _ => {
+                            self.record_foreign(&name);
+                            self.skip_element()?;
+                            continue;
+                        }
+                    };
+                    *slot = Some(match value {
+                        Some(text) => self.intern(text),
+                        // Bare `<m:dispDef/>` means on, and `CT_OnOff` says so by
+                        // its default. Writing it back as absent would turn a set
+                        // flag into an unset one on the round trip.
+                        None => self.intern("1"),
+                    });
+                    self.skip_element()?;
+                }
+                XmlEvent::EndElement { .. } => break,
+                _ => {}
+            }
+        }
+        Ok(properties)
     }
 
     /// Parses a `w:compat` element, collecting `w:compatSetting` key/values.

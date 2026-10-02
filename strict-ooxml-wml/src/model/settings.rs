@@ -100,4 +100,76 @@ pub struct Settings {
     /// `w:sectPr` produced a document that fails on
     /// "This element is not expected" for a flag that has a legal Strict home.
     pub gutter_at_top: bool,
+    /// OMML maths properties (`m:mathPr`).
+    ///
+    /// This is the one child of `w:settings` that lives in another namespace,
+    /// and the settings parser skips everything that is not `wml` — so the block
+    /// was recorded as foreign markup and dropped. Forty corpus documents lost
+    /// twelve elements each, none of them named. Queue item 16 wrote this down
+    /// twice and measured it on the corpus neither time, because the instrument
+    /// it used filtered by the `wml` namespace and could not see what it was
+    /// looking for.
+    pub math_properties: Option<MathProperties>,
+}
+
+/// `m:mathPr` and its children, in the order `CT_MathPr` declares them.
+///
+/// Order is not decoration here. The type is an `xsd:sequence`, so the writer has
+/// to emit these in exactly this order or the part fails on "This element is not
+/// expected" — the same failure as `XS-15`, which is OMML order elsewhere. The
+/// fields are therefore in schema order rather than in a `BTreeMap`, because a
+/// map would sort them alphabetically and `brkBinSub` would precede `brkBin`.
+///
+/// `m:wrapIndent` and `m:wrapRight` sit between `m:intraSp` and `m:intLim`
+/// because `CT_MathPr` nests them in an `xsd:choice` at that point, which a
+/// scan of the sequence's direct children does not reach.
+///
+/// The corpus carries eleven of the sixteen: `m:preSp`, `m:postSp`, `m:interSp`,
+/// `m:intraSp` and `m:wrapRight` never appear. All sixteen are modelled so a
+/// document that does carry them keeps them.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct MathProperties {
+    /// `m:mathFont` — the maths font, `Cambria Math` on every corpus document.
+    pub math_font: Option<Arc<str>>,
+    /// `m:brkBin` — where a binary operator may break.
+    pub break_binary_operator: Option<Arc<str>>,
+    /// `m:brkBinSub` — how a binary operator breaks in a subscript.
+    pub break_binary_sub: Option<Arc<str>>,
+    /// `m:smallFrac` — render fractions smaller than a line at line height.
+    pub small_fraction: Option<Arc<str>>,
+    /// `m:dispDef` — display the equation by default.
+    pub display_default: Option<Arc<str>>,
+    /// `m:lMargin` — left margin of an equation, twips.
+    pub left_margin: Option<Arc<str>>,
+    /// `m:rMargin` — right margin of an equation, twips.
+    pub right_margin: Option<Arc<str>>,
+    /// `m:defJc` — default justification of an equation.
+    pub default_justification: Option<Arc<str>>,
+    /// `m:preSp` — space before the equation, twips.
+    pub pre_space: Option<Arc<str>>,
+    /// `m:postSp` — space after the equation, twips.
+    pub post_space: Option<Arc<str>>,
+    /// `m:interSp` — space between equation lines, twips.
+    pub inter_space: Option<Arc<str>>,
+    /// `m:intraSp` — space between equation lines when they wrap.
+    pub intra_space: Option<Arc<str>>,
+    /// `m:wrapIndent` — indent the wrapped part of an equation, twips.
+    ///
+    /// Declared inside an `xsd:choice` with [`wrap_right`](Self::wrap_right) and
+    /// between `m:intraSp` and `m:intLim`. Two things about that are worth
+    /// writing down: it is a CHOICE, so the two are mutually exclusive, and it is
+    /// NESTED one level below the sequence, so a scan that reads the sequence's
+    /// direct children misses it - which is how the model first declared
+    /// `m:intLim` as the thirteenth child and would have written a valid
+    /// document with the wrong content.
+    pub wrap_indent: Option<Arc<str>>,
+    /// `m:wrapRight` — wrap an equation to the right instead of indenting.
+    ///
+    /// The other arm of the same choice, so a document may carry this or
+    /// [`wrap_indent`](Self::wrap_indent) but never both.
+    pub wrap_right: Option<Arc<str>>,
+    /// `m:intLim` — where an n-ary limit goes by default.
+    pub integral_limit: Option<Arc<str>>,
+    /// `m:naryLim` — where a non-integral n-ary limit goes by default.
+    pub nary_limit: Option<Arc<str>>,
 }

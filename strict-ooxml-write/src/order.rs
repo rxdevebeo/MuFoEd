@@ -160,6 +160,7 @@ pub const SETTINGS: &[&str] = &[
     "compat",
     "docVars",
     "rsids",
+    "mathPr",
     "attachedSchema",
     "themeFontLang",
     "clrSchemeMapping",
@@ -169,6 +170,14 @@ pub const SETTINGS: &[&str] = &[
     "captions",
     "readModeInkLockDown",
     "smartTagType",
+    // `s:schemaLibrary`, position 93 of `CT_Settings`. Nothing writes it - the
+    // attached schema set is not modelled - but it belongs in the table because
+    // the table states the schema's order, and the gate compares it against
+    // `CT_Settings` as the single place that order is written down. It was absent
+    // for as long as the gate's own scan could not see a `ref=` declaration, so
+    // the gate agreed with the table about a type neither of them had read
+    // completely.
+    "schemaLibrary",
     "doNotEmbedSmartTags",
     "decimalSymbol",
     "listSeparator",

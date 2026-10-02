@@ -764,6 +764,27 @@ def declared_sequences() -> dict[str, list[str]]:
     return out
 
 
+def _child_names(node: etree._Element) -> list[str]:
+    """The local names an `xsd:sequence` declares, in order.
+
+    Two things this has to get right, and both were wrong the first time:
+
+      - `name` OR `ref`. `CT_Settings` declares its maths child as
+        `<xsd:element ref="m:mathPr"/>` rather than `name=`, because the
+        declaration lives in `shared-math.xsd`. Reading only `name=` reported 94
+        children for a type that has 95, and the order gate then rejected the
+        writer's own table for declaring a slot the schema does have - the gate
+        asserting the absence of an element that is in the standard.
+      - DESCENDANTS, not direct children. `CT_MathPr` nests `m:wrapIndent` and
+        `m:wrapRight` in an `xsd:choice` inside the sequence; a scan of direct
+        children stops at the sequence and never reaches them.
+    """
+    return [
+        element.get("name") or (element.get("ref") or "").split(":")[-1]
+        for element in node.iter(f"{{{XSDNS}}}element")
+    ]
+
+
 def schema_sequences(directory: str) -> dict[str, list[str]]:
     """The `xsd:sequence` of each type, resolving `xsd:extension` bases and the
     one `xsd:group ref=` the writer's table transcribes (`EG_SectPrContents`)."""
@@ -789,11 +810,7 @@ def schema_sequences(directory: str) -> dict[str, list[str]]:
             # `CT_SectPr` puts the header/footer references before `EG_SectPrContents`
             # and `sectPrChange` after it, and the writer's table is the whole
             # sequence, so the group is read and then framed.
-            own = [
-                element.get("name")
-                for element in node.iter(f"{{{XSDNS}}}element")
-                if element.get("name")
-            ]
+            own = _child_names(node)
             if name == "EG_SectPrContents":
                 return SECTPR_PREFIX + own + SECTPR_SUFFIX
             return own
@@ -801,13 +818,9 @@ def schema_sequences(directory: str) -> dict[str, list[str]]:
         if extension is not None:
             base = extension.get("base")
             inherited = order_of(base, seen | {name}) if base else []
-            own = [element.get("name") for element in extension.iter(f"{{{XSDNS}}}element")]
+            own = _child_names(extension)
             return inherited + [item for item in own if item]
-        return [
-            element.get("name")
-            for element in node.iter(f"{{{XSDNS}}}element")
-            if element.get("name")
-        ]
+        return _child_names(node)
 
     return {name: order_of(name) for name in ORDER_TYPES.values()}
 
