@@ -27,7 +27,7 @@
 # — which is exactly why the two registers are separate and both checked.
 
 [meta]
-revision = "2026-10-02"
+revision = "2026-10-03"
 policy = "GATE-STRATEGY.md §2"
 source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md, docs/transitional-to-strict-audit.md"
 
@@ -652,29 +652,43 @@ report says nothing about it" is a measured zero rather than an opinion.
 
 What this waiver covers is the *remaining* drops, which are named but not fixed:
 
-- `word/fonts/*.ttf` and `word/_rels/fontTable.xml.rels` (16 fonts, 2 documents).
-  Embedded fonts are legal Strict, and `word/fontTable.xml` is regenerated from
-  the faces the styles and runs name — the model carries no font *embedding*, so
-  the written font table declares no `w:embedRegular` and the binaries would be
-  unreferenced even if copied. Carrying them for real means a font-table reader, a
-  model type, `w:embed*` emission, the relationships and the content types.
+- ~~`word/fonts/*.ttf` and `word/_rels/fontTable.xml.rels`~~ — **closed
+  2026-10-02.** Embedded fonts are legal Strict and are now carried: a
+  `word/fontTable.xml` reader, a `FontTable` model type, `w:embed*` emission with
+  its `w:fontKey` and `w:subsetted`, the font table's **own** relationship part
+  (`w:embedRegular/@r:id` names a relationship of *that* part, and the source's
+  ids mean nothing in a package we write), the bytes, and the content type —
+  `application/x-font-ttf` for a plain font and `…obfuscatedFont` for an
+  `odttf`, because ECMA-376 §17.8.1 XOR-obfuscates the first 32 bytes of an
+  obfuscated font under the key and a consumer needs both halves. Ten faces in
+  `DOCX_13_Pages` round-trip byte for byte
+  (`strict-ooxml-write/tests/fonts.rs`).
 - `word/stylesWithEffects.xml` (19 documents). **Deliberate, and the strongest
   case in the file:** Word 2010's shadow of `styles.xml`. Keeping it would leave
   the package with two sets of styles while the written `styles.xml` is the
   model's, and Word 2010 prefers the shadow — so the copy would be *stale*. Two
   copies of one authority is worse than one. Named as `W7.stylesWithEffects`.
-- `docProps/thumbnail.jpeg` / `.wmf` (12 documents). The thumbnail is carried
-  beside `app.xml` now; these are the ones whose `app.xml` had no `.rels` to
-  reach them, or whose `app.xml` itself is absent.
-- `word/media/image#.jpg` / `.wmf` (10 documents). Unreferenced media, and WMF/
-  EMF, which `CORE-QUEUE.md` §0 `L-3` already records as a format boundary.
+- ~~`docProps/thumbnail.jpeg` / `.wmf`~~ — **closed 2026-10-02.** The pass-through
+  copied a property part's `.rels` and then stopped, so `docProps/app.xml` arrived
+  declaring a thumbnail that was not in the package. A property part's
+  relationship **targets** are carried with it now; the ledger showed nine
+  thumbnails lost for exactly this and it was right.
+- ~~`word/media/image#.jpg` / `.wmf`~~ — **not a loss, and the ledger was wrong.**
+  It reported ten documents, and every one was a false positive: this writer
+  **renames** the media it carries (`media/image3.png` becomes
+  `media/image1.png`), so a name comparison calls every renamed-but-carried
+  picture missing. `census_gate.py`'s part ledger now compares SHA-256 of the
+  bytes, which is the question rather than a proxy for it — 181 "drops" became 33,
+  then 21 once the package thumbnails were carried. The nine `.wmf` that remain
+  are the `L-3` format boundary and are carried by the pass-through when
+  something references them.
 - `word/numbering.xml` (1 document). A numbering part the model read as empty, so
   the write emitted none. This is the one item here that is a *model* gap rather
   than a decision, and it is the cheapest to look at.
 
 Numbers are the census's, on 58 Transitional documents written with
 `--transitional`; the item is `TZ-15` there and the gate fails while it is
-non-zero *and unaccounted*, which today is zero.
+non-zero *and unaccounted*, which is zero.
 """
 risk = """
 A named drop is a decision a reader can check; the risk left is that the *decision*
