@@ -477,13 +477,24 @@ fn render_inventory(map: &BTreeMap<String, &'static str>) -> String {
 }
 
 /// Aggregated status counts from an inventory.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct CoverageCounts {
     supported: u32,
     partial: u32,
     unsupported: u32,
     ignored: u32,
     mandatory: u32,
+    /// `ignored` entries that give no reason.
+    ///
+    /// An inventory is a claim about what this reader does. "Ignored" is a
+    /// legitimate answer - theme defaults and `mc:AlternateContent` change no
+    /// pixel - but it is also the cheapest way to make the ratio look better,
+    /// because `ignored` sits outside the denominator. Before this, any
+    /// element could be moved there in one word and the gate would not notice,
+    /// which is how `m:oMath`, `w:hdr` and `wp:anchor` came to be listed as
+    /// ignored while the reader reported them as supported and a 16920-byte OMML
+    /// test file existed. An ignore is now a claim that has to say so.
+    unreasoned_ignored: Vec<String>,
 }
 
 /// Parses an inventory's `[[elements]]` and counts statuses.
@@ -499,7 +510,18 @@ fn coverage_counts(text: &str) -> Result<CoverageCounts, String> {
         match element.get("status").and_then(toml::Value::as_str) {
             Some("supported") => counts.supported += 1,
             Some("partial") => counts.partial += 1,
-            Some("ignored") => counts.ignored += 1,
+            Some("ignored") => {
+                counts.ignored += 1;
+                let reason = element.get("reason").and_then(toml::Value::as_str);
+                let empty = reason.is_none_or(|text| text.trim().is_empty());
+                if empty {
+                    let name = element
+                        .get("name")
+                        .and_then(toml::Value::as_str)
+                        .unwrap_or("<unnamed>");
+                    counts.unreasoned_ignored.push(name.to_owned());
+                }
+            }
             Some("mandatory") => counts.mandatory += 1,
             // An absent or unknown status is treated as unsupported so that the
             // gate cannot be satisfied by an incomplete inventory.
@@ -531,7 +553,7 @@ fn coverage(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let counts = match coverage_counts(&text) {
+    let mut counts = match coverage_counts(&text) {
         Ok(counts) => counts,
         Err(error) => {
             eprintln!("error: {file}: {error}");
@@ -545,6 +567,22 @@ fn coverage(args: &[String]) -> ExitCode {
     );
     if percent + f64::EPSILON < min {
         eprintln!("error: optional-element coverage {percent:.1}% is below {min:.1}%");
+        return ExitCode::from(1);
+    }
+    if !counts.unreasoned_ignored.is_empty() {
+        counts.unreasoned_ignored.sort();
+        eprintln!(
+            "error: {} element(s) are listed as `ignored` without a reason. An ignore is a \
+             claim, and this one is the only claim that never reaches a reader's screen:",
+            counts.unreasoned_ignored.len()
+        );
+        for name in &counts.unreasoned_ignored {
+            eprintln!("  {name}");
+        }
+        eprintln!(
+            "each needs a reason saying why it changes nothing on the page, or a status \
+             that admits it is not handled"
+        );
         return ExitCode::from(1);
     }
     ExitCode::SUCCESS
@@ -1175,18 +1213,18 @@ fn stage5c_docx() -> Vec<u8> {
             arg(&r("x")),
         ),
         format!(
-            "<m:bar><m:barPr><m:pos m:val=\"bot\"/></m:barPr><m:e>{}</m:e></m:bar>",
+            "<m:bar><m:barPr><m:pos m:val=\"bottom\"/></m:barPr><m:e>{}</m:e></m:bar>",
             arg(&r("y")),
         ),
         format!(
             // CT_GroupChrPr is `chr?, pos?, vertJc?, ctrlPr?` - pos before vertJc.
             "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏞\"/><m:pos m:val=\"top\"/>\
-<m:vertJc m:val=\"bot\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
+<m:vertJc m:val=\"bottom\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
             arg(&format!("{}{}", r("z"), r("2"))),
         ),
         format!(
             "<m:groupChr><m:groupChrPr><m:chr m:val=\"⏟\"/>\
-<m:pos m:val=\"bot\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
+<m:pos m:val=\"bottom\"/></m:groupChrPr><m:e>{}</m:e></m:groupChr>",
             arg(&format!("{}{}", r("z"), r("2"))),
         ),
         format!(
@@ -1410,8 +1448,49 @@ mod tests {
             unsupported: 1,
             ignored: 5,
             mandatory: 3,
+            ..CoverageCounts::default()
         };
         assert!((coverage_percent(&counts) - 90.0).abs() < 1e-9);
+    }
+
+    /// An ignore must say why. This is the check that stops an element being
+    /// moved out of the denominator in one word, which is what happened to 40 of
+    /// them between 2026-09-28 and 2026-10-01.
+    #[test]
+    fn an_ignore_without_a_reason_is_reported() {
+        let inventory = "\
+[meta]
+standard = \"x\"
+[[elements]]
+name = \"w:t\"
+status = \"ignored\"
+[[elements]]
+name = \"w:r\"
+status = \"ignored\"
+reason = \"a reason\"
+[[elements]]
+name = \"w:p\"
+status = \"ignored\"
+reason = \"   \"
+";
+        let counts = coverage_counts(inventory).expect("the inventory parses");
+        assert_eq!(counts.ignored, 3);
+        assert_eq!(
+            counts.unreasoned_ignored,
+            vec!["w:t".to_owned(), "w:p".to_owned()],
+            "an absent reason and a blank one are the same claim"
+        );
+    }
+
+    #[test]
+    fn an_absent_status_counts_as_unsupported() {
+        let inventory = "\
+[[elements]]
+name = \"w:thing\"
+";
+        let counts = coverage_counts(inventory).expect("the inventory parses");
+        assert_eq!(counts.unsupported, 1);
+        assert!(counts.unreasoned_ignored.is_empty());
     }
 
     #[test]

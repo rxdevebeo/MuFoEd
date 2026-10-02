@@ -447,10 +447,13 @@ note = "MathType/OLE field formulas (no OMML) are out of scope (S5C 3.2)"
 [[elements]]
 name = "vml"
 status = "ignored"
+reason = "VML shapes: nothing in stage 5 renders them, and the writer records a loss when it meets one"
 [[elements]]
 name = "comments.bodies"
 status = "ignored"
+reason = "comment bodies: the reference mark is drawn, the comment text is not, and comments are out of scope"
 [[elements]]
 name = "normalization.transitional"
 status = "ignored"
+reason = "Transitional-to-Strict conversion is covered by the normalizer's own tests, not by a stage-5 rendering scenario"
 note = "element tier Stage 6"

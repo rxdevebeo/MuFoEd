@@ -7,13 +7,9 @@
 [meta]
 standard = "ISO/IEC 29500-1:2008 Strict"
 stage = 2
-source = "curated-stage-2"
-revision = "2026-09-28"
+source = "curated-stage-2, reconciled against the reader 2026-10-01"
+revision = "2026-10-01"
 generator = "xtool xsd-inventory"
-
-[[elements]]
-name = "a:blip"
-status = "supported"
 
 [[elements]]
 name = "a:ext"
@@ -33,11 +29,11 @@ status = "supported"
 
 [[elements]]
 name = "m:oMath"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "m:oMathPara"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "pic:blipFill"
@@ -85,7 +81,7 @@ status = "supported"
 
 [[elements]]
 name = "w:bCs"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:background"
@@ -161,7 +157,7 @@ status = "supported"
 
 [[elements]]
 name = "w:comments"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:compat"
@@ -181,7 +177,7 @@ status = "supported"
 
 [[elements]]
 name = "w:cs"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:customXml"
@@ -242,6 +238,7 @@ status = "supported"
 [[elements]]
 name = "w:effect"
 status = "ignored"
+reason = "animated text: a Word-only decoration with no static appearance"
 
 [[elements]]
 name = "w:em"
@@ -257,7 +254,7 @@ status = "supported"
 
 [[elements]]
 name = "w:endnotePr"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:endnoteReference"
@@ -265,7 +262,7 @@ status = "supported"
 
 [[elements]]
 name = "w:endnotes"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:evenAndOddHeaders"
@@ -273,7 +270,7 @@ status = "supported"
 
 [[elements]]
 name = "w:fitText"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:fldChar"
@@ -289,7 +286,7 @@ status = "supported"
 
 [[elements]]
 name = "w:footnotePr"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:footnoteReference"
@@ -297,15 +294,15 @@ status = "supported"
 
 [[elements]]
 name = "w:footnotes"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:formProt"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:ftr"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:gridAfter"
@@ -329,7 +326,7 @@ status = "supported"
 
 [[elements]]
 name = "w:hdr"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:headerReference"
@@ -369,7 +366,7 @@ status = "supported"
 
 [[elements]]
 name = "w:iCs"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:id"
@@ -390,6 +387,7 @@ status = "supported"
 [[elements]]
 name = "w:ink"
 status = "ignored"
+reason = "an ink annotation, a drawing in its own right; nothing renders it"
 
 [[elements]]
 name = "w:ins"
@@ -438,6 +436,7 @@ status = "supported"
 [[elements]]
 name = "w:latentStyles"
 status = "ignored"
+reason = "style-pane hints: which styles Word lists, not what the page shows"
 
 [[elements]]
 name = "w:left"
@@ -446,6 +445,7 @@ status = "supported"
 [[elements]]
 name = "w:legacy"
 status = "ignored"
+reason = "Word 2007 compatibility flag on a font; no page effect"
 
 [[elements]]
 name = "w:link"
@@ -473,7 +473,7 @@ status = "supported"
 
 [[elements]]
 name = "w:lvlPicBulletId"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:lvlRestart"
@@ -518,6 +518,7 @@ status = "supported"
 [[elements]]
 name = "w:noEndnote"
 status = "ignored"
+reason = "suppresses endnotes in a section, and endnote placement is not rendered"
 
 [[elements]]
 name = "w:noProof"
@@ -530,6 +531,7 @@ status = "supported"
 [[elements]]
 name = "w:nsid"
 status = "ignored"
+reason = "style GUID for Word's own bookkeeping; no page effect"
 
 [[elements]]
 name = "w:num"
@@ -557,7 +559,7 @@ status = "supported"
 
 [[elements]]
 name = "w:object"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:outline"
@@ -589,7 +591,7 @@ status = "supported"
 
 [[elements]]
 name = "w:paperSrc"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:permEnd"
@@ -609,7 +611,7 @@ status = "supported"
 
 [[elements]]
 name = "w:pgNumType"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:pgSz"
@@ -617,11 +619,11 @@ status = "supported"
 
 [[elements]]
 name = "w:picBullet"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:pict"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:position"
@@ -630,6 +632,7 @@ status = "supported"
 [[elements]]
 name = "w:printerSettings"
 status = "ignored"
+reason = "a printer configuration part; no page effect"
 
 [[elements]]
 name = "w:proofErr"
@@ -642,6 +645,7 @@ status = "supported"
 [[elements]]
 name = "w:qFormat"
 status = "ignored"
+reason = "marks a style primary in the gallery; no page effect"
 
 [[elements]]
 name = "w:r"
@@ -694,6 +698,7 @@ status = "mandatory"
 [[elements]]
 name = "w:sectPrChange"
 status = "ignored"
+reason = "a revision mark on section properties; revision marks are not applied"
 
 [[elements]]
 name = "w:semiHidden"
@@ -734,6 +739,7 @@ status = "supported"
 [[elements]]
 name = "w:specVanish"
 status = "ignored"
+reason = "always hides a style from the UI; no page effect"
 
 [[elements]]
 name = "w:start"
@@ -817,7 +823,7 @@ status = "supported"
 
 [[elements]]
 name = "w:tblCellSpacing"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:tblDescription"
@@ -845,7 +851,7 @@ status = "supported"
 
 [[elements]]
 name = "w:tblOverlap"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:tblPr"
@@ -861,11 +867,11 @@ status = "supported"
 
 [[elements]]
 name = "w:tblStyleColBandSize"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:tblStyleRowBandSize"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:tblW"
@@ -873,7 +879,7 @@ status = "supported"
 
 [[elements]]
 name = "w:tblpPr"
-status = "ignored"
+status = "unsupported"
 
 [[elements]]
 name = "w:tc"
@@ -913,7 +919,7 @@ status = "supported"
 
 [[elements]]
 name = "w:theme"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "w:themeFontLang"
@@ -926,6 +932,7 @@ status = "supported"
 [[elements]]
 name = "w:tmpl"
 status = "ignored"
+reason = "style template identifier; no page effect"
 
 [[elements]]
 name = "w:top"
@@ -962,6 +969,7 @@ status = "supported"
 [[elements]]
 name = "w:unhideWhenUsed"
 status = "ignored"
+reason = "un-hides a style once used; no page effect"
 
 [[elements]]
 name = "w:vAlign"
@@ -994,6 +1002,7 @@ status = "supported"
 [[elements]]
 name = "w:webHidden"
 status = "ignored"
+reason = "hides a style in web view only; no page effect"
 
 [[elements]]
 name = "w:widowControl"
@@ -1009,7 +1018,7 @@ status = "supported"
 
 [[elements]]
 name = "wp:anchor"
-status = "ignored"
+status = "supported"
 
 [[elements]]
 name = "wp:docPr"

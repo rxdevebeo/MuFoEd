@@ -11,6 +11,12 @@ ignore = []
 [licenses]
 version = 2
 confidence-threshold = 0.8
+# `MPL-2.0` below is the one allowance that matches no crate in the graph, and
+# `cargo deny` is right to say so. The warning is declared intentional rather than
+# silenced globally: it is the mechanical proof of the claim in the comment under
+# `allow` — the LibreOffice fixtures are data files in this repository, and a
+# dependency scanner structurally cannot reach them.
+unused-allowed-license = "allow"
 # Permissive, non-copyleft, and each one here for a stated reason (TZ §16.8 asks
 # for MIT/Apache-2.0; the list has grown by decision, not by accident):
 #
@@ -21,6 +27,17 @@ confidence-threshold = 0.8
 #   permissive and OSI-approved.
 # - CDLA-Permissive-2.0: `webpki-roots`, a root store for the same TLS stack.
 #   It is a data licence, not a code one; the code it ships is ISC/MIT.
+# - MPL-2.0: added 2026-10-01 for TEST DATA ONLY, and `cargo deny` does not and
+#   cannot police it: `sw/qa/extras/ooxmlexport/data/*.docx` are files in this
+#   repository, not Cargo dependencies, so no licence scanner ever sees them.
+#   MPL-2.0 is *file-level* copyleft scoped to covered source files, and its
+#   §1.2 definition of "Covered Software" excludes output and excludes files
+#   carrying no MPL header — a `.docx` fixture is neither. The entry exists so
+#   that the policy in this file matches the policy the corpus actually follows,
+#   not so that a crate may depend on MPL code: if MPL ever appears in the
+#   dependency graph it should fail review, and `cargo deny` will now at least
+#   see it in the allow-list and require a conscious removal rather than an
+#   accident. Source: `docs/corpus-task-strict-docx.md` §4.1.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -29,6 +46,7 @@ allow = [
     "Zlib",
     "ISC",
     "CDLA-Permissive-2.0",
+    "MPL-2.0",
 ]
 
 [bans]
