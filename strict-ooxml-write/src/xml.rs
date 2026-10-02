@@ -9,6 +9,8 @@
 
 use std::fmt::Display;
 
+use strict_ooxml_core::xml::escape::{escape_attr_into, escape_text_into};
+
 /// The XML declaration written at the top of every part.
 pub const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 
@@ -64,6 +66,8 @@ pub struct XmlWriter {
     /// `strict-ooxml-write/tests/strict_conformance.rs` refuses; a prefix used and
     /// never declared is a part that does not parse. Both are decided here.
     used_prefixes: std::collections::BTreeSet<String>,
+    /// Characters XML cannot carry, removed from text and attribute values.
+    invalid_chars: usize,
 }
 
 impl Default for XmlWriter {
@@ -98,6 +102,7 @@ impl XmlWriter {
             root_start: None,
             root_declarations: Vec::new(),
             used_prefixes: std::collections::BTreeSet::new(),
+            invalid_chars: 0,
         }
     }
 
@@ -170,7 +175,7 @@ impl XmlWriter {
         self.out.push(' ');
         self.out.push_str(name);
         self.out.push_str("=\"");
-        escape_attr_into(&mut self.out, &value.to_string());
+        self.invalid_chars += escape_attr_into(&mut self.out, &value.to_string());
         self.out.push('"');
     }
 
@@ -209,7 +214,7 @@ impl XmlWriter {
     /// Writes escaped character data.
     pub fn text(&mut self, value: &str) {
         self.close_tag();
-        escape_text_into(&mut self.out, value);
+        self.invalid_chars += escape_text_into(&mut self.out, value);
     }
 
     /// Closes the innermost element.
@@ -265,7 +270,7 @@ impl XmlWriter {
         self.out.push(' ');
         self.out.push_str(attr);
         self.out.push_str("=\"");
-        escape_attr_into(&mut self.out, &value.to_string());
+        self.invalid_chars += escape_attr_into(&mut self.out, &value.to_string());
         self.out.push_str("\"/>");
     }
 
@@ -303,7 +308,17 @@ impl XmlWriter {
     /// Returns [`WriteError::DepthExceeded`] when the document nested deeper
     /// than the budget, and [`WriteError::Unbalanced`] when an element was left
     /// open.
-    pub fn finish(mut self) -> Result<String, WriteError> {
+    pub fn finish(self) -> Result<String, WriteError> {
+        self.finish_counted().map(|(xml, _)| xml)
+    }
+
+    /// The same as [`finish`](Self::finish), with the number of characters
+    /// removed because XML 1.0 cannot carry them (`core::xml::escape`).
+    ///
+    /// # Errors
+    ///
+    /// As [`finish`](Self::finish).
+    pub fn finish_counted(mut self) -> Result<(String, usize), WriteError> {
         if self.overflowed {
             return Err(WriteError::DepthExceeded(self.max_depth));
         }
@@ -314,7 +329,7 @@ impl XmlWriter {
         self.write_root_declarations();
         let mut out = self.out;
         out.push('\n');
-        Ok(out)
+        Ok((out, self.invalid_chars))
     }
 
     /// Inserts the root's `xmlns:*` declarations, filtered to what the part used.
@@ -342,7 +357,7 @@ impl XmlWriter {
             declarations.push_str(" xmlns:");
             declarations.push_str(prefix);
             declarations.push_str("=\"");
-            escape_attr_into(&mut declarations, uri);
+            self.invalid_chars += escape_attr_into(&mut declarations, uri);
             declarations.push('"');
         }
         if declarations.is_empty() {
@@ -387,38 +402,6 @@ impl Display for WriteError {
 
 impl std::error::Error for WriteError {}
 
-/// Escapes character data.
-fn escape_text_into(out: &mut String, value: &str) {
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            // A raw CR would be normalized to LF by an XML parser, so it is
-            // written as a character reference to survive the round trip.
-            '\r' => out.push_str("&#13;"),
-            _ => out.push(ch),
-        }
-    }
-}
-
-/// Escapes an attribute value (written inside double quotes).
-fn escape_attr_into(out: &mut String, value: &str) {
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            '\t' => out.push_str("&#9;"),
-            '\n' => out.push_str("&#10;"),
-            '\r' => out.push_str("&#13;"),
-            _ => out.push(ch),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{WriteError, XmlWriter};
@@ -456,6 +439,18 @@ mod tests {
         xml.end();
         let text = xml.finish().expect("balanced");
         assert!(text.contains("w:val=\"q&quot;x&apos;y&#9;z\""), "{text}");
+    }
+
+    #[test]
+    fn characters_xml_cannot_carry_are_removed_and_counted() {
+        let mut xml = XmlWriter::new();
+        xml.start("w:t");
+        xml.attr("w:val", "a\u{1}b");
+        xml.text("c\u{0}d\u{FFFF}e");
+        xml.end();
+        let (text, removed) = xml.finish_counted().expect("balanced");
+        assert_eq!(removed, 3);
+        assert_eq!(text, "<w:t w:val=\"ab\">cde</w:t>\n");
     }
 
     #[test]

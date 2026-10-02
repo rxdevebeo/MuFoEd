@@ -205,6 +205,9 @@ pub struct Page {
     pub height_px: f64,
     /// The SVG document.
     pub svg: String,
+    /// What the page could not show as the model has it, one line each,
+    /// prefixed with a stable id (`render.invalid-xml-char: ...`).
+    pub warnings: Vec<String>,
 }
 
 /// Places every page of a document without painting it.
@@ -283,6 +286,7 @@ pub fn render_with_media(
             width_px: page.width_px,
             height_px: page.height_px,
             svg: paint::render_page(page, options.background),
+            warnings: paint::invalid_char_warning(page).into_iter().collect(),
         });
     }
     Ok(pages)

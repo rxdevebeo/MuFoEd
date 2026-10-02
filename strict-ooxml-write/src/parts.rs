@@ -98,7 +98,7 @@ pub fn styles_part(
         style_element(ctx, &mut xml, style);
     }
     xml.end();
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 fn doc_defaults(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, defaults: &DocDefaults) {
@@ -211,7 +211,7 @@ pub fn numbering_part(
         xml.end();
     }
     xml.end();
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &AbstractNum) {
@@ -311,7 +311,7 @@ pub fn settings_part(
         settings_child(ctx, &mut xml, settings, name);
     }
     xml.end();
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 /// Writes the `w:settings` child called `name`, when the model has it.
@@ -684,7 +684,7 @@ pub fn font_table_part(
     }
     xml.end();
     let _ = ctx;
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 /// The English name of a face, for a report line a person reads.
@@ -766,7 +766,7 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
     format_scheme(&mut xml);
     xml.end();
     xml.end();
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 /// Writes the smallest `a:fmtScheme` the schema accepts.
@@ -873,7 +873,7 @@ pub fn notes_part(
         note_element(ctx, &mut xml, note, is_footnote);
     }
     xml.end();
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 /// Whether a note's leading paragraph already carries the reference marker.
@@ -1002,7 +1002,7 @@ pub fn header_footer_part(
         xml.end();
     }
     xml.end();
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 /// Collects the font families the document names, in first-seen order.

@@ -2186,6 +2186,7 @@ dependencies = [
 name = "strict-ooxml"
 version = "0.1.0"
 dependencies = [
+ "roxmltree 0.20.0",
  "strict-ooxml-convert",
  "strict-ooxml-core",
  "strict-ooxml-pdf",

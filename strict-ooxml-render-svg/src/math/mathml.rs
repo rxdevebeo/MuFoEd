@@ -89,19 +89,7 @@ fn justification_name(justification: MathJustification) -> &'static str {
     }
 }
 
-/// Escapes text for XML content.
-fn escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
+use strict_ooxml_core::xml::escape::escape_text as escape;
 
 /// Writes a list of sibling nodes inside the current container.
 fn write_nodes(out: &mut String, nodes: &[MathNode]) -> Result<(), MathMlError> {

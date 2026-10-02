@@ -341,14 +341,21 @@ impl RelBuilder {
 /// rather than about the input. Every part writer returns `Result` for that
 /// reason (`STAGE-10-TASK.md` E34); before it, these call sites turned it into a
 /// panic via `.expect("balanced")`.
-fn part_xml(
+///
+/// It is also where a part's dropped characters become a loss: the count is
+/// kept by the part's [`XmlWriter`] and drained here, where the part name is
+/// known.
+fn part_xml<'a>(
+    ctx: &mut Ctx<'a>,
     part: &str,
-    write: impl FnOnce() -> std::result::Result<String, WriteError>,
+    write: impl FnOnce(&mut Ctx<'a>) -> std::result::Result<String, WriteError>,
 ) -> Result<String> {
-    write().map_err(|error| StrictError::Write {
+    let xml = write(ctx).map_err(|error| StrictError::Write {
         part: PartId::new(part),
         detail: error.to_string(),
-    })
+    })?;
+    ctx.report_invalid_chars(part);
+    Ok(xml)
 }
 
 /// Serializes `document` into a `.docx` package.
@@ -525,14 +532,14 @@ pub fn write_package(
     add_part(
         &mut zip,
         MAIN_DOCUMENT,
-        part_xml(MAIN_DOCUMENT, || document_part(&mut ctx, document))?.into_bytes(),
+        part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes(),
     )?;
     if content_types.content_type_for(&PartId::new(STYLES_PART)) == Some(CONTENT_TYPE_STYLES) {
         add_part(
             &mut zip,
             STYLES_PART,
-            part_xml(STYLES_PART, || {
-                parts::styles_part(&mut ctx, &document.styles)
+            part_xml(&mut ctx, STYLES_PART, |ctx| {
+                parts::styles_part(ctx, &document.styles)
             })?
             .into_bytes(),
         )?;
@@ -541,8 +548,8 @@ pub fn write_package(
         add_part(
             &mut zip,
             NUMBERING_PART,
-            part_xml(NUMBERING_PART, || {
-                parts::numbering_part(&mut ctx, &document.numbering)
+            part_xml(&mut ctx, NUMBERING_PART, |ctx| {
+                parts::numbering_part(ctx, &document.numbering)
             })?
             .into_bytes(),
         )?;
@@ -551,8 +558,8 @@ pub fn write_package(
         add_part(
             &mut zip,
             SETTINGS_PART,
-            part_xml(SETTINGS_PART, || {
-                parts::settings_part(&mut ctx, &document.settings)
+            part_xml(&mut ctx, SETTINGS_PART, |ctx| {
+                parts::settings_part(ctx, &document.settings)
             })?
             .into_bytes(),
         )?;
@@ -561,15 +568,15 @@ pub fn write_package(
         add_part(
             &mut zip,
             THEME_PART,
-            part_xml(THEME_PART, || parts::theme_part(&mut ctx, theme))?.into_bytes(),
+            part_xml(&mut ctx, THEME_PART, |ctx| parts::theme_part(ctx, theme))?.into_bytes(),
         )?;
     }
     if !document.footnotes.is_empty() {
         add_part(
             &mut zip,
             FOOTNOTES_PART,
-            part_xml(FOOTNOTES_PART, || {
-                parts::notes_part(&mut ctx, &document.footnotes, true)
+            part_xml(&mut ctx, FOOTNOTES_PART, |ctx| {
+                parts::notes_part(ctx, &document.footnotes, true)
             })?
             .into_bytes(),
         )?;
@@ -578,8 +585,8 @@ pub fn write_package(
         add_part(
             &mut zip,
             ENDNOTES_PART,
-            part_xml(ENDNOTES_PART, || {
-                parts::notes_part(&mut ctx, &document.endnotes, false)
+            part_xml(&mut ctx, ENDNOTES_PART, |ctx| {
+                parts::notes_part(ctx, &document.endnotes, false)
             })?
             .into_bytes(),
         )?;
@@ -589,9 +596,9 @@ pub fn write_package(
         add_part(
             &mut zip,
             FONT_TABLE_PART,
-            part_xml(FONT_TABLE_PART, || {
+            part_xml(&mut ctx, FONT_TABLE_PART, |ctx| {
                 parts::font_table_part(
-                    &mut ctx,
+                    ctx,
                     document
                         .font_table
                         .as_ref()
@@ -661,8 +668,8 @@ pub fn write_package(
                 })
                 .collect();
             ctx.set_decoration_relationships(part.as_str(), media);
-            let xml = part_xml(part.as_str(), || {
-                parts::header_footer_part(&mut ctx, header_footer)
+            let xml = part_xml(&mut ctx, part.as_str(), |ctx| {
+                parts::header_footer_part(ctx, header_footer)
             })?
             .into_bytes();
             ctx.clear_decoration_relationships();
@@ -925,7 +932,7 @@ fn document_part(
     }
     xml.end(); // w:body
     xml.end(); // w:document
-    xml.finish()
+    ctx.finish_xml(xml)
 }
 
 /// The namespace declarations every WML part carries.

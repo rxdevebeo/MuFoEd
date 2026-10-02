@@ -11,6 +11,7 @@ use crate::error::Result;
 use crate::limits::ResourceLimits;
 use crate::opc::path::canonicalize_part_name;
 use crate::part::PartId;
+use crate::xml::escape::escape_attr_into;
 use crate::xml::{XmlEvent, XmlReader};
 
 /// Index of declared content types for a package.
@@ -136,9 +137,9 @@ impl ContentTypeIndex {
         defaults.sort_unstable_by_key(|(extension, _)| *extension);
         for (extension, content_type) in defaults {
             out.push_str("<Default Extension=\"");
-            escape_into(&mut out, extension);
+            escape_attr_into(&mut out, extension);
             out.push_str("\" ContentType=\"");
-            escape_into(&mut out, content_type);
+            escape_attr_into(&mut out, content_type);
             out.push_str("\"/>");
         }
 
@@ -150,29 +151,14 @@ impl ContentTypeIndex {
         overrides.sort_unstable_by_key(|(part, _)| *part);
         for (part, content_type) in overrides {
             out.push_str("<Override PartName=\"");
-            escape_into(&mut out, part);
+            escape_attr_into(&mut out, part);
             out.push_str("\" ContentType=\"");
-            escape_into(&mut out, content_type);
+            escape_attr_into(&mut out, content_type);
             out.push_str("\"/>");
         }
 
         out.push_str("</Types>\n");
         out
-    }
-}
-
-/// Escapes an XML attribute value (always written inside double quotes).
-fn escape_into(out: &mut String, value: &str) {
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            '\t' | '\n' | '\r' => out.push(' '),
-            _ => out.push(ch),
-        }
     }
 }
 

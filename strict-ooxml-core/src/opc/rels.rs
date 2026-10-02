@@ -12,6 +12,7 @@ use crate::error::{Result, StrictError};
 use crate::limits::ResourceLimits;
 use crate::opc::path::resolve_target;
 use crate::part::PartId;
+use crate::xml::escape::escape_attr_into;
 use crate::xml::{XmlEvent, XmlReader};
 
 /// The Strict OPC package-relationships namespace, written into every `.rels`
@@ -308,16 +309,16 @@ pub fn write_relationships(relationships: &[Relationship]) -> String {
     out.push_str("\">");
     for relationship in relationships {
         out.push_str("<Relationship Id=\"");
-        escape_into(&mut out, &relationship.id);
+        escape_attr_into(&mut out, &relationship.id);
         out.push_str("\" Type=\"");
         let uri = if relationship.raw_type.is_empty() {
             strict_type_uri(&relationship.rel_type)
         } else {
             relationship.raw_type.clone()
         };
-        escape_into(&mut out, &uri);
+        escape_attr_into(&mut out, &uri);
         out.push_str("\" Target=\"");
-        escape_into(&mut out, &relationship.target);
+        escape_attr_into(&mut out, &relationship.target);
         out.push('"');
         if relationship.target_mode == TargetMode::External {
             out.push_str(" TargetMode=\"External\"");
@@ -326,21 +327,6 @@ pub fn write_relationships(relationships: &[Relationship]) -> String {
     }
     out.push_str("</Relationships>\n");
     out
-}
-
-/// Escapes an XML attribute value (always written inside double quotes).
-fn escape_into(out: &mut String, value: &str) {
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            '\t' | '\n' | '\r' => out.push(' '),
-            _ => out.push(ch),
-        }
-    }
 }
 
 #[cfg(test)]

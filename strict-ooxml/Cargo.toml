@@ -42,6 +42,8 @@ strict-ooxml-convert = { version = "0.1.0", path = "../strict-ooxml-convert", op
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
+# The independent XML oracle for what the serializers produce.
+roxmltree = "0.20"
 
 [[example]]
 name = "support_report"

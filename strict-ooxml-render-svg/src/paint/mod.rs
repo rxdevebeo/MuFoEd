@@ -43,36 +43,28 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
     out
 }
 
-/// Escapes text content for XML.
-#[must_use]
-pub(crate) fn escape_text(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
+pub(crate) use strict_ooxml_core::xml::escape::{escape_attr, escape_text};
 
-/// Escapes an attribute value for XML (quoted with `"`).
-#[must_use]
-pub(crate) fn escape_attr(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            _ => out.push(ch),
-        }
-    }
-    out
+/// One warning for `page` if any of its text would lose characters XML cannot
+/// carry. The painter removes them while escaping; this is where the removal
+/// becomes visible to the caller.
+pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
+    use strict_ooxml_core::xml::escape::count_invalid;
+    let removed: usize = page
+        .items
+        .iter()
+        .map(|item| match item {
+            Item::Text(text) => count_invalid(&text.text),
+            Item::Image(image) => count_invalid(&image.alt),
+            Item::Rect(_) | Item::Line(_) | Item::Path(_) => 0,
+        })
+        .sum();
+    (removed > 0).then(|| {
+        format!(
+            "render.invalid-xml-char: {removed} character(s) that XML 1.0 cannot carry were \
+             removed from the page's text"
+        )
+    })
 }
 
 /// Formats an SVG coordinate.
@@ -90,6 +82,7 @@ mod tests {
     fn escaping_is_correct() {
         assert_eq!(escape_text("a<b>&c"), "a&lt;b&gt;&amp;c");
         assert_eq!(escape_attr("\"q\" 'x'"), "&quot;q&quot; &apos;x&apos;");
+        assert_eq!(escape_text("a\u{1}b"), "ab");
     }
 
     #[test]

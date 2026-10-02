@@ -77,7 +77,13 @@ pub struct Ctx<'a> {
     /// the document part's id would point at an image relationship instead of a
     /// font one.
     fonts: BTreeMap<String, String>,
+    /// Characters removed from the part being written because XML 1.0 cannot
+    /// carry them; drained into the report by [`Self::report_invalid_chars`].
+    invalid_chars: usize,
 }
+
+/// Stable id of the loss "a character XML cannot carry was removed".
+pub const INVALID_XML_CHAR_ID: &str = "W.invalid-xml-char";
 
 impl<'a> Ctx<'a> {
     /// Creates a context writing into `report`.
@@ -95,7 +101,44 @@ impl<'a> Ctx<'a> {
             note_role: None,
             decoration: None,
             fonts: BTreeMap::new(),
+            invalid_chars: 0,
         }
+    }
+
+    /// Finishes a part's XML, keeping count of the characters it had to drop.
+    ///
+    /// # Errors
+    ///
+    /// As [`XmlWriter::finish`](crate::xml::XmlWriter::finish).
+    pub fn finish_xml(
+        &mut self,
+        xml: crate::xml::XmlWriter,
+    ) -> Result<String, crate::xml::WriteError> {
+        let (text, removed) = xml.finish_counted()?;
+        self.invalid_chars += removed;
+        Ok(text)
+    }
+
+    /// Records one loss for `part` if any character was dropped since the last
+    /// call, and resets the count.
+    pub fn report_invalid_chars(&mut self, part: &str) {
+        let removed = std::mem::take(&mut self.invalid_chars);
+        if removed == 0 {
+            return;
+        }
+        let mut location = SourceLocation::unknown();
+        location.part = PartId::new(part);
+        self.report.record_loss(LossRecord {
+            transform_id: WRITE_LOSS_ID,
+            feature_id: INVALID_XML_CHAR_ID.to_owned(),
+            reason: format!(
+                "{removed} character(s) that XML 1.0 cannot carry (C0 controls other than \
+                 tab, line feed and carriage return, U+FFFE, U+FFFF) were removed from text \
+                 and attribute values"
+            ),
+            severity: Severity::Lossy,
+            locations: vec![location],
+        });
     }
 
     /// Declares which notes part is being written.

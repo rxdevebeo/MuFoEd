@@ -5,6 +5,7 @@
 //! (ADR-0002, ADR-0003). The reader owns its decoded buffer, so events are
 //! owned values rather than borrows of the input (stage tasks S1.9–S1.10).
 
+pub mod escape;
 pub mod ns_stack;
 pub mod qname;
 pub mod safety;
