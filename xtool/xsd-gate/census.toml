@@ -32,6 +32,33 @@
 #                 shape (`word/media/image#.png`).
 #   `lossy`       a `Lossy` record in the normalizer's own report.
 #
+# `blind_to` says what the item's signal CANNOT see, which is a different question
+# from what it can and a more important one: a zero from a blind signal is the
+# absence of evidence, and printing it as `closed` beside no reason is how `TZ-04`
+# reported 0 for a rule that had been dead all day. Two values, both measured:
+#
+#   `writer output`      the normalizer has NO rule for this item at all - the
+#                        writer emits the Strict form. Measured on our own
+#                        written corpus: 3 660 of 3 660 `ST_MeasurementOrPercent`
+#                        measures already carry a unit or a `%`, 489 of 489
+#                        `ST_TextScale` carry `%`, 40 of 40 `w:zoom` carry
+#                        `@w:percent`, 62 of 62 `w:pgMar` carry all three of
+#                        `gutter`/`header`/`footer`. And the stage counters over
+#                        the 58 documents show no firing that would correspond to
+#                        any of these items - which is the same finding as reaudit
+#                        П-1: the item is closed IN THE WRITER. A regression is
+#                        possible in the writer, and this corpus cannot see one.
+#   `regenerated parts`   the rule DOES fire, on real bytes: T3.rename 5 418,
+#                        T4.value 2 283, T4.tblLook 136, T6.mce 341, T7.vml-shape
+#                        14 across the corpus. But every occurrence is in a part
+#                        the writer rebuilds from the model, so the violation
+#                        cannot appear in the written package either way and the
+#                        count would not move if the rule were deleted. The gate
+#                        for these is the unit test named in `audit`.
+#
+# `TZ-19`, `TZ-20` and `TZ-21` carry no `blind_to`: the corpus exercises them
+# (`T7.vml-shape` 14, `T6.mce` 341), so their zeros are measurements.
+#
 # Measured on 2026-10-01 against ECMA-376-1 5th edition, 58 Transitional
 # documents, with `write --transitional` and the same patched oracle
 # `xsd_gate.py` uses. The audit's counts are kept in `audit`, so a regression is
@@ -41,6 +68,7 @@
 id = "TZ-01"
 origin = "ours"
 signal = "message"
+blind_to = "writer output"
 elements = ["tblW", "tcW", "wAfter", "wBefore", "tblCellSpacing"]
 messages = ["is not a valid value of the union type"]
 summary = "ST_MeasurementOrPercent written as bare fiftieths-of-a-percent: w:w=\"5000\""
@@ -50,6 +78,7 @@ audit = "84 messages / 2 documents (audit 9). Also closes the assumption Q-E5: `
 id = "TZ-02"
 origin = "ours"
 signal = "message"
+blind_to = "writer output"
 elements = ["w"]
 messages = ["is not a valid value of the union type"]
 summary = "ST_TextScale (w:w in a run property bag) written as a bare number; Strict requires the % sign"
@@ -59,6 +88,7 @@ audit = "489 messages / 2 documents (audit 9)."
 id = "TZ-03"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["relyOnVML", "shapeDefaults", "hdrShapeDefaults", "useFELayout", "doNotWrapTextWithPunct"]
 messages = ["not declared", "not allowed here", "This element is not expected"]
 summary = "Transitional-only elements left in a Strict package: one REMOVALS entry per name"
@@ -68,6 +98,7 @@ audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count each
 id = "TZ-04"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["left", "right", "start", "end"]
 messages = ["not allowed here", "is not a valid value of the union type", "is not declared", "This element is not expected"]
 summary = "T3 element rename: CT_TblBorders/CT_TcBorders/CT_TblCellMar/CT_TcMar renamed their edges to start/end"
@@ -77,6 +108,7 @@ audit = "COUNTED: parse every *.xml of the 58 Transitional documents; inside w:t
 id = "TZ-05"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["ind"]
 messages = ["is not allowed", "is not declared", "is not a valid value"]
 summary = "w:ind keeps @w:left/@w:right; Strict CT_Ind declares @w:start/@w:end"
@@ -86,6 +118,7 @@ audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:i
 id = "TZ-06"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["jc"]
 messages = ["is not a valid value"]
 summary = "w:jc/@w:val written with its Transitional spelling; ST_Jc and ST_JcTable lost left/right"
@@ -95,6 +128,7 @@ audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:j
 id = "TZ-07"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["tab", "lvlJc"]
 messages = ["is not a valid value"]
 summary = "ST_TabJc/ST_Jc values left/right on w:tab/@w:val and w:lvlJc/@w:val"
@@ -104,6 +138,7 @@ audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:t
 id = "TZ-08"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["tblLook"]
 messages = ["not allowed here", "is not declared", "is not allowed"]
 summary = "w:tblLook carries the Transitional bitmask @w:val; Strict declares six boolean attributes"
@@ -113,6 +148,7 @@ audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:t
 id = "TZ-09"
 origin = "ours"
 signal = "message"
+blind_to = "writer output"
 elements = ["zoom"]
 messages = ["attribute 'percent'", "is required"]
 summary = "w:zoom is required to carry @w:percent, and Transitional markup omits it"
@@ -122,6 +158,7 @@ audit = "9 documents (audit 4.3)."
 id = "TZ-10"
 origin = "ours"
 signal = "message"
+blind_to = "writer output"
 elements = ["pgMar"]
 messages = ["attribute 'gutter'", "attribute 'header'", "attribute 'footer'", "is required"]
 summary = "CT_PageMar's @w:gutter/@w:header/@w:footer are use=required and Transitional markup omits them"
@@ -131,6 +168,7 @@ audit = "8 documents (audit 4.3)."
 id = "TZ-11"
 origin = "ours"
 signal = "message"
+blind_to = "regenerated parts"
 elements = ["sectPr", "footnotePr", "endnotePr", "gutterAtTop", "vAlign", "rtlGutter", "bidi", "titlePg", "textDirection"]
 messages = ["This element is not expected", "is not allowed here", "is not declared"]
 summary = "w:sectPr children out of EG_SectPrContents' xsd:sequence order; w:gutterAtTop is a CT_Settings child, not a sectPr one"
@@ -140,6 +178,7 @@ audit = "1 document measured, the rest is a latent bomb (audit 9.1)."
 id = "TZ-12"
 origin = "ours"
 signal = "message"
+blind_to = "writer output"
 elements = ["wAfter", "wBefore", "tblCellSpacing", "tcMar", "tblCellMar", "tblInd", "tcW", "tblW"]
 messages = ["is not a valid value of the union type"]
 summary = "bare twips where ST_MeasurementOrPercent admits only a percentage or a universal measure"

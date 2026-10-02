@@ -719,6 +719,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         count = counts[item["id"]]
         origin = item["origin"]
         signal = item.get("signal", "message")
+        blind = item.get("blind_to")
         if count == 0:
             state = "closed"
         elif origin == "ours":
@@ -727,7 +728,17 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
             state = f"CARRIED {count}"
         else:
             state = f"n/a    {count}"
-        print(f"  {item['id']:<7} {origin:<7} {signal:<9} {state:<12} {item['summary']}")
+        # A zero from a signal that cannot see is not a zero. Printing `closed`
+        # beside it without the reason is how `TZ-04` reported 0 for a rule that
+        # had been dead all day, so the blindness is a column of its own.
+        mark = f" [blind: {blind}]" if blind else ""
+        print(f"  {item['id']:<7} {origin:<7} {signal:<9} {state:<12} {item['summary']}{mark}")
+    if any(item.get("blind_to") for item in registry):
+        print(
+            "\n  A `blind` item is measured over a corpus that never exercises the rule, so its zero"
+            "\n  is the absence of evidence. The gate for those is the unit test named in `audit`,"
+            "\n  because a corpus gate cannot see what the corpus does not contain."
+        )
     if hits["unmatched"]:
         print(f"\n=== {len(hits['unmatched'])} violation(s) match no census item")
         for where, local, message in hits["unmatched"][:40]:
