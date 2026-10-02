@@ -537,6 +537,7 @@ fn document_accessors_and_tables() {
         styles: None,
         numbering: None,
         settings: None,
+        font_table: None,
         footnotes: None,
         endnotes: None,
         theme: None,
@@ -548,6 +549,7 @@ fn document_accessors_and_tables() {
         footnotes: strict_ooxml_wml::model::NoteTable::new(),
         endnotes: strict_ooxml_wml::model::NoteTable::new(),
         settings: Settings::default(),
+        font_table: None,
         theme: None,
         sections: vec![Section {
             properties: strict_ooxml_wml::model::props::SectionProperties::default(),

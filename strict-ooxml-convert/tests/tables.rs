@@ -179,6 +179,7 @@ fn fixture() -> Document {
         footnotes: NoteTable::default(),
         endnotes: NoteTable::default(),
         settings: Settings::default(),
+        font_table: None,
         theme: None,
         sections: Vec::new(),
         headers_footers: Vec::new(),
@@ -192,6 +193,7 @@ fn fixture() -> Document {
             footnotes: None,
             endnotes: None,
             theme: None,
+            font_table: None,
         },
     }
 }

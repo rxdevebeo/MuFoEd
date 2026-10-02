@@ -17,8 +17,10 @@ use strict_ooxml_core::opc::zip::write::ZipWriter;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::Block;
 use strict_ooxml_wml::model::drawing::{Drawing, DrawingKind, Graphic, MediaKind};
+use strict_ooxml_wml::model::fonts::FontTable;
 use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::Document;
+use strict_ooxml_wml::parse::LOST_FONT_PART;
 
 use crate::body::blocks;
 use crate::ctx::Ctx;
@@ -454,6 +456,30 @@ pub fn write_package(
         content_types.insert_default(extension, media_content_type(item.kind));
     }
 
+    // The embedded fonts, with **their own** relationship part.
+    //
+    // `word/_rels/fontTable.xml.rels` is not the document part's rels and cannot be
+    // copied from it: an `r:id` inside `word/fontTable.xml` names a relationship of
+    // THAT part, and the ids here are this write's. This is the same per-part rule
+    // a header's picture ran into, written twice because the two parts have
+    // different owners rather than because the rule is unclear.
+    let mut font_rels = RelBuilder::new();
+    let mut font_parts: Vec<(String, PartId)> = Vec::new();
+    let mut font_map: BTreeMap<String, String> = BTreeMap::new();
+    if let Some(table) = &document.font_table {
+        for (index, font) in table.embedded_parts().iter().enumerate() {
+            if font.part.as_str() == LOST_FONT_PART {
+                continue;
+            }
+            let extension = font_extension(font.part.as_str());
+            let name = format!("fonts/font{index}.{extension}");
+            let id = font_rels.add(&RelType::Font, name.clone(), false);
+            font_map.insert(font.part.as_str().to_owned(), id);
+            font_parts.push((format!("/word/{name}"), font.part.clone()));
+            content_types.insert_default(extension, font_content_type(extension));
+        }
+    }
+
     // Hyperlinks: the target only exists in the source package.
     let main = PartId::new(MAIN_DOCUMENT);
     let mut hyperlink_map: BTreeMap<String, String> = BTreeMap::new();
@@ -490,6 +516,7 @@ pub fn write_package(
 
     ctx = ctx
         .with_relationships(hyperlink_map, media_map.clone(), header_footer_map)
+        .with_font_relationships(font_map)
         .with_passthrough(&pass);
 
     // The parts themselves. Each is written only when the model carries the
@@ -563,10 +590,49 @@ pub fn write_package(
             &mut zip,
             FONT_TABLE_PART,
             part_xml(FONT_TABLE_PART, || {
-                parts::font_table_part(&mut ctx, &families)
+                parts::font_table_part(
+                    &mut ctx,
+                    document
+                        .font_table
+                        .as_ref()
+                        .unwrap_or(&FontTable::default()),
+                    &families,
+                )
             })?
             .into_bytes(),
         )?;
+        // The relationship part goes beside the part it describes, and only when
+        // there is something to relate: a font table with no embedded face needs
+        // no `.rels`, and an empty one beside it is the unused-declaration debt in
+        // its OPC form.
+        if !font_parts.is_empty() {
+            add_part(
+                &mut zip,
+                "/word/_rels/fontTable.xml.rels",
+                write_relationships(font_rels.relationships()).into_bytes(),
+            )?;
+        }
+    }
+    for (part, source_part) in &font_parts {
+        // A font binary this write cannot read is a **loss, not a failure**. The
+        // write is handed a model, and a model may name a part that is not in the
+        // package that produced it — a hand-built table does exactly that, and so
+        // does a document whose `word/fontTable.xml` referred to something the
+        // producer no longer shipped. Returning an error there would make the
+        // whole document unwritable over one missing font, which is a worse
+        // outcome than a document with a named hole in its font table.
+        match source.read_part(source_part) {
+            Ok(bytes) => add_part(&mut zip, part, bytes)?,
+            Err(error) => ctx.report_unsupported(
+                "w:embed*",
+                &format!(
+                    "{source_part} is an embedded font whose bytes could not be read ({error}), \
+                     so the face is lost and the relationship is dropped rather than left \
+                     pointing at nothing"
+                ),
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            ),
+        }
     }
     for part in &header_footer_parts {
         let name = part.rsplit('/').next().unwrap_or(part.as_str()).to_owned();
@@ -889,6 +955,43 @@ fn namespaces() -> Vec<(&'static str, &'static str)> {
         }
     }
     out
+}
+
+/// The file extension of an embedded font part, from its own name.
+///
+/// `ttf` and `odttf` are the two a producer writes, and they mean different
+/// things: an `odttf` is an **obfuscated** font, and the `w:fontKey` on the
+/// `w:embed*` that points at it is what a consumer de-obfuscates with. Copying
+/// the bytes under the wrong extension would hand a consumer a font it
+/// de-obfuscates when it should not, and the content type is the other half of
+/// the same statement.
+#[must_use]
+pub fn font_extension(name: &str) -> &'static str {
+    let extension = name.rsplit('.').next().unwrap_or_default();
+    if extension.eq_ignore_ascii_case("odttf") {
+        "odttf"
+    } else if extension.eq_ignore_ascii_case("otf") {
+        "otf"
+    } else {
+        "ttf"
+    }
+}
+
+/// The content type an embedded font of this extension is declared with.
+///
+/// `otf` gets the obfuscated-font type on purpose rather than by accident of a
+/// copied arm: an `.otf` in `word/fonts` is what Word writes when it obfuscates,
+/// and OPC has no separate declared type for a plain OpenType font in this
+/// position — `application/x-font-ttf` is the type every producer uses for
+/// everything that is not `odttf`, and a mismatch here is a part a consumer
+/// refuses to load.
+#[must_use]
+pub fn font_content_type(extension: &str) -> &'static str {
+    if extension.eq_ignore_ascii_case("odttf") || extension.eq_ignore_ascii_case("otf") {
+        "application/vnd.openxmlformats-officedocument.obfuscatedFont"
+    } else {
+        "application/x-font-ttf"
+    }
 }
 
 /// The file extension for a media kind.

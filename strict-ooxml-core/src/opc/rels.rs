@@ -72,6 +72,15 @@ pub enum RelType {
     Theme,
     /// Font table part.
     FontTable,
+    /// An embedded font binary (`word/fonts/*.ttf` or `*.odttf`).
+    ///
+    /// Separate from [`FontTable`](Self::FontTable) because the two are relations
+    /// of **different parts**: the font table part is related from
+    /// `word/document.xml`, and each font binary is related from
+    /// `word/_rels/fontTable.xml.rels`. A normalization that recognized one and not
+    /// the other left every embedded font unreachable, which is how 16 font
+    /// binaries in 2 corpus documents disappeared without a word in the report.
+    Font,
     /// Image part.
     Image,
     /// Hyperlink.
@@ -100,6 +109,7 @@ impl RelType {
             "settings" => Self::Settings,
             "theme" => Self::Theme,
             "fontTable" => Self::FontTable,
+            "font" => Self::Font,
             "image" => Self::Image,
             "hyperlink" => Self::Hyperlink,
             "header" => Self::Header,
@@ -262,6 +272,7 @@ pub fn strict_type_uri(rel_type: &RelType) -> String {
         RelType::Settings => format!("{BASE}settings"),
         RelType::Theme => format!("{BASE}theme"),
         RelType::FontTable => format!("{BASE}fontTable"),
+        RelType::Font => format!("{BASE}font"),
         RelType::Image => format!("{BASE}image"),
         RelType::Hyperlink => format!("{BASE}hyperlink"),
         RelType::Header => format!("{BASE}header"),

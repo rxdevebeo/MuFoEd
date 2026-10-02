@@ -362,6 +362,7 @@ fn an_empty_document_still_produces_a_valid_package() {
         footnotes: Default::default(),
         endnotes: Default::default(),
         settings: Default::default(),
+        font_table: None,
         theme: None,
         sections: Vec::new(),
         headers_footers: Vec::new(),
@@ -375,6 +376,7 @@ fn an_empty_document_still_produces_a_valid_package() {
             footnotes: None,
             endnotes: None,
             theme: None,
+            font_table: None,
         },
     };
     let written = write_package(&document, Some(&NoSource), &WriteOptions::default())

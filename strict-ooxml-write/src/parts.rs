@@ -20,6 +20,8 @@ use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
 use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
 use crate::xml::{WriteError, XmlWriter, NS_A, NS_PIC, NS_R, NS_W, NS_WP};
+use strict_ooxml_wml::model::fonts::{EmbedKind, FontTable};
+use strict_ooxml_wml::parse::LOST_FONT_PART;
 
 /// The namespace declarations a `w:` part carries.
 ///
@@ -413,32 +415,89 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
     let _ = ctx;
 }
 
-/// Writes `w:fontTable` listing the faces the document references.
+/// Writes `w:fontTable`.
 ///
-/// The model does not carry a font table, so the part is derived from the faces
-/// the styles and runs actually name. A missing face is not a loss: Word
-/// substitutes it, and the renderer's own font mapping already does the same.
+/// **The faces a document embeds, not only the faces it names.** Before
+/// 2026-10-02 this part was derived from the families the styles and runs
+/// mention and nothing else was read, so every `w:embed*` element and every
+/// `word/fonts/*.ttf` behind one went missing — sixteen binaries in two corpus
+/// documents, named by nothing (`W7-DROPPED`).
 ///
-/// Only `@w:name` is written, because it is the only thing the model knows
-/// (`XS-01`). `CT_Font` requires just that one attribute - `charset`, `family` and
-/// `pitch` are all optional - so the element needs nothing else to be valid, and
-/// the previous version wrote all three as EMPTY elements, which made every
-/// package with a font table carry two schema violations per face: `w:family` and
-/// `w:pitch` are `CT_String` with `w:val` `use="required"`, and `<w:family/>` is
-/// worse than no element at all. Nothing was expressed by those empties, so
-/// nothing is lost by dropping them.
+/// Two things the earlier version got wrong are fixed here rather than repeated:
+///
+/// - it wrote `w:family` and `w:pitch` as EMPTY elements. `CT_String` requires
+///   `w:val`, so `<w:family/>` was worse than no element at all, and nothing was
+///   expressed by those empties (`XS-01`). This version writes only what the model
+///   knows: `@w:name`, which is the one attribute `CT_Font` requires;
+/// - it could not express an embedded face at all. `ctx.font_rel` gives the id
+///   **this part's own** `.rels` will carry, which is the whole difficulty: the
+///   source's ids belong to `word/_rels/fontTable.xml.rels` and mean nothing
+///   here.
 pub fn font_table_part(
     ctx: &mut Ctx<'_>,
+    table: &FontTable,
     families: &[String],
 ) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:fonts", &WML_NAMESPACES);
+    // The model's own entries first, in source order, and then the families the
+    // document merely names. A face this project embeds has a table entry with
+    // facts about it; a face it does not has a name and nothing else, which is
+    // what `CT_Font` asks for and all that can honestly be written.
+    let mut seen: Vec<&str> = Vec::new();
+    for entry in &table.fonts {
+        seen.push(&entry.name);
+        xml.start("w:font");
+        xml.attr_w("name", entry.name.as_ref());
+        for kind in EmbedKind::all() {
+            let Some(font) = entry.embeds.get(&kind) else {
+                continue;
+            };
+            if font.part.as_str() == LOST_FONT_PART {
+                ctx.report_unsupported(
+                    kind.element(),
+                    &format!(
+                        "the embedded {} of {} could not be resolved when the document was read, \
+                         so the face is named without its bytes",
+                        face_name(kind),
+                        entry.name
+                    ),
+                    &strict_ooxml_core::error::SourceLocation::unknown(),
+                );
+                continue;
+            }
+            let Some(rel) = ctx.font_rel(&font.part) else {
+                continue;
+            };
+            xml.start(kind.element());
+            xml.attr_r_opt("id", Some(rel));
+            xml.attr_w_opt("fontKey", font.font_key.as_deref());
+            if font.subsetted {
+                xml.attr_w("subsetted", "true");
+            }
+            xml.end();
+        }
+        xml.end();
+    }
     for family in families {
+        if seen.contains(&family.as_str()) {
+            continue;
+        }
         xml.empty_attr_w("w:font", "name", family);
     }
     xml.end();
     let _ = ctx;
     xml.finish()
+}
+
+/// The English name of a face, for a report line a person reads.
+fn face_name(kind: EmbedKind) -> &'static str {
+    match kind {
+        EmbedKind::Regular => "regular face",
+        EmbedKind::Bold => "bold face",
+        EmbedKind::Italic => "italic face",
+        EmbedKind::BoldItalic => "bold-italic face",
+    }
 }
 
 /// Writes `a:theme`.

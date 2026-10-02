@@ -68,6 +68,15 @@ pub struct Ctx<'a> {
     /// write's — the same reason the header's rels cannot simply be copied from
     /// the source's.
     decoration: Option<(String, BTreeMap<String, String>)>,
+    /// The font table's own relationships: media part id → the id
+    /// `word/_rels/fontTable.xml.rels` will carry.
+    ///
+    /// The same per-part rule as [`Self::decoration`], and the same reason it
+    /// had to be written twice rather than generalised: an `r:id` in
+    /// `w:embedRegular` names a relationship of `word/fontTable.xml`, and using
+    /// the document part's id would point at an image relationship instead of a
+    /// font one.
+    fonts: BTreeMap<String, String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -85,6 +94,7 @@ impl<'a> Ctx<'a> {
             passthrough: None,
             note_role: None,
             decoration: None,
+            fonts: BTreeMap::new(),
         }
     }
 
@@ -188,6 +198,22 @@ impl<'a> Ctx<'a> {
     #[must_use]
     pub fn header_footer_rel(&self, part: &PartId) -> Option<&str> {
         self.header_footers.get(part.as_str()).map(String::as_str)
+    }
+
+    /// Declares the ids `word/_rels/fontTable.xml.rels` will carry.
+    #[must_use]
+    pub fn with_font_relationships(mut self, fonts: BTreeMap<String, String>) -> Self {
+        self.fonts = fonts;
+        self
+    }
+
+    /// Returns the relationship id to write into `w:embed*`.
+    ///
+    /// `None` means the font binary is not in the written package, and the
+    /// caller writes nothing rather than an `r:id` that resolves to nothing.
+    #[must_use]
+    pub fn font_rel(&self, part: &PartId) -> Option<&str> {
+        self.fonts.get(part.as_str()).map(String::as_str)
     }
 
     /// Returns the mutable report.

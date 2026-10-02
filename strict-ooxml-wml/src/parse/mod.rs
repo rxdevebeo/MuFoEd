@@ -9,6 +9,9 @@
 pub mod dispatch;
 pub mod document;
 pub mod drawing;
+pub mod fonts;
+
+pub use fonts::LOST_FONT_PART;
 pub mod headerfooter;
 pub mod interner;
 pub mod math;
@@ -39,7 +42,7 @@ use crate::model::props::Section;
 use crate::model::styles::StyleTable;
 use crate::model::support::{SupportModel, SupportStatus};
 use crate::model::theme::Theme;
-use crate::model::{Body, NoteTable, NumberingTable, Settings};
+use crate::model::{Body, FontTable, NoteTable, NumberingTable, Settings};
 
 use self::interner::Interner;
 
@@ -117,6 +120,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     let styles_part = find_related_part(package, &main, &RelType::Styles);
     let numbering_part = find_related_part(package, &main, &RelType::Numbering);
     let settings_part = find_related_part(package, &main, &RelType::Settings);
+    let font_table_part = find_related_part(package, &main, &RelType::FontTable);
     let footnotes_part = find_related_part(package, &main, &RelType::Footnotes);
     let endnotes_part = find_related_part(package, &main, &RelType::Endnotes);
     let theme_part = find_related_part(package, &main, &RelType::Theme);
@@ -143,11 +147,12 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         &mut media,
     )?;
 
-    let (styles, numbering, settings, aux_support) = parse_auxiliary(
+    let (styles, numbering, settings, font_table, aux_support) = parse_auxiliary(
         package,
         styles_part.as_ref(),
         numbering_part.as_ref(),
         settings_part.as_ref(),
+        font_table_part.as_ref(),
         options,
     )?;
     support.merge(aux_support);
@@ -156,16 +161,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     // where Strict has no slot for it. An OR, not an overwrite: it is a
     // document-wide setting, so `settings.xml` saying it and the last section
     // saying it cannot disagree.
-    let settings = settings.map_or_else(
-        || Settings {
-            gutter_at_top: section_gutter_at_top,
-            ..Settings::default()
-        },
-        |mut settings| {
-            settings.gutter_at_top |= section_gutter_at_top;
-            settings
-        },
-    );
+    let settings = merge_gutter_at_top(settings, section_gutter_at_top);
 
     let (footnotes, endnotes, note_support) = parse_notes_parts(
         package,
@@ -184,6 +180,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         footnotes,
         endnotes,
         settings,
+        font_table,
         theme,
         sections,
         headers_footers,
@@ -194,6 +191,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
             styles: styles_part,
             numbering: numbering_part,
             settings: settings_part,
+            font_table: font_table_part,
             footnotes: footnotes_part,
             endnotes: endnotes_part,
             theme: theme_part,
@@ -264,10 +262,11 @@ type AuxiliaryParts = (
     Option<StyleTable>,
     Option<NumberingTable>,
     Option<Settings>,
+    Option<FontTable>,
     SupportModel,
 );
 
-/// Parses the independent `styles`/`numbering`/`settings` parts.
+/// Parses the independent `styles`/`numbering`/`settings`/`fontTable` parts.
 ///
 /// Under `feature = "parallel"` the styles and numbering parts are parsed
 /// concurrently with `rayon` (STAGE-2 §4.4).
@@ -276,6 +275,7 @@ fn parse_auxiliary(
     styles_part: Option<&PartId>,
     numbering_part: Option<&PartId>,
     settings_part: Option<&PartId>,
+    font_table_part: Option<&PartId>,
     options: &ParseOptions,
 ) -> Result<AuxiliaryParts> {
     #[cfg(feature = "parallel")]
@@ -287,21 +287,63 @@ fn parse_auxiliary(
         let (styles, styles_support) = styles_result?;
         let (numbering, numbering_support) = numbering_result?;
         let (settings, settings_support) = parse_aux_settings(package, settings_part, options)?;
+        let (fonts, fonts_support) = parse_aux_font_table(package, font_table_part, options)?;
         let mut support = styles_support;
         support.merge(numbering_support);
         support.merge(settings_support);
-        Ok((styles, numbering, settings, support))
+        support.merge(fonts_support);
+        Ok((styles, numbering, settings, fonts, support))
     }
     #[cfg(not(feature = "parallel"))]
     {
         let (styles, styles_support) = parse_aux_styles(package, styles_part, options)?;
         let (numbering, numbering_support) = parse_aux_numbering(package, numbering_part, options)?;
         let (settings, settings_support) = parse_aux_settings(package, settings_part, options)?;
+        let (fonts, fonts_support) = parse_aux_font_table(package, font_table_part, options)?;
         let mut support = styles_support;
         support.merge(numbering_support);
         support.merge(settings_support);
-        Ok((styles, numbering, settings, support))
+        support.merge(fonts_support);
+        Ok((styles, numbering, settings, fonts, support))
     }
+}
+
+/// Folds a `w:gutterAtTop` found in a `w:sectPr` into the document's settings.
+///
+/// Transitional puts the flag inside the section properties and Strict declares it
+/// in `CT_Settings`, so the parser has to move it. An **OR**, not an overwrite: it
+/// is a document-wide setting, so `settings.xml` saying it and the last section
+/// saying it cannot disagree, and taking either one's word for the other would
+/// lose a flag one of them set.
+fn merge_gutter_at_top(settings: Option<Settings>, from_section: bool) -> Settings {
+    settings.map_or_else(
+        || Settings {
+            gutter_at_top: from_section,
+            ..Settings::default()
+        },
+        |mut settings| {
+            settings.gutter_at_top |= from_section;
+            settings
+        },
+    )
+}
+
+/// Parses `word/fontTable.xml` and the embedded fonts it names.
+///
+/// A missing part is `None` and an empty one is `Some(empty)`, because the
+/// difference is the writer's: the first is a document without a font table, the
+/// second a document whose font table carried nothing this model keeps.
+#[allow(clippy::redundant_closure_for_method_calls)]
+fn parse_aux_font_table(
+    package: &Package,
+    part: Option<&PartId>,
+    options: &ParseOptions,
+) -> Result<(Option<FontTable>, SupportModel)> {
+    let Some(part) = part else {
+        return Ok((None, SupportModel::new()));
+    };
+    let (table, support) = parse_part_with(package, part, options, |p| p.parse_font_table_root())?;
+    Ok((Some(table), support))
 }
 
 /// Parses the independent `footnotes`/`endnotes` parts and returns their tables.

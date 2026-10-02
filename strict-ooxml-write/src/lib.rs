@@ -70,6 +70,7 @@ use strict_ooxml_core::error::Result;
 use strict_ooxml_core::normalize::report::NormalizationReport;
 use strict_ooxml_wml::model::Document;
 
+pub use package::{font_content_type, font_extension};
 pub use package::{write_package, WriteOptions, WriteOutput};
 pub use xml::WriteError;
 

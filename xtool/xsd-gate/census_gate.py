@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import collections
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
@@ -235,39 +236,82 @@ def mce_blocks(package: str) -> int:
                 total += archive.read(name).count(b"<mc:AlternateContent")
     return total
 def part_ledger(source: str, written: str) -> collections.Counter:
-    """Parts the input package carried and our output does not.
+    """Parts whose **bytes** the input carried and the output does not have.
 
-    The measurement the audit §8 called the only way to see a silent loss: a
+    The measurement the audit 8 called the only way to see a silent loss: a
     part that is *absent* validates perfectly, so no schema message exists and
-    only a part-by-part comparison finds it. `word/media/image1.png` becomes
-    `image2.png` on the way out, so names are normalized (`image17.png` and
-    `image4.png` are the same part) and only the *shape* of what went missing is
-    reported.
+    only a part-by-part comparison finds it.
 
-    One class is excluded, and the reason is the one thing a part-by-part
-    comparison cannot see on its own: **a `.rels` beside a part the writer
-    regenerates is a replacement, not a loss.** `word/_rels/footnotes.xml.rels`
-    describes relationships the source's footnotes had; the written footnotes are
-    the model's, and whatever relationships *they* have, this write declares in
-    its own rels part — or declares none, because the model has none. Either way
-    the source's copy is superseded, and keeping it would leave the package
-    pointing at relationships the written part does not use.
+    **By digest, not by name**, and that is not a refinement - it is the
+    difference between the question and a proxy for it. This writer renames the
+    parts it carries: `word/media/image3.png` becomes `media/image1.png` and
+    `word/fonts/Nunito-regular.ttf` becomes `fonts/font0.ttf`, because the new
+    name comes from a stable enumeration rather than from the producer's. A name
+    comparison therefore reports every renamed-but-carried part as dropped, and
+    on `DOCX_13_Pages` that was all ten embedded fonts - a loss report full of
+    parts that were in fact in the package, byte for byte. Comparing the SHA-256
+    of each part's contents answers the real question: is there anything here we
+    do not have?
 
-    The test is whether the **owner** is still in the output, not whether a rels
-    part is: the writer is free to emit no `.rels` at all for a part that ended
-    up with no relationships, and a check that required one would report that as
-    a loss on every document in the corpus and make the signal useless.
+    Two exclusions, each for a stated reason rather than for convenience:
+
+    - a `.rels` whose **owner** is still in the output is a replacement, not a
+      loss. `word/_rels/footnotes.xml.rels` describes the source's footnotes and
+      this write wrote its own beside them; keeping the source's would leave the
+      package declaring relationships the written part does not have. The test is
+      the owner's presence, not a rels part's presence, because the writer is
+      free to emit no `.rels` at all for a part that ended up with no
+      relationships, and a check that required one would report that as a loss
+      on every document in the corpus and make the signal useless;
+    - a ZIP **directory entry** (`word/media/`) is not a part and has no bytes.
     """
-    with zipfile.ZipFile(source) as package:
-        before = {normalize_part(name) for name in package.namelist() if not name.endswith("/")}
-    with zipfile.ZipFile(written) as package:
-        after = {normalize_part(name) for name in package.namelist() if not name.endswith("/")}
-    missing = before - after
-    return collections.Counter(
+    before, before_digests = _part_contents(source)
+    after, after_digests = _part_contents(written)
+    missing = {
         name
-        for name in missing
-        if not (name.endswith(".rels") and rels_owner(name) in after)
+        for name in before - after
+        if not (name.endswith(".rels") and cg_owner_is_present(name, after))
+    }
+    return collections.Counter(
+        name for name in missing if _digest(source, name) not in after_digests
     )
+
+
+def cg_owner_is_present(rels_name: str, parts: set[str]) -> bool:
+    """Whether the part a `.rels` describes is still in the output.
+
+    **The owner's presence, not a sibling `.rels`'** — and the first version got
+    this wrong by collecting the owners of the rels *in the output* and comparing
+    against those, which reported a loss on every document whose header or
+    footnotes part has no relationships of its own. That is the majority of
+    documents, and it made the signal worse than the name comparison it replaced.
+    """
+    owner = rels_owner(rels_name)
+    return owner is not None and owner in parts
+
+
+def _part_contents(package: str) -> tuple[set[str], set[bytes]]:
+    """The normalized part names of `package` and the digests of their bytes."""
+    names: set[str] = set()
+    digests: set[bytes] = set()
+    with zipfile.ZipFile(package) as archive:
+        for name in archive.namelist():
+            if name.endswith("/"):
+                continue
+            names.add(normalize_part(name))
+            digests.add(hashlib.sha256(archive.read(name)).digest())
+    return names, digests
+
+
+def _digest(package: str, normalized: str) -> bytes:
+    """The SHA-256 of the part `normalized` came from, or empty bytes if unknown."""
+    with zipfile.ZipFile(package) as archive:
+        for name in archive.namelist():
+            if name.endswith("/"):
+                continue
+            if normalize_part(name) == normalized:
+                return hashlib.sha256(archive.read(name)).digest()
+    return b""
 
 
 def rels_owner(rels_name: str) -> str | None:
@@ -277,8 +321,6 @@ def rels_owner(rels_name: str) -> str | None:
     if base == directory:
         return None
     return f"{base}/{file.removesuffix('.rels')}"
-
-
 DIGITS = re.compile(r"\d+")
 
 

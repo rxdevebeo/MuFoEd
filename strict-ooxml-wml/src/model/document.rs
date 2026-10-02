@@ -5,6 +5,7 @@ use strict_ooxml_core::part::PartId;
 
 use super::block::Block;
 use super::drawing::MediaIndex;
+use super::fonts::FontTable;
 use super::notes::NoteTable;
 use super::numbering::NumberingTable;
 use super::props::Section;
@@ -47,6 +48,8 @@ pub struct DocumentSource {
     pub numbering: Option<PartId>,
     /// Settings part, if present.
     pub settings: Option<PartId>,
+    /// Font table part, if present.
+    pub font_table: Option<PartId>,
     /// Footnotes part, if present.
     pub footnotes: Option<PartId>,
     /// Endnotes part, if present.
@@ -75,6 +78,12 @@ pub struct Document {
     pub settings: Settings,
     /// Parsed theme, if present.
     pub theme: Option<Theme>,
+    /// The font table, with the faces it embeds.
+    ///
+    /// None means the document has no font table part; Some that is empty
+    /// means it has one this project read and found nothing to carry. The
+    /// difference matters to a writer deciding whether to emit the part at all.
+    pub font_table: Option<FontTable>,
     /// Resolved sections, in document order.
     pub sections: Vec<Section>,
     /// Parsed header/footer parts referenced by the sections, in first-seen order.

@@ -36,6 +36,7 @@ fn empty_document() -> Document {
         footnotes: Default::default(),
         endnotes: Default::default(),
         settings: Default::default(),
+        font_table: None,
         theme: None,
         sections: Vec::new(),
         headers_footers: Vec::new(),
@@ -46,6 +47,7 @@ fn empty_document() -> Document {
             styles: None,
             numbering: None,
             settings: None,
+            font_table: None,
             footnotes: None,
             endnotes: None,
             theme: None,
@@ -103,6 +105,7 @@ fn a_reported_removal_passes_the_gate() {
 fn the_theme_placeholder_loss_is_recorded_by_the_writer() {
     let document = Document {
         theme: Some(theme()),
+        font_table: None,
         ..empty_document()
     };
     let written = write_package(&document, None, &WriteOptions::default())

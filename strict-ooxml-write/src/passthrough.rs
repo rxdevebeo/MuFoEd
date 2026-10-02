@@ -324,6 +324,41 @@ pub(crate) fn plan(
             );
             continue;
         };
+        // The package thumbnail is a **root** relationship, not one of `app.xml`'s:
+        // `docProps/app.xml` has no `.rels` at all in nine of the ten corpus
+        // documents that carry one, and the relationship that names the thumbnail
+        // is `.../relationships/metadata/thumbnail` on `_rels/.rels`. Looking in
+        // the wrong place is how a property part arrived declaring a thumbnail the
+        // package did not contain.
+        //
+        // **The bytes and the relationship travel together**, and the first
+        // version got that wrong in the most annoying direction: it carried the
+        // thumbnail and then `continue`d, which dropped the relationship naming
+        // it — so the second write of the same document found an orphan and
+        // reported it, and the package did not settle in one generation.
+        if is_package_thumbnail(&info) {
+            match source.read_part(&target) {
+                Ok(bytes) => out.parts.push(CopiedPart {
+                    name: target.as_str().to_owned(),
+                    bytes,
+                    content_type: source.content_type(&target),
+                }),
+                Err(error) => ctx.report_unsupported(
+                    "W7.dropped-part",
+                    &format!(
+                        "{target} is the package thumbnail and could not be read ({error}), so \
+                         the relationship is kept and the bytes are not"
+                    ),
+                    &SourceLocation::unknown(),
+                ),
+            }
+            out.root.push(RootRelationship {
+                id: format!("rId{}", out.root.len() + 2),
+                raw_type: thumbnail_type_uri(),
+                target: target.as_str().trim_start_matches('/').to_owned(),
+            });
+            continue;
+        }
         let transform: fn(&[u8]) -> Vec<u8> = match target.as_str() {
             CORE_PROPERTIES_PART => strict_core_properties_namespace,
             APP_PROPERTIES_PART => without_rendering_counters,
@@ -348,9 +383,16 @@ pub(crate) fn plan(
         };
         match source.read_part(&target) {
             Ok(bytes) => {
-                for part in copied_property_part(&target, &bytes, transform, source) {
-                    out.parts.push(part);
-                }
+                let mut copied = copied_property_part(&target, &bytes, transform, source);
+                // A property part's own relationships, and the parts they reach.
+                // `docProps/app.xml` references `docProps/thumbnail.jpeg` through
+                // them, and a relationship part copied without its target is a
+                // reference to nothing: the census ledger called nine thumbnails
+                // lost for exactly this, and it was right — the app properties
+                // arrived with a `.rels` pointing at a part that was not in the
+                // package.
+                copied.extend(property_rel_targets(&target, source, ctx));
+                out.parts.extend(copied);
             }
             Err(error) => ctx.report_unsupported(
                 "W7.package-properties",
@@ -443,6 +485,78 @@ pub(crate) fn report_what_was_dropped(ctx: &mut Ctx<'_>, source: &dyn Source, wr
             &SourceLocation::unknown(),
         );
     }
+}
+
+/// Whether a root relationship is the package thumbnail.
+///
+/// Named by its type suffix, because there is no normalized variant for it —
+/// `RelationshipInfo` keeps a *normalized* `RelType` and everything unrecognised
+/// becomes `Other`, and the thumbnail lands there. `package/2006` is Transitional
+/// and `purl.oclc.org` is Strict, so a Strict package can carry this relationship
+/// and it still has to be recognized; matching the suffix is what sees both.
+fn is_package_thumbnail(info: &RelationshipInfo) -> bool {
+    match &info.rel_type {
+        RelType::Other(uri) => uri
+            .rsplit('/')
+            .next()
+            .is_some_and(|suffix| suffix == "thumbnail"),
+        _ => false,
+    }
+}
+
+/// The Strict form of the package-thumbnail relationship type.
+///
+/// There is no normalized variant — nothing in a body ever refers to a thumbnail —
+/// so the URI is built from the OPC base the same way the core-properties one is.
+/// The source's spelling is Transitional or Strict depending on what it was, and
+/// `map_rel_or_content_type` rewrites exactly this string, so both are covered by
+/// building ours rather than copying the input's.
+fn thumbnail_type_uri() -> String {
+    "http://purl.oclc.org/ooxml/package/relationships/metadata/thumbnail".to_owned()
+}
+
+/// The internal targets a property part's `.rels` reaches, copied beside it.
+///
+/// `docProps/app.xml` has one relationship — to `docProps/thumbnail.jpeg` — and a
+/// property part whose rels arrives without its target is a package with a
+/// dangling reference, which is the one thing a pass-through exists to avoid.
+/// External targets are left alone: they are a URI on the internet, not bytes.
+fn property_rel_targets(
+    target: &PartId,
+    source: &dyn Source,
+    ctx: &mut Ctx<'_>,
+) -> Vec<CopiedPart> {
+    let Some(rels_part) = rels_part_of(target) else {
+        return Vec::new();
+    };
+    let Ok(_rels_bytes) = source.read_part(&rels_part) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for info in source.relationships(target) {
+        if info.external {
+            continue;
+        }
+        let Some(resolved) = resolve(target, &info.target) else {
+            continue;
+        };
+        match source.read_part(&resolved) {
+            Ok(bytes) => out.push(CopiedPart {
+                name: resolved.as_str().to_owned(),
+                bytes,
+                content_type: source.content_type(&resolved),
+            }),
+            Err(error) => ctx.report_unsupported(
+                "W7.dropped-part",
+                &format!(
+                    "{resolved} is referenced by {target}'s relationships but could not be \
+                     read ({error}), so the reference is kept and the bytes are not"
+                ),
+                &SourceLocation::unknown(),
+            ),
+        }
+    }
+    out
 }
 
 /// The part a `.rels` belongs to: `/word/_rels/header1.xml.rels` -> `/word/header1.xml`.

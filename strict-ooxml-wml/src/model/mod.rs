@@ -7,6 +7,7 @@
 pub mod block;
 pub mod document;
 pub mod drawing;
+pub mod fonts;
 pub mod ids;
 pub mod inline;
 pub mod math;
@@ -30,6 +31,7 @@ pub use drawing::{
     ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap,
     WrapKind, Xfrm,
 };
+pub use fonts::{EmbedKind, EmbeddedFont, FontEntry, FontTable};
 pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 pub use inline::{
     Bookmark, BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run,
