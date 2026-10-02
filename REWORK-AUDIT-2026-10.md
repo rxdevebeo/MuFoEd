@@ -16,13 +16,13 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 
 | Задача | Статус | Коммиты | Что сделано |
 |---|---|---|---|
-| AUD-00 | ✅ выполнена, кроме проверки Windows (см. ниже) | `1af8988`, `13a66dc`, `1007ab4`, `75dfda3`, `c28dcc3` | `origin` = <https://github.com/rxdevebeo/MuFoEd>, ветка `master` (добавлена в триггеры CI). Базовая линия и причины падений — `docs/ci-baseline-2026-10.md`. Тулчейн закреплён на 1.92.0 во всех job'ах; `install-action@v2` с `tool:`; fuzz собирается с `--target x86_64-unknown-linux-gnu`; `.gitattributes` `eol=lf` и `rustfmt` `newline_style = "Unix"`; `deny.toml` `allow-wildcard-paths`; `checkout@v5`, `setup-python@v6`. Census-гейт убран из CI и запускается локально (waiver `CENSUS-LOCAL`) |
+| AUD-00 | ✅ выполнена | `1af8988`, `13a66dc`, `1007ab4`, `75dfda3`, `c28dcc3` | `origin` = <https://github.com/rxdevebeo/MuFoEd>, ветка `master` (добавлена в триггеры CI). Базовая линия и причины падений — `docs/ci-baseline-2026-10.md`. Тулчейн закреплён на 1.92.0 во всех job'ах; `install-action@v2` с `tool:`; fuzz собирается с `--target x86_64-unknown-linux-gnu`; `.gitattributes` `eol=lf` и `rustfmt` `newline_style = "Unix"`; `deny.toml` `allow-wildcard-paths`; `checkout@v5`, `setup-python@v6`. Census-гейт убран из CI и запускается локально (waiver `CENSUS-LOCAL`) |
 | AUD-01 | ✅ выполнена | `13a66dc` | Крейт `strict-ooxml-testkit` (`publish = false`, без зависимостей от крейтов workspace): `ZipBuilder` со своим CRC-32, `DocxBuilder` (Strict/Transitional, замена любой части, `raw_entry` для дубликатов), `PdfBuilder` (настоящий xref, `reserve`/`set` для ссылок на себя), `xml::{nested, nested_tables, nested_text_boxes}`, `harness::{bounded, assert_survives}` (стек 1 MiB, таймаут 10 с). 14 юнит-тестов. Шаг CI «Hostile inputs (release)» |
 | AUD-02 | ✅ выполнена | `13a66dc` | `tests/hostile.rs` в `strict-ooxml`, `strict-ooxml-pdf`, `strict-ooxml-convert` с модулями под задачи Ф1–Ф2 и смоук-тестами testkit на настоящем API |
 | AUD-03 | ✅ выполнена | `4f0939d` | `strict_ooxml_core::xml::escape` (`is_xml_char`, `escape_text_into`/`escape_attr_into` с числом удалённых символов, `count_invalid`); шесть локальных функций удалены. `\t\n\r` в `.rels` и `[Content_Types].xml` пишутся ссылками, а не пробелом. Писатель: `XmlWriter::finish_counted`, `Ctx::finish_xml`, потеря `W.invalid-xml-char` (`Lossy`) с именем части из `part_xml`. SVG: новое поле `Page::warnings`, `render.invalid-xml-char`. Тесты: юнит + 2 proptest в core, юнит в writer, 2 интеграционных в `strict-ooxml/tests/hostile.rs` (оракул `roxmltree`) |
 | AUD-04 … AUD-94 | ⏳ не начаты | — | — |
 
-**Состояние CI.** Последний полностью завершённый прогон — [37070400937](https://github.com/rxdevebeo/MuFoEd/actions/runs/37070400937): зелёные test (ubuntu, macos), fuzz smoke, coverage, msrv, cargo-deny, XSD gate. Прогоны [37071324759](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071324759) и [37071556814](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071556814) с исправлением `newline_style` на момент записи ещё идут: в последнем всё, кроме `test (windows-latest)`, уже зелёное. AUD-00 закрывается окончательно, когда Windows-job пройдёт.
+**Состояние CI.** Прогон [37071556814](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071556814) на `c28dcc3` полностью зелёный: test (ubuntu, macos, windows), fuzz smoke, coverage, msrv, cargo-deny, XSD gate. Fuzz nightly запускается только по расписанию.
 
 **Отступления, допущенные при выполнении.**
 - AUD-03, §0.1 п.2: падение новых тестов на коде до правки не проверялось откатом. SVG-тест на старом коде не компилируется (поля `Page::warnings` не было), тест писателя проверяет запись, которой раньше не было.
@@ -115,7 +115,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 
 ## Ф0. Инфраструктура
 
-### AUD-00. Подключить удалённый репозиторий и реально запустить CI — ✅ (ждёт Windows)
+### AUD-00. Подключить удалённый репозиторий и реально запустить CI — ✅
 
 **Проблема.** У репозитория нет `git remote`; `.github/workflows/ci.yml` ни разу не исполнялся,
 включая fuzz-smoke и fuzz-nightly. Все утверждения «в CI» не проверены.
