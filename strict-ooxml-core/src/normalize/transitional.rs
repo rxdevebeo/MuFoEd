@@ -360,18 +360,17 @@ impl TransitionalNormalizer {
         let location = context.location();
         let element = legacy_graphics_element(subtree);
 
-        let Some(picture) = vml::picture_in(subtree, context) else {
+        let Some((shape, wrap)) = vml::classify(subtree, context) else {
             // Not a shape this converts. Everything under `w:pict` is VML, and
             // Strict declares none of it, so the subtree goes and the loss is
-            // named — the same treatment `T7.vml` gave it, and for the same
+            // named - the same treatment `T7.vml` gave it, and for the same
             // reason: a dropped node that the report does not name is the failure
             // mode this whole module is written against.
             report.record_loss(LossRecord {
                 transform_id: "T7.vml",
                 feature_id: element.to_owned(),
-                reason: "VML is not part of Strict; the node is dropped, not rendered. The \
-                         shape is not a plain picture (a text box or drawn geometry), and \
-                         converting those is a different job"
+                reason: "VML is not part of Strict; the node is dropped, not rendered, and \
+                         nothing in it is a shape this conversion knows how to draw"
                     .to_owned(),
                 severity: Severity::Lossy,
                 locations: vec![location.clone()],
@@ -380,18 +379,65 @@ impl TransitionalNormalizer {
             return Ok(());
         };
 
+        if let vml::Shape::Freeform(frame) = &shape {
+            // The frame is kept and the **geometry is dropped**, and the two are
+            // named separately. A frame with a guessed path is a shape in the right
+            // place drawn wrong, which is worse than a frame with no path - and
+            // `a:custGeom` has no arc command for the `r` command both freeform
+            // shapes in the corpus use.
+            report.record_loss(LossRecord {
+                transform_id: "T7.vml-freeform",
+                feature_id: "v:shape/@path".to_owned(),
+                reason: format!(
+                    "the VML shape {:?} is a freeform path that uses a command a:custGeom has no \
+                     equivalent for, so its frame is kept and its outline is dropped",
+                    frame.name
+                ),
+                severity: Severity::Lossy,
+                locations: vec![location.clone()],
+            });
+        }
+
+        let text_box = matches!(shape, vml::Shape::TextBox(_));
         let doc_pr_id = context.next_doc_pr_id();
-        for event in vml::picture_events(&picture, doc_pr_id, report, &location) {
+        // The content of a text box is written **in place**, through the same
+        // `rewrite_event` as the rest of the part, which is what makes it ordinary
+        // WML by the time it lands. The alternative - queue the content and queue
+        // a tail behind it - needs three orderings right at once, and when one of
+        // them was wrong the part came out with the shape's body properties
+        // outside the shape and the paragraph one level too deep.
+        let (head, tail) = if text_box {
+            vml::text_box_shape_events(&shape, wrap, doc_pr_id, report, &location)
+        } else {
+            vml::shape_events(&shape, wrap, doc_pr_id, report, &location)
+        };
+        for event in head {
             writer
                 .write_event(event)
                 .map_err(|error| xml_error(&context.part, error.to_string()))?;
         }
-        report.record("T7.vml-picture", 1);
+        if text_box {
+            for content in Self::drain_textbox_content(subtree) {
+                Self::rewrite_event(writer, content, context, report)?;
+            }
+            for event in vml::text_box_close() {
+                writer
+                    .write_event(event)
+                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
+            }
+        }
+        for event in tail {
+            writer
+                .write_event(event)
+                .map_err(|error| xml_error(&context.part, error.to_string()))?;
+        }
+        report.record("T7.vml-shape", 1);
+
         if element == "w:object" {
-            // The preview survives; the object does not, and that is a second
+            // The preview survives; the object does not, and that is a **second**
             // claim from the conversion above. Recorded separately so a reader of
             // the report can tell "the picture is here" from "the thing the
-            // picture stood for is gone" — they are different and only one of them
+            // picture stood for is gone" - they are different and only one of them
             // is recoverable.
             report.record_loss(LossRecord {
                 transform_id: "T7.ole",
@@ -406,12 +452,64 @@ impl TransitionalNormalizer {
             // children went with it and are inside that node.
             report.count_reported_removal(1);
         }
-        // A converted picture is a **mapping**, not a loss: the image relationship
-        // is the same one, the part behind it is carried by the pass-through, and
-        // nothing was dropped — so `count_reported_removal` is deliberately NOT
+        // A converted shape is a **mapping**, not a loss: the image relationship is
+        // the same one, the part behind it is carried by the pass-through, and
+        // nothing was dropped - so `count_reported_removal` is deliberately NOT
         // called for the `w:pict` case. Booking it as one would put the two
         // counters `verify_no_silent_loss` compares out of step.
         Ok(())
+    }
+
+    /// The events of a `w:txbxContent`'s **children**, and nothing else.
+    ///
+    /// Two things have to be right here, and the first version got the second
+    /// wrong in a way that did not converge:
+    ///
+    /// - the `v:textbox`'s wrapper is stripped, because the conversion writes its
+    ///   own `wps:txbx/w:txbxContent` pair and a second wrapper would nest them:
+    ///   valid XML, and a text box whose every paragraph is one level too deep;
+    /// - **the walk stops at the wrapper's end tag.** Carrying on collects the
+    ///   rest of the `w:pict` - the `v:shape` and the `w:pict` itself - and
+    ///   feeding those back through the event loop makes it meet the same `w:pict`
+    ///   again and convert it again, producing twice as much markup each time. That
+    ///   is the difference between a document that grows and a normalizer that
+    ///   does not terminate.
+    ///
+    /// The **text** events are carried: a text box whose paragraphs arrive with
+    /// their runs emptied is a frame around nothing, and it passes every
+    /// structural assertion.
+    fn drain_textbox_content(subtree: &[Event<'static>]) -> Vec<Event<'static>> {
+        let mut out = Vec::new();
+        let mut depth = 0usize;
+        for event in subtree {
+            match event {
+                Event::Start(start) => {
+                    let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+                    if depth == 0 {
+                        if !name.ends_with(":txbxContent") {
+                            continue;
+                        }
+                        depth = 1;
+                        continue;
+                    }
+                    depth += 1;
+                    out.push(event.clone());
+                }
+                Event::End(_) => {
+                    if depth == 0 {
+                        continue;
+                    }
+                    depth -= 1;
+                    if depth == 0 {
+                        return out;
+                    }
+                    out.push(event.clone());
+                }
+                Event::Empty(_) | Event::Text(_) if depth > 0 => out.push(event.clone()),
+                _ => {}
+            }
+        }
+        out
     }
 
     /// Rewrites one event into the writer. Dropping is what makes this more than a
@@ -1138,7 +1236,21 @@ pub(crate) struct PartContext {
 }
 
 impl PartContext {
-    fn new(part: PartId) -> Self {
+    /// Records a namespace binding, for a caller that knows the part's prefixes
+    /// before it has read the part.
+    ///
+    /// Only the `vml` module's tests need it - they reach
+    /// [`classify`](crate::normalize::vml::classify) without a package, and a
+    /// classifier that resolves namespaces by prefix rather than by element name
+    /// needs those bindings to answer anything. The real pipeline never needs it:
+    /// `resolve` records them as it reads.
+    #[cfg(test)]
+    pub(crate) fn bind(&mut self, prefix: &str, uri: &str) {
+        self.remember_prefix(prefix.as_bytes().to_vec(), uri.to_owned());
+    }
+
+    /// A context for one part, with the defaults.
+    pub(crate) fn new(part: PartId) -> Self {
         Self {
             part,
             prefixes: Vec::new(),
@@ -2031,7 +2143,7 @@ mod tests {
             report
                 .applied()
                 .iter()
-                .any(|record| record.id == "T7.vml-picture" && record.count == 1),
+                .any(|record| record.id == "T7.vml-shape" && record.count == 1),
             "and it is counted as a transformation: {report}"
         );
         report.verify_no_silent_loss().expect("SC-4");
@@ -2106,37 +2218,202 @@ mod tests {
         }
     }
 
-    /// A text box is not a picture, and converting it would draw an empty frame
-    /// where a paragraph of text was.
+    /// Options for a fixture that is nothing but a VML shape.
     ///
-    /// `#_x0000_t202` is how Word labels it, and the label is the only thing that
-    /// distinguishes it from a picture: both are a `v:shape`, and both may carry
-    /// children. So the check has to be on the type, and this test is what holds
-    /// it — a version that converted on `v:imagedata` alone would turn a text box
-    /// into a blank picture and report nothing.
+    /// **The default expansion bound is calibrated on documents, and these are not
+    /// documents.** `wp:anchor` plus `wps:wsp` plus `pic:spPr` is roughly a
+    /// kilobyte of markup where `<v:shape style="..."><v:imagedata r:id="..."/></v:shape>`
+    /// was 120 bytes, so a 455-byte part that is *only* a shape grows several fold and
+    /// trips a bound no real document comes near — the worst
+    /// `word/document.xml` growth over the 58-document Transitional corpus is one
+    /// per cent. The fixture therefore asks for the allowance explicitly, rather than
+    /// the default being raised for a shape that is a document in name only; the knob
+    /// exists for exactly this.
+    fn shape_fixture_options() -> NormalizerOptions {
+        NormalizerOptions {
+            max_expansion_bytes: 32 * 1024,
+            ..NormalizerOptions::default()
+        }
+    }
+
+    /// A VML text box becomes a `wps:wsp` with its **content intact**, because a
+    /// frame with the text left out is a blank rectangle drawn where a paragraph of
+    /// text was.
+    ///
+    /// The content goes through T1–T5 like everything else — it is written through
+    /// the same `rewrite_event` — and asserting the text is *still there* is what
+    /// holds that. A version that emitted the frame and dropped the content would
+    /// produce a perfectly valid `wps:wsp` and lose a paragraph.
     #[test]
-    fn a_vml_text_box_is_dropped_and_named_not_drawn_as_an_empty_picture() {
-        let normalizer = TransitionalNormalizer::new();
+    fn a_vml_text_box_becomes_a_shape_that_still_has_its_text() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
         let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
  xmlns:v="urn:schemas-microsoft-com:vml">
 <w:body><w:p><w:r><w:pict><v:shape id="tb" type="#_x0000_t202" style="width:200pt;height:60pt">
 <v:textbox><w:txbxContent><w:p><w:r><w:t>inside the box</w:t></w:r></w:p></w:txbxContent></v:textbox>
-<v:imagedata r:id="rId9"/></v:shape></w:pict></w:r></w:p></w:body></w:document>"##;
+</v:shape></w:pict></w:r></w:p></w:body></w:document>"#;
         let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
         let text = String::from_utf8(output.into_owned()).unwrap();
-        assert!(!text.contains("pic:pic"), "no empty picture: {text}");
         assert!(!text.contains("v:shape"), "and no VML: {text}");
+        assert!(text.contains("<wps:wsp"), "it is a shape: {text}");
+        assert!(text.contains("<wps:txbx><w:txbxContent>"), "{text}");
+        assert!(
+            text.contains("inside the box"),
+            "and the text is still in it: {text}"
+        );
+        assert!(
+            text.contains("<wps:bodyPr"),
+            "bodyPr is required after the optional txbx: {text}"
+        );
+        // Exactly one `w:txbxContent`: the conversion writes its own and a second
+        // wrapper would nest them, which is valid XML and a text box whose every
+        // paragraph is one level too deep.
+        assert_eq!(
+            text.matches("<w:txbxContent>").count(),
+            1,
+            "one wrapper, not two: {text}"
+        );
+        let report = normalizer.report();
+        assert_eq!(report.lossy_count(), 0, "nothing was lost: {report}");
+    }
+
+    /// A shape carrying **both** a `v:imagedata` and a `v:textbox` is an OLE
+    /// object, and the picture wins.
+    ///
+    /// That is the corpus's own shape (`Интегралы (2).docx`, three of them), and
+    /// the ranking is deliberate: what a reader saw before the conversion was the
+    /// `v:imagedata` **preview raster**, and the audit §12 is explicit that the
+    /// preview is the only recoverable part of an OLE object. Converting the frame
+    /// instead would draw an empty box where an equation was.
+    #[test]
+    fn a_shape_with_both_an_image_and_a_textbox_is_treated_as_an_ole_preview() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+ xmlns:v="urn:schemas-microsoft-com:vml"
+ xmlns:o="urn:schemas-microsoft-com:office:office">
+<w:body><w:p><w:r><w:object><v:shape id="ob" type="#_x0000_t202" style="width:75.4pt;height:45.5pt">
+<v:textbox><w:txbxContent><w:p><w:r><w:t>the editable text</w:t></w:r></w:p></w:txbxContent></v:textbox>
+<v:imagedata r:id="rId5"/><o:OLEObject Type="Embed" ProgID="Equation.3" r:id="rId6"/>
+</v:shape></w:object></w:r></w:p></w:body></w:document>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(
+            text.contains(r#"<a:blip r:embed="rId5"/>"#),
+            "the preview raster is what the reader saw: {text}"
+        );
+        assert!(
+            !text.contains("OLEObject"),
+            "and the object is gone: {text}"
+        );
+        assert!(!text.contains("rId6"), "with its relationship: {text}");
         let report = normalizer.report();
         assert_eq!(
             report.lossy_count(),
             1,
-            "the frame is dropped and that is named: {report}"
+            "exactly one loss, and it is the object rather than the preview: {report}"
+        );
+        assert!(report.to_string().contains("executable object"), "{report}");
+        report.verify_no_silent_loss().expect("SC-4");
+    }
+
+    /// A freeform `v:path` keeps its frame and loses its outline, **by name**.
+    ///
+    /// Both freeform shapes in the corpus are
+    /// `m665994,l,,,7199r665994,l665994,xe`: an arc whose arguments are partly
+    /// absent. `a:custGeom` has no arc command, so writing it as `m`/`l` would draw
+    /// a straight line where the producer drew a curve — a shape in the right place
+    /// drawn wrong. The frame is kept because that is right, and the geometry is
+    /// dropped because that is honest.
+    #[test]
+    fn a_freeform_path_keeps_its_frame_and_names_the_geometry_it_dropped() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:body><w:p><w:r><w:pict><v:shape id="ff" style="width:52.45pt;height:.6pt"
+ path="m665994,l,,,7199r665994,l665994,xe"/></w:pict></w:r></w:p></w:body></w:document>"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(text.contains("<wps:wsp"), "the frame is kept: {text}");
+        assert!(
+            !text.contains("custGeom"),
+            "and no guessed path is drawn: {text}"
+        );
+        let report = normalizer.report();
+        assert_eq!(
+            report.lossy_count(),
+            1,
+            "one named loss, for the geometry: {report}"
+        );
+        assert!(report.to_string().contains("no equivalent for"), "{report}");
+        report.verify_no_silent_loss().expect("SC-4");
+    }
+
+    /// `w10:wrap/@type` and `margin-left`/`margin-top` — the two spellings a
+    /// floating VML shape uses for its wrap and its position.
+    ///
+    /// Five of the ten floating objects in the corpus use one and five the other.
+    /// Reading only the `mso-` pair gives the other five a **zero** `wp:posOffset`
+    /// and puts them in the corner of the page, and **the census cannot see it**:
+    /// a shape in the wrong place is not a schema violation, it is a page that looks
+    /// wrong. Hence this test, which holds both spellings rather than the one that
+    /// happened to be measured.
+    #[test]
+    fn a_floating_shape_keeps_its_wrap_and_its_offset() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let offset = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word">
+<w:body><w:p><w:r><w:pict><v:rect id="a" style="position:absolute;margin-left:68.05pt;margin-top:9.95pt;width:52.45pt;height:.6pt;z-index:-251659264"><w10:wrap type="topAndBottom" anchorx="page"/></v:rect></w:pict></w:r></w:p></w:body></w:document>"#;
+        let text = String::from_utf8(
+            normalizer
+                .normalize(&part(), offset.as_bytes())
+                .unwrap()
+                .into_owned(),
+        )
+        .unwrap();
+        assert!(text.contains("<wp:wrapTopBottom"), "{text}");
+        // 68.05 pt and 9.95 pt, at 12 700 EMU to a point.
+        assert!(
+            text.contains("<wp:posOffset>864235</wp:posOffset>"),
+            "the margin-left offset, not a zero: {text}"
         );
         assert!(
-            report.to_string().contains("text box"),
-            "and the name says which shape it was: {report}"
+            text.contains("<wp:posOffset>126365</wp:posOffset>"),
+            "{text}"
         );
-        report.verify_no_silent_loss().expect("SC-4");
+        assert!(
+            text.contains(r#"behindDoc="1""#),
+            "a negative z-index: {text}"
+        );
+
+        let aligned = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word">
+<w:body><w:p><w:r><w:pict><v:rect id="b" style="position:absolute;left:0;margin-left:406.05pt;margin-top:20.4pt;width:83.9pt;height:106.5pt;z-index:-251659264"
+ fillcolor="white" strokecolor="black"><v:textbox><w:txbxContent><w:p><w:r><w:t>x</w:t></w:r></w:p></w:txbxContent></v:textbox><w10:wrap type="tight"/></v:rect></w:pict></w:r></w:p></w:body></w:document>"#;
+        let text = String::from_utf8(
+            normalizer
+                .normalize(&part(), aligned.as_bytes())
+                .unwrap()
+                .into_owned(),
+        )
+        .unwrap();
+        assert!(text.contains("<wp:wrapTight"), "{text}");
+        // `CT_WrapTight` requires a `wp:wrapPolygon`, and `CT_WrapPath` wants one
+        // `wp:start` and at least two `wp:lineTo`, so an empty polygon is not
+        // conformant either - the frame's own rectangle goes there.
+        assert!(text.contains("<wp:wrapPolygon>"), "{text}");
+        assert_eq!(text.matches("<wp:lineTo").count(), 3, "{text}");
+        // No `mso-position-*` at all, so the offsets are what places it: 406.05 pt
+        // and 20.4 pt, at 12 700 EMU to a point.
+        assert!(
+            text.contains("<wp:posOffset>5156835</wp:posOffset>"),
+            "the margin-left offset, not a zero: {text}"
+        );
+        assert!(
+            text.contains("<wp:posOffset>259080</wp:posOffset>"),
+            "{text}"
+        );
     }
 
     /// An inline VML shape — `position` absent or `static` — is an inline image,
@@ -2169,7 +2446,7 @@ mod tests {
     /// object; Strict has no substitute for it".
     ///
     /// So the two claims are made **separately**, and that is the point of the test:
-    /// the picture is a mapping (`T7.vml-picture`, no loss) and the object is a named
+    /// the picture is a mapping (`T7.vml-shape`, no loss) and the object is a named
     /// loss (`T7.ole`). One record for both would let a reader conclude the OLE object
     /// survived, which is the opposite of what happened.
     #[test]
@@ -2185,7 +2462,6 @@ mod tests {
  DrawAspect="Content" ObjectID="_1234567890" r:id="rId6"/></v:shape></w:object></w:r></w:p></w:body></w:document>"##;
         let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
         let text = String::from_utf8(output.into_owned()).unwrap();
-
         assert!(
             !text.contains("w:object"),
             "an empty w:object is dead markup: {text}"

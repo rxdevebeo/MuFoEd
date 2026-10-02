@@ -1,85 +1,65 @@
-//! Legacy VML pictures → `DrawingML` (stage T7 of `TZ-STRICT-OOXML-RUST` §10).
+//! Legacy VML → `DrawingML` (stage T7 of `TZ-STRICT-OOXML-RUST` §10).
 //!
-//! Strict has no `w:pict` and no VML at all, so a `v:shape` with a `v:imagedata`
-//! is content the whole pipeline used to throw away: the normalizer dropped the
-//! `w:pict` subtree and reported it (`T7.vml`, `Severity::Lossy`), the model never
-//! saw a picture, and the writer wrote a document with a hole where the picture
-//! was. The audit named this the highest-value item on the queue for exactly that
-//! reason — it is the only one that gives a document back **something visible**.
+//! Strict has no `w:pict` and no VML at all, so everything under it is content
+//! the pipeline used to throw away. Four classes are converted, and the fifth is
+//! named and dropped:
 //!
-//! # Why this is here and not in the parser
+//! | The shape contains | It becomes |
+//! |---|---|
+//! | `v:imagedata/@r:id` | `wp:inline` / `wp:anchor` + `pic:pic` |
+//! | `v:textbox/w:txbxContent` | `wps:wsp` with `wps:txbx/w:txbxContent` |
+//! | nothing, and the element is `v:rect` | `wps:wsp` with `a:prstGeom/@prst="rect"` |
+//! | `w10:wrap` + `position:absolute` | a `wp:anchor` with that wrap and that position |
+//! | `v:path` (a freeform) | its frame, with the **geometry declined and named** |
+//! | `o:OLEObject` | its preview raster only — the object itself has no Strict equivalent |
 //!
-//! The conversion has to happen at the byte seam, before the model exists, and
-//! that is forced rather than chosen: by the time the parser runs there is no
-//! `w:pict` left, because a Strict package may not contain one. So the `DrawingML`
-//! *authored* here rather than *modelled* and regenerated — which is why this
-//! module emits markup instead of building a value, and why it is deliberately
-//! the narrowest of the four VML shapes rather than a general converter.
-//! # What is converted, and what is not
+//! # Why `r:id` does not change, which is the whole reason this is affordable
 //!
-//! | Shape | What it is | What happens |
-//! |---|---|---|
-//! | `v:shape` with `v:imagedata/@r:id` | a picture — the only VML shape that is purely an image | **converted** to `wp:inline` or `wp:anchor` + `pic:pic` |
-//! | `v:shape[@type="#_x0000_t202"]` with `v:textbox` | a text box: a shape plus `w:txbxContent` | not converted; dropped and recorded |
-//! | `v:rect`, `v:oval`, `v:line`, freeform `v:path` | drawn geometry | not converted; dropped and recorded |
-//! | `o:OLEObject` | an executable object | not convertible by definition (`docs/transitional-to-strict-audit.md` §12) |
+//! The conversion runs at the byte seam, **before the model exists** — forced, not
+//! chosen: by the time a parser runs there is no `w:pict` left, because a Strict
+//! package may not contain one. That would normally mean rebuilding every
+//! relationship, which is not a thing a streaming rewriter can do.
 //!
-//! The picture case is the one worth building, and it is affordable **because
-//! `r:id` does not have to change**: `v:imagedata/@r:id` and `a:blip/@r:embed` both
-//! name a relationship of the part that contains them, the relationship type is the
+//! It does not have to. `v:imagedata/@r:id` and `a:blip/@r:embed` both name a
+//! relationship **of the part that contains them**, the relationship type is the
 //! same (`.../relationships/image`), and the normalizer has already rewritten that
-//! relationship's type URI to its Strict form by the time the body is read. So the
-//! conversion needs no relationship surgery at all, which is the whole reason it can
-//! live at the byte seam.
+//! type's URI to its Strict form before the body is read. So the identifier is
+//! reused verbatim and no relationship is touched.
 //!
-//! # `wp:inline` or `wp:anchor`
+//! # The two position spellings, and reading only one loses half
 //!
-//! The audit said "1:1 into `wp:inline`", and for a `position:static` shape that is
-//! right. It is wrong for the shape that actually occurs most: the corpus's
-//! pictures are all watermarks, and a watermark says
-//! `style="position:absolute;…;z-index:-251657216;mso-position-horizontal:center;
-//! mso-position-vertical:center"`. An `mso-position-horizontal:center` on an
-//! absolutely positioned shape is an *anchor*, and writing it as an inline image
-//! would move the watermark into the text flow and centre it on the line instead of
-//! on the page — a visible layout change dressed up as a conversion. So the
-//! decision reads the style string:
+//! A floating VML shape says where it is in one of two ways:
 //!
-//! * `position:absolute` (or any `mso-position-*` present) → `wp:anchor`, with
-//!   `behindDoc` from the sign of `z-index` and the alignment from the
-//!   `mso-position-*` pair;
-//! * otherwise → `wp:inline`.
+//! - `mso-position-horizontal:center;…` — an **alignment**, with a base
+//!   (`mso-position-horizontal-relative`);
+//! - `margin-left:68.05pt;margin-top:9.95pt` — an **offset**, with no base.
 //!
-//! The style string is a small CSS subset and is parsed for the eight properties
-//! this needs. A property that is absent or unparseable is `None` rather than a
-//! guess, and the caller decides what a `None` means — for the extent it means
-//! "record a zero extent", because `wp:extent` is `use="required"` and something
-//! has to be written, and because a picture that draws at no size is a real defect
-//! rather than a default worth hiding.
+//! Five of the ten floating objects in the corpus use one and five the other.
+//! Reading only the `mso-` pair — which is what the picture path did at first —
+//! writes `wp:posOffset` of zero for the other five and puts them in the corner of
+//! the page. **The census could not see it**: a shape in the wrong place is not a
+//! schema violation, it is a page that looks wrong. Hence [`VmlStyle::margin_left`]
+//! and [`VmlStyle::margin_top`], and the unit test that holds both spellings.
 //!
-//! # The shape of what is emitted
+//! # `wps` is a vendor namespace, on purpose
 //!
-//! Exactly the shape `strict-ooxml-write/src/drawing.rs` writes, for two reasons:
-//! a converted anchor and a written one are then the same thing, and the schema
-//! sees one sequence rather than two. `CT_Anchor`'s attribute set is not optional
-//! the way the prose suggests — `simplePos`, `relativeHeight`, `behindDoc`,
-//! `locked`, `layoutInCell` and `allowOverlap` are all required — and its children
-//! are a fixed `xsd:sequence`.
-
-// `to_emu` turns a CSS length into an integer EMU measure. The conversion is
-// range-checked on both sides by the guard inside it and saturates at the bounds,
-// so the cast is a rounding rather than a truncation — the same arrangement
-// `strict-ooxml-core/src/opc/zip/write.rs` uses for its ZIP offsets, and the same
-// reason: the checks are the point and the cast only satisfies the type system
-// afterwards.
-#![allow(clippy::cast_possible_truncation)]
+//! A shape becomes `wps:wsp` inside `a:graphicData`, and `wps` is
+//! `http://schemas.microsoft.com/office/word/2010/wordprocessingShape` — not in
+//! ECMA-376, identical in both families. That is ADR-0014's `XS-18`/`XS-19` debt,
+//! kept deliberately: the alternative is dropping a shape, and a shape is content.
+//! The XSD gate files these in its `extension` basket for the same reason it files
+//! `w14:paraId` there — conformance is defined after MCE, so a `graphicData` payload
+//! from a namespace the standard does not declare is not a schema defect.
 
 use std::collections::BTreeMap;
 
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
+use quick_xml::XmlVersion;
 
 use crate::error::SourceLocation;
 use crate::normalize::report::{LossRecord, NormalizationReport, Severity};
+use crate::normalize::tables::VML_NAMESPACES;
 use crate::normalize::transitional::PartContext;
 
 /// Strict `drawingml/main`.
@@ -88,17 +68,24 @@ const NS_A: &str = "http://purl.oclc.org/ooxml/drawingml/main";
 const NS_WP: &str = "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing";
 /// Strict `drawingml/picture`.
 const NS_PIC: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
-/// The `a:graphicData/@uri` value for a picture payload.
+/// `urn:schemas-microsoft-com:office:word` — where `w10:wrap` and
+/// `w10:anchorlock` live: VML's positioning vocabulary under a namespace of its
+/// own, which is why `is_drawable_namespace` lists it beside the VML families.
+const WORD_NS: &str = "urn:schemas-microsoft-com:office:word";
+/// The `a:graphicData/@uri` of a picture payload.
 const URI_PICTURE: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
+/// The `a:graphicData/@uri` of a shape payload. Vendor; see the module docs.
+const URI_SHAPE: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 /// Transitional `drawingml/2006/main`, which is what a part that already carries
 /// `DrawingML` binds `a` to. VML documents predate `DrawingML`, so the prefixes a
-/// converted picture needs are usually absent entirely, and a part that does have
+/// converted shape needs are usually absent entirely, and a part that does have
 /// them has them under the Transitional URIs.
 const NS_TRANSITIONAL_A: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+/// Transitional `drawingml/2006/wordprocessingDrawing`.
 const NS_TRANSITIONAL_WP: &str =
     "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+/// Transitional `drawingml/2006/picture`.
 const NS_TRANSITIONAL_PIC: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
-
 /// EMU per point. One inch is 914 400 EMU and one inch is 72 points.
 const EMU_PER_POINT: f64 = 914_400.0 / 72.0;
 
@@ -118,31 +105,154 @@ pub const REQUIRED_NAMESPACES: [(&str, &str, &str); 3] = [
     ("pic", NS_PIC, NS_TRANSITIONAL_PIC),
 ];
 
-/// A `v:shape` that turned out to be a picture.
+/// A shape that is not a picture: where it is, how big, and what it is called.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VmlPicture {
-    /// The relationship id `v:imagedata/@r:id` carried, reused as `a:blip/@r:embed`.
-    pub rel_id: String,
-    /// `v:shape/@id`, for `wp:docPr/@name`.
+pub struct VmlShape {
+    /// `v:shape/@id`, for `wp:docPr/@name` or `wps:cNvPr/@name`.
     pub name: String,
-    /// `v:shape/@alt`, for `wp:docPr/@descr`.
+    /// `v:shape/@alt`, for `@descr`.
     pub description: Option<String>,
     /// The parsed `style` string.
     pub style: VmlStyle,
 }
 
+/// A `v:shape` that turned out to be a picture.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VmlPicture {
+    /// The frame, as every other class has one.
+    pub shape: VmlShape,
+    /// The relationship id `v:imagedata/@r:id` carried, reused as
+    /// `a:blip/@r:embed`.
+    pub rel_id: String,
+}
+
+/// What a buffered `w:pict` / `w:object` subtree turned out to be.
+///
+/// The difference between the classes is what a reader sees on the page, and
+/// `docs/transitional-to-strict-audit.md` §12's line — "the VML shape language has
+/// no equivalent in `a:custGeom`" — is true of exactly one of them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Shape {
+    /// `pic:pic`: an image.
+    Picture(VmlPicture),
+    /// `wps:wsp` with `wps:txbx/w:txbxContent`: text in a frame.
+    ///
+    /// The content is queued back through the event loop rather than copied, and
+    /// that is the same reason the `mc:Fallback` branch is: `w:txbxContent` is
+    /// ordinary WML that has not met T1–T5 yet.
+    TextBox(VmlShape),
+    /// `wps:wsp` with `a:prstGeom/@prst="rect"`.
+    Rectangle(VmlShape),
+    /// A frame whose **geometry** this module declines: a freeform `v:path`.
+    ///
+    /// The frame is worth keeping and the geometry is not, because a frame with a
+    /// `prstGeom` is a visible box in the right place while a frame with a
+    /// **guessed** path is a shape in the right place drawn wrong. Both freeform
+    /// shapes in the corpus are `r` (relative arc) paths with empty argument slots
+    /// — see [`path_is_convertible`].
+    Freeform(VmlShape),
+}
+
+impl Shape {
+    /// The frame every class has.
+    ///
+    /// Uniform on purpose: the `wp:inline`-or-`wp:anchor` choice, the extent and
+    /// the position are properties of **where and how big the shape is**, and all
+    /// four classes answer that question the same way. Only the payload inside
+    /// `a:graphicData` differs.
+    #[must_use]
+    pub fn frame(&self) -> &VmlShape {
+        match self {
+            Self::Picture(picture) => &picture.shape,
+            Self::TextBox(shape) | Self::Rectangle(shape) | Self::Freeform(shape) => shape,
+        }
+    }
+}
+
+/// How a VML floating object wraps text.
+///
+/// `w10:wrap/@type` is the same vocabulary `wp:wrap*` uses, with one difference
+/// that matters: `type="none"` is VML's default and is written by **omitting**
+/// the element, so an absent `w10:wrap` and `w10:wrap/@type="none"` mean the same
+/// thing and both arrive here as [`Wrap::None`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wrap {
+    /// `wp:wrapNone`.
+    None,
+    /// `wp:wrapSquare`.
+    Square,
+    /// `wp:wrapTight` — and it needs a `wp:wrapPolygon`.
+    Tight,
+    /// `wp:wrapThrough` — and it needs a `wp:wrapPolygon`.
+    Through,
+    /// `wp:wrapTopAndBottom`.
+    TopAndBottom,
+}
+
+impl Wrap {
+    /// The element name for this wrap.
+    #[must_use]
+    pub fn element(self) -> &'static str {
+        match self {
+            Self::None => "wp:wrapNone",
+            Self::Square => "wp:wrapSquare",
+            Self::Tight => "wp:wrapTight",
+            Self::Through => "wp:wrapThrough",
+            Self::TopAndBottom => "wp:wrapTopAndBottom",
+        }
+    }
+
+    /// Reads a `w10:wrap/@type`.
+    #[must_use]
+    pub fn from_type(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "none" => Some(Self::None),
+            "square" => Some(Self::Square),
+            "tight" => Some(Self::Tight),
+            "through" => Some(Self::Through),
+            "topandbottom" => Some(Self::TopAndBottom),
+            _ => None,
+        }
+    }
+}
+
+/// Whether a `v:shape/@path` is one this module converts.
+///
+/// **False for both freeform shapes in the corpus**, and the reason is specific
+/// rather than general: VML's path grammar has `r` (a relative arc) and allows
+/// **empty** argument slots, and the two shapes are
+/// `m665994,l,,,7199r665994,l665994,xe` — an arc whose arguments are partly
+/// absent. Writing that as `m`/`l`/`c`/`x` would draw a straight line where the
+/// producer drew an arc, and `a:custGeom` has no arc command at all.
+///
+/// So the frame is converted and the geometry is not, and the loss is named: a
+/// named missing path is a defect somebody can decide about; a guessed one is a
+/// document that looks wrong and says nothing.
+#[must_use]
+pub fn path_is_convertible(path: &str) -> bool {
+    !path.is_empty()
+        && path
+            .chars()
+            .filter(char::is_ascii_alphabetic)
+            .all(|letter| matches!(letter, 'm' | 'l' | 'c' | 'x' | 'e' | 'n' | 'f' | 's'))
+}
+
 /// The properties of a VML `style` string this conversion needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VmlStyle {
-    /// `width`, in points.
+    /// `width` in points.
     pub width_pt: Option<String>,
-    /// `height`, in points.
+    /// `height` in points.
     pub height_pt: Option<String>,
     /// `position` was `absolute`.
     pub absolute: bool,
     /// `z-index`. A negative value means "behind the text", which is what every
     /// watermark has.
     pub z_index: Option<i64>,
+    /// `margin-left` in points: a position with no alignment.
+    pub margin_left: Option<String>,
+    /// `margin-top` in points.
+    pub margin_top: Option<String>,
     /// `mso-position-horizontal-relative`, e.g. `margin`.
     pub horizontal_relative: Option<String>,
     /// `mso-position-horizontal`: `center`, `left`, `right`, or an offset.
@@ -156,9 +266,10 @@ pub struct VmlStyle {
 impl VmlStyle {
     /// Parses a VML `style` attribute: `name:value;name:value`.
     ///
-    /// Textual and total. A property that is not there is `None`; the widths keep
-    /// their text because a CSS length carries a unit and the conversion to EMU
-    /// happens once, where the report can name a width it could not read.
+    /// Textual and total. A property that is not there is `None`; the widths and
+    /// the offsets keep their text because a CSS length carries a unit and the
+    /// conversion to EMU happens once, where the report can name a value it could
+    /// not read.
     #[must_use]
     pub fn parse(style: &str) -> Self {
         let mut out = Self::default();
@@ -172,6 +283,8 @@ impl VmlStyle {
                 "height" => out.height_pt = Some(value),
                 "position" => out.absolute = value == "absolute",
                 "z-index" => out.z_index = value.parse().ok(),
+                "margin-left" => out.margin_left = Some(value),
+                "margin-top" => out.margin_top = Some(value),
                 "mso-position-horizontal-relative" => out.horizontal_relative = Some(value),
                 "mso-position-horizontal" => out.horizontal = Some(value),
                 "mso-position-vertical-relative" => out.vertical_relative = Some(value),
@@ -185,12 +298,12 @@ impl VmlStyle {
     /// `ST_RelFromH`: `margin`, `column`, `page`, `character`, `leftMargin`,
     /// `rightMargin`, `insideMargin`, `outsideMargin`.
     ///
-    /// VML spells the margin variants with hyphens and has no bare `margin`, so
-    /// the value is **mapped** into the schema's vocabulary rather than copied. A
+    /// VML spells the margin variants with hyphens and has no bare `margin`, so the
+    /// value is **mapped** into the schema's vocabulary rather than copied. A
     /// watermark centred on `margin` falls through to `page`, which is what a
-    /// centred picture on a sheet wants: on a mirrored-margins page the text margin
-    /// is not the page centre, and a watermark centred on the text margin is not a
-    /// watermark.
+    /// centred picture on a sheet wants: on a mirrored-margins page the text
+    /// margin is not the page centre, and a watermark centred on the text margin is
+    /// not a watermark.
     fn relative_h(&self) -> &'static str {
         match self.horizontal_relative.as_deref() {
             Some("column") => "column",
@@ -199,9 +312,8 @@ impl VmlStyle {
             Some("right-margin") => "rightMargin",
             Some("inside-margin") => "insideMargin",
             Some("outside-margin") => "outsideMargin",
-            // `page` and anything else. VML has no bare `margin` in this position,
-            // so the producer either says `page` or says nothing at all, and a
-            // centred picture with no base means the sheet.
+            // `page`, and everything this does not know: see the note above on why
+            // a centred watermark wants the sheet and not the text margin.
             _ => "page",
         }
     }
@@ -216,7 +328,6 @@ impl VmlStyle {
             Some("bottom-margin") => "bottomMargin",
             Some("inside-margin") => "insideMargin",
             Some("outside-margin") => "outsideMargin",
-            // `page`, and the same reasoning as the horizontal axis.
             _ => "page",
         }
     }
@@ -263,11 +374,6 @@ fn emu(value: &str) -> Option<i32> {
         "pi" => 15.0,
         _ => return None,
     };
-    // Saturating, not truncating, and in the shape `strict-ooxml-wml`'s
-    // `decimal_to_i32` uses so the range guard is one the compiler's lints
-    // recognise: `as i64` on an `f64` is a truncation, and a picture whose CSS
-    // said `width:1e30pt` should draw at the largest size an EMU can hold rather
-    // than at whatever the low 64 bits happened to be.
     Some(to_emu(number * per_point * EMU_PER_POINT))
 }
 
@@ -277,15 +383,17 @@ fn emu(value: &str) -> Option<i32> {
 /// **i32 bounds are the point** rather than a copy of its types: `f64::from` on an
 /// `i32` is lossless, so the guard is exact and the cast inside it is a rounding
 /// rather than a truncation. An `i64` bound would have to be written
-/// `i64::MAX as f64`, which is a different number from `i64::MAX` and a
-/// precision loss to say so — and `ST_PositiveCoordinate` is an `xsd:long`, so
-/// the temptation is real.
+/// `i64::MAX as f64`, which is a different number from `i64::MAX` and a precision
+/// loss to say so — and `ST_PositiveCoordinate` is an `xsd:long`, so the temptation
+/// is real.
 ///
 /// `i32::MAX` EMU is 2 147 483 647 EMU ≈ 2 300 000 points ≈ 32 000 km: twenty-six
-/// times the circumference of the Earth. No picture has that extent, so the clamp
-/// cannot change one, and it is recorded rather than assumed by the caller — an
-/// unreadable width is reported as an unreadable width
-/// ([`extent_of`](self)).
+/// times the circumference of the Earth. No shape has that extent, so the clamp
+/// cannot change one.
+// cast_possible_truncation is allowed for this module for the reason the
+// doc comment gives: the guard on both sides of the cast is the check, and
+// decimal_to_i32 in strict-ooxml-wml has the same shape for the same reason.
+#[allow(clippy::cast_possible_truncation)]
 fn to_emu(value: f64) -> i32 {
     let rounded = value.round();
     if rounded >= f64::from(i32::MAX) {
@@ -297,24 +405,25 @@ fn to_emu(value: f64) -> i32 {
     }
 }
 
-/// The picture a buffered `w:pict` subtree holds, if it holds one.
+/// The shape a buffered `w:pict` / `w:object` subtree holds, and the wrap it asked
+/// for.
 ///
-/// The shape is a picture when it is a `v:shape` that carries a `v:imagedata` with
-/// an `r:id`. A `type="#_x0000_t75"` check is **not** required and is deliberately
-/// absent: that is how Word labels the picture shape, but a producer that omits it
-/// produces the same thing, and the audit's own count came from searching for
-/// `v:imagedata` rather than for the type. `v:shapetype` is a *definition* — every
-/// picture shape in a document is preceded by the `v:shapetype id="_x0000_t75"`
-/// that names it — so a subtree whose only shape is that definition has no picture
-/// in it.
+/// The classification is by **what the shape contains**, not by its `type` label,
+/// because the labels are advisory — `type="#_x0000_t75"` is how Word names the
+/// picture shape and a producer that omits it produces the same thing — while the
+/// contents are what decide what gets drawn.
 ///
-/// `#_x0000_t202` is the text box: a shape plus `w:txbxContent`. Its content is
-/// not this module's business, and converting the frame without the text would draw
-/// an empty picture where a paragraph of text was.
+/// `v:shapetype` is a **definition**: every shape in a document is preceded by the
+/// `v:shapetype` that names it, so a subtree whose only shape is that definition
+/// holds no drawable thing.
 #[must_use]
-pub(crate) fn picture_in(subtree: &[Event<'static>], context: &PartContext) -> Option<VmlPicture> {
-    let mut shape: Option<(String, Option<String>, VmlStyle)> = None;
+pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Option<(Shape, Wrap)> {
+    let mut frame: Option<VmlShape> = None;
+    let mut element = String::new();
     let mut rel_id: Option<String> = None;
+    let mut has_textbox = false;
+    let mut path: Option<String> = None;
+    let mut wrap = Wrap::None;
     for event in subtree {
         let start: &BytesStart<'_> = match event {
             Event::Start(start) | Event::Empty(start) => start,
@@ -325,48 +434,76 @@ pub(crate) fn picture_in(subtree: &[Event<'static>], context: &PartContext) -> O
             continue;
         };
         let uri = context.uri_for(prefix.as_bytes()).unwrap_or_default();
+        if frame.is_none() && is_drawable_namespace(uri) && matches!(local, "shape" | "rect") {
+            let attributes = attributes_of(start.attributes().flatten());
+            frame = Some(VmlShape {
+                name: attributes
+                    .get("id")
+                    .cloned()
+                    .unwrap_or_else(|| "Shape".to_owned()),
+                description: attributes.get("alt").cloned().filter(|alt| !alt.is_empty()),
+                style: VmlStyle::parse(attributes.get("style").map_or("", String::as_str)),
+            });
+            element.clear();
+            element.push_str(local);
+            path = attributes.get("path").cloned();
+            continue;
+        }
+        if frame.is_none() {
+            continue;
+        }
         match local {
-            "shape" if shape.is_none() && is_vml(uri) => {
-                let attributes = attributes_of(start.attributes().flatten());
-                let kind = attributes
-                    .get("type")
-                    .map(String::as_str)
-                    .unwrap_or_default();
-                if kind.contains("t202") {
-                    return None;
-                }
-                shape = Some((
-                    attributes
-                        .get("id")
-                        .cloned()
-                        .unwrap_or_else(|| "Picture".to_owned()),
-                    attributes.get("alt").cloned().filter(|alt| !alt.is_empty()),
-                    VmlStyle::parse(attributes.get("style").map_or("", String::as_str)),
-                ));
-            }
-            "imagedata" if shape.is_some() => {
+            "imagedata" => {
                 let attributes = attributes_of(start.attributes().flatten());
                 if let Some(id) = attributes.get("id") {
                     rel_id = Some(id.clone());
                 }
             }
+            "textbox" => has_textbox = true,
+            // `w10:wrap` is the positioning vocabulary of VML, in its own
+            // namespace, and it is what says how text goes round this shape. It is
+            // a **translation of a name**: `w10:wrap/@type` and `wp:wrap*` share a
+            // vocabulary.
+            "wrap" if uri == WORD_NS => {
+                let attributes = attributes_of(start.attributes().flatten());
+                if let Some(kind) = attributes.get("type") {
+                    wrap = Wrap::from_type(kind).unwrap_or(Wrap::None);
+                }
+            }
             _ => {}
         }
     }
-    let (name, description, style) = shape?;
-    Some(VmlPicture {
-        rel_id: rel_id?,
-        name,
-        description,
-        style,
-    })
+    let shape = frame?;
+    // A picture outranks the frame's other contents: a `v:shape` carrying both an
+    // `r:id` and a text box is an OLE object whose *preview* is that image, and the
+    // preview is what the reader saw.
+    if let Some(rel_id) = rel_id {
+        return Some((Shape::Picture(VmlPicture { shape, rel_id }), wrap));
+    }
+    if has_textbox {
+        return Some((Shape::TextBox(shape), wrap));
+    }
+    if let Some(path) = path {
+        return Some((
+            if path_is_convertible(&path) {
+                Shape::Rectangle(shape)
+            } else {
+                Shape::Freeform(shape)
+            },
+            wrap,
+        ));
+    }
+    (element == "rect").then_some((Shape::Rectangle(shape), wrap))
+}
+
+/// Whether a namespace URI holds VML or the `w10:` vocabulary that positions it.
+fn is_drawable_namespace(uri: &str) -> bool {
+    is_vml(uri) || uri == WORD_NS
 }
 
 /// Whether a namespace URI is one of the VML families.
 fn is_vml(uri: &str) -> bool {
-    uri == "urn:schemas-microsoft-com:vml"
-        || uri == "urn:schemas-microsoft-com:office:office"
-        || uri == "urn:schemas-microsoft-com:office:word"
+    VML_NAMESPACES.contains(&uri)
 }
 
 /// The attributes of a start tag, keyed by **local** name.
@@ -379,65 +516,116 @@ fn attributes_of<'a>(attributes: impl Iterator<Item = Attribute<'a>>) -> BTreeMa
     for attribute in attributes {
         let key = String::from_utf8_lossy(attribute.key.as_ref()).into_owned();
         let local = key.rsplit(':').next().unwrap_or(&key).to_owned();
-        if let Ok(value) = attribute.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
+        if let Ok(value) = attribute.normalized_value(XmlVersion::Implicit1_0) {
             out.insert(local, value.into_owned());
         }
     }
     out
 }
 
-/// The `w:drawing` events that replace a converted `w:pict`.
+/// The `w:drawing` events that replace a converted `w:pict` / `w:object`, split
+/// around a text box's content.
 ///
-/// `None` when the shape is not a picture this module can convert, which is the
-/// caller's signal to drop the subtree as before.
+/// The frame is the same for all four classes — `wp:inline` or `wp:anchor`, and the
+/// choice is the style's, not the class's — and only the payload inside
+/// `a:graphicData` differs.
+///
+/// **The split is a return value rather than a marker inside one list**, and that
+/// is deliberate. A text box's content has to go through T1–T5 like everything else,
+/// and writing it through [`TransitionalNormalizer::rewrite_event`] in place is both
+/// simpler and impossible to get wrong. The marker version — emit a placeholder,
+/// queue the content, queue the tail — was tried first and it is a trap: the caller
+/// has to get three orderings right at once (head, content, tail), and getting one
+/// of them wrong emits a well-formed part with the shape's body properties outside
+/// the shape and the paragraph one level too deep. A queue is only needed when the
+/// events come from *elsewhere* in the stream, which is the `mc:Fallback` case and
+/// not this one: the whole text box is already in `subtree`.
 #[must_use]
-pub fn picture_events(
-    picture: &VmlPicture,
+pub fn shape_events(
+    shape: &Shape,
+    wrap: Wrap,
     doc_pr_id: u32,
     report: &mut NormalizationReport,
     location: &SourceLocation,
-) -> Vec<Event<'static>> {
-    let (cx, cy) = extent_of(picture, report, location);
-    let mut events = vec![Event::Start(el("w:drawing", &[]))];
-    if picture.style.absolute || picture.style.horizontal.is_some() {
-        events.extend(anchor_events(picture, cx, cy, doc_pr_id));
+) -> (Vec<Event<'static>>, Vec<Event<'static>>) {
+    let frame = shape.frame();
+    let (cx, cy) = extent_of(&frame.style, report, location, &frame.name);
+    let mut head = vec![Event::Start(el("w:drawing", &[]))];
+    if frame.style.absolute || frame.style.horizontal.is_some() {
+        head.extend(anchor_events(shape, frame, wrap, cx, cy, doc_pr_id));
     } else {
-        events.extend(inline_events(picture, cx, cy, doc_pr_id));
+        head.extend(inline_events(shape, frame, cx, cy, doc_pr_id));
     }
-    events.push(Event::End(BytesEnd::new("w:drawing").into_owned()));
-    events
+    head.push(Event::End(BytesEnd::new("w:drawing").into_owned()));
+    (head, Vec::new())
+}
+
+/// The events before a text box's content and the events after it.
+///
+/// Two lists because the content is written **in place**, through the same
+/// [`TransitionalNormalizer::rewrite_event`] as the rest of the part — which is
+/// what makes it ordinary WML by the time it lands, and removes any need for a
+/// marker, a queue or an ordering the caller has to get right.
+#[must_use]
+pub fn text_box_shape_events(
+    shape: &Shape,
+    wrap: Wrap,
+    doc_pr_id: u32,
+    report: &mut NormalizationReport,
+    location: &SourceLocation,
+) -> (Vec<Event<'static>>, Vec<Event<'static>>) {
+    let (mut head, mut tail) = shape_events(shape, wrap, doc_pr_id, report, location);
+    let at = head
+        .iter()
+        .position(|event| {
+            matches!(event, Event::Start(start) if start.name().as_ref() == b"w:txbxContent")
+        })
+        .map_or(head.len(), |index| index + 1);
+    let split = head.split_off(at);
+    tail.splice(0..0, split);
+    (head, tail)
 }
 
 /// `wp:extent` in EMU, and the record when the shape declared no usable size.
 ///
-/// A zero extent is a picture that draws at no size, so it is a real defect and not
+/// A zero extent is a shape that draws at no size, so it is a real defect and not
 /// a default worth hiding; `wp:extent` is `use="required"` on both `CT_Inline` and
 /// `CT_Anchor`, so something has to be written either way.
 fn extent_of(
-    picture: &VmlPicture,
+    style: &VmlStyle,
     report: &mut NormalizationReport,
     location: &SourceLocation,
+    name: &str,
 ) -> (i64, i64) {
-    let width = picture.style.width_pt.as_deref().and_then(emu);
-    let height = picture.style.height_pt.as_deref().and_then(emu);
+    let width = style.width_pt.as_deref().and_then(emu);
+    let height = style.height_pt.as_deref().and_then(emu);
     if width.is_none() || height.is_none() {
         report.record_loss(LossRecord {
             transform_id: "T7.vml-size",
             feature_id: "v:shape/@style".to_owned(),
             reason: format!(
-                "the VML picture {:?} declared no usable width/height (style width {:?}, height \
-                 {:?}), so a zero extent is written: the image is carried and will draw at no \
+                "the VML shape {name:?} declared no usable width/height (width {:?}, height \
+                 {:?}), so a zero extent is written: the frame is carried and will draw at no \
                  size",
-                picture.name, picture.style.width_pt, picture.style.height_pt
+                style.width_pt, style.height_pt
             ),
             severity: Severity::Lossy,
             locations: vec![location.clone()],
         });
     }
-    (width.map_or(0, i64::from), height.map_or(0, i64::from))
+    (
+        i64::from(width.unwrap_or(0)),
+        i64::from(height.unwrap_or(0)),
+    )
 }
 
-fn inline_events(picture: &VmlPicture, cx: i64, cy: i64, doc_pr_id: u32) -> Vec<Event<'static>> {
+fn inline_events(
+    class: &Shape,
+    shape: &VmlShape,
+    cx: i64,
+    cy: i64,
+    doc_pr_id: u32,
+) -> Vec<Event<'static>> {
     let mut out = vec![Event::Start(el(
         "wp:inline",
         &[
@@ -447,22 +635,54 @@ fn inline_events(picture: &VmlPicture, cx: i64, cy: i64, doc_pr_id: u32) -> Vec<
             ("distR", "0"),
         ],
     ))];
-    out.push(Event::Empty(el(
-        "wp:extent",
-        &[("cx", &cx.to_string()), ("cy", &cy.to_string())],
-    )));
+    out.push(Event::Empty(extent(cx, cy)));
     out.push(Event::Empty(el(
         "wp:effectExtent",
         &[("l", "0"), ("t", "0"), ("r", "0"), ("b", "0")],
     )));
-    out.extend(doc_pr_events(picture, doc_pr_id));
-    out.extend(graphic_events(picture, cx, cy));
+    out.extend(doc_pr_events(
+        &shape.name,
+        shape.description.as_deref(),
+        doc_pr_id,
+    ));
+    out.extend(graphic_events(class, cx, cy));
     out.push(Event::End(BytesEnd::new("wp:inline").into_owned()));
     out
 }
 
-fn anchor_events(picture: &VmlPicture, cx: i64, cy: i64, doc_pr_id: u32) -> Vec<Event<'static>> {
-    let style = &picture.style;
+/// The closing half of a text box: `wps:bodyPr` and the tags that close it.
+///
+/// `wps:bodyPr` is required after the optional `wps:txbx` in
+/// `CT_WordprocessingShape`, so it is always written. VML's `insetmode`/`inset`
+/// would become its `*Ins` attributes, and the defaults are left to the consumer:
+/// the model carries none for a converted shape, and inventing an inset is a claim
+/// about the text layout that nothing supports.
+#[must_use]
+pub(crate) fn text_box_close() -> Vec<Event<'static>> {
+    vec![
+        Event::End(BytesEnd::new("w:txbxContent").into_owned()),
+        Event::End(BytesEnd::new("wps:txbx").into_owned()),
+        Event::Empty(el("wps:bodyPr", &[])),
+    ]
+}
+
+/// The anchor for a `position:absolute` shape.
+///
+/// `CT_Anchor`'s attribute set is not optional in the way the prose suggests: it
+/// has `simplePos`, `relativeHeight`, `behindDoc`, `locked`, `layoutInCell` and
+/// `allowOverlap` as **required** booleans/integers, and its children are a fixed
+/// `xsd:sequence` (`simplePos`, `positionH`, `positionV`, `extent`, `effectExtent`,
+/// one `wrap*`, `docPr`, `cNvGraphicFramePr`, `graphic`). The writer emits the same
+/// sequence, so a converted anchor and a written one are the same shape.
+fn anchor_events(
+    class: &Shape,
+    shape: &VmlShape,
+    wrap: Wrap,
+    cx: i64,
+    cy: i64,
+    doc_pr_id: u32,
+) -> Vec<Event<'static>> {
+    let style = &shape.style;
     let behind = style.z_index.is_some_and(|index| index < 0);
     // `relativeHeight` is `ST_WrapDistance`, an unsigned measure, so a negative
     // `z-index` cannot be copied into it. Word's own convention is the unsigned
@@ -471,16 +691,16 @@ fn anchor_events(picture: &VmlPicture, cx: i64, cy: i64, doc_pr_id: u32) -> Vec<
     let relative_height = style.z_index.map_or(0, |index| {
         u32::try_from(index.unsigned_abs()).unwrap_or(u32::MAX)
     });
+    let relative_height = relative_height.to_string();
     let mut out = vec![Event::Start(el(
         "wp:anchor",
         &[
             ("distT", "0"),
             ("distB", "0"),
-            // 114 300 EMU is 9 pt, Word's default distance for a floating object.
             ("distL", "114300"),
             ("distR", "114300"),
             ("simplePos", "0"),
-            ("relativeHeight", &relative_height.to_string()),
+            ("relativeHeight", relative_height.as_str()),
             ("behindDoc", bool_str(behind)),
             ("locked", "0"),
             ("layoutInCell", "1"),
@@ -488,47 +708,57 @@ fn anchor_events(picture: &VmlPicture, cx: i64, cy: i64, doc_pr_id: u32) -> Vec<
         ],
     ))];
     out.push(Event::Empty(el("wp:simplePos", &[("x", "0"), ("y", "0")])));
-    out.extend(position_events(
+    out.extend(position_axis(
         "wp:positionH",
         style.relative_h(),
         style.horizontal.as_deref(),
+        style.margin_left.as_deref().and_then(emu),
     ));
-    out.extend(position_events(
+    out.extend(position_axis(
         "wp:positionV",
         style.relative_v(),
         style.vertical.as_deref(),
+        style.margin_top.as_deref().and_then(emu),
     ));
-    out.push(Event::Empty(el(
-        "wp:extent",
-        &[("cx", &cx.to_string()), ("cy", &cy.to_string())],
-    )));
+    out.push(Event::Empty(extent(cx, cy)));
     out.push(Event::Empty(el(
         "wp:effectExtent",
         &[("l", "0"), ("t", "0"), ("r", "0"), ("b", "0")],
     )));
-    // `CT_Anchor` requires one of the five `wrap*` elements. A watermark's `style`
-    // says nothing about wrapping and `wp:wrapNone` is the choice that changes
-    // nothing: the shape floats over the page exactly as `position:absolute` with
-    // no wrap meant. `CT_WrapNone` is an empty type — every attribute on it is a
-    // schema violation (`XS-04`).
-    out.push(Event::Empty(el("wp:wrapNone", &[])));
-    out.extend(doc_pr_events(picture, doc_pr_id));
-    out.extend(graphic_events(picture, cx, cy));
+    out.extend(wrap_events(wrap, cx, cy));
+    out.extend(doc_pr_events(
+        &shape.name,
+        shape.description.as_deref(),
+        doc_pr_id,
+    ));
+    out.extend(graphic_events(class, cx, cy));
     out.push(Event::End(BytesEnd::new("wp:anchor").into_owned()));
     out
 }
 
-/// `wp:positionH` / `wp:positionV`.
+fn extent(cx: i64, cy: i64) -> BytesStart<'static> {
+    let (cx, cy) = (cx.to_string(), cy.to_string());
+    el("wp:extent", &[("cx", cx.as_str()), ("cy", cy.as_str())])
+}
+
+/// `wp:positionH` / `wp:positionV`, from whichever of the two VML spellings is
+/// present.
 ///
 /// `@relativeFrom` is `use="required"` and the child is a required `xsd:choice` of
 /// `wp:align` and `wp:posOffset`, so both are always written — the same two
-/// violations per element `XS-21` was about. An alignment VML uses that
-/// `ST_AlignH`/`ST_AlignV` does not have falls through to a zero `wp:posOffset`,
-/// which is the position the element would have had anyway.
-fn position_events(
+/// violations per element `XS-21` was about.
+///
+/// **Alignment first, then offset.** A shape that has both is a producer that
+/// wrote both, and the `mso-` pair wins: it names a base *and* an alignment, where
+/// `margin-left` is a distance from the page edge that the pair usually
+/// contradicts. A shape with only `margin-left` gets the offset, and a shape with
+/// neither gets a zero offset — which is the position the element would have had
+/// anyway.
+fn position_axis(
     name: &'static str,
     relative_from: &'static str,
     align: Option<&str>,
+    offset: Option<i32>,
 ) -> Vec<Event<'static>> {
     let mut out = vec![Event::Start(el(name, &[("relativeFrom", relative_from)]))];
     let aligned = align.and_then(|value| {
@@ -543,31 +773,114 @@ fn position_events(
         out.push(Event::Text(BytesText::new(alignment)));
         out.push(Event::End(BytesEnd::new("wp:align").into_owned()));
     } else {
+        let text = offset.unwrap_or_default().to_string();
         out.push(Event::Start(el("wp:posOffset", &[])));
-        out.push(Event::Text(BytesText::new("0")));
+        out.push(Event::Text(BytesText::from_escaped(text)));
         out.push(Event::End(BytesEnd::new("wp:posOffset").into_owned()));
     }
     out.push(Event::End(BytesEnd::new(name).into_owned()));
     out
 }
 
-fn doc_pr_events(picture: &VmlPicture, doc_pr_id: u32) -> Vec<Event<'static>> {
+/// The `wp:wrap*` element the VML `w10:wrap` asked for.
+///
+/// `CT_WrapTight` and `CT_WrapThrough` require a `wp:wrapPolygon`, and
+/// `CT_WrapPath` wants one `wp:start` plus at least two `wp:lineTo` — so an empty
+/// polygon is **not** conformant either, and the **frame's own rectangle** goes
+/// there instead. A tight wrap around a box is a tight wrap; the two-point default
+/// would draw a diagonal, which is a claim about a shape we have no points for
+/// (`docs/transitional-to-strict-audit.md` §14.4c).
+fn wrap_events(wrap: Wrap, cx: i64, cy: i64) -> Vec<Event<'static>> {
+    let mut out = Vec::new();
+    match wrap {
+        Wrap::None => out.push(Event::Empty(el("wp:wrapNone", &[]))),
+        Wrap::Square => {
+            out.push(Event::Start(el(
+                "wp:wrapSquare",
+                &[("wrapText", "bothSides")],
+            )));
+            out.push(Event::End(BytesEnd::new("wp:wrapSquare").into_owned()));
+        }
+        Wrap::TopAndBottom => {
+            out.push(Event::Start(el("wp:wrapTopBottom", &[])));
+            out.push(Event::End(BytesEnd::new("wp:wrapTopBottom").into_owned()));
+        }
+        Wrap::Tight | Wrap::Through => {
+            out.push(Event::Start(el(
+                wrap.element(),
+                &[("wrapText", "bothSides")],
+            )));
+            out.push(Event::Start(el("wp:wrapPolygon", &[])));
+            out.push(Event::Start(el("wp:start", &[("x", "0"), ("y", "0")])));
+            out.push(Event::End(BytesEnd::new("wp:start").into_owned()));
+            for (x, y) in [(cx, 0), (cx, cy), (0, cy)] {
+                let (x, y) = (x.to_string(), y.to_string());
+                out.push(Event::Start(el(
+                    "wp:lineTo",
+                    &[("x", x.as_str()), ("y", y.as_str())],
+                )));
+                out.push(Event::End(BytesEnd::new("wp:lineTo").into_owned()));
+            }
+            out.push(Event::End(BytesEnd::new("wp:wrapPolygon").into_owned()));
+            out.push(Event::End(BytesEnd::new(wrap.element()).into_owned()));
+        }
+    }
+    out
+}
+
+fn doc_pr_events(name: &str, description: Option<&str>, doc_pr_id: u32) -> Vec<Event<'static>> {
     let id = doc_pr_id.to_string();
-    let name = picture.name.clone();
-    let mut attributes: Vec<(&str, &str)> = vec![("id", &id), ("name", &name)];
-    if let Some(description) = &picture.description {
+    let mut attributes: Vec<(&str, &str)> = vec![("id", id.as_str()), ("name", name)];
+    if let Some(description) = description {
         attributes.push(("descr", description));
     }
     vec![Event::Empty(el("wp:docPr", &attributes))]
 }
 
-fn graphic_events(picture: &VmlPicture, cx: i64, cy: i64) -> Vec<Event<'static>> {
+/// The `a:graphic` payload for this class.
+///
+/// Dispatched on the enum the classifier returned rather than re-derived from the
+/// markup, so the two can never disagree about what a shape is.
+fn graphic_events(class: &Shape, cx: i64, cy: i64) -> Vec<Event<'static>> {
+    match class {
+        Shape::Picture(picture) => picture_payload(&picture.shape.name, &picture.rel_id, cx, cy),
+        Shape::Rectangle(rect) => shape_payload(
+            &rect.name,
+            rect.description.as_deref(),
+            Some("rect"),
+            false,
+            cx,
+            cy,
+        ),
+        // A freeform keeps its frame and loses its geometry; a text box's content
+        // is spliced in by the caller. Both losses are recorded there, where the
+        // shape's name is in scope.
+        Shape::Freeform(frame) => shape_payload(
+            &frame.name,
+            frame.description.as_deref(),
+            None,
+            false,
+            cx,
+            cy,
+        ),
+        Shape::TextBox(frame) => shape_payload(
+            &frame.name,
+            frame.description.as_deref(),
+            None,
+            true,
+            cx,
+            cy,
+        ),
+    }
+}
+
+fn picture_payload(name: &str, rel_id: &str, cx: i64, cy: i64) -> Vec<Event<'static>> {
     vec![
         Event::Start(el("a:graphic", &[])),
         Event::Start(el("a:graphicData", &[("uri", URI_PICTURE)])),
         Event::Start(el("pic:pic", &[])),
         Event::Start(el("pic:nvPicPr", &[])),
-        Event::Empty(el("pic:cNvPr", &[("id", "0"), ("name", &picture.name)])),
+        Event::Empty(el("pic:cNvPr", &[("id", "0"), ("name", name)])),
         Event::Empty(el("pic:cNvPicPr", &[])),
         Event::End(BytesEnd::new("pic:nvPicPr").into_owned()),
         Event::Start(el("pic:blipFill", &[])),
@@ -576,34 +889,79 @@ fn graphic_events(picture: &VmlPicture, cx: i64, cy: i64) -> Vec<Event<'static>>
         // relationship behind it is the same image part with the same
         // `.../relationships/image` type - which the normalizer has already
         // rewritten to its Strict form. Nothing about the relationship changes.
-        Event::Empty(el("a:blip", &[("r:embed", &picture.rel_id)])),
+        Event::Empty(el("a:blip", &[("r:embed", rel_id)])),
         Event::Start(el("a:stretch", &[])),
         Event::Empty(el("a:fillRect", &[])),
         Event::End(BytesEnd::new("a:stretch").into_owned()),
         Event::End(BytesEnd::new("pic:blipFill").into_owned()),
         Event::Start(el("pic:spPr", &[])),
-        // `a:xfrm` is a container of `a:off` and `a:ext`; the attributes are on the
-        // element itself. The extent repeats `wp:extent` because `CT_Transform2D`
-        // requires it, and a picture whose shape extent disagrees with its frame
-        // extent is one no renderer agrees on.
         Event::Start(el(
             "a:xfrm",
             &[("rot", "0"), ("flipH", "0"), ("flipV", "0")],
         )),
         Event::Empty(el("a:off", &[("x", "0"), ("y", "0")])),
-        Event::Empty(el(
-            "a:ext",
-            &[("cx", &cx.to_string()), ("cy", &cy.to_string())],
-        )),
+        Event::Empty(shape_extent(cx, cy)),
         Event::End(BytesEnd::new("a:xfrm").into_owned()),
-        Event::Start(el("a:prstGeom", &[("prst", "rect")])),
-        Event::Empty(el("a:avLst", &[])),
-        Event::End(BytesEnd::new("a:prstGeom").into_owned()),
         Event::End(BytesEnd::new("pic:spPr").into_owned()),
         Event::End(BytesEnd::new("pic:pic").into_owned()),
         Event::End(BytesEnd::new("a:graphicData").into_owned()),
         Event::End(BytesEnd::new("a:graphic").into_owned()),
     ]
+}
+
+/// `wps:wsp`, the shape the writer already reads and writes back.
+fn shape_payload(
+    name: &str,
+    description: Option<&str>,
+    geometry: Option<&'static str>,
+    text_box: bool,
+    cx: i64,
+    cy: i64,
+) -> Vec<Event<'static>> {
+    let mut c_nv_pr: Vec<(&str, &str)> = vec![("id", "0"), ("name", name)];
+    if let Some(description) = description {
+        c_nv_pr.push(("descr", description));
+    }
+    let mut out = vec![
+        Event::Start(el("a:graphic", &[])),
+        Event::Start(el("a:graphicData", &[("uri", URI_SHAPE)])),
+        Event::Start(el("wps:wsp", &[])),
+        Event::Start(el("wps:cNvSpPr", &[])),
+        Event::Empty(el("a:spLocks", &[])),
+        Event::End(BytesEnd::new("wps:cNvSpPr").into_owned()),
+        Event::Empty(el("wps:cNvPr", &c_nv_pr)),
+        Event::Start(el("wps:spPr", &[])),
+        Event::Start(el(
+            "a:xfrm",
+            &[("rot", "0"), ("flipH", "0"), ("flipV", "0")],
+        )),
+        Event::Empty(el("a:off", &[("x", "0"), ("y", "0")])),
+        Event::Empty(shape_extent(cx, cy)),
+        Event::End(BytesEnd::new("a:xfrm").into_owned()),
+    ];
+    if let Some(preset) = geometry {
+        out.push(Event::Start(el("a:prstGeom", &[("prst", preset)])));
+        out.push(Event::Empty(el("a:avLst", &[])));
+        out.push(Event::End(BytesEnd::new("a:prstGeom").into_owned()));
+    }
+    out.push(Event::End(BytesEnd::new("wps:spPr").into_owned()));
+    // `wps:txbx` sits between `wps:spPr` and `wps:bodyPr` in
+    // `CT_WordprocessingShape`'s sequence. It is opened **here** and closed by
+    // [`text_box_close`] so that the content lands between them — the caller
+    // splits this list at `w:txbxContent` and writes the content in place.
+    if text_box {
+        out.push(Event::Start(el("wps:txbx", &[])));
+        out.push(Event::Start(el("w:txbxContent", &[])));
+    }
+    out.push(Event::End(BytesEnd::new("wps:wsp").into_owned()));
+    out.push(Event::End(BytesEnd::new("a:graphicData").into_owned()));
+    out.push(Event::End(BytesEnd::new("a:graphic").into_owned()));
+    out
+}
+
+fn shape_extent(cx: i64, cy: i64) -> BytesStart<'static> {
+    let (cx, cy) = (cx.to_string(), cy.to_string());
+    el("a:ext", &[("cx", cx.as_str()), ("cy", cy.as_str())])
 }
 
 fn bool_str(value: bool) -> &'static str {
@@ -625,4 +983,60 @@ fn el(name: &'static str, attributes: &[(&str, &str)]) -> BytesStart<'static> {
         start.push_attribute((*key, *value));
     }
     start
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify, path_is_convertible, Shape, Wrap};
+    use crate::normalize::transitional::PartContext;
+    use crate::part::PartId;
+
+    /// The corpus's two `v:rect`/`v:shape` fixtures, read straight through the
+    /// classifier.
+    ///
+    /// The unit level on purpose: the same two shapes reached the writer as *no
+    /// drawing at all* when the classifier was reached through the event loop, and
+    /// the difference between "the classifier says no" and "the loop never asked
+    /// it" is invisible from the outside.
+    #[test]
+    fn the_corpus_floating_shapes_classify_and_keep_their_wrap() {
+        let source = r#"<w:pict xmlns:w="urn:w" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word"><v:rect id="a" style="position:absolute;margin-left:68.05pt;width:52.45pt;height:.6pt"><w10:wrap type="topAndBottom"/></v:rect></w:pict>"#;
+        let mut context = PartContext::new(PartId::new("/word/document.xml"));
+        context.bind("v", "urn:schemas-microsoft-com:vml");
+        context.bind("w10", "urn:schemas-microsoft-com:office:word");
+        let subtree = events_of(source);
+        let (shape, wrap) = classify(&subtree, &context).expect("a v:rect with a wrap is a shape");
+        assert_eq!(wrap, Wrap::TopAndBottom);
+        assert!(matches!(shape, Shape::Rectangle(_)), "{shape:?}");
+        assert_eq!(shape.frame().style.margin_left.as_deref(), Some("68.05pt"));
+    }
+
+    #[test]
+    fn an_arc_is_not_a_path_this_converts() {
+        assert!(!path_is_convertible("m665994,l,,,7199r665994,l665994,xe"));
+        assert!(path_is_convertible("m0,0l100,100x"));
+    }
+
+    /// The events of `xml`, as the collector produces them.
+    fn events_of(xml: &str) -> Vec<quick_xml::events::Event<'static>> {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(false);
+        reader.config_mut().expand_empty_elements = false;
+        let mut out = Vec::new();
+        loop {
+            match reader.read_event() {
+                Ok(Event::Eof) | Err(_) => break,
+                Ok(event) => out.push(match event {
+                    Event::Start(s) => Event::Start(s.into_owned()),
+                    Event::End(e) => Event::End(e.into_owned()),
+                    Event::Empty(s) => Event::Empty(s.into_owned()),
+                    Event::Text(t) => Event::Text(t.into_owned()),
+                    other => other.into_owned(),
+                }),
+            }
+        }
+        out
+    }
 }
