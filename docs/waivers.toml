@@ -416,6 +416,37 @@ explicitly with the depth written down.
 opened = "2026-09-29"
 
 [[waivers]]
+id = "CENSUS-LOCAL"
+subject = "census gate (Transitional -> Strict) runs locally only"
+binds = "process:census-local-corpus"
+summary = """
+`xtool/xsd-gate/census_gate.py` measures two Transitional corpora: the committed
+`strict-ooxml-core/tests/samples/` (22 documents) and the local
+`strict-ooxml-core/tests/docx/` (36 documents), which has been in `.gitignore`
+since the first commit and is not published. A CI runner never has the second
+one, so the job was red on every run by construction (`docs/ci-baseline-2026-10.md`)
+and said nothing about the code. The job is removed from `.github/workflows/ci.yml`;
+the gate is run by hand before accepting any change to the normalizer, the
+pass-through or the writer:
+
+    python xtool/xsd-gate/census_gate.py --quiet-messages
+"""
+risk = """
+A regression on the Transitional -> Strict path (a new schema violation, a
+dropped part the report does not name, `TZ-*` counts moving) lands on `master`
+unnoticed until someone runs the gate locally. The XSD gate in CI still judges
+the writer on Strict input, and the unit and corpus tests on `tests/samples/`
+still run, so the uncovered part is the census's own signals, not the whole path.
+"""
+exit = """
+Either publish a Transitional corpus with known provenance and licences and put
+the job back, or teach the gate to run on `tests/samples/` alone with its own
+recorded numbers and put that back.
+"""
+opened = "2026-10-03"
+review = "2027-01-03"
+
+[[waivers]]
 id = "DJVU-PATENT"
 subject = "9A DjVu reading"
 binds = "process:djvu-patents"

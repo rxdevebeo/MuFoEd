@@ -145,37 +145,10 @@ jobs:
       - name: The gate is reproducible (second run, same answer)
         run: python xtool/xsd-gate/xsd_gate.py --written /tmp/strict-xsd-gate --quiet-messages
 
-  census-gate:
-    # The XSD gate above judges our writer on STRICT input. This one judges the
-    # whole `write --transitional` path on Transitional input, which is where the
-    # byte-level normalizer, the pass-through and the loss report all meet - and
-    # where a defect can be invisible to the other gate by construction: an
-    # extension attribute is removed by MCE before conformance is defined, and a
-    # dropped part validates perfectly, so neither produces a schema message.
-    #
-    # It shares the oracle and the schema cache with the job above, not a second
-    # definition of "Strict": two oracles would be two definitions and a
-    # threshold taken from one and applied to the other would be a number about
-    # nothing.
-    name: Census gate (Transitional -> Strict)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.92.0
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - name: Install the oracle (never a crate dependency)
-        run: pip install -r xtool/xsd-gate/requirements.txt
-      - name: Build the writer
-        run: cargo build --release -p strict-ooxml-cli
-      # The census gate writes its own corpus and reads the write's own report, so
-      # it is given the binary rather than a directory of packages - the same
-      # reason the job above builds it, and the reason the gate REBUILDS it
-      # locally instead of trusting `target/release`.
-      - name: Census gate
-        run: python xtool/xsd-gate/census_gate.py --cli ./target/release/strict-ooxml --quiet-messages
+  # The census gate (`xtool/xsd-gate/census_gate.py`, Transitional -> Strict) is
+  # not a job here: half of its corpus, `strict-ooxml-core/tests/docx/`, is local
+  # and never published, so a runner cannot have it. It is run by hand; see
+  # waiver CENSUS-LOCAL in `docs/waivers.toml`.
 
   msrv:
     name: msrv (1.92)

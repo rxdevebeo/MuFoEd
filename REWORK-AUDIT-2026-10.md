@@ -63,7 +63,7 @@ cargo +1.92.0 deny check
 cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 89
 cargo run -p xtool -- coverage --file coverage/stage5-scenarios.toml --min 85
 python xtool/xsd-gate/xsd_gate.py
-python xtool/xsd-gate/census_gate.py
+python xtool/xsd-gate/census_gate.py                              # только локально (waiver CENSUS-LOCAL)
 python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 ```
 

@@ -12,7 +12,7 @@ commit `1af8988`.
 |---|---|---|---|
 | test (ubuntu, macos, windows) | red at Clippy | the job used floating `stable` (1.99), whose new `while_let_loop` fired on `write/src/passthrough.rs:743`; no test step ever ran | toolchain pinned to 1.92.0 in every job (`13a66dc`) |
 | fuzz smoke | red | `taiki-e/install-action@cargo-fuzz` installed nothing; then the musl build of cargo-fuzz defaulted to `--target x86_64-unknown-linux-musl`, where ASan cannot link | `install-action@v2` with `tool:` (`13a66dc`), explicit `--target x86_64-unknown-linux-gnu` (`1007ab4`) |
-| Census gate | red | `strict-ooxml-core/tests/docx/` is gitignored (local corpus, never published) and the gate requires it | **open**, see below |
+| Census gate | red | `strict-ooxml-core/tests/docx/` is gitignored (local corpus, never published) and the gate requires it | job removed; run by hand, waiver `CENSUS-LOCAL` |
 | XSD gate, coverage, msrv, cargo-deny | green | | |
 
 Found once the first set was fixed:
@@ -24,11 +24,12 @@ Found once the first set was fixed:
 
 The Node 20 deprecation warnings are gone: `actions/checkout@v5`, `actions/setup-python@v6`.
 
-## Open
+## Decided
 
 - **Census gate.** It measures two Transitional corpora, `tests/samples/` (committed)
-  and `tests/docx/` (local only). Until the owner decides whether `tests/docx/` can be
-  published, the job is red by construction and is not evidence about the code.
+  and `tests/docx/` (local only, not to be published). The owner decided on
+  2026-10-03 to keep the gate local: the job is gone from CI and the gap is waiver
+  `CENSUS-LOCAL` in `docs/waivers.toml`.
 
 ## After
 
