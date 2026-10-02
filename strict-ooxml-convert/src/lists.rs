@@ -59,7 +59,7 @@ use std::sync::Arc;
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_pdf::text::GlyphLine;
 use strict_ooxml_wml::model::ids::{AbstractNumId, Ilvl, NumId};
-use strict_ooxml_wml::model::numbering::{AbstractNum, Level, Num, NumberingTable};
+use strict_ooxml_wml::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 use strict_ooxml_wml::model::props::ParagraphProperties;
 use strict_ooxml_wml::model::values::{Indentation, Twips};
 
@@ -154,6 +154,31 @@ pub(crate) struct Item {
     /// before lists existed — but gets no w:numPr, because a w:numId that
     /// resolves to nothing is a document Word repairs by guessing.
     pub numbered: bool,
+}
+
+/// The number a list item shows, as the PDF drew it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Numbered {
+    /// `w:numFmt`: `decimal`, `lowerLetter` or `upperLetter`.
+    ///
+    /// Only these three, because they are the three a PDF writer produces by
+    /// generating a sequence, and a token this converter cannot read as one of them
+    /// is left as text — where it stays correct — rather than becoming a `w:numFmt`
+    /// Word would render differently.
+    pub format: Arc<str>,
+    /// The value, counting from one: `7.` is seven, `c)` is three.
+    pub value: u32,
+    /// The `w:lvlText`: `%1` for the value, followed by whatever followed it in the
+    /// PDF (`1.` and `1)` are the two this has seen, and both are kept).
+    pub suffix: String,
+}
+
+impl Numbered {
+    /// The number the next item of this list must show for the sequence to be
+    /// unbroken.
+    fn successor(&self) -> u32 {
+        self.value.saturating_add(1)
+    }
 }
 
 /// The items of one stretch of a page's flow, by the index of their marker line.
@@ -358,61 +383,278 @@ pub(crate) fn apply(
     }
 }
 
-/// Records the numbered lists this converter found and deliberately did not act on.
+/// The numbered lists of one stretch, turned into `w:num` definitions with every
+/// number **pinned**.
 ///
-/// The rule is the same as for bullets — a run of lines opening with the same
-/// token — but the token is a number or a letter, and acting on it would mean
-/// asking Word to generate the sequence. Reported, not done, and the report says
-/// why.
-pub(crate) fn record_numbered(
+/// This is the half of `P-8` that was refused, and the refusal was right about
+/// the danger and wrong about the only way through it. `w:numPr` asks Word to
+/// *generate* the sequence, so a PDF list that restarts or skips a number comes
+/// back silently renumbered — which is why the first version only reported these.
+///
+/// The way through is `w:lvlOverride`/`w:startOverride`: a `w:num` may carry the
+/// value its level starts at. So the run is **split wherever the next number is
+/// not the successor of the last**, and every piece gets its own `w:num` whose
+/// start is exactly the number the PDF drew. Word is then asked to count, but it
+/// is asked to start from the right place, and `1, 2, 3, 7, 8` comes back as
+/// `1, 2, 3, 7, 8` rather than `1, 2, 3, 4, 5`.
+///
+/// The property is not asserted in prose: `tests/lists.rs` reads the written
+/// `numbering.xml` back and counts, so a change that lets a number move fails a
+/// test instead of quietly renumbering a document.
+pub(crate) fn apply_numbered(
     lines: &[GlyphLine],
     body: f64,
     rules: &ListRules,
+    items: &mut BTreeMap<usize, Item>,
+    numbering: &mut NumberingTable,
     report: &mut ConversionReport,
     page: usize,
 ) {
-    let mut index = 0usize;
-    while index < lines.len() {
-        let Some((token, text_line)) = numbered_token(lines, index, body, rules) else {
-            index += 1;
-            continue;
-        };
-        let mut run = vec![index];
-        let mut next = text_line;
-        while let Some((_, after)) = numbered_token(lines, next + 1, body, rules) {
-            // The items' **text** positions, not their markers: comparing a marker
-            // to the previous item's text measures the marker gap, which is the
-            // one thing every item shares by construction.
-            if (lines[after].x - lines[next].x).abs() > rules.same_text_tolerance_pt {
-                break;
+    let candidates = numbered_candidates(lines, body, rules);
+    if candidates.is_empty() {
+        return;
+    }
+    let mut numbers: BTreeMap<usize, Numbered> = BTreeMap::new();
+    let mut ordered: BTreeMap<usize, Item> = BTreeMap::new();
+    for (index, (item, number)) in candidates {
+        numbers.insert(index, number);
+        ordered.insert(index, item);
+    }
+
+    let mut abstract_id = next_abstract_id(numbering);
+    let mut num_id = next_num_id(numbering);
+    for run in numbered_runs(&ordered, &numbers, lines, rules) {
+        // One `w:num` per unbroken piece of the run, so that the start of each is
+        // a fact about the document rather than a count Word performs.
+        let pieces = segments_of(&run, &numbers);
+        for segment in &pieces {
+            let Some(first_index) = segment.first().copied() else {
+                continue;
+            };
+            let (Some(first), Some(first_item)) =
+                (numbers.get(&first_index), ordered.get(&first_index))
+            else {
+                continue;
+            };
+            let start = first.value;
+            let format = first.format.clone();
+            let suffix = first.suffix.clone();
+            numbering.insert_abstract(AbstractNum {
+                id: AbstractNumId(abstract_id),
+                multi_level_type: Some(Arc::from("singleLevel")),
+                num_style_link: None,
+                style_link: None,
+                levels: vec![Level {
+                    format: Some(format.clone()),
+                    // `%1` is the value of level 1, which is the only level here.
+                    text: Some(Arc::from(format!("%1{suffix}").as_str())),
+                    // The definition starts at 1 and is overridden per `w:num`, so
+                    // the definition is reusable and the *number* is what each
+                    // piece of the run carries.
+                    start: Some(1),
+                    paragraph: ParagraphProperties {
+                        indentation: Some(Indentation {
+                            start: Some(Twips(to_twips(first_item.text_x))),
+                            hanging: Some(Twips(to_twips(first_item.text_x - first_item.marker_x))),
+                            ..Indentation::default()
+                        }),
+                        ..ParagraphProperties::default()
+                    },
+                    ..Level::new(Ilvl(0))
+                }],
+                location: SourceLocation::unknown(),
+            });
+            numbering.insert_num(Num {
+                num_id: NumId(num_id),
+                abstract_num_id: AbstractNumId(abstract_id),
+                overrides: vec![LevelOverride {
+                    ilvl: Ilvl(0),
+                    start_override: Some(start),
+                    level: None,
+                }],
+                location: SourceLocation::unknown(),
+            });
+            for index in segment {
+                if let Some(item) = ordered.get_mut(index) {
+                    item.num_id = NumId(num_id);
+                    item.numbered = true;
+                }
             }
-            run.push(next + 1);
-            next = after;
+            abstract_id += 1;
+            num_id += 1;
         }
-        if run.len() >= rules.min_items {
-            report.record(
-                "list.numbered",
-                Severity::Inferred,
-                format!(
-                    "page {page}: {} line(s) open with `{token}` and look like a numbered list, \
-                     and the marker was left in the text: a `w:numPr` would ask Word to generate \
-                     the sequence, and a list that restarts or skips a number would then be \
-                     silently renumbered",
-                    run.len()
-                ),
-            );
+        let values: Vec<u32> = run
+            .iter()
+            .filter_map(|index| numbers.get(index).map(|number| number.value))
+            .collect();
+        let jumps = jumps(&values);
+        report.record(
+            "list.inferred",
+            Severity::Inferred,
+            format!(
+                "page {page}: {} item(s) numbered {} became a list with every number pinned, so \
+                 Word draws {} rather than counting from one. {} definition(s), because the \
+                 sequence does not count by one at {:?} and a skip has to be a second list \
+                 rather than a wrong number",
+                values.len(),
+                run.first()
+                    .and_then(|index| numbers.get(index))
+                    .map_or("?", |number| number.format.as_ref()),
+                describe(&values),
+                pieces.len(),
+                jumps,
+            ),
+        );
+    }
+
+    // Merged only after every decision is made: an item in a rejected run keeps
+    // its place in the map with `numbered = false`, which is what the paragraph
+    // builder needs in order to leave its marker in the text.
+    for (index, item) in ordered {
+        let claimed = items
+            .get(&index)
+            .is_some_and(|existing| existing.marker_line == item.marker_line);
+        assert!(
+            !claimed,
+            "page {page}: line {index} is claimed by two markers"
+        );
+        if item.numbered {
+            items.insert(index, item);
         }
-        index = next + 1;
     }
 }
 
-/// A leading `1.` or `a)` and the index of the line its text starts on.
+/// The numbers of a piece, written the way the report writes them.
+fn describe(values: &[u32]) -> String {
+    values
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Where the sequence stops counting by one, which is what forced a new piece.
+fn jumps(values: &[u32]) -> Vec<u32> {
+    values
+        .windows(2)
+        .filter(|pair| pair[1] != pair[0] + 1)
+        .map(|pair| pair[1])
+        .collect()
+}
+
+/// The runs of numbered items, in page order.
+///
+/// The same shape as a bullet run — nothing but continuation lines between two
+/// items — plus the two things a number adds: the format must be the same, and
+/// the text must start where the last item's text started.
+fn numbered_runs(
+    items: &BTreeMap<usize, Item>,
+    numbers: &BTreeMap<usize, Numbered>,
+    lines: &[GlyphLine],
+    rules: &ListRules,
+) -> Vec<Vec<usize>> {
+    let mut runs: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for index in items.keys().copied() {
+        let continues = current.last().is_some_and(|last| {
+            let before = &items[last];
+            let same_format = numbers
+                .get(last)
+                .zip(numbers.get(&index))
+                .is_some_and(|(a, b)| a.format == b.format);
+            same_format
+                && (before.text_x - items[&index].text_x).abs() <= rules.same_text_tolerance_pt
+                && only_continuations(
+                    lines,
+                    before.marker_line + 2,
+                    index.saturating_sub(1),
+                    items[&index].text_x,
+                )
+        });
+        if !continues {
+            if current.len() >= rules.min_items {
+                runs.push(std::mem::take(&mut current));
+            } else {
+                current.clear();
+            }
+        }
+        current.push(index);
+    }
+    if current.len() >= rules.min_items {
+        runs.push(current);
+    }
+    runs
+}
+
+/// A run cut wherever the numbers stop counting by one.
+///
+/// The cut is the whole safety argument: one `w:num` cannot skip, so a skip has to
+/// be two `w:num`s, each starting where the PDF showed it.
+fn segments_of(run: &[usize], numbers: &BTreeMap<usize, Numbered>) -> Vec<Vec<usize>> {
+    let mut segments: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for index in run {
+        let breaks = match (current.last(), numbers.get(index)) {
+            (Some(last), Some(number)) => numbers
+                .get(last)
+                .is_none_or(|previous| previous.successor() != number.value),
+            _ => true,
+        };
+        if breaks && !current.is_empty() {
+            segments.push(std::mem::take(&mut current));
+        }
+        current.push(*index);
+    }
+    if !current.is_empty() {
+        segments.push(current);
+    }
+    segments
+}
+
+/// The numbered candidates of a stretch, keyed by the index of their text line.
+fn numbered_candidates(
+    lines: &[GlyphLine],
+    body: f64,
+    rules: &ListRules,
+) -> BTreeMap<usize, (Item, Numbered)> {
+    let mut out: BTreeMap<usize, (Item, Numbered)> = BTreeMap::new();
+    for index in 0..lines.len() {
+        let Some((marker_line, text_line, number)) = numbered_token(lines, index, body, rules)
+        else {
+            continue;
+        };
+        let Some(marker) = lines.get(marker_line) else {
+            continue;
+        };
+        out.insert(
+            text_line,
+            (
+                Item {
+                    marker_line,
+                    // The marker moves into the numbering definition, exactly as a
+                    // bullet's character does: nothing is deleted, and nothing is
+                    // printed twice.
+                    text: String::new(),
+                    marker_x: marker.x,
+                    text_x: lines[text_line].x,
+                    num_id: NumId(0),
+                    numbered: false,
+                },
+                number,
+            ),
+        );
+    }
+    out
+}
+
+/// A leading `1.` or `a)`, the index of the line its text starts on, and the
+/// number it names.
 fn numbered_token(
     lines: &[GlyphLine],
     index: usize,
     body: f64,
     rules: &ListRules,
-) -> Option<(String, usize)> {
+) -> Option<(usize, usize, Numbered)> {
     let line = lines.get(index)?;
     let first = line.glyphs.first()?;
     let head = first.text.chars().next()?;
@@ -423,7 +665,7 @@ fn numbered_token(
     if second != '.' && second != ')' {
         return None;
     }
-    if head.is_ascii_digit() {
+    let (format, value) = if head.is_ascii_digit() {
         let digits = line
             .glyphs
             .iter()
@@ -440,7 +682,22 @@ fn numbered_token(
             // sentence, not an item number.
             return None;
         }
-    }
+        let value = line
+            .glyphs
+            .iter()
+            .filter_map(|glyph| glyph.text.chars().next().and_then(|c| c.to_digit(10)))
+            .fold(0u32, |value, digit| value.saturating_mul(10) + digit);
+        // `0.` is not a list number either: it is a number in a sentence, and no
+        // Word list starts at zero.
+        if value == 0 {
+            return None;
+        }
+        ("decimal", value)
+    } else if head.is_ascii_lowercase() {
+        ("lowerLetter", u32::from(head as u8 - b'a') + 1)
+    } else {
+        ("upperLetter", u32::from(head as u8 - b'A') + 1)
+    };
     let text_line = index + 1;
     let text = lines.get(text_line)?;
     if !same_baseline(line, text) {
@@ -451,11 +708,15 @@ fn numbered_token(
     if gap < rules.min_gap_ratio * body || gap > rules.max_gap_ratio * body {
         return None;
     }
-    let token: String = line.glyphs[..2]
-        .iter()
-        .filter_map(|glyph| glyph.text.chars().next())
-        .collect();
-    Some((token, text_line))
+    Some((
+        index,
+        text_line,
+        Numbered {
+            format: Arc::from(format),
+            value,
+            suffix: second.to_string(),
+        },
+    ))
 }
 
 fn next_abstract_id(numbering: &NumberingTable) -> u32 {

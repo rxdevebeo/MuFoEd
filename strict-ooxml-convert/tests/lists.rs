@@ -358,29 +358,176 @@ fn two_runs_separated_by_a_paragraph_are_two_lists() {
     );
 }
 
-/// A numbered list is **reported and left as text**, and the report says why.
+/// The number Word will draw for each numbered paragraph, counted from the
+/// `w:num` definitions the document carries.
+///
+/// This is the whole point of the feature and it is worth computing rather than
+/// asserting: a `w:numPr` asks Word to *count*, so a document whose PDF said
+/// `1, 2, 3, 7, 8` and whose numbering says `1, 2, 3, 4, 5` looks perfectly
+/// plausible to every test that checks "there is a `w:numPr`" and is silently
+/// wrong to the reader. So this reads `startOverride` and counts.
+fn drawn_numbers(document: &Document) -> Vec<u32> {
+    let starts: std::collections::BTreeMap<u32, u32> = document
+        .numbering
+        .nums()
+        .map(|num| {
+            let start = num
+                .overrides
+                .iter()
+                .find(|over| over.start_override.is_some())
+                .and_then(|over| over.start_override)
+                .unwrap_or(1);
+            (num.num_id.0, start)
+        })
+        .collect();
+    let mut drawn: Vec<u32> = Vec::new();
+    let mut used: std::collections::BTreeMap<u32, u32> = std::collections::BTreeMap::default();
+    for block in &document.body.blocks {
+        let Some(paragraph) = block.as_paragraph() else {
+            continue;
+        };
+        let Some(num_id) = paragraph.props.numbering.as_ref().and_then(|n| n.num_id) else {
+            continue;
+        };
+        let start = starts.get(&num_id.0).copied().unwrap_or(1);
+        // Word's number for a paragraph is its position among the paragraphs that
+        // share its `w:numId`, counted from that `w:num`'s start — so the count is
+        // made here, over the document, exactly as Word makes it.
+        let offset = used.entry(num_id.0).or_insert(0);
+        drawn.push(start + *offset);
+        *offset += 1;
+    }
+    drawn
+}
+
+/// A numbered run becomes a list, and **the number the PDF drew is the number Word
+/// will draw** — including where the sequence skips.
 #[test]
-fn a_numbered_list_is_reported_and_left_alone() {
+fn a_numbered_list_becomes_a_list_with_its_own_numbers() {
     let (document, report) = convert_pdf(&numbered_items(
-        &["first", "second"],
-        &["1.", "2."],
+        &["first", "second", "third"],
+        &["1.", "2.", "3."],
+        40.0,
+        58.0,
+    ));
+    assert_eq!(
+        drawn_numbers(&document),
+        vec![1, 2, 3],
+        "1, 2, 3 as drawn:\n{report}"
+    );
+    assert_eq!(numbered_of(&document), vec![0, 1, 2], "all three are items");
+    assert_eq!(
+        level_texts(&document.numbering),
+        vec!["%1.".to_owned()],
+        "and the marker the reader drew is a pattern Word counts, not a literal"
+    );
+    let texts = texts_of(&document).join(" ");
+    assert!(
+        !texts.contains('1'),
+        "the marker is not in the text any more, so it is not printed twice: {texts}"
+    );
+    assert!(
+        report.contains("pinned"),
+        "and the report says why: {report}"
+    );
+}
+
+/// **The test this feature exists for.** A PDF list that skips a number must come
+/// back with that number, not with a count.
+///
+/// `1, 2, 3, 7, 8` is not a strange document: it is every list that continues an
+/// earlier section, and it is the exact case the first version refused to touch
+/// because Word would renumber it silently. Two `w:num`s with `startOverride` are
+/// the answer, and this is the assertion that they work.
+#[test]
+fn a_skipped_number_is_pinned_rather_than_counted() {
+    let (document, report) = convert_pdf(&numbered_items(
+        &["first", "second", "third", "fourth", "fifth"],
+        &["1.", "2.", "3.", "7.", "8."],
+        40.0,
+        58.0,
+    ));
+    let drawn = drawn_numbers(&document);
+    assert_eq!(
+        drawn,
+        vec![1, 2, 3, 7, 8],
+        "the jump is the whole point, and it must survive into the document:\n{report}"
+    );
+    // Two definitions, because one `w:num` cannot skip: three items under a `w:num`
+    // that starts at one, then two under one that starts at seven.
+    let starts: Vec<u32> = document
+        .numbering
+        .nums()
+        .filter_map(|num| {
+            num.overrides
+                .iter()
+                .find(|over| over.start_override.is_some())
+                .and_then(|over| over.start_override)
+        })
+        .collect();
+    assert_eq!(
+        starts,
+        vec![1, 7],
+        "the skip is a second list, not a count that runs on:\n{report}"
+    );
+}
+
+/// A list that **restarts** is the same problem: `1, 2` twice over.
+#[test]
+fn a_restarted_number_is_pinned_rather_than_counted() {
+    let (document, report) = convert_pdf(&numbered_items(
+        &["first", "second", "third", "fourth"],
+        &["1.", "2.", "1.", "2."],
+        40.0,
+        58.0,
+    ));
+    assert_eq!(
+        drawn_numbers(&document),
+        vec![1, 2, 1, 2],
+        "a restart is a second list, not a count that continues:\n{report}"
+    );
+}
+
+/// Letters count the same way numbers do, and `c)` is three.
+#[test]
+fn a_lettered_list_counts_letters() {
+    let (document, report) = convert_pdf(&numbered_items(
+        &["first", "second", "third"],
+        &["a)", "b)", "c)"],
+        40.0,
+        58.0,
+    ));
+    assert_eq!(
+        drawn_numbers(&document),
+        vec![1, 2, 3],
+        "a, b, c is 1, 2, 3"
+    );
+    let formats: Vec<String> = document
+        .numbering
+        .abstracts()
+        .flat_map(|abstract_num| abstract_num.levels.iter())
+        .filter_map(|level| level.format.as_ref().map(ToString::to_string))
+        .collect();
+    assert_eq!(formats, vec!["lowerLetter".to_owned()], "{report}");
+    assert_eq!(level_texts(&document.numbering), vec!["%1)".to_owned()]);
+}
+
+/// A number in a sentence is not a list item. `2024.` at the start of a line is a
+/// year, and eating it into a numbering definition would be a deleted year.
+#[test]
+fn a_year_at_the_start_of_a_line_is_not_a_list_item() {
+    let (document, report) = convert_pdf(&numbered_items(
+        &["was written", "and revised"],
+        &["2024.", "2025."],
         40.0,
         58.0,
     ));
     assert!(
         numbered_of(&document).is_empty(),
-        "a numbered list would need Word to generate the sequence:\n{report}"
-    );
-    assert!(report.contains("list.numbered"), "{report}");
-    assert!(
-        report.contains("silently renumbered"),
-        "and the reason is stated: {report}"
+        "a three-digit number opens no list:\n{report}"
     );
     let texts = texts_of(&document).join(" ");
-    assert!(
-        texts.contains("1.") && texts.contains("2."),
-        "the marker stays in the text, where the reader can see it: {texts}"
-    );
+    assert!(texts.contains("2024."), "and it stays in the text: {texts}");
 }
 
 /// The indentation is the **text's** left edge with a hanging indent back to the

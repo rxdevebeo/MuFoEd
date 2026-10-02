@@ -141,6 +141,25 @@ impl StrictDocument {
         &self.document
     }
 
+    /// Returns the document model for mutation.
+    ///
+    /// The model is owned and every field on it is public (ADR-0004), so
+    /// editing is a matter of reaching it - the alternative, "edit a copy and
+    /// swap it in", leaves two sources of truth and a way for them to disagree.
+    ///
+    /// What this accessor does **not** do is make the result coherent: a
+    /// mutated document may carry a style id nothing defines, a `w:sectPr`
+    /// whose counterpart in `Document::sections` was not updated, or a
+    /// `para_id` duplicated by a clone. Coherence is `validate`'s job
+    /// (`STAGE-10-TASK.md` E16, phase 10B) and nothing here claims otherwise.
+    ///
+    /// The `SupportModel` does not follow the edit: it is filled by the parser
+    /// and merges additively, so a feature an edit removed still appears in a
+    /// report built from it. Recomputing it is part of the same phase.
+    pub fn document_mut(&mut self) -> &mut Document {
+        &mut self.document
+    }
+
     /// Returns the opened OPC package.
     #[must_use]
     pub fn package(&self) -> &Package {

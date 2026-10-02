@@ -88,10 +88,12 @@ impl Default for ParagraphRules {
 /// The list items of one stretch of a page's flow, by the index of their marker
 /// line.
 ///
-/// Two things are decided here and both belong to the same place: the bullet runs
-/// are turned into numbering definitions, and the **numbered** runs are only
-/// reported. A stretch rather than a page, because the flow is cut at every table
-/// and a list cannot cross one.
+/// Both kinds are decided here and both belong to the same place: a bulleted run
+/// becomes one numbering definition per run, and a **numbered** run becomes one
+/// definition per unbroken piece of it, with the number pinned
+/// (`w:startOverride`) so that a restart or a skip in the PDF cannot come back
+/// renumbered. A stretch rather than a page, because the flow is cut at every
+/// table and a list cannot cross one.
 fn list_items_of(
     flow: &[GlyphLine],
     body: f64,
@@ -100,10 +102,18 @@ fn list_items_of(
     report: &mut ConversionReport,
     page: usize,
 ) -> std::collections::BTreeMap<usize, crate::lists::Item> {
-    crate::lists::record_numbered(flow, body, &options.lists, report, page);
     let mut items = crate::lists::items_of(flow, body, &options.lists);
     let runs = crate::lists::runs_of(&items, flow, &options.lists);
     crate::lists::apply(&runs, &mut items, numbering, report, page);
+    crate::lists::apply_numbered(
+        flow,
+        body,
+        &options.lists,
+        &mut items,
+        numbering,
+        report,
+        page,
+    );
     items
 }
 

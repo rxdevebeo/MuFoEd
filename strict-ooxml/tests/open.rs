@@ -5,7 +5,8 @@
 use std::io::Cursor;
 
 use strict_ooxml::model::inline::{Inline, RunContent};
-use strict_ooxml::{OpenOptions, StrictDocument};
+use strict_ooxml::model::values::Space;
+use strict_ooxml::{write_package, OpenOptions, StrictDocument, WriteOptions};
 
 const W_STRICT: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const W_TRANSITIONAL: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -173,4 +174,68 @@ fn crc32(data: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+#[test]
+fn an_edit_reaches_the_written_package() {
+    let mut opened = StrictDocument::open_path(
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../strict-ooxml-core/tests/strict/strict-text.docx"
+        ),
+        &OpenOptions::default(),
+    )
+    .expect("the fixture opens");
+
+    let before = opened.document().body.blocks.len();
+    opened
+        .document_mut()
+        .body
+        .blocks
+        .push(strict_ooxml_wml::model::block::Block::Paragraph(
+            strict_ooxml_wml::model::block::Paragraph {
+                props: strict_ooxml_wml::model::props::ParagraphProperties::default(),
+                inlines: vec![strict_ooxml_wml::model::inline::Inline::Run(
+                    strict_ooxml_wml::model::inline::Run {
+                        props: strict_ooxml_wml::model::props::RunProperties::default(),
+                        content: vec![strict_ooxml_wml::model::inline::RunContent::Text(
+                            strict_ooxml_wml::model::inline::TextNode {
+                                text: "added by an edit".to_owned(),
+                                space: Space::Default,
+                            },
+                        )],
+                        location: strict_ooxml_core::error::SourceLocation::unknown(),
+                    },
+                )],
+                rsids: strict_ooxml::model::values::Rsids::default(),
+                para_id: None,
+                text_id: None,
+                location: strict_ooxml_core::error::SourceLocation::unknown(),
+            },
+        ));
+
+    assert_eq!(
+        opened.document().body.blocks.len(),
+        before + 1,
+        "the edit went in"
+    );
+
+    let written = write_package(
+        opened.document(),
+        Some(opened.package()),
+        &WriteOptions::default(),
+    )
+    .expect("the edited document writes");
+
+    // The package is deflated, so asserting on its bytes would prove nothing.
+    // What matters is that the edit survives the cycle, which is the whole
+    // claim `document_mut` makes.
+    let reopened =
+        StrictDocument::open_reader(Cursor::new(&written.bytes), &OpenOptions::default())
+            .expect("the written package reopens");
+    assert_eq!(
+        reopened.document().body.blocks.len(),
+        before + 1,
+        "the edited paragraph is still there after write and read"
+    );
 }
