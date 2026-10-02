@@ -118,6 +118,15 @@ pub struct Settings {
     /// it used filtered by the `wml` namespace and could not see what it was
     /// looking for.
     pub math_properties: Option<MathProperties>,
+    /// Theme colour mapping (`w:clrSchemeMapping`).
+    ///
+    /// The one `w:settings` child that changes how the page looks, and it was
+    /// dropped from forty-eight of the fifty-eight corpus documents. `clrSchemeMapping`
+    /// maps the colour names a document uses onto theme slots, so losing it loses
+    /// a recolouring: a document whose links were mapped to `accent2` comes back
+    /// with Word's defaults, and nothing in the report or in any schema message
+    /// says so.
+    pub color_scheme_mapping: Option<ColorSchemeMapping>,
 }
 
 /// The seven on/off children `CT_Compat` declares, in the order it declares them.
@@ -179,6 +188,70 @@ impl CompatFlags {
             }
         }
         names
+    }
+}
+
+/// `w:clrSchemeMapping`: which theme slot each colour name resolves to.
+///
+/// All twelve attributes are `use="optional"` and all twelve are `ST_WmlColorSchemeIndex`,
+/// a restriction of `xsd:string` over exactly twelve values. They stay strings
+/// here for the same reason as `MathProperties`: a value outside the twelve has
+/// to survive to be named by the XSD gate, and an enum would have to either drop
+/// it or invent a variant for it.
+///
+/// Every corpus document carries all twelve, mapped to themselves - Word writes
+/// the identity mapping unless a document has been recoloured. That is why the
+/// element looked worthless to keep and is not: an identity mapping is the
+/// default, and the *absence* of the element means the same thing to Word, so the
+/// corpus proves nothing about whether it can differ. A document that maps
+/// `w:hyperlink` to `w:accent2` renders its links in a theme colour, and losing
+/// that element loses the recolouring while leaving a document that validates.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ColorSchemeMapping {
+    /// `w:bg1` — background 1.
+    pub background_1: Option<Arc<str>>,
+    /// `w:t1` — text 1.
+    pub text_1: Option<Arc<str>>,
+    /// `w:bg2` — background 2.
+    pub background_2: Option<Arc<str>>,
+    /// `w:t2` — text 2.
+    pub text_2: Option<Arc<str>>,
+    /// `w:accent1`.
+    pub accent_1: Option<Arc<str>>,
+    /// `w:accent2`.
+    pub accent_2: Option<Arc<str>>,
+    /// `w:accent3`.
+    pub accent_3: Option<Arc<str>>,
+    /// `w:accent4`.
+    pub accent_4: Option<Arc<str>>,
+    /// `w:accent5`.
+    pub accent_5: Option<Arc<str>>,
+    /// `w:accent6`.
+    pub accent_6: Option<Arc<str>>,
+    /// `w:hyperlink`.
+    pub hyperlink: Option<Arc<str>>,
+    /// `w:followedHyperlink`.
+    pub followed_hyperlink: Option<Arc<str>>,
+}
+
+impl ColorSchemeMapping {
+    /// The attributes in `CT_ColorSchemeMapping`'s declaration order.
+    #[must_use]
+    pub fn slots(&self) -> [(&'static str, &Option<Arc<str>>); 12] {
+        [
+            ("w:bg1", &self.background_1),
+            ("w:t1", &self.text_1),
+            ("w:bg2", &self.background_2),
+            ("w:t2", &self.text_2),
+            ("w:accent1", &self.accent_1),
+            ("w:accent2", &self.accent_2),
+            ("w:accent3", &self.accent_3),
+            ("w:accent4", &self.accent_4),
+            ("w:accent5", &self.accent_5),
+            ("w:accent6", &self.accent_6),
+            ("w:hyperlink", &self.hyperlink),
+            ("w:followedHyperlink", &self.followed_hyperlink),
+        ]
     }
 }
 

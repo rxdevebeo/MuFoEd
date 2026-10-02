@@ -456,6 +456,22 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
                 xml.end();
             }
         }
+        "clrSchemeMapping" => {
+            // `CT_ColorSchemeMapping` has no `xsd:sequence`, so attribute order is
+            // free - it is written in declaration order so two settings parts diff
+            // legibly. Every attribute is optional and only the ones the producer
+            // set are written: emitting all twelve defaults would claim a mapping
+            // the document never made.
+            if let Some(mapping) = &settings.color_scheme_mapping {
+                xml.start("w:clrSchemeMapping");
+                for (name, value) in mapping.slots() {
+                    if let Some(value) = value {
+                        xml.attr_w(name.trim_start_matches("w:"), value.as_ref());
+                    }
+                }
+                xml.end();
+            }
+        }
         "mathPr" => {
             if let Some(mathematics) = &settings.math_properties {
                 math_properties(xml, mathematics);

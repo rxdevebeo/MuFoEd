@@ -258,6 +258,48 @@ fn math_properties_survive_the_non_wml_filter() {
     assert_eq!(mathematics.display_default.as_deref(), Some("1"));
 }
 
+/// `w:clrSchemeMapping` maps colour names onto theme slots.
+///
+/// Forty-eight of the fifty-eight corpus documents carried it and every one lost
+/// it, which is the only settings child that changes how the page looks. All
+/// twelve attributes are optional and the corpus writes all twelve mapped to
+/// themselves - Word's identity mapping - so this test deliberately uses a
+/// NON-identity mapping, because the identity is what a reader that defaults
+/// every field would produce without parsing anything.
+#[test]
+fn color_scheme_mapping_keeps_a_mapping_that_is_not_the_identity() {
+    let document = parse_aux(
+        None,
+        None,
+        Some(
+            r#"<w:settings xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main">
+  <w:clrSchemeMapping w:bg1="light1" w:t1="dark1" w:hyperlink="accent2"
+                      w:followedHyperlink="accent6"/>
+</w:settings>"#,
+        ),
+    );
+    let mapping = document
+        .settings
+        .color_scheme_mapping
+        .expect("w:clrSchemeMapping is parsed, not dropped from the part");
+    assert_eq!(mapping.background_1.as_deref(), Some("light1"));
+    assert_eq!(mapping.text_1.as_deref(), Some("dark1"));
+    // The two that carry the recolouring. Everything else is the default, and a
+    // reader that filled them in would hide that this element was read at all.
+    assert_eq!(mapping.hyperlink.as_deref(), Some("accent2"));
+    assert_eq!(mapping.followed_hyperlink.as_deref(), Some("accent6"));
+    assert!(
+        mapping.accent_1.is_none(),
+        "an absent attribute stays absent"
+    );
+    assert_eq!(mapping.slots().len(), 12, "all twelve slots are modelled");
+}
+///
+/// They are bare `CT_OnOff` flags and every corpus document writes them with no
+/// value at all, so a reader that looks for `@w:val` sees none of them. `w:compat`
+/// is regenerated from the model, so a flag the model did not carry was deleted
+/// from the document rather than left out of the output, and thirty-three of them
+/// went that way with nothing in the report.
 /// The seven on/off children of `w:compat`, in `CT_Compat`'s order.
 ///
 /// They are bare `CT_OnOff` flags and every corpus document writes them with no

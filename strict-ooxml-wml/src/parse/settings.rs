@@ -3,7 +3,9 @@
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::settings::{CompatFlags, DocumentZoom, MathProperties, Settings, Zoom};
+use crate::model::settings::{
+    ColorSchemeMapping, CompatFlags, DocumentZoom, MathProperties, Settings, Zoom,
+};
 use crate::model::values::Twips;
 
 use super::{attr_in_ns, is_math, is_wml, parse_i32, val_attr, wml_attr, PartParser};
@@ -76,6 +78,12 @@ impl PartParser<'_> {
                         }
                         "endnotePr" => {
                             settings.endnote_properties = self.parse_note_properties()?;
+                            continue;
+                        }
+                        "clrSchemeMapping" => {
+                            settings.color_scheme_mapping =
+                                Some(self.parse_color_scheme_mapping(&attrs));
+                            self.skip_element()?;
                             continue;
                         }
                         "compat" => {
@@ -185,6 +193,29 @@ impl PartParser<'_> {
             }
         }
         Ok(properties)
+    }
+
+    /// Parses `w:clrSchemeMapping`'s twelve optional attributes.
+    ///
+    /// Attribute order is not recorded: `CT_ColorSchemeMapping` has no
+    /// `xsd:sequence`, so any order validates, and the writer emits them in the
+    /// declaration order anyway so a diff of two settings parts reads sensibly.
+    fn parse_color_scheme_mapping(&mut self, attrs: &[Attr]) -> ColorSchemeMapping {
+        let mut take = |local: &str| wml_attr(attrs, local).map(|value| self.intern(value));
+        ColorSchemeMapping {
+            background_1: take("bg1"),
+            text_1: take("t1"),
+            background_2: take("bg2"),
+            text_2: take("t2"),
+            accent_1: take("accent1"),
+            accent_2: take("accent2"),
+            accent_3: take("accent3"),
+            accent_4: take("accent4"),
+            accent_5: take("accent5"),
+            accent_6: take("accent6"),
+            hyperlink: take("hyperlink"),
+            followed_hyperlink: take("followedHyperlink"),
+        }
     }
 
     /// Parses a `w:compat` element: the `w:compatSetting` key/value pairs AND the
