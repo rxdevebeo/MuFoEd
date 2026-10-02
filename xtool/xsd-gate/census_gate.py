@@ -901,7 +901,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
 
     if not args.quiet_messages and out_schema:
         print("\n=== every message, so nothing is counted on trust")
-        for where, _, message in out_messages:
+        for where, _, message in signals["message"]:
             print(f"  {where}: {message}")
 
     open_items = {item_id: counts[item_id] for item_id in sorted(ours) if counts[item_id]}
