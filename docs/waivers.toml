@@ -10,18 +10,26 @@
 #
 #   class:<name>            the class in coverage/render-gates.toml whose
 #                           bounds are looser than the strict defaults
-#   amber:<document>        a document inside the SSIM margin band
+#   amber:<document>        a document inside the SVG gate's SSIM margin band
 #   page-count-only:<doc>   a document compared by page count only
+#   pdf-class:<name>        the class the PDF gate holds to a looser bound than
+#                           its own `[[classes]]` entry
+#   pdf-amber:<document>    a document inside the PDF gate's SSIM margin band
 #   process:<topic>         a process gap with no code binding; reviewed by
 #                           hand at acceptance, not machine-checked
 #
 # An entry whose `binds` target no longer exists fails, so the registry cannot
 # rot into a list of resolved problems still described as open.
+#
+# `pdf-*` is the same rule for the PDF backend's half of the same gate. Stage 8
+# gave the project two renderers over one set of WPS references
+# (`CORE-QUEUE.md` §1), and a document can be amber in one gate and not the other
+# — which is exactly why the two registers are separate and both checked.
 
 [meta]
-revision = "2026-10-01"
+revision = "2026-10-02"
 policy = "GATE-STRATEGY.md §2"
-source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md"
+source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md, docs/transitional-to-strict-audit.md"
 
 # ---------------------------------------------------------------------------
 # Bound by the gate itself. Removing one of these is a change in what the
@@ -133,7 +141,14 @@ opened = "2026-09-29"
 id = "5C-AMBER"
 subject = "strict-stage5c"
 binds = "amber:strict-stage5c"
-summary = "Worst SSIM 0.9533, clearing the 0.95 criterion by 0.0033."
+summary = """
+Worst SSIM 0.9513, clearing the 0.95 criterion by 0.0013. The number was 0.9533
+when this entry was opened on 2026-09-29; the layout fixes of 2026-10-01 lowered
+it while clearing the structural failures (see `05-AMBER`, `07-AMBER` and
+`EXTENT_RATCHET` in `render-svg/tests/ssim.rs`), which is a loss on fidelity and a
+gain on position, and both are written down where they happened rather than folded
+into this line.
+"""
 risk = """
 The gate runs on three operating systems. At three thousandths the score
 cannot distinguish a property of the layout from a property of one rasterizer
@@ -207,6 +222,123 @@ summary = "As CHARTS: a real Word-produced Strict file dominated by a chart and 
 risk = "As CHARTS."
 exit = "As CHARTS."
 opened = "2026-09-29"
+
+# ---------------------------------------------------------------------------
+# The PDF backend's half of the same gate (`CORE-QUEUE.md` §1, `O-2`).
+#
+# The PDF was measured for the first time on 2026-10-01: same WPS references,
+# same fidelity criterion (0.95 + 0.01 margin), a different renderer (`hayro`,
+# reading back the file this workspace wrote). Every entry below is a measured
+# number written down with the reason it is that number.
+# ---------------------------------------------------------------------------
+
+[[waivers]]
+id = "PDF-LIMITS-TEXT"
+subject = "PDF backend, text class"
+binds = "pdf-class:text"
+summary = """
+The PDF gate holds the text class to `max_centroid_px = 3.0` against the strict
+default of 2.5. Measured 2.50 px on `strict-text`; `strict-text-grid` is 0.82.
+The same 3.0 is carried by `max_content_centroid_px`, measured 2.50 as well —
+this class has no page border, so the two measures see the same ink.
+"""
+risk = """
+This is Q-5 measured, not rasterizer noise. The PDF writer rounds every glyph's
+`/W` advance to whole 1000-units, so each glyph is up to half a thousandth of an
+em out and the error accumulates along the line; the last word of every line ends
+a couple of pixels from where `resvg` puts it. `/W` is an integer array in the
+specification, so this is not something the writer can simply stop doing.
+"""
+exit = """
+Write the advances as `f32` in a `/W`-style array that allows fractional values,
+or compensate the last glyph of a line by its own residual. Then the SVG gate's
+2.5 holds for the PDF gate too.
+"""
+opened = "2026-10-01"
+
+[[waivers]]
+id = "PDF-LIMITS-MIXED"
+subject = "PDF backend, mixed class"
+binds = "pdf-class:mixed"
+summary = """
+`max_centroid_px = 4.0` against the SVG gate's 3.0 and the strict default of 2.5.
+Measured 3.72 px on `strict-stage5` page 2. `max_content_centroid_px` is 4.0 as
+well, measured 3.72: this class has no page border, so the frame-free measure is
+the same measurement.
+"""
+risk = """
+The same accumulation as PDF-LIMITS-TEXT on a page whose ink is spread over
+tables, notes and fields, so the mean has less to average over and the same
+absolute drift shows up larger. Every other bound on that page is inside the SVG
+gate's mixed bounds: shift 2 px, extent +1/-0, row correlation 0.980, column
+correlation 0.814.
+"""
+exit = "As PDF-LIMITS-TEXT."
+opened = "2026-10-01"
+
+[[waivers]]
+id = "PDF-LIMITS-GRAPHICS"
+subject = "PDF backend, graphics class"
+binds = "pdf-class:graphics"
+summary = """
+`max_centroid_px = 40.0` (measured 38.76) **and** `max_content_centroid_px = 8.0`
+(measured 0.11). The second number is the one that holds the page; the first is
+the plain ink centroid, which on this page measures the page border rather than
+the layout.
+"""
+risk = """
+`strict-stage5b` is mostly a page border: a 2.67 px stroke down all four edges.
+Its ink is symmetric, so the centroid of the *page* sits near the middle, and a
+one-pixel difference in one edge of that stroke — which is the whole of what
+`resvg` and `hayro` disagree about on a long thin line — moves the mean by tens of
+pixels. Measured: the two backends' plain centroids differ by 25 x 39 px on this
+page, while their content centroids differ by 3.95 x 0.11.
+"""
+exit = """
+The 8 px is what now does the work, so this entry is no longer "a bad measure
+accepted": `strict-ooxml-fidelity::structure::content_centroid` is the
+frame-free measure and it is a real bound. What remains is the *plain* 40 px,
+which no measure of the layout needs — it can go when the plain centroid is
+either dropped from the structural check or given a stated rule of its own (a
+bound per class, documented, instead of one number wide enough to absorb a
+rasterizer's antialiasing).
+"""
+opened = "2026-10-01"
+
+[[waivers]]
+id = "PDF-AMBER-5B"
+subject = "strict-stage5b (PDF gate)"
+binds = "pdf-amber:strict-stage5b"
+summary = "Worst SSIM 0.9595 on the PDF path, clearing 0.95 by 0.0095."
+risk = """
+Inside the 0.01 margin band, so the score cannot distinguish a property of the
+layout from a property of one rasterizer build. The same page measures 0.9664
+through the SVG backend, so the two renderers disagree by 0.007 on a page whose
+residual is mostly antialiasing.
+"""
+exit = """
+Raising the score above the margin, or understanding why the PDF path loses
+0.007 where the SVG path does not. The `page_diff` example for the PDF path
+prints the ink bands and the difference bands, which is where the answer is.
+"""
+opened = "2026-10-01"
+
+[[waivers]]
+id = "PDF-AMBER-5C"
+subject = "strict-stage5c (PDF gate)"
+binds = "pdf-amber:strict-stage5c"
+summary = "Worst SSIM 0.9511 on the PDF path, clearing 0.95 by 0.0011."
+risk = """
+The thinnest margin in the registry. Two display formulas in STIX Two Math against
+a reference in Cambria Math is the same substitution the SVG gate carries as
+`5C-C3`, and a substitution in glyphs is a substitution in pixels; the page also
+carries the class's largest position drift (a 22 px best-alignment shift).
+"""
+exit = """
+As `5C-C3` and `5C-C4`: the substitution residual and the block geometry, the
+same two causes, measured through a second renderer now.
+"""
+opened = "2026-10-01"
 
 # ---------------------------------------------------------------------------
 # Process gaps. No code binding, so the test only checks that a `process:`
@@ -329,6 +461,106 @@ clean-room position checkable, and it is maintained from that ADR.
 opened = "2026-10-01"
 
 [[waivers]]
+id = "COVERAGE-ELEMENTS"
+subject = "WML element coverage gate"
+binds = "process:coverage-gate-baseline"
+summary = """
+The optional-element gate ran at 97.3% until 2026-10-01 and that number was
+false. It was a stage-2 snapshot (`revision 2026-09-28`) in which 40 elements had
+been parked as `ignored`, and `ignored` sits outside the coverage denominator, so
+moving an element there cost the gate nothing. Seventeen of those forty are
+implemented and were being called ignored - `m:oMath`, `m:oMathPara`, `w:hdr`,
+`w:ftr`, `w:footnotes`, `w:endnotes`, `wp:anchor`, `w:theme` - and a
+16920-byte OMML test file existed while the table said the element was ignored.
+"""
+risk = """
+The gate now measures something real and reports **89.7%**, which is below its
+90% target, so CI runs it at 89 and this entry carries the difference. Seventeen
+elements were reclassified from `ignored` to `unsupported` because they change the
+page and nothing renders them: `w:comments`, `w:object`, `w:pict`, `w:fitText`,
+`w:paperSrc`, `w:pgNumType`, `w:tblOverlap`, `w:tblCellSpacing`, `w:tblpPr`,
+`w:tblStyleRowBandSize`, `w:tblStyleColBandSize`, `w:lvlPicBulletId`,
+`w:picBullet`, `w:bCs`, `w:cs`, `w:iCs`, `w:formProt`. A document using any of
+them renders without that content, and says nothing about it.
+
+The gate also now requires every remaining `ignored` to carry a reason, so the
+dumping ground is closed: 13 remain, each with one.
+"""
+exit = """
+Implement the seventeen, or lower the target knowingly rather than by parking
+elements in `ignored`. Cheapest first, because each is a small attribute with no
+layout consequence: `w:paperSrc`, `w:pgNumType`, `w:tblOverlap`, `w:formProt`.
+Then `w:bCs`/`w:cs`/`w:iCs`, which matter for any complex-script text. Raising
+CI back to 90 needs roughly one element, but the point is the list, not the
+number.
+"""
+opened = "2026-10-01"
+
+[[waivers]]
+id = "XSD-CORPUS"
+subject = "10G schema gate — what the harness cannot reach inside the corpus"
+binds = "process:xsd-corpus-coverage"
+summary = """
+The XSD gate validates 27 documents in `strict-ooxml-core/tests/strict/`, of
+which **17 are third-party from 3 repositories** (`dotnet/Open-XML-SDK` MIT,
+`Plutext/docx4j` Apache-2.0, `LibreOffice/core` MPL-2.0) and 10 were written by
+this project or generated by `xtool gen-docx`. Every third-party file is recorded
+with a full SHA-256, its licence and where that licence's text lives, and its own
+`docProps/core.xml` provenance. **What the waiver covers is no longer the size of
+the corpus — it is what the harness cannot reach inside it.**
+"""
+risk = """
+Four named gaps, none of them "the corpus is small":
+
+1. **Parts with no global element in the ECMA Strict set are not validated at
+   all** — `webSettings`, `docProps/app.xml`, and the diagram parts. The harness
+   reports them as uncovered rather than green (`STAGE-10-TASK.md` E54).
+2. **25 root elements cannot be declared by a synthesised driver** because their
+   type lives in another namespace (`a:CT_…` in `dml-chartDrawing.xsd`). A driver
+   can only declare an element whose type is unprefixed, so these are uncovered.
+   2120 drivers do compile; these 25 do not.
+3. **One file never produces an output measurement**:
+   `annotation-ref-sdk-mixed-rels.docx` is refused by the writer's conformance
+   detector (Word 2009 wrote a Strict package with a Transitional relationship
+   type in its root `.rels`), so the gate has an input count and no output count
+   for it. That refusal is correct and is the point of the file.
+4. **Eight files have an invalid input**, at 60–81 schema violations each, written
+   by Word 2010 (`AppVersion 14.0000`). For those the input-to-output delta
+   measures our discarding as much as our writing, and a negative delta is not a
+   merit: the writer rebuilds from the model and drops what it cannot express.
+   These eight are therefore counted as adversarial material, not as clean input.
+
+Also carried by the same phase, and stated here because it is the same kind of
+claim: the corpus is 27 documents and 17 of them are external, but **every Strict
+file in existence was produced by Microsoft Word** through a hidden mode — WPS,
+LibreOffice, pandoc, POI, docx4j, Open-Xml-PowerTools and the Open XML SDK can all
+read Strict and none can write it. So "third-party" here means "in whose
+repository", not "whose markup"; the independence the gate gained is from *this
+project's* writer, which is the independence it needed.
+"""
+exit = """
+Partly discharged 2026-10-01: the oracle is built (`xtool/xsd-gate/`), compiles
+2120 drivers with zero failures, publishes the skipped-part and uncovered-root
+counts on every run, and **passes** - the only remaining schema violations in
+the written corpus are 11 carried verbatim from the producer's own chart parts
+(`XS-16`, closed by marking rather than by repair). The measure can no longer
+hide behind a partial run.
+
+Still open, and what this entry now retires: either validate the uncovered parts
+listed under `risk` (the 13 prefixed roots in `dml-chartDrawing.xsd`, and
+`webSettings` / `docProps/app.xml` / the diagram parts), or state per part that it
+is out of gate scope.
+
+The corpus question is closed — 17 external files, 3 repositories, 3 licences,
+each hashed and attributed (`docs/corpus-task-strict-docx.md` steps 1–5, and
+`strict-ooxml-core/tests/strict/PROVENANCE.md`). What this entry now retires is
+**coverage inside the corpus**: either validate the uncovered parts listed above,
+or state per part that it is out of gate scope, and publish the count of skipped
+parts on every run so that a future silent skip cannot masquerade as a pass.
+"""
+opened = "2026-10-01"
+
+[[waivers]]
 id = "DJVU-TM"
 subject = "9A DjVu reading"
 binds = "process:djvu-trademark"
@@ -399,3 +631,62 @@ re-pointed, and the exit criterion holds — `strict-profile` is 2 pages before
 and after the write. The waiver stays in the file as a record of what it cost
 (`STAGE-8-TASK.md` §3, W7; ADR-0007; `strict-ooxml-write/tests/passthrough.rs`).
 """
+
+[[waivers]]
+id = "W7-DROPPED"
+subject = "10 pass-through — parts the write drops and says so"
+binds = "process:write-dropped-parts"
+summary = """
+A part that is absent from the written package is the one loss in this project
+that **nothing else can see**. It draws nothing, it validates against every
+schema, and until 2026-10-01 it left no trace in a loss report that never
+mentioned it — which is what `docs/transitional-to-strict-audit.md` §8 called "a
+silent loss", naming 16 embedded font binaries in 2 documents, gone together with
+`word/_rels/fontTable.xml.rels`.
+
+Two things landed. `passthrough::report_what_was_dropped` walks the source
+package and names every part this write did not emit, grouped by directory, as
+`W7.dropped-part`; and `xtool/xsd-gate/census_gate.py` grew an `unaccounted`
+signal that fails on a dropped part the report does **not** mention, so "the
+report says nothing about it" is a measured zero rather than an opinion.
+
+What this waiver covers is the *remaining* drops, which are named but not fixed:
+
+- `word/fonts/*.ttf` and `word/_rels/fontTable.xml.rels` (16 fonts, 2 documents).
+  Embedded fonts are legal Strict, and `word/fontTable.xml` is regenerated from
+  the faces the styles and runs name — the model carries no font *embedding*, so
+  the written font table declares no `w:embedRegular` and the binaries would be
+  unreferenced even if copied. Carrying them for real means a font-table reader, a
+  model type, `w:embed*` emission, the relationships and the content types.
+- `word/stylesWithEffects.xml` (19 documents). **Deliberate, and the strongest
+  case in the file:** Word 2010's shadow of `styles.xml`. Keeping it would leave
+  the package with two sets of styles while the written `styles.xml` is the
+  model's, and Word 2010 prefers the shadow — so the copy would be *stale*. Two
+  copies of one authority is worse than one. Named as `W7.stylesWithEffects`.
+- `docProps/thumbnail.jpeg` / `.wmf` (12 documents). The thumbnail is carried
+  beside `app.xml` now; these are the ones whose `app.xml` had no `.rels` to
+  reach them, or whose `app.xml` itself is absent.
+- `word/media/image#.jpg` / `.wmf` (10 documents). Unreferenced media, and WMF/
+  EMF, which `CORE-QUEUE.md` §0 `L-3` already records as a format boundary.
+- `word/numbering.xml` (1 document). A numbering part the model read as empty, so
+  the write emitted none. This is the one item here that is a *model* gap rather
+  than a decision, and it is the cheapest to look at.
+
+Numbers are the census's, on 58 Transitional documents written with
+`--transitional`; the item is `TZ-15` there and the gate fails while it is
+non-zero *and unaccounted*, which today is zero.
+"""
+risk = """
+A named drop is a decision a reader can check; the risk left is that the *decision*
+is wrong, not that it is hidden. Two of them are arguable rather than settled —
+embedded fonts and the unreferenced `.jpg` media — and the numbering one is
+plainly a gap.
+"""
+exit = """
+Carry the embedded fonts properly (a font-table reader, a model type for
+`w:embed*`, the relationships and the content types), and look at the one document
+whose numbering table parses empty. `stylesWithEffects.xml` and unreferenced media
+are decisions to keep, and the waiver is the record of that — with a review date.
+"""
+opened = "2026-10-02"
+review = "2027-01-02"

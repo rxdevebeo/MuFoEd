@@ -77,6 +77,21 @@ impl ZipWriter {
         self.entries.len()
     }
 
+    /// The canonical names of the parts added so far, in the order added.
+    ///
+    /// For the writer's own accounting: "which parts did this write actually
+    /// emit" is a question about the *result*, and several of them are
+    /// conditional — `word/numbering.xml` is written only when the model carries
+    /// a numbering table — so a list of the parts a write *might* emit cannot
+    /// answer it. This is the list that did.
+    #[must_use]
+    pub fn part_names(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .map(|(name, _)| format!("/{name}"))
+            .collect()
+    }
+
     /// Returns `true` when no entry has been added.
     #[must_use]
     pub fn is_empty(&self) -> bool {

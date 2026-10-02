@@ -28,6 +28,8 @@ Design documents live in the repository root:
 | `strict-ooxml-report` | Feature Report: model, build, JSON schema, text (Stage 3). |
 | `strict-ooxml-render-svg` | Deterministic SVG layout and rendering (Stage 4). |
 | `strict-ooxml-render-pdf` | PDF output: a second backend over the same layout (Stage 8B). |
+| `strict-ooxml-pdf` | PDF reading, and the rasterizer the pixel gate measures with (Stage 8C). |
+| `strict-ooxml-fidelity` | The pixel gate's arithmetic: SSIM, ink profiles, and the policy file. |
 | `strict-ooxml-write` | Serialization of the model back to a Strict `.docx` (Stage 8A). |
 | `strict-ooxml` | Public `StrictDocument` API (Stages 2–4, 8A). |
 | `strict-ooxml-cli` | `inspect` / `check` / `report` / `render` / `write` / `normalize` command-line tool. |
@@ -79,13 +81,29 @@ cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
-Coverage (≥ 80% lines for `core`, `wml`, `report` and `render-svg`):
+Coverage (≥ 80% lines for `core`, `wml`, `report`, `render-svg` and `fidelity`):
 
 ```text
 cargo llvm-cov -p strict-ooxml-core       --all-features --fail-under-lines 80
 cargo llvm-cov -p strict-ooxml-wml        --all-features --fail-under-lines 80
 cargo llvm-cov -p strict-ooxml-report     --all-features --fail-under-lines 80
 cargo llvm-cov -p strict-ooxml-render-svg --all-features --fail-under-lines 80
+cargo llvm-cov -p strict-ooxml-fidelity   --all-features --fail-under-lines 80
+```
+
+The two pixel gates, over the same pinned WPS references and through two
+different renderers (`CORE-QUEUE.md` §1):
+
+```text
+cargo test -p strict-ooxml-render-svg --all-features --test ssim
+cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels
+```
+
+Looking at a page instead of a number, for either backend:
+
+```text
+cargo run -p strict-ooxml-render-svg --example page_diff -- <document> <page>
+cargo run -p strict-ooxml-pdf --features raster --example pdf_page_diff -- <document> <page>
 ```
 
 Feature Report schema validation (independent `jsonschema` oracle) and
@@ -109,6 +127,22 @@ Optional-element coverage gate (≥ 90%) and the independent corpus cross-check:
 cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 90
 cargo run -p xtool -- corpus-elements
 ```
+
+The two schema gates, against the official ECMA-376 Strict set. Same oracle, two
+paths — one oracle rather than two, because a second definition of "Strict" makes
+every threshold a number about nothing (`GATE-STRATEGY.md` §7):
+
+```text
+pip install -r xtool/xsd-gate/requirements.txt
+python xtool/xsd-gate/xsd_gate.py      # what we write from Strict input      (XS-nn)
+python xtool/xsd-gate/census_gate.py   # what we write from Transitional input (TZ-nn)
+```
+
+`census_gate.py` is the one that judges `write --transitional` end to end — the
+byte-level normalizer, the pass-through and the loss report — over 58 Transitional
+documents. Its `unaccounted` signal fails on a part that was dropped **and not
+named in the report**, which is the loss class no schema can see: a missing part
+validates perfectly and draws nothing.
 
 Fuzzing (requires `cargo-fuzz` and a nightly toolchain):
 
