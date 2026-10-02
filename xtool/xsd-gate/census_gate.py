@@ -66,6 +66,12 @@ except ImportError:  # pragma: no cover - the gate's own dependency
     )
     raise SystemExit(2)
 
+# The markup-compatibility namespace. Defined here rather than borrowed from
+# `xsd_gate` because the two tools use it for opposite purposes: there it selects
+# which driver validates a part, here it says which branches of the input are
+# alternatives of one another rather than two separate constructs.
+MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+
 import xsd_gate  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -109,6 +115,98 @@ def load_census() -> list[dict]:
         raise SystemExit(f"error: {path} is missing; a census with no registry is a count")
     with open(path, "rb") as handle:
         return tomllib.load(handle)["item"]
+
+
+def vanished_elements(
+    source: str, written: str, oracle, named: set[str]
+) -> list[tuple[str, str]]:
+    """Strict-declared elements the input had and the written part does not.
+
+    This is the `element` signal, and it is the only one of the five that can see
+    the defect class the re-audit named as П-2, П-3 and П-9: a legal element that
+    a REGENERATED part drops, silently. `TZ-15` covers parts and nothing else -
+    `settings.xml` is present in both packages and still lost 49 of its elements,
+    which no part-level signal can notice because a present part is not a lost
+    part.
+
+    Three rules, all of them learned the hard way by the numbers in that audit:
+
+      - Compare LOCAL names across namespaces, never qualified names. The input
+        is Transitional and the output is Strict, so every element changes
+        namespace on the way through and a qualified comparison finds nothing.
+      - Skip `mc:AlternateContent`. A `w:txbxContent` appears twice in the input
+        - once in `mc:Choice` and once in the `mc:Fallback` that duplicates it -
+        and once in the output. Counting occurrences called that a loss of one
+        per box; П-8 was that error, and it survived three measurements.
+      - Require the element to be declared by the ECMA set, and require the
+        document to have no lossy record at all. An element the model dropped on
+        purpose is named in the report, and a named removal is a decision.
+
+    `named` is every element name the writer's own report mentions, so a decision
+    is never reported as a defect.
+    """
+    found: list[tuple[str, str]] = []
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(written) as after:
+        for part in sorted(before.namelist()):
+            if not part.endswith(".xml") or part not in after.namelist():
+                continue
+            try:
+                old = etree.fromstring(before.read(part))
+                new = etree.fromstring(after.read(part))
+            except etree.XMLSyntaxError:
+                continue
+            gone = _local_names(old) - _local_names(new)
+            for local in sorted(gone):
+                if local in ("AlternateContent", "Choice", "Fallback"):
+                    continue
+                if local not in oracle.declared:
+                    continue
+                if local in named:
+                    continue
+                found.append((part, local))
+    return found
+
+
+def _local_names(root: etree._Element) -> set[str]:
+    """Every local name in a part, counting neither namespaces nor branches.
+
+    The `mc:Ignorable` branches are stripped first: MCE removes them before
+    conformance is defined, so an element that only ever existed there is not in
+    the written package by construction and is not a loss.
+    """
+    copy = etree.fromstring(etree.tostring(root))
+    _strip_mce(copy)
+    return {
+        etree.QName(element).localname
+        for element in copy.iter()
+        if isinstance(element.tag, str)
+    }
+
+
+def _strip_mce(root: etree._Element) -> None:
+    """Removes every element in a namespace MCE declares ignorable."""
+    ignorable: set[str] = set()
+    for element in root.iter():
+        if not isinstance(element.tag, str):
+            continue
+        value = element.get(f"{{{MC}}}Ignorable")
+        if value:
+            for prefix in value.split():
+                uri = element.nsmap.get(prefix)
+                if uri:
+                    ignorable.add(uri)
+    if not ignorable:
+        return
+    for element in list(root.iter()):
+        if not isinstance(element.tag, str):
+            continue
+        uri = etree.QName(element).namespace
+        if uri in ignorable:
+            parent = element.getparent()
+            if parent is not None:
+                for child in list(element):
+                    element.addprevious(child)
+                parent.remove(element)
 
 
 def census_hits(
@@ -170,15 +268,18 @@ def census_hits(
                     hit = any(marker in where for marker in item["elements"])
                 elif signal == "extension":
                     hit = any(marker in where for marker in item["elements"])
+                elif signal == "element":
+                    hit = label in item["elements"]
                 else:
                     hit = any(marker in detail for marker in item["elements"])
                 if hit:
                     counts[item["id"]] += 1
                     break
             else:
-                # Only a `message` can be an unnamed defect. A dropped part, an
-                # extension node and a lossy record each name themselves.
-                if signal == "message":
+                # Only a `message` or an `element` can be an unnamed defect. A
+                # dropped part, an extension node and a lossy record each name
+                # themselves.
+                if signal in ("message", "element"):
                     unmatched.append((where, label, detail))
     return {"counts": counts, "unmatched": unmatched}
 
@@ -344,6 +445,30 @@ def names_it(report: str, shape: str) -> bool:
         return True
     file = shape.rsplit("/", 1)[-1]
     return file in report
+
+
+def _names_in(report: str) -> set[str]:
+    """Every element or part name the writer's own report mentions.
+
+    The report prints one `[lossy]` or `[ignorable]` line per finding, each
+    carrying the name that was removed. A named removal is a decision (ADR-0007),
+    so the `element` signal needs the same vocabulary `names_it` builds for parts -
+    and it needs it by ELEMENT name rather than by part shape, because the defect
+    this signal exists for is an element leaving a part that is still present.
+    """
+    if not report:
+        return set()
+    found: set[str] = set()
+    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:-]*", report):
+        found.add(token)
+        # `w:doNotWrapTextWithPunct` names the element both ways: the signal
+        # compares LOCAL names, because the input and the output are in different
+        # namespaces by construction. `str.lstrip("wmo")` would be the wrong fix
+        # here - it strips a character SET, turning `mathPr` into `athPr`.
+        _, separator, local = token.partition(":")
+        if separator:
+            found.add(local)
+    return found
 
 
 def normalize_part(name: str) -> str:
@@ -561,6 +686,8 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     out_schema: collections.Counter = collections.Counter()
     dropped: collections.Counter = collections.Counter()
     unaccounted: collections.Counter = collections.Counter()
+    silent_elements: collections.Counter = collections.Counter()
+    silent_element_parts: list[str] = []
     lost_picture_parts: list[str] = []
     total_in = total_out = 0
     clean = 0
@@ -623,6 +750,15 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
                 if not names_it(report, shape):
                     unaccounted.update({shape: count})
                     signals["unaccounted"].append((name, shape, ""))
+            for part, local in vanished_elements(
+                os.path.join(corpus, name), path, oracle, _names_in(report)
+            ):
+                signals["element"].append((f"{name}: {part}", local, ""))
+                # `Counter.update({k: v})` ADDS v; it does not assign it, so the
+                # first spelling of this doubled the count on every hit and printed
+                # 9.2e19 findings over 232 elements.
+                silent_elements[local] += 1
+                silent_element_parts.append(f"{name}: {part} {local}")
             if outgoing_count == 0:
                 label_clean += 1
                 clean += 1
@@ -739,6 +875,25 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
             "\n  is the absence of evidence. The gate for those is the unit test named in `audit`,"
             "\n  because a corpus gate cannot see what the corpus does not contain."
         )
+    if silent_elements:
+        # The inventory and the gate are different questions, and printing one
+        # as the other is how an instrument starts lying. Not every element a
+        # regenerated part drops is a defect: the writer rebuilds from the model,
+        # so `w:qFormat`, `w:latentStyles` and `a:alpha` are absent because the
+        # project decided to recompute them, and no registry item claims them.
+        # The inventory below is therefore printed as a MEASUREMENT, and only the
+        # elements a `signal = "element"` registry item names are allowed to fail
+        # the gate - which is what makes adding one an explicit decision.
+        print(
+            f"\n=== Strict-declared elements a regenerated part dropped, unnamed: "
+            f"{sum(silent_elements.values())} finding(s) over {len(silent_elements)} distinct element(s)"
+            "\n    The part is present in both packages, so TZ-15 sees nothing while its content"
+            "\n    shrinks. This is a MEASUREMENT of the whole inventory: an element no registry"
+            "\n    item claims may be a decision rather than a loss, and only a `signal = \"element\"`"
+            "\n    item can turn one of these into a gate failure."
+        )
+        for local, count in silent_elements.most_common(40):
+            print(f"  {local:<28} {count:>4} document(s)")
     if hits["unmatched"]:
         print(f"\n=== {len(hits['unmatched'])} violation(s) match no census item")
         for where, local, message in hits["unmatched"][:40]:

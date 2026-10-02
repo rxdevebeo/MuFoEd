@@ -359,6 +359,7 @@ class Oracle:
         self.target_namespaces: set[str] = set()
         self.failures: list[str] = []
         self.drivers = 0
+        self.declared: dict[str, str] = {}
         self.index: dict[str, dict[str, tuple[str, str, bool]]] = {}
         self._build()
 
@@ -375,6 +376,14 @@ class Oracle:
             top_level = {etree.QName(child).localname for child in root if isinstance(child.tag, str)}
             for element in root.iter(f"{{{XSDNS}}}element"):
                 local, kind = element.get("name"), element.get("type")
+                # Every local name the set declares, with the file that declares
+                # it. The census gate asks "is this element legal in Strict at
+                # all?", and it asked the wrong reader before: counting only
+                # `wml.xsd` loses 18 elements whose declaration lives in
+                # `shared-math.xsd` - `m:mathPr` and its eleven children, which
+                # is the whole of reaudit П-9.
+                if local:
+                    self.declared.setdefault(local, name)
                 if local and kind and local not in index.setdefault(namespace, {}):
                     index[namespace][local] = (kind, os.path.join(self.directory, name), "element" in top_level)
 
