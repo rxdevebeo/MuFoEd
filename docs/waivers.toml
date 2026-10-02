@@ -512,13 +512,21 @@ the corpus — it is what the harness cannot reach inside it.**
 risk = """
 Four named gaps, none of them "the corpus is small":
 
-1. **Parts with no global element in the ECMA Strict set are not validated at
-   all** — `webSettings`, `docProps/app.xml`, and the diagram parts. The harness
-   reports them as uncovered rather than green (`STAGE-10-TASK.md` E54).
-2. **25 root elements cannot be declared by a synthesised driver** because their
-   type lives in another namespace (`a:CT_…` in `dml-chartDrawing.xsd`). A driver
-   can only declare an element whose type is unprefixed, so these are uncovered.
-   2120 drivers do compile; these 25 do not.
+1. **Parts in a namespace ECMA-376 Part 1 does not declare cannot be validated by
+   any oracle built from the ECMA set** - OPC core properties, the Microsoft diagram
+   and chart-style namespaces, `w15:people` / `w15:commentsEx`, `coverPageProps`.
+   Seven roots in six namespaces, on the corpus. The harness names each one and
+   never counts it green. **This is a property of the standard, not a gap**, and it
+   is the only part of this list that is not a defect in the harness or a
+   deliberate refusal; the two claims below, which this entry used to make, were
+   both wrong and are corrected under `exit`.
+2. ~~**25 root elements cannot be declared by a synthesised driver** because their
+   type lives in another namespace~~ - **false, and the count was never 25.** It was
+   13, all in `dml-chartDrawing.xsd`, and every one of them compiles. A driver *can*
+   declare an element whose type is a prefixed QName; it needs the `xsd:import` that
+   binds that namespace and a prefix in scope for the name. The gate did not emit
+   either, so 13 roots were reported UNCOVERED for a reason that was about the
+   driver rather than about the schema. Corrected: 0, and 2133 drivers.
 3. **One file never produces an output measurement**:
    `annotation-ref-sdk-mixed-rels.docx` is refused by the writer's conformance
    detector (Word 2009 wrote a Strict package with a Transitional relationship
@@ -539,24 +547,45 @@ repository", not "whose markup"; the independence the gate gained is from *this
 project's* writer, which is the independence it needed.
 """
 exit = """
-Partly discharged 2026-10-01: the oracle is built (`xtool/xsd-gate/`), compiles
-2120 drivers with zero failures, publishes the skipped-part and uncovered-root
-counts on every run, and **passes** - the only remaining schema violations in
-the written corpus are 11 carried verbatim from the producer's own chart parts
-(`XS-16`, closed by marking rather than by repair). The measure can no longer
-hide behind a partial run.
+**Discharged 2026-10-02, on the gate's own counts.** The oracle is built
+(`xtool/xsd-gate/`), compiles **2133 drivers with zero failures**, publishes the
+skipped-part and uncovered-root counts on every run, and **passes** - the only
+remaining schema violations in the written corpus are 11 carried verbatim from the
+producer's own chart parts (`XS-16`, closed by marking rather than by repair).
 
-Still open, and what this entry now retires: either validate the uncovered parts
-listed under `risk` (the 13 prefixed roots in `dml-chartDrawing.xsd`, and
-`webSettings` / `docProps/app.xml` / the diagram parts), or state per part that it
-is out of gate scope.
+The "13 uncovered roots" this entry carried is **zero, and the reason it was 13 was
+false.** The gate skipped any element whose type is a prefixed QName, on the stated
+ground that "a prefixed type means the element is declared somewhere this set does
+not include". `a:CT_NonVisualDrawingProps` is a prefix for
+`http://purl.oclc.org/ooxml/drawingml/main`, and `dml-main.xsd` is in the set. The
+driver omitted the `xsd:import` that binds that namespace, so the QName had nothing
+to resolve to, and the gate reported a limitation of the standard as a limitation of
+itself. Emitting the import, and the prefix declaration that goes with it - an
+import binds a *namespace*, and the type name still needs a prefix in scope - took
+the count from 13 to 0 and the drivers from 2120 to 2133, with the four control
+cases unchanged and the pass unchanged. **All 13 were in `dml-chartDrawing.xsd`**, so
+no part of the corpus was being judged less strictly than the report said.
 
-The corpus question is closed — 17 external files, 3 repositories, 3 licences,
-each hashed and attributed (`docs/corpus-task-strict-docx.md` steps 1–5, and
-`strict-ooxml-core/tests/strict/PROVENANCE.md`). What this entry now retires is
-**coverage inside the corpus**: either validate the uncovered parts listed above,
-or state per part that it is out of gate scope, and publish the count of skipped
-parts on every run so that a future silent skip cannot masquerade as a pass.
+The skipped parts, which were one number, are now grouped by the reason there is no
+validator, because a number cannot be discharged:
+
+    167  OPC, not ECMA-376 Part 1        (.rels, [Content_Types].xml, media, themes)
+
+and **7 roots in 6 namespaces, none of which ECMA-376 Part 1 declares**: OPC core
+properties (both the `schemas.openxmlformats.org` and the `purl.oclc.org` spelling),
+`microsoft.com/office/drawing/2008/diagram`, `.../drawing/2012/chartStyle` (two
+roots), `.../word/2012/wordml` (`w15:people`, `w15:commentsEx`), and
+`.../2006/coverPageProps`. That is a fact about the standard, not a gap in the
+oracle, and no oracle built from this set can judge them. The gate now names this
+reason instead of the prefixed-type claim, which is how the false claim was found.
+
+Two items under `risk` are stale and are corrected here rather than left to be
+re-derived: `docProps/app.xml` **is** covered (item 6 gave it a driver, and
+`a:Properties` resolves in every document of the corpus), and the diagram parts
+named above are in a Microsoft namespace, not in ECMA's `dml-diagram.xsd`, which
+*is* in the set and *is* driven. What remains open is only the last clause of the
+original exit - validate the parts no set can validate - and that clause is
+answered by the grouping above rather than by work.
 """
 opened = "2026-10-01"
 

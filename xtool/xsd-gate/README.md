@@ -83,6 +83,18 @@ it had not measured: `wml.xsd` was the schema that would not compile, so
 are published only when zero schemas failed to compile, and the count of skipped
 parts is printed every run whether or not it is zero.
 
+**It may not excuse itself with a reason it has not checked.** The gate reported 13
+roots as `UNCOVERED` with the note that "a prefixed type means the element is
+declared somewhere this set does not include". That was a claim about what a
+*driver* could name, and it was false: all 13 were `a:CT_*` types, and
+`dml-main.xsd` - which declares them - is in the set. The driver omitted the
+`xsd:import`, so the QName had nothing to resolve to, and a limitation of the
+harness was published as a limitation of the standard. It is now 0, and
+`_compile` emits the import plus the prefix declaration that goes with it (an
+import binds a namespace; the type name still needs a prefix in scope). The
+remaining skipped parts print the reason taken from the set rather than assumed -
+`namespace not in the ECMA set (<uri>)` - which is what showed the claim up.
+
 **It may not call an extension ours.** Strict conformance is defined on the
 post-MCE part (ECMA-376 Part 1 §2.1 clause ii), so `mce_process()` runs first and
 every message lands in one of three baskets: `schema`, `extension`, or
@@ -141,7 +153,7 @@ the audit's numbers were produced by a harness outside the tree, so nothing in
 §4 of that document could be reproduced.
 
 **One oracle, not two.** It imports `xsd_gate.Oracle` and uses it unchanged - the
-same patched schema set, the same 2120 drivers, the same `mce_process()`, the same
+same patched schema set, the same 2133 drivers, the same `mce_process()`, the same
 three baskets. A second oracle would be a second definition of "Strict", and a
 threshold taken from one and applied to the other is a number about nothing. That
 is the same reasoning that put SSIM in one crate rather than two.

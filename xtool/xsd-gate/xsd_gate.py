@@ -359,10 +359,11 @@ class Oracle:
         self.target_namespaces: set[str] = set()
         self.failures: list[str] = []
         self.drivers = 0
+        self.index: dict[str, dict[str, tuple[str, str, bool]]] = {}
         self._build()
 
     def _build(self) -> None:
-        index: dict[str, dict[str, tuple[str, str, bool]]] = {}
+        index: dict[str, dict[str, tuple[str, str, bool]]] = self.index
         files = sorted(f for f in os.listdir(self.directory) if f.endswith(".xsd"))
         for name in files:
             tree = etree.parse(os.path.join(self.directory, name))
@@ -382,14 +383,17 @@ class Oracle:
             for local, (kind, source, global_decl) in sorted(roots.items()):
                 key = (namespace, local)
                 if not global_decl and ":" in kind:
-                    # A driver can only declare an element whose type lives in the
-                    # same target namespace. A prefixed type means the element is
-                    # declared somewhere this set does not include; naming it is
-                    # honest, mangling it into a type name that does not exist is
-                    # the alternative and it produced green numbers that meant
-                    # nothing.
-                    self.uncovered.append(f"{os.path.basename(source)}::{local}")
-                    continue
+                    # A driver may declare an element whose type is a prefixed
+                    # QName, as long as the prefix is bound to a schema in this
+                    # set - see `_compile`, which now emits the import. This
+                    # branch names what is left: a type that resolves to a
+                    # namespace we do not have, where the alternative is mangling
+                    # it into a name that does not exist, which produced green
+                    # numbers that meant nothing.
+                    type_namespace = tree_namespace(nsmap_of(source), kind)
+                    if type_namespace not in self.target_namespaces:
+                        self.uncovered.append(f"{os.path.basename(source)}::{local}")
+                        continue
                 try:
                     self.schemas[key] = self._compile(kind, local, namespace, source, global_decl, work)
                     self.drivers += 1
@@ -402,26 +406,68 @@ class Oracle:
         if global_decl:
             return etree.XMLSchema(etree.parse(source))
         tree = etree.parse(source)
-        prefix = next((p for p, uri in tree.getroot().nsmap.items() if uri == namespace and p), "x")
+        nsmap = tree.getroot().nsmap
+        prefix = next((p for p, uri in nsmap.items() if uri == namespace and p), "x")
         driver = os.path.join(work, f"driver-{len(self.schemas)}-{safe(element)}.xsd")
+
+        # A type named `a:CT_Foo` needs three things, and the gate used to
+        # provide two, which is why 13 roots were reported UNCOVERED with the
+        # reason "a prefixed type means the element is declared somewhere this set
+        # does not include". That reason is false: `a` is a prefix for
+        # `.../drawingml/main`, and `dml-main.xsd` is in this set. What was
+        # missing was the IMPORT that binds the prefix to a schema, so the QName
+        # `a:CT_Foo` had no definition to resolve to. The owning schema is
+        # included, and the namespace the type lives in is imported - the whole
+        # set, not just the owner, because dml-chart.xsd and dml-chartDrawing.xsd
+        # reference each other and resolving one without the other fails.
+        # The element's own namespace needs a prefix, because the driver declares
+        # its targetNamespace. The type name is written as the source schema wrote
+        # it - `a:CT_BlipFillProperties` - and the import is what makes that QName
+        # resolve. Prefixing the type with the element's prefix produces
+        # `cx:CT_BlipFillProperties`, a different type name that does not exist,
+        # and the driver then fails to compile for a reason that has nothing to
+        # do with the part being validated.
+        imports = ""
+        declarations = ""
+        for p, uri in sorted(nsmap.items(), key=lambda pair: (pair[0] or "")):
+            if not p or p == "xsd" or uri in (namespace, XSDNS):
+                continue
+            if uri in self.target_namespaces:
+                declarations += ' xmlns:%s="%s"' % (p, uri)
+                imports += '<xsd:import namespace="%s" schemaLocation="%s"/>' % (
+                    uri,
+                    os.path.abspath(self.index[uri][next(iter(self.index[uri]))][1]).replace("\\", "/"),
+                )
         with open(driver, "w", encoding="utf-8") as handle:
             handle.write(
                 '<xsd:schema xmlns:xsd="%s" xmlns:%s="%s" targetNamespace="%s"'
-                ' elementFormDefault="qualified">'
-                '<xsd:include schemaLocation="%s"/>'
-                '<xsd:element name="%s" type="%s:%s"/></xsd:schema>'
+                ' elementFormDefault="qualified"%s>'
+                '<xsd:include schemaLocation="%s"/>%s'
+                '<xsd:element name="%s" type="%s"/></xsd:schema>'
                 % (
                     XSDNS,
                     prefix,
                     namespace,
                     namespace,
+                    declarations,
                     os.path.abspath(source).replace("\\", "/"),
+                    imports,
                     element,
-                    prefix,
-                    kind,
+                    kind if ":" in kind else f"{prefix}:{kind}",
                 )
             )
         return etree.XMLSchema(etree.parse(driver))
+
+
+def nsmap_of(source: str) -> dict:
+    """The namespace prefixes one schema file binds, for resolving a type QName."""
+    return etree.parse(source).getroot().nsmap
+
+
+def tree_namespace(nsmap: dict, kind: str) -> str | None:
+    """The namespace a prefixed type name lives in, or None if it is unprefixed."""
+    prefix, _, _local = kind.partition(":")
+    return nsmap.get(prefix)
 
 
 def safe(name: str) -> str:
@@ -529,9 +575,20 @@ def validate_package(path: str, oracle: Oracle) -> Measurement:
             key = (qname.namespace, qname.localname)
             schema = oracle.schemas.get(key)
             if schema is None:
-                why = "root type is prefixed; no driver can declare it"
+                # The reason this part has no validator, named from the set rather
+                # than assumed. It used to say "root type is prefixed; no driver
+                # can declare it", which was a claim about the driver's ability
+                # to name a prefixed type, and it was false - `_compile` now
+                # emits the import that makes one resolve, and 13 roots came back.
+                # What is left is a namespace ECMA-376 Part 1 does not declare, and
+                # saying that is the difference between a gap in the oracle and a
+                # part nobody can validate by any means.
                 if key in {(None, key[1])}:
                     why = "no target namespace"
+                elif qname.namespace not in oracle.target_namespaces:
+                    why = f"namespace not in the ECMA set ({qname.namespace})"
+                else:
+                    why = "no global element declaration for this root in the set"
                 measurement.skipped.append(f"{name} ({qname.localname}: {why})")
                 continue
 
@@ -877,26 +934,63 @@ CONTROLS = {
         b'<w:body><w:p w14:paraId="1A2B3C4D"><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>',
         0,
     ),
+    # The other three controls all judge `w:document`, so none of them can tell
+    # whether a driver for a PREFIXED type is really there. Before 2026-10-02 the
+    # gate skipped 13 such roots as UNCOVERED and this section said nothing about
+    # them, which is how a missing `xsd:import` passed as a limitation of the
+    # standard. These two judge `cx:cNvSpPr`, whose type
+    # `a:CT_NonVisualDrawingShapeProps` lives in another namespace and resolves only
+    # through that import.
+    "prefixed-valid": (
+        "a cx:cNvSpPr carrying the a:spLocks its type requires - a root whose TYPE is "
+        "a prefixed QName, which is the case 13 roots were wrongly excused on",
+        b'<cx:cNvSpPr xmlns:cx="http://purl.oclc.org/ooxml/drawingml/chartDrawing"'
+        b' xmlns:a="http://purl.oclc.org/ooxml/drawingml/main">'
+        b'<a:spLocks noChangeArrowheads="1"/></cx:cNvSpPr>',
+        0,
+    ),
+    "prefixed-invalid": (
+        "the same root with a child that is not in its type: drop the driver's import "
+        "and this is accepted, so this is the control that would have caught it",
+        b'<cx:cNvSpPr xmlns:cx="http://purl.oclc.org/ooxml/drawingml/chartDrawing"'
+        b' xmlns:a="http://purl.oclc.org/ooxml/drawingml/main">'
+        b"<a:thisTypeDoesNotExist/></cx:cNvSpPr>",
+        "nonzero",
+    ),
 }
 
 
+PREFIXED_CONTROL = ("http://purl.oclc.org/ooxml/drawingml/chartDrawing", "cNvSpPr")
+WML_DOCUMENT = ("http://purl.oclc.org/ooxml/wordprocessingml/main", "document")
+
+
 def run_controls(oracle: Oracle) -> bool:
-    """Four probes the gate must pass before its numbers mean anything.
+    """Six probes the gate must pass before its numbers mean anything.
 
     A validator that reports zero for an invalid document reports zero for
     everything, and the first version of this harness had exactly that defect in
     it: it caught `XMLSchemaParseError` and passed, and consequently reported a
     corpus clean that it had not measured - `wml.xsd` was the schema that would not
-    compile, so `document.xml`, `styles.xml`, `numbering.xml`, `settings.xml`,
-    `hdr` and `ftr` were never validated, which is precisely the set this gate
-    exists to judge.
+    compile, so `document.xml`, `styles.xml`, `numbering.xml`, `settings.xml`, `hdr`
+    and `ftr` were never validated, which is precisely the set this gate exists to
+    judge.
+
+    Four of the six judge `w:document`. The other two judge a root whose *type* is a
+    prefixed QName, and they are here for the same reason: the gate excused 13 such
+    roots for a year of measurement on a claim about drivers that was false, and no
+    control here would have noticed.
     """
-    schema = oracle.schemas.get(("http://purl.oclc.org/ooxml/wordprocessingml/main", "document"))
-    if schema is None:
-        print("control: FAILED - no compiled schema for w:document", file=sys.stderr)
+    if oracle.schemas.get(PREFIXED_CONTROL) is None:
+        print(
+            "control: FAILED - no compiled schema for "
+            f"{PREFIXED_CONTROL[1]}, so the prefixed-type drivers are absent",
+            file=sys.stderr,
+        )
         return False
     ok = True
     for name, (description, payload, wanted) in CONTROLS.items():
+        key = PREFIXED_CONTROL if name.startswith("prefixed-") else WML_DOCUMENT
+        schema = oracle.schemas[key]
         root = etree.fromstring(payload)
         mce_process(root)
         lines = line_elements(root)
@@ -1098,6 +1192,7 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
     print(f"\n{'document':<44} {'IN':>5} {'OUT':>5} {'delta':>7}")
     totals = [0, 0]
     skipped = 0
+    skipped_entries: list[str] = []
     refused = 0
     out_schema = collections.Counter()
     out_messages: list[tuple[str, str, str]] = []
@@ -1111,12 +1206,15 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
             refused += 1
             totals[0] += sum(incoming.schema.values())
             skipped += len(incoming.skipped)
+            skipped_entries.extend(incoming.skipped)
             per_document.append((name, totals, None))
             continue
         outgoing = validate_package(path, oracle)
         totals[0] += sum(incoming.schema.values())
         totals[1] += sum(outgoing.schema.values())
         skipped += len(incoming.skipped) + len(outgoing.skipped)
+        skipped_entries.extend(incoming.skipped)
+        skipped_entries.extend(outgoing.skipped)
         out_schema.update(outgoing.schema)
         out_messages.extend(outgoing.messages)
         print(
@@ -1128,6 +1226,17 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
     print(f"  {'TOTAL':<42} {totals[0]:>5} {totals[1]:>5} {totals[1] - totals[0]:>+7}")
     print(f"\nparts not covered by the ECMA set (G10): {skipped} part(s), and "
           f"{len(oracle.uncovered)} root(s) with no driver - both listed, never counted green")
+    # The skipped parts used to be one number, and a number cannot be discharged:
+    # it says 232 and does not say which of them are OPC files no schema could
+    # ever judge and which are parts this gate is failing to judge. Grouped by the
+    # reason, the residue is 7 roots in 5 namespaces, all of them namespaces
+    # ECMA-376 Part 1 does not declare - a fact about the standard, not a gap.
+    residue = collections.Counter()
+    for entry in skipped_entries:
+        residue[entry.split(" (", 1)[1].rsplit(")", 1)[0] if " (" in entry else entry] += 1
+    print("\n=== skipped parts, by the reason there is no validator for them")
+    for why, count in residue.most_common():
+        print(f"  {count:>5}  {why}")
     if refused:
         print(f"packages our writer refused outright: {refused}")
 
