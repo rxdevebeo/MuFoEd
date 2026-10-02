@@ -54,6 +54,7 @@ impl PartParser<'_> {
                 XmlEvent::Eof => return Err(self.invalid("unexpected end of notes part")),
             }
         }
+        self.expect_end_of_part()?;
         self.leave();
         Ok((table, location))
     }

@@ -78,9 +78,14 @@ impl PartParser<'_> {
                     }
                 }
                 XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) | XmlEvent::Eof => {}
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                // Defence in depth (AUD-04): the reader already refuses to hand
+                // back `Eof` for a truncated part, and a loop that treated it as
+                // "nothing more" was the hang this arm exists to make impossible.
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of fontTable")),
             }
         }
+        self.expect_end_of_part()?;
         Ok(table)
     }
 
@@ -131,7 +136,10 @@ impl PartParser<'_> {
                     }
                 }
                 XmlEvent::EndElement { .. } => return Ok(entry),
-                XmlEvent::Text(_) | XmlEvent::CData(_) | XmlEvent::Eof => {}
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                // See `parse_font_table_root`: `Eof` here means the part ended
+                // inside a `w:font`, which is not a font with no children.
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of w:font")),
             }
         }
     }

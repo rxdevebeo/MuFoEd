@@ -106,6 +106,13 @@ jobs:
         run: cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 89
       - name: Stage-5 extended-scenario coverage gate (>= 85%)
         run: cargo run -p xtool -- coverage --file coverage/stage5-scenarios.toml --min 85
+      # A parser loop that treats the end of a part as "nothing more" is an
+      # infinite loop, not a parse: three such loops shipped in `strict-ooxml-wml`
+      # and hung on a truncated `fontTable.xml` (REWORK-AUDIT-2026-10 AUD-04).
+      # The reader now refuses to report a truncated part as a complete one, so
+      # the lint guards the belt to that pair of braces.
+      - name: No parser loop can swallow the end of a part
+        run: cargo run -p xtool -- lint-eof
 
   xsd-gate:
     name: XSD gate (ECMA-376 Strict)

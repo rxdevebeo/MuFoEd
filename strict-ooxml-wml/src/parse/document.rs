@@ -58,6 +58,7 @@ impl PartParser<'_> {
                 XmlEvent::Eof => return Err(self.invalid("unexpected end of document part")),
             }
         }
+        self.expect_end_of_part()?;
         self.leave();
         Ok((body, sections))
     }

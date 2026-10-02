@@ -149,6 +149,190 @@ mod escape {
 
 mod xml {
     //! AUD-04: truncated parts, content after the root, no root.
+
+    use super::*;
+    use strict_ooxml_core::part::PartId;
+    use strict_ooxml_testkit::docx::Family;
+
+    const W: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+
+    /// A `word/document.xml` carrying exactly `xml`.
+    fn document_part(xml: &[u8]) -> Vec<u8> {
+        DocxBuilder::strict()
+            .part("word/document.xml", xml.to_vec())
+            .build()
+    }
+
+    /// Opens a package, requiring it to be rejected, and returns the message.
+    fn rejects(package: Vec<u8>) -> String {
+        let error = assert_survives("open", || open(package, &OpenOptions::default()));
+        match error {
+            strict_ooxml::StrictError::InvalidXml { detail, .. } => detail,
+            other => panic!("expected InvalidXml, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_document_truncated_inside_an_element_is_an_error() {
+        let detail = rejects(document_part(
+            br#"<w:document xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"><w:body><w:p>"#,
+        ));
+        assert!(detail.contains("unclosed element"), "{detail}");
+    }
+
+    #[test]
+    fn a_document_with_two_roots_is_an_error() {
+        let detail = rejects(document_part(
+            br#"<w:document xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"/><w:document xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"/>"#,
+        ));
+        assert!(detail.contains("content after the root"), "{detail}");
+    }
+
+    #[test]
+    fn a_part_with_no_root_is_an_error() {
+        let detail = rejects(document_part(
+            b"<?xml version=\"1.0\"?><!-- nothing here -->",
+        ));
+        assert!(detail.contains("no root element"), "{detail}");
+    }
+
+    #[test]
+    fn an_empty_part_is_an_error() {
+        let detail = rejects(document_part(b""));
+        assert!(detail.contains("no root element"), "{detail}");
+    }
+
+    /// Every optional part a reader reads, cut short by exactly its closing tag.
+    ///
+    /// Before AUD-04 three of these loops matched `Eof` as "nothing more" and
+    /// spun forever on a part that ended early; the ten-second limit is what
+    /// tells "rejected" from "hung".
+    #[test]
+    fn every_truncated_part_is_rejected_promptly() {
+        let cases: [(&str, &str, &str, &str); 7] = [
+            (
+                "word/fontTable.xml",
+                "fontTable",
+                "w:fonts",
+                "<w:font w:name=\"A\"/>",
+            ),
+            (
+                "word/settings.xml",
+                "settings",
+                "w:settings",
+                "<m:mathPr><m:mathFont m:val=\"Cambria Math\"/>",
+            ),
+            (
+                "word/styles.xml",
+                "styles",
+                "w:styles",
+                "<w:style w:type=\"paragraph\"/>",
+            ),
+            (
+                "word/numbering.xml",
+                "numbering",
+                "w:numbering",
+                "<w:num w:numId=\"1\"/>",
+            ),
+            (
+                "word/document.xml",
+                "officeDocument",
+                "w:document",
+                "<w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body>",
+            ),
+            (
+                "word/footnotes.xml",
+                "footnotes",
+                "w:footnotes",
+                "<w:footnote w:id=\"1\"><w:p>",
+            ),
+            (
+                "word/header1.xml",
+                "header",
+                "w:hdr",
+                "<w:p><w:r><w:t>h</w:t></w:r></w:p>",
+            ),
+        ];
+        for (name, rel_type, root, inner) in cases {
+            let family = Family::Strict;
+            let full = strict_ooxml_testkit::docx::part_xml(family, root, inner);
+            let text = String::from_utf8(full).expect("utf-8");
+            let closing = format!("</{root}>");
+            let cut = text
+                .strip_suffix(closing.as_str())
+                .unwrap_or_else(|| panic!("{name}: the fixture does not end with {closing}"))
+                .as_bytes()
+                .to_vec();
+            assert!(
+                String::from_utf8_lossy(&cut).contains("<w"),
+                "{name}: nothing was cut"
+            );
+
+            let file = name.rsplit('/').next().expect("a file name");
+            let mut hostile = DocxBuilder::strict().part(name, cut);
+            if name != "word/document.xml" {
+                // Every other part is reached through a relationship, and the
+                // header only through a `w:headerReference` - a relationship
+                // alone does not make a reader open it.
+                hostile = hostile
+                    .rel("rIdPart", &family.rel_type(rel_type), file)
+                    .content_type(
+                        &format!("/{name}"),
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.part+xml",
+                    );
+            }
+            if name == "word/header1.xml" {
+                hostile = hostile.body(
+                    "<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdPart\"/></w:sectPr>",
+                );
+            }
+            let error = assert_survives("open truncated part", move || {
+                open(hostile.build(), &OpenOptions::default())
+            });
+            assert!(
+                matches!(error, strict_ooxml::StrictError::InvalidXml { .. }),
+                "{name}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_main_document_truncated_inside_a_run_is_an_error() {
+        let detail = rejects(
+            DocxBuilder::strict()
+                .document_bytes(format!(
+                    "<w:document xmlns:w=\"{W}\"><w:body><w:p><w:r><w:t>text"
+                ))
+                .build(),
+        );
+        assert!(detail.contains("unclosed element"), "{detail}");
+    }
+
+    #[test]
+    fn a_well_formed_short_part_is_still_read() {
+        // The guard is on truncation, not on size: a small complete part is a
+        // normal document, and the fix must not have become "reject short parts".
+        let bytes = DocxBuilder::strict()
+            .part_xml(
+                "word/settings.xml",
+                "w:settings",
+                "<w:zoom w:percent=\"100\"/>",
+            )
+            .rel(
+                "rIdSettings",
+                &Family::Strict.rel_type("settings"),
+                "settings.xml",
+            )
+            .build();
+        let opened = assert_survives("open short settings", || {
+            StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default()).expect("open")
+        });
+        let settings = PartId::new("/word/settings.xml");
+        assert!(
+            opened.package().part(&settings).is_some(),
+            "the part is in the package"
+        );
+    }
 }
 
 mod nesting {

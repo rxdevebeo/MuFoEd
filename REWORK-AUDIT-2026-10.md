@@ -20,8 +20,9 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-01 | ✅ выполнена | `13a66dc` | Крейт `strict-ooxml-testkit` (`publish = false`, без зависимостей от крейтов workspace): `ZipBuilder` со своим CRC-32, `DocxBuilder` (Strict/Transitional, замена любой части, `raw_entry` для дубликатов), `PdfBuilder` (настоящий xref, `reserve`/`set` для ссылок на себя), `xml::{nested, nested_tables, nested_text_boxes}`, `harness::{bounded, assert_survives}` (стек 1 MiB, таймаут 10 с). 14 юнит-тестов. Шаг CI «Hostile inputs (release)» |
 | AUD-02 | ✅ выполнена | `13a66dc` | `tests/hostile.rs` в `strict-ooxml`, `strict-ooxml-pdf`, `strict-ooxml-convert` с модулями под задачи Ф1–Ф2 и смоук-тестами testkit на настоящем API |
 | AUD-03 | ✅ выполнена | `4f0939d` | `strict_ooxml_core::xml::escape` (`is_xml_char`, `escape_text_into`/`escape_attr_into` с числом удалённых символов, `count_invalid`); шесть локальных функций удалены. `\t\n\r` в `.rels` и `[Content_Types].xml` пишутся ссылками, а не пробелом. Писатель: `XmlWriter::finish_counted`, `Ctx::finish_xml`, потеря `W.invalid-xml-char` (`Lossy`) с именем части из `part_xml`. SVG: новое поле `Page::warnings`, `render.invalid-xml-char`. Тесты: юнит + 2 proptest в core, юнит в writer, 2 интеграционных в `strict-ooxml/tests/hostile.rs` (оракул `roxmltree`) |
-| AUD-04 … AUD-94 | ⏳ не начаты | — | — |
+| AUD-04 | ✅ выполнена | `см. ниже` | `XmlReader::end_of_document()` отвергает конец входа с незакрытыми элементами (`unexpected end of document: N unclosed element(s), innermost <name>`), второй корень и непробельный текст после корня (`content after the root element`) и документ без корня (`no root element`); новые поля `root_seen`/`root_closed`, общий `close_scope()`. `PartParser::expect_end_of_part()` — восемь корневых парсеров дочитывают часть, иначе хвост после `</w:document>` оставался непрочитанным. Три петли WML с явной веткой `Eof`: `fonts.rs` ×2 и `settings.rs::parse_math_properties`, где было `_ => {}`. `xtool lint-eof` — рекурсивный обход `.rs`, снятие `//`-комментариев перед разбором, поиск `Eof`-руки по отступу, явная отмена `lint-eof: this arm is the success case`; шаг в CI. Тесты: 10 юнит в core, 7 в `strict-ooxml/tests/hostile.rs` (каждая часть, обрезанная ровно по закрывающему тегу), 6 юнит в `xtool` |
 
+| AUD-05 … AUD-94 | ⏳ не начаты | — | — |
 **Состояние CI.** Прогон [37071556814](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071556814) на `c28dcc3` полностью зелёный: test (ubuntu, macos, windows), fuzz smoke, coverage, msrv, cargo-deny, XSD gate. Fuzz nightly запускается только по расписанию.
 
 **Отступления, допущенные при выполнении.**
@@ -29,6 +30,10 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 - AUD-03: конвертер своего XML не пишет, его вывод проходит через писатель, поэтому отдельная запись `convert.invalid-xml-char` не вводилась. Её проверяет тест AUD-83.
 - AUD-03: MathML (`math_expression_to_mathml`) удаляет недопустимые символы, но не сообщает о них: у публичного API нет отчёта.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
+- Census-гейт был сломан до начала Ф1: `report()` печатал список сообщений из переменной `out_messages`, которой в нём нет (`NameError` на ветке, которая срабатывает всегда). Исправлено в `f3f3456`; до правки §0.4 нельзя было выполнить в принципе.
+- AUD-04: ветки `Eof` в трёх петлях WML стали защитой в глубину — `XmlReader` отвергает обрезанную часть раньше, и до них управление уже не доходит. Это следствие решения п.1, а не ослабление проверки: петли больше не могут зависнуть ни при каком поведении ридера.
+- AUD-04: добавлен `PartParser::expect_end_of_part()`. Без него «content after the root element» был бы недостижим через `open_*`: парсер по построению останавливается на закрывающем теге корня, и хвост после него никто не читает. Это выходит за букву п.2, но без него половина п.2 не проверяема через публичный API.
+- AUD-04: у `xtool lint-eof` есть явная отмена — маркер `lint-eof: this arm is the success case` в документации функции. Без неё линт не может отличить `expect_end_of_part` (где `Eof` — успех) от петли, которая глотает конец части.
 
 ---
 

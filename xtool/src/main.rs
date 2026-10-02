@@ -11,6 +11,10 @@
 //! - `corpus-elements [--corpus <dir>]` — the independent cross-check required by
 //!   REWORK M1: reports which element names actually occurring in the corpus are
 //!   not marked `supported` in the inventory.
+//! - `lint-eof [<root>...]` — every parser loop that pulls `next_event` must have
+//!   an `Eof` arm that fails (REWORK-AUDIT-2026-10, AUD-04). A loop that treats
+//!   the end of a part as "nothing more" spins forever on a truncated part, and
+//!   three such loops shipped inside `strict-ooxml-wml`.
 //! - `gen-docx --out <path> [--paragraphs <n>] [--stage5] [--stage5b]
 //!   [--stage5c]` — writes a synthetic Strict `.docx` for benchmarks and
 //!   no-panic corpus runs; the stage flags select the echelon fixture.
@@ -345,6 +349,7 @@ fn main() -> ExitCode {
         Some("xsd-inventory") => xsd_inventory(&args[1..]),
         Some("coverage") => coverage(&args[1..]),
         Some("corpus-elements") => corpus_elements(&args[1..]),
+        Some("lint-eof") => lint_eof(&args[1..]),
         Some("gen-docx") => gen_docx(&args[1..]),
         Some("--help" | "-h") | None => {
             print_usage();
@@ -360,11 +365,12 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: xtool <xsd-inventory|coverage|corpus-elements|gen-docx> [options]\n\
+        "usage: xtool <xsd-inventory|coverage|corpus-elements|lint-eof|gen-docx> [options]\n\
          \n\
          xsd-inventory   [--xsd <file>]... [--out <path>]\n\
          coverage        [--file <path>] [--min <percent>]\n\
          corpus-elements [--corpus <dir>]\n\
+         lint-eof        [<root>...]  (default: strict-ooxml-wml/src)\n\
          gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b] [--stage5c]"
     );
 }
@@ -653,7 +659,258 @@ fn corpus_elements(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Returns the sorted `.docx` paths in a directory.
+/// One `loop`-over-`next_event` function that cannot notice the end of its part.
+#[derive(Debug, PartialEq, Eq)]
+struct EofFinding {
+    /// File the finding is in, as given on the command line.
+    file: String,
+    /// 1-based line of the function's `fn`.
+    line: usize,
+    /// The function's name, or `<unknown>` when the line does not spell one.
+    function: String,
+    /// Why the function is a finding.
+    why: &'static str,
+}
+
+/// Checks that every parser loop which pulls `next_event` fails on `Eof`.
+///
+/// `XmlReader` now refuses to report a truncated part as a complete one, so the
+/// loop below `Eof` is unreachable - but "unreachable" is a property of the code
+/// as it is today, and the reader is one refactor away from handing `Eof` back
+/// for a part that legitimately has no more content. The rule is cheap and the
+/// cost of missing it is a hang, so it is a gate rather than a review note.
+///
+/// The scan is textual and per function: a function runs from its `fn` line to
+/// the next one. That is a heuristic, and it is deliberately a coarse one - it
+/// cannot see through string literals, so a function whose only `Eof` mention is
+/// inside a `format!` passes. A false negative here costs a review, a false
+/// positive costs a `//`-comment, so the imprecision is in the right direction.
+fn lint_eof(args: &[String]) -> ExitCode {
+    let roots: Vec<String> = if args.is_empty() {
+        vec!["strict-ooxml-wml/src".to_owned()]
+    } else {
+        args.to_vec()
+    };
+    let mut files = Vec::new();
+    for root in &roots {
+        let mut here = match rust_files(std::path::Path::new(root)) {
+            Ok(files) => files,
+            Err(error) => {
+                eprintln!("error: cannot read {root}: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        here.sort();
+        files.append(&mut here);
+    }
+
+    let mut findings = Vec::new();
+    for file in &files {
+        let text = match std::fs::read_to_string(file) {
+            Ok(text) => text,
+            Err(error) => {
+                eprintln!("error: cannot read {file}: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        findings.extend(eof_findings(file, &text));
+    }
+
+    if findings.is_empty() {
+        println!(
+            "lint-eof: {} file(s), every loop over next_event fails on Eof",
+            files.len()
+        );
+        return ExitCode::SUCCESS;
+    }
+    eprintln!(
+        "error: {} loop(s) over `next_event` cannot reach the end of a part (REWORK-AUDIT-2026-10 AUD-04):",
+        findings.len()
+    );
+    for finding in &findings {
+        eprintln!(
+            "  {}:{} {}: {}",
+            finding.file, finding.line, finding.function, finding.why
+        );
+    }
+    eprintln!(
+        "each one needs an `XmlEvent::Eof => return Err(...)` arm: a reader that says the part\n\
+         ended and a loop that treats it as 'nothing more' is an infinite loop, not a parse."
+    );
+    ExitCode::from(1)
+}
+
+/// Every `.rs` path under `root`, recursively; a file path stands for itself.
+///
+/// Recursive because the parsers live in `src/parse/`, which is one directory
+/// below `src` - a non-recursive read of `strict-ooxml-wml/src` finds
+/// `lib.rs` alone and would report a green gate over four files out of twenty.
+fn rust_files(root: &std::path::Path) -> std::io::Result<Vec<String>> {
+    if root.is_file() {
+        return Ok(vec![root.to_string_lossy().into_owned()]);
+    }
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(directory) = stack.pop() {
+        for entry in std::fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                out.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The functions of `text` whose loops over `next_event` cannot fail on `Eof`.
+fn eof_findings(file: &str, text: &str) -> Vec<EofFinding> {
+    let raw: Vec<&str> = text.lines().collect();
+    // Comments are removed before anything is matched: the doc comment that
+    // explains an `Eof` arm mentions `Eof` before the arm does, and a function
+    // flagged for its own explanation is a gate nobody trusts twice.
+    let code: Vec<&str> = raw.iter().map(|line| code_part(line)).collect();
+    let starts: Vec<(usize, String)> = raw
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let trimmed = line.trim_start();
+            let rest = trimmed
+                .strip_prefix("pub ")
+                .or_else(|| trimmed.strip_prefix("pub(crate) "))
+                .map_or(trimmed, str::trim_start);
+            rest.strip_prefix("fn ")
+                .and_then(|tail| tail.split('(').next())
+                .map(|name| (index, name.trim().to_owned()))
+        })
+        .collect();
+
+    let mut findings = Vec::new();
+    for position in 0..starts.len() {
+        let (start, name) = &starts[position];
+        let end = starts
+            .get(position + 1)
+            .map_or(raw.len(), |(index, _)| *index);
+        let body = &code[*start..end];
+        if !(body.iter().any(|line| line.contains("loop"))
+            && body.iter().any(|line| line.contains("next_event")))
+        {
+            continue;
+        }
+        let why = match find_eof_arm(body) {
+            None => "the loop over `next_event` has no `Eof` arm",
+            Some(arm) if !arm_fails(&arm) && !opted_out(&raw, *start) => {
+                "the `Eof` arm does not return an error"
+            }
+            Some(_) => continue,
+        };
+        findings.push(EofFinding {
+            file: file.to_owned(),
+            line: start + 1,
+            function: name.clone(),
+            why,
+        });
+    }
+    // `starts` is scanned in order, so `findings` is too; sorting keeps the
+    // report stable if the scan is ever reordered.
+    findings.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+    findings
+}
+
+/// `line` without its trailing `//` comment.
+///
+/// A URL is `//` inside a string literal, and this crate is full of them, so
+/// the comment starts at the first `//` that is not inside quotes. That is a
+/// textual rule rather than a lexer: a raw string holding an odd number of
+/// quotes would cut the line short, and the only cost of that is a line the lint
+/// cannot see.
+fn code_part(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut quotes = 0usize;
+    let mut index = 0usize;
+    while index + 1 < bytes.len() {
+        match bytes[index] {
+            b'\\' => index += 1,
+            b'"' => quotes = quotes.saturating_add(1),
+            b'/' if bytes[index + 1] == b'/' => {
+                if quotes.is_multiple_of(2) {
+                    return &line[..index];
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    line
+}
+
+/// The `Eof` arm of a function body, arm text included.
+///
+/// A `match` arm is the line the pattern is on plus every following line
+/// indented deeper than it, which is the arm's block and stops before the next
+/// sibling arm. Counting "is there an `Err(` somewhere in the function" instead
+/// would be satisfied by an error belonging to a later arm - the loophole that
+/// lets a swallowing arm through a linter that only counts occurrences.
+fn find_eof_arm(body: &[&str]) -> Option<String> {
+    let at = body
+        .iter()
+        .position(|line| line.contains("XmlEvent::Eof"))?;
+    let indent = indentation(body[at]);
+    let mut arm = String::from(body[at]);
+    for line in &body[at + 1..] {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if indentation(line) <= indent {
+            break;
+        }
+        arm.push('\n');
+        arm.push_str(line);
+    }
+    Some(arm)
+}
+
+/// Leading whitespace of `line`.
+fn indentation(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+/// Whether an `Eof` arm ends the parse instead of swallowing the end of it.
+fn arm_fails(arm: &str) -> bool {
+    arm.contains("Err(") || arm.contains("panic!")
+}
+
+/// Whether the function starting at `raw[start]` carries the explicit opt-out.
+///
+/// The claim lives in the doc comment, which is *above* the `fn` line and so
+/// outside the span this scan treats as the function body; the walk upwards
+/// stops at the first line that is not part of the documentation.
+fn opted_out(raw: &[&str], start: usize) -> bool {
+    let mut index = start;
+    while index > 0 {
+        index -= 1;
+        let trimmed = raw[index].trim_start();
+        // A doc comment is `///` and an attribute is `#[...]`; either may carry
+        // the claim, and nothing else belongs to the function's documentation.
+        if !(trimmed.starts_with("//") || trimmed.starts_with('#')) {
+            break;
+        }
+        if raw[index].contains(OPT_OUT) {
+            return true;
+        }
+    }
+    false
+}
+
+/// The marker that exempts a function from the `Eof` rule.
+///
+/// The one legitimate exception is the function whose whole purpose is to
+/// accept a clean end of part: its `Eof` arm is the success case, not a
+/// swallowed error. Saying so in the source is better than teaching the lint to
+/// recognise a name, because the claim then sits where a reader can check it.
+const OPT_OUT: &str = "lint-eof: this arm is the success case";
+
 fn docx_paths(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -1553,5 +1810,150 @@ name = \"w:thing\"
     fn generated_inventory_passes_the_gate() {
         let counts = coverage_counts(&render_inventory(&all_names())).expect("parse");
         assert!(coverage_percent(&counts) >= 90.0);
+    }
+
+    // AUD-04: the lint has to be able to fail, or it is decoration.
+
+    const SWALLOWING: &str = r"
+impl PartParser<'_> {
+    fn parse_font_table_root(&mut self) -> Result<FontTable> {
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. } => { let _ = name; }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) | XmlEvent::Eof => {}
+            }
+        }
+        Ok(FontTable::default())
+    }
+}
+";
+
+    const FAILING: &str = r#"
+impl PartParser<'_> {
+    fn parse_settings_root(&mut self) -> Result<Settings> {
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. } => { let _ = name; }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of settings")),
+            }
+        }
+        Ok(Settings::default())
+    }
+}
+"#;
+
+    #[test]
+    fn lint_eof_flags_a_loop_that_swallows_the_end_of_a_part() {
+        let findings = eof_findings("fonts.rs", SWALLOWING);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].file, "fonts.rs");
+        assert_eq!(findings[0].function, "parse_font_table_root");
+        assert!(
+            findings[0].why.contains("does not return an error"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn lint_eof_flags_a_loop_that_never_mentions_the_end_of_a_part() {
+        let text = r"
+    fn parse_x(&mut self) -> Result<()> {
+        loop {
+            match self.next_event()? {
+                XmlEvent::EndElement { .. } => break,
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+";
+        let findings = eof_findings("x.rs", text);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].why.contains("no `Eof` arm"), "{findings:?}");
+    }
+
+    #[test]
+    fn lint_eof_accepts_a_loop_that_fails_on_the_end_of_a_part() {
+        assert!(eof_findings("settings.rs", FAILING).is_empty());
+    }
+
+    #[test]
+    fn lint_eof_flags_an_eof_arm_that_does_not_fail() {
+        let text = FAILING.replace(
+            r#"XmlEvent::Eof => return Err(self.invalid("unexpected end of settings")),"#,
+            "XmlEvent::Eof => {}",
+        );
+        let findings = eof_findings("settings.rs", &text);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].why.contains("does not return an error"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn lint_eof_ignores_functions_that_never_loop() {
+        let text = r"
+    fn parse_zoom(attrs: &[Attr]) -> Zoom {
+        let value = self.next_event()?;
+        let _ = value;
+        Zoom::default()
+    }
+";
+        assert!(eof_findings("settings.rs", text).is_empty());
+    }
+
+    #[test]
+    fn lint_eof_does_not_borrow_the_next_functions_error() {
+        // The arm swallows `Eof`; the `Err` belongs to the function after it.
+        let text = r#"
+    fn a(&mut self) -> Result<()> {
+        loop {
+            match self.next_event()? {
+                XmlEvent::Eof => {}
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn b(&mut self) -> Result<()> {
+        return Err(self.invalid("elsewhere"));
+    }
+"#;
+        let findings = eof_findings("x.rs", text);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].function, "a");
+    }
+
+    #[test]
+    fn lint_eof_is_green_over_the_real_parser() {
+        // A test binary runs with the crate directory as its working directory,
+        // while `xtool lint-eof` is documented to run from the workspace root;
+        // the two are the same tree seen from one level apart.
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("the crate is inside the workspace")
+            .join("strict-ooxml-wml/src");
+        let mut files = rust_files(&workspace).expect("walk the parser source");
+        files.sort();
+        // `src/parse/` is one level down; a non-recursive walk finds `lib.rs`
+        // alone and would report a green gate over a twentieth of the parser.
+        assert!(
+            files.len() > 10,
+            "the walk found {} file(s): {files:?}",
+            files.len()
+        );
+        let findings: Vec<EofFinding> = files
+            .iter()
+            .flat_map(|file| {
+                let text = std::fs::read_to_string(file).expect("read the source");
+                eof_findings(file, &text)
+            })
+            .collect();
+        assert!(findings.is_empty(), "{findings:#?}");
     }
 }

@@ -703,6 +703,27 @@ impl<'a> PartParser<'a> {
         }
     }
 
+    /// Confirms that the part ended where its root element ended.
+    ///
+    /// Every root parser stops at the root's closing tag by design, which leaves
+    /// everything after it unread. An unread tail is where a second root
+    /// element, a truncated one and a stray end tag all live, and the reader
+    /// cannot judge what nobody asks it for. Draining the reader puts the whole
+    /// part under the same well-formedness check as its content.
+    ///
+    /// lint-eof: this arm is the success case. This is the one function in the
+    /// crate whose `Eof` arm does not fail - reaching the end of a well-formed
+    /// part is what it is asking for.
+    pub(crate) fn expect_end_of_part(&mut self) -> Result<()> {
+        loop {
+            match self.next_event()? {
+                XmlEvent::Eof => return Ok(()),
+                XmlEvent::Text(text) | XmlEvent::CData(text) if text.trim().is_empty() => {}
+                _ => return Err(self.invalid("content after the root element")),
+            }
+        }
+    }
+
     /// Interns a string, returning a shared handle.
     pub(crate) fn intern(&mut self, value: &str) -> Arc<str> {
         self.interner.intern(value)

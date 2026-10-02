@@ -64,6 +64,16 @@ pub struct XmlReader {
     text_total: u64,
     open_names: Vec<String>,
     pending_end: Option<QName>,
+    /// Whether the document's single root element has been opened.
+    ///
+    /// XML 1.0 §2.1 gives a well-formed document exactly one top-level element.
+    /// The reader enforced the nesting but never the singleton, so a part with two
+    /// roots parsed as if the first one closed the document - and a part with none
+    /// parsed as an empty one, which is how a truncated `fontTable.xml` became a
+    /// font table with no fonts instead of an error.
+    root_seen: bool,
+    /// Whether that root element has been closed; after it, only misc may follow.
+    root_closed: bool,
     scanned: usize,
     line: u32,
     column: u32,
@@ -121,6 +131,8 @@ impl XmlReader {
             text_total: 0,
             open_names: Vec::new(),
             pending_end: None,
+            root_seen: false,
+            root_closed: false,
             scanned: 0,
             line: 1,
             column: 1,
@@ -146,6 +158,11 @@ impl XmlReader {
     /// Comments, processing instructions and the XML declaration are skipped;
     /// DOCTYPE is rejected.
     ///
+    /// The stream is checked as XML 1.0 requires, not merely as a token stream:
+    /// the end of the input with an element still open, a second top-level
+    /// element and a missing root are all errors rather than a clean `Eof`.
+    /// A truncated part is not a shorter part.
+    ///
     /// # Errors
     ///
     /// Returns a [`StrictError`] on malformed XML, a forbidden construct, an
@@ -153,8 +170,7 @@ impl XmlReader {
     pub fn next_event(&mut self) -> Result<XmlEvent> {
         loop {
             if let Some(name) = self.pending_end.take() {
-                self.ns.pop_scope();
-                self.depth = self.depth.saturating_sub(1);
+                self.close_scope();
                 return Ok(XmlEvent::EndElement { name });
             }
             match self.read_parsed()? {
@@ -164,9 +180,123 @@ impl XmlReader {
                 Parsed::End { raw } => return self.close_element(&raw),
                 Parsed::Text(text) => return self.push_text(text, false),
                 Parsed::CData(text) => return self.push_text(text, true),
-                Parsed::Eof => return Ok(XmlEvent::Eof),
+                Parsed::Eof => return self.end_of_document(),
                 Parsed::Skip => {}
             }
+        }
+    }
+
+    /// Ends the stream, refusing to report a truncated document as a complete
+    /// one.
+    ///
+    /// `Eof` is idempotent: once the input is exhausted and the document is well
+    /// formed there is nothing left to check, and a reader polled past the end
+    /// gets `Eof` again rather than an error it has already been told about.
+    fn end_of_document(&self) -> Result<XmlEvent> {
+        if !self.root_seen {
+            return Err(self.invalid_xml("no root element".to_owned(), 0));
+        }
+        // `pending_end` is drained at the top of `next_event`, so a document that
+        // ended inside an empty element still has that element on `open_names`
+        // only if it was never closed; the check is kept for the general case.
+        let unclosed = self.open_names.len() + usize::from(self.pending_end.is_some());
+        if unclosed > 0 {
+            let innermost = self
+                .open_names
+                .last()
+                .map_or_else(String::new, Clone::clone);
+            return Err(self.invalid_xml(
+                format!("unexpected end of document: {unclosed} unclosed element(s), innermost <{innermost}>"),
+                0,
+            ));
+        }
+        Ok(XmlEvent::Eof)
+    }
+
+    /// Rejects anything that is not the single root element's opening tag or the
+    /// misc that may precede it.
+    fn open_element(
+        &mut self,
+        raw: String,
+        attrs: Vec<(String, String)>,
+        empty: bool,
+    ) -> Result<XmlEvent> {
+        if self.depth == 0 {
+            if self.root_closed {
+                return Err(self.invalid_xml("content after the root element".to_owned(), 0));
+            }
+            self.root_seen = true;
+        }
+        safety::check_attributes(attrs.len(), &self.limits)?;
+        let location = self.location();
+        self.ns.push_scope();
+        let mut resolved = Vec::with_capacity(attrs.len());
+        for (key, value) in attrs {
+            match key.as_str() {
+                "xmlns" => self.ns.declare(None, &value),
+                _ => {
+                    if let Some(prefix) = key.strip_prefix("xmlns:") {
+                        self.ns.declare(Some(prefix.to_owned()), &value);
+                    } else {
+                        resolved.push((key, value));
+                    }
+                }
+            }
+        }
+        self.depth = self.depth.saturating_add(1);
+        safety::check_depth(self.depth, &self.limits)?;
+        let name = self.resolve_name(&raw, false, &location)?;
+        let mut out = Vec::with_capacity(resolved.len());
+        for (key, value) in resolved {
+            let attr_name = self.resolve_name(&key, true, &location)?;
+            out.push(Attr {
+                name: attr_name,
+                value,
+            });
+        }
+        if empty {
+            self.pending_end = Some(name.clone());
+        } else {
+            self.open_names.push(raw);
+        }
+        Ok(XmlEvent::StartElement { name, attrs: out })
+    }
+
+    fn close_element(&mut self, raw: &str) -> Result<XmlEvent> {
+        let matches = self.open_names.last().is_some_and(|open| open == raw);
+        if !matches {
+            return Err(StrictError::InvalidXml {
+                location: self.location(),
+                detail: format!("unmatched end tag </{raw}>"),
+            });
+        }
+        let location = self.location();
+        let name = self.resolve_name(raw, false, &location)?;
+        self.close_scope();
+        self.open_names.pop();
+        Ok(XmlEvent::EndElement { name })
+    }
+
+    /// Leaves one element: pops its namespace scope and records that the document
+    /// root is behind us once nothing is open.
+    fn close_scope(&mut self) {
+        self.ns.pop_scope();
+        self.depth = self.depth.saturating_sub(1);
+        if self.depth == 0 {
+            self.root_closed = true;
+        }
+    }
+
+    fn push_text(&mut self, text: String, cdata: bool) -> Result<XmlEvent> {
+        if self.root_closed && !text.trim().is_empty() {
+            return Err(self.invalid_xml("content after the root element".to_owned(), 0));
+        }
+        self.text_total = self.text_total.saturating_add(text.len() as u64);
+        safety::check_text(self.text_total, &self.limits)?;
+        if cdata {
+            Ok(XmlEvent::CData(text))
+        } else {
+            Ok(XmlEvent::Text(text))
         }
     }
 
@@ -243,73 +373,6 @@ impl XmlReader {
             attrs.push((key, value));
         }
         Ok(Parsed::Start { raw, attrs, empty })
-    }
-
-    fn open_element(
-        &mut self,
-        raw: String,
-        attrs: Vec<(String, String)>,
-        empty: bool,
-    ) -> Result<XmlEvent> {
-        safety::check_attributes(attrs.len(), &self.limits)?;
-        let location = self.location();
-        self.ns.push_scope();
-        let mut resolved = Vec::with_capacity(attrs.len());
-        for (key, value) in attrs {
-            match key.as_str() {
-                "xmlns" => self.ns.declare(None, &value),
-                _ => {
-                    if let Some(prefix) = key.strip_prefix("xmlns:") {
-                        self.ns.declare(Some(prefix.to_owned()), &value);
-                    } else {
-                        resolved.push((key, value));
-                    }
-                }
-            }
-        }
-        self.depth = self.depth.saturating_add(1);
-        safety::check_depth(self.depth, &self.limits)?;
-        let name = self.resolve_name(&raw, false, &location)?;
-        let mut out = Vec::with_capacity(resolved.len());
-        for (key, value) in resolved {
-            let attr_name = self.resolve_name(&key, true, &location)?;
-            out.push(Attr {
-                name: attr_name,
-                value,
-            });
-        }
-        if empty {
-            self.pending_end = Some(name.clone());
-        } else {
-            self.open_names.push(raw);
-        }
-        Ok(XmlEvent::StartElement { name, attrs: out })
-    }
-
-    fn close_element(&mut self, raw: &str) -> Result<XmlEvent> {
-        let matches = self.open_names.last().is_some_and(|open| open == raw);
-        if !matches {
-            return Err(StrictError::InvalidXml {
-                location: self.location(),
-                detail: format!("unmatched end tag </{raw}>"),
-            });
-        }
-        let location = self.location();
-        let name = self.resolve_name(raw, false, &location)?;
-        self.ns.pop_scope();
-        self.open_names.pop();
-        self.depth = self.depth.saturating_sub(1);
-        Ok(XmlEvent::EndElement { name })
-    }
-
-    fn push_text(&mut self, text: String, cdata: bool) -> Result<XmlEvent> {
-        self.text_total = self.text_total.saturating_add(text.len() as u64);
-        safety::check_text(self.text_total, &self.limits)?;
-        if cdata {
-            Ok(XmlEvent::CData(text))
-        } else {
-            Ok(XmlEvent::Text(text))
-        }
     }
 
     /// Resolves a raw `prefix:local` name against the current namespace scope.
@@ -488,6 +551,26 @@ mod tests {
             }
         }
         out
+    }
+
+    /// Drains `xml`, returning the error the first failure produced.
+    fn read_error(xml: &[u8]) -> StrictError {
+        let mut reader = XmlReader::new(xml, part(), &ResourceLimits::default()).unwrap();
+        loop {
+            match reader.next_event() {
+                Ok(XmlEvent::Eof) => panic!("expected an error, the document parsed"),
+                Ok(_) => {}
+                Err(error) => return error,
+            }
+        }
+    }
+
+    /// The `detail` of an `InvalidXml` error.
+    fn detail(error: StrictError) -> String {
+        match error {
+            StrictError::InvalidXml { detail, .. } => detail,
+            other => panic!("expected InvalidXml, got {other:?}"),
+        }
     }
 
     #[test]
@@ -680,5 +763,99 @@ mod tests {
         }
         let events = read_all(&bytes);
         assert!(matches!(events[0], XmlEvent::StartElement { .. }));
+    }
+
+    // AUD-04: the end of the input is checked as XML, not accepted as a token.
+
+    #[test]
+    fn end_of_document_with_open_elements_is_an_error_naming_them() {
+        let detail = detail(read_error(b"<a><b>"));
+        assert!(detail.contains("2 unclosed"), "{detail}");
+        assert!(detail.contains("<b>"), "{detail}");
+        assert!(detail.starts_with("unexpected end of document"), "{detail}");
+    }
+
+    #[test]
+    fn a_second_root_element_is_an_error() {
+        let detail = detail(read_error(b"<a/><b/>"));
+        assert!(
+            detail.contains("content after the root element"),
+            "{detail}"
+        );
+    }
+
+    #[test]
+    fn non_whitespace_text_after_the_root_is_an_error() {
+        let detail = detail(read_error(b"<a/>text"));
+        assert!(
+            detail.contains("content after the root element"),
+            "{detail}"
+        );
+    }
+
+    #[test]
+    fn whitespace_comments_and_pis_may_follow_the_root() {
+        let events = read_all(b"<a/>  <!--c--><?pi?>  \n ");
+        assert!(matches!(events.last(), Some(XmlEvent::Eof)), "{events:?}");
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, XmlEvent::Text(text) if !text.trim().is_empty())),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn an_empty_document_has_no_root() {
+        assert_eq!(detail(read_error(b"")), "no root element");
+    }
+
+    #[test]
+    fn a_declaration_alone_has_no_root() {
+        assert_eq!(detail(read_error(b"<?xml?>")), "no root element");
+    }
+
+    #[test]
+    fn the_unclosed_element_is_reported_on_every_later_call() {
+        let mut reader = XmlReader::new(b"<a><b>", part(), &ResourceLimits::default()).unwrap();
+        let mut errors = Vec::new();
+        for _ in 0..3 {
+            let mut error = None;
+            loop {
+                match reader.next_event() {
+                    Ok(XmlEvent::Eof) => break,
+                    Ok(_) => {}
+                    Err(StrictError::InvalidXml { detail, .. }) => {
+                        error = Some(detail);
+                        break;
+                    }
+                    Err(other) => panic!("unexpected {other:?}"),
+                }
+            }
+            errors.push(error.expect("every call past the truncation is an error"));
+        }
+        for message in &errors {
+            assert!(message.contains("2 unclosed"), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_well_formed_document_still_reports_eof_repeatedly() {
+        let mut reader =
+            XmlReader::new(b"<a><b/></a>", part(), &ResourceLimits::default()).unwrap();
+        let mut eofs = 0;
+        for _ in 0..8 {
+            if reader.next_event().unwrap() == XmlEvent::Eof {
+                eofs += 1;
+            }
+        }
+        // four events for `<a><b/></a>`, and every later call is `Eof`.
+        assert_eq!(eofs, 4);
+    }
+
+    #[test]
+    fn a_truncated_cdata_section_is_an_error() {
+        let detail = detail(read_error(b"<a><![CDATA[unterminated"));
+        assert!(detail.contains("CDATA"), "{detail}");
     }
 }

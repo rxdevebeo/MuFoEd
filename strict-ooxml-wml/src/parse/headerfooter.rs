@@ -39,6 +39,7 @@ impl PartParser<'_> {
         );
         // `parse_block_children` consumes the root's matching end element.
         let (blocks, _sections) = self.parse_block_children()?;
+        self.expect_end_of_part()?;
         self.leave();
         Ok((blocks, location))
     }

@@ -89,6 +89,7 @@ impl PartParser<'_> {
                 XmlEvent::Eof => return Err(self.invalid("unexpected end of settings")),
             }
         }
+        self.expect_end_of_part()?;
         self.leave();
         Ok(settings)
     }
@@ -355,7 +356,12 @@ impl PartParser<'_> {
                     self.skip_element()?;
                 }
                 XmlEvent::EndElement { .. } => break,
-                _ => {}
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                // Defence in depth (AUD-04). This loop was written as `_ => {}`,
+                // so `Eof` was a spin: the reader said the part ended, the loop
+                // said nothing happened, and a `w:settings` truncated inside
+                // `m:mathPr` never returned.
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of m:mathPr")),
             }
         }
         Ok(properties)
