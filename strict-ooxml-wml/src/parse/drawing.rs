@@ -23,6 +23,13 @@ use crate::{
 
 use super::{attr_in_ns, plain_attr, PartParser};
 
+/// Whether a name is in the wordprocessingDrawing namespace.
+fn is_wordprocessing_drawing(name: &QName) -> bool {
+    name.ns
+        .as_ref()
+        .is_some_and(|ns| ns == crate::WORDPROCESSING_DRAWING_STRICT_NS)
+}
+
 /// `r:id` on a `c:chart`.
 const R_ID: &str = "id";
 /// `r:dm` on a `dgm:relIds` - the diagram data part.
@@ -242,6 +249,13 @@ impl PartParser<'_> {
 
     /// Parses a `wp:wrap*` element.
     fn parse_wrap(&mut self, kind: WrapKind, attrs: &[Attr]) -> Result<Wrap> {
+        // The polygon is read BEFORE the attribute struct is built and consumes
+        // this element's own `End`, so there is no `skip_element` afterwards.
+        // Reading it afterwards instead consumed the `wp:wrap*` closing tag and
+        // desynchronised the anchor loop, which then read the rest of the part as
+        // children of nothing - the document came out truncated and the writer
+        // refused it.
+        let polygon = self.parse_wrap_polygon()?;
         let wrap = Wrap {
             kind,
             wrap_text: plain_attr(attrs, "wrapText").map(|value| self.intern(value)),
@@ -249,9 +263,58 @@ impl PartParser<'_> {
             dist_right: parse_u32_attr(attrs, "distR"),
             dist_top: parse_u32_attr(attrs, "distT"),
             dist_bottom: parse_u32_attr(attrs, "distB"),
+            polygon,
         };
-        self.skip_element()?;
         Ok(wrap)
+    }
+
+    /// Reads `wp:wrapPolygon` inside a `wp:wrap*`, in document order.
+    ///
+    /// The contour is already EMU on this side of the pipeline: the producer that
+    /// wrote it wrote DrawingML, not VML, and `wp:start`/`wp:lineTo` are both
+    /// `ST_PositiveCoordinate`. Nothing is scaled here and that is the point - a
+    /// contour that arrived in VML shape space is converted where the shape is, and
+    /// a converter that scaled a second time would be the unit bug this comment is
+    /// standing in front of.
+    ///
+    /// A polygon that does not satisfy `CT_WrapPath` (one `start`, at least two
+    /// `lineTo`) is kept as read and left for the XSD gate to name. Dropping it
+    /// would produce a conforming document and a silent loss, which is the one
+    /// outcome this project treats as the defect.
+    fn parse_wrap_polygon(&mut self) -> Result<Vec<(i64, i64)>> {
+        let mut points = Vec::new();
+        let mut depth = 0usize;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_wordprocessing_drawing(&name) {
+                        depth += 1;
+                        let local = name.local();
+                        if local == "start" || local == "lineTo" {
+                            let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
+                            let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
+                            if let (Some(x), Some(y)) = (x, y) {
+                                points.push((x, y));
+                            }
+                        }
+                    } else {
+                        // Not wordprocessingDrawing: not part of a wrap contour,
+                        // and the whole point of the depth counter is that the
+                        // first `End` seen at depth 0 is THIS element's own.
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of wrap")),
+            }
+        }
+        Ok(points)
     }
 
     /// Parses `a:graphic`, returning `(uri, graphic)`.

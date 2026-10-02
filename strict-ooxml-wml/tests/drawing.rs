@@ -60,6 +60,87 @@ fn resolves_inline_picture_to_media_part() {
     assert_eq!(item.kind, MediaKind::Png);
 }
 
+/// The wrap contour is carried, in the producer's own points.
+///
+/// `CT_WrapPath` is one `start` and at least two `lineTo`, so an empty polygon is
+/// non-conformant and the writer used to substitute the frame's own rectangle. That
+/// is a tight wrap around a BOX, which is not the producer's outline - and the
+/// corpus has exactly one document that draws a contour at all, so "almost never
+/// happens" is what a defect looks like right up until it happens.
+///
+/// The points here are the corpus's: 0..21626, which is the VML shape space, not
+/// EMU. Nothing scales them here on purpose. A contour that arrived in VML space is
+/// converted where the SHAPE is, and a second conversion in the writer is exactly
+/// the unit bug this test stands in front of.
+#[test]
+fn a_wrap_polygon_is_carried_rather_than_replaced_by_the_frame() {
+    let parts = document_parts(
+        "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"0\" relativeHeight=\"2\" distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" allowOverlap=\"1\" locked=\"0\" layoutInCell=\"1\">
+<wp:simplePos x=\"0\" y=\"0\"/>
+<wp:positionH relativeFrom=\"column\"><wp:posOffset>114300</wp:posOffset></wp:positionH>
+<wp:positionV relativeFrom=\"paragraph\"><wp:align>top</wp:align></wp:positionV>
+<wp:extent cx=\"1065530\" cy=\"1352550\"/>
+<wp:wrapTight wrapText=\"bothSides\" distL=\"0\" distR=\"0\">
+<wp:wrapPolygon edited=\"0\"><wp:start x=\"0\" y=\"0\"/><wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21626\" y=\"21600\"/><wp:lineTo x=\"21626\" y=\"0\"/><wp:lineTo x=\"0\" y=\"0\"/></wp:wrapPolygon>
+</wp:wrapTight>
+<wp:docPr id=\"2\" name=\"float\"/>
+</wp:anchor></w:drawing></w:r></w:p>",
+        &[],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    let Inline::Run(run) = &document.body.blocks[0].as_paragraph().unwrap().inlines[0] else {
+        panic!("expected run");
+    };
+    let strict_ooxml_wml::model::inline::RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!("expected drawing");
+    };
+    let DrawingKind::Anchor(anchor) = &drawing.kind else {
+        panic!("expected anchor");
+    };
+    let wrap = anchor.wrap.as_ref().expect("wrap");
+    assert_eq!(wrap.kind, strict_ooxml_wml::model::drawing::WrapKind::Tight);
+    assert_eq!(
+        wrap.polygon,
+        vec![(0, 0), (0, 21600), (21626, 21600), (21626, 0), (0, 0)],
+        "the producer's five points, in order, unscaled"
+    );
+}
+
+/// A tight wrap with no contour at all is the VML case, and it must stay empty.
+///
+/// `w10:wrap` carries positioning attributes and no path in any of the sixteen
+/// occurrences in this corpus, so a shape converted from VML has nothing to carry
+/// and the writer falls back to the frame rectangle. What must not happen is the
+/// fallback happening SILENTLY - the writer names it.
+#[test]
+fn a_tight_wrap_without_a_polygon_carries_none() {
+    let parts = document_parts(
+        "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"0\" relativeHeight=\"2\" distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" allowOverlap=\"1\" locked=\"0\" layoutInCell=\"1\">
+<wp:simplePos x=\"0\" y=\"0\"/>
+<wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset></wp:positionH>
+<wp:positionV relativeFrom=\"paragraph\"><wp:align>top</wp:align></wp:positionV>
+<wp:extent cx=\"1065530\" cy=\"1352550\"/>
+<wp:wrapTight wrapText=\"bothSides\"/>
+<wp:docPr id=\"2\" name=\"float\"/>
+</wp:anchor></w:drawing></w:r></w:p>",
+        &[],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    let Inline::Run(run) = &document.body.blocks[0].as_paragraph().unwrap().inlines[0] else {
+        panic!("expected run");
+    };
+    let strict_ooxml_wml::model::inline::RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!("expected drawing");
+    };
+    let DrawingKind::Anchor(anchor) = &drawing.kind else {
+        panic!("expected anchor");
+    };
+    assert!(
+        anchor.wrap.as_ref().expect("wrap").polygon.is_empty(),
+        "an absent contour stays absent, so the writer knows to name its fallback"
+    );
+}
+
 #[test]
 fn floating_anchor_is_parsed() {
     let parts = document_parts(

@@ -358,32 +358,73 @@ fn wrap_element(
             if matches!(wrap.kind, K::Tight | K::Through) {
                 // `CT_WrapPath` is `<xsd:sequence><start minOccurs="1"/>`
                 // `<lineTo minOccurs="2" maxOccurs="unbounded"/>`, so there is no
-                // conformant "no polygon" — an empty `<wp:wrapPolygon/>` is the
-                // same violation one level down, and the census said exactly that
-                // (`TZ-21`). The points a producer writes describe the shape's
-                // outline, which this model does not carry; the frame's own
-                // rectangle, which it does, is what goes there instead. A tight
-                // wrap around a box is a tight wrap.
-                ctx.report_partial(
-                    name,
-                    "a tight or through wrap needs the wrap polygon's own points; the model \
-                     does not carry them, so the frame's rectangle is written, which is a tight \
-                     wrap around a box rather than around the producer's outline",
-                    location,
-                );
-                let (cx, cy) = extent.map_or((0, 0), |size| (size.cx.0, size.cy.0));
-                xml.start("wp:wrapPolygon");
-                xml.start("wp:start");
-                xml.attr("x", 0);
-                xml.attr("y", 0);
-                xml.end();
-                for (x, y) in [(cx, 0), (cx, cy), (0, cy)] {
-                    xml.start("wp:lineTo");
-                    xml.attr("x", x);
-                    xml.attr("y", y);
+                // conformant "no polygon" - an empty `<wp:wrapPolygon/>` is the same
+                // violation one level down, and the census said exactly that
+                // (`TZ-21`).
+                //
+                // Two cases, and they are not the same claim. A producer that wrote
+                // the contour has it carried on `Wrap::polygon`, so it is written
+                // back as the producer drew it and nothing is reported. A shape that
+                // came from VML has no contour to carry - `w10:wrap` in this corpus
+                // is childless in all sixteen occurrences, so there was never a
+                // contour to read - and the frame's own rectangle is written
+                // instead, with a Partial record saying so. A tight wrap around a
+                // box is a tight wrap; it is not the producer's outline, and the
+                // difference is named rather than absorbed.
+                if wrap.polygon.len() >= 3 {
+                    xml.start("wp:wrapPolygon");
+                    let mut points = wrap.polygon.iter();
+                    if let Some((x, y)) = points.next() {
+                        xml.start("wp:start");
+                        xml.attr("x", x);
+                        xml.attr("y", y);
+                        xml.end();
+                    }
+                    for (x, y) in points {
+                        xml.start("wp:lineTo");
+                        xml.attr("x", x);
+                        xml.attr("y", y);
+                        xml.end();
+                    }
+                    xml.end();
+                } else {
+                    if wrap.polygon.is_empty() {
+                        ctx.report_partial(
+                            name,
+                            "a tight or through wrap needs the wrap polygon's own points; the model \
+                             carries none for a shape that came from VML - w10:wrap has no contour \
+                             in this corpus - so the frame's rectangle is written, which is a tight \
+                             wrap around a box rather than around the producer's outline",
+                            location,
+                        );
+                    } else {
+                        // One or two points cannot satisfy CT_WrapPath. Writing a
+                        // rectangle instead would be conformant AND wrong twice
+                        // over: it would hide the producer's contour and invent
+                        // one. The rectangle goes out below, and the defect in the
+                        // INPUT is named here rather than repaired.
+                        ctx.report_partial(
+                            name,
+                            "a wrap polygon with fewer than three points is not CT_WrapPath; the \
+                             producer's points are dropped and the frame's rectangle is written, \
+                             and the input's own violation is what the XSD gate should name",
+                            location,
+                        );
+                    }
+                    let (cx, cy) = extent.map_or((0, 0), |size| (size.cx.0, size.cy.0));
+                    xml.start("wp:wrapPolygon");
+                    xml.start("wp:start");
+                    xml.attr("x", 0);
+                    xml.attr("y", 0);
+                    xml.end();
+                    for (x, y) in [(cx, 0), (cx, cy), (0, cy)] {
+                        xml.start("wp:lineTo");
+                        xml.attr("x", x);
+                        xml.attr("y", y);
+                        xml.end();
+                    }
                     xml.end();
                 }
-                xml.end();
             }
         }
     }

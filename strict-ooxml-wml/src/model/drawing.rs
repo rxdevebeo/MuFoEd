@@ -460,6 +460,21 @@ pub struct Wrap {
     pub dist_top: Option<u32>,
     /// Bottom distance (`distB`), in EMU.
     pub dist_bottom: Option<u32>,
+    /// The wrap contour (`wp:wrapPolygon`): one `wp:start` followed by two or more
+    /// `wp:lineTo`, as `(x, y)` in EMU.
+    ///
+    /// `CT_WrapPath` is a sequence of exactly one `start` and at least two
+    /// `lineTo`, so an EMPTY polygon is non-conformant and there is no "no contour"
+    /// spelling to fall back to. When this is empty the writer draws the frame's own
+    /// rectangle, which is a tight wrap around a box - honest, and not the contour
+    /// the producer chose.
+    ///
+    /// The corpus has exactly one document that carries a contour at all, and its
+    /// points are in VML shape space (0..21626, the classic `coordsize`), so they
+    /// are scaled on the way in rather than copied. That scaling is the reason this
+    /// field is points and not a path string: a path would have to be re-parsed to
+    /// be written, and re-parsing is where the unit goes wrong.
+    pub polygon: Vec<(i64, i64)>,
 }
 
 /// A floating drawing (`wp:anchor`).
