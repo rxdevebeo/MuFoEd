@@ -62,6 +62,27 @@ pub enum RunContent {
     /// The number marker inside a footnote/endnote body (`w:footnoteRef`/
     /// `w:endnoteRef`); replaced by the note's number when rendered.
     NoteRef,
+    /// Absolute position tab (`w:ptab`).
+    ///
+    /// All three attributes are `use="required"`, so this is three strings rather
+    /// than three defaults: `alignment` is `left`/`center`/`right`,
+    /// `relativeTo` is `margin`/`indent`, and `leader` is
+    /// `none`/`dot`/`hyphen`/`underscore`/`middleDot`. They stay strings for the
+    /// reason `MathProperties` keeps its own - a value outside the set has to
+    /// survive to be named by the XSD gate rather than be dropped here.
+    ///
+    /// The model carried it as `Opaque` and the writer dropped it with a report
+    /// line, which is the decision half of the rule: the element is in
+    /// `EG_RunInnerContent`, so Strict declares it and dropping it is a loss
+    /// rather than a cleanup.
+    Ptab {
+        /// `w:alignment`.
+        alignment: Arc<str>,
+        /// `w:relativeTo`.
+        relative_to: Arc<str>,
+        /// `w:leader`.
+        leader: Arc<str>,
+    },
     /// Comment reference (`w:commentReference`), the anchor that makes a
     /// `w:commentRangeStart`/`End` pair visible in the text.
     ///

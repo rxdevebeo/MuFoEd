@@ -368,6 +368,13 @@ fn flatten_run(
             RunContent::CommentReference(_)
             | RunContent::SoftHyphen
             | RunContent::LastRenderedPageBreak
+            // A `w:ptab` moves the following text to a margin or an indent. The
+            // renderer has no notion of either, and drawing the leader glyphs
+            // would be a character run the document did not ask for. It is named
+            // here rather than ignored so the gap is visible where it is: the same
+            // shape as Н-3, where a wrap contour is a rectangle standing in for a
+            // curve this project cannot describe.
+            | RunContent::Ptab { .. }
             | RunContent::Opaque(_) => {}
         }
     }

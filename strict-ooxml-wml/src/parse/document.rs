@@ -424,6 +424,43 @@ impl PartParser<'_> {
                             );
                             self.skip_element()?;
                         }
+                        RunKind::Ptab => {
+                            // All three attributes are `use="required"`. An element
+                            // missing one cannot be written back without inventing a
+                            // value, so it is recorded and skipped rather than
+                            // defaulted - the schema names the defect, and a
+                            // defaulted one would not be named at all.
+                            let alignment = wml_attr(&attrs, "alignment");
+                            let relative_to = wml_attr(&attrs, "relativeTo");
+                            let leader = wml_attr(&attrs, "leader");
+                            match (alignment, relative_to, leader) {
+                                (Some(alignment), Some(relative_to), Some(leader)) => {
+                                    content.push(RunContent::Ptab {
+                                        alignment: self.intern(alignment),
+                                        relative_to: self.intern(relative_to),
+                                        leader: self.intern(leader),
+                                    });
+                                    self.record(
+                                        "w:ptab",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(self.location()),
+                                    );
+                                }
+                                _ => {
+                                    self.record(
+                                        "w:ptab",
+                                        SupportStatus::Partial,
+                                        Some(
+                                            "w:ptab requires alignment, relativeTo and leader"
+                                                .to_owned(),
+                                        ),
+                                        Some(self.location()),
+                                    );
+                                }
+                            }
+                            self.skip_element()?;
+                        }
                         RunKind::CommentReference => {
                             // Without the anchor a w:commentRangeStart/End pair
                             // is a range that points at nothing: the comment text

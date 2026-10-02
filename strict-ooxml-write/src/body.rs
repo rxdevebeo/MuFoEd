@@ -236,6 +236,19 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent)
         // containing run, and this is the element that has to sit inside one,
         // so it is empty and self-closing like the note references above.
         RunContent::CommentReference(id) => xml.empty_attr_w("w:commentReference", "id", id),
+        // Three required attributes, so a start/end pair rather than the
+        // self-closing form the note references use.
+        RunContent::Ptab {
+            alignment,
+            relative_to,
+            leader,
+        } => {
+            xml.start("w:ptab");
+            xml.attr_w("alignment", alignment.as_ref());
+            xml.attr_w("relativeTo", relative_to.as_ref());
+            xml.attr_w("leader", leader.as_ref());
+            xml.end();
+        }
         RunContent::NoteRef => {
             // The note's own number is substituted by the renderer; writing the
             // element keeps the note body round-trippable. Which of the two

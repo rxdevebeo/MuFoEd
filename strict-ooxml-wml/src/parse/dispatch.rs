@@ -145,6 +145,8 @@ pub(crate) enum RunKind {
     FootnoteRef,
     /// `w:endnoteReference`.
     EndnoteRef,
+    /// `w:ptab`.
+    Ptab,
     /// `w:commentReference`. The producer puts this inside a `w:r`, so it is
     /// dispatched here and NOT through `INLINE_TABLE` - which is why the inline
     /// entry for the same element was unreachable, and why a writer arm for it
@@ -181,6 +183,7 @@ const RUN_TABLE: &[(&str, RunKind)] = &[
     ("footnoteReference", RunKind::FootnoteRef),
     ("endnoteReference", RunKind::EndnoteRef),
     ("commentReference", RunKind::CommentReference),
+    ("ptab", RunKind::Ptab),
     ("footnoteRef", RunKind::NoteRef),
     ("endnoteRef", RunKind::NoteRef),
     ("sym", RunKind::Symbol),
