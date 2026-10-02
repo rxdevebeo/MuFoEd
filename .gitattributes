@@ -1,0 +1,4 @@
+# Every text file is LF in the working tree on every OS. The golden SVGs and
+# the expected outputs are compared byte for byte, and a Windows checkout with
+# `core.autocrlf` turned them into CRLF files that no renderer produces.
+* text=auto eol=lf

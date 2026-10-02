@@ -244,16 +244,16 @@ jobs:
           tool: cargo-fuzz
       - name: Short fuzz session (zip)
         working-directory: fuzz
-        run: cargo +nightly fuzz run fuzz_zip -- -max_total_time=60
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_zip -- -max_total_time=60
       - name: Short fuzz session (xml)
         working-directory: fuzz
-        run: cargo +nightly fuzz run fuzz_xml -- -max_total_time=60
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_xml -- -max_total_time=60
       - name: Short fuzz session (relpath)
         working-directory: fuzz
-        run: cargo +nightly fuzz run fuzz_relpath -- -max_total_time=60
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_relpath -- -max_total_time=60
       - name: Short fuzz session (wml)
         working-directory: fuzz
-        run: cargo +nightly fuzz run fuzz_wml -- -max_total_time=60
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_wml -- -max_total_time=60
 
   fuzz-nightly:
     name: fuzz nightly
@@ -268,7 +268,7 @@ jobs:
       - name: Bounded nightly fuzz sessions
         working-directory: fuzz
         run: |
-          cargo +nightly fuzz run fuzz_zip -- -max_total_time=3600
-          cargo +nightly fuzz run fuzz_xml -- -max_total_time=3600
-          cargo +nightly fuzz run fuzz_relpath -- -max_total_time=3600
-          cargo +nightly fuzz run fuzz_wml -- -max_total_time=3600
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_zip -- -max_total_time=3600
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_xml -- -max_total_time=3600
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_relpath -- -max_total_time=3600
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_wml -- -max_total_time=3600

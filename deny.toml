@@ -52,6 +52,12 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# `strict-ooxml-testkit` is `publish = false` and only ever a dev-dependency, so
+# it is named by path alone: a version would make `cargo publish` look for it on
+# crates.io. cargo-deny allows exactly that case - a path dependency that is a
+# dev-dependency or belongs to a private crate - and still denies every other
+# wildcard.
+allow-wildcard-paths = true
 highlight = "all"
 
 [sources]
