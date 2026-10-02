@@ -62,7 +62,7 @@ signal = "message"
 elements = ["relyOnVML", "shapeDefaults", "hdrShapeDefaults", "useFELayout", "doNotWrapTextWithPunct"]
 messages = ["not declared", "not allowed here", "This element is not expected"]
 summary = "Transitional-only elements left in a Strict package: one REMOVALS entry per name"
-audit = "9 relyOnVML / 9 documents, 26 shapeDefaults, 4 hdrShapeDefaults, 18 useFELayout (audit 4.4)."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count each name in `elements` as a w-namespaced element. MEASURED 2026-10-02: relyOnVML 9 / 9, shapeDefaults 31 / 31, hdrShapeDefaults 4 / 4, useFELayout 11 / 11, doNotWrapTextWithPunct 7 / 7. The audit's '26 shapeDefaults' and '18 useFELayout' were both wrong, in opposite directions: shapeDefaults is 5 higher and useFELayout 7 lower. NOTE the two names the audit did not list: doNotWrapTextWithPunct is in `elements` and is NOT in REMOVALS - it is the first half of the w:compat defect (reaudit П-2)."
 
 [[item]]
 id = "TZ-04"
@@ -71,7 +71,7 @@ signal = "message"
 elements = ["left", "right", "start", "end"]
 messages = ["not allowed here", "is not a valid value of the union type", "is not declared", "This element is not expected"]
 summary = "T3 element rename: CT_TblBorders/CT_TcBorders/CT_TblCellMar/CT_TcMar renamed their edges to start/end"
-audit = "11 462 edge elements across 42 documents (audit 4.1). XS-23 is the same trap seen from the writer's side. READ THIS BEFORE TRUSTING THE ZERO: on this corpus every one of those edges is in a part the writer REGENERATES, and the writer already emits start/end, so the normalizer never sees one and this signal cannot distinguish a working rule from a dead one. It reported 0 for a rule that was dead for the whole of 2026-10-02 - `is_wml` matches only the Strict namespace, and the element path was testing the Transitional one. The gate for this item is `strict-ooxml-core/src/normalize/transitional.rs::the_direction_neutral_rename_follows_the_container_and_not_the_name`, which is a unit test ON PURPOSE: a corpus gate cannot see a rule the corpus never exercises."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents; inside w:tblBorders/w:tcBorders/w:tblCellMar/w:tcMar count w:left and w:right. MEASURED 2026-10-02: 23 080 edge elements / 42 documents - tcBorders 7 500 + 7 502 / 21, tblCellMar 2 243 + 2 243 / 47, tblBorders 1 332 + 1 332 / 22, tcMar 464 + 464 / 5. The audit's 11 462 was half of the truth, for the same reason TZ-12's was short of it: one edge per container instead of the pair, summed over a cascade. Its 42 documents is correct and is the one number here that survived. XS-23 is the same trap seen from the writer's side. READ THIS BEFORE TRUSTING THE ZERO: on this corpus every one of those edges is in a part the writer REGENERATES, and the writer already emits start/end, so the normalizer never sees one and this signal cannot distinguish a working rule from a dead one. It reported 0 for a rule that was dead for the whole of 2026-10-02 - `is_wml` matches only the Strict namespace, and the element path was testing the Transitional one. The gate for this item is `strict-ooxml-core/src/normalize/transitional.rs::the_direction_neutral_rename_follows_the_container_and_not_the_name`, which is a unit test ON PURPOSE: a corpus gate cannot see a rule the corpus never exercises."
 
 [[item]]
 id = "TZ-05"
@@ -80,7 +80,7 @@ signal = "message"
 elements = ["ind"]
 messages = ["is not allowed", "is not declared", "is not a valid value"]
 summary = "w:ind keeps @w:left/@w:right; Strict CT_Ind declares @w:start/@w:end"
-audit = "4 352 attributes / 50 documents (audit 4.1)."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:ind> carrying @w:left or @w:right. MEASURED 2026-10-02: 3 436 / 50 documents. The audit's 4 352 matched no definition: @w:left alone is 3 144 / 49, both attributes together 941 / 30, any attribute on w:ind 3 571 / 53. Only the left-or-right count reproduces the audit's 50 documents, and it is 916 lower than the number that was published."
 
 [[item]]
 id = "TZ-06"
@@ -89,7 +89,7 @@ signal = "message"
 elements = ["jc"]
 messages = ["is not a valid value"]
 summary = "w:jc/@w:val written with its Transitional spelling; ST_Jc and ST_JcTable lost left/right"
-audit = "179 + 21 attributes / 14 + 4 documents (audit 4.2). T4 was dead until queue item 2."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:jc> whose @w:val is left or right. MEASURED 2026-10-02: 201 / 14 documents. The audit's '179 + 21 / 14 + 4' does not decompose - there is no second bucket: @w:val in (start, end) is 0 / 0, so the 21 and the extra 4 documents were never a separate group. T4 was dead until queue item 2."
 
 [[item]]
 id = "TZ-07"
@@ -98,7 +98,7 @@ signal = "message"
 elements = ["tab", "lvlJc"]
 messages = ["is not a valid value"]
 summary = "ST_TabJc/ST_Jc values left/right on w:tab/@w:val and w:lvlJc/@w:val"
-audit = "750 + 1 305 attributes / 26 + 42 documents (audit 4.2)."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:tab> carrying @w:val, and <w:lvlJc> carrying @w:val. MEASURED 2026-10-02: 1 000 / 28 documents and 1 306 / 42. The audit's '750 / 26' for w:tab was low by 250; @w:val is present on 1 000 of the 1 066 w:tab elements, and 66 carry no @w:val at all."
 
 [[item]]
 id = "TZ-08"
@@ -107,7 +107,7 @@ signal = "message"
 elements = ["tblLook"]
 messages = ["not allowed here", "is not declared", "is not allowed"]
 summary = "w:tblLook carries the Transitional bitmask @w:val; Strict declares six boolean attributes"
-audit = "838 occurrences / 14 documents (audit 4.2). Same limit as TZ-04 and for the same reason: they are all in regenerated parts, so this signal measures the corpus, not the rule. The gate is `a_table_look_mask_becomes_six_booleans_and_nothing_else`."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents, count <w:tblLook> carrying @w:val. MEASURED 2026-10-02: 136 / 14 documents. The audit's 838 was six times the truth and came from summing libxml2's cascade, which repeats a message for every unexpected element it then meets. Same limit as TZ-04 and for the same reason: they are all in regenerated parts, so this signal measures the corpus, not the rule. The gate is `a_table_look_mask_becomes_six_booleans_and_nothing_else`."
 
 [[item]]
 id = "TZ-09"
@@ -140,10 +140,10 @@ audit = "1 document measured, the rest is a latent bomb (audit 9.1)."
 id = "TZ-12"
 origin = "ours"
 signal = "message"
-elements = ["wAfter", "wBefore", "tblCellSpacing", "tcMar", "tblCellMar", "tblInd"]
+elements = ["wAfter", "wBefore", "tblCellSpacing", "tcMar", "tblCellMar", "tblInd", "tcW", "tblW"]
 messages = ["is not a valid value of the union type"]
 summary = "bare twips where ST_MeasurementOrPercent admits only a percentage or a universal measure"
-audit = "~7 200 occurrences / 42 documents (audit 4.3)."
+audit = "COUNTED: parse every *.xml of the 58 Transitional documents; count @w:w on w:tblW/w:tcW/w:tblInd/w:wBefore/w:wAfter/w:tblCellSpacing, and @w:w on EVERY edge of w:tblBorders/w:tcBorders/w:tblCellMar/w:tcMar, keeping any value that is a bare number with no unit and no %. MEASURED 2026-10-02: 15 257 occurrences / 50 documents - tcW 2 544, tblCellMar left 2 243 + right 2 243 + top 2 178 + bottom 2 178, tblInd 1 859, tcMar 464 x 4, tblW 146, tblCellSpacing 7, wAfter 3. TWO corrections, in opposite directions. The audit's '~7 200 / 42' was low and named the wrong document count. Two intermediate corrections of this document also missed it, and by the same cause both times: counting ONE edge per container instead of all four, which loses 8 642 of the 15 257 on tblCellMar alone. `elements` also did not list w:tcW or w:tblW, the two largest single carriers at 2 690 between them, so the signal could never have matched them."
 
 [[item]]
 id = "TZ-13"
