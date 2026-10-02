@@ -146,6 +146,15 @@ pub struct NoteProperties {
     pub num_start: Option<u32>,
     /// Restart mode (`w:numRestart`): `continuous`, `eachSect`, `eachPage`.
     pub num_restart: Option<Arc<str>>,
+    /// `w:footnote`/`w:endnote` references inside the document's `w:footnotePr`.
+    ///
+    /// Not the notes themselves: ids, naming the separator (`-1`) and the
+    /// continuation separator (`0`). Those two are what draws the rule above a
+    /// footnote block, so they are page content. The writer emitted
+    /// `w:footnotePr` whenever there was a position or a format and nothing at
+    /// all when there was not, so a document whose only settings are the two
+    /// separator ids lost both.
+    pub separator_ids: Vec<u32>,
 }
 
 impl NoteProperties {
@@ -156,6 +165,7 @@ impl NoteProperties {
             && self.num_format.is_none()
             && self.num_start.is_none()
             && self.num_restart.is_none()
+            && self.separator_ids.is_empty()
     }
 
     /// Overlays `other` on top of `self` (values in `other` win).

@@ -396,8 +396,21 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         "proofState" if settings.proofing => xml.empty("w:proofState"),
         "trackRevisions" if settings.track_revisions => xml.empty("w:trackRevisions"),
         "documentProtection" => {
-            if let Some(edit) = &settings.document_protection {
-                xml.empty_attr_w("w:documentProtection", "edit", edit.as_ref());
+            // `@w:edit` is the mode and the corpus usually writes `@w:enforcement`
+            // instead, so writing only `edit` produced NO element for ten corpus
+            // documents rather than a partial one. Every attribute is written as
+            // the model holds it, and an element with no attributes at all is not
+            // written - there is nothing to say.
+            let has_edit = settings.document_protection.is_some();
+            if has_edit || !settings.document_protection_attributes.is_empty() {
+                xml.start("w:documentProtection");
+                if let Some(edit) = &settings.document_protection {
+                    xml.attr_w("edit", edit.as_ref());
+                }
+                for (attribute, value) in &settings.document_protection_attributes {
+                    xml.attr_w(attribute, value.as_ref());
+                }
+                xml.end();
             }
         }
         "defaultTabStop" => {
@@ -456,6 +469,85 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
                 xml.end();
             }
         }
+        "rsids" => {
+            if let Some(ids) = &settings.revision_save_ids {
+                xml.start("w:rsids");
+                // `CT_DocRsids` is one root then an unbounded list, so the root
+                // goes first whatever order the input had them in.
+                if let Some(root) = &ids.root {
+                    xml.empty_attr_w("w:rsidRoot", "val", root.as_ref());
+                }
+                for entry in &ids.entries {
+                    xml.empty_attr_w("w:rsid", "val", entry.as_ref());
+                }
+                xml.end();
+            }
+        }
+        "characterSpacingControl" => {
+            if let Some(value) = &settings.character_spacing_control {
+                xml.empty_attr_w("w:characterSpacingControl", "val", value.as_ref());
+            }
+        }
+        "view" => {
+            if let Some(value) = &settings.view {
+                xml.empty_attr_w("w:view", "val", value.as_ref());
+            }
+        }
+        "docVars" => {
+            if !settings.document_variables.is_empty() {
+                xml.start("w:docVars");
+                for (name, value) in &settings.document_variables {
+                    xml.start("w:docVar");
+                    xml.attr_w("name", name.as_ref());
+                    xml.attr_w("val", value.as_ref());
+                    xml.end();
+                }
+                xml.end();
+            }
+        }
+        "noLineBreaksAfter" | "noLineBreaksBefore" => {
+            let pairs = if name == "noLineBreaksAfter" {
+                &settings.no_line_breaks_after
+            } else {
+                &settings.no_line_breaks_before
+            };
+            for (language, characters) in pairs {
+                let element = if name == "noLineBreaksAfter" {
+                    "w:noLineBreaksAfter"
+                } else {
+                    "w:noLineBreaksBefore"
+                };
+                xml.start(element);
+                xml.attr_w("lang", language.as_ref());
+                xml.attr_w("val", characters.as_ref());
+                xml.end();
+            }
+        }
+        "attachedTemplate" => {
+            if let Some(id) = &settings.attached_template {
+                xml.start("w:attachedTemplate");
+                xml.attr("r:id", id.as_ref());
+                xml.end();
+            }
+        }
+        "stylePaneFormatFilter" => {
+            if !settings.style_pane_filter.is_empty() {
+                xml.start("w:stylePaneFormatFilter");
+                for (attribute, value) in &settings.style_pane_filter {
+                    xml.attr_w(attribute, value.as_ref());
+                }
+                xml.end();
+            }
+        }
+        "revisionView" => {
+            if !settings.revision_view.is_empty() {
+                xml.start("w:revisionView");
+                for (attribute, value) in &settings.revision_view {
+                    xml.attr_w(attribute, value.as_ref());
+                }
+                xml.end();
+            }
+        }
         "clrSchemeMapping" => {
             // `CT_ColorSchemeMapping` has no `xsd:sequence`, so attribute order is
             // free - it is written in declaration order so two settings parts diff
@@ -492,7 +584,30 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
                 xml.empty_attr_w("w:listSeparator", "val", separator.as_ref());
             }
         }
-        _ => {}
+        // The `CT_OnOff` and numeric children are name-keyed maps in the model, so
+        // the DATA says whether this child is one of them and a second list of names
+        // here would be a second place to forget to update. A name in neither map
+        // writes nothing, which is what "not read" has always meant. This arm is
+        // last so it cannot shadow a named one.
+        name => {
+            if let Some((_, value)) = settings
+                .on_off_flags
+                .iter()
+                .find(|(flag, _)| flag.as_ref() == name)
+            {
+                xml.start(&format!("w:{name}"));
+                if let Some(value) = value {
+                    xml.attr_w("val", value.as_ref());
+                }
+                xml.end();
+            } else if let Some((_, value)) = settings
+                .numeric_settings
+                .iter()
+                .find(|(setting, _)| setting.as_ref() == name)
+            {
+                xml.empty_attr_w(&format!("w:{name}"), "val", value.as_ref());
+            }
+        }
     }
     let _ = ctx;
 }

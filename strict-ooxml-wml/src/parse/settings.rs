@@ -1,14 +1,46 @@
 //! Parsing of `settings.xml`.
 
 use strict_ooxml_core::error::Result;
+
+/// The relationship namespace, spelled out rather than borrowed: `strict-ooxml-core`
+/// does not export it and the writer has its own copy, and a third place to look
+/// is how two of them drift.
+const NS_R: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::settings::{
-    ColorSchemeMapping, CompatFlags, DocumentZoom, MathProperties, Settings, Zoom,
+    ColorSchemeMapping, CompatFlags, DocumentZoom, MathProperties, RevisionSaveIds, Settings, Zoom,
 };
 use crate::model::values::Twips;
 
 use super::{attr_in_ns, is_math, is_wml, parse_i32, val_attr, wml_attr, PartParser};
+
+/// `CT_OnOff` children of `w:settings` carried as a (name, value) pair.
+///
+/// Thirty-one elements were being dropped from `settings.xml` across the corpus
+/// and most of them are this one shape: a `CT_OnOff` with no payload beyond on
+/// or off. They are a table rather than thirty struct fields so that adding the
+/// thirty-first is a line here and nothing else.
+const FLAT_ON_OFF: &[&str] = &[
+    "bookFoldPrinting",
+    "bordersDoNotSurroundFooter",
+    "bordersDoNotSurroundHeader",
+    "doNotAutoCompressPictures",
+    "doNotIncludeSubdocsInStats",
+    "doNotUseMarginsForDrawingGridOrigin",
+    "embedSystemFonts",
+    "embedTrueTypeFonts",
+    "noPunctuationKerning",
+    "savePreviewPicture",
+];
+
+/// Numeric children of `w:settings`, carried as the producer's own text.
+const FLAT_NUMERIC: &[&str] = &[
+    "displayHorizontalDrawingGridEvery",
+    "displayVerticalDrawingGridEvery",
+    "drawingGridHorizontalSpacing",
+    "drawingGridVerticalSpacing",
+];
 
 impl PartParser<'_> {
     /// Parses a `settings.xml` part.
@@ -34,77 +66,211 @@ impl PartParser<'_> {
                         self.skip_element()?;
                         continue;
                     }
-                    match name.local() {
-                        "defaultTabStop" => {
-                            settings.default_tab_stop =
-                                val_attr(&attrs).and_then(parse_i32).map(Twips);
-                        }
-                        "zoom" => settings.zoom = Some(Self::parse_zoom(&attrs)),
-                        "evenAndOddHeaders" => settings.even_and_odd_headers = true,
-                        "displayBackgroundShape" => settings.display_background_shape = true,
-                        "hideSpellingErrors" => settings.hide_spelling_errors = true,
-                        "hideGrammaticalErrors" => settings.hide_grammatical_errors = true,
-                        "proofState" => settings.proofing = true,
-                        "trackRevisions" => settings.track_revisions = true,
-                        "doNotHyphenateCaps" => settings.do_not_hyphenate_caps = true,
-                        "autoHyphenation" => settings.auto_hyphenation = true,
-                        "hyphenationZone" => {
-                            settings.hyphenation_zone =
-                                val_attr(&attrs).and_then(parse_i32).map(Twips);
-                        }
-                        "documentProtection" => {
-                            settings.document_protection =
-                                wml_attr(&attrs, "edit").map(|value| self.intern(value));
-                        }
-                        "decimalSymbol" => {
-                            settings.decimal_symbol =
-                                val_attr(&attrs).map(|value| self.intern(value));
-                        }
-                        "listSeparator" => {
-                            settings.list_separator =
-                                val_attr(&attrs).map(|value| self.intern(value));
-                        }
-                        "themeFontLang" => {
-                            settings.theme_font_lang =
-                                wml_attr(&attrs, "val").map(|value| self.intern(value));
-                        }
-                        "mirrorMargins" => settings.mirror_margins = true,
-                        // The Strict spelling of the flag Transitional puts in
-                        // `w:sectPr`; both land on the same field.
-                        "gutterAtTop" => settings.gutter_at_top = true,
-                        "footnotePr" => {
-                            settings.footnote_properties = self.parse_note_properties()?;
-                            continue;
-                        }
-                        "endnotePr" => {
-                            settings.endnote_properties = self.parse_note_properties()?;
-                            continue;
-                        }
-                        "clrSchemeMapping" => {
-                            settings.color_scheme_mapping =
-                                Some(self.parse_color_scheme_mapping(&attrs));
-                            self.skip_element()?;
-                            continue;
-                        }
-                        "compat" => {
-                            let (pairs, flags) = self.parse_compat()?;
-                            settings.compatibility.extend(pairs);
-                            settings.compat_flags = flags;
-                            continue;
-                        }
-                        _ => {
-                            self.record_foreign(&name);
-                        }
+                    // `CT_Settings` declares ninety-six children and the model
+                    // carries fifty-one of them across seven shapes: a scalar, a
+                    // boolean, a keyed list, a nested block, and three name-keyed
+                    // maps. The dispatch is a separate function because the inline
+                    // form grew past the function-length lint, and a `w:settings`
+                    // reader that lives in one screen is a reader nobody re-checks
+                    // against the schema.
+                    //
+                    // A self-closing element arrives as `StartElement` with a pending end, so
+                    // an element left open produces an `End` next - and this loop's
+                    // `End` is the end of `w:settings`. `true` means the child read
+                    // its own subtree and must not be skipped; `false` means it is
+                    // still open and skipping it is what consumes that `End`.
+                    if self.settings_child(&name, &attrs, &mut settings)? {
+                        continue;
                     }
                     self.skip_element()?;
                 }
                 XmlEvent::EndElement { .. } => break,
                 XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of settings part")),
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of settings")),
             }
         }
         self.leave();
         Ok(settings)
+    }
+
+    /// Applies one `w:settings` child. Returns `true` when the element was fully
+    /// consumed, so the caller does not have to skip it again.
+    fn settings_child(
+        &mut self,
+        name: &super::QName,
+        attrs: &[Attr],
+        settings: &mut Settings,
+    ) -> Result<bool> {
+        if let Some(consumed) = self.settings_named(name, attrs, settings)? {
+            return Ok(consumed);
+        }
+        match name.local() {
+            "defaultTabStop" => {
+                settings.default_tab_stop = val_attr(attrs).and_then(parse_i32).map(Twips);
+            }
+            "zoom" => settings.zoom = Some(Self::parse_zoom(attrs)),
+            "evenAndOddHeaders" => settings.even_and_odd_headers = true,
+            "displayBackgroundShape" => settings.display_background_shape = true,
+            "hideSpellingErrors" => settings.hide_spelling_errors = true,
+            "hideGrammaticalErrors" => settings.hide_grammatical_errors = true,
+            "proofState" => settings.proofing = true,
+            "trackRevisions" => settings.track_revisions = true,
+            "doNotHyphenateCaps" => settings.do_not_hyphenate_caps = true,
+            "autoHyphenation" => settings.auto_hyphenation = true,
+            "hyphenationZone" => {
+                settings.hyphenation_zone = val_attr(attrs).and_then(parse_i32).map(Twips);
+            }
+            "characterSpacingControl" => {
+                settings.character_spacing_control =
+                    val_attr(attrs).map(|value| self.intern(value));
+            }
+            "view" => {
+                settings.view = val_attr(attrs).map(|value| self.intern(value));
+            }
+            "docVars" => {
+                let pairs = self.parse_keyed_children("docVar")?;
+                settings.document_variables.extend(pairs);
+                return Ok(true);
+            }
+            "noLineBreaksAfter" => {
+                let pair = self.keyed_value(attrs, "lang");
+                if let Some(pair) = pair {
+                    settings.no_line_breaks_after.push(pair);
+                }
+                self.skip_element()?;
+                return Ok(true);
+            }
+            "noLineBreaksBefore" => {
+                let pair = self.keyed_value(attrs, "lang");
+                if let Some(pair) = pair {
+                    settings.no_line_breaks_before.push(pair);
+                }
+                self.skip_element()?;
+                return Ok(true);
+            }
+            "attachedTemplate" => {
+                settings.attached_template =
+                    attr_in_ns(attrs, NS_R, "id").map(|value| self.intern(value));
+                self.skip_element()?;
+                return Ok(true);
+            }
+            "stylePaneFormatFilter" => {
+                settings.style_pane_filter = self.attribute_pairs(attrs);
+                self.skip_element()?;
+                return Ok(true);
+            }
+            "revisionView" => {
+                settings.revision_view = self.attribute_pairs(attrs);
+                self.skip_element()?;
+                return Ok(true);
+            }
+            "compat" => {
+                let (pairs, flags) = self.parse_compat()?;
+                settings.compatibility.extend(pairs);
+                settings.compat_flags = flags;
+                return Ok(true);
+            }
+            _ if FLAT_ON_OFF.contains(&name.local()) => {
+                // The value is kept as the producer wrote it. `CT_OnOff`
+                // is union(xsd:boolean) with an ST_OnOff enumeration on
+                // top, so a bare element, `w:val="true"` and `w:val="1"`
+                // all mean on and `w:val="0"`/`"false"`/`"off"` mean off.
+                // Writing a bare element for an input that said
+                // `w:val="0"` would switch a flag ON, which for
+                // `w:embedTrueTypeFonts` decides whether the embedded
+                // font parts exist at all.
+                settings.on_off_flags.push((
+                    self.intern(name.local()),
+                    val_attr(attrs).map(|value| self.intern(value)),
+                ));
+                self.skip_element()?;
+                return Ok(true);
+            }
+            _ if FLAT_NUMERIC.contains(&name.local()) => {
+                // Four different types - ST_TwipsMeasure, ST_DecimalNumber
+                // and two more - and all four round trip as the producer's
+                // own text, so an unmodelled value is still carried rather
+                // than rounded away by a reader that understood it.
+                if let Some(value) = val_attr(attrs) {
+                    settings
+                        .numeric_settings
+                        .push((self.intern(name.local()), self.intern(value)));
+                }
+                self.skip_element()?;
+                return Ok(true);
+            }
+            _ => {
+                self.record_foreign(name);
+                return Ok(false);
+            }
+        }
+        Ok(false)
+    }
+    /// The `w:settings` children that are neither scalar nor nested.
+    ///
+    /// Split out of [`settings_child`](Self::settings_child) purely so both fit
+    /// the function-length lint; the split is by nothing in particular, and it is
+    /// the second of two functions that between them hold every child `CT_Settings`
+    /// declares that this model carries.
+    fn settings_named(
+        &mut self,
+        name: &super::QName,
+        attrs: &[Attr],
+        settings: &mut Settings,
+    ) -> Result<Option<bool>> {
+        match name.local() {
+            "documentProtection" => {
+                // `@w:edit` is the mode and has its own field; the rest
+                // of the attributes are kept verbatim, because
+                // `@w:enforcement` is what the corpus writes and an
+                // element with only `w:edit` read off it writes back
+                // as nothing at all.
+                let extra: Vec<_> = self
+                    .attribute_pairs(attrs)
+                    .into_iter()
+                    .filter(|(name, _)| name.as_ref() != "edit")
+                    .collect();
+                if !extra.is_empty() {
+                    settings.document_protection_attributes = extra;
+                }
+                settings.document_protection =
+                    wml_attr(attrs, "edit").map(|value| self.intern(value));
+            }
+            "decimalSymbol" => {
+                settings.decimal_symbol = val_attr(attrs).map(|value| self.intern(value));
+            }
+            "listSeparator" => {
+                settings.list_separator = val_attr(attrs).map(|value| self.intern(value));
+            }
+            "themeFontLang" => {
+                settings.theme_font_lang = wml_attr(attrs, "val").map(|value| self.intern(value));
+            }
+            "mirrorMargins" => settings.mirror_margins = true,
+            // The Strict spelling of the flag Transitional puts in
+            // `w:sectPr`; both land on the same field.
+            "gutterAtTop" => settings.gutter_at_top = true,
+            "footnotePr" => {
+                settings.footnote_properties = self.parse_note_properties()?;
+                return Ok(Some(true));
+            }
+            "endnotePr" => {
+                settings.endnote_properties = self.parse_note_properties()?;
+                return Ok(Some(true));
+            }
+            "clrSchemeMapping" => {
+                settings.color_scheme_mapping = Some(self.parse_color_scheme_mapping(attrs));
+                return Ok(Some(false));
+            }
+            "rsids" => {
+                settings.revision_save_ids = Some(self.parse_revision_save_ids()?);
+                return Ok(Some(true));
+            }
+            _ => return Ok(None),
+        }
+        // `false`: the arms above read attributes off an element they did not
+        // consume, so the element is still open and the caller has to skip it.
+        // `true` is reserved for an arm that read the subtree itself.
+        Ok(Some(false))
     }
 
     /// Parses a `w:zoom` element.
@@ -193,6 +359,106 @@ impl PartParser<'_> {
             }
         }
         Ok(properties)
+    }
+
+    /// Every `w:`-namespaced attribute of an element as (local name, value).
+    ///
+    /// Used for the handful of `w:settings` children whose payload is a fixed set
+    /// of attributes and nothing else - `w:stylePaneFormatFilter` has fourteen,
+    /// `w:revisionView` four, `w:documentProtection` five. Modelling each as a
+    /// struct would be thirty fields to carry five values, and the schema already
+    /// says which attributes are legal, so the XSD gate is the right place to
+    /// check them rather than the model.
+    fn attribute_pairs(
+        &mut self,
+        attrs: &[Attr],
+    ) -> Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> {
+        let mut pairs = Vec::new();
+        for attribute in attrs {
+            if attribute
+                .name
+                .ns
+                .as_ref()
+                .is_some_and(|ns| ns == crate::WML_STRICT_NS)
+            {
+                pairs.push((
+                    self.intern(attribute.name.local()),
+                    self.intern(&attribute.value),
+                ));
+            }
+        }
+        pairs
+    }
+
+    /// A (language, value) pair for `w:noLineBreaksAfter` / `Before`.
+    fn keyed_value(
+        &mut self,
+        attrs: &[Attr],
+        key: &str,
+    ) -> Option<(std::sync::Arc<str>, std::sync::Arc<str>)> {
+        let name = wml_attr(attrs, key)?;
+        let value = wml_attr(attrs, "val")?;
+        Some((self.intern(name), self.intern(value)))
+    }
+
+    /// Parses the children of a keyed container, `w:docVars` style.
+    fn parse_keyed_children(
+        &mut self,
+        child: &str,
+    ) -> Result<Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>> {
+        self.enter()?;
+        let mut pairs = Vec::new();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_wml(&name) && name.local() == child {
+                        if let (Some(key), Some(value)) =
+                            (wml_attr(&attrs, "name"), wml_attr(&attrs, "val"))
+                        {
+                            pairs.push((self.intern(key), self.intern(value)));
+                        }
+                    }
+                    self.skip_element()?;
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of keyed container")),
+            }
+        }
+        self.leave();
+        Ok(pairs)
+    }
+
+    /// Parses a `w:rsids` block: one root and an unbounded list of entries.
+    fn parse_revision_save_ids(&mut self) -> Result<RevisionSaveIds> {
+        self.enter()?;
+        let mut ids = RevisionSaveIds::default();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_wml(&name) {
+                        let value = val_attr(&attrs).map(|text| self.intern(text));
+                        match name.local() {
+                            "rsidRoot" => ids.root = value,
+                            "rsid" => {
+                                if let Some(value) = value {
+                                    ids.entries.push(value);
+                                }
+                            }
+                            _ => {
+                                self.record_foreign(&name);
+                            }
+                        }
+                    }
+                    self.skip_element()?;
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of rsids")),
+            }
+        }
+        self.leave();
+        Ok(ids)
     }
 
     /// Parses `w:clrSchemeMapping`'s twelve optional attributes.

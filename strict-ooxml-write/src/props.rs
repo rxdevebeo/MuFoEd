@@ -1182,6 +1182,22 @@ pub fn note_properties(xml: &mut XmlWriter, name: &str, props: &NoteProperties) 
     if let Some(restart) = &props.num_restart {
         xml.empty_attr_w("w:numRestart", "val", restart.as_ref());
     }
+    // The separator and continuation-separator references, when this element is
+    // the document-level `w:footnotePr`/`w:endnotePr`. In `w:sectPr` these two
+    // ids are not legal children at all, so the context decides - the same
+    // reason `RunContent::NoteRef` is context-aware.
+    if props.separator_ids.is_empty() {
+        xml.end();
+        return;
+    }
+    for id in &props.separator_ids {
+        let child = if name.ends_with("endnotePr") {
+            "w:endnote"
+        } else {
+            "w:footnote"
+        };
+        xml.empty_attr_w(child, "id", id);
+    }
     xml.end();
 }
 

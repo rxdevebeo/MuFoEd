@@ -95,6 +95,23 @@ impl PartParser<'_> {
                             "numRestart" => {
                                 props.num_restart = val_attr(&attrs).map(|v| self.intern(v));
                             }
+                            // `w:footnote`/`w:endnote` here are REFERENCES - the
+                            // separator (-1) and the continuation separator (0) -
+                            // not notes. They are what draws the rule above a note
+                            // block, so they are page content, and the writer used
+                            // to emit `w:footnotePr` only when a position or a format
+                            // was present: a document whose only note settings are
+                            // these two ids produced no element at all.
+                            "footnote" | "endnote" => {
+                                // `@w:id`, not `@w:val`. Reading @w:val here is the
+                                // kind of slip that looks right: every sibling in
+                                // CT_FtnProps uses it, and these two do not.
+                                if let Some(id) = wml_attr(&attrs, "id").and_then(parse_i32) {
+                                    if let Ok(id) = u32::try_from(id) {
+                                        props.separator_ids.push(id);
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }

@@ -127,6 +127,71 @@ pub struct Settings {
     /// with Word's defaults, and nothing in the report or in any schema message
     /// says so.
     pub color_scheme_mapping: Option<ColorSchemeMapping>,
+    /// Revision save identifiers (`w:rsids`).
+    pub revision_save_ids: Option<RevisionSaveIds>,
+    /// Character spacing compression (`w:characterSpacingControl`).
+    ///
+    /// One of three values: `doNotCompress`, `compressPunctuation`,
+    /// `compressPunctuationAndJapaneseKana`. All forty corpus documents set it
+    /// and all forty lost it. It decides whether punctuation is compressed for
+    /// CJK line breaking, so it is a layout setting and not editor state.
+    pub character_spacing_control: Option<Arc<str>>,
+    /// Document view (`w:view`): `none`, `print`, `outline`, `masterPages`,
+    /// `normal`, `web`.
+    pub view: Option<Arc<str>>,
+    /// Line-breaking exceptions (`w:noLineBreaksAfter`, `w:noLineBreaksBefore`),
+    /// as (language, characters) pairs.
+    ///
+    /// Japanese kinsoku rules: characters that may not end a line and characters
+    /// that may not begin one. One corpus document carries both.
+    pub no_line_breaks_after: Vec<(Arc<str>, Arc<str>)>,
+    /// Characters that may not begin a line, per language.
+    pub no_line_breaks_before: Vec<(Arc<str>, Arc<str>)>,
+    /// Document variables (`w:docVars`), as (name, value) pairs.
+    pub document_variables: Vec<(Arc<str>, Arc<str>)>,
+    /// Flags this document sets and the corpus would otherwise lose.
+    ///
+    /// One flat map rather than thirty named fields, because they are thirty
+    /// instances of ONE shape: a `CT_OnOff` child of `w:settings` with no payload
+    /// beyond on/off. `CT_OnOff` is `union(xsd:boolean)` with an `ST_OnOff`
+    /// enumeration layered on it, so three spellings mean "on" - a bare element,
+    /// `w:val="true"` and `w:val="1"` - and two mean "off".
+    ///
+    /// The value is kept as the document wrote it, because writing a bare element
+    /// for an input that said `w:val="0"` turns an off flag ON. That is not a
+    /// cosmetic difference for `w:embedTrueTypeFonts`, which decides whether the
+    /// embedded font parts exist at all.
+    pub on_off_flags: Vec<(Arc<str>, Option<Arc<str>>)>,
+    /// Numeric settings this document sets: name to the string as written.
+    ///
+    /// `w:drawingGridHorizontalSpacing`, `w:displayHorizontalDrawingGridEvery`
+    /// and their vertical counterparts are four different types -
+    /// `ST_TwipsMeasure`, `ST_DecimalNumber`, and two more - and they all round
+    /// trip as the producer's own text. Keeping the text means a value this
+    /// project does not model is still carried rather than rounded away.
+    pub numeric_settings: Vec<(Arc<str>, Arc<str>)>,
+    /// `w:documentProtection`'s attributes beyond `w:edit`.
+    ///
+    /// `@w:edit` is the mode and lives on its own field; the corpus writes
+    /// `@w:enforcement="0"` instead, which is a different attribute with a
+    /// different meaning - whether the protection is in force at all. A model
+    /// that reads only `w:edit` sees an element with nothing on it and writes
+    /// nothing, which is how ten documents lost the element.
+    pub document_protection_attributes: Vec<(Arc<str>, Arc<str>)>,
+    /// `w:stylePaneFormatFilter`'s fourteen boolean attributes.
+    ///
+    /// It is a filter over what the style pane lists, so it is editor state by
+    /// any reading - and it is kept, for the reason `REMOVALS` documents.
+    pub style_pane_filter: Vec<(Arc<str>, Arc<str>)>,
+    /// `w:revisionView`'s four boolean attributes: `markup`, `comments`,
+    /// `insDel`, `formatting`.
+    pub revision_view: Vec<(Arc<str>, Arc<str>)>,
+    /// `w:attachedTemplate/@r:id`, the relationship to the template part.
+    ///
+    /// Kept as the relationship id rather than resolved: the writer has to emit
+    /// the relationship as well, and a template part the package does not carry
+    /// is a part-level question this model does not own.
+    pub attached_template: Option<Arc<str>>,
 }
 
 /// The seven on/off children `CT_Compat` declares, in the order it declares them.
@@ -253,6 +318,26 @@ impl ColorSchemeMapping {
             ("w:followedHyperlink", &self.followed_hyperlink),
         ]
     }
+}
+
+/// `w:rsids`: the revision-save identifiers a document has accumulated.
+///
+/// `w:rsids` holds one `w:rsidRoot` and then one `w:rsid` per editing session.
+/// They are editor state - nothing renders from them - and they were dropped from
+/// all forty corpus documents, unnamed.
+///
+/// They are kept rather than named away, for the reason `REMOVALS` documents:
+/// "we do not act on it" is a support question the Feature Report answers, and
+/// deleting the element converts a declared feature into a loss that is not one.
+/// The list is a `Vec` in document order and the root is kept apart, because
+/// `CT_DocRsids` is a sequence of exactly one root followed by an unbounded list
+/// and re-sorting them would be a change nobody asked for.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct RevisionSaveIds {
+    /// `w:rsidRoot/@w:val` - the session the document was created in.
+    pub root: Option<Arc<str>>,
+    /// Each `w:rsid/@w:val`, in document order.
+    pub entries: Vec<Arc<str>>,
 }
 
 /// `m:mathPr` and its children, in the order `CT_MathPr` declares them.
