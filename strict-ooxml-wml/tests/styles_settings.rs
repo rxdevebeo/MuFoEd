@@ -257,3 +257,59 @@ fn math_properties_survive_the_non_wml_filter() {
     // would turn a set flag off on the next write.
     assert_eq!(mathematics.display_default.as_deref(), Some("1"));
 }
+
+/// The seven on/off children of `w:compat`, in `CT_Compat`'s order.
+///
+/// They are bare `CT_OnOff` flags and every corpus document writes them with no
+/// value at all, so a reader that looks for `@w:val` sees none of them. `w:compat`
+/// is regenerated from the model, so a flag the model did not carry was deleted
+/// from the document rather than left out of the output, and thirty-three of them
+/// went that way with nothing in the report.
+#[test]
+fn compat_flags_survive_alongside_compat_settings() {
+    let document = parse_aux(
+        None,
+        None,
+        Some(
+            r#"<w:settings xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main">
+  <w:compat>
+    <w:spaceForUL/>
+    <w:doNotLeaveBackslashAlone/>
+    <w:ulTrailSpace/>
+    <w:doNotExpandShiftReturn/>
+    <w:adjustLineHeightInTable/>
+    <w:compatSetting w:name="compatibilityMode" w:val="15"/>
+  </w:compat>
+</w:settings>"#,
+        ),
+    );
+    let settings = &document.settings;
+    assert!(settings.compat_flags.space_for_underline);
+    assert!(settings.compat_flags.do_not_leave_backslash_alone);
+    assert!(settings.compat_flags.underline_trailing_space);
+    assert!(settings.compat_flags.do_not_expand_shift_return);
+    assert!(settings.compat_flags.adjust_line_height_in_table);
+    assert!(
+        !settings.compat_flags.apply_breaking_rules,
+        "an absent flag is off, not unknown"
+    );
+    assert_eq!(
+        settings.compatibility.len(),
+        1,
+        "compatSetting still parsed"
+    );
+
+    // Schema order, not corpus order: the corpus writes these alphabetically and
+    // CT_Compat does not. `doNotLeaveBackslashAlone` is third, `ulTrailSpace`
+    // fourth, and getting that pair backwards fails on xsd:sequence.
+    assert_eq!(
+        settings.compat_flags.set(),
+        vec![
+            "w:spaceForUL",
+            "w:doNotLeaveBackslashAlone",
+            "w:ulTrailSpace",
+            "w:doNotExpandShiftReturn",
+            "w:adjustLineHeightInTable",
+        ]
+    );
+}

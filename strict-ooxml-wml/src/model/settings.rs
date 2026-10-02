@@ -78,6 +78,14 @@ pub struct Settings {
     pub list_separator: Option<Arc<str>>,
     /// Compatibility settings (`w:compat`), recorded as raw key/value pairs.
     pub compatibility: Vec<(Arc<str>, Arc<str>)>,
+    /// The on/off children of `w:compat` (`w:compatSetting` is above).
+    ///
+    /// The reader used to collect `w:compatSetting` and drop the flags, so five
+    /// children that `CT_Compat` declares - thirty-three occurrences across the
+    /// corpus - left the package without a word in the report. A `w:compat` that
+    /// survives with its key/values and none of its switches is a document whose
+    /// line breaking has silently changed.
+    pub compat_flags: CompatFlags,
     /// Theme font languages (`w:themeFontLang`).
     pub theme_font_lang: Option<Arc<str>>,
     /// Footnote properties (`w:footnotePr`).
@@ -110,6 +118,68 @@ pub struct Settings {
     /// it used filtered by the `wml` namespace and could not see what it was
     /// looking for.
     pub math_properties: Option<MathProperties>,
+}
+
+/// The seven on/off children `CT_Compat` declares, in the order it declares them.
+///
+/// `CT_Compat` has exactly eight children and the eighth is `w:compatSetting`,
+/// which [`Settings::compatibility`] carries as key/value pairs because a reader
+/// records it that way. These seven are bare `CT_OnOff` flags: the corpus writes
+/// every one of them with no `@w:val` at all, so there is no value to keep and a
+/// `bool` per flag is the whole of it.
+///
+/// The order is the schema's and not the corpus's, and it matters for the same
+/// reason as `MathProperties`: `CT_Compat` is an `xsd:sequence`, so a child that
+/// appears earlier than the schema says is "This element is not expected". The
+/// corpus happens to write them alphabetically, which is not the schema's order
+/// - `doNotLeaveBackslashAlone` before `ulTrailSpace`, not after.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct CompatFlags {
+    /// `w:spaceForUL` — add space for underlining.
+    pub space_for_underline: bool,
+    /// `w:balanceSingleByteDoubleByteWidth` — balance single and double byte widths.
+    pub balance_single_byte_double_byte_width: bool,
+    /// `w:doNotLeaveBackslashAlone` — do not leave a backslash alone at line end.
+    pub do_not_leave_backslash_alone: bool,
+    /// `w:ulTrailSpace` — underline trailing spaces.
+    pub underline_trailing_space: bool,
+    /// `w:doNotExpandShiftReturn` — do not expand a soft return to a full line.
+    pub do_not_expand_shift_return: bool,
+    /// `w:adjustLineHeightInTable` — add document grid line pitch to line height.
+    pub adjust_line_height_in_table: bool,
+    /// `w:applyBreakingRules` — apply East Asian breaking rules.
+    pub apply_breaking_rules: bool,
+}
+
+impl CompatFlags {
+    /// Every flag that is set, in `CT_Compat`'s order.
+    #[must_use]
+    pub fn set(&self) -> Vec<&'static str> {
+        let mut names = Vec::new();
+        for (on, name) in [
+            (self.space_for_underline, "w:spaceForUL"),
+            (
+                self.balance_single_byte_double_byte_width,
+                "w:balanceSingleByteDoubleByteWidth",
+            ),
+            (
+                self.do_not_leave_backslash_alone,
+                "w:doNotLeaveBackslashAlone",
+            ),
+            (self.underline_trailing_space, "w:ulTrailSpace"),
+            (self.do_not_expand_shift_return, "w:doNotExpandShiftReturn"),
+            (
+                self.adjust_line_height_in_table,
+                "w:adjustLineHeightInTable",
+            ),
+            (self.apply_breaking_rules, "w:applyBreakingRules"),
+        ] {
+            if on {
+                names.push(name);
+            }
+        }
+        names
+    }
 }
 
 /// `m:mathPr` and its children, in the order `CT_MathPr` declares them.

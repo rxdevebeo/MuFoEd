@@ -433,8 +433,17 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             }
         }
         "compat" => {
-            if !settings.compatibility.is_empty() {
+            // `CT_Compat`'s sequence puts the seven on/off flags FIRST and
+            // `w:compatSetting` LAST, so the two are written in that order rather
+            // than in the order they were read. The corpus writes them
+            // alphabetically, which is not this order, so a round trip through a
+            // producer that sorted them would otherwise move four of the seven.
+            let flags = settings.compat_flags.set();
+            if !flags.is_empty() || !settings.compatibility.is_empty() {
                 xml.start("w:compat");
+                for flag in flags {
+                    xml.empty(flag);
+                }
                 // w:compat holds w:compatSetting elements keyed by name, which is
                 // what the reader records; writing the key as an element name would
                 // produce markup no reader recognises.

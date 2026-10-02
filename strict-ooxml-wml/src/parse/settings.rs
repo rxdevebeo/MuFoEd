@@ -3,7 +3,7 @@
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::settings::{DocumentZoom, MathProperties, Settings, Zoom};
+use crate::model::settings::{CompatFlags, DocumentZoom, MathProperties, Settings, Zoom};
 use crate::model::values::Twips;
 
 use super::{attr_in_ns, is_math, is_wml, parse_i32, val_attr, wml_attr, PartParser};
@@ -79,8 +79,9 @@ impl PartParser<'_> {
                             continue;
                         }
                         "compat" => {
-                            let pairs = self.parse_compat()?;
+                            let (pairs, flags) = self.parse_compat()?;
                             settings.compatibility.extend(pairs);
+                            settings.compat_flags = flags;
                             continue;
                         }
                         _ => {
@@ -186,10 +187,23 @@ impl PartParser<'_> {
         Ok(properties)
     }
 
-    /// Parses a `w:compat` element, collecting `w:compatSetting` key/values.
-    fn parse_compat(&mut self) -> Result<Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>> {
+    /// Parses a `w:compat` element: the `w:compatSetting` key/value pairs AND the
+    /// seven on/off children `CT_Compat` declares.
+    ///
+    /// The second half used not to be collected at all. `w:compat` is regenerated
+    /// from the model, so a flag the model did not carry was not "left out of the
+    /// output" - it was deleted from the document with nothing in the report
+    /// saying so, in thirty-three places across the corpus (reaudit П-2).
+    ///
+    /// An unrecognised `w:` child is still skipped rather than kept: the table of
+    /// legal names is the schema's, and a name outside it is not something this
+    /// model can hold. It is recorded, so the removal is named.
+    fn parse_compat(
+        &mut self,
+    ) -> Result<(Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>, CompatFlags)> {
         self.enter()?;
         let mut pairs = Vec::new();
+        let mut flags = CompatFlags::default();
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
@@ -198,6 +212,30 @@ impl PartParser<'_> {
                         let value = wml_attr(&attrs, "val").map(|value| self.intern(value));
                         if let (Some(key), Some(value)) = (key, value) {
                             pairs.push((key, value));
+                        }
+                    } else if is_wml(&name) {
+                        // `CT_OnOff` is a union: a bare element means on, and
+                        // `w:val="0"`/`"false"`/`"off"` mean off. The corpus writes
+                        // every flag bare, so treating presence as on is what the
+                        // input says; reading only `@w:val` would have seen none
+                        // of them at all.
+                        let on = match wml_attr(&attrs, "val") {
+                            None => true,
+                            Some(value) => !matches!(value.trim(), "0" | "false" | "off" | "no"),
+                        };
+                        match name.local() {
+                            "spaceForUL" => flags.space_for_underline = on,
+                            "balanceSingleByteDoubleByteWidth" => {
+                                flags.balance_single_byte_double_byte_width = on;
+                            }
+                            "doNotLeaveBackslashAlone" => flags.do_not_leave_backslash_alone = on,
+                            "ulTrailSpace" => flags.underline_trailing_space = on,
+                            "doNotExpandShiftReturn" => flags.do_not_expand_shift_return = on,
+                            "adjustLineHeightInTable" => flags.adjust_line_height_in_table = on,
+                            "applyBreakingRules" => flags.apply_breaking_rules = on,
+                            _ => {
+                                self.record_foreign(&name);
+                            }
                         }
                     }
                     self.skip_element()?;
@@ -208,6 +246,6 @@ impl PartParser<'_> {
             }
         }
         self.leave();
-        Ok(pairs)
+        Ok((pairs, flags))
     }
 }

@@ -300,6 +300,21 @@ pub const REMOVALS: &[Removal] = &[
         Severity::Ignorable,
         "CJK layout switch; Strict's CT_Compat does not declare it",
     ),
+    // The other two children the corpus puts inside `w:compat` that Strict's
+    // `CT_Compat` does not declare. Same shape as `useFELayout` above, same
+    // reason, and they were absent from this table while being absent from the
+    // model too - so they were not removed AND not named, which is the defect
+    // reaudit П-2 measured: seven documents each, disappearing silently.
+    wml(
+        "doNotWrapTextWithPunct",
+        Severity::Ignorable,
+        "CJK punctuation wrapping switch; Strict's CT_Compat does not declare it",
+    ),
+    wml(
+        "doNotUseEastAsianBreakRules",
+        Severity::Ignorable,
+        "CJK line-break rules switch; Strict's CT_Compat does not declare it",
+    ),
     // ---- the three that were missing altogether ---------------------------
     wml(
         "shapeDefaults",
