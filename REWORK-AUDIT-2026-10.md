@@ -12,6 +12,26 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 
 ---
 
+## Статус выполнения (на 2026-10-03)
+
+| Задача | Статус | Коммиты | Что сделано |
+|---|---|---|---|
+| AUD-00 | ✅ выполнена, кроме проверки Windows (см. ниже) | `1af8988`, `13a66dc`, `1007ab4`, `75dfda3`, `c28dcc3` | `origin` = <https://github.com/rxdevebeo/MuFoEd>, ветка `master` (добавлена в триггеры CI). Базовая линия и причины падений — `docs/ci-baseline-2026-10.md`. Тулчейн закреплён на 1.92.0 во всех job'ах; `install-action@v2` с `tool:`; fuzz собирается с `--target x86_64-unknown-linux-gnu`; `.gitattributes` `eol=lf` и `rustfmt` `newline_style = "Unix"`; `deny.toml` `allow-wildcard-paths`; `checkout@v5`, `setup-python@v6`. Census-гейт убран из CI и запускается локально (waiver `CENSUS-LOCAL`) |
+| AUD-01 | ✅ выполнена | `13a66dc` | Крейт `strict-ooxml-testkit` (`publish = false`, без зависимостей от крейтов workspace): `ZipBuilder` со своим CRC-32, `DocxBuilder` (Strict/Transitional, замена любой части, `raw_entry` для дубликатов), `PdfBuilder` (настоящий xref, `reserve`/`set` для ссылок на себя), `xml::{nested, nested_tables, nested_text_boxes}`, `harness::{bounded, assert_survives}` (стек 1 MiB, таймаут 10 с). 14 юнит-тестов. Шаг CI «Hostile inputs (release)» |
+| AUD-02 | ✅ выполнена | `13a66dc` | `tests/hostile.rs` в `strict-ooxml`, `strict-ooxml-pdf`, `strict-ooxml-convert` с модулями под задачи Ф1–Ф2 и смоук-тестами testkit на настоящем API |
+| AUD-03 | ✅ выполнена | `4f0939d` | `strict_ooxml_core::xml::escape` (`is_xml_char`, `escape_text_into`/`escape_attr_into` с числом удалённых символов, `count_invalid`); шесть локальных функций удалены. `\t\n\r` в `.rels` и `[Content_Types].xml` пишутся ссылками, а не пробелом. Писатель: `XmlWriter::finish_counted`, `Ctx::finish_xml`, потеря `W.invalid-xml-char` (`Lossy`) с именем части из `part_xml`. SVG: новое поле `Page::warnings`, `render.invalid-xml-char`. Тесты: юнит + 2 proptest в core, юнит в writer, 2 интеграционных в `strict-ooxml/tests/hostile.rs` (оракул `roxmltree`) |
+| AUD-04 … AUD-94 | ⏳ не начаты | — | — |
+
+**Состояние CI.** Последний полностью завершённый прогон — [37070400937](https://github.com/rxdevebeo/MuFoEd/actions/runs/37070400937): зелёные test (ubuntu, macos), fuzz smoke, coverage, msrv, cargo-deny, XSD gate. Прогоны [37071324759](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071324759) и [37071556814](https://github.com/rxdevebeo/MuFoEd/actions/runs/37071556814) с исправлением `newline_style` на момент записи ещё идут: в последнем всё, кроме `test (windows-latest)`, уже зелёное. AUD-00 закрывается окончательно, когда Windows-job пройдёт.
+
+**Отступления, допущенные при выполнении.**
+- AUD-03, §0.1 п.2: падение новых тестов на коде до правки не проверялось откатом. SVG-тест на старом коде не компилируется (поля `Page::warnings` не было), тест писателя проверяет запись, которой раньше не было.
+- AUD-03: конвертер своего XML не пишет, его вывод проходит через писатель, поэтому отдельная запись `convert.invalid-xml-char` не вводилась. Её проверяет тест AUD-83.
+- AUD-03: MathML (`math_expression_to_mathml`) удаляет недопустимые символы, но не сообщает о них: у публичного API нет отчёта.
+- Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
+
+---
+
 ## 0. Общие правила
 
 ### 0.1. Правило закрытия задачи
@@ -95,7 +115,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 
 ## Ф0. Инфраструктура
 
-### AUD-00. Подключить удалённый репозиторий и реально запустить CI
+### AUD-00. Подключить удалённый репозиторий и реально запустить CI — ✅ (ждёт Windows)
 
 **Проблема.** У репозитория нет `git remote`; `.github/workflows/ci.yml` ни разу не исполнялся,
 включая fuzz-smoke и fuzz-nightly. Все утверждения «в CI» не проверены.
@@ -115,7 +135,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 
 ---
 
-### AUD-01. Крейт `strict-ooxml-testkit` и набор `hostile`
+### AUD-01. Крейт `strict-ooxml-testkit` и набор `hostile` — ✅
 
 **Проблема.** Враждебные входы строятся вручную в каждом крейте по-своему (см. `build_test_zip`
 в `opc/zip/mod.rs`, `common/mod.rs` в нескольких `tests/`), часть повторов лежит в `%TEMP%`.
@@ -155,7 +175,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 
 ---
 
-### AUD-02. Перенести повторы аудита в `hostile`
+### AUD-02. Перенести повторы аудита в `hostile` — ✅
 
 **Проблема.** Подтверждённые повторы дефектов лежат во временной папке.
 
@@ -168,7 +188,7 @@ mod pdf_images; mod writer;` и комментарием-ссылкой на AUD
 
 ---
 
-### AUD-03. Единый модуль экранирования XML
+### AUD-03. Единый модуль экранирования XML — ✅
 
 **Проблема.** Шесть независимых функций экранирования; ни одна не фильтрует символы,
 недопустимые в XML 1.0 (U+0000–U+0008, U+000B, U+000C, U+000E–U+001F, U+FFFE, U+FFFF),
