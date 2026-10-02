@@ -204,7 +204,7 @@ pub fn anchor_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, anchor: &AnchorDra
     }
     effect_extent(xml, anchor.effect_extent.as_ref());
     if let Some(wrap) = &anchor.wrap {
-        wrap_element(ctx, xml, wrap, &anchor.location);
+        wrap_element(ctx, xml, wrap, anchor.extent.as_ref(), &anchor.location);
     }
     document_properties(ctx, xml, &anchor.doc_pr, "Shape", &anchor.location);
     graphic(
@@ -299,13 +299,26 @@ fn position_element(
 /// `use="required"`, so a model without one gets `bothSides` and a record.
 ///
 /// `CT_WrapTight` and `CT_WrapThrough` also require a `wp:wrapPolygon` child,
-/// which this model does not carry. The element is written and the missing polygon
-/// is reported: writing the wrap element is better than dropping the anchor, and
-/// a wrap with no polygon is what the producer's own default resolves to.
+/// which this model does not carry as points. **It is written as the frame's own
+/// rectangle**, and the reason is the schema rather than the taste:
+///
+/// ```text
+/// CT_WrapPath:  start    exactly 1
+///               lineTo   2 or more
+/// ```
+///
+/// so there is no conformant "no polygon" — an empty one is the same violation one
+/// level down, and the census said so (`TZ-21`: "Missing child element(s). Expected
+/// is ( wp:start )"). The two points that a producer would put there describe the
+/// shape's outline, which this model does not have; the **four** points below
+/// describe the frame's own box, which it does. A tight wrap around a rectangle is
+/// a tight wrap, and the difference between it and the producer's polygon is
+/// recorded rather than invented.
 fn wrap_element(
     ctx: &mut Ctx<'_>,
     xml: &mut XmlWriter,
     wrap: &strict_ooxml_wml::model::drawing::Wrap,
+    extent: Option<&Extent>,
     location: &strict_ooxml_core::error::SourceLocation,
 ) {
     use strict_ooxml_wml::model::drawing::WrapKind as K;
@@ -343,12 +356,34 @@ fn wrap_element(
             xml.attr("distL", wrap.dist_left.unwrap_or(0));
             xml.attr("distR", wrap.dist_right.unwrap_or(0));
             if matches!(wrap.kind, K::Tight | K::Through) {
+                // `CT_WrapPath` is `<xsd:sequence><start minOccurs="1"/>`
+                // `<lineTo minOccurs="2" maxOccurs="unbounded"/>`, so there is no
+                // conformant "no polygon" — an empty `<wp:wrapPolygon/>` is the
+                // same violation one level down, and the census said exactly that
+                // (`TZ-21`). The points a producer writes describe the shape's
+                // outline, which this model does not carry; the frame's own
+                // rectangle, which it does, is what goes there instead. A tight
+                // wrap around a box is a tight wrap.
                 ctx.report_partial(
                     name,
-                    "a tight or through wrap needs its wp:wrapPolygon; the model does \
-                     not carry one, so the wrap is written without it",
+                    "a tight or through wrap needs the wrap polygon's own points; the model \
+                     does not carry them, so the frame's rectangle is written, which is a tight \
+                     wrap around a box rather than around the producer's outline",
                     location,
                 );
+                let (cx, cy) = extent.map_or((0, 0), |size| (size.cx.0, size.cy.0));
+                xml.start("wp:wrapPolygon");
+                xml.start("wp:start");
+                xml.attr("x", 0);
+                xml.attr("y", 0);
+                xml.end();
+                for (x, y) in [(cx, 0), (cx, cy), (0, cy)] {
+                    xml.start("wp:lineTo");
+                    xml.attr("x", x);
+                    xml.attr("y", y);
+                    xml.end();
+                }
+                xml.end();
             }
         }
     }

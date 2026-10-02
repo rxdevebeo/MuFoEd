@@ -17,9 +17,9 @@ use crate::model::math::{
     Accent, ArgumentProperties, Bar, BorderBox, Boxed, Delimiter, EquationArray, Fraction,
     Function, GroupCharacter, LimitLocation, MathAlignment, MathArgument, MathExpression,
     MathJustification, MathLimit, MathNode, MathParagraph, MathParagraphProperties, MathPosition,
-    MathRun, MathRunProperties, MathScript, MathStyle, MathVerticalJc, Matrix, MatrixColumn,
-    NaryOperator, Phantom, PreScript, Radical, SubSuperscript, Subscript, Superscript,
-    UnknownMathNode,
+    MathRun, MathRunProperties, MathScript, MathStyle, MathVerticalAlign, MathVerticalJc, Matrix,
+    MatrixColumn, NaryOperator, Phantom, PreScript, Radical, SubSuperscript, Subscript,
+    Superscript, UnknownMathNode,
 };
 use crate::model::support::SupportStatus;
 
@@ -744,7 +744,15 @@ fn parse_fraction_properties(
                 "type" => {
                     let raw = math_val(&attrs);
                     if let Some(value) = raw {
-                        if matches!(value.as_str(), "bar" | "skew" | "lin" | "noBar") {
+                        if matches!(
+                            // Strict `ST_FType` is `bar|skw|lin|noBar` (ECMA-376 Part 1,
+                            // `shared-math.xsd`); `skew` is the Transitional spelling. Accepting
+                            // only the Transitional one made a Strict document carrying `skw`
+                            // - the spelling the schema actually defines - report `Partial`
+                            // and fall back to `bar`.
+                            value.as_str(),
+                            "bar" | "skw" | "skew" | "lin" | "noBar",
+                        ) {
                             *bar_type = Some(value);
                         } else {
                             parser.record_enum("m:fPr/m:type", &value, &parser.location());
@@ -1439,7 +1447,7 @@ fn parse_matrix(
     scope: &mut MathScope,
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<Matrix> {
-    let mut base_justification = None;
+    let mut base_justification: Option<MathVerticalAlign> = None;
     let mut hide_placeholders = false;
     let mut column_group_rule = None;
     let mut column_spacing = None;
@@ -1511,7 +1519,7 @@ fn parse_matrix(
 #[allow(clippy::too_many_arguments)]
 fn parse_matrix_properties(
     parser: &mut PartParser<'_>,
-    base_justification: &mut Option<MathAlignment>,
+    base_justification: &mut Option<MathVerticalAlign>,
     hide_placeholders: &mut bool,
     column_group_rule: &mut Option<String>,
     column_spacing: &mut Option<i32>,
@@ -1529,8 +1537,8 @@ fn parse_matrix_properties(
                         parser,
                         "m:mPr/m:baseJc",
                         &attrs,
-                        MathAlignment::from_strict,
-                        MathAlignment::Unset,
+                        MathVerticalAlign::from_strict,
+                        MathVerticalAlign::Unset,
                     )?);
                 }
                 "plcHide" => {
@@ -1649,7 +1657,7 @@ fn parse_eq_array(
     scope: &mut MathScope,
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<EquationArray> {
-    let mut base_justification = None;
+    let mut base_justification: Option<MathVerticalAlign> = None;
     let mut max_distance = None;
     let mut object_distance = None;
     let mut row_spacing_rule = None;
@@ -1709,7 +1717,7 @@ fn parse_eq_array(
 #[allow(clippy::too_many_arguments)]
 fn parse_eq_array_properties(
     parser: &mut PartParser<'_>,
-    base_justification: &mut Option<MathAlignment>,
+    base_justification: &mut Option<MathVerticalAlign>,
     max_distance: &mut Option<i32>,
     object_distance: &mut Option<i32>,
     row_spacing_rule: &mut Option<String>,
@@ -1724,8 +1732,8 @@ fn parse_eq_array_properties(
                         parser,
                         "m:eqArrPr/m:baseJc",
                         &attrs,
-                        MathAlignment::from_strict,
-                        MathAlignment::Unset,
+                        MathVerticalAlign::from_strict,
+                        MathVerticalAlign::Unset,
                     )?);
                 }
                 "maxDist" => *max_distance = math_leaf(parser, &attrs, math_int)?,
@@ -2439,11 +2447,22 @@ fn parse_enum<T>(
     default: T,
 ) -> Result<T> {
     let raw = math_val(attrs);
-    let value = if let Some(value) = raw.as_deref().and_then(from_strict) {
-        value
-    } else {
-        record_bad_enum(parser, element, raw.as_deref());
-        default
+    // An **absent** `m:val` and an **unrecognised** `m:val` are different
+    // facts. Almost every `m:val` in OMML is optional with a schema default,
+    // so an element that means "inherit" arrives with no value at all, and the
+    // old code recorded that as a malformed enum and reported the document as
+    // damaged when it was not. Only a value that is present and outside the
+    // vocabulary is a loss.
+    let value = match raw.as_deref() {
+        None => default,
+        Some(text) => {
+            if let Some(value) = from_strict(text) {
+                value
+            } else {
+                record_bad_enum(parser, element, Some(text));
+                default
+            }
+        }
     };
     parser.skip_element()?;
     Ok(value)

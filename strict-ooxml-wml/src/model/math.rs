@@ -77,10 +77,18 @@ impl MathScript {
     #[must_use]
     pub const fn from_strict(value: &str) -> Option<Self> {
         match value.as_bytes() {
-            b"doubleStruck" => Some(Self::DoubleStruck),
+            // Strict `ST_Script` is
+            // `roman|script|fraktur|double-struck|sans-serif|monospace`
+            // (ECMA-376 Part 1, `shared-math.xsd`). The spellings this
+            // table used to carry - `doubleStruck`, `sansSerif` - are the
+            // **Transitional** ones, so a Strict document writing
+            // `double-struck` was reported `Partial` and rewritten to a
+            // default. Both are accepted, because this parser also runs
+            // over Transitional input, but the Strict spelling comes first.
+            b"double-struck" | b"doubleStruck" => Some(Self::DoubleStruck),
             b"fraktur" => Some(Self::Fraktur),
             b"roman" => Some(Self::Roman),
-            b"sansSerif" => Some(Self::SansSerif),
+            b"sans-serif" | b"sansSerif" => Some(Self::SansSerif),
             b"monospace" => Some(Self::Monospace),
             b"script" => Some(Self::Script),
             _ => None,
@@ -115,6 +123,73 @@ impl MathAlignment {
             b"inline" => Some(Self::Inline),
             _ => None,
         }
+    }
+}
+
+/// `ST_YAlign` (ECMA-376 Part 1, `shared-commonSimpleTypes.xsd`):
+/// `inline | top | center | bottom | inside | outside`.
+///
+/// **This is not [`MathAlignment`].** That is the *justification* vocabulary
+/// (`left|center|right|inline`); this one places a matrix, equation array or
+/// group vertically. The two overlap in exactly two values, which is what let
+/// `m:mPr/m:baseJc` be read through the wrong table: `bottom`, `top`, `inside`
+/// and `outside` were all rejected as malformed and replaced by "unspecified",
+/// and the writer then emitted justification values through a mapping that sent
+/// `Left` to `inline` and `Right` to `bottom`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum MathVerticalAlign {
+    /// `inline` - laid out with the surrounding text.
+    Inline,
+    /// `top` - aligned to the top of the construct.
+    Top,
+    /// `center`.
+    Center,
+    /// `bottom`.
+    Bottom,
+    /// `inside` - vertically centred inside the construct.
+    Inside,
+    /// `outside` - outside the construct.
+    Outside,
+    #[default]
+    /// Unspecified: the renderer picks the default for the construct.
+    Unset,
+}
+
+impl MathVerticalAlign {
+    /// Every value the schema allows, in schema order.
+    pub const VALUES: [&'static str; 6] =
+        ["inline", "top", "center", "bottom", "inside", "outside"];
+
+    /// Parses the `m:val` lexical space of `ST_YAlign`; `None` when unknown.
+    #[must_use]
+    pub fn from_strict(value: &str) -> Option<Self> {
+        match value {
+            "inline" => Some(Self::Inline),
+            "top" => Some(Self::Top),
+            "center" => Some(Self::Center),
+            "bottom" => Some(Self::Bottom),
+            "inside" => Some(Self::Inside),
+            "outside" => Some(Self::Outside),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for MathVerticalAlign {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            // `Unset` writes the schema's own default, so a written package is a
+            // fixed point of the reader. It shares an arm with `Inline` because
+            // on the wire they are the same value; the alternative - writing
+            // nothing for `Unset` - would be a second behaviour to remember.
+            Self::Inline | Self::Unset => "inline",
+            Self::Top => "top",
+            Self::Center => "center",
+            Self::Bottom => "bottom",
+            Self::Inside => "inside",
+            Self::Outside => "outside",
+        };
+        f.write_str(text)
     }
 }
 
@@ -485,7 +560,9 @@ pub struct MatrixColumn {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Matrix {
     /// `m:mPr/m:baseJc`.
-    pub base_justification: Option<MathAlignment>,
+    /// `m:mPr/m:baseJc` - a `CT_YAlign`, so the `ST_YAlign` vocabulary and not
+    /// the justification one.
+    pub base_justification: Option<MathVerticalAlign>,
     /// `m:mPr/m:plcHide`.
     pub hide_placeholders: bool,
     /// `m:mPr/m:cGpRule/@m:val` — the inter-column spacing rule.
@@ -512,7 +589,9 @@ pub struct Matrix {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EquationArray {
     /// `m:eqArrPr/m:baseJc`.
-    pub base_justification: Option<MathAlignment>,
+    /// `m:mPr/m:baseJc` - a `CT_YAlign`, so the `ST_YAlign` vocabulary and not
+    /// the justification one.
+    pub base_justification: Option<MathVerticalAlign>,
     /// `m:eqArrPr/m:maxDist`.
     pub max_distance: Option<i32>,
     /// `m:eqArrPr/m:objDist`.
@@ -996,5 +1075,38 @@ mod tests {
             location: location.clone(),
         }));
         assert_eq!(limit.element_name(), "m:limUpp");
+    }
+}
+
+#[cfg(test)]
+mod y_align_tests {
+    use super::MathVerticalAlign as V;
+
+    /// The six values, and the round trip, stated as the schema states them.
+    ///
+    /// This is the test that would have caught the original defect, because the
+    /// original table accepted `left`/`right` - the *justification* vocabulary -
+    /// and rejected four of the six values this one is actually about.
+    #[test]
+    fn st_yalign_is_exactly_six_values_and_they_round_trip() {
+        assert_eq!(
+            V::VALUES,
+            ["inline", "top", "center", "bottom", "inside", "outside"]
+        );
+        for value in V::VALUES {
+            let parsed = V::from_strict(value).unwrap_or_else(|| panic!("{value}"));
+            assert_eq!(parsed.to_string(), value, "{value} does not round trip");
+        }
+    }
+
+    #[test]
+    fn the_justification_vocabulary_is_not_this_one() {
+        // `left` and `right` belong to `MathAlignment`; accepting them here is
+        // how a matrix came to be laid out "inline" because someone wrote
+        // `Left`.
+        assert_eq!(V::from_strict("left"), None);
+        assert_eq!(V::from_strict("right"), None);
+        // `bot` is the spelling of `ST_TopBot`, a third vocabulary again.
+        assert_eq!(V::from_strict("bot"), None);
     }
 }

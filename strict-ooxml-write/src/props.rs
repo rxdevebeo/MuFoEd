@@ -15,6 +15,7 @@
 //! violation, and the two elements that happened to be measured were the only
 //! ones anyone knew about.
 
+use strict_ooxml_wml::model::ids::Ilvl;
 use strict_ooxml_wml::model::notes::NoteProperties;
 use strict_ooxml_wml::model::props::{
     CellProperties, Columns, DocGrid, HeaderFooterKind, HeaderFooterRef, PageBorder, PageBorders,
@@ -97,7 +98,24 @@ fn paragraph_child(
                 if numbering.num_id.is_some() || numbering.ilvl.is_some() {
                     xml.start("w:numPr");
                     if let Some(ilvl) = numbering.ilvl {
-                        xml.empty_attr_w("w:ilvl", "val", ilvl.0);
+                        // `w:ilvl` outside 0..=8 names a level that does not
+                        // exist. The reader clamps, so only a hand-built model
+                        // can produce one; writing it verbatim would produce a
+                        // schema-valid attribute describing nothing.
+                        if ilvl.is_valid() {
+                            xml.empty_attr_w("w:ilvl", "val", ilvl.0);
+                        } else {
+                            ctx.report_unsupported(
+                                "w:ilvl",
+                                &format!(
+                                    "list level {} is outside the schema's 0..={} range and \
+                                     was not written",
+                                    ilvl.0,
+                                    Ilvl::MAX
+                                ),
+                                &props.location.clone().unwrap_or_default(),
+                            );
+                        }
                     }
                     if let Some(num_id) = numbering.num_id {
                         xml.empty_attr_w("w:numId", "val", num_id.0);
@@ -327,7 +345,16 @@ pub fn run_properties(xml: &mut XmlWriter, props: &RunProperties) {
         xml.empty_attr_w("w:spacing", "val", spacing.0);
     }
     if let Some(width) = props.scale {
-        xml.empty_attr_w("w:w", "val", width);
+        // `ST_TextScale` requires the `%` sign and admits nothing above 600;
+        // see [`text_scale_lexical`]. Writing the bare number the model holds is
+        // what put 489 schema violations into the corpus (census `TZ-02`), and
+        // they were all in parts the writer *does* generate, which is why no
+        // amount of pass-through work would have found them.
+        xml.empty_attr_w(
+            "w:w",
+            "val",
+            strict_ooxml_wml::model::values::text_scale_lexical(width),
+        );
     }
     if let Some(kerning) = props.kerning {
         xml.empty_attr_w("w:kern", "val", kerning.0);
@@ -599,11 +626,11 @@ fn cell_margins(xml: &mut XmlWriter, name: &str, margins: &CellMargins) {
 /// Points are exact for twips: the model holds integers, and an integer divided
 /// by 20 has at most two decimals.
 ///
-/// [`WidthKind::Pct`] keeps its fiftieths-of-a-percent number bare, because that
-/// is the value every producer writes and no fixture in the corpus uses one; the
-/// schema's percentage branch would need `w:w="50%"`, and whether a consumer
-/// reads that as 50% or as 50 fiftieths-of-a-percent is exactly the kind of
-/// question this project answers by measurement (`Q-E5`), not by guessing.
+/// A `pct` width takes the *percentage* branch instead, and
+/// [`percent_from_fiftieths`] is where the fiftieths arithmetic and the `Q-E5`
+/// assumption it closes are written down. Writing the bare fiftieths there is
+/// what census `TZ-01` measured: 84 violations in two documents, every one of
+/// them `w:w="5000"` that the schema cannot spell at all.
 fn tbl_width_value(twips: i32) -> String {
     let points = f64::from(twips) / 20.0;
     let mut text = format!("{points}");
@@ -629,8 +656,12 @@ fn width_element(xml: &mut XmlWriter, name: &str, width: &Width) {
     xml.attr_w("type", width_kind(width.kind));
     if let Some(value) = width.value {
         if width.kind == WidthKind::Pct {
-            // `pct` counts fiftieths of a percent; see [`tbl_width_value`].
-            xml.attr_w("w", value);
+            // `pct` counts fiftieths of a percent and the schema's only lexical
+            // form for a percentage carries the sign; see [`tbl_width_value`].
+            xml.attr_w(
+                "w",
+                strict_ooxml_wml::model::values::percent_from_fiftieths(value),
+            );
         } else {
             xml.attr("w:w", tbl_width_value(value));
         }
@@ -874,70 +905,119 @@ fn cell_child(xml: &mut XmlWriter, props: &CellProperties, name: &str) {
 }
 
 /// Writes `w:sectPr`.
+///
+/// The children go in the order [`order::SECTPR`] states, which is
+/// `EG_SectPrContents`' `xsd:sequence` transcribed from the schema - not in the
+/// order that reads best, because `xsd:sequence` is what the schema has. Four of
+/// those positions were wrong before 2026-10-01 and the corpus caught exactly one
+/// of them, which is what made the other three a latent bomb: `footnotePr` and
+/// `endnotePr` were written after `lnNumType` (census `TZ-11`, one document),
+/// `vAlign` came after `titlePg` and `textDirection`, `bidi` and `rtlGutter` came
+/// before `textDirection`, and `w:gutterAtTop` was written here at all - Strict's
+/// group has no slot for it and `w:settings` does.
+///
+/// Header/footer references carry the id this write emits, which the context
+/// computed; a reference whose part this write does not emit is dropped and
+/// reported rather than left pointing at an unrelated id.
 pub fn section_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, section: &SectionProperties) {
-    // Header/footer references carry the id this write emits, which the
-    // context computed; a reference whose part this write does not emit is
-    // dropped and reported rather than left pointing at an unrelated id.
     xml.start("w:sectPr");
-    for reference in &section.headers {
-        header_footer_reference(ctx, xml, "w:headerReference", reference);
-    }
-    for reference in &section.footers {
-        header_footer_reference(ctx, xml, "w:footerReference", reference);
-    }
-    if let Some(kind) = &section.section_type {
-        xml.empty_attr_w("w:type", "val", kind.as_str());
-    }
-    if let Some(size) = &section.page_size {
-        page_size(xml, size);
-    }
-    if let Some(margins) = &section.page_margins {
-        page_margins(xml, margins);
-    }
-    if let Some(borders) = &section.page_borders {
-        page_borders(xml, borders);
-    }
-    if let Some(line_numbering) = &section.line_numbering {
-        xml.start("w:lnNumType");
-        xml.attr_w_opt("countBy", line_numbering.count_by);
-        xml.attr_w_opt("start", line_numbering.start);
-        if let Some(restart) = &line_numbering.restart {
-            xml.attr_w("restart", restart.as_str());
-        }
-        xml.attr_w_opt("distance", line_numbering.distance.map(|v| v.0));
-        xml.end();
-    }
-    if !section.footnote_properties.is_empty() {
-        note_properties(xml, "w:footnotePr", &section.footnote_properties);
-    }
-    if !section.endnote_properties.is_empty() {
-        note_properties(xml, "w:endnotePr", &section.endnote_properties);
-    }
-    if let Some(columns) = &section.columns {
-        columns_element(xml, columns);
-    }
-    if section.bidi {
-        xml.empty("w:bidi");
-    }
-    if section.rtl_gutter {
-        xml.empty("w:rtlGutter");
-    }
-    if section.gutter_at_top {
-        xml.empty("w:gutterAtTop");
-    }
-    if section.title_page {
-        xml.empty("w:titlePg");
-    }
-    if let Some(direction) = &section.text_direction {
-        xml.empty_attr_w("w:textDirection", "val", direction.as_str());
-    }
-    if let Some(align) = &section.vertical_align {
-        xml.empty_attr_w("w:vAlign", "val", align.as_str());
-    }
-    if let Some(grid) = &section.doc_grid {
-        doc_grid(xml, grid);
-    }
+    schema_order(xml, order::SECTPR, |name, xml| {
+        section_child(ctx, xml, section, name);
+    });
     xml.end();
+}
+
+fn section_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, section: &SectionProperties, name: &str) {
+    match name {
+        "headerReference" => {
+            for reference in &section.headers {
+                header_footer_reference(ctx, xml, "w:headerReference", reference);
+            }
+        }
+        "footerReference" => {
+            for reference in &section.footers {
+                header_footer_reference(ctx, xml, "w:footerReference", reference);
+            }
+        }
+        "footnotePr" => {
+            if !section.footnote_properties.is_empty() {
+                note_properties(xml, "w:footnotePr", &section.footnote_properties);
+            }
+        }
+        "endnotePr" => {
+            if !section.endnote_properties.is_empty() {
+                note_properties(xml, "w:endnotePr", &section.endnote_properties);
+            }
+        }
+        "type" => {
+            if let Some(kind) = &section.section_type {
+                xml.empty_attr_w("w:type", "val", kind.as_str());
+            }
+        }
+        "pgSz" => {
+            if let Some(size) = &section.page_size {
+                page_size(xml, size);
+            }
+        }
+        "pgMar" => {
+            if let Some(margins) = &section.page_margins {
+                page_margins(xml, margins);
+            }
+        }
+        "pgBorders" => {
+            if let Some(borders) = &section.page_borders {
+                page_borders(xml, borders);
+            }
+        }
+        "lnNumType" => {
+            if let Some(line_numbering) = &section.line_numbering {
+                xml.start("w:lnNumType");
+                xml.attr_w_opt("countBy", line_numbering.count_by);
+                xml.attr_w_opt("start", line_numbering.start);
+                if let Some(restart) = &line_numbering.restart {
+                    xml.attr_w("restart", restart.as_str());
+                }
+                xml.attr_w_opt("distance", line_numbering.distance.map(|v| v.0));
+                xml.end();
+            }
+        }
+        "cols" => {
+            if let Some(columns) = &section.columns {
+                columns_element(xml, columns);
+            }
+        }
+        "vAlign" => {
+            if let Some(align) = &section.vertical_align {
+                xml.empty_attr_w("w:vAlign", "val", align.as_str());
+            }
+        }
+        "titlePg" => {
+            if section.title_page {
+                xml.empty("w:titlePg");
+            }
+        }
+        "textDirection" => {
+            if let Some(direction) = &section.text_direction {
+                xml.empty_attr_w("w:textDirection", "val", direction.as_str());
+            }
+        }
+        "bidi" => {
+            if section.bidi {
+                xml.empty("w:bidi");
+            }
+        }
+        "rtlGutter" => {
+            if section.rtl_gutter {
+                xml.empty("w:rtlGutter");
+            }
+        }
+        "docGrid" => {
+            if let Some(grid) = &section.doc_grid {
+                doc_grid(xml, grid);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn header_footer_reference(

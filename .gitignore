@@ -40,3 +40,8 @@ strict-ooxml-core/tests/docx/
 # the XSD gate is a Python tool, and Python writes bytecode next to it
 __pycache__/
 *.pyc
+
+# Gate and instrument output: written packages, page diffs and census dumps.
+# Nothing here is an input to anything, and `git status` listing 300 of them
+# buries the files that are.
+/render_out/

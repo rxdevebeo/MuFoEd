@@ -125,14 +125,56 @@ staged into the cache and patched there, because patching a directory in place
 would be modifying the deliverable. With neither network nor cache the gate fails
 with a legible error rather than validating nothing.
 
+## The census gate
+
+```
+python xtool/xsd-gate/census_gate.py
+```
+
+`census_gate.py` is the same instrument pointed at the other half of the product.
+`xsd_gate.py` judges what we **write** from Strict input; the census judges the
+whole `write --transitional` path - the byte-level normalizer, the pass-through
+and the loss report - on the 58 Transitional documents in `tests/docx/` and
+`tests/samples/`. It was queue item 13 of
+[`docs/transitional-to-strict-audit.md`](../docs/transitional-to-strict-audit.md) §11:
+the audit's numbers were produced by a harness outside the tree, so nothing in
+§4 of that document could be reproduced.
+
+**One oracle, not two.** It imports `xsd_gate.Oracle` and uses it unchanged - the
+same patched schema set, the same 2120 drivers, the same `mce_process()`, the same
+three baskets. A second oracle would be a second definition of "Strict", and a
+threshold taken from one and applied to the other is a number about nothing. That
+is the same reasoning that put SSIM in one crate rather than two.
+
+**Four signals, because one is not enough here.** A schema message is the only
+signal that shows up for every defect class on this path:
+
+| Signal | What it counts | What it exists for |
+|---|---|---|
+| `message` | a libxml2 schema violation in our output | the ordinary case |
+| `extension` | a `w14`/`w15`/`wp14`/`mc` node **or attribute** in the written part, scanned *before* MCE | MCE removes these before conformance is defined (ADR-0014), so no schema message can ever name one |
+| `dropped` | a part the input had and the output does not | a missing part validates perfectly |
+| `unaccounted` | a dropped part the write's **own loss report** does not mention | the "silent loss" the audit named: 21 of them, on a report that was green |
+
+`unaccounted` is the one worth keeping if everything else is deleted. `dropped`
+alone would list every deliberate decision forever; `unaccounted` says only what
+the project hid.
+
+`census.toml` is its registry, `TZ-01…TZ-18`, with the same rule as
+`registry.toml`: an item closes on a measured zero, and `origin` decides what a
+non-zero count means - `ours` fails the gate, `source` is the producer's own
+markup counted and printed, `waived` is a named decision.
+
 ## Files
 
 | File | What it is |
 |---|---|
-| `xsd_gate.py` | the gate |
+| `xsd_gate.py` | the gate for Strict input |
+| `census_gate.py` | the gate for the `write --transitional` path, on the oracle above |
 | `schemas.toml` | the schema source: URL, SHA-256, byte count, and the exact patch |
 | `xml.xsd` | ours, twelve lines, not ECMA content |
 | `xml.xsd.sha256` | its digest, so "ours" is checked and not assumed |
 | `registry.toml` | `XS-nn`, with the origin that decides the exit code |
+| `census.toml` | `TZ-nn`, the same shape for the census gate |
 | `requirements.txt` | `lxml`, pinned - in the CI image, never in the crate graph |
 | `no_ecma_bytes.py` | G-6, checked rather than promised |

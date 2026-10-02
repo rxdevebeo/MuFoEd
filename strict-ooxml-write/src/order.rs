@@ -284,6 +284,50 @@ pub const LVL: &[&str] = &[
     "rPr",
 ];
 
+/// `EG_SectPrContents` + `EG_HdrFtrReferences`, `strict/wml.xsd`, group
+/// `EG_SectPrContents` (the group's own `xsd:sequence`).
+///
+/// **The table that was missing is why this one was wrong.** Every other
+/// property container was stated here and checked against the schema by both
+/// `tests/schema_order.rs` and `xtool/xsd-gate/xsd_gate.py`; `w:sectPr` was
+/// written out by hand in the order that read well. Four of its children were in
+/// the wrong place - `footnotePr`/`endnotePr` after `lnNumType`, `vAlign` after
+/// `textDirection`, `bidi`/`rtlGutter` before it - and one of them, `w:gutterAtTop`,
+/// is not a `sectPr` child at all in Strict: `EG_SectPrContents` has no slot for
+/// it and `CT_Settings` does, at position 20. The corpus exercised one of the
+/// four, so the other three were a latent bomb with a test suite that could not
+/// see it. Stating the sequence here is what makes the whole group falsifiable.
+///
+/// `EG_HdrFtrReferences` comes first (`CT_SectPr` puts it before the contents
+/// group) and `w:sectPrChange` last; this writer produces neither a section
+/// revision nor a `w:paperSrc`/`w:pgNumType`/`w:formProt`/`w:noEndnote`/
+/// `w:printerSettings`, and a child the writer does not write cannot be written
+/// out of order.
+pub const SECTPR: &[&str] = &[
+    "headerReference",
+    "footerReference",
+    "footnotePr",
+    "endnotePr",
+    "type",
+    "pgSz",
+    "pgMar",
+    "paperSrc",
+    "pgBorders",
+    "lnNumType",
+    "pgNumType",
+    "cols",
+    "formProt",
+    "vAlign",
+    "noEndnote",
+    "titlePg",
+    "textDirection",
+    "bidi",
+    "rtlGutter",
+    "docGrid",
+    "printerSettings",
+    "sectPrChange",
+];
+
 /// Where `name` sits in `sequence`.
 ///
 /// `usize::MAX` for a child the sequence does not name, so an unknown child
@@ -299,7 +343,7 @@ pub fn rank(sequence: &[&str], name: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{rank, PPR, SETTINGS, STYLE, TBLPR, TCPR, TRPR};
+    use super::{rank, PPR, SECTPR, SETTINGS, STYLE, TBLPR, TCPR, TRPR};
 
     #[test]
     fn a_child_ranks_by_its_position() {
@@ -315,10 +359,41 @@ mod tests {
     }
 
     #[test]
+    fn the_sect_pr_order_is_the_one_the_group_declares() {
+        // Spelled out rather than derived, because the failure this table exists
+        // to prevent is exactly "it looks plausible": every one of these pairs is
+        // a place where the hand-written order differed from the schema's.
+        assert!(rank(SECTPR, "headerReference") < rank(SECTPR, "footnotePr"));
+        assert!(rank(SECTPR, "footnotePr") < rank(SECTPR, "type"));
+        assert!(rank(SECTPR, "endnotePr") < rank(SECTPR, "pgSz"));
+        assert!(rank(SECTPR, "pgMar") < rank(SECTPR, "pgBorders"));
+        assert!(rank(SECTPR, "pgBorders") < rank(SECTPR, "lnNumType"));
+        assert!(rank(SECTPR, "lnNumType") < rank(SECTPR, "cols"));
+        assert!(rank(SECTPR, "cols") < rank(SECTPR, "vAlign"));
+        assert!(rank(SECTPR, "vAlign") < rank(SECTPR, "titlePg"));
+        assert!(rank(SECTPR, "titlePg") < rank(SECTPR, "textDirection"));
+        assert!(rank(SECTPR, "textDirection") < rank(SECTPR, "bidi"));
+        assert!(rank(SECTPR, "bidi") < rank(SECTPR, "rtlGutter"));
+        assert!(rank(SECTPR, "rtlGutter") < rank(SECTPR, "docGrid"));
+        assert!(rank(SECTPR, "docGrid") < rank(SECTPR, "sectPrChange"));
+    }
+
+    #[test]
+    fn gutter_at_top_is_a_setting_and_never_a_section_child() {
+        // Strict's `EG_SectPrContents` has no such slot. Writing it there was
+        // what made one corpus document fail on "This element is not expected";
+        // the flag is written into `settings.xml` instead.
+        assert_eq!(rank(SECTPR, "gutterAtTop"), usize::MAX);
+        assert!(rank(SETTINGS, "mirrorMargins") < rank(SETTINGS, "gutterAtTop"));
+        assert!(rank(SETTINGS, "gutterAtTop") < rank(SETTINGS, "hideSpellingErrors"));
+    }
+
+    #[test]
     fn no_constant_names_a_child_twice() {
         for (name, sequence) in [
             ("PPR", PPR),
             ("SETTINGS", SETTINGS),
+            ("SECTPR", SECTPR),
             ("TBLPR", TBLPR),
             ("TCPR", TCPR),
             ("TRPR", TRPR),

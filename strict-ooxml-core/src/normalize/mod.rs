@@ -8,9 +8,11 @@
 //! [`report`] carries what normalization changed and what it cost, and is the
 //! basis of criterion SC-4 (no silent loss).
 
+pub mod mce;
 pub mod report;
 pub mod tables;
 pub mod transitional;
+pub mod vml;
 
 use std::borrow::Cow;
 

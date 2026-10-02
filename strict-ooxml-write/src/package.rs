@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use strict_ooxml_core::error::Result;
+use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_core::opc::content_types::ContentTypeIndex;
 use strict_ooxml_core::opc::rels::{
@@ -16,8 +16,8 @@ use strict_ooxml_core::opc::rels::{
 use strict_ooxml_core::opc::zip::write::ZipWriter;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::Block;
-use strict_ooxml_wml::model::drawing::MediaKind;
-use strict_ooxml_wml::model::inline::Inline;
+use strict_ooxml_wml::model::drawing::{Drawing, DrawingKind, Graphic, MediaKind};
+use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::Document;
 
 use crate::body::blocks;
@@ -26,7 +26,7 @@ use crate::drawing::namespaces as drawing_namespaces;
 use crate::parts;
 use crate::passthrough;
 use crate::props::section_properties;
-use crate::xml::{XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
+use crate::xml::{WriteError, XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
 
 /// `/word/document.xml`.
 pub const MAIN_DOCUMENT: &str = "/word/document.xml";
@@ -132,6 +132,19 @@ pub trait Source {
         None
     }
 
+    /// Every part the source package holds.
+    ///
+    /// Needed for one question only, and it is the question SC-10 exists for:
+    /// **which parts did this write drop without saying so?** A part that is
+    /// absent validates perfectly and draws nothing, so nothing else in the
+    /// system can notice it — the pass-through reaches what a reference reaches,
+    /// and an orphan (no `.rels` points at it) is by definition unreached. A
+    /// source that cannot enumerate its parts reports none, and the accounting
+    /// is then simply silent, which is the pre-existing behaviour.
+    fn parts(&self) -> Vec<PartId> {
+        Vec::new()
+    }
+
     /// The relationship ids `from` declares, in order.
     ///
     /// # Errors
@@ -168,6 +181,12 @@ impl Source for strict_ooxml_core::opc::Package {
 
     fn content_type(&self, part: &PartId) -> Option<String> {
         self.content_type(part).map(ToOwned::to_owned)
+    }
+
+    fn parts(&self) -> Vec<PartId> {
+        strict_ooxml_core::opc::Package::parts(self)
+            .map(|part| part.id.clone())
+            .collect()
     }
 }
 
@@ -313,6 +332,23 @@ impl RelBuilder {
     }
 }
 
+/// Serialises one part, naming the part if the writer gives up.
+///
+/// The writer can fail on its own terms - an element left open, or a document
+/// nested past the budget - and that is a reportable failure about *this* part
+/// rather than about the input. Every part writer returns `Result` for that
+/// reason (`STAGE-10-TASK.md` E34); before it, these call sites turned it into a
+/// panic via `.expect("balanced")`.
+fn part_xml(
+    part: &str,
+    write: impl FnOnce() -> std::result::Result<String, WriteError>,
+) -> Result<String> {
+    write().map_err(|error| StrictError::Write {
+        part: PartId::new(part),
+        detail: error.to_string(),
+    })
+}
+
 /// Serializes `document` into a `.docx` package.
 ///
 /// # Errors
@@ -453,7 +489,7 @@ pub fn write_package(
     }
 
     ctx = ctx
-        .with_relationships(hyperlink_map, media_map, header_footer_map)
+        .with_relationships(hyperlink_map, media_map.clone(), header_footer_map)
         .with_passthrough(&pass);
 
     // The parts themselves. Each is written only when the model carries the
@@ -462,44 +498,63 @@ pub fn write_package(
     add_part(
         &mut zip,
         MAIN_DOCUMENT,
-        document_part(&mut ctx, document).into_bytes(),
+        part_xml(MAIN_DOCUMENT, || document_part(&mut ctx, document))?.into_bytes(),
     )?;
     if content_types.content_type_for(&PartId::new(STYLES_PART)) == Some(CONTENT_TYPE_STYLES) {
         add_part(
             &mut zip,
             STYLES_PART,
-            parts::styles_part(&mut ctx, &document.styles).into_bytes(),
+            part_xml(STYLES_PART, || {
+                parts::styles_part(&mut ctx, &document.styles)
+            })?
+            .into_bytes(),
         )?;
     }
     if !document.numbering.is_empty() {
         add_part(
             &mut zip,
             NUMBERING_PART,
-            parts::numbering_part(&mut ctx, &document.numbering).into_bytes(),
+            part_xml(NUMBERING_PART, || {
+                parts::numbering_part(&mut ctx, &document.numbering)
+            })?
+            .into_bytes(),
         )?;
     }
     if document.settings != Default::default() || options.always_write_settings {
         add_part(
             &mut zip,
             SETTINGS_PART,
-            parts::settings_part(&mut ctx, &document.settings).into_bytes(),
+            part_xml(SETTINGS_PART, || {
+                parts::settings_part(&mut ctx, &document.settings)
+            })?
+            .into_bytes(),
         )?;
     }
     if let Some(theme) = &document.theme {
-        add_part(&mut zip, THEME_PART, parts::theme_part(theme).into_bytes())?;
+        add_part(
+            &mut zip,
+            THEME_PART,
+            part_xml(THEME_PART, || parts::theme_part(&mut ctx, theme))?.into_bytes(),
+        )?;
     }
     if !document.footnotes.is_empty() {
         add_part(
             &mut zip,
             FOOTNOTES_PART,
-            parts::notes_part(&mut ctx, &document.footnotes, true).into_bytes(),
+            part_xml(FOOTNOTES_PART, || {
+                parts::notes_part(&mut ctx, &document.footnotes, true)
+            })?
+            .into_bytes(),
         )?;
     }
     if !document.endnotes.is_empty() {
         add_part(
             &mut zip,
             ENDNOTES_PART,
-            parts::notes_part(&mut ctx, &document.endnotes, false).into_bytes(),
+            part_xml(ENDNOTES_PART, || {
+                parts::notes_part(&mut ctx, &document.endnotes, false)
+            })?
+            .into_bytes(),
         )?;
     }
     if options.write_font_table {
@@ -507,17 +562,52 @@ pub fn write_package(
         add_part(
             &mut zip,
             FONT_TABLE_PART,
-            parts::font_table_part(&mut ctx, &families).into_bytes(),
+            part_xml(FONT_TABLE_PART, || {
+                parts::font_table_part(&mut ctx, &families)
+            })?
+            .into_bytes(),
         )?;
     }
     for part in &header_footer_parts {
         let name = part.rsplit('/').next().unwrap_or(part.as_str()).to_owned();
         if let Some(header_footer) = name_header_footer(document, &name) {
-            add_part(
-                &mut zip,
-                part.as_str(),
-                parts::header_footer_part(&mut ctx, header_footer).into_bytes(),
-            )?;
+            // Each decoration part carries **its own** relationships, because
+            // `rId3` in `word/header1.xml` is a different relationship from `rId3`
+            // in `word/document.xml`. Before 2026-10-02 no header could hold a
+            // picture — VML was dropped before the model existed — so the writer
+            // emitted no `.rels` for one at all and nothing noticed. A converted
+            // VML picture is the first thing that puts an `r:embed` in a header,
+            // and a reference with no relationship part beside it resolves to
+            // nothing: the picture is drawn at no size on the next open.
+            let media = decoration_media(header_footer.blocks.as_slice(), &media_map);
+            let targets: Vec<Relationship> = media
+                .iter()
+                .map(|(source_part, id)| Relationship {
+                    id: id.clone(),
+                    rel_type: RelType::Image,
+                    raw_type: strict_type_uri(&RelType::Image),
+                    target: format!(
+                        "media/{}",
+                        source_part.rsplit('/').next().unwrap_or_default()
+                    ),
+                    target_mode: TargetMode::Internal,
+                    resolved: None,
+                })
+                .collect();
+            ctx.set_decoration_relationships(part.as_str(), media);
+            let xml = part_xml(part.as_str(), || {
+                parts::header_footer_part(&mut ctx, header_footer)
+            })?
+            .into_bytes();
+            ctx.clear_decoration_relationships();
+            add_part(&mut zip, part.as_str(), xml)?;
+            if !targets.is_empty() {
+                add_part(
+                    &mut zip,
+                    &format!("/word/_rels/{name}.rels"),
+                    write_relationships(&targets).into_bytes(),
+                )?;
+            }
         }
     }
     for (part, source_part) in &media_parts {
@@ -564,6 +654,13 @@ pub fn write_package(
     )?;
 
     let part_count = zip.len();
+    // W7, and the last thing the write does: name every part the source had that
+    // this package does not. It runs HERE rather than in the pass-through plan
+    // because "which parts did the write produce" is a question about the result
+    // and several of them are conditional — `word/numbering.xml` is written only
+    // when the model carries a numbering table, and a plan that assumed it was
+    // produced would call that document's numbering a non-loss.
+    passthrough::report_what_was_dropped(&mut ctx, source, &zip.part_names());
     let bytes = zip.finish()?;
     Ok(WriteOutput {
         bytes,
@@ -573,6 +670,111 @@ pub fn write_package(
 }
 
 /// Finds the header/footer a written part name refers to.
+/// The media parts a decoration part's blocks reference, mapped to the relationship
+/// id that part's own `.rels` will carry.
+///
+/// Keyed by **media part** rather than by the document's relationship id, for the
+/// reason [`Ctx::media_rel`] needs two maps: the ids in the source header's
+/// `.rels` belong to that header, and a relationship id from one part means
+/// nothing in another. The **target** is the same name the document part's
+/// relationship uses — `media/imageN.ext` — because that is where
+/// [`media_parts`](Self::write) wrote the bytes.
+fn decoration_media(
+    blocks: &[Block],
+    media_map: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut referenced: Vec<PartId> = Vec::new();
+    media_parts_in(blocks, &mut referenced);
+    let mut out = BTreeMap::new();
+    for part in referenced {
+        let key = part.as_str().to_owned();
+        if let Some(id) = media_map.get(&key) {
+            out.insert(key, id.clone());
+        }
+    }
+    out
+}
+
+/// Every media part the blocks of one part reference, in document order.
+///
+/// The traversal mirrors `collect_hyperlink_ids` because the two ask the same
+/// question about the same tree — a picture inside a table cell is ordinary, and
+/// a header that holds a table of logos is the normal case rather than the exotic
+/// one.
+fn media_parts_in(blocks: &[Block], out: &mut Vec<PartId>) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(paragraph) => media_parts_in_inlines(&paragraph.inlines, out),
+            Block::Table(table) => {
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        media_parts_in(&cell.blocks, out);
+                    }
+                }
+            }
+            Block::SdtBlock(sdt) => media_parts_in(&sdt.blocks, out),
+            _ => {}
+        }
+    }
+}
+
+fn media_parts_in_inlines(inlines: &[Inline], out: &mut Vec<PartId>) {
+    for inline in inlines {
+        match inline {
+            Inline::Run(run) => {
+                for content in &run.content {
+                    if let RunContent::Drawing(drawing) = content {
+                        picture_parts(drawing, out);
+                    }
+                }
+            }
+            Inline::Drawing(drawing) => picture_parts(drawing, out),
+            Inline::Hyperlink(link) => media_parts_in_inlines(&link.inlines, out),
+            Inline::Field(field) => media_parts_in_inlines(&field.inlines, out),
+            Inline::SdtInline(sdt) => media_parts_in_inlines(&sdt.inlines, out),
+            _ => {}
+        }
+    }
+}
+
+/// The media parts one drawing references, including the ones inside a shape's
+/// text box and a group's children.
+fn picture_parts(drawing: &Drawing, out: &mut Vec<PartId>) {
+    let payload: &Graphic = match &drawing.kind {
+        DrawingKind::Inline(inline) => inline.graphic.as_ref(),
+        DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
+        DrawingKind::Opaque(_) => return,
+    };
+    match payload {
+        Graphic::Picture(picture) => {
+            if let Some(part) = picture
+                .blip
+                .as_ref()
+                .and_then(|blip| blip.resolved.as_ref())
+            {
+                if !out.contains(part) {
+                    out.push(part.clone());
+                }
+            }
+        }
+        Graphic::Shape(shape) => {
+            if let Some(text_box) = &shape.text {
+                media_parts_in(text_box.blocks.as_slice(), out);
+            }
+        }
+        Graphic::Group(group) => {
+            for child in &group.children {
+                if let Graphic::Shape(shape) = child {
+                    if let Some(text_box) = &shape.text {
+                        media_parts_in(text_box.blocks.as_slice(), out);
+                    }
+                }
+            }
+        }
+        Graphic::None | Graphic::Chart(_) | Graphic::Diagram(_) | Graphic::Other => {}
+    }
+}
+
 fn name_header_footer<'a>(
     document: &'a Document,
     name: &str,
@@ -637,7 +839,10 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
 }
 
 /// Serializes `word/document.xml`.
-fn document_part(ctx: &mut Ctx<'_>, document: &Document) -> String {
+fn document_part(
+    ctx: &mut Ctx<'_>,
+    document: &Document,
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     let declared = namespaces();
     xml.start_root(
@@ -654,7 +859,7 @@ fn document_part(ctx: &mut Ctx<'_>, document: &Document) -> String {
     }
     xml.end(); // w:body
     xml.end(); // w:document
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 /// The namespace declarations every WML part carries.

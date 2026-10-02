@@ -88,4 +88,16 @@ pub struct Settings {
     pub click_and_type: bool,
     /// Recognise the document as having a "mirror margins" preference.
     pub mirror_margins: bool,
+    /// Put the gutter at the top of the page rather than the side (`w:gutterAtTop`).
+    ///
+    /// **A document setting, not a section one.** Strict's `EG_SectPrContents`
+    /// has no `gutterAtTop` slot - `w:settings` declares it, at position 20 of
+    /// `CT_Settings` - while Transitional's `EG_SectPrContents` does. So a
+    /// Transitional document carries it inside `w:sectPr`, and a Strict one carries
+    /// it in `settings.xml`; it is the same flag and the parser accepts both
+    /// spellings, which is why this field is on [`Settings`] and not on
+    /// [`crate::model::props::SectionProperties`]. The writer emitting it into
+    /// `w:sectPr` produced a document that fails on
+    /// "This element is not expected" for a flag that has a legal Strict home.
+    pub gutter_at_top: bool,
 }

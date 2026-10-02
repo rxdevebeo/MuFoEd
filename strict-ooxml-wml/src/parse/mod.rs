@@ -130,6 +130,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     let (mut body, mut sections) = parser.parse_document_root()?;
     let mut media = std::mem::take(&mut parser.media);
     let mut support = std::mem::take(&mut parser.support);
+    let section_gutter_at_top = std::mem::take(&mut parser.section_gutter_at_top);
     drop(parser);
 
     let headers_footers = parse_decoration_parts(
@@ -151,6 +152,21 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     )?;
     support.merge(aux_support);
 
+    // `w:gutterAtTop` in a `w:sectPr`, which is where Transitional puts it and
+    // where Strict has no slot for it. An OR, not an overwrite: it is a
+    // document-wide setting, so `settings.xml` saying it and the last section
+    // saying it cannot disagree.
+    let settings = settings.map_or_else(
+        || Settings {
+            gutter_at_top: section_gutter_at_top,
+            ..Settings::default()
+        },
+        |mut settings| {
+            settings.gutter_at_top |= section_gutter_at_top;
+            settings
+        },
+    );
+
     let (footnotes, endnotes, note_support) = parse_notes_parts(
         package,
         footnotes_part.as_ref(),
@@ -167,7 +183,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         numbering: numbering.unwrap_or_default(),
         footnotes,
         endnotes,
-        settings: settings.unwrap_or_default(),
+        settings,
         theme,
         sections,
         headers_footers,
@@ -550,6 +566,17 @@ pub(crate) struct PartParser<'a> {
     pub(crate) media: MediaIndex,
     pub(crate) max_depth: u32,
     pub(crate) depth: u32,
+    /// `w:gutterAtTop` seen inside a `w:sectPr`, where Transitional puts it.
+    ///
+    /// Strict has no slot for it there - `EG_SectPrContents` does not declare it
+    /// and `CT_Settings` does, at position 20 - so the flag belongs on
+    /// [`Settings`]. The main document and `settings.xml` are parsed by two
+    /// different parsers, so the flag is parked here and merged into the settings
+    /// by [`parse_document`] once both are in hand. Two spellings, one flag: a
+    /// Strict document that already carries it in `settings.xml` sets the same
+    /// field through [`parse_settings_root`], and the merge is an OR because a
+    /// document-wide setting cannot be true in one section and false in another.
+    pub(crate) section_gutter_at_top: bool,
 }
 
 impl<'a> PartParser<'a> {
@@ -571,6 +598,7 @@ impl<'a> PartParser<'a> {
             media: MediaIndex::new(),
             max_depth,
             depth: 0,
+            section_gutter_at_top: false,
         })
     }
 
@@ -893,6 +921,29 @@ pub(crate) fn parse_measurement_or_percent(value: &str) -> Option<i32> {
         return Some(decimal_to_i32(number));
     }
     parse_measure_twips(trimmed).map(decimal_to_i32)
+}
+
+/// Parses `ST_TextScale` (`w:w` in a run property bag): a percentage with the
+/// `%` sign the pattern demands, or the bare integer every Transitional producer
+/// writes.
+///
+/// Both spellings are the same number - a percentage of the normal character
+/// width - and the bare one is not a Strict value, so it is accepted on the way
+/// in and never written back out. The range is the schema's: the pattern is
+/// `0*(600|([0-5]?[0-9]?[0-9]))%`, so 601% is not a value the attribute can hold
+/// and a document claiming it is recorded rather than silently clamped.
+///
+/// `Q-E5` is the same shape of question one level down, and is closed in
+/// [`crate::model::values::percent_from_fiftieths`].
+pub(crate) fn parse_text_scale(value: &str) -> Option<u16> {
+    let trimmed = value.trim();
+    let percent = match trimmed.strip_suffix('%') {
+        Some(number) => parse_u32(number)?,
+        None => parse_u32(trimmed)?,
+    };
+    u16::try_from(percent)
+        .ok()
+        .filter(|scale| *scale <= crate::model::values::TEXT_SCALE_MAX)
 }
 
 /// Parses an on/off attribute or a bare element (default `true`).

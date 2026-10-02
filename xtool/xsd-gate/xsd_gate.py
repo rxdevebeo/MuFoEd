@@ -661,15 +661,28 @@ ORDER_SOURCE = os.path.join(REPO, "strict-ooxml-write", "src", "order.rs")
 
 # Constant -> the schema type it transcribes. An `xsd:extension` contributes its
 # own children AFTER the base's, which is how the writer's table reads too.
+#
+# `SECTPR` is a group, not a complexType: `CT_SectPr` is
+# `EG_HdrFtrReferences`, then `EG_SectPrContents`, then `sectPrChange`, and
+# `xsd:group ref=` is not an `xsd:extension`, so `schema_sequences` resolves the
+# group by name for this one entry.
 ORDER_TYPES = {
     "PPR": "CT_PPr",
     "SETTINGS": "CT_Settings",
+    "SECTPR": "EG_SectPrContents",
     "TBLPR": "CT_TblPr",
     "TCPR": "CT_TcPr",
     "TRPR": "CT_TrPr",
     "STYLE": "CT_Style",
     "LVL": "CT_Lvl",
 }
+
+# The writer's table for `w:sectPr` names the group's children plus
+# `EG_HdrFtrReferences`, which `CT_SectPr` puts before it, and `sectPrChange`,
+# which it puts after. The expected sequence is therefore assembled from three
+# schema sources rather than read off one type.
+SECTPR_PREFIX = ["headerReference", "footerReference"]
+SECTPR_SUFFIX = ["sectPrChange"]
 
 RE_CONSTANT = re.compile(
     r"pub const (?P<name>[A-Z]+): &\[&str\] = &\[(?P<body>.*?)\];", re.S
@@ -686,20 +699,38 @@ def declared_sequences() -> dict[str, list[str]]:
 
 
 def schema_sequences(directory: str) -> dict[str, list[str]]:
-    """The `xsd:sequence` of each type, resolving `xsd:extension` bases."""
+    """The `xsd:sequence` of each type, resolving `xsd:extension` bases and the
+    one `xsd:group ref=` the writer's table transcribes (`EG_SectPrContents`)."""
     tree = etree.parse(os.path.join(directory, "wml.xsd"))
     types = {
         node.get("name"): node
         for node in tree.getroot().iter(f"{{{XSDNS}}}complexType")
         if node.get("name")
     }
+    groups = {
+        node.get("name"): node
+        for node in tree.getroot().iter(f"{{{XSDNS}}}group")
+        if node.get("name")
+    }
 
     def order_of(name: str, seen: frozenset[str] = frozenset()) -> list[str]:
         if name in seen:
             raise SystemExit(f"error: {name} extends itself")
-        node = types.get(name)
+        node = types.get(name) or groups.get(name)
         if node is None:
-            raise SystemExit(f"error: the schema has no complexType named {name}")
+            raise SystemExit(f"error: the schema has no complexType or group named {name}")
+        if name in groups:
+            # `CT_SectPr` puts the header/footer references before `EG_SectPrContents`
+            # and `sectPrChange` after it, and the writer's table is the whole
+            # sequence, so the group is read and then framed.
+            own = [
+                element.get("name")
+                for element in node.iter(f"{{{XSDNS}}}element")
+                if element.get("name")
+            ]
+            if name == "EG_SectPrContents":
+                return SECTPR_PREFIX + own + SECTPR_SUFFIX
+            return own
         extension = next(iter(node.iter(f"{{{XSDNS}}}extension")), None)
         if extension is not None:
             base = extension.get("base")
@@ -1028,9 +1059,33 @@ def find_cli(args) -> str:
         print(f"writer:  {built} (not rebuilt)")
         return built
     print("writer:  building the writer under test from this tree ...", flush=True)
-    subprocess.run(
-        ["cargo", "build", "--release", "-p", "strict-ooxml-cli"], cwd=REPO, check=True
-    )
+    # The workspace declares a `rust-version` floor (ADR-0011) that a developer's
+    # default toolchain may be below, and then `cargo build` fails with a wall of
+    # "rustc 1.9x is not supported" that says nothing about this gate. Building
+    # with `+<floor>` when the default is older turns that into an ordinary build.
+    toolchain = ""
+    manifest = os.path.join(REPO, "Cargo.toml")
+    if os.path.exists(manifest):
+        for line in open(manifest, encoding="utf-8"):
+            m = re.match(r'\s*rust-version\s*=\s*"([0-9][^"]*)"', line)
+            if m:
+                toolchain = m.group(1)
+                break
+    cmd = ["cargo"]
+    if toolchain:
+        cmd.append(f"+{toolchain}")
+    cmd += ["build", "--release", "-p", "strict-ooxml-cli"]
+    try:
+        subprocess.run(cmd, cwd=REPO, check=True)
+    except subprocess.CalledProcessError:
+        if not toolchain:
+            raise
+        raise SystemExit(
+            f"error: {toolchain} is the workspace's rust-version floor (ADR-0011) and\n"
+            f"       `{' '.join(cmd)}` did not work. Install it with\n"
+            f"         rustup toolchain install {toolchain}\n"
+            f"       or pass --cli <path> for a writer you built yourself."
+        )
     if not os.path.exists(built):
         raise SystemExit(f"error: cargo reported success but {built} is not there")
     return built

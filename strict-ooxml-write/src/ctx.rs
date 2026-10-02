@@ -59,6 +59,15 @@ pub struct Ctx<'a> {
     passthrough: Option<PassThrough>,
     /// Which notes part is being written, when writing one.
     note_role: Option<NoteRole>,
+    /// The decoration part being written, when writing one.
+    ///
+    /// Relationship ids are **per part**: `rId3` in `word/header1.xml` is a
+    /// different relationship from `rId3` in `word/document.xml`, and a reference
+    /// only resolves against its own part's `.rels`. A header that holds a picture
+    /// therefore needs its own relationship part, and the ids inside it are this
+    /// write's — the same reason the header's rels cannot simply be copied from
+    /// the source's.
+    decoration: Option<(String, BTreeMap<String, String>)>,
 }
 
 impl<'a> Ctx<'a> {
@@ -75,6 +84,7 @@ impl<'a> Ctx<'a> {
             header_footers: BTreeMap::new(),
             passthrough: None,
             note_role: None,
+            decoration: None,
         }
     }
 
@@ -126,19 +136,52 @@ impl<'a> Ctx<'a> {
             .and_then(|pass| pass.document_rel(old_id))
     }
 
+    /// Declares the relationship ids the decoration part being written will carry.
+    ///
+    /// `media` maps a media **part** to the id this part's own `.rels` will use.
+    /// Inside a decoration the reference the model holds is a resolved part rather
+    /// than a relationship id, because the ids belong to the source part and are
+    /// not ours to reuse — so the map is keyed by part, exactly as
+    /// [`Ctx::media_rel`] expects when a decoration is current.
+    pub fn set_decoration_relationships(&mut self, part: &str, media: BTreeMap<String, String>) {
+        self.decoration = Some((part.to_owned(), media));
+    }
+
+    /// Ends the decoration scope, so the next part written is the document part
+    /// again.
+    pub fn clear_decoration_relationships(&mut self) {
+        self.decoration = None;
+    }
+
     /// Returns the relationship id to write for a hyperlink that referenced
     /// `old_id` in the parsed document.
+    ///
+    /// **Inside a decoration part the document's ids are not the answer**: they
+    /// name the document part's relationships, and the reference resolves against
+    /// the header's own `.rels`. A header with a hyperlink therefore gets `None`
+    /// here, which the writer records rather than writing a dangling id.
     #[must_use]
     pub fn hyperlink_rel(&self, old_id: &str) -> Option<&str> {
+        if self.decoration.is_some() {
+            return None;
+        }
         self.hyperlinks.get(old_id).map(String::as_str)
     }
 
     /// Returns the relationship id to write for a picture that referenced
     /// `part`.
+    ///
+    /// Inside a decoration part the id comes from **that part's** map, because the
+    /// relationship a picture needs is declared in the header's own `.rels` and
+    /// nowhere else. That is why both maps exist rather than one of them being
+    /// wrong.
     #[must_use]
     pub fn media_rel(&self, part: Option<&PartId>) -> Option<&str> {
-        part.and_then(|part| self.media.get(part.as_str()))
-            .map(String::as_str)
+        let part = part?;
+        if let Some((_, media)) = &self.decoration {
+            return media.get(part.as_str()).map(String::as_str);
+        }
+        self.media.get(part.as_str()).map(String::as_str)
     }
 
     /// Returns the relationship id to write for a header/footer part.

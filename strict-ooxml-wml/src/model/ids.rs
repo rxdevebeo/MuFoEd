@@ -102,8 +102,32 @@ pub struct NumId(pub u32);
 pub struct AbstractNumId(pub u32);
 
 /// Zero-based list level (`w:ilvl/@w:val`), 0..=8.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+///
+/// The range is in the schema, not here: `ST_DecimalNumber` is unbounded and
+/// `CT_Lvl`/`CT_NumPr` do not constrain it, so `ilvl="9"` is a document the
+/// schema accepts and a list level that does not exist. `MAX` is therefore part
+/// of the type's contract, and [`Ilvl::is_valid`] is how a caller asks.
+///
+/// The reader clamps on the way in (`parse/numbering.rs`,
+/// `parse/props.rs`), so a **parsed** document cannot hold an out-of-range
+/// value. Only a hand-built one can, which is what `validate` is for
+/// (`STAGE-10-TASK.md` I7). The writer refuses to write an invalid level rather
+/// than clamping it silently, because the renderer *does* clamp
+/// (`render-svg/numbering.rs`) and a silent clamp in the writer would leave the
+/// two backends disagreeing about the same document without either saying so.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Ilvl(pub u8);
+
+impl Ilvl {
+    /// The highest level the schema's `0..=8` range allows.
+    pub const MAX: u8 = 8;
+
+    /// Returns whether this level is inside the schema's range.
+    #[must_use]
+    pub const fn is_valid(self) -> bool {
+        self.0 <= Self::MAX
+    }
+}
 
 impl fmt::Display for Ilvl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -287,7 +287,7 @@ pub(crate) fn plan(
     // from scratch, so everything the source declared there has to be either
     // carried or named.
     //
-    // **`docProps/core.xml` is carried** (`O-1a`). It is a set of statements
+    // **`docProps/core.xml` is carried whole** (`O-1a`). It is a set of statements
     // *about the document*: title, subject, creator, keywords, description,
     // language, revision, and the dates the producer recorded. All of them stay
     // true of the content this write copies, so copying them is not a claim — and
@@ -295,38 +295,63 @@ pub(crate) fn plan(
     // container's: a fresh date cannot be written anyway, because SC-1 makes the
     // output reproducible and a clock cannot be part of that.
     //
-    // **`docProps/app.xml` is not**, and the reason is the difference between the
-    // two parts: `app.xml` is a set of statements about a *rendering* — pages,
-    // words, characters, lines, paragraphs, editing minutes, the template it was
-    // built from. This writer lays nothing out, so it cannot produce those
-    // numbers, and copying the producer's would assert a page count for a document
-    // nobody re-paginated. So it is named instead, and the name says which kind of
-    // claim was dropped.
+    // **`docProps/app.xml` is carried, minus the counters that are statements
+    // about a rendering.** The part used to be named instead, on the grounds
+    // that it holds "statistics about a rendering this writer does not perform".
+    // That reason is right about `Pages`, `Words`, `Characters`, `Lines` and
+    // `TotalTime` and wrong about the rest: `Template` and `Company` are facts
+    // about the document's provenance, `TitlesOfParts` and `HeadingPairs` are an
+    // index of the content, and `DocSecurity` is a fact about the file. Dropping
+    // the whole part threw 49 of 58 corpus documents' extended properties away to
+    // avoid asserting five numbers — a loss the report named and nobody could do
+    // anything about. So the part comes, the five counters do not, and the names
+    // of the five are in [`APP_RENDERING_COUNTERS`] for the same reason
+    // `Vec::retain` is: a whitelist nobody can read is a whitelist nobody can
+    // check.
+    //
+    // **`docProps/custom.xml` is carried whole** (`TZ-17`). Custom properties are
+    // the producer's own statements about its document — a project code, a
+    // review state, a workflow id — and none of them describes a rendering.
     for info in source.relationships(&PartId::new("/")) {
         if matches!(info.rel_type, RelType::OfficeDocument) {
             continue;
         }
-        let carried = resolve(&PartId::new("/"), &info.target)
-            .filter(|target| target.as_str() == CORE_PROPERTIES_PART);
-        let Some(target) = carried else {
+        let Some(target) = resolve(&PartId::new("/"), &info.target) else {
             ctx.report_unsupported(
                 "W7.package-properties",
-                &format!(
-                    "{} is statistics about a rendering this writer does not perform \
-                     (pages, words, characters, editing time), so its numbers cannot be \
-                     carried and are not invented; the relationship type is {:?}",
-                    info.target, info.rel_type
-                ),
+                &format!("{} could not be resolved to a part", info.target),
                 &SourceLocation::unknown(),
             );
             continue;
         };
+        let transform: fn(&[u8]) -> Vec<u8> = match target.as_str() {
+            CORE_PROPERTIES_PART => strict_core_properties_namespace,
+            APP_PROPERTIES_PART => without_rendering_counters,
+            CUSTOM_PROPERTIES_PART => strict_custom_properties_namespaces,
+            _ => {
+                ctx.report_unsupported(
+                    "W7.package-properties",
+                    &format!(
+                        "{} is a part this write neither produces nor can vouch for, so it is \
+                         not carried; the relationship type is {:?}",
+                        info.target, info.rel_type
+                    ),
+                    &SourceLocation::unknown(),
+                );
+                continue;
+            }
+        };
+        let type_uri = match target.as_str() {
+            CORE_PROPERTIES_PART => core_properties_type_uri().to_owned(),
+            APP_PROPERTIES_PART => app_properties_type_uri().to_owned(),
+            _ => custom_properties_type_uri().to_owned(),
+        };
         match source.read_part(&target) {
-            Ok(bytes) => out.parts.push(CopiedPart {
-                name: target.as_str().to_owned(),
-                bytes: strict_core_properties_namespace(&bytes),
-                content_type: source.content_type(&target),
-            }),
+            Ok(bytes) => {
+                for part in copied_property_part(&target, &bytes, transform, source) {
+                    out.parts.push(part);
+                }
+            }
             Err(error) => ctx.report_unsupported(
                 "W7.package-properties",
                 &format!(
@@ -339,15 +364,161 @@ pub(crate) fn plan(
         }
         out.root.push(RootRelationship {
             id: format!("rId{}", out.root.len() + 2),
-            raw_type: core_properties_type_uri().to_owned(),
+            raw_type: type_uri,
             target: target.as_str().trim_start_matches('/').to_owned(),
         });
     }
     out
 }
 
-/// The one part of `docProps` a write carries (`O-1a`).
+/// The two parts OPC defines and **every** package has, which this write emits
+/// from scratch whatever the source held.
+///
+/// They are excluded from the accounting below for the ordinary reason, and it is
+/// worth naming because the first version of this function reported them: a part
+/// that is not in the list of parts the source had is not evidence that anything
+/// was lost, and `[Content_Types].xml` is the one part no package can do without.
+const OPC_SCAFFOLD: &[&str] = &["/[Content_Types].xml", "/_rels/.rels"];
+
+/// Names every part the source had that the written package does not, grouped by
+/// directory, with a reason that says what happened to it.
+///
+/// This is the closing of the audit §8 finding, and the finding is worth
+/// restating because it is not obvious from the outside: **a dropped part is
+/// invisible.** A part that is absent draws nothing, validates against every
+/// schema, and leaves no trace in a loss report that never mentioned it. The
+/// audit named one case — 16 embedded font binaries in 2 documents, gone together
+/// with `word/_rels/fontTable.xml.rels` — and said the whole defect was that
+/// "this is not in the loss report: a silent loss".
+///
+/// It takes the **written** part list rather than a list of parts this write
+/// *might* produce, because several are conditional: `word/numbering.xml` is
+/// written only when the model carries a numbering table, and one corpus document
+/// has a numbering part the model read as empty. A plan-time list would have
+/// called that a non-loss, which is precisely the bug this function was written
+/// to remove.
+///
+/// Grouping is by directory. A per-part record would be one line per file for
+/// what is one decision, and a report that long stops being read; the directory
+/// is what a person can act on, and it is what the census's `unaccounted` signal
+/// matches on, so the two cannot drift apart.
+pub(crate) fn report_what_was_dropped(ctx: &mut Ctx<'_>, source: &dyn Source, written: &[String]) {
+    let produced: BTreeSet<&str> = written.iter().map(String::as_str).collect();
+    let mut by_directory: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for part in source.parts() {
+        let name = part.as_str();
+        if produced.contains(name) || OPC_SCAFFOLD.contains(&name) || !name.starts_with('/') {
+            continue;
+        }
+        // A `.rels` beside a part that IS in the output was replaced by this
+        // write's own: the source's copy describes relationships the written part
+        // does not have, and keeping it would leave the package declaring them.
+        // The owner being present is the test, and not "a rels part is present" —
+        // the writer is free to emit none for a part that ended up with no
+        // relationships.
+        if name.ends_with(CONTENT_TYPE_RELS_SUFFIX)
+            && rels_owner(name).is_none_or(|owner| produced.contains(owner.as_str()))
+        {
+            continue;
+        }
+        let directory = name
+            .rsplit_once('/')
+            .map_or_else(|| name.to_owned(), |(dir, _)| dir.to_owned());
+        by_directory
+            .entry(directory)
+            .or_default()
+            .push(name.to_owned());
+    }
+    for (directory, names) in by_directory {
+        ctx.report_unsupported(
+            "W7.dropped-part",
+            &format!(
+                "{directory}: {} part(s) in the source are not in the written package \
+                 - {}. The bytes are legal Strict and no schema rejects their absence - a \
+                 part that is missing draws nothing and validates - so the only record \
+                 that they were here is this line",
+                names.len(),
+                names.join(", ")
+            ),
+            &SourceLocation::unknown(),
+        );
+    }
+}
+
+/// The part a `.rels` belongs to: `/word/_rels/header1.xml.rels` -> `/word/header1.xml`.
+fn rels_owner(rels_name: &str) -> Option<String> {
+    let (dir, file) = rels_name.rsplit_once('/')?;
+    let dir = dir.strip_suffix("/_rels")?;
+    let file = file.strip_suffix(".rels")?;
+    Some(format!("{dir}/{file}"))
+}
+
+/// The property part itself, plus its `.rels` when it has one.
+///
+/// A `docProps/app.xml` that references a thumbnail (`docProps/thumbnail.jpeg`)
+/// is only usable with it, and a copy of the properties that points at a missing
+/// thumbnail is a dangling reference - which is the one thing the pass-through
+/// exists to prevent. Nine corpus documents carry one.
+fn copied_property_part(
+    target: &PartId,
+    bytes: &[u8],
+    transform: fn(&[u8]) -> Vec<u8>,
+    source: &dyn Source,
+) -> Vec<CopiedPart> {
+    let mut out = vec![CopiedPart {
+        name: target.as_str().to_owned(),
+        bytes: transform(bytes),
+        content_type: source.content_type(target),
+    }];
+    if let Some(rels_part) = rels_part_of(target) {
+        if let Ok(rels_bytes) = source.read_part(&rels_part) {
+            out.push(CopiedPart {
+                name: rels_part.as_str().to_owned(),
+                bytes: strict_rels_namespace(&rels_bytes),
+                content_type: None,
+            });
+        }
+    }
+    out
+}
+
+/// The one part of `docProps` a write carries whole (`O-1a`).
 const CORE_PROPERTIES_PART: &str = "/docProps/core.xml";
+
+/// The extended-properties part: statements about the document, minus the five
+/// that are statements about a rendering.
+const APP_PROPERTIES_PART: &str = "/docProps/app.xml";
+
+/// The custom-properties part: the producer's own statements about its document.
+const CUSTOM_PROPERTIES_PART: &str = "/docProps/custom.xml";
+
+/// The elements of `docProps/app.xml` that describe a **rendering** rather than a
+/// document, and are therefore not carried.
+///
+/// Names, not a byte pattern: `<Pages>1</Pages>` and `<Lines>42</Lines>` are
+/// elements, and an element is removed whole. Each is a number this writer cannot
+/// produce — it lays nothing out, so it has no page count, no line count and no
+/// editing time — and carrying the producer's would assert them for a document
+/// nobody re-paginated. Everything else in the part is either a fact about the
+/// file (`Template`, `Company`, `DocSecurity`, `Application`, `AppVersion`) or an
+/// index of its content (`HeadingPairs`, `TitlesOfParts`), and all of it stays.
+///
+/// `Application` and `AppVersion` are the two that a reader could reasonably
+/// call a claim: they name the *producer*. They are kept because they remain
+/// true in the sense that matters — the content, the styles and the metadata of
+/// this package came from that application — and because a part that claims it
+/// was written by nothing at all is a worse answer than one that names where the
+/// document came from. The claim this writer does not make anywhere is about a
+/// *rendering*, and that is what the five above are.
+const APP_RENDERING_COUNTERS: &[&str] = &[
+    "Pages",
+    "Words",
+    "Characters",
+    "CharactersWithSpaces",
+    "Lines",
+    "Paragraphs",
+    "TotalTime",
+];
 
 /// The Strict relationship type of [`CORE_PROPERTIES_PART`].
 ///
@@ -356,6 +527,137 @@ const CORE_PROPERTIES_PART: &str = "/docProps/core.xml";
 /// would be a variant only this one use site needs.
 fn core_properties_type_uri() -> &'static str {
     "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties"
+}
+
+/// The Strict relationship type of [`APP_PROPERTIES_PART`].
+fn app_properties_type_uri() -> &'static str {
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/extended-properties"
+}
+
+/// The Strict relationship type of [`CUSTOM_PROPERTIES_PART`].
+fn custom_properties_type_uri() -> &'static str {
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/custom-properties"
+}
+
+/// Rewrites the namespace of a copied `docProps/app.xml` and removes the
+/// elements that are statements about a rendering.
+///
+/// Two operations, both byte-level, and neither touches a value:
+///
+/// 1. the namespace declaration, for the same reason as
+///    [`strict_core_properties_namespace`] — a declaration is not content, and
+///    Strict renamed this one too;
+/// 2. the elements named in [`APP_RENDERING_COUNTERS`], whole.
+///
+/// A byte-level element removal is only safe because the elements are matched by
+/// their **full tag**, `<Name>` … `</Name>`: an element whose name is a prefix of
+/// another's would be cut at the wrong place, and `Lines` is a substring of
+/// `CharactersWithSpaces` only in the sense of spelling, not of XML — which is
+/// exactly the kind of assumption a regex makes and a parser does not. The whole
+/// subtree of the counters is what goes, and each of them is a leaf, so a
+/// well-formed `app.xml` yields a well-formed result.
+///
+/// The value of what stays is *not* touched, so `Company`, `Template`,
+/// `DocSecurity`, `Application`, `AppVersion`, `HeadingPairs` and `TitlesOfParts`
+/// come through exactly as the producer wrote them.
+fn without_rendering_counters(bytes: &[u8]) -> Vec<u8> {
+    let mut out = replace_all(
+        bytes,
+        TRANSITIONAL_APP_PROPERTIES_NS,
+        STRICT_APP_PROPERTIES_NS,
+    );
+    // `app.xml` declares the variant-types vocabulary too, for
+    // `HeadingPairs`/`TitlesOfParts`, and `vt` was renamed along with `app`.
+    // Rewriting only the outer namespace left a Transitional URI in a Strict
+    // package, which is what `no_written_part_carries_a_transitional_uri` said,
+    // with the bytes in front of it.
+    out = replace_all(&out, TRANSITIONAL_VARIANT_TYPES_NS, STRICT_VARIANT_TYPES_NS);
+    for name in APP_RENDERING_COUNTERS {
+        out = remove_element(&out, name);
+    }
+    out
+}
+
+/// The extended-properties namespace a Transitional producer writes.
+const TRANSITIONAL_APP_PROPERTIES_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties";
+
+/// The Strict name ISO/IEC 29500 gives the same part.
+const STRICT_APP_PROPERTIES_NS: &[u8] =
+    b"http://purl.oclc.org/ooxml/officeDocument/extendedProperties";
+
+/// The custom-properties namespace a Transitional producer writes, and the Strict
+/// one. Two rewrites, because the part declares the `vt` vocabulary too and both
+/// were renamed: `docProps/custom.xml` in the corpus carries
+/// `<property …><vt:lpwstr>…</vt:lpwstr></property>`, and `vt` is in
+/// `shared-documentPropertiesVariantTypes.xsd` in both families under the
+/// `purl.oclc.org` names.
+const TRANSITIONAL_CUSTOM_PROPERTIES_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties";
+const TRANSITIONAL_VARIANT_TYPES_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes";
+const STRICT_CUSTOM_PROPERTIES_NS: &[u8] =
+    b"http://purl.oclc.org/ooxml/officeDocument/customProperties";
+const STRICT_VARIANT_TYPES_NS: &[u8] = b"http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes";
+
+/// Rewrites the two namespaces of a copied `docProps/custom.xml`.
+///
+/// Declarations only, and the same reasoning as every other namespace rewrite
+/// here: the properties themselves are the producer's statements about its own
+/// document and stay byte for byte.
+fn strict_custom_properties_namespaces(bytes: &[u8]) -> Vec<u8> {
+    let out = replace_all(
+        bytes,
+        TRANSITIONAL_CUSTOM_PROPERTIES_NS,
+        STRICT_CUSTOM_PROPERTIES_NS,
+    );
+    replace_all(&out, TRANSITIONAL_VARIANT_TYPES_NS, STRICT_VARIANT_TYPES_NS)
+}
+
+/// Removes every `<name>…</name>` and `<name/>` from `bytes`.
+///
+/// `name` is matched whole, so `Lines` never matches inside
+/// `CharactersWithSpaces` and `Pages` never matches inside `PageSetup`. The
+/// search starts after a `<` so a name appearing in an attribute *value* cannot
+/// be mistaken for a tag.
+fn remove_element(bytes: &[u8], name: &str) -> Vec<u8> {
+    let open = format!("<{name}");
+    let close = format!("</{name}>");
+    let empty = format!("<{name}/>");
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut rest = bytes;
+    loop {
+        let Some(at) = find(rest, open.as_bytes()) else {
+            break;
+        };
+        // A longer element name that merely starts with `name`: skip it.
+        let after = rest[at + open.len()];
+        if after != b'>' && after != b'/' && after != b' ' {
+            out.extend_from_slice(&rest[..at + open.len()]);
+            rest = &rest[at + open.len()..];
+            continue;
+        }
+        out.extend_from_slice(&rest[..at]);
+        let tail = &rest[at..];
+        if tail.starts_with(empty.as_bytes()) {
+            rest = &tail[empty.len()..];
+            continue;
+        }
+        match find(tail, close.as_bytes()) {
+            Some(end) => {
+                rest = &tail[end + close.len()..];
+            }
+            // An opening tag with no matching close: the input was not
+            // well-formed, and cutting at the end would invent a removal that
+            // did not happen. The element is left alone.
+            None => {
+                out.extend_from_slice(tail);
+                return out;
+            }
+        }
+    }
+    out.extend_from_slice(rest);
+    out
 }
 
 /// The extension every relationship part carries, lowercased for the comparison.

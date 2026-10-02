@@ -53,6 +53,17 @@ pub struct XmlWriter {
     overflowed: bool,
     /// A start tag has been opened and still needs its closing `>`.
     pending_tag: bool,
+    /// Byte offset of the root element's name, when [`start_root`](Self::start_root)
+    /// opened one.
+    root_start: Option<usize>,
+    /// The namespace declarations the root was *offered*, filtered at finish time.
+    root_declarations: Vec<(&'static str, &'static str)>,
+    /// Every prefix the part actually wrote.
+    ///
+    /// A prefix declared and never used is the debt
+    /// `strict-ooxml-write/tests/strict_conformance.rs` refuses; a prefix used and
+    /// never declared is a part that does not parse. Both are decided here.
+    used_prefixes: std::collections::BTreeSet<String>,
 }
 
 impl Default for XmlWriter {
@@ -84,6 +95,9 @@ impl XmlWriter {
             max_depth,
             overflowed: false,
             pending_tag: false,
+            root_start: None,
+            root_declarations: Vec::new(),
+            used_prefixes: std::collections::BTreeSet::new(),
         }
     }
 
@@ -119,6 +133,7 @@ impl XmlWriter {
         if self.open.len() >= self.max_depth {
             self.overflowed = true;
         }
+        self.used_prefixes.insert(prefix_of(name));
         self.out.push('<');
         self.open.push(self.out.len());
         self.tag_open.push(false);
@@ -126,21 +141,32 @@ impl XmlWriter {
         self.pending_tag = true;
     }
 
-    /// Starts the root element of a part and declares its namespaces.
+    /// Starts the root element of a part and declares the namespaces it **may** use.
     ///
-    /// Every part declares what it uses and nothing else: an undeclared prefix
-    /// is a hard parse error in the reader, and a declaration nobody uses is
-    /// noise in every diff of the output.
-    pub fn start_root(&mut self, name: &str, namespaces: &[(&str, &str)]) {
+    /// The declarations are filtered at [`finish`](Self::finish) down to the ones
+    /// the part actually used, which is the only place that can know: a header
+    /// that holds a drawing needs `wp`/`a`/`pic` and a header that does not must
+    /// not declare them, and no per-part table gets that right for both without
+    /// every part listing every vocabulary it might contain.
+    ///
+    /// That asymmetry is not cosmetic. A part that declares a prefix it never uses
+    /// is the unused-declaration debt `strict-ooxml-write/tests/strict_conformance.rs`
+    /// refuses; a part that uses a prefix it did not declare **does not parse**, and
+    /// the reader that finds out is one step removed from the writer that broke it.
+    pub fn start_root(&mut self, name: &str, namespaces: &[(&'static str, &'static str)]) {
         self.declaration();
+        // Before `start`, not after: `start` records the name's prefix as used, and
+        // clearing afterwards threw away the root's own prefix — which is how
+        // `word/fontTable.xml` came out with `<w:fonts>` and no `xmlns:w`.
+        self.used_prefixes.clear();
         self.start(name);
-        for (prefix, uri) in namespaces {
-            self.attr(&format!("xmlns:{prefix}"), uri);
-        }
+        self.root_start = Some(self.open.last().copied().unwrap_or(0));
+        self.root_declarations = namespaces.to_vec();
     }
 
     /// Writes an attribute. `name` carries its prefix when it has one.
     pub fn attr(&mut self, name: &str, value: impl Display) {
+        self.used_prefixes.insert(prefix_of(name));
         self.out.push(' ');
         self.out.push_str(name);
         self.out.push_str("=\"");
@@ -223,6 +249,7 @@ impl XmlWriter {
     /// Writes a self-closing element.
     pub fn empty(&mut self, name: &str) {
         self.close_tag();
+        self.used_prefixes.insert(prefix_of(name));
         self.out.push('<');
         self.out.push_str(name);
         self.out.push_str("/>");
@@ -231,6 +258,8 @@ impl XmlWriter {
     /// Writes a self-closing element with one attribute.
     pub fn empty_attr(&mut self, name: &str, attr: &str, value: impl Display) {
         self.close_tag();
+        self.used_prefixes.insert(prefix_of(name));
+        self.used_prefixes.insert(prefix_of(attr));
         self.out.push('<');
         self.out.push_str(name);
         self.out.push(' ');
@@ -282,10 +311,57 @@ impl XmlWriter {
             return Err(WriteError::Unbalanced(self.open.len()));
         }
         self.close_tag();
+        self.write_root_declarations();
         let mut out = self.out;
         out.push('\n');
         Ok(out)
     }
+
+    /// Inserts the root's `xmlns:*` declarations, filtered to what the part used.
+    ///
+    /// Written here rather than in [`start_root`](Self::start_root) because the
+    /// answer is not known until the part is finished, and the insertion point is
+    /// unambiguous: the declarations go **immediately after the root element's
+    /// name**, which is where `close_tag` already computes the boundary — the
+    /// first character that is a space, a `>` or a `/`. Inserting before the `>`
+    /// instead looks equivalent and is not: a part with no children writes a
+    /// self-closing root, `<w:fonts/>`, and there the `>` is preceded by a `/`,
+    /// so the declarations land between the two and the part stops being XML.
+    fn write_root_declarations(&mut self) {
+        if self.root_declarations.is_empty() {
+            return;
+        }
+        let Some(at) = self.root_start else {
+            return;
+        };
+        let mut declarations = String::new();
+        for (prefix, uri) in &self.root_declarations {
+            if !self.used_prefixes.contains(*prefix) {
+                continue;
+            }
+            declarations.push_str(" xmlns:");
+            declarations.push_str(prefix);
+            declarations.push_str("=\"");
+            escape_attr_into(&mut declarations, uri);
+            declarations.push('"');
+        }
+        if declarations.is_empty() {
+            return;
+        }
+        let name_end = self.out[at..]
+            .find([' ', '>', '/'])
+            .map_or(self.out.len(), |offset| at + offset);
+        self.out.insert_str(name_end, &declarations);
+    }
+}
+
+/// The namespace prefix of a name, or the empty string when it has none.
+///
+/// `w:p` is `w`; `p` is nothing, and `a:b:c` is `a` because the second colon is
+/// part of the local name as far as any consumer is concerned.
+fn prefix_of(name: &str) -> String {
+    name.split_once(':')
+        .map_or_else(String::new, |(prefix, _)| prefix.to_owned())
 }
 
 /// Failures the writer itself can raise, independent of the DOM it walks.

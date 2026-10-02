@@ -225,7 +225,11 @@ fn parses_richer_section_properties() {
     assert_eq!(line.count_by, Some(5));
     assert_eq!(line.start, Some(1));
     assert_eq!(line.distance.unwrap().value(), 240);
-    assert!(section.rtl_gutter && section.gutter_at_top && section.bidi);
+    assert!(section.rtl_gutter && section.bidi);
+    // `w:gutterAtTop` is a document setting in Strict and a section child in
+    // Transitional, so a `w:sectPr` that carries it sets `Settings`, not the
+    // section. See `Settings::gutter_at_top`.
+    assert!(document.settings.gutter_at_top);
     assert_eq!(section.vertical_align, Some(VerticalJc::Bottom));
     assert_eq!(section.text_direction, Some(TextDirection::LrTb));
     let columns = section.columns.as_ref().unwrap();

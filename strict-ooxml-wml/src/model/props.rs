@@ -364,8 +364,6 @@ pub struct SectionProperties {
     pub bidi: bool,
     /// Right-to-left gutter (`w:rtlGutter`).
     pub rtl_gutter: bool,
-    /// Gutter at the top (`w:gutterAtTop`).
-    pub gutter_at_top: bool,
     /// Text direction.
     pub text_direction: Option<TextDirection>,
     /// Line numbering.

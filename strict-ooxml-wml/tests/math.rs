@@ -9,7 +9,7 @@ mod common;
 
 use strict_ooxml_wml::model::math::{
     LimitLocation, MathAlignment, MathJustification, MathNode, MathPosition, MathScript, MathStyle,
-    MathVerticalJc,
+    MathVerticalAlign, MathVerticalJc,
 };
 use strict_ooxml_wml::model::{Block, Inline, SupportStatus};
 use strict_ooxml_wml::M_NS;
@@ -204,7 +204,7 @@ fn function_name_and_limits_are_parsed() {
 #[test]
 fn matrices_and_equation_arrays_keep_their_grid() {
     let MathNode::Matrix(matrix) = first_node(
-        "<m:oMath><m:m><m:mPr><m:baseJc m:val=\"right\"/><m:plcHide m:val=\"1\"/>\
+        "<m:oMath><m:m><m:mPr><m:baseJc m:val=\"bottom\"/><m:plcHide m:val=\"1\"/>\
 <m:cSp m:val=\"240\"/><m:cGp m:val=\"120\"/><m:cGpRule m:val=\"3\"/><m:rSp m:val=\"60\"/>\
 <m:rSpRule m:val=\"exact\"/><m:mcs><m:mc><m:mcPr><m:count m:val=\"2\"/><m:mcJc m:val=\"center\"/>\
 </m:mcPr></m:mc></m:mcs></m:mPr>\
@@ -215,7 +215,7 @@ fn matrices_and_equation_arrays_keep_their_grid() {
     };
     assert_eq!(matrix.rows.len(), 2);
     assert_eq!(matrix.rows[1].len(), 2);
-    assert_eq!(matrix.base_justification, Some(MathAlignment::Right));
+    assert_eq!(matrix.base_justification, Some(MathVerticalAlign::Bottom));
     assert!(matrix.hide_placeholders);
     assert_eq!(matrix.column_spacing, Some(240));
     assert_eq!(matrix.column_group_spacing, Some(120));
@@ -234,7 +234,7 @@ fn matrices_and_equation_arrays_keep_their_grid() {
     assert_eq!(array.rows.len(), 2);
     assert_eq!(array.max_distance, Some(4));
     assert_eq!(array.object_distance, Some(3));
-    assert_eq!(array.base_justification, Some(MathAlignment::Center));
+    assert_eq!(array.base_justification, Some(MathVerticalAlign::Center));
 }
 
 #[test]

@@ -76,14 +76,24 @@ fn x_align(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'stat
     }
 }
 
-fn y_align(value: strict_ooxml_wml::model::math::MathAlignment) -> Option<&'static str> {
-    use strict_ooxml_wml::model::math::MathAlignment as A;
+/// Writes `m:baseJc`, which is a `CT_YAlign`.
+///
+/// The previous mapping went through the **justification** vocabulary and sent
+/// `Left` to `inline` and `Right` to `bottom`. Neither is a defensible reading:
+/// `inline` means "laid out with the text" and `bottom` means "aligned to the
+/// bottom", and neither is what "justified left" or "justified right" means.
+/// The two vocabularies overlap in two values, which is exactly why it went
+/// unnoticed - the overlapping cases came out right by accident.
+fn y_align(value: strict_ooxml_wml::model::math::MathVerticalAlign) -> Option<&'static str> {
+    use strict_ooxml_wml::model::math::MathVerticalAlign as V;
     match value {
-        A::Left => Some("inline"),
-        A::Center => Some("center"),
-        A::Right => Some("bottom"),
-        A::Inline => Some("inside"),
-        A::Unset => None,
+        V::Inline => Some("inline"),
+        V::Top => Some("top"),
+        V::Center => Some("center"),
+        V::Bottom => Some("bottom"),
+        V::Inside => Some("inside"),
+        V::Outside => Some("outside"),
+        V::Unset => None,
     }
 }
 

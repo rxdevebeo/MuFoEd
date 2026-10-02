@@ -383,33 +383,94 @@ fn the_document_properties_survive_a_write() {
     );
 }
 
-/// `docProps/app.xml` is a set of statements about a **rendering**: pages, words,
-/// characters, lines, paragraphs, editing minutes, the template it was built from.
-/// This writer lays nothing out, so it cannot produce those numbers and copying the
-/// producer's would assert a page count for a document nobody re-paginated — so it
-/// is named, and the name says which kind of claim was dropped (SC-10).
+/// `docProps/app.xml` mixes two kinds of statement, and the pass-through now
+/// carries one and drops the other.
+///
+/// **This test used to assert the opposite**, and the change is worth recording
+/// because the old reason was partly right and the fix was over-broad. The part
+/// holds seven counters that describe a *rendering* — pages, words, characters,
+/// lines, paragraphs, editing time — and this writer lays nothing out, so it
+/// cannot produce those numbers and carrying the producer's would assert a page
+/// count for a document nobody re-paginated. That reason holds. What did not hold
+/// is the inference: `Template`, `Company`, `DocSecurity`, `Application`,
+/// `AppVersion`, `HeadingPairs` and `TitlesOfParts` are facts about the file and
+/// an index of its content, none of them describes a rendering, and throwing them
+/// away cost 49 of 58 corpus documents their extended properties to avoid
+/// asserting five numbers.
+///
+/// So: the part comes, the seven counters go, and this asserts both halves —
+/// because asserting only "the part is here" would let a counter back in, and
+/// asserting only "the counters are gone" is what the old test did.
 #[test]
-fn the_page_statistics_are_named_rather_than_invented() {
+fn the_extended_properties_come_without_the_rendering_counters() {
     let (document, package) = fixture();
     let written = write(&document, Some(&package));
-    let text = written.report.to_string();
-    assert!(
-        text.contains("W7.package-properties"),
-        "app.xml must be reported:\n{text}"
-    );
-    assert!(text.contains("docProps/app.xml"), "{text}");
-    assert!(
-        text.contains("statistics about a rendering this writer does not perform"),
-        "and the reason must say what kind of claim it was:\n{text}"
-    );
-
     let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default())
         .unwrap_or_else(|error| panic!("reopen: {error}\n{}", written.report));
+    let id = PartId::new("/docProps/app.xml");
+    let bytes = reopened
+        .read_part(&id)
+        .unwrap_or_else(|error| panic!("app.xml must be carried: {error}\n{}", written.report));
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+
+    for counter in [
+        "Pages",
+        "Words",
+        "Characters",
+        "CharactersWithSpaces",
+        "Lines",
+        "Paragraphs",
+        "TotalTime",
+    ] {
+        assert!(
+            !text.contains(&format!("<{counter}>")),
+            "{counter} is a statement about a rendering nobody performed: {text}"
+        );
+    }
+    // And what is not a rendering is carried, with its value untouched.
     assert!(
-        reopened
-            .parts()
-            .all(|part| !part.id.as_str().contains("docProps/app.xml")),
-        "a part that is only statistics is better absent than wrong"
+        text.contains("<Company>") && text.contains("<Application>"),
+        "the facts about the file are the document's metadata: {text}"
+    );
+    assert!(
+        text.contains("http://purl.oclc.org/ooxml/officeDocument/extendedProperties"),
+        "and the namespace is Strict: {text}"
+    );
+    assert!(
+        !text.contains("schemas.openxmlformats.org"),
+        "no Transitional URI may survive in it: {text}"
+    );
+    // A part that survives is not a loss, so it must not be named as one.
+    assert!(
+        !written.report.to_string().contains("docProps/app.xml"),
+        "a part that survives is not a loss, and it is not named as one:\n{}",
+        written.report
+    );
+}
+
+/// The same reasoning for `docProps/custom.xml`, with no counter to drop: custom
+/// properties are the producer's own statements about its document — a project
+/// code, a review state, a workflow id — and none of them describes a rendering.
+#[test]
+fn the_custom_properties_are_carried_with_both_namespaces_rewritten() {
+    let (document, package) = fixture();
+    let written = write(&document, Some(&package));
+    let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default())
+        .unwrap_or_else(|error| panic!("reopen: {error}\n{}", written.report));
+    let Ok(bytes) = reopened.read_part(&PartId::new("/docProps/custom.xml")) else {
+        // Not every fixture carries custom properties; the part ledger in
+        // `xtool/xsd-gate/census_gate.py` is what measures the corpus for this
+        // one (23 documents), and there the absence is the measurement.
+        return;
+    };
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    assert!(
+        !text.contains("schemas.openxmlformats.org"),
+        "both the properties and the `vt` vocabulary were renamed by Strict: {text}"
+    );
+    assert!(
+        text.contains("customProperties"),
+        "and the properties namespace is the Strict one: {text}"
     );
 }
 

@@ -794,6 +794,57 @@ impl WidthKind {
     }
 }
 
+/// The lexical form of `ST_MeasurementOrPercent` for a fiftieths-of-a-percent
+/// width (`Q-E5`, closed 2026-10-01).
+///
+/// **The arithmetic, which is the whole of the assumption the audit recorded.**
+/// `ST_MeasurementOrPercent` in Strict is `union(ST_DecimalNumberOrPercent,
+/// s:ST_UniversalMeasure)`, and in Strict `ST_DecimalNumberOrPercent` is
+/// `union(s:ST_Percentage)` alone - `s:ST_Percentage`'s pattern is
+/// `-?[0-9]+(\.[0-9]+)?%`. The Transitional set had a second branch,
+/// `ST_UnqualifiedPercentage`, which is `xsd:integer`, and that is the branch a
+/// bare `5000` took. Strict removed it, so the fiftieths reading has no lexical
+/// form at all: `5000` is not a value the attribute can hold.
+///
+/// The remaining question the audit called "a question of behaviour" was what
+/// `5000` meant, and it is answerable without a producer: `w:type="pct"` is
+/// defined as fiftieths of a percent, so the value is 5000/50 = 100%, and the
+/// lexical form carries the `%` the pattern demands. Nothing here depends on how
+/// a consumer reads it, because there is no longer a spelling for it to read
+/// ambiguously.
+///
+/// The fiftieths are exact in the other direction too: `i32 / 50` has at most
+/// two decimals, and `s:ST_Percentage` admits at most two, so no precision is lost
+/// and no value is rejected by the pattern.
+#[must_use]
+pub fn percent_from_fiftieths(fiftieths: i32) -> String {
+    let whole = fiftieths / 50;
+    let rest = (fiftieths % 50).abs();
+    let sign = if fiftieths < 0 { "-" } else { "" };
+    if rest == 0 {
+        return format!("{sign}{whole}%");
+    }
+    // Two decimals, exactly: rest/50 has at most two.
+    let hundredths = rest * 2;
+    format!("{sign}{whole}.{hundredths:02}%")
+}
+
+/// The largest `ST_TextScale` the schema admits, from its own pattern
+/// `0*(600|([0-5]?[0-9]?[0-9]))%`.
+pub const TEXT_SCALE_MAX: u16 = 600;
+
+/// The lexical form of `ST_TextScale` (`w:w` in a run property bag).
+///
+/// The pattern requires the `%` sign and admits nothing above 600, so a bare
+/// `90` — which is what every Transitional producer writes and what the writer
+/// wrote until 2026-10-01 — is not a value the attribute can hold.
+/// `RunProperties::scale` holds the percentage as an integer, which is what the
+/// `%` form makes the meaning of.
+#[must_use]
+pub fn text_scale_lexical(percent: u16) -> String {
+    format!("{}%", percent.min(TEXT_SCALE_MAX))
+}
+
 /// A table row height (`w:trHeight`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct RowHeight {

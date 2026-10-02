@@ -7,6 +7,7 @@
 //! round trip from growing parts it did not have (SC-3).
 
 use strict_ooxml_wml::model::document::HeaderFooter;
+use strict_ooxml_wml::model::ids::Ilvl;
 use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, NumberingTable};
@@ -18,7 +19,7 @@ use strict_ooxml_wml::model::values::StyleType;
 use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
 use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
-use crate::xml::{XmlWriter, NS_A, NS_R, NS_W};
+use crate::xml::{WriteError, XmlWriter, NS_A, NS_PIC, NS_R, NS_W, NS_WP};
 
 /// The namespace declarations a `w:` part carries.
 ///
@@ -29,11 +30,55 @@ use crate::xml::{XmlWriter, NS_A, NS_R, NS_W};
 /// attribute the standard does not have (ADR-0014).
 const WML_NAMESPACES: [(&str, &str); 2] = [("w", NS_W), ("r", NS_R)];
 
+/// The namespaces a part that can hold **block or inline content** may use.
+///
+/// Wider than [`WML_NAMESPACES`] on purpose, and filtered at write time
+/// ([`XmlWriter::start_root`](crate::xml::XmlWriter::start_root)): a header with a
+/// picture in it needs `wp`, `a` and `pic`, and a header without one must not
+/// declare them. Which of these parts a drawing can appear in is a property of the
+/// *schema* (`EG_BlockLevelElts` reaches `w:drawing` in a header, a footer, a
+/// footnote and an endnote) and not something a table per part would get right
+/// twice — once for the part that has a picture and once for the part that does
+/// not.
+///
+/// The vendor shapes are here for the same reason and were found the same way.
+/// `strict-ooxml-write` reproduces `wps`/`wpg` shapes from the model (ADR-0014's
+/// `XS-18`/`XS-19` debt, kept on purpose), and a **shape in a header** needs its
+/// prefix declared on the header's root. It was not, and the part did not parse —
+/// which is how this list learned that a header can hold more than a picture.
+const CONTENT_NAMESPACES: [(&str, &str); 5] = [
+    ("w", NS_W),
+    ("r", NS_R),
+    ("wp", NS_WP),
+    ("a", NS_A),
+    ("pic", NS_PIC),
+];
+
+/// [`CONTENT_NAMESPACES`] plus the vendor vocabularies a shape or a group can be
+/// written in.
+///
+/// Separate from [`CONTENT_NAMESPACES`] so that the *document* part and a
+/// decoration part do not have to grow their lists independently — and the
+/// document part already declared all of these, which is why the defect was
+/// invisible until a shape ended up outside `word/document.xml`.
+fn content_and_vendor_namespaces() -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = CONTENT_NAMESPACES.to_vec();
+    for (prefix, uri) in crate::drawing::namespaces() {
+        if !out.iter().any(|(existing, _)| *existing == prefix) {
+            out.push((prefix, uri));
+        }
+    }
+    out
+}
+
 /// The namespace declarations the theme part carries.
 const THEME_NAMESPACES: [(&str, &str); 1] = [("a", NS_A)];
 
 /// Writes `w:styles`.
-pub fn styles_part(ctx: &mut Ctx<'_>, table: &StyleTable) -> String {
+pub fn styles_part(
+    ctx: &mut Ctx<'_>,
+    table: &StyleTable,
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:styles", &WML_NAMESPACES);
     if let Some(defaults) = table.defaults() {
@@ -43,7 +88,7 @@ pub fn styles_part(ctx: &mut Ctx<'_>, table: &StyleTable) -> String {
         style_element(ctx, &mut xml, style);
     }
     xml.end();
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 fn doc_defaults(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, defaults: &DocDefaults) {
@@ -129,7 +174,10 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
 }
 
 /// Writes `w:numbering`.
-pub fn numbering_part(ctx: &mut Ctx<'_>, table: &NumberingTable) -> String {
+pub fn numbering_part(
+    ctx: &mut Ctx<'_>,
+    table: &NumberingTable,
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:numbering", &WML_NAMESPACES);
     for abstract_num in table.abstracts() {
@@ -141,7 +189,7 @@ pub fn numbering_part(ctx: &mut Ctx<'_>, table: &NumberingTable) -> String {
         xml.empty_attr_w("w:abstractNumId", "val", num.abstract_num_id.0);
         for over in &num.overrides {
             xml.start("w:lvlOverride");
-            xml.attr_w("ilvl", over.ilvl.0);
+            ilvl_attr(ctx, &mut xml, &over.ilvl, "w:lvlOverride");
             if let Some(start) = over.start_override {
                 xml.empty_attr_w("w:startOverride", "val", start);
             }
@@ -153,7 +201,7 @@ pub fn numbering_part(ctx: &mut Ctx<'_>, table: &NumberingTable) -> String {
         xml.end();
     }
     xml.end();
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &AbstractNum) {
@@ -174,9 +222,32 @@ fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &A
     xml.end();
 }
 
+/// Writes a `w:ilvl` attribute, refusing a level the schema does not have.
+///
+/// `ST_DecimalNumber` is unbounded, so the range is a convention both backends
+/// rely on and neither the schema nor the reader enforces on the way in - the
+/// reader clamps, the renderer clamps, and until this the writer wrote whatever
+/// it was handed (`STAGE-10-TASK.md` E33). Writing it verbatim would leave the
+/// two backends disagreeing about one document with neither saying so.
+fn ilvl_attr(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, ilvl: &Ilvl, at: &str) {
+    if ilvl.is_valid() {
+        xml.attr_w("ilvl", ilvl.0);
+    } else {
+        ctx.report_unsupported(
+            "w:ilvl",
+            &format!(
+                "list level {} is outside the schema's 0..={} range and was not written to {at}",
+                ilvl.0,
+                Ilvl::MAX
+            ),
+            &strict_ooxml_core::error::SourceLocation::unknown(),
+        );
+    }
+}
+
 fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     xml.start("w:lvl");
-    xml.attr_w("ilvl", level.ilvl.0);
+    ilvl_attr(ctx, xml, &level.ilvl, "w:lvl");
     if let Some(start) = level.start {
         xml.empty_attr_w("w:start", "val", start);
     }
@@ -220,14 +291,17 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
 /// sixteen "This element is not expected" messages `w:settings` produced across
 /// the corpus (`XS-06`). `w:compat` is not a Transitional leftover: it is declared
 /// in Strict at `wml.xsd:2815`.
-pub fn settings_part(ctx: &mut Ctx<'_>, settings: &Settings) -> String {
+pub fn settings_part(
+    ctx: &mut Ctx<'_>,
+    settings: &Settings,
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:settings", &WML_NAMESPACES);
     for name in crate::order::SETTINGS {
         settings_child(ctx, &mut xml, settings, name);
     }
     xml.end();
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 /// Writes the `w:settings` child called `name`, when the model has it.
@@ -290,6 +364,10 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             xml.empty("w:evenAndOddHeaders");
         }
         "mirrorMargins" if settings.mirror_margins => xml.empty("w:mirrorMargins"),
+        // The Strict home of the flag Transitional writes inside `w:sectPr`,
+        // where `EG_SectPrContents` has no slot for it. See
+        // `Settings::gutter_at_top`.
+        "gutterAtTop" if settings.gutter_at_top => xml.empty("w:gutterAtTop"),
         "footnotePr" => {
             if !settings.footnote_properties.is_empty() {
                 note_properties(xml, "w:footnotePr", &settings.footnote_properties);
@@ -349,7 +427,10 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
 /// `w:pitch` are `CT_String` with `w:val` `use="required"`, and `<w:family/>` is
 /// worse than no element at all. Nothing was expressed by those empties, so
 /// nothing is lost by dropping them.
-pub fn font_table_part(ctx: &mut Ctx<'_>, families: &[String]) -> String {
+pub fn font_table_part(
+    ctx: &mut Ctx<'_>,
+    families: &[String],
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:fonts", &WML_NAMESPACES);
     for family in families {
@@ -357,7 +438,7 @@ pub fn font_table_part(ctx: &mut Ctx<'_>, families: &[String]) -> String {
     }
     xml.end();
     let _ = ctx;
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 /// Writes `a:theme`.
@@ -366,7 +447,20 @@ pub fn font_table_part(ctx: &mut Ctx<'_>, families: &[String]) -> String {
 /// cascade needs, so the theme part is written as a minimal but schema-shaped
 /// document: a missing element format would make Word report the file as
 /// unreadable content.
-pub fn theme_part(theme: &Theme) -> String {
+///
+/// The format scheme is a placeholder - three `phClr` fills, three lines, three
+/// effects - because the model does not carry the source's real ones. That is a
+/// loss, and it is **recorded here**, not left to the parse phase: a document
+/// built rather than parsed (a PDF conversion, a hand-built model) never went
+/// through `parse/theme.rs`, so for those the loss would otherwise be silent
+/// (`STAGE-10-TASK.md` E35, SC-10). `ctx` is passed for exactly this reason.
+pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<String, WriteError> {
+    ctx.report_partial(
+        "a:fmtScheme",
+        "theme fill, line and effect styles are not carried by the model; a \
+         placeholder scheme was written",
+        &strict_ooxml_core::error::SourceLocation::unknown(),
+    );
     let mut xml = XmlWriter::new();
     xml.start_root("a:theme", &THEME_NAMESPACES);
     xml.attr("name", "strict-ooxml");
@@ -416,7 +510,7 @@ pub fn theme_part(theme: &Theme) -> String {
     format_scheme(&mut xml);
     xml.end();
     xml.end();
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 /// Writes the smallest `a:fmtScheme` the schema accepts.
@@ -498,7 +592,11 @@ fn font_collection(xml: &mut XmlWriter, name: &str, typeface: Option<&str>) {
 }
 
 /// Writes `w:footnotes` or `w:endnotes`.
-pub fn notes_part(ctx: &mut Ctx<'_>, table: &NoteTable, is_footnote: bool) -> String {
+pub fn notes_part(
+    ctx: &mut Ctx<'_>,
+    table: &NoteTable,
+    is_footnote: bool,
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root(
         if is_footnote {
@@ -506,7 +604,7 @@ pub fn notes_part(ctx: &mut Ctx<'_>, table: &NoteTable, is_footnote: bool) -> St
         } else {
             "w:endnotes"
         },
-        &WML_NAMESPACES,
+        &content_and_vendor_namespaces(),
     );
     let role = if is_footnote {
         NoteRole::Footnote
@@ -519,7 +617,7 @@ pub fn notes_part(ctx: &mut Ctx<'_>, table: &NoteTable, is_footnote: bool) -> St
         note_element(ctx, &mut xml, note, is_footnote);
     }
     xml.end();
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 /// Whether a note's leading paragraph already carries the reference marker.
@@ -629,7 +727,10 @@ pub fn default_separator_notes(is_footnote: bool) -> Vec<Note> {
 }
 
 /// Writes a `w:hdr` or `w:ftr` part.
-pub fn header_footer_part(ctx: &mut Ctx<'_>, header_footer: &HeaderFooter) -> String {
+pub fn header_footer_part(
+    ctx: &mut Ctx<'_>,
+    header_footer: &HeaderFooter,
+) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root(
         if header_footer.is_header {
@@ -637,7 +738,7 @@ pub fn header_footer_part(ctx: &mut Ctx<'_>, header_footer: &HeaderFooter) -> St
         } else {
             "w:ftr"
         },
-        &WML_NAMESPACES,
+        &content_and_vendor_namespaces(),
     );
     blocks(ctx, &mut xml, &header_footer.blocks);
     if header_footer.blocks.is_empty() {
@@ -645,7 +746,7 @@ pub fn header_footer_part(ctx: &mut Ctx<'_>, header_footer: &HeaderFooter) -> St
         xml.end();
     }
     xml.end();
-    xml.finish().expect("balanced")
+    xml.finish()
 }
 
 /// Collects the font families the document names, in first-seen order.
@@ -709,7 +810,7 @@ mod tests {
         });
         let mut report = NormalizationReport::new();
         let mut ctx = Ctx::new(&mut report);
-        let xml = styles_part(&mut ctx, &table);
+        let xml = styles_part(&mut ctx, &table).expect("styles_part balances");
         assert!(
             xml.contains("<w:style w:type=\"paragraph\" w:styleId=\"Heading1\">"),
             "{xml}"

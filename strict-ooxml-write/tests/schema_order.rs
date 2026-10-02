@@ -35,6 +35,7 @@ use strict_ooxml_write::order;
 const CONTAINERS: &[(&str, &[&str])] = &[
     ("pPr", order::PPR),
     ("settings", order::SETTINGS),
+    ("sectPr", order::SECTPR),
     ("tblPr", order::TBLPR),
     ("tcPr", order::TCPR),
     ("trPr", order::TRPR),

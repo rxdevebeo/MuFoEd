@@ -1,0 +1,224 @@
+# Census registry: `TZ-nn`, the Transitional -> Strict queue.
+#
+# `docs/transitional-to-strict-audit.md` is the measurement these items come from,
+# and `xtool/xsd-gate/census_gate.py` is the instrument that reproduces it. An item
+# closes on a **measured zero** and never on a code review - the same rule the
+# `XS-nn` registry in `registry.toml` follows, and for the same reason: the audit
+# reviewed the writer and found none of the `XS-nn`, because nine of its eleven
+# fixtures had been written by this project.
+#
+# `origin` decides what a non-zero count means, and it is the field that makes a
+# number mean anything:
+#
+#   `ours`    a violation we produce. The gate fails.
+#   `source`  markup the producer shipped, in a part we carry verbatim. It is
+#             counted, printed and named - never called green and never counted
+#             green by silence.
+#
+# `signal` says which measurement the item is closed on. Four exist, because a
+# schema message is the only one of them that shows up for every defect class:
+#
+#   `message`     a libxml2 schema violation in our output. `elements` is the
+#                 offending element's LOCAL name and `messages` are substrings of
+#                 libxml2's message - the element alone cannot separate a `w:ind`
+#                 inside a cell margin from one inside a paragraph.
+#   `extension`   a node in the `extension` basket: a namespace the ECMA set does
+#                 not declare, which MCE processing removes and which therefore
+#                 produces no schema message at all. `elements` are markers
+#                 matched against the node's qualified name.
+#   `dropped`     a part the input package carried and our output does not. This
+#                 is the only signal that can see a *silent* loss: a part that is
+#                 absent validates perfectly. `elements[0]` is the normalized part
+#                 shape (`word/media/image#.png`).
+#   `lossy`       a `Lossy` record in the normalizer's own report.
+#
+# Measured on 2026-10-01 against ECMA-376-1 5th edition, 58 Transitional
+# documents, with `write --transitional` and the same patched oracle
+# `xsd_gate.py` uses. The audit's counts are kept in `audit`, so a regression is
+# visible next to the number it replaced.
+
+[[item]]
+id = "TZ-01"
+origin = "ours"
+signal = "message"
+elements = ["tblW", "tcW", "wAfter", "wBefore", "tblCellSpacing"]
+messages = ["is not a valid value of the union type"]
+summary = "ST_MeasurementOrPercent written as bare fiftieths-of-a-percent: w:w=\"5000\""
+audit = "84 messages / 2 documents (audit 9). Also closes the assumption Q-E5: `pct` is fiftieths, so 5000 = 100%."
+
+[[item]]
+id = "TZ-02"
+origin = "ours"
+signal = "message"
+elements = ["w"]
+messages = ["is not a valid value of the union type"]
+summary = "ST_TextScale (w:w in a run property bag) written as a bare number; Strict requires the % sign"
+audit = "489 messages / 2 documents (audit 9)."
+
+[[item]]
+id = "TZ-03"
+origin = "ours"
+signal = "message"
+elements = ["relyOnVML", "shapeDefaults", "hdrShapeDefaults", "useFELayout", "doNotWrapTextWithPunct"]
+messages = ["not declared", "not allowed here", "This element is not expected"]
+summary = "Transitional-only elements left in a Strict package: one REMOVALS entry per name"
+audit = "9 relyOnVML / 9 documents, 26 shapeDefaults, 4 hdrShapeDefaults, 18 useFELayout (audit 4.4)."
+
+[[item]]
+id = "TZ-04"
+origin = "ours"
+signal = "message"
+elements = ["left", "right", "start", "end"]
+messages = ["not allowed here", "is not a valid value of the union type", "is not declared", "This element is not expected"]
+summary = "T3 element rename: CT_TblBorders/CT_TcBorders/CT_TblCellMar/CT_TcMar renamed their edges to start/end"
+audit = "11 462 edge elements across 42 documents (audit 4.1). XS-23 is the same trap seen from the writer's side. READ THIS BEFORE TRUSTING THE ZERO: on this corpus every one of those edges is in a part the writer REGENERATES, and the writer already emits start/end, so the normalizer never sees one and this signal cannot distinguish a working rule from a dead one. It reported 0 for a rule that was dead for the whole of 2026-10-02 - `is_wml` matches only the Strict namespace, and the element path was testing the Transitional one. The gate for this item is `strict-ooxml-core/src/normalize/transitional.rs::the_direction_neutral_rename_follows_the_container_and_not_the_name`, which is a unit test ON PURPOSE: a corpus gate cannot see a rule the corpus never exercises."
+
+[[item]]
+id = "TZ-05"
+origin = "ours"
+signal = "message"
+elements = ["ind"]
+messages = ["is not allowed", "is not declared", "is not a valid value"]
+summary = "w:ind keeps @w:left/@w:right; Strict CT_Ind declares @w:start/@w:end"
+audit = "4 352 attributes / 50 documents (audit 4.1)."
+
+[[item]]
+id = "TZ-06"
+origin = "ours"
+signal = "message"
+elements = ["jc"]
+messages = ["is not a valid value"]
+summary = "w:jc/@w:val written with its Transitional spelling; ST_Jc and ST_JcTable lost left/right"
+audit = "179 + 21 attributes / 14 + 4 documents (audit 4.2). T4 was dead until queue item 2."
+
+[[item]]
+id = "TZ-07"
+origin = "ours"
+signal = "message"
+elements = ["tab", "lvlJc"]
+messages = ["is not a valid value"]
+summary = "ST_TabJc/ST_Jc values left/right on w:tab/@w:val and w:lvlJc/@w:val"
+audit = "750 + 1 305 attributes / 26 + 42 documents (audit 4.2)."
+
+[[item]]
+id = "TZ-08"
+origin = "ours"
+signal = "message"
+elements = ["tblLook"]
+messages = ["not allowed here", "is not declared", "is not allowed"]
+summary = "w:tblLook carries the Transitional bitmask @w:val; Strict declares six boolean attributes"
+audit = "838 occurrences / 14 documents (audit 4.2). Same limit as TZ-04 and for the same reason: they are all in regenerated parts, so this signal measures the corpus, not the rule. The gate is `a_table_look_mask_becomes_six_booleans_and_nothing_else`."
+
+[[item]]
+id = "TZ-09"
+origin = "ours"
+signal = "message"
+elements = ["zoom"]
+messages = ["attribute 'percent'", "is required"]
+summary = "w:zoom is required to carry @w:percent, and Transitional markup omits it"
+audit = "9 documents (audit 4.3)."
+
+[[item]]
+id = "TZ-10"
+origin = "ours"
+signal = "message"
+elements = ["pgMar"]
+messages = ["attribute 'gutter'", "attribute 'header'", "attribute 'footer'", "is required"]
+summary = "CT_PageMar's @w:gutter/@w:header/@w:footer are use=required and Transitional markup omits them"
+audit = "8 documents (audit 4.3)."
+
+[[item]]
+id = "TZ-11"
+origin = "ours"
+signal = "message"
+elements = ["sectPr", "footnotePr", "endnotePr", "gutterAtTop", "vAlign", "rtlGutter", "bidi", "titlePg", "textDirection"]
+messages = ["This element is not expected", "is not allowed here", "is not declared"]
+summary = "w:sectPr children out of EG_SectPrContents' xsd:sequence order; w:gutterAtTop is a CT_Settings child, not a sectPr one"
+audit = "1 document measured, the rest is a latent bomb (audit 9.1)."
+
+[[item]]
+id = "TZ-12"
+origin = "ours"
+signal = "message"
+elements = ["wAfter", "wBefore", "tblCellSpacing", "tcMar", "tblCellMar", "tblInd"]
+messages = ["is not a valid value of the union type"]
+summary = "bare twips where ST_MeasurementOrPercent admits only a percentage or a universal measure"
+audit = "~7 200 occurrences / 42 documents (audit 4.3)."
+
+[[item]]
+id = "TZ-13"
+origin = "ours"
+signal = "extension"
+elements = [
+  "paraId", "textId", "conflictMode", "checkbox", "ligatures", "numForm",
+  "numSpacing", "stylisticSets", "cntxtAlts", "glow", "shadow", "reflection",
+  "textOutline", "textFill", "scene3d", "props3d", "anchorId", "editId",
+]
+summary = "w14/w15/wp14 nodes left in a Strict package: the pass-through half of XS-17 and of XS-19"
+audit = "3 w14:paraId in word/comments.xml, 30 mc:Ignorable naming absent prefixes (audit 3). Not a schema message by construction: MCE removes them before conformance is defined."
+
+[[item]]
+id = "TZ-14"
+origin = "waived"
+signal = "unaccounted"
+elements = ["docProps/app.xml"]
+summary = "closed by the fix: app.xml is carried, minus the seven counters that describe a rendering"
+audit = "49 documents lost their extended properties (audit 8). CLOSED 2026-10-01: the part is carried with the Strict namespaces, and only Pages/Words/Characters/CharactersWithSpaces/Lines/Paragraphs/TotalTime are removed. The old reason - 'it is statistics about a rendering' - was right about those seven and wrong about Template, Company, DocSecurity, Application, AppVersion, HeadingPairs and TitlesOfParts, and it cost 49 documents their metadata to avoid asserting five numbers."
+
+[[item]]
+id = "TZ-15"
+origin = "ours"
+signal = "unaccounted"
+elements = ["*"]
+summary = "a part the source had that the written package does not, and the write's own report does not name"
+audit = "the finding this signal exists for (audit 8): 'word/fonts/*.ttf ... vanish together with fontTable.xml.rels, and this is NOT in the loss report - a silent loss'. `*` because the gate is not about one part: it is that ANY un-named drop is a defect, whatever the part. A named drop is a decision; an unnamed one is a loss the project hid."
+
+[[item]]
+id = "TZ-16"
+origin = "waived"
+signal = "unaccounted"
+elements = ["word/stylesWithEffects.xml"]
+summary = "named and deliberate: a stale second copy of a style set the write regenerates"
+audit = "19 documents (audit 8). W7.stylesWithEffects already names it and says why: keeping it would leave the package with two sets of styles and Word prefers the shadow, so the copy would be stale. A decision that is reported is not a defect - see W7-DROPPED in docs/waivers.toml."
+
+[[item]]
+id = "TZ-17"
+origin = "waived"
+signal = "unaccounted"
+elements = ["docProps/custom.xml"]
+summary = "closed by the fix: custom properties are the producer's own statements and are carried"
+audit = "23 documents (audit 8). CLOSED 2026-10-01: carried, with both the properties and the `vt` vocabulary namespaces rewritten. None of them describes a rendering."
+
+[[item]]
+id = "TZ-18"
+origin = "source"
+signal = "message"
+elements = ["gapWidth", "overlap", "lblOffset", "barDir", "grouping"]
+messages = ["is not a valid value of the union type"]
+summary = "chart parts the producer shipped invalid: c:gapWidth/c:overlap/c:lblOffset carry bare numbers"
+audit = "11 messages in the Strict corpus (XS-16, the same shape)."
+
+[[item]]
+id = "TZ-19"
+origin = "ours"
+signal = "picture"
+elements = ["vml-picture-without-a-picture"]
+summary = "a part that carried a VML picture and whose written form carries no picture at all"
+audit = "queue item 10 (docs/transitional-to-strict-audit.md §11): v:shape#t75 + v:imagedata -> wp:inline / wp:anchor + pic:pic. The audit priced it at 2-3 days and called it the only item on the list that gives a document back something VISIBLE, and it was right about both. Closed 2026-10-02: the converter reuses v:imagedata/@r:id as a:blip/@r:embed unchanged, so no relationship surgery is needed, and it picks wp:anchor over wp:inline for a position:absolute shape - the corpus's pictures are watermarks, and an inline image would put a watermark in the text flow. Three things had to be built behind it, none of which the corpus's own failure mentioned: the DrawingML prefixes declared on a part that had only VML, the same prefixes declared on a WRITTEN header, and a `.rels` beside every header that holds a picture - the writer had never emitted one, because no header could hold a picture before this. Each was caught by the test suite rather than by the census, which is the honest note to leave here."
+
+[[item]]
+id = "TZ-20"
+origin = "ours"
+signal = "mce"
+elements = ["mc:AlternateContent"]
+summary = "an mc:AlternateContent block that survived T6 in a written package"
+audit = "queue item 14, the last stage the audit §3 called 'not implemented at all': `McePolicy` was declared, documented and default-valued from the start and read nowhere, which made it a public API promising a behaviour that did not exist. CLOSED 2026-10-02: `normalize/mce.rs` resolves a block per the policy, taking the first mc:Choice whose every `Requires` prefix this project HANDLES - which is not the same as 'is in ECMA-376', because wps/wpg are reproduced from the model on purpose (ADR-0014) and six of the nine corpus blocks are a real shape behind a wps Requires. A block that resolves to nothing removes its content and is named, because three corpus settings.xml files carry `<mc:Choice Requires=`wpsCustomData`` with no fallback. The resolved branch goes back through T1-T5 and not straight into the writer, because six of the nine fallbacks are a w:pict and a bypass would have had its picture dropped rather than converted. `InvariantMode` is read in the same pass: it was the other half of the same defect, and it now enforces the two invariants the pipeline can decide alone - a namespace that is neither Strict nor removable, and an mc:Ignorable that survived T6 - while leaving the three that need the schemas to the XSD gate."
+
+[[item]]
+id = "TZ-21"
+origin = "ours"
+signal = "message"
+elements = ["wrapTight", "wrapThrough"]
+messages = ["Missing child element", "Expected is"]
+summary = "wp:wrapTight / wp:wrapThrough written without the wp:wrapPolygon the schema requires"
+audit = "not in the audit: this became reachable only when T6 (queue item 14) started resolving an mc:Choice Requires=\"wps\", which put a real wp:anchor with a tight wrap outside word/document.xml for the first time. The writer's own doc comment had said the polygon is 'written' - it was not, the child was omitted, and CT_WrapTight's xsd:sequence has no minOccurs on it. CLOSED 2026-10-02 in two steps, both measured: first an empty wp:wrapPolygon, which the census then rejected one level down (CT_WrapPath is `<start minOccurs=1/><lineTo minOccurs=2/>`, so there is no conformant no-polygon); then the frame's own rectangle - one wp:start and three wp:lineTo in EMU - which is a tight wrap around a box and is what the model can honestly say."

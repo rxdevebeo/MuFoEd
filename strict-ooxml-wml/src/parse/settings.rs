@@ -57,6 +57,9 @@ impl PartParser<'_> {
                                 wml_attr(&attrs, "val").map(|value| self.intern(value));
                         }
                         "mirrorMargins" => settings.mirror_margins = true,
+                        // The Strict spelling of the flag Transitional puts in
+                        // `w:sectPr`; both land on the same field.
+                        "gutterAtTop" => settings.gutter_at_top = true,
                         "footnotePr" => {
                             settings.footnote_properties = self.parse_note_properties()?;
                             continue;

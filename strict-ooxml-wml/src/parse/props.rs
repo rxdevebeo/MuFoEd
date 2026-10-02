@@ -28,7 +28,7 @@ use crate::RELS_STRICT_NS;
 
 use super::{
     attr_in_ns, decimal_to_i32, is_wml, parse_decimal, parse_i32, parse_measurement_or_percent,
-    parse_on_off, parse_signed_twips, parse_u32, val_attr, wml_attr, PartParser,
+    parse_on_off, parse_signed_twips, parse_text_scale, parse_u32, val_attr, wml_attr, PartParser,
 };
 
 /// Parses a tri-state on/off element (present without a value means `on`).
@@ -236,9 +236,7 @@ impl PartParser<'_> {
                             props.position = self.val_i32(&attrs, "w:position").map(HalfPoints);
                         }
                         "w" => {
-                            props.scale = self
-                                .val_u32(&attrs, "w:w")
-                                .map(|value| u16::try_from(value).unwrap_or(u16::MAX));
+                            props.scale = self.val_text_scale(&attrs, "w:rPr/w:w");
                         }
                         "kern" => props.kerning = self.val_i32(&attrs, "w:kern").map(HalfPoints),
                         "em" => props.emphasis = self.val_string(&attrs),
@@ -758,7 +756,10 @@ impl PartParser<'_> {
                         }
                         "bidi" => props.bidi = parse_on_off(&attrs),
                         "rtlGutter" => props.rtl_gutter = parse_on_off(&attrs),
-                        "gutterAtTop" => props.gutter_at_top = parse_on_off(&attrs),
+                        // Transitional's `EG_SectPrContents` declares `w:gutterAtTop`
+                        // and Strict's does not; `w:settings` is where Strict puts
+                        // it. Parked on the parser and merged into the settings.
+                        "gutterAtTop" => self.section_gutter_at_top = parse_on_off(&attrs),
                         "textDirection" => {
                             props.text_direction = self.val_enum(
                                 &attrs,
@@ -1013,6 +1014,23 @@ impl PartParser<'_> {
             return None;
         };
         Some(number)
+    }
+
+    /// Reads a `ST_TextScale` `w:val`: `90` or `90%`, both meaning 90 percent.
+    ///
+    /// Recorded through the enum channel rather than the value one, because the
+    /// failure that matters here is a value outside the schema's domain
+    /// (`601%`), and that is a shape of defect the report already names for
+    /// enumerations - `record_enum` files it under the feature and the offending
+    /// string, which is what a person reading a loss report needs.
+    fn val_text_scale(&mut self, attrs: &[Attr], feature: &str) -> Option<u16> {
+        let value = val_attr(attrs)?;
+        let Some(scale) = parse_text_scale(value) else {
+            let location = self.location();
+            self.record_enum(feature, value, &location);
+            return None;
+        };
+        Some(scale)
     }
 
     /// Reads and validates an enum `w:val`.
