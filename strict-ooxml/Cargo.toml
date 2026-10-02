@@ -40,6 +40,9 @@ strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pd
 strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true }
 strict-ooxml-convert = { version = "0.1.0", path = "../strict-ooxml-convert", optional = true }
 
+[dev-dependencies]
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
+
 [[example]]
 name = "support_report"
 required-features = ["report"]

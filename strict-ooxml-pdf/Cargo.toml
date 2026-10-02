@@ -53,6 +53,7 @@ strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pd
 # The pixel gate (SC-6's second half) needs the same SSIM and the same ink checks
 # the SVG gate uses: one definition of "fidelity", two renderers.
 strict-ooxml-fidelity = { version = "0.1.0", path = "../strict-ooxml-fidelity" }
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 
 # The pixel gate and its instrument need a rasterizer, and the `raster` feature is
 # what turns one on. They are declared with `required-features` rather than

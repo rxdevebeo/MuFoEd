@@ -48,6 +48,7 @@ strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 roxmltree = "0.20"
 # The recognition tests build a PNG by hand.
 png = "0.18"
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 
 [lints]
 workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "strict-ooxml-testkit"
+description = "Test-only builders for hostile and synthetic inputs (REWORK-AUDIT-2026-10 AUD-01)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = false
+publish = false
+
+# No dependency on any crate of this workspace: the kit produces bytes, so every
+# crate can take it as a dev-dependency without a cycle, and its ZIP writer stays
+# an oracle that is independent of the ZIP reader it is used to test.
+[dependencies]
+miniz_oxide.workspace = true
+
+[lints]
+workspace = true

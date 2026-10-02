@@ -19,8 +19,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
+      # Pinned, not `stable`: clippy grows new lints with every release and the
+      # gate is `-D warnings`, so a floating toolchain turns a release day into a
+      # red build for code nobody touched. Moving the pin is a commit of its own.
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -37,6 +40,13 @@ jobs:
         run: cargo check --workspace --all-targets
       - name: Test
         run: cargo test --workspace --all-features
+      # The debug half of the hostile set ran in the step above. Release is run
+      # as well because overflow checks, `debug_assert!` and stack frame sizes
+      # all differ there, and a hostile input that is an error in one profile and
+      # a silent wrong answer or an overflow in the other is the defect class this
+      # set exists for (REWORK-AUDIT-2026-10 AUD-01).
+      - name: Hostile inputs (release)
+        run: cargo test --workspace --all-features --release --test hostile
       - name: WML independent oracle (P-1)
         run: cargo test -p strict-ooxml-wml --all-features --test corpus_oracle
       - name: Feature Report schema validation (independent oracle)
@@ -101,10 +111,10 @@ jobs:
     name: XSD gate (ECMA-376 Strict)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install the oracle (never a crate dependency)
@@ -150,10 +160,10 @@ jobs:
     name: Census gate (Transitional -> Strict)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install the oracle (never a crate dependency)
@@ -171,7 +181,7 @@ jobs:
     name: msrv (1.92)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
       # The floor in `Cargo.toml` is a promise; this job is what makes it a fact
@@ -186,7 +196,7 @@ jobs:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: EmbarkStudios/cargo-deny-action@v2
 
   coverage:
@@ -201,12 +211,14 @@ jobs:
       # than in `[profile.dev]` so local debug builds keep the default.
       CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       - name: Coverage (core crate, threshold 80%)
         run: cargo llvm-cov -p strict-ooxml-core --all-features --fail-under-lines 80
       - name: Coverage (wml crate, threshold 80%)
@@ -225,9 +237,11 @@ jobs:
     name: fuzz smoke (nightly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: taiki-e/install-action@cargo-fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
       - name: Short fuzz session (zip)
         working-directory: fuzz
         run: cargo +nightly fuzz run fuzz_zip -- -max_total_time=60
@@ -246,9 +260,11 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: taiki-e/install-action@cargo-fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
       - name: Bounded nightly fuzz sessions
         working-directory: fuzz
         run: |

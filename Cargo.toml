@@ -23,6 +23,7 @@ members = [
     "strict-ooxml",
     "strict-ooxml-cli",
     "strict-ooxml-view",
+    "strict-ooxml-testkit",
     "xtool",
 ]
 

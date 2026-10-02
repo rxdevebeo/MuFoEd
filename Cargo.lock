@@ -2192,6 +2192,7 @@ dependencies = [
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
  "strict-ooxml-report",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "strict-ooxml-write",
 ]
@@ -2215,6 +2216,7 @@ dependencies = [
  "strict-ooxml-pdf",
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "strict-ooxml-write",
 ]
@@ -2265,6 +2267,7 @@ dependencies = [
  "strict-ooxml-fidelity",
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
 ]
 
@@ -2308,6 +2311,13 @@ dependencies = [
  "serde_json",
  "strict-ooxml-core",
  "strict-ooxml-wml",
+]
+
+[[package]]
+name = "strict-ooxml-testkit"
+version = "0.1.0"
+dependencies = [
+ "miniz_oxide 0.8.9",
 ]
 
 [[package]]
