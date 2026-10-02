@@ -424,6 +424,23 @@ impl PartParser<'_> {
                             );
                             self.skip_element()?;
                         }
+                        RunKind::CommentReference => {
+                            // Without the anchor a w:commentRangeStart/End pair
+                            // is a range that points at nothing: the comment text
+                            // survives in comments.xml and no run refers to it,
+                            // so Word shows a comment that is not attached to
+                            // any word. The two halves of a range have to be
+                            // written together or neither should be.
+                            let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
+                            content.push(RunContent::CommentReference(id));
+                            self.record(
+                                "w:commentReference",
+                                SupportStatus::Supported,
+                                Some("the comment body is carried in word/comments.xml".to_owned()),
+                                Some(self.location()),
+                            );
+                            self.skip_element()?;
+                        }
                         RunKind::NoteRef => {
                             content.push(RunContent::NoteRef);
                             self.skip_element()?;

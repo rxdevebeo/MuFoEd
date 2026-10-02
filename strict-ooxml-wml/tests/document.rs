@@ -305,3 +305,44 @@ fn paragraph_locations_are_tracked() {
     assert_eq!(second.location.line, 2);
     assert!(first.location.byte_offset < second.location.byte_offset);
 }
+
+/// A `w:commentReference` is a child of `w:r`, and that is the whole point.
+///
+/// It used to be dispatched through the INLINE table only, where a producer
+/// never puts it, so the element became an Opaque and was dropped with a report
+/// line - leaving `w:commentRangeStart`/`End` written around a comment that no
+/// run pointed at. This asserts it lands in the RUN, which is where the markup
+/// is and therefore the only place a writer arm could ever fire.
+#[test]
+fn a_comment_reference_is_parsed_as_run_content_not_an_inline() {
+    let document = parse_body(
+        "<w:p><w:commentRangeStart w:id=\"1\"/>\
+         <w:r><w:t>text</w:t><w:commentReference w:id=\"1\"/></w:r>\
+         <w:commentRangeEnd w:id=\"1\"/></w:p>",
+    );
+    let paragraph = first_paragraph(&document);
+
+    let Inline::Run(run) = &paragraph.inlines[1] else {
+        panic!(
+            "expected the run between the range markers, got {:?}",
+            paragraph.inlines[1]
+        );
+    };
+    assert!(
+        run.content
+            .iter()
+            .any(|content| matches!(content, RunContent::CommentReference(1))),
+        "w:commentReference must survive as run content, not be reported and dropped: {:?}",
+        run.content
+    );
+    // The element is Supported, not Ignored: the body is carried in
+    // comments.xml, so the anchor is the only half this project owes.
+    assert_eq!(
+        document
+            .support
+            .get("w:commentReference")
+            .expect("w:commentReference is recorded")
+            .status,
+        SupportStatus::Supported
+    );
+}

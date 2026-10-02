@@ -360,7 +360,15 @@ fn flatten_run(
                 out.push(Seg::EndnoteMarker(*id, superscript(run_style.clone())));
             }
             RunContent::NoteRef => out.push(Seg::NoteNumber(superscript(run_style.clone()))),
-            RunContent::SoftHyphen | RunContent::LastRenderedPageBreak | RunContent::Opaque(_) => {}
+            // An anchor, not a character. Word draws a marker here and this
+            // renderer draws nothing, which is a visible difference rather than
+            // a silent one: the choice is between a gap in the line and a glyph
+            // nobody asked for, and the gap is the honest one until the marker
+            // exists as a segment of its own.
+            RunContent::CommentReference(_)
+            | RunContent::SoftHyphen
+            | RunContent::LastRenderedPageBreak
+            | RunContent::Opaque(_) => {}
         }
     }
 }

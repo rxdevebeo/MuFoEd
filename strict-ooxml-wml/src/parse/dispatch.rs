@@ -145,6 +145,11 @@ pub(crate) enum RunKind {
     FootnoteRef,
     /// `w:endnoteReference`.
     EndnoteRef,
+    /// `w:commentReference`. The producer puts this inside a `w:r`, so it is
+    /// dispatched here and NOT through `INLINE_TABLE` - which is why the inline
+    /// entry for the same element was unreachable, and why a writer arm for it
+    /// could never fire on real markup.
+    CommentReference,
     /// `w:footnoteRef` / `w:endnoteRef` (the marker inside a note body).
     NoteRef,
     /// `w:sym`.
@@ -175,6 +180,7 @@ const RUN_TABLE: &[(&str, RunKind)] = &[
     ("fldChar", RunKind::FieldChar),
     ("footnoteReference", RunKind::FootnoteRef),
     ("endnoteReference", RunKind::EndnoteRef),
+    ("commentReference", RunKind::CommentReference),
     ("footnoteRef", RunKind::NoteRef),
     ("endnoteRef", RunKind::NoteRef),
     ("sym", RunKind::Symbol),

@@ -62,6 +62,15 @@ pub enum RunContent {
     /// The number marker inside a footnote/endnote body (`w:footnoteRef`/
     /// `w:endnoteRef`); replaced by the note's number when rendered.
     NoteRef,
+    /// Comment reference (`w:commentReference`), the anchor that makes a
+    /// `w:commentRangeStart`/`End` pair visible in the text.
+    ///
+    /// It lives here rather than as an [`Inline`] because that is where the
+    /// producer puts it: `w:commentReference` is a child of `w:r`, so it is
+    /// dispatched through the run table and never reaches the inline one. An
+    /// `Inline::CommentReference` existed and was reachable only from markup
+    /// that does not occur, so a writer arm for it could never fire.
+    CommentReference(u32),
     /// Symbol (`w:sym`).
     Symbol(Symbol),
     /// Last rendered page break (`w:lastRenderedPageBreak`).

@@ -230,6 +230,12 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent)
         }
         RunContent::FootnoteRef(id) => xml.empty_attr_w("w:footnoteReference", "id", id),
         RunContent::EndnoteRef(id) => xml.empty_attr_w("w:endnoteReference", "id", id),
+        // The anchor, not the comment: this is the run that makes a
+        // w:commentRangeStart/End pair visible. `w:commentRangeStart` and
+        // `w:commentRangeEnd` are written from the inline list without a
+        // containing run, and this is the element that has to sit inside one,
+        // so it is empty and self-closing like the note references above.
+        RunContent::CommentReference(id) => xml.empty_attr_w("w:commentReference", "id", id),
         RunContent::NoteRef => {
             // The note's own number is substituted by the renderer; writing the
             // element keeps the note body round-trippable. Which of the two
