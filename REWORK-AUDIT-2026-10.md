@@ -61,6 +61,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-43 | ✅ выполнена | `d113e00` | ADR-0018; `Run`/`Paragraph::revision`; Final/Original; writer grouping + `delText`; property-change → `partial` |
 | AUD-44 | ✅ выполнена | `0a6a696` | on/off → `TriState`; `parse_on_off`/`parse_on_off_tristate`; XOR toggle cascade; settings `w:val`; `ProofState`; vanish в рендере |
 | AUD-46 | ✅ выполнена | `ee3e8a1` | неизвестные `*Pr` → Unsupported; `bCs`/`iCs`/`pgNumType`/`tblpPr`/`framePr`/`tblCellSpacing`/`tr/jc`; флаги стиля; waiver `TBL-STYLE-PR`; тесты + round-trip |
+| AUD-50 | ✅ выполнена | `648692c` | сноски без id skip; `MathParagraph::equations`; effectExtent; parse_emu partial; MCE ProcessChoice (`SUPPORTED_MCE_NAMESPACES`); тесты |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
