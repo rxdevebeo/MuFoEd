@@ -13,6 +13,7 @@ use crate::layout::{
     geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
     TextLine,
 };
+use strict_ooxml_wml::model::values::SectionType;
 use strict_ooxml_wml::model::Block;
 
 /// Height reserved for the footnote separator, in px.
@@ -124,70 +125,139 @@ fn item_coords_finite(item: &Item) -> bool {
 /// Lays out the document once, using `total_pages` for NUMPAGES/SECTIONPAGES.
 fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, bool)> {
     ctx.render_items.set(0);
-    let section = ctx
-        .document
-        .sections
-        .last()
-        .map(|section| &section.properties);
-    let geometry = geometry_for(section, ctx.options.scale, Some(ctx));
-    let page_start = section
+    let sections = &ctx.document.sections;
+    let runs = section_runs(&ctx.document.body.blocks, sections.len());
+    let first_props = sections.first().map(|section| &section.properties);
+    let geometry = geometry_for(first_props, ctx.options.scale, Some(ctx));
+    let page_start = first_props
         .and_then(|properties| properties.page_number.as_ref())
         .and_then(|page_number| page_number.start)
         .unwrap_or(1);
     let page_format = crate::notes::NumberFormat::from_strict(
-        section
+        first_props
             .and_then(|properties| properties.page_number.as_ref())
             .and_then(|page_number| page_number.format.as_deref()),
         crate::notes::NumberFormat::Decimal,
     );
     let mut paginator = Paginator::new(ctx, geometry, total_pages, page_start, page_format);
-    layout_blocks(
-        ctx,
-        &ctx.document.body.blocks,
-        geometry.content_width(),
-        &mut paginator,
-        0,
-    )?;
+    paginator.section_index = 0;
+    for (index, (start, end)) in runs.iter().enumerate() {
+        let props = sections.get(index).map(|section| &section.properties);
+        if index > 0 {
+            // `w:type` on the *ending* section's sectPr describes the break
+            // into this section (ISO/IEC 29500-1 §17.6.22).
+            let break_type = sections
+                .get(index - 1)
+                .and_then(|section| section.properties.section_type);
+            let geometry = geometry_for(props, ctx.options.scale, Some(ctx));
+            paginator.apply_section_break(break_type, geometry, index)?;
+            if let Some(properties) = props {
+                if let Some(start) = properties
+                    .page_number
+                    .as_ref()
+                    .and_then(|page_number| page_number.start)
+                {
+                    paginator.page_start = start.max(1);
+                }
+                paginator.page_format = crate::notes::NumberFormat::from_strict(
+                    properties
+                        .page_number
+                        .as_ref()
+                        .and_then(|page_number| page_number.format.as_deref()),
+                    crate::notes::NumberFormat::Decimal,
+                );
+            }
+        }
+        let width = paginator.geometry.content_width();
+        layout_blocks(
+            ctx,
+            &ctx.document.body.blocks[*start..*end],
+            width,
+            &mut paginator,
+            0,
+        )?;
+    }
     append_endnotes(ctx, &mut paginator)?;
     paginator.flush_pending()?;
     let mut has_fields = paginator.has_fields;
     // AUD-70: PAGE/NUMPAGES in headers/footers also force a second pass so
     // NUMPAGES sees the real page count.
     if !has_fields {
-        has_fields = headers_footers_have_dynamic_fields(ctx, section);
+        has_fields = any_headers_footers_have_dynamic_fields(ctx, sections);
     }
     let mut layout = paginator.finish()?;
     let page_count = layout.pages.len().max(1);
-    crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, &geometry)?;
-    crate::layout::pageborders::apply(ctx, &mut layout.pages, &geometry, section)?;
+    crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, sections)?;
+    crate::layout::pageborders::apply(ctx, &mut layout.pages, sections)?;
     crate::layout::headerfooter::decorate_pages(
         ctx,
         &mut layout.pages,
-        geometry,
-        section,
+        sections,
         total_pages.max(page_count),
     )?;
     Ok((layout, has_fields))
 }
 
+/// Top-level body ranges `[start, end)` belonging to each document section (AUD-74).
+fn section_runs(blocks: &[Block], section_count: usize) -> Vec<(usize, usize)> {
+    if section_count == 0 {
+        return vec![(0, blocks.len())];
+    }
+    let mut runs = Vec::with_capacity(section_count);
+    let mut start = 0usize;
+    let mut section = 0usize;
+    for (index, block) in blocks.iter().enumerate() {
+        if block_ends_section(block) {
+            runs.push((start, index + 1));
+            start = index + 1;
+            section += 1;
+            if section + 1 >= section_count {
+                break;
+            }
+        }
+    }
+    while runs.len() < section_count {
+        let end = if runs.len() + 1 == section_count {
+            blocks.len()
+        } else {
+            start
+        };
+        runs.push((start, end));
+        start = end;
+    }
+    if let Some(last) = runs.last_mut() {
+        last.1 = blocks.len();
+    }
+    runs
+}
+
+/// Whether a top-level block carries a section break that ends the current section.
+fn block_ends_section(block: &Block) -> bool {
+    match block {
+        Block::Paragraph(para) => para.props.section.is_some(),
+        Block::SdtBlock(sdt) => sdt.blocks.iter().any(block_ends_section),
+        _ => false,
+    }
+}
+
 /// Whether any referenced header/footer part contains a computed page field.
-fn headers_footers_have_dynamic_fields(
+fn any_headers_footers_have_dynamic_fields(
     ctx: &LayoutContext<'_>,
-    section: Option<&strict_ooxml_wml::model::props::SectionProperties>,
+    sections: &[strict_ooxml_wml::model::props::Section],
 ) -> bool {
-    let Some(section) = section else {
-        return false;
-    };
-    section
-        .headers
-        .iter()
-        .chain(section.footers.iter())
-        .filter_map(|reference| reference.part.as_ref())
-        .any(|part| {
-            ctx.document
-                .header_footer(part)
-                .is_some_and(|hf| crate::fields::blocks_have_dynamic_fields(&hf.blocks))
-        })
+    sections.iter().any(|section| {
+        section
+            .properties
+            .headers
+            .iter()
+            .chain(section.properties.footers.iter())
+            .filter_map(|reference| reference.part.as_ref())
+            .any(|part| {
+                ctx.document
+                    .header_footer(part)
+                    .is_some_and(|hf| crate::fields::blocks_have_dynamic_fields(&hf.blocks))
+            })
+    })
 }
 
 /// Walks blocks, appending their flows to the paginator.
@@ -226,6 +296,7 @@ fn layout_blocks(
             Block::Paragraph(para) => {
                 let flow = layout_paragraph(ctx, para, left, width, grid, None);
                 if para.props.page_break_before.is_on() && !paginator.at_page_top() {
+                    paginator.keep_empty_page = true;
                     paginator.page_break()?;
                     pending_after = 0.0;
                 }
@@ -389,6 +460,12 @@ struct Paginator<'a> {
     cursor: f64,
     /// Whether the current page has been started (even if empty).
     started: bool,
+    /// Section index for content currently being placed (AUD-74).
+    section_index: usize,
+    /// Keep the next flushed empty page (explicit break / section break, AUD-75).
+    keep_empty_page: bool,
+    /// Geometry deferred by a `continuous` section break until the next page.
+    pending_geometry: Option<(Geometry, usize)>,
     /// Footnote ids rendered on the current page, in order.
     page_footnotes: Vec<u32>,
     /// Footnote ids deferred to the next page (continuation).
@@ -450,6 +527,9 @@ impl<'a> Paginator<'a> {
             current: Vec::new(),
             cursor: 0.0,
             started: false,
+            section_index: 0,
+            keep_empty_page: false,
+            pending_geometry: None,
             page_footnotes: Vec::new(),
             pending: Vec::new(),
             notes_height: 0.0,
@@ -457,6 +537,60 @@ impl<'a> Paginator<'a> {
             note_cache,
             table_headers: Vec::new(),
             anchors: Vec::new(),
+        }
+    }
+
+    /// Applies a section break before laying out the next section's body (AUD-74).
+    fn apply_section_break(
+        &mut self,
+        break_type: Option<SectionType>,
+        geometry: Geometry,
+        section_index: usize,
+    ) -> Result<()> {
+        let break_type = break_type.unwrap_or(SectionType::NextPage);
+        match break_type {
+            SectionType::Continuous => {
+                // Same page; new geometry applies from the next page onward.
+                self.pending_geometry = Some((geometry, section_index));
+                Ok(())
+            }
+            SectionType::NextPage | SectionType::NextColumn => {
+                self.keep_empty_page = true;
+                self.page_break()?;
+                self.geometry = geometry;
+                self.section_index = section_index;
+                Ok(())
+            }
+            SectionType::OddPage => {
+                self.keep_empty_page = true;
+                self.page_break()?;
+                while (self.pages.len() + 1).is_multiple_of(2) {
+                    self.keep_empty_page = true;
+                    self.page_break()?;
+                }
+                self.geometry = geometry;
+                self.section_index = section_index;
+                Ok(())
+            }
+            SectionType::EvenPage => {
+                self.keep_empty_page = true;
+                self.page_break()?;
+                while !(self.pages.len() + 1).is_multiple_of(2) {
+                    self.keep_empty_page = true;
+                    self.page_break()?;
+                }
+                self.geometry = geometry;
+                self.section_index = section_index;
+                Ok(())
+            }
+        }
+    }
+
+    /// Applies a deferred continuous-section geometry when a new page starts.
+    fn take_pending_geometry(&mut self) {
+        if let Some((geometry, section_index)) = self.pending_geometry.take() {
+            self.geometry = geometry;
+            self.section_index = section_index;
         }
     }
 
@@ -518,12 +652,14 @@ impl<'a> Paginator<'a> {
     /// Starts a new page, carrying deferred footnotes over as a continuation.
     fn page_break(&mut self) -> Result<()> {
         self.check_page_capacity()?;
-        if self.current.is_empty() && !self.started {
-            // A break before any content is ignored (no leading blank page).
+        if self.current.is_empty() && !self.started && !self.keep_empty_page {
+            // A break before any content is ignored (no leading blank page),
+            // unless an explicit/section break asked to keep the empty page.
             self.started = true;
             return Ok(());
         }
         self.flush()?;
+        self.take_pending_geometry();
         self.cursor = 0.0;
         self.started = true;
         self.current = Vec::new();
@@ -541,7 +677,15 @@ impl<'a> Paginator<'a> {
 
     /// Flushes the current page, appending its footnote area.
     fn flush(&mut self) -> Result<()> {
-        if self.current.is_empty() && self.page_footnotes.is_empty() && !self.pages.is_empty() {
+        let keep_empty = self.keep_empty_page;
+        self.keep_empty_page = false;
+        if self.current.is_empty()
+            && self.page_footnotes.is_empty()
+            && !self.pages.is_empty()
+            && !keep_empty
+        {
+            // AUD-75: skip only when the page was not opened by an explicit
+            // page/section break.
             return Ok(());
         }
         if !self.page_footnotes.is_empty() {
@@ -553,6 +697,7 @@ impl<'a> Paginator<'a> {
             width_px: self.geometry.width,
             height_px: self.geometry.height,
             items: std::mem::take(&mut self.current),
+            section_index: self.section_index,
         });
         Ok(())
     }
@@ -598,7 +743,10 @@ impl<'a> Paginator<'a> {
     /// Places one flow item, breaking the page if it does not fit.
     fn place(&mut self, flow: Flow) -> Result<()> {
         match flow {
-            Flow::PageBreak => self.page_break(),
+            Flow::PageBreak => {
+                self.keep_empty_page = true;
+                self.page_break()
+            }
             Flow::Line(line) => self.place_line(line),
             Flow::Image(image) => {
                 self.started = true;
@@ -788,6 +936,7 @@ impl<'a> Paginator<'a> {
                 width_px: self.geometry.width,
                 height_px: self.geometry.height,
                 items: Vec::new(),
+                section_index: self.section_index,
             });
         }
         Ok(Layout {

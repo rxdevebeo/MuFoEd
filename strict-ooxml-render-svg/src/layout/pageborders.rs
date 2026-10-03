@@ -2,13 +2,13 @@
 
 use strict_ooxml_wml::model::drawing::ShapeColor;
 use strict_ooxml_wml::model::props::{
-    BorderOffsetFrom, BorderZOrder, PageBorder, PageBorders, SectionProperties,
+    BorderOffsetFrom, BorderZOrder, PageBorder, PageBorders, Section,
 };
 use strict_ooxml_wml::model::values::BorderStyle;
 
 use strict_ooxml_core::error::Result;
 
-use crate::layout::{Geometry, Item, LayoutContext, LineItem, PlacedPage};
+use crate::layout::{geometry_for, Item, LayoutContext, LineItem, PlacedPage};
 use crate::style::resolve_shape_color;
 use crate::units::{eighths_point_to_px, pt_to_px};
 
@@ -31,69 +31,71 @@ struct Insets {
     bottom: f64,
 }
 
-/// Adds the section's page borders to every page.
+/// Adds each page's section page borders (AUD-74).
 pub(crate) fn apply(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
-    geometry: &Geometry,
-    section: Option<&SectionProperties>,
+    sections: &[Section],
 ) -> Result<()> {
-    let Some(borders) = section.and_then(|section| section.page_borders.as_ref()) else {
-        return Ok(());
-    };
-    if !has_visible_edge(borders) {
-        return Ok(());
-    }
     let scale = ctx.options.scale;
-    let from_text = matches!(borders.offset_from, Some(BorderOffsetFrom::Text));
-    let (left, top, right, bottom) = if from_text {
-        (
-            geometry.left,
-            geometry.top,
-            geometry.width - geometry.right,
-            geometry.height - geometry.bottom,
-        )
-    } else {
-        (0.0, 0.0, geometry.width, geometry.height)
-    };
-    // Each edge is offset from its own page edge by its own `w:space`; the four
-    // offsets together define the border box every edge is then clipped to.
-    let inset = |edge: Option<&PageBorder>| {
-        edge.and_then(|edge| edge.space)
-            .map_or(0.0, |space| pt_to_px(f64::from(space), scale))
-    };
-    let pad = Insets {
-        left: inset(borders.left.as_ref()),
-        top: inset(borders.top.as_ref()),
-        right: inset(borders.right.as_ref()),
-        bottom: inset(borders.bottom.as_ref()),
-    };
-    let edges = [
-        (Side::Top, &borders.top),
-        (Side::Left, &borders.left),
-        (Side::Bottom, &borders.bottom),
-        (Side::Right, &borders.right),
-    ];
-    let mut items = Vec::new();
-    for (side, edge) in edges {
-        if let Some(edge) = edge {
-            if let Some(line) = edge_line(ctx, edge, side, left, top, right, bottom, pad, scale) {
-                items.push(line);
+    for page in pages.iter_mut() {
+        let section = sections
+            .get(page.section_index)
+            .map(|section| &section.properties);
+        let Some(borders) = section.and_then(|section| section.page_borders.as_ref()) else {
+            continue;
+        };
+        if !has_visible_edge(borders) {
+            continue;
+        }
+        let geometry = geometry_for(section, scale, None);
+        let from_text = matches!(borders.offset_from, Some(BorderOffsetFrom::Text));
+        let (left, top, right, bottom) = if from_text {
+            (
+                geometry.left,
+                geometry.top,
+                page.width_px - geometry.right,
+                page.height_px - geometry.bottom,
+            )
+        } else {
+            (0.0, 0.0, page.width_px, page.height_px)
+        };
+        let inset = |edge: Option<&PageBorder>| {
+            edge.and_then(|edge| edge.space)
+                .map_or(0.0, |space| pt_to_px(f64::from(space), scale))
+        };
+        let pad = Insets {
+            left: inset(borders.left.as_ref()),
+            top: inset(borders.top.as_ref()),
+            right: inset(borders.right.as_ref()),
+            bottom: inset(borders.bottom.as_ref()),
+        };
+        let edges = [
+            (Side::Top, &borders.top),
+            (Side::Left, &borders.left),
+            (Side::Bottom, &borders.bottom),
+            (Side::Right, &borders.right),
+        ];
+        let mut items = Vec::new();
+        for (side, edge) in edges {
+            if let Some(edge) = edge {
+                if let Some(line) = edge_line(ctx, edge, side, left, top, right, bottom, pad, scale)
+                {
+                    items.push(line);
+                }
             }
         }
-    }
-    if items.is_empty() {
-        return Ok(());
-    }
-    let behind = matches!(borders.z_order, Some(BorderZOrder::Back));
-    for page in pages.iter_mut() {
+        if items.is_empty() {
+            continue;
+        }
         ctx.charge_items(items.len())?;
+        let behind = matches!(borders.z_order, Some(BorderZOrder::Back));
         if behind {
-            let mut combined = items.clone();
+            let mut combined = items;
             combined.append(&mut page.items);
             page.items = combined;
         } else {
-            page.items.extend(items.clone());
+            page.items.extend(items);
         }
     }
     Ok(())

@@ -4,8 +4,9 @@ use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, WrapKind};
 use strict_ooxml_wml::model::values::Emu;
 
 use strict_ooxml_core::error::Result;
+use strict_ooxml_wml::model::props::Section;
 
-use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
+use crate::layout::{geometry_for, Geometry, Item, LayoutContext, PlacedPage};
 use crate::units::emu_to_px;
 
 /// An anchored object recorded during pagination.
@@ -25,7 +26,7 @@ pub(crate) fn resolve(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
     anchors: &[PendingAnchor],
-    geometry: &Geometry,
+    sections: &[Section],
 ) -> Result<()> {
     if !ctx.options.floating {
         return Ok(());
@@ -43,16 +44,21 @@ pub(crate) fn resolve(
         if w <= 0.0 || h <= 0.0 {
             continue;
         }
+        let section = pages
+            .get(pending.page)
+            .and_then(|page| sections.get(page.section_index))
+            .map(|section| &section.properties);
+        let geometry = geometry_for(section, scale, None);
         let x = resolve_h(
             pending.anchor.position_h.as_ref(),
-            geometry,
+            &geometry,
             pending.host_x,
             w,
             scale,
         );
         let y = resolve_v(
             pending.anchor.position_v.as_ref(),
-            geometry,
+            &geometry,
             pending.host_y,
             h,
             scale,

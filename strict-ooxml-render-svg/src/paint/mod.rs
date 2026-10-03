@@ -99,6 +99,7 @@ mod tests {
                 stroke: None,
                 stroke_w: 0.0,
             })],
+            section_index: 0,
         };
         let svg = render_page(&page, true);
         assert!(svg.starts_with("<svg "));

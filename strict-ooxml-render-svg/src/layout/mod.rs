@@ -167,6 +167,9 @@ pub struct PlacedPage {
     pub height_px: f64,
     /// Paint items in deterministic order.
     pub items: Vec<Item>,
+    /// Zero-based index into `Document::sections` for this page's geometry
+    /// and headers/footers (AUD-74).
+    pub section_index: usize,
 }
 
 /// A laid-out text line.

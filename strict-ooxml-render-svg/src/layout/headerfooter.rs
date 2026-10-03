@@ -12,19 +12,22 @@
 //! AUD-70: a part that contains PAGE/NUMPAGES/SECTIONPAGES/SECTION is laid out
 //! again on every page with a [`FieldEnv`](crate::fields::FieldEnv); parts
 //! without those fields stay cached.
+//!
+//! AUD-74: each page uses the section of its first body content, with header/
+//! footer reference inheritance from prior sections when the current one has
+//! none.
 
 use std::collections::HashMap;
 
+use strict_ooxml_core::error::Result;
 use strict_ooxml_core::part::PartId;
-use strict_ooxml_wml::model::props::SectionProperties;
+use strict_ooxml_wml::model::props::{HeaderFooterRef, Section, SectionProperties};
 use strict_ooxml_wml::model::values::Twips;
 use strict_ooxml_wml::model::{Block, HeaderFooterKind};
 
-use strict_ooxml_core::error::Result;
-
 use crate::fields::{blocks_have_dynamic_fields, FieldEnv};
 use crate::layout::table::{layout_blocks_inline, offset_item};
-use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
+use crate::layout::{geometry_for, Geometry, Item, LayoutContext, PlacedPage};
 use crate::notes::NumberFormat;
 use crate::units::twips_to_px;
 
@@ -45,55 +48,70 @@ struct CachedRegion {
 }
 
 /// Decorates already-paginated `pages` with the selected headers and footers.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn decorate_pages(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
-    geometry: Geometry,
-    section: Option<&SectionProperties>,
+    sections: &[Section],
     total_pages: usize,
 ) -> Result<()> {
     if pages.is_empty() {
         return Ok(());
     }
-    let scale = ctx.options.scale;
-    let content_width = geometry.content_width();
-    let left = geometry.left;
-
-    let header_offset = twips_to_px(
-        section_margin(section, true).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
-        scale,
-    );
-    let footer_offset = twips_to_px(
-        section_margin(section, false).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
-        scale,
-    );
     let even_and_odd = ctx.document.settings.even_and_odd_headers;
-    let title_page = section.is_some_and(|section| section.title_page);
-    let has_headers = section.is_some_and(|s| s.headers.iter().any(|r| r.part.is_some()));
-    let has_footers = section.is_some_and(|s| s.footers.iter().any(|r| r.part.is_some()));
-    if !has_headers && !has_footers {
-        return Ok(());
-    }
-
-    let page_start = section
-        .and_then(|properties| properties.page_number.as_ref())
-        .and_then(|page_number| page_number.start)
-        .unwrap_or(1)
-        .max(1);
-    let page_format = NumberFormat::from_strict(
-        section
-            .and_then(|properties| properties.page_number.as_ref())
-            .and_then(|page_number| page_number.format.as_deref()),
-        NumberFormat::Decimal,
-    );
-    // Single-section documents: section index 1, section page count = total.
-    // Multi-section geometry is AUD-74.
-    let section_index = 1usize;
-    let section_pages = total_pages.max(1);
-
     let mut cache: HashMap<PartId, CachedRegion> = HashMap::new();
     let mut dynamic: HashMap<PartId, bool> = HashMap::new();
+    let mut section_page_counts = vec![0usize; sections.len().max(1)];
+    for page in pages.iter() {
+        let index = page.section_index.min(section_page_counts.len() - 1);
+        section_page_counts[index] += 1;
+    }
+
     for (index, page) in pages.iter_mut().enumerate() {
+        let section_index = page.section_index.min(sections.len().saturating_sub(1));
+        let Some(section) = inherited_section(sections, section_index) else {
+            continue;
+        };
+        let margins = geometry_for(Some(&section), ctx.options.scale, None);
+        let geometry = Geometry {
+            width: page.width_px,
+            height: page.height_px,
+            left: margins.left,
+            top: margins.top,
+            right: margins.right,
+            bottom: margins.bottom,
+            grid_line_pitch: None,
+        };
+        let content_width = geometry.content_width();
+        let left = geometry.left;
+        let header_offset = twips_to_px(
+            section_margin(Some(&section), true).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
+            ctx.options.scale,
+        );
+        let footer_offset = twips_to_px(
+            section_margin(Some(&section), false).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
+            ctx.options.scale,
+        );
+        let title_page = section.title_page;
+        let has_headers = section.headers.iter().any(|r| r.part.is_some());
+        let has_footers = section.footers.iter().any(|r| r.part.is_some());
+        if !has_headers && !has_footers {
+            continue;
+        }
+
+        let page_start = section
+            .page_number
+            .as_ref()
+            .and_then(|page_number| page_number.start)
+            .unwrap_or(1)
+            .max(1);
+        let page_format = NumberFormat::from_strict(
+            section
+                .page_number
+                .as_ref()
+                .and_then(|page_number| page_number.format.as_deref()),
+            NumberFormat::Decimal,
+        );
         let page_ordinal = index + 1;
         let display_page = usize::try_from(page_start.saturating_sub(1))
             .unwrap_or(0)
@@ -101,14 +119,19 @@ pub(crate) fn decorate_pages(
         let env = FieldEnv {
             page_number: display_page,
             page_count: total_pages.max(1),
-            section_index,
-            section_pages,
+            section_index: section_index + 1,
+            section_pages: section_page_counts
+                .get(section_index)
+                .copied()
+                .unwrap_or(1)
+                .max(1),
             page_format,
         };
         let mut decorated: Vec<Item> = Vec::with_capacity(page.items.len() + 16);
 
         if has_headers {
-            let header = select_reference(section, true, page_ordinal, title_page, even_and_odd);
+            let header =
+                select_reference(Some(&section), true, page_ordinal, title_page, even_and_odd);
             if let Some(region) = header.and_then(|part| {
                 region_for(
                     ctx,
@@ -130,7 +153,13 @@ pub(crate) fn decorate_pages(
         decorated.append(&mut page.items);
 
         if has_footers {
-            let footer = select_reference(section, false, page_ordinal, title_page, even_and_odd);
+            let footer = select_reference(
+                Some(&section),
+                false,
+                page_ordinal,
+                title_page,
+                even_and_odd,
+            );
             if let Some(region) = footer.and_then(|part| {
                 region_for(
                     ctx,
@@ -154,6 +183,45 @@ pub(crate) fn decorate_pages(
     }
     ctx.field_env.set(None);
     Ok(())
+}
+
+/// Section properties with header/footer refs inherited from prior sections.
+fn inherited_section(sections: &[Section], index: usize) -> Option<SectionProperties> {
+    let base = sections.get(index)?.properties.clone();
+    let mut props = base;
+    if !props
+        .headers
+        .iter()
+        .any(|reference| reference.part.is_some())
+    {
+        if let Some(headers) = prior_refs(sections, index, true) {
+            props.headers = headers;
+        }
+    }
+    if !props
+        .footers
+        .iter()
+        .any(|reference| reference.part.is_some())
+    {
+        if let Some(footers) = prior_refs(sections, index, false) {
+            props.footers = footers;
+        }
+    }
+    Some(props)
+}
+
+fn prior_refs(sections: &[Section], index: usize, headers: bool) -> Option<Vec<HeaderFooterRef>> {
+    for prior in sections[..index].iter().rev() {
+        let refs = if headers {
+            &prior.properties.headers
+        } else {
+            &prior.properties.footers
+        };
+        if refs.iter().any(|reference| reference.part.is_some()) {
+            return Some(refs.clone());
+        }
+    }
+    None
 }
 
 /// Returns the `w:header`/`w:footer` margin in twips, if declared.
@@ -188,9 +256,6 @@ fn select_reference(
             .and_then(|reference| reference.part.as_ref())
     };
     if page_number == 1 && title_page {
-        // With `w:titlePg` the first page uses only the `first` reference; when
-        // it is absent the first page has no header/footer (no Default/Even
-        // fallback), as Word/WPS do.
         return find(HeaderFooterKind::First);
     }
     if even_and_odd && page_number.is_multiple_of(2) {
@@ -252,8 +317,6 @@ fn layout_region(
     ctx.field_env.set(env);
     let mut items = Vec::new();
     let mut y = 0.0;
-    // A header is a block container of its own, so its content starts at 1 -
-    // the same budget the reader counted it against, and not a fresh zero.
     layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 1, None);
     ctx.field_env.set(None);
     Region { items, height: y }
