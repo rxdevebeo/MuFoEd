@@ -383,3 +383,20 @@ fn render_damaged_returns_two() {
     let _ = std::fs::remove_file(&path);
     assert_eq!(code, 2, "stderr: {stderr}");
 }
+
+/// AUD-30: `normalize Manual.docx` reports each relationship-type mapping once.
+#[test]
+fn normalize_manual_docx_counts_reltypes_once() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../strict-ooxml-core/tests/docx/Manual.docx");
+    if !path.is_file() {
+        eprintln!("skipping: Manual.docx not present at {}", path.display());
+        return;
+    }
+    let (code, stdout, stderr) = run(&["normalize", path.to_str().unwrap()]);
+    assert_eq!(code, 0, "stdout: {stdout}\nstderr: {stderr}");
+    assert!(
+        stdout.contains("T2.reltype x8"),
+        "expected T2.reltype x8 (not x16): {stdout}"
+    );
+}

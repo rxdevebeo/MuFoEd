@@ -28,6 +28,7 @@
 //! * **no panics** — every fallible step returns [`Result`].
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use quick_xml::events::attributes::Attribute;
@@ -152,13 +153,16 @@ impl NormalizerOptions {
 
 /// Normalizes Transitional OOXML parts to Strict at the raw-bytes seam.
 ///
-/// Implements [`RawNormalizer`]. The report is accumulated behind a mutex
-/// because the seam hands out a shared `&self` and because a package may be
-/// walked in any order; [`Self::report`] returns it sorted.
+/// Implements [`RawNormalizer`]. Each part writes a local
+/// [`NormalizationReport`]; on completion that report **replaces** the entry
+/// for the part in a `BTreeMap` (ADR-0017 / AUD-30). The mutex is held only
+/// for the insert, so concurrent `normalize_part` calls under `parallel` do
+/// not serialise the rewrite. [`Self::report`] merges part reports in
+/// [`PartId`] order.
 #[derive(Debug, Default)]
 pub struct TransitionalNormalizer {
     options: NormalizerOptions,
-    report: Mutex<NormalizationReport>,
+    parts: Mutex<BTreeMap<PartId, NormalizationReport>>,
 }
 
 impl TransitionalNormalizer {
@@ -173,22 +177,59 @@ impl TransitionalNormalizer {
     pub fn with_options(options: NormalizerOptions) -> Self {
         Self {
             options,
-            report: Mutex::new(NormalizationReport::new()),
+            parts: Mutex::new(BTreeMap::new()),
         }
     }
 
-    /// The accumulated report, ordered.
+    /// The merged report across every part touched so far, in [`PartId`] order.
+    ///
+    /// Re-reading a part replaces its contribution rather than adding to it
+    /// (ADR-0017). `conformance_detected` is left unset — the caller that
+    /// knows package-level detection fills it (AUD-31).
     ///
     /// # Panics
     ///
-    /// Never in practice: the mutex is only held for the duration of a field
-    /// update, and nothing inside that scope can panic. A poisoned lock would
-    /// mean a previous thread panicked mid-report, which is already a bug.
+    /// Never in practice: the mutex is only held while cloning the map, and
+    /// nothing inside that scope can panic. A poisoned lock would mean a
+    /// previous thread panicked mid-insert, which is already a bug.
     pub fn report(&self) -> NormalizationReport {
-        self.report
+        let parts = self
+            .parts
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut merged = NormalizationReport::new();
+        for part_report in parts.values() {
+            merged.merge_part(part_report);
+        }
+        merged
+    }
+
+    /// Stores (replaces) the per-part rewrite report. Called once at the end
+    /// of every path that ran the rewrite loop.
+    ///
+    /// Package-level notes that did not come from the rewrite (`T2.content-type`
+    /// from AUD-26) are carried forward from the previous entry so a later
+    /// `normalize_part` does not erase them.
+    fn commit_part_report(&self, part: &PartId, mut report: NormalizationReport) {
+        let mut parts = self
+            .parts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(previous) = parts.remove(part) {
+            for record in previous.applied() {
+                if record.id == "T2.content-type" {
+                    let from = record.from.as_deref().unwrap_or("");
+                    let to = record.to.as_deref().unwrap_or("");
+                    report.record_mapping("T2.content-type", from, to);
+                }
+            }
+            for loss in previous.losses() {
+                if loss.transform_id == "T2.content-type" {
+                    report.record_loss(loss);
+                }
+            }
+        }
+        parts.insert(part.clone(), report);
     }
 
     /// Runs the pipeline over one part.
@@ -209,10 +250,8 @@ impl TransitionalNormalizer {
             return Ok(Cow::Borrowed(bytes));
         }
         let limit = self.options.expansion_limit(bytes.len());
-        let mut report = self
-            .report
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Local report: the shared map is updated once at the end (ADR-0017).
+        let mut report = NormalizationReport::new();
 
         let mut reader = Reader::from_reader(bytes);
         let config = reader.config_mut();
@@ -260,6 +299,9 @@ impl TransitionalNormalizer {
                 event
             } else {
                 let Ok(event) = reader.read_event().map(into_owned_event) else {
+                    // Truncated / damaged prefix: leave bytes alone, but keep
+                    // whatever the loop already recorded for this part.
+                    self.commit_part_report(part, report);
                     return Ok(Cow::Borrowed(bytes));
                 };
                 event
@@ -274,7 +316,7 @@ impl TransitionalNormalizer {
                 // descendant `mc:Choice`. A streaming pass sees the start tag
                 // and not the thing that decides.
                 let mut source = EventSource::new(&mut reader, &mut buffered);
-                if context.skip_depth == 0 && is_legacy_graphics(&event, &context) {
+                let rewrite = if context.skip_depth == 0 && is_legacy_graphics(&event, &context) {
                     let subtree = collect_subtree(&mut source, event);
                     Self::rewrite_legacy_graphics(
                         &mut writer,
@@ -282,7 +324,7 @@ impl TransitionalNormalizer {
                         &mut context,
                         &mut report,
                         &mut buffered,
-                    )?;
+                    )
                 } else if context.skip_depth == 0 && is_alternate_content(&event, &context) {
                     let subtree = collect_subtree(&mut source, event);
                     rewrite_alternate_content(
@@ -291,11 +333,16 @@ impl TransitionalNormalizer {
                         &mut context,
                         &mut report,
                         &mut buffered,
-                    )?;
+                    )
                 } else {
-                    Self::rewrite_event(&mut writer, event, &mut context, &mut report)?;
+                    Self::rewrite_event(&mut writer, event, &mut context, &mut report)
+                };
+                if let Err(error) = rewrite {
+                    self.commit_part_report(part, report);
+                    return Err(error);
                 }
                 if writer.get_ref().len() > limit {
+                    self.commit_part_report(part, report);
                     return Err(StrictError::LimitExceeded {
                         kind: crate::error::LimitKind::TextLen,
                         limit: limit as u64,
@@ -308,12 +355,6 @@ impl TransitionalNormalizer {
         }
 
         let output = writer.into_inner();
-        if part.as_str().ends_with("footer1.xml") {
-            let _ = std::fs::write(
-                "C:/Users/gamer/AppData/Local/Temp/opencode/norm-footer1.xml",
-                &output,
-            );
-        }
         // T8. `verify_no_silent_loss` is the one invariant that was always checked,
         // and `InvariantMode::Strict` adds the other two the pipeline can
         // actually decide on its own — see [`check_invariants`]. The promise on
@@ -321,18 +362,22 @@ impl TransitionalNormalizer {
         // invariant is violated") was unimplementable until now, because nothing
         // else read the field.
         let transformed = report.applied().iter().any(|record| record.count > 0);
-        check_invariants(part, &output, transformed, context.invariants, &mut report).map_err(
-            |detail| StrictError::NormalizationInvariantViolation {
-                location: SourceLocation::new(part.clone(), 1, 1, 0),
-                detail,
-            },
-        )?;
-        report.verify_no_silent_loss().map_err(|reason| {
+        let invariant =
+            check_invariants(part, &output, transformed, context.invariants, &mut report).map_err(
+                |detail| StrictError::NormalizationInvariantViolation {
+                    location: SourceLocation::new(part.clone(), 1, 1, 0),
+                    detail,
+                },
+            );
+        let silent = report.verify_no_silent_loss().map_err(|reason| {
             StrictError::NormalizationInvariantViolation {
                 location: SourceLocation::new(part.clone(), 1, 1, 0),
                 detail: reason,
             }
-        })?;
+        });
+        self.commit_part_report(part, report);
+        invariant?;
+        silent?;
         Ok(Cow::Owned(output))
     }
 
@@ -2052,7 +2097,9 @@ impl crate::normalize::RawNormalizer for TransitionalNormalizer {
     fn note_unexpected_main_content_type(&self, part: &PartId, content_type: &str) {
         // AUD-26: under Normalize/Permissive the open continues; the report
         // names the MIME so the operator can see why the package is odd.
-        let mut report = self.report.lock().expect("normalizer report lock");
+        // Written into the per-part slot (ADR-0017) so a later normalize of
+        // the same part replaces rather than doubles the note.
+        let mut report = NormalizationReport::new();
         report.record_mapping(
             "T2.content-type",
             content_type,
@@ -2069,6 +2116,14 @@ impl crate::normalize::RawNormalizer for TransitionalNormalizer {
             severity: Severity::Ignorable,
             locations: vec![SourceLocation::new(part.clone(), 1, 1, 0)],
         });
+        let mut parts = self
+            .parts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        parts
+            .entry(part.clone())
+            .and_modify(|existing| existing.merge_part(&report))
+            .or_insert(report);
     }
 }
 
@@ -3652,5 +3707,56 @@ mod tests {
         assert!(String::from_utf8(output.into_owned())
             .unwrap()
             .contains("purl.oclc.org"));
+    }
+
+    /// AUD-30 / ADR-0017: re-reading one part replaces its contribution.
+    #[test]
+    fn reading_one_part_three_times_does_not_inflate_the_report() {
+        let rels = br#"<?xml version="1.0"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>"#;
+        let part = PartId::new("/_rels/.rels");
+        let once = TransitionalNormalizer::new();
+        once.normalize(&part, rels).unwrap();
+        let once_report = once.report();
+
+        let thrice = TransitionalNormalizer::new();
+        for _ in 0..3 {
+            thrice.normalize(&part, rels).unwrap();
+        }
+        assert_eq!(
+            thrice.report(),
+            once_report,
+            "re-reading a part must replace, not accumulate"
+        );
+        let reltype = thrice
+            .report()
+            .applied()
+            .into_iter()
+            .find(|record| record.id == "T2.reltype")
+            .expect("T2.reltype");
+        assert_eq!(reltype.count, 2, "two relationship types, counted once");
+    }
+
+    /// AUD-30 / ADR-0017: merge order follows `PartId`, not discovery order.
+    #[test]
+    fn report_is_equal_for_two_part_read_orders() {
+        let styles = br#"<?xml version="1.0"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>"#;
+        let document = TRANSITIONAL.as_bytes();
+        let a = PartId::new("/word/document.xml");
+        let b = PartId::new("/word/styles.xml");
+
+        let forward = TransitionalNormalizer::new();
+        forward.normalize(&a, document).unwrap();
+        forward.normalize(&b, styles).unwrap();
+
+        let reverse = TransitionalNormalizer::new();
+        reverse.normalize(&b, styles).unwrap();
+        reverse.normalize(&a, document).unwrap();
+
+        assert_eq!(forward.report(), reverse.report());
     }
 }

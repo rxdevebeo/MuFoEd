@@ -19,5 +19,7 @@ immutable once accepted; a superseding decision gets a new number.
 | [0012](0012-djvu-reading.md) | Reading DjVu: `djvu-rs` subcrates for plumbing, our own for the text layer | Accepted |
 | [0014](0014-strict-conformance-post-mce.md) | Strict conformance is defined post-MCE — extension namespaces do not go into a Strict package | Accepted |
 | [0015](0015-opc-namespaces.md) | OPC namespaces and relationship types are family-neutral | Accepted |
+| [0016](0016-conformance-policy.md) | One conformance-policy matrix, decided from raw (T0) signals | Accepted |
+| [0017](0017-normalization-report.md) | Per-part NormalizationReport, merge on read | Accepted |
 
 Copy `0000-template.md` when adding a new record.

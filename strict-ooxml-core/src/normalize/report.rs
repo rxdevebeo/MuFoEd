@@ -112,11 +112,12 @@ impl fmt::Display for LossRecord {
 
 /// The outcome of normalizing a package.
 ///
-/// Collected across every part, so the accumulator orders by part and location
-/// when the report is finalized: the order parts happen to be read in is not
-/// part of the contract, but two runs must produce the same report
+/// Collected per part and merged in [`PartId`](crate::part::PartId) order
+/// (ADR-0017 / AUD-30): the order parts happen to be read in is not part of
+/// the contract, and re-reading the same part replaces its contribution rather
+/// than adding to it. Two runs must produce the same report
 /// (`TZ` §10.10.1 and §10.10.5).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NormalizationReport {
     /// What the package was detected as before anything ran.
     pub conformance_detected: Option<Conformance>,
@@ -265,6 +266,36 @@ impl NormalizationReport {
         self.losses.is_empty()
             && self.applied.values().all(|record| record.count == 0)
             && self.removed_nodes == 0
+    }
+
+    /// Merges another per-part report into this one (ADR-0017 / AUD-30).
+    ///
+    /// Counts and node tallies use saturating addition. The first `from`/`to`
+    /// mapping for a stage id wins. The first `fatal` wins.
+    /// [`Self::conformance_detected`] is left untouched — package-level
+    /// detection is filled by the caller (AUD-31).
+    pub fn merge_part(&mut self, other: &Self) {
+        for record in other.applied.values() {
+            if record.count == 0 {
+                continue;
+            }
+            let pending = self.pending.entry(record.id).or_default();
+            *pending = pending.saturating_add(record.count);
+            match self.applied.get_mut(record.id) {
+                Some(existing) => {
+                    existing.count = existing.count.saturating_add(record.count);
+                }
+                None => {
+                    self.applied.insert(record.id, record.clone());
+                }
+            }
+        }
+        self.losses.extend(other.losses.iter().cloned());
+        self.removed_nodes = self.removed_nodes.saturating_add(other.removed_nodes);
+        self.reported_nodes = self.reported_nodes.saturating_add(other.reported_nodes);
+        if self.fatal.is_none() {
+            self.fatal.clone_from(&other.fatal);
+        }
     }
 }
 
@@ -432,5 +463,32 @@ mod tests {
             .with_mapping("schemas.openxmlformats.org/a", "purl.oclc.org/a");
         assert_eq!(record.from.as_deref(), Some("schemas.openxmlformats.org/a"));
         assert_eq!(record.to.as_deref(), Some("purl.oclc.org/a"));
+    }
+
+    #[test]
+    fn merge_part_sums_counts_and_keeps_the_first_mapping() {
+        let mut left = NormalizationReport::new();
+        left.record_mapping("T2.reltype", "from-a", "to-a");
+        left.count_reported_removal(1);
+        let mut right = NormalizationReport::new();
+        right.record_mapping("T2.reltype", "from-b", "to-b");
+        right.record("T1.namespace", 2);
+        right.count_reported_removal(3);
+        left.merge_part(&right);
+        let applied = left.applied();
+        assert_eq!(applied.len(), 2);
+        let rel = applied.iter().find(|r| r.id == "T2.reltype").unwrap();
+        assert_eq!(rel.count, 2);
+        assert_eq!(rel.from.as_deref(), Some("from-a"));
+        assert!(left.verify_no_silent_loss().is_ok());
+    }
+
+    #[test]
+    fn equal_reports_compare_equal() {
+        let mut a = NormalizationReport::new();
+        a.record("T1.namespace", 1);
+        let mut b = NormalizationReport::new();
+        b.record("T1.namespace", 1);
+        assert_eq!(a, b);
     }
 }
