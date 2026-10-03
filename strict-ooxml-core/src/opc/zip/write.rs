@@ -114,7 +114,13 @@ impl ZipWriter {
     pub fn add_part(&mut self, part: &PartId, data: impl Into<Vec<u8>>) -> Result<()> {
         let canonical = canonicalize_part_name(part.as_str().trim_start_matches('/'))?;
         let name = canonical.as_str().trim_start_matches('/').to_owned();
-        if self.entries.iter().any(|(existing, _)| *existing == name) {
+        // AUD-24/AUD-65: OPC part names are ASCII case-insensitive, so `a.xml`
+        // and `A.xml` are the same part.
+        if self
+            .entries
+            .iter()
+            .any(|(existing, _)| existing.eq_ignore_ascii_case(&name))
+        {
             return Err(StrictError::DuplicatePart(canonical));
         }
         if self.entries.len() >= self.limits.max_zip_entries {
@@ -406,6 +412,18 @@ mod tests {
             .add_part(&PartId::new("word/document.xml"), b"b")
             .expect_err("duplicate");
         assert!(error.to_string().contains("duplicate"), "{error}");
+    }
+
+    #[test]
+    fn duplicate_part_is_case_insensitive() {
+        let mut writer = ZipWriter::new();
+        writer
+            .add_part(&PartId::new("/a.xml"), b"one")
+            .expect("first");
+        let error = writer
+            .add_part(&PartId::new("/A.xml"), b"two")
+            .expect_err("AUD-65: ASCII case variants are one part");
+        assert!(matches!(error, StrictError::DuplicatePart(_)), "{error}");
     }
 
     #[test]
