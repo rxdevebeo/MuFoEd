@@ -722,7 +722,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:sdtPr`, returning `(tag, alias, id, placeholder, showing)`.
-    fn parse_sdt_properties(
+    pub(crate) fn parse_sdt_properties(
         &mut self,
     ) -> Result<(
         Option<Arc<str>>,

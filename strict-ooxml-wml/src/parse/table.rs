@@ -3,8 +3,9 @@
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::block::{GridCol, Table, TableCell, TableRow};
+use crate::model::block::{GridCol, SdtProperties, Table, TableCell, TableRow};
 use crate::model::props::{CellProperties, RowProperties, TableProperties};
+use crate::model::support::SupportStatus;
 use crate::model::values::Twips;
 
 use super::{is_wml, PartParser};
@@ -30,12 +31,24 @@ impl PartParser<'_> {
                             "tblGrid" => grid = parser.parse_table_grid()?,
                             "tr" => rows.push(parser.parse_table_row(&attrs)?),
                             "sdt" => {
-                                let container = parser.parse_sdt(true)?;
-                                for block in container.blocks {
-                                    if let crate::model::block::Block::Table(table) = block {
-                                        rows.extend(table.rows);
+                                // AUD-41: row-level content control — unwrap `w:tr`
+                                // children and keep `sdtPr` on each row for the writer.
+                                let (sdt, mut found) = parser.parse_sdt_table_rows()?;
+                                parser.record(
+                                    "w:sdt",
+                                    SupportStatus::Partial,
+                                    Some(
+                                        "row/cell-level content control unwrapped; properties kept"
+                                            .to_owned(),
+                                    ),
+                                    Some(sdt.location.clone()),
+                                );
+                                for row in &mut found {
+                                    if row.sdt.is_none() {
+                                        row.sdt = Some(sdt.clone());
                                     }
                                 }
+                                rows.append(&mut found);
                             }
                             _ => parser.skip_element()?,
                         }
@@ -97,14 +110,23 @@ impl PartParser<'_> {
                             "trPr" => props = parser.parse_row_properties()?,
                             "tc" => cells.push(parser.parse_table_cell(&attrs)?),
                             "sdt" => {
-                                let container = parser.parse_sdt(true)?;
-                                for block in container.blocks {
-                                    if let crate::model::block::Block::Table(table) = block {
-                                        for row in table.rows {
-                                            cells.extend(row.cells);
-                                        }
+                                // AUD-41: cell-level content control.
+                                let (sdt, mut found) = parser.parse_sdt_table_cells()?;
+                                parser.record(
+                                    "w:sdt",
+                                    SupportStatus::Partial,
+                                    Some(
+                                        "row/cell-level content control unwrapped; properties kept"
+                                            .to_owned(),
+                                    ),
+                                    Some(sdt.location.clone()),
+                                );
+                                for cell in &mut found {
+                                    if cell.sdt.is_none() {
+                                        cell.sdt = Some(sdt.clone());
                                     }
                                 }
+                                cells.append(&mut found);
                             }
                             _ => parser.skip_element()?,
                         }
@@ -117,6 +139,7 @@ impl PartParser<'_> {
             Ok(TableRow {
                 props,
                 cells,
+                sdt: None,
                 location,
             })
         })
@@ -152,8 +175,183 @@ impl PartParser<'_> {
             Ok(TableCell {
                 props,
                 blocks,
+                sdt: None,
                 location,
             })
+        })
+    }
+
+    /// Parses a row-level `w:sdt`, returning its properties and the rows inside
+    /// `sdtContent`.
+    fn parse_sdt_table_rows(&mut self) -> Result<(SdtProperties, Vec<TableRow>)> {
+        let location = self.location();
+        self.nested(|parser| {
+            let mut props = SdtProperties {
+                location: location.clone(),
+                ..SdtProperties::default()
+            };
+            let mut rows = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "sdtPr" => {
+                                let parsed = parser.parse_sdt_properties()?;
+                                props.tag = parsed.0.or(props.tag);
+                                props.alias = parsed.1.or(props.alias);
+                                props.id = parsed.2.or(props.id);
+                                props.placeholder = parsed.3.or(props.placeholder);
+                                props.showing_placeholder |= parsed.4;
+                            }
+                            "sdtContent" => {
+                                rows.append(&mut parser.parse_table_row_children()?);
+                            }
+                            _ => {
+                                let _ = attrs;
+                                parser.skip_element()?;
+                            }
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(
+                            parser.invalid("unexpected end of row-level structured document tag")
+                        )
+                    }
+                }
+            }
+            Ok((props, rows))
+        })
+    }
+
+    /// Parses a cell-level `w:sdt`, returning its properties and the cells inside
+    /// `sdtContent`.
+    fn parse_sdt_table_cells(&mut self) -> Result<(SdtProperties, Vec<TableCell>)> {
+        let location = self.location();
+        self.nested(|parser| {
+            let mut props = SdtProperties {
+                location: location.clone(),
+                ..SdtProperties::default()
+            };
+            let mut cells = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "sdtPr" => {
+                                let parsed = parser.parse_sdt_properties()?;
+                                props.tag = parsed.0.or(props.tag);
+                                props.alias = parsed.1.or(props.alias);
+                                props.id = parsed.2.or(props.id);
+                                props.placeholder = parsed.3.or(props.placeholder);
+                                props.showing_placeholder |= parsed.4;
+                            }
+                            "sdtContent" => {
+                                cells.append(&mut parser.parse_table_cell_children()?);
+                            }
+                            _ => {
+                                let _ = attrs;
+                                parser.skip_element()?;
+                            }
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(
+                            parser.invalid("unexpected end of cell-level structured document tag")
+                        )
+                    }
+                }
+            }
+            Ok((props, cells))
+        })
+    }
+
+    /// Parses `w:tr` (and nested row-level `w:sdt`) children until the current
+    /// element's end — used for `sdtContent` inside a table.
+    fn parse_table_row_children(&mut self) -> Result<Vec<TableRow>> {
+        self.nested(|parser| {
+            let mut rows = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "tr" => rows.push(parser.parse_table_row(&attrs)?),
+                            "sdt" => {
+                                let (sdt, mut found) = parser.parse_sdt_table_rows()?;
+                                for row in &mut found {
+                                    if row.sdt.is_none() {
+                                        row.sdt = Some(sdt.clone());
+                                    }
+                                }
+                                rows.append(&mut found);
+                            }
+                            _ => parser.skip_element()?,
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of table row content"))
+                    }
+                }
+            }
+            Ok(rows)
+        })
+    }
+
+    /// Parses `w:tc` (and nested cell-level `w:sdt`) children until the current
+    /// element's end — used for `sdtContent` inside a row.
+    fn parse_table_cell_children(&mut self) -> Result<Vec<TableCell>> {
+        self.nested(|parser| {
+            let mut cells = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "tc" => cells.push(parser.parse_table_cell(&attrs)?),
+                            "sdt" => {
+                                let (sdt, mut found) = parser.parse_sdt_table_cells()?;
+                                for cell in &mut found {
+                                    if cell.sdt.is_none() {
+                                        cell.sdt = Some(sdt.clone());
+                                    }
+                                }
+                                cells.append(&mut found);
+                            }
+                            _ => parser.skip_element()?,
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of table cell content"))
+                    }
+                }
+            }
+            Ok(cells)
         })
     }
 }

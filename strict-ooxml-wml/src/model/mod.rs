@@ -21,7 +21,8 @@ pub mod theme;
 pub mod values;
 
 pub use block::{
-    AltChunkInfo, Block, GridCol, OpaqueBlock, Paragraph, SdtContainer, Table, TableCell, TableRow,
+    AltChunkInfo, Block, GridCol, OpaqueBlock, Paragraph, SdtContainer, SdtProperties, Table,
+    TableCell, TableRow,
 };
 pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{

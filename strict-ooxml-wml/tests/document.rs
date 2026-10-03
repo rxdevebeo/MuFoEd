@@ -194,6 +194,85 @@ fn parses_block_and_inline_sdt() {
     assert!(matches!(inlines[0], Inline::SdtInline(_)));
 }
 
+/// AUD-41: repeating-section `w:sdt` around three table rows unwraps into the model.
+#[test]
+fn row_level_sdt_unwraps_into_table_rows() {
+    let body = "\
+<w:tbl><w:tblGrid><w:gridCol w:w=\"1000\"/></w:tblGrid>\
+<w:sdt><w:sdtPr><w:tag w:val=\"repeat\"/><w:alias w:val=\"Items\"/></w:sdtPr>\
+<w:sdtContent>\
+<w:tr><w:tc><w:p><w:r><w:t>one</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:r><w:t>two</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:r><w:t>three</w:t></w:r></w:p></w:tc></w:tr>\
+</w:sdtContent></w:sdt></w:tbl>";
+    let document = parse_body(body);
+    let Block::Table(table) = &document.body.blocks[0] else {
+        panic!("expected table");
+    };
+    assert_eq!(table.rows.len(), 3);
+    for (index, expected) in ["one", "two", "three"].iter().enumerate() {
+        let row = &table.rows[index];
+        let sdt = row.sdt.as_ref().expect("row keeps sdtPr");
+        assert_eq!(sdt.tag.as_deref(), Some("repeat"));
+        assert_eq!(sdt.alias.as_deref(), Some("Items"));
+        let text = cell_text(&row.cells[0]);
+        assert_eq!(text, *expected);
+    }
+    let entry = document.support.get("w:sdt").expect("partial record");
+    assert_eq!(entry.status, SupportStatus::Partial);
+    assert!(
+        entry.message.as_deref().unwrap_or("").contains("unwrapped"),
+        "message={:?}",
+        entry.message
+    );
+}
+
+/// AUD-41: cell-level `w:sdt` unwraps into ordinary cells with properties kept.
+#[test]
+fn cell_level_sdt_unwraps_into_table_cells() {
+    let body = "\
+<w:tbl><w:tblGrid><w:gridCol w:w=\"1000\"/><w:gridCol w:w=\"1000\"/></w:tblGrid>\
+<w:tr>\
+<w:sdt><w:sdtPr><w:tag w:val=\"c\"/></w:sdtPr>\
+<w:sdtContent>\
+<w:tc><w:p><w:r><w:t>left</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>right</w:t></w:r></w:p></w:tc>\
+</w:sdtContent></w:sdt>\
+</w:tr></w:tbl>";
+    let document = parse_body(body);
+    let Block::Table(table) = &document.body.blocks[0] else {
+        panic!("expected table");
+    };
+    assert_eq!(table.rows[0].cells.len(), 2);
+    assert_eq!(cell_text(&table.rows[0].cells[0]), "left");
+    assert_eq!(cell_text(&table.rows[0].cells[1]), "right");
+    assert_eq!(
+        table.rows[0].cells[0]
+            .sdt
+            .as_ref()
+            .and_then(|s| s.tag.as_deref()),
+        Some("c")
+    );
+}
+
+fn cell_text(cell: &strict_ooxml_wml::model::block::TableCell) -> String {
+    let mut out = String::new();
+    for block in &cell.blocks {
+        if let Block::Paragraph(paragraph) = block {
+            for inline in &paragraph.inlines {
+                if let Inline::Run(run) = inline {
+                    for content in &run.content {
+                        if let RunContent::Text(text) = content {
+                            out.push_str(&text.text);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 #[test]
 fn unknown_element_becomes_opaque_and_is_recorded() {
     let document = parse_parts(&document_parts(

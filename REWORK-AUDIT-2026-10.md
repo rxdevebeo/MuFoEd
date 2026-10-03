@@ -50,6 +50,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-35 | ✅ выполнена | `1795caa` | `ExpansionLimit::{Factor,Bytes}` вместо `max_expansion_bytes`; документация совпадает с кодом |
 | AUD-36 | ✅ выполнена | `49315d0` | под `feature = "parallel"` отчёт при concurrent `normalize`/`read_part` == последовательному (Manual.docx + синтетика) |
 | AUD-40 | ✅ выполнена | `5bc6979` | `walk_paragraphs_in_order` — один обход для сбора `sections` и sync; локальные списки в `parse_block_children`/`table.rs` удалены; `sectPr` в ячейке учитывается + `partial`; тесты sdt/ins/ячейка |
+| AUD-41 | ✅ выполнена | `PENDING` | `SdtProperties` на `TableRow`/`TableCell`; row/cell `w:sdt` разворачивается с сохранением `sdtPr`; writer группирует подряд идущие; тесты unwrap + round-trip |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).

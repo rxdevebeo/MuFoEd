@@ -22,6 +22,7 @@ use strict_ooxml_core::ns::detect::{detect_conformance, ConformanceSignals};
 use strict_ooxml_core::opc::rels::parse_relationships;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package, CONTENT_TYPES_PART};
 use strict_ooxml_core::part::PartId;
+use strict_ooxml_wml::model::block::Block;
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{
@@ -401,6 +402,52 @@ fn a_written_package_opens_under_the_strict_policy() {
             strict_ooxml_core::ns::Conformance::Strict
         );
     }
+}
+
+/// AUD-41: row-level `w:sdt` round-trips (parse → write → parse → write is a fixed point).
+#[test]
+fn row_level_sdt_round_trips() {
+    let body = "\
+<w:tbl><w:tblGrid><w:gridCol w:w=\"1440\"/></w:tblGrid>\
+<w:sdt><w:sdtPr><w:tag w:val=\"repeat\"/><w:alias w:val=\"Items\"/></w:sdtPr>\
+<w:sdtContent>\
+<w:tr><w:tc><w:p><w:r><w:t>one</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:r><w:t>two</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:r><w:t>three</w:t></w:r></w:p></w:tc></w:tr>\
+</w:sdtContent></w:sdt></w:tbl>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let Block::Table(table) = &document.body.blocks[0] else {
+        panic!("expected table");
+    };
+    assert_eq!(table.rows.len(), 3);
+    assert!(table.rows.iter().all(|row| {
+        row.sdt
+            .as_ref()
+            .is_some_and(|sdt| sdt.tag.as_deref() == Some("repeat"))
+    }));
+
+    let written = write(&document, &package);
+    let reopened = open(&written.bytes).expect("reopen");
+    let reparsed = parse(&reopened).expect("reparse");
+    let Block::Table(table2) = &reparsed.body.blocks[0] else {
+        panic!("expected table after round trip");
+    };
+    assert_eq!(table2.rows.len(), 3);
+    assert!(table2.rows.iter().all(|row| {
+        row.sdt
+            .as_ref()
+            .is_some_and(|sdt| sdt.tag.as_deref() == Some("repeat"))
+    }));
+    let rewritten = write(&reparsed, &reopened);
+    assert_eq!(
+        written.bytes, rewritten.bytes,
+        "row-level sdt write is not a fixed point\n{}",
+        written.report
+    );
 }
 
 /// The `document.xml.rels` ids the document uses are the ones that exist.

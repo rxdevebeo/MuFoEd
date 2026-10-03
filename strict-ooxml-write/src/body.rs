@@ -1,6 +1,8 @@
 //! Block- and inline-level serialization: paragraphs, tables, runs.
 
-use strict_ooxml_wml::model::block::{Block, Paragraph, SdtContainer, Table};
+use strict_ooxml_wml::model::block::{
+    Block, Paragraph, SdtContainer, SdtProperties, Table, TableCell, TableRow,
+};
 use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
 use strict_ooxml_wml::model::values::{BreakKind, Space};
 
@@ -351,23 +353,96 @@ pub fn table_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &Table) {
         }
         xml.end();
     }
-    for row in &table.rows {
-        xml.start("w:tr");
-        row_properties(xml, &row.props);
-        for cell in &row.cells {
-            xml.start("w:tc");
-            cell_properties(xml, &cell.props);
-            blocks(ctx, xml, &cell.blocks);
-            // A table cell must end with a paragraph, so an empty cell gets
-            // an empty one rather than being left without block content.
-            if cell.blocks.is_empty() {
-                xml.start("w:p");
-                xml.end();
+    // AUD-41: consecutive rows that share the same unwrapped `sdtPr` are
+    // re-wrapped in one `w:sdt` so parse → write → parse keeps the control.
+    let mut index = 0;
+    while index < table.rows.len() {
+        if let Some(sdt) = &table.rows[index].sdt {
+            let mut end = index + 1;
+            while end < table.rows.len() && table.rows[end].sdt.as_ref() == Some(sdt) {
+                end += 1;
             }
-            xml.end();
+            write_sdt_around(xml, sdt, |xml| {
+                for row in &table.rows[index..end] {
+                    table_row_element(ctx, xml, row);
+                }
+            });
+            index = end;
+        } else {
+            table_row_element(ctx, xml, &table.rows[index]);
+            index += 1;
         }
+    }
+    xml.end();
+}
+
+/// Writes one `w:tr`, re-wrapping cell-level content controls (AUD-41).
+fn table_row_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, row: &TableRow) {
+    xml.start("w:tr");
+    row_properties(xml, &row.props);
+    let mut index = 0;
+    while index < row.cells.len() {
+        if let Some(sdt) = &row.cells[index].sdt {
+            let mut end = index + 1;
+            while end < row.cells.len() && row.cells[end].sdt.as_ref() == Some(sdt) {
+                end += 1;
+            }
+            write_sdt_around(xml, sdt, |xml| {
+                for cell in &row.cells[index..end] {
+                    table_cell_element(ctx, xml, cell);
+                }
+            });
+            index = end;
+        } else {
+            table_cell_element(ctx, xml, &row.cells[index]);
+            index += 1;
+        }
+    }
+    xml.end();
+}
+
+/// Writes one `w:tc`.
+fn table_cell_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, cell: &TableCell) {
+    xml.start("w:tc");
+    cell_properties(xml, &cell.props);
+    blocks(ctx, xml, &cell.blocks);
+    // A table cell must end with a paragraph, so an empty cell gets
+    // an empty one rather than being left without block content.
+    if cell.blocks.is_empty() {
+        xml.start("w:p");
         xml.end();
     }
+    xml.end();
+}
+
+/// Writes `<w:sdt><w:sdtPr>…</w:sdtPr><w:sdtContent>…</w:sdtContent></w:sdt>`.
+fn write_sdt_around(
+    xml: &mut XmlWriter,
+    sdt: &SdtProperties,
+    content: impl FnOnce(&mut XmlWriter),
+) {
+    xml.start("w:sdt");
+    xml.start("w:sdtPr");
+    if let Some(alias) = sdt.alias.as_deref() {
+        xml.empty_attr_w("w:alias", "val", alias);
+    }
+    if let Some(tag) = sdt.tag.as_deref() {
+        xml.empty_attr_w("w:tag", "val", tag);
+    }
+    if let Some(id) = sdt.id.as_deref() {
+        xml.empty_attr_w("w:id", "val", id);
+    }
+    if sdt.placeholder.is_some() {
+        xml.start("w:placeholder");
+        xml.end();
+    }
+    if sdt.showing_placeholder {
+        xml.empty("w:showingPlcHdr");
+    }
+    xml.end(); // sdtPr
+    xml.start("w:sdtContent");
+    content(xml);
+    xml.end();
     xml.end();
 }
 

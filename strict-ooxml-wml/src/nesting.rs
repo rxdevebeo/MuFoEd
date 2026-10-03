@@ -268,8 +268,10 @@ mod tests {
                 cells: vec![TableCell {
                     props: CellProperties::default(),
                     blocks,
+                    sdt: None,
                     location: location(),
                 }],
+                sdt: None,
                 location: location(),
             }],
             location: location(),

@@ -1088,8 +1088,10 @@ mod tests {
                 cells: vec![TableCell {
                     props: Default::default(),
                     blocks: vec![chart(&["rId4"])],
+                    sdt: None,
                     location: Default::default(),
                 }],
+                sdt: None,
                 location: Default::default(),
             }],
             location: Default::default(),

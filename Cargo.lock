@@ -2350,6 +2350,7 @@ dependencies = [
  "roxmltree 0.20.0",
  "strict-ooxml-core",
  "strict-ooxml-render-svg",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
 ]
 

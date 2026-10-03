@@ -54,6 +54,11 @@ pub struct TableRow {
     pub props: RowProperties,
     /// Cells.
     pub cells: Vec<TableCell>,
+    /// Properties of a row-level `w:sdt` that wrapped this row (AUD-41).
+    ///
+    /// The parser unwraps `sdtContent/w:tr` into ordinary rows and keeps the
+    /// control's `sdtPr` here so the writer can restore the wrapper.
+    pub sdt: Option<SdtProperties>,
     /// Source location.
     pub location: SourceLocation,
 }
@@ -65,7 +70,29 @@ pub struct TableCell {
     pub props: CellProperties,
     /// Block content (paragraphs, nested tables).
     pub blocks: Vec<Block>,
+    /// Properties of a cell-level `w:sdt` that wrapped this cell (AUD-41).
+    pub sdt: Option<SdtProperties>,
     /// Source location.
+    pub location: SourceLocation,
+}
+
+/// Identity fields of a structured document tag (`w:sdtPr`).
+///
+/// Shared by block/inline [`SdtContainer`] and by row/cell-level unwrapping
+/// (AUD-41), where the control is not itself a block in the model.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdtProperties {
+    /// Tag value (`w:tag`).
+    pub tag: Option<Arc<str>>,
+    /// Friendly alias (`w:alias`).
+    pub alias: Option<Arc<str>>,
+    /// Numeric id (`w:id`).
+    pub id: Option<Arc<str>>,
+    /// Placeholder text (`w:placeholder`).
+    pub placeholder: Option<Arc<str>>,
+    /// Whether the control shows an empty placeholder.
+    pub showing_placeholder: bool,
+    /// Source location of the `w:sdt` element.
     pub location: SourceLocation,
 }
 
@@ -88,6 +115,21 @@ pub struct SdtContainer {
     pub inlines: Vec<Inline>,
     /// Source location.
     pub location: SourceLocation,
+}
+
+impl SdtContainer {
+    /// Returns the identity fields of this control as [`SdtProperties`].
+    #[must_use]
+    pub fn properties(&self) -> SdtProperties {
+        SdtProperties {
+            tag: self.tag.clone(),
+            alias: self.alias.clone(),
+            id: self.id.clone(),
+            placeholder: self.placeholder.clone(),
+            showing_placeholder: self.showing_placeholder,
+            location: self.location.clone(),
+        }
+    }
 }
 
 /// An unknown block-level element preserved for the support report.

@@ -435,6 +435,7 @@ pub(crate) fn table_of(planned: &PlannedTable, paragraphs: Vec<Vec<Vec<Paragraph
                     ..CellProperties::default()
                 },
                 blocks: blocks.into_iter().map(Block::Paragraph).collect(),
+                sdt: None,
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             });
         }
@@ -450,6 +451,7 @@ pub(crate) fn table_of(planned: &PlannedTable, paragraphs: Vec<Vec<Vec<Paragraph
                 ..RowProperties::default()
             },
             cells,
+            sdt: None,
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         });
     }

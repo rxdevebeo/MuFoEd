@@ -87,6 +87,7 @@ fn cell(value: &str) -> TableCell {
         } else {
             vec![Block::Paragraph(paragraph(value))]
         },
+        sdt: None,
         location: location(),
     }
 }
@@ -98,6 +99,7 @@ fn merged_across(value: &str, span: u16) -> TableCell {
             ..CellProperties::default()
         },
         blocks: vec![Block::Paragraph(paragraph(value))],
+        sdt: None,
         location: location(),
     }
 }
@@ -113,6 +115,7 @@ fn merged_down(state: VerticalMerge, value: &str) -> TableCell {
         } else {
             vec![Block::Paragraph(paragraph(value))]
         },
+        sdt: None,
         location: location(),
     }
 }
@@ -121,6 +124,7 @@ fn row(cells: Vec<TableCell>) -> TableRow {
     TableRow {
         props: RowProperties::default(),
         cells,
+        sdt: None,
         location: location(),
     }
 }
