@@ -405,6 +405,136 @@ fn a_written_package_opens_under_the_strict_policy() {
     }
 }
 
+/// AUD-66: invalid XML characters are stripped and reported; output still parses.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn invalid_xml_chars_are_reported_and_output_parses() {
+    use strict_ooxml_wml::model::block::{
+        Block, GridCol, Paragraph, SdtProperties, Table, TableCell, TableRow,
+    };
+    use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
+    use strict_ooxml_wml::model::styles::{Style, StyleTable};
+    use strict_ooxml_wml::model::values::{Space, StyleType};
+
+    let unknown = strict_ooxml_core::error::SourceLocation::unknown();
+    let mut document = Document {
+        body: Default::default(),
+        styles: StyleTable::default(),
+        numbering: Default::default(),
+        footnotes: Default::default(),
+        endnotes: Default::default(),
+        settings: Default::default(),
+        font_table: None,
+        theme: None,
+        sections: Vec::new(),
+        headers_footers: Vec::new(),
+        media: Default::default(),
+        support: Default::default(),
+        source: strict_ooxml_wml::model::document::DocumentSource {
+            main_document: PartId::new("/word/document.xml"),
+            styles: Some(PartId::new("/word/styles.xml")),
+            numbering: None,
+            settings: None,
+            footnotes: None,
+            endnotes: None,
+            theme: None,
+            font_table: None,
+        },
+    };
+    document.body.blocks.push(Block::Paragraph(Paragraph {
+        props: Default::default(),
+        inlines: vec![Inline::Run(Run {
+            props: Default::default(),
+            content: vec![RunContent::Text(TextNode {
+                text: format!("ok{}end", '\u{1}'),
+                space: Space::Default,
+            })],
+            revision: None,
+            location: unknown.clone(),
+        })],
+        rsids: Default::default(),
+        revision: None,
+        para_id: None,
+        text_id: None,
+        location: unknown.clone(),
+    }));
+    // Row-level sdt carries `w:alias` (AUD-41 writer path).
+    document.body.blocks.push(Block::Table(Table {
+        props: Default::default(),
+        grid: vec![GridCol {
+            width: Some(strict_ooxml_wml::model::values::Twips(1440)),
+        }],
+        rows: vec![TableRow {
+            props: Default::default(),
+            cells: vec![TableCell {
+                props: Default::default(),
+                blocks: vec![Block::Paragraph(Paragraph {
+                    props: Default::default(),
+                    inlines: Vec::new(),
+                    rsids: Default::default(),
+                    revision: None,
+                    para_id: None,
+                    text_id: None,
+                    location: unknown.clone(),
+                })],
+                sdt: None,
+                location: unknown.clone(),
+            }],
+            sdt: Some(SdtProperties {
+                tag: None,
+                alias: Some(format!("a{}lias", '\u{1}').into()),
+                id: None,
+                placeholder: None,
+                showing_placeholder: false,
+                location: unknown.clone(),
+            }),
+            location: unknown.clone(),
+        }],
+        location: unknown.clone(),
+    }));
+    document.styles.insert(Style {
+        id: strict_ooxml_wml::model::StyleId::new(format!("S{}tyle", '\u{1}')),
+        style_type: StyleType::Paragraph,
+        name: Some(format!("Na{}me", '\u{1}').into()),
+        based_on: None,
+        next: None,
+        link: None,
+        is_default: false,
+        semi_hidden: false,
+        hidden: false,
+        q_format: false,
+        locked: false,
+        unhide_when_used: false,
+        ui_priority: None,
+        table: Default::default(),
+        paragraph: Default::default(),
+        run: Default::default(),
+        based_on_chain: Vec::new(),
+        location: unknown,
+    });
+
+    let written = write_package(&document, Some(&NoSource), &WriteOptions::default())
+        .expect("write despite invalid chars");
+    assert!(
+        written
+            .report
+            .losses()
+            .iter()
+            .any(|loss| loss.feature_id == "W.invalid-xml-char"),
+        "expected W.invalid-xml-char, got {}",
+        written.report
+    );
+    let reopened = open(&written.bytes).expect("reopen");
+    for part in ["/word/document.xml", "/word/styles.xml"] {
+        let xml = String::from_utf8(reopened.read_part(&PartId::new(part)).expect("part"))
+            .expect("utf-8");
+        assert!(!xml.contains('\u{1}'), "{part} still carries U+0001: {xml}");
+        roxmltree::Document::parse(&xml).unwrap_or_else(|error| {
+            panic!("{part} must parse after stripping invalid chars: {error}\n{xml}")
+        });
+    }
+}
+
 /// AUD-64: `m:t` with edge spaces keeps `xml:space="preserve"` through round-trip.
 #[test]
 fn math_text_preserves_spaces_round_trip() {
