@@ -147,6 +147,45 @@ pub trait Source {
         Vec::new()
     }
 
+    /// Parts reachable from `from` by following internal relationships
+    /// (AUD-25), not including `from` itself.
+    ///
+    /// The default walks [`Source::relationships`] without a depth bound (for
+    /// test doubles that are not a real package). The
+    /// [`Package`](strict_ooxml_core::opc::Package) impl enforces
+    /// `max_rel_depth`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a
+    /// bound is exceeded.
+    fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
+        use std::collections::{HashSet, VecDeque};
+        let mut visited = HashSet::new();
+        let mut out = Vec::new();
+        let mut queue = VecDeque::new();
+        visited.insert(from.clone());
+        queue.push_back(from.clone());
+        while let Some(part) = queue.pop_front() {
+            for info in self.relationships(&part) {
+                if info.external {
+                    continue;
+                }
+                let Ok(Some(target)) =
+                    strict_ooxml_core::opc::path::resolve_target(&part, &info.target, false)
+                else {
+                    continue;
+                };
+                if !visited.insert(target.clone()) {
+                    continue;
+                }
+                out.push(target.clone());
+                queue.push_back(target);
+            }
+        }
+        Ok(out)
+    }
+
     /// The relationship ids `from` declares, in order.
     ///
     /// # Errors
@@ -189,6 +228,10 @@ impl Source for strict_ooxml_core::opc::Package {
         strict_ooxml_core::opc::Package::parts(self)
             .map(|part| part.id.clone())
             .collect()
+    }
+
+    fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
+        strict_ooxml_core::opc::Package::reachable_parts(self, from)
     }
 }
 

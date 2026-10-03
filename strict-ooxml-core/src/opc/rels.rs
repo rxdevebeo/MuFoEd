@@ -441,19 +441,34 @@ impl RelationshipGraph {
 
 /// Derives the source part that owns a `.rels` part.
 ///
+/// Returns [`None`] when the path is not of the form
+/// `<dir>/_rels/<name>.rels` (AUD-25): a `.rels` entry outside `_rels/` is an
+/// ordinary part, not a relationship part, and must not be attributed to the
+/// package root (that attribution let a hostile `/aaa.rels` replace the real
+/// `_rels/.rels` officeDocument target).
+///
 /// `/word/_rels/document.xml.rels` → `/word/document.xml`;
 /// `/_rels/.rels` → `/` (the package root).
 #[must_use]
-pub fn source_part_for_rels(rels_part: &PartId) -> PartId {
+pub fn source_part_for_rels(rels_part: &PartId) -> Option<PartId> {
     let path = rels_part.as_str();
-    if let Some((dir, file)) = path.rsplit_once("/_rels/") {
-        let source_name = file.strip_suffix(".rels").unwrap_or(file);
-        if dir.is_empty() {
-            return PartId::new(format!("/{source_name}").as_str());
-        }
-        return PartId::new(format!("{dir}/{source_name}").as_str());
+    let (dir, file) = path.rsplit_once("/_rels/")?;
+    // The leaf must be exactly `<name>.rels` — no further `/`, and the
+    // `.rels` suffix is mandatory (not optional via `unwrap_or`).
+    if file.contains('/') {
+        return None;
     }
-    PartId::new("/")
+    let source_name = file.strip_suffix(".rels")?;
+    if dir.is_empty() {
+        // `/_rels/.rels` → source_name == "" → package root `/`.
+        // `/_rels/foo.rels` → `/foo`.
+        return Some(if source_name.is_empty() {
+            PartId::new("/")
+        } else {
+            PartId::new(format!("/{source_name}").as_str())
+        });
+    }
+    Some(PartId::new(format!("{dir}/{source_name}").as_str()))
 }
 
 /// Parses one `.rels` document into relationships resolved against `source`.
@@ -706,13 +721,21 @@ mod tests {
     #[test]
     fn derives_source_part() {
         assert_eq!(
-            source_part_for_rels(&PartId::new("/word/_rels/document.xml.rels")).as_str(),
+            source_part_for_rels(&PartId::new("/word/_rels/document.xml.rels"))
+                .unwrap()
+                .as_str(),
             "/word/document.xml"
         );
         assert_eq!(
-            source_part_for_rels(&PartId::new("/_rels/.rels")).as_str(),
+            source_part_for_rels(&PartId::new("/_rels/.rels"))
+                .unwrap()
+                .as_str(),
             "/"
         );
+        // AUD-25: anything not under `_rels/` is not a relationship part.
+        assert!(source_part_for_rels(&PartId::new("/aaa.rels")).is_none());
+        assert!(source_part_for_rels(&PartId::new("/word/document.xml.rels")).is_none());
+        assert!(source_part_for_rels(&PartId::new("/word/_rels/nested/x.rels")).is_none());
     }
 
     #[test]

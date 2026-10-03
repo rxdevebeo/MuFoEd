@@ -463,3 +463,123 @@ fn conformance_survives_root_beyond_prefix() {
     let package = open(bytes, ConformancePolicy::StrictOnly).unwrap();
     assert_eq!(package.conformance(), Conformance::Strict);
 }
+
+/// AUD-25: a `.rels` entry outside `_rels/` must not be attributed to the
+/// package root — even when it appears first in the ZIP and names an
+/// `officeDocument` target. The real `_rels/.rels` still wins.
+#[test]
+fn a_rels_entry_outside_rels_dir_does_not_replace_the_package_root() {
+    let doc = document(STRICT_W_NS);
+    let evil_rels = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="{STRICT_DOC_REL}" Target="evil.xml"/>
+</Relationships>"#
+    );
+    let bytes = build_zip(&[
+        ("aaa.rels", evil_rels.as_bytes(), false),
+        ("evil.xml", b"<w:document xmlns:w=\"http://evil.example/\"/>", false),
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
+        ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+    ]);
+    let package = open(bytes, ConformancePolicy::StrictOnly).unwrap();
+    assert_eq!(
+        package.main_document_part().unwrap().as_str(),
+        "/word/document.xml"
+    );
+    // The stray entry is still a part of the package — just not a relationship
+    // part attributed to `/`.
+    assert!(package.part(&PartId::new("/aaa.rels")).is_some());
+}
+
+/// AUD-25: `Package::reachable_parts` enforces `max_rel_depth`.
+#[test]
+fn relationship_depth_limit_is_enforced() {
+    let doc = document(STRICT_W_NS);
+    let mut entries: Vec<(String, Vec<u8>, bool)> = vec![
+        (
+            "[Content_Types].xml".to_owned(),
+            CONTENT_TYPES.as_bytes().to_vec(),
+            false,
+        ),
+        (
+            "_rels/.rels".to_owned(),
+            root_rels(STRICT_DOC_REL).into_bytes(),
+            false,
+        ),
+        (
+            "word/document.xml".to_owned(),
+            doc.into_bytes(),
+            false,
+        ),
+    ];
+    // Chain p00 → p01 → … → p33 under `/word/`. Depth 33 exceeds the default
+    // bound of 32 when walking from p00.
+    let chain_rel = |target: &str| {
+        format!(
+            r#"<?xml version="1.0"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="{target}"/>
+</Relationships>"#
+        )
+        .into_bytes()
+    };
+    for n in 0..=33 {
+        let name = format!("word/p{n:02}.xml");
+        entries.push((name, format!("<p{n}/>").into_bytes(), false));
+        if n < 33 {
+            let rels_name = format!("word/_rels/p{n:02}.xml.rels");
+            let target = format!("p{:02}.xml", n + 1);
+            entries.push((rels_name, chain_rel(&target), false));
+        }
+    }
+    let owned: Vec<(&str, &[u8], bool)> = entries
+        .iter()
+        .map(|(n, b, d)| (n.as_str(), b.as_slice(), *d))
+        .collect();
+    let bytes = build_zip(&owned);
+    let package = open(bytes, ConformancePolicy::StrictOnly).unwrap();
+    let err = package
+        .reachable_parts(&PartId::new("/word/p00.xml"))
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            StrictError::LimitExceeded {
+                kind: strict_ooxml_core::error::LimitKind::RelationshipDepth,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+}
+
+/// AUD-25: a cycle in the relationship graph terminates the walk.
+#[test]
+fn relationship_cycle_terminates() {
+    let doc = document(STRICT_W_NS);
+    let a_rels = br#"<?xml version="1.0"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="b.xml"/>
+</Relationships>"#;
+    let b_rels = br#"<?xml version="1.0"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="a.xml"/>
+</Relationships>"#;
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
+        ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+        ("word/a.xml", b"<a/>", false),
+        ("word/_rels/a.xml.rels", a_rels, false),
+        ("word/b.xml", b"<b/>", false),
+        ("word/_rels/b.xml.rels", b_rels, false),
+    ]);
+    let package = open(bytes, ConformancePolicy::StrictOnly).unwrap();
+    let reached = package
+        .reachable_parts(&PartId::new("/word/a.xml"))
+        .expect("cycle must not error");
+    assert_eq!(reached.len(), 1);
+    assert_eq!(reached[0].as_str(), "/word/b.xml");
+}

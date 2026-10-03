@@ -12,7 +12,7 @@ pub mod rels;
 pub mod zip;
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io::{self, Read};
 use std::path::Path;
@@ -200,21 +200,27 @@ impl Package {
         let mut rels = RelationshipGraph::new();
         let mut raw_relationship_types: Vec<String> = Vec::new();
         for entry in zip.entries() {
-            if entry.id.as_str().ends_with(".rels") {
-                let raw_bytes = read_part(&zip, &entry.id, &options.limits)?;
-                let source = source_part_for_rels(&entry.id);
-                raw_relationship_types.extend(
-                    parse_relationships(raw_bytes.clone(), &source, &options.limits)?
-                        .into_iter()
-                        .map(|rel| rel.raw_type),
-                );
-                let (bytes, touched) = apply_normalizer(normalizer, &entry.id, raw_bytes)?;
-                was_normalized |= touched;
-                rels.add(
-                    source.clone(),
-                    parse_relationships(bytes, &source, &options.limits)?,
-                );
+            if !entry.id.as_str().ends_with(".rels") {
+                continue;
             }
+            // AUD-25: only `<dir>/_rels/<name>.rels` is a relationship part.
+            // A stray `*.rels` elsewhere stays an ordinary part (and is not
+            // attributed to the package root).
+            let Some(source) = source_part_for_rels(&entry.id) else {
+                continue;
+            };
+            let raw_bytes = read_part(&zip, &entry.id, &options.limits)?;
+            raw_relationship_types.extend(
+                parse_relationships(raw_bytes.clone(), &source, &options.limits)?
+                    .into_iter()
+                    .map(|rel| rel.raw_type),
+            );
+            let (bytes, touched) = apply_normalizer(normalizer, &entry.id, raw_bytes)?;
+            was_normalized |= touched;
+            rels.add(
+                source.clone(),
+                parse_relationships(bytes, &source, &options.limits)?,
+            );
         }
         // AUD-24: every resolved target so far carries whatever casing its
         // own `Target` attribute used; rewrite them all to the spelling the
@@ -292,6 +298,47 @@ impl Package {
     /// Returns [`StrictError::UnresolvedRelationship`] if the id is unknown.
     pub fn resolve_relationship(&self, from: &PartId, rel_id: &str) -> Result<&Relationship> {
         self.rels.resolve(from, rel_id)
+    }
+
+    /// Parts reachable from `from` by following internal relationships
+    /// (AUD-25), not including `from` itself.
+    ///
+    /// Breadth-first, cycle-safe (a visited set). Edge depth is bounded by
+    /// [`ResourceLimits::max_rel_depth`](crate::limits::ResourceLimits::max_rel_depth);
+    /// a hop that would land past the bound returns
+    /// [`StrictError::LimitExceeded`] with [`LimitKind::RelationshipDepth`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StrictError::LimitExceeded`] when the relationship graph is
+    /// deeper than the configured bound.
+    pub fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
+        let mut visited = HashSet::new();
+        let mut out = Vec::new();
+        let mut queue = VecDeque::new();
+        visited.insert(from.clone());
+        queue.push_back((from.clone(), 0u32));
+        while let Some((part, depth)) = queue.pop_front() {
+            for rel in self.relationships(&part) {
+                let Some(target) = rel.resolved.as_ref() else {
+                    continue;
+                };
+                if !visited.insert(target.clone()) {
+                    continue;
+                }
+                let next = depth.saturating_add(1);
+                if next > self.limits.max_rel_depth {
+                    return Err(StrictError::LimitExceeded {
+                        kind: LimitKind::RelationshipDepth,
+                        limit: u64::from(self.limits.max_rel_depth),
+                        actual: u64::from(next),
+                    });
+                }
+                out.push(target.clone());
+                queue.push_back((target.clone(), next));
+            }
+        }
+        Ok(out)
     }
 
     /// Returns the package's T0 (pre-normalization) conformance.

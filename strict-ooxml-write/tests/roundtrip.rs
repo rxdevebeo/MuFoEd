@@ -257,7 +257,10 @@ fn every_declared_relationship_resolves() {
             if !part.id.as_str().ends_with(".rels") {
                 continue;
             }
-            let source = strict_ooxml_core::opc::rels::source_part_for_rels(&part.id);
+            let Some(source) = strict_ooxml_core::opc::rels::source_part_for_rels(&part.id) else {
+                // AUD-25: a `.rels` entry outside `_rels/` is an ordinary part.
+                continue;
+            };
             let bytes = reopened.read_part(&part.id).expect("rels bytes");
             let relationships = parse_relationships(bytes, &source, &ResourceLimits::default())
                 .unwrap_or_else(|error| panic!("{name}: {} does not parse: {error}", part.id));

@@ -534,6 +534,13 @@ impl Source for HidingSource<'_> {
     fn content_type(&self, part: &PartId) -> Option<String> {
         Source::content_type(self.inner, part)
     }
+
+    fn reachable_parts(
+        &self,
+        from: &PartId,
+    ) -> strict_ooxml_core::error::Result<Vec<PartId>> {
+        Source::reachable_parts(self.inner, from)
+    }
 }
 
 /// The content types of the copied parts are declared, because a package whose

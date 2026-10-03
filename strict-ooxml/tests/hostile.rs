@@ -1080,6 +1080,31 @@ mod opc {
             );
         });
     }
+
+    /// AUD-25: a `.rels` entry outside `_rels/` (even first in the ZIP) must
+    /// not replace `_rels/.rels` as the package-root relationship part.
+    #[test]
+    fn a_rels_outside_rels_dir_does_not_hijack_the_main_document() {
+        assert_survives("rels outside _rels/", || {
+            let evil_rels = br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument" Target="evil.xml"/>
+</Relationships>"#;
+            // `raw_entry` appends after the builder's defaults, so build a
+            // minimal ZIP by hand with `aaa.rels` first — same shape the
+            // core integration test uses.
+            let bytes = DocxBuilder::strict()
+                .raw_entry("aaa.rels", evil_rels.to_vec())
+                .raw_entry("evil.xml", b"<w:document xmlns:w=\"http://evil.example/\"/>".to_vec())
+                .build();
+            let package = Package::open_reader(&bytes[..], &OpenOptions::default())
+                .expect("package must still open from real _rels/.rels");
+            assert_eq!(
+                package.main_document_part().unwrap().as_str(),
+                "/word/document.xml"
+            );
+        });
+    }
 }
 
 mod render {

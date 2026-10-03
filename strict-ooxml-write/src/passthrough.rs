@@ -216,16 +216,41 @@ pub(crate) fn plan(
 
     // The parts themselves, transitively: a chart reaches its own `.rels`, which
     // reaches a workbook, and stopping at the first hop would produce a package
-    // with a chart that cannot open its data.
-    let mut queue: Vec<PartId> = reached
+    // with a chart that cannot open its data. AUD-25: the walk is
+    // `Source::reachable_parts` (Package enforces `max_rel_depth`).
+    let seeds: Vec<PartId> = reached
         .iter()
         .filter_map(|info| resolve(main, &info.target))
         .collect();
+    let mut queue: Vec<PartId> = Vec::new();
+    let mut seen_seed: BTreeSet<String> = BTreeSet::new();
+    for seed in seeds {
+        if !seen_seed.insert(seed.as_str().to_owned()) {
+            continue;
+        }
+        queue.push(seed.clone());
+        match source.reachable_parts(&seed) {
+            Ok(parts) => {
+                for part in parts {
+                    if seen_seed.insert(part.as_str().to_owned()) {
+                        queue.push(part);
+                    }
+                }
+            }
+            Err(error) => {
+                ctx.report_unsupported(
+                    "W7.passthrough",
+                    &format!(
+                        "relationship graph from {} could not be walked: {error}",
+                        seed.as_str()
+                    ),
+                    &SourceLocation::unknown(),
+                );
+            }
+        }
+    }
     let mut copied: BTreeSet<String> = BTreeSet::new();
-    let mut index = 0;
-    while index < queue.len() {
-        let part = queue[index].clone();
-        index += 1;
+    for part in queue {
         if !copied.insert(part.as_str().to_owned()) {
             continue;
         }
@@ -268,14 +293,6 @@ pub(crate) fn plan(
                     bytes: strict_rels_namespace(&bytes),
                     content_type: None,
                 });
-            }
-        }
-        for info in source.relationships(&part) {
-            if info.external {
-                continue;
-            }
-            if let Some(target) = resolve(&part, &info.target) {
-                queue.push(target);
             }
         }
     }
