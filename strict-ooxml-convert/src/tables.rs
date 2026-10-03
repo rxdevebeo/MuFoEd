@@ -1573,14 +1573,14 @@ mod tests {
         let run = || {
             let mut report = ConversionReport::new(Mode::Semantic);
             let plan = plan(
-            &page,
-            1,
-            &lines,
-            &TableRules::default(),
-            4000,
-            10_000,
-            &mut report,
-        );
+                &page,
+                1,
+                &lines,
+                &TableRules::default(),
+                4000,
+                10_000,
+                &mut report,
+            );
             (plan, report.to_string())
         };
         let (first, first_report) = run();

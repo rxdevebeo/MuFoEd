@@ -443,7 +443,11 @@ mod tests {
     #[test]
     fn an_ihdr_that_claims_gigabytes_is_refused_before_allocation() {
         let bomb = ihdr_bomb(65_535, 65_535);
-        assert!(bomb.len() < 80, "hostile PNG stays tiny: {} bytes", bomb.len());
+        assert!(
+            bomb.len() < 80,
+            "hostile PNG stays tiny: {} bytes",
+            bomb.len()
+        );
         // Default max_single_uncompressed is 128 MiB; 65535²×3 is ~12 GiB.
         let reject = encode("/word/media/bomb.png", &bomb).expect_err("ihdr");
         assert_eq!(reject.kind, RejectKind::TooLarge);

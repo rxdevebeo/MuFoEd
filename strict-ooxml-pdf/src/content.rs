@@ -962,8 +962,7 @@ fn interpret_from(
                 };
                 if let Some(bytes) = args.get(string_index).and_then(string_of) {
                     show_text(
-                        &bytes, &mut text, &current, resources, geometry, limits, budget,
-                        &mut out,
+                        &bytes, &mut text, &current, resources, geometry, limits, budget, &mut out,
                     );
                 }
             }

@@ -401,8 +401,7 @@ mod budget {
                 b"BT /F0 12 Tf (A) Tj ET",
                 &format!("<< /Font << {font_entries} >> >>"),
             );
-            let mut document =
-                PdfDocument::open(&pdf.build(), PdfLimits::default()).expect("open");
+            let mut document = PdfDocument::open(&pdf.build(), PdfLimits::default()).expect("open");
             let _ = document.pages().expect("pages");
             let ids: Vec<String> = document
                 .report()

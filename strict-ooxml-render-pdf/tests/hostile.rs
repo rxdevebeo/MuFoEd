@@ -74,15 +74,11 @@ mod image {
             );
             let bytes = DocxBuilder::strict()
                 .body(body)
-                .rel(
-                    "rId1",
-                    "image",
-                    "media/image1.png",
-                )
+                .rel("rId1", "image", "media/image1.png")
                 .part("word/media/image1.png", bomb)
                 .build();
-            let package = Package::open_reader(Cursor::new(bytes), &OpenOptions::default())
-                .expect("open");
+            let package =
+                Package::open_reader(Cursor::new(bytes), &OpenOptions::default()).expect("open");
             let document = parse_document(&package, &ParseOptions::default()).expect("parse");
             let options = RenderOptions::default();
             let pages = place_pages(&document, &options, Some(&package)).expect("place");

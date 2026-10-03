@@ -212,10 +212,7 @@ impl PdfDocument {
     /// the input size or the page count is over budget.
     pub fn open(bytes: &[u8], limits: PdfLimits) -> Result<Self> {
         if bytes.len() > limits.max_input_bytes {
-            return Err(limits.exceeded(
-                crate::error::LimitKind::InputBytes,
-                bytes.len() as u64,
-            ));
+            return Err(limits.exceeded(crate::error::LimitKind::InputBytes, bytes.len() as u64));
         }
         let document =
             lopdf::Document::load_mem(bytes).map_err(|error| PdfError::from_lopdf(&error))?;
@@ -680,13 +677,7 @@ impl<'a> PageResources<'a> {
         limits: PdfLimits,
     ) -> Self {
         Self::load(
-            document,
-            cache,
-            form_cache,
-            font_cache,
-            inherited,
-            limits,
-            None,
+            document, cache, form_cache, font_cache, inherited, limits, None,
         )
     }
 
@@ -878,7 +869,9 @@ impl ResourceProvider for PageResources<'_> {
         let id = *self.forms.get(name)?;
         // Through the document's form cache: a form drawn ten thousand times is
         // inflated once, not once per `Do` (AUD-13).
-        let decoded = self.form_cache.get_or_decode(id, self.document, &self.limits)?;
+        let decoded = self
+            .form_cache
+            .get_or_decode(id, self.document, &self.limits)?;
         // A form with no `/Resources` of its own inherits the invoking page's, so
         // an empty dictionary is treated the same way: a producer that writes
         // `/Resources <<>>` meant "nothing extra", not "nothing at all".
