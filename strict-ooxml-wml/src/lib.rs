@@ -99,3 +99,13 @@ pub const MATH_STRICT_NS: &str = "http://purl.oclc.org/ooxml/officeDocument/math
 
 /// The OMML namespace under the name used by the Stage-5C order (`M_NS`).
 pub const M_NS: &str = MATH_STRICT_NS;
+
+/// Namespaces the WML parser treats as understood for `mc:Choice/@Requires`
+/// (AUD-50, same selection rule as `McePolicy::ProcessChoice`).
+///
+/// Prefixes resolve through in-scope `xmlns` declarations; membership is by URI.
+pub const SUPPORTED_MCE_NAMESPACES: &[&str] = &[
+    MS_WORD_PROCESSING_SHAPE_NS,
+    MS_WORD_PROCESSING_GROUP_NS,
+    MATH_STRICT_NS,
+];

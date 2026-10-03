@@ -151,29 +151,14 @@ pub(crate) fn parse_omath_para(parser: &mut PartParser<'_>) -> Result<MathParagr
             }
         }
 
-        // The schema allows one or more `m:oMath` children; several of them are
-        // flattened into one display formula. A producer that omits it entirely
-        // still yields an (empty) formula, recorded as `Partial`.
-        let expression = if expressions.len() == 1 {
-            expressions.remove(0)
-        } else {
-            if expressions.is_empty() {
-                parser.record(
-                    "m:oMathPara",
-                    SupportStatus::Partial,
-                    Some("display formula without m:oMath".to_owned()),
-                    Some(location.clone()),
-                );
-            }
-            let nodes = expressions
-                .into_iter()
-                .flat_map(|expression| expression.nodes)
-                .collect();
-            MathExpression {
-                nodes,
-                location: location.clone(),
-            }
-        };
+        if expressions.is_empty() {
+            parser.record(
+                "m:oMathPara",
+                SupportStatus::Partial,
+                Some("display formula without m:oMath".to_owned()),
+                Some(location.clone()),
+            );
+        }
         parser.record(
             "m:oMathPara",
             SupportStatus::Supported,
@@ -182,7 +167,7 @@ pub(crate) fn parse_omath_para(parser: &mut PartParser<'_>) -> Result<MathParagr
         );
         Ok(MathParagraph {
             properties,
-            expression,
+            equations: expressions,
             location,
         })
     })
@@ -336,7 +321,7 @@ fn parse_math_node(
             parser.record(
                 &format!("m:{other}"),
                 SupportStatus::Partial,
-                Some("unmodelled OMML construct preserved verbatim".to_owned()),
+                Some("dropped".to_owned()),
                 Some(location.clone()),
             );
             parser.skip_element()?;

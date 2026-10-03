@@ -409,6 +409,8 @@ pub enum Graphic {
 pub struct InlineDrawing {
     /// Drawing extent (`wp:extent`).
     pub extent: Option<Extent>,
+    /// Effect extent (`wp:effectExtent`), AUD-50.
+    pub effect_extent: Option<EffectExtent>,
     /// Non-visual properties (`wp:docPr`).
     pub doc_pr: Option<DocPr>,
     /// `a:graphicData/@uri`.

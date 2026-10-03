@@ -73,7 +73,12 @@ pub fn math_paragraph_to_mathml(paragraph: &MathParagraph) -> Result<String, Mat
         );
     }
     out.push('>');
-    write_nodes(&mut out, &paragraph.expression.nodes)?;
+    for (index, expression) in paragraph.equations.iter().enumerate() {
+        if index > 0 {
+            out.push_str("<mspace linebreak=\"newline\"/>");
+        }
+        write_nodes(&mut out, &expression.nodes)?;
+    }
     out.push_str("</math>");
     Ok(out)
 }
@@ -488,10 +493,10 @@ mod tests {
             properties: Some(MathParagraphProperties {
                 justification: Some(MathJustification::Center),
             }),
-            expression: MathExpression {
+            equations: vec![MathExpression {
                 nodes: vec![run("x")],
                 location: location(),
-            },
+            }],
             location: location(),
         };
         let mathml = math_paragraph_to_mathml(&paragraph).expect("mathml");

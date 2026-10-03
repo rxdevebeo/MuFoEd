@@ -22,7 +22,8 @@ use crate::RELS_STRICT_NS;
 
 use super::dispatch::{body_kind, inline_kind, run_kind, BodyKind, InlineKind, RunKind};
 use super::{
-    attr_in_ns, feature_id_for, is_wml, parse_u32, val_attr, wml_attr, PartParser, W14_NS, XML_NS,
+    attr_in_ns, feature_id_for, is_wml, parse_u32, val_attr, wml_attr, PartParser, MCE_NS, W14_NS,
+    XML_NS,
 };
 
 impl PartParser<'_> {
@@ -74,6 +75,10 @@ impl PartParser<'_> {
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
+                        if is_mce(&name) && name.local() == "AlternateContent" {
+                            parser.parse_mce_alternate_content_blocks(&attrs, &mut blocks)?;
+                            continue;
+                        }
                         if !is_wml(&name) {
                             parser.record_foreign(&name);
                             parser.skip_element()?;
@@ -192,6 +197,9 @@ impl PartParser<'_> {
                             mark_revision = revision;
                         } else if crate::parse::is_math(&name) {
                             parser.parse_math_into(&name, &mut inlines)?;
+                        } else if is_mce(&name) && name.local() == "AlternateContent" {
+                            // AUD-50: before the foreign/`!is_wml` path.
+                            parser.parse_mce_alternate_content_inlines(&attrs, &mut inlines)?;
                         } else if is_wml(&name) {
                             parser.parse_inline_into(&name, &attrs, &mut inlines)?;
                         } else {
@@ -226,6 +234,9 @@ impl PartParser<'_> {
                     XmlEvent::StartElement { name, attrs } => {
                         if crate::parse::is_math(&name) {
                             parser.parse_math_into(&name, &mut out)?;
+                        } else if is_mce(&name) && name.local() == "AlternateContent" {
+                            // AUD-50: resolve before the foreign/`!is_wml` path.
+                            parser.parse_mce_alternate_content_inlines(&attrs, &mut out)?;
                         } else if is_wml(&name) {
                             parser.parse_inline_into(&name, &attrs, &mut out)?;
                         } else {
@@ -328,25 +339,41 @@ impl PartParser<'_> {
                 self.skip_element()?;
             }
             InlineKind::FootnoteRef => {
-                let id = wml_attr(attrs, "id").and_then(parse_u32).unwrap_or(0);
-                out.push(Inline::FootnoteRef(id));
-                self.record(
-                    "w:footnoteReference",
-                    SupportStatus::Supported,
-                    None,
-                    Some(location),
-                );
+                if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
+                    out.push(Inline::FootnoteRef(id));
+                    self.record(
+                        "w:footnoteReference",
+                        SupportStatus::Supported,
+                        None,
+                        Some(location),
+                    );
+                } else {
+                    self.record(
+                        "w:footnoteReference",
+                        SupportStatus::Partial,
+                        Some("footnote reference without a valid w:id was skipped".to_owned()),
+                        Some(location),
+                    );
+                }
                 self.skip_element()?;
             }
             InlineKind::EndnoteRef => {
-                let id = wml_attr(attrs, "id").and_then(parse_u32).unwrap_or(0);
-                out.push(Inline::EndnoteRef(id));
-                self.record(
-                    "w:endnoteReference",
-                    SupportStatus::Supported,
-                    None,
-                    Some(location),
-                );
+                if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
+                    out.push(Inline::EndnoteRef(id));
+                    self.record(
+                        "w:endnoteReference",
+                        SupportStatus::Supported,
+                        None,
+                        Some(location),
+                    );
+                } else {
+                    self.record(
+                        "w:endnoteReference",
+                        SupportStatus::Partial,
+                        Some("endnote reference without a valid w:id was skipped".to_owned()),
+                        Some(location),
+                    );
+                }
                 self.skip_element()?;
             }
             InlineKind::Sdt => out.push(Inline::SdtInline(self.parse_sdt(false)?)),
@@ -414,6 +441,11 @@ impl PartParser<'_> {
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
+                        if is_mce(&name) && name.local() == "AlternateContent" {
+                            // AUD-50: Choice/Fallback before the `!is_wml` skip.
+                            parser.parse_mce_alternate_content_run(&attrs, &mut content)?;
+                            continue;
+                        }
                         if !is_wml(&name) {
                             parser.record_foreign(&name);
                             parser.skip_element()?;
@@ -470,25 +502,47 @@ impl PartParser<'_> {
                                 parser.skip_element()?;
                             }
                             RunKind::FootnoteRef => {
-                                let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
-                                content.push(RunContent::FootnoteRef(id));
-                                parser.record(
-                                    "w:footnoteReference",
-                                    SupportStatus::Supported,
-                                    None,
-                                    Some(parser.location()),
-                                );
+                                if let Some(id) = wml_attr(&attrs, "id").and_then(parse_u32) {
+                                    content.push(RunContent::FootnoteRef(id));
+                                    parser.record(
+                                        "w:footnoteReference",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(parser.location()),
+                                    );
+                                } else {
+                                    parser.record(
+                                        "w:footnoteReference",
+                                        SupportStatus::Partial,
+                                        Some(
+                                            "footnote reference without a valid w:id was skipped"
+                                                .to_owned(),
+                                        ),
+                                        Some(parser.location()),
+                                    );
+                                }
                                 parser.skip_element()?;
                             }
                             RunKind::EndnoteRef => {
-                                let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
-                                content.push(RunContent::EndnoteRef(id));
-                                parser.record(
-                                    "w:endnoteReference",
-                                    SupportStatus::Supported,
-                                    None,
-                                    Some(parser.location()),
-                                );
+                                if let Some(id) = wml_attr(&attrs, "id").and_then(parse_u32) {
+                                    content.push(RunContent::EndnoteRef(id));
+                                    parser.record(
+                                        "w:endnoteReference",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(parser.location()),
+                                    );
+                                } else {
+                                    parser.record(
+                                        "w:endnoteReference",
+                                        SupportStatus::Partial,
+                                        Some(
+                                            "endnote reference without a valid w:id was skipped"
+                                                .to_owned(),
+                                        ),
+                                        Some(parser.location()),
+                                    );
+                                }
                                 parser.skip_element()?;
                             }
                             RunKind::Ptab => {
@@ -915,30 +969,208 @@ impl PartParser<'_> {
         }
     }
 
-    /// Records an unknown element as unsupported (MCE is recorded as ignored).
+    /// Records an unknown element as unsupported.
     ///
     /// Elements that ISO/IEC 29500-1 defines but that provably cannot change
     /// this renderer's output are reclassified by [`harmless_element`] so that
     /// real Word/LibreOffice Strict files are not reported as blocked on a
     /// technicality (`STAGE-5C-REWORK-1` D2). The information is kept: the
     /// feature is still listed, with the reason why it does not apply.
+    ///
+    /// `mc:AlternateContent` is handled by [`Self::parse_mce_alternate_content_inlines`]
+    /// / [`Self::parse_mce_alternate_content_run`] (AUD-50) before this path.
     pub(crate) fn record_foreign(&mut self, name: &QName) {
         let feature = feature_id_for(name);
-        let is_mce = name
-            .ns
-            .as_ref()
-            .is_some_and(|ns| ns.as_str() == super::MCE_NS);
-        let (status, message) = if is_mce {
-            (
-                SupportStatus::Ignored,
-                Some("markup compatibility processing is Stage 6".to_owned()),
-            )
-        } else if let Some((status, reason)) = harmless_element(name) {
+        let (status, message) = if let Some((status, reason)) = harmless_element(name) {
             (status, Some(reason.to_owned()))
         } else {
             (SupportStatus::Unsupported, None)
         };
         self.record(&feature, status, message, Some(self.location()));
+    }
+
+    /// Resolves `mc:AlternateContent` into body/block content (AUD-50).
+    fn parse_mce_alternate_content_blocks(
+        &mut self,
+        attrs: &[Attr],
+        blocks: &mut Vec<Block>,
+    ) -> Result<()> {
+        self.parse_mce_alternate_content(attrs, |parser, _branch_attrs| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_mce(&name) && name.local() == "AlternateContent" {
+                            parser.parse_mce_alternate_content_blocks(&attrs, blocks)?;
+                        } else if is_wml(&name) {
+                            parser.parse_block_element_into(&name, &attrs, blocks)?;
+                        } else {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of mc:Choice block content"))
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Resolves `mc:AlternateContent` into paragraph inlines (AUD-50).
+    fn parse_mce_alternate_content_inlines(
+        &mut self,
+        attrs: &[Attr],
+        out: &mut Vec<Inline>,
+    ) -> Result<()> {
+        self.parse_mce_alternate_content(attrs, |parser, branch_attrs| {
+            let mut nested = parser.parse_inline_children_flat()?;
+            let _ = branch_attrs;
+            out.append(&mut nested);
+            Ok(())
+        })
+    }
+
+    /// Resolves `mc:AlternateContent` into run content (AUD-50).
+    fn parse_mce_alternate_content_run(
+        &mut self,
+        attrs: &[Attr],
+        content: &mut Vec<RunContent>,
+    ) -> Result<()> {
+        self.parse_mce_alternate_content(attrs, |parser, _branch_attrs| {
+            // Chosen branch may contain `w:drawing` / `w:t` / nested math, etc.
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) {
+                            match run_kind(name.local()) {
+                                RunKind::Drawing => {
+                                    content.push(RunContent::Drawing(parser.parse_drawing()?));
+                                }
+                                RunKind::Text | RunKind::DeletedText => {
+                                    content
+                                        .push(RunContent::Text(parser.parse_text_element(&attrs)?));
+                                }
+                                _ => {
+                                    parser.skip_element()?;
+                                }
+                            }
+                        } else if crate::parse::is_math(&name) {
+                            // Math inside a run-level Choice is uncommon; skip with a record.
+                            parser.record(
+                                &feature_id_for(&name),
+                                SupportStatus::Partial,
+                                Some("math inside mc:Choice run branch".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of mc:Choice content"))
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Shared `mc:AlternateContent` walker: ProcessChoice against
+    /// [`crate::SUPPORTED_MCE_NAMESPACES`].
+    fn parse_mce_alternate_content(
+        &mut self,
+        attrs: &[Attr],
+        mut take_branch: impl FnMut(&mut PartParser<'_>, &[Attr]) -> Result<()>,
+    ) -> Result<()> {
+        let location = self.location();
+        let mut xmlns = collect_xmlns(attrs);
+        self.record(
+            "mc:AlternateContent",
+            SupportStatus::Supported,
+            Some("resolved per ProcessChoice".to_owned()),
+            Some(location),
+        );
+        self.nested(|parser| {
+            let mut chosen = false;
+            let mut fallback_attrs: Option<Vec<Attr>> = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_mce(&name) {
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "Choice" => {
+                                merge_xmlns(&mut xmlns, &attrs);
+                                let requires = attrs
+                                    .iter()
+                                    .find(|attr| attr.name.local() == "Requires")
+                                    .map_or("", |attr| attr.value.as_str());
+                                if !chosen && mce_requires_understood(requires, &xmlns) {
+                                    chosen = true;
+                                    take_branch(parser, &attrs)?;
+                                } else {
+                                    parser.skip_element()?;
+                                }
+                            }
+                            "Fallback" => {
+                                if chosen {
+                                    parser.skip_element()?;
+                                } else {
+                                    // Defer: we may still see a later Choice (schema order is
+                                    // Choice* Fallback?, so Fallback is last — take it now).
+                                    let _ = fallback_attrs.replace(attrs.clone());
+                                    take_branch(parser, &attrs)?;
+                                    chosen = true;
+                                }
+                            }
+                            _ => parser.skip_element()?,
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of mc:AlternateContent"))
+                    }
+                }
+            }
+            let _ = fallback_attrs;
+            Ok(())
+        })
+    }
+
+    /// Like [`Self::parse_inline_children`] but for a branch that is already open.
+    fn parse_inline_children_flat(&mut self) -> Result<Vec<Inline>> {
+        let mut out = Vec::new();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if crate::parse::is_math(&name) {
+                        self.parse_math_into(&name, &mut out)?;
+                    } else if is_mce(&name) && name.local() == "AlternateContent" {
+                        self.parse_mce_alternate_content_inlines(&attrs, &mut out)?;
+                    } else if is_wml(&name) {
+                        self.parse_inline_into(&name, &attrs, &mut out)?;
+                    } else {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => {
+                    return Err(self.invalid("unexpected end of mc:Choice inline content"))
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Captures attributes as interned name/value pairs.
@@ -950,6 +1182,55 @@ impl PartParser<'_> {
                 (self.intern(&name), self.intern(&attr.value))
             })
             .collect()
+    }
+}
+
+fn is_mce(name: &QName) -> bool {
+    name.ns.as_ref().is_some_and(|ns| ns.as_str() == MCE_NS)
+}
+
+fn collect_xmlns(attrs: &[Attr]) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    merge_xmlns(&mut map, attrs);
+    map
+}
+
+fn merge_xmlns(map: &mut std::collections::HashMap<String, String>, attrs: &[Attr]) {
+    for attr in attrs {
+        let local = attr.name.local();
+        if local == "xmlns" {
+            // default xmlns — unused for Requires prefixes
+            continue;
+        }
+        if attr.name.prefix.as_deref() == Some("xmlns") {
+            map.insert(local.to_owned(), attr.value.clone());
+        }
+    }
+}
+
+fn mce_requires_understood(
+    requires: &str,
+    xmlns: &std::collections::HashMap<String, String>,
+) -> bool {
+    let prefixes: Vec<&str> = requires.split_ascii_whitespace().collect();
+    if prefixes.is_empty() {
+        return false;
+    }
+    prefixes.iter().all(|prefix| {
+        let uri = xmlns
+            .get(*prefix)
+            .map(String::as_str)
+            .or_else(|| known_mce_prefix_uri(prefix));
+        uri.is_some_and(|uri| crate::SUPPORTED_MCE_NAMESPACES.contains(&uri))
+    })
+}
+
+fn known_mce_prefix_uri(prefix: &str) -> Option<&'static str> {
+    match prefix {
+        "wps" => Some(crate::MS_WORD_PROCESSING_SHAPE_NS),
+        "wpg" => Some(crate::MS_WORD_PROCESSING_GROUP_NS),
+        "m" => Some(crate::MATH_STRICT_NS),
+        _ => None,
     }
 }
 

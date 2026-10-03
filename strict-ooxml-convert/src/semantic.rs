@@ -762,6 +762,7 @@ fn image_paragraph(
         inlines: vec![Inline::Drawing(Drawing {
             kind: DrawingKind::Inline(InlineDrawing {
                 extent: Some(extent),
+                effect_extent: None,
                 doc_pr: Some(strict_ooxml_wml::model::drawing::DocPr {
                     id: None,
                     name: Some(Arc::from("Picture")),

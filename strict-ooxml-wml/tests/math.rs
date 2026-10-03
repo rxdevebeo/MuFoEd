@@ -78,7 +78,29 @@ fn a_display_formula_carries_its_justification() {
             .and_then(|properties| properties.justification),
         Some(MathJustification::CenterGroup)
     );
-    assert_eq!(display.expression.text(), "x");
+    assert_eq!(display.expression().expect("equation").text(), "x");
+}
+
+/// AUD-50: several `m:oMath` children stay separate equations.
+#[test]
+fn omath_para_keeps_multiple_equations() {
+    let document = parse_body(
+        "<m:oMathPara>\
+<m:oMath><m:r><m:t>a</m:t></m:r></m:oMath>\
+<m:oMath><m:r><m:t>b</m:t></m:r></m:oMath>\
+</m:oMathPara>",
+    );
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("expected a paragraph");
+    };
+    let display = paragraph
+        .inlines
+        .iter()
+        .find_map(Inline::as_math_paragraph)
+        .expect("display");
+    assert_eq!(display.equations.len(), 2);
+    assert_eq!(display.equations[0].text(), "a");
+    assert_eq!(display.equations[1].text(), "b");
 }
 
 #[test]

@@ -656,10 +656,17 @@ pub(crate) fn layout_display(
     content_width: f64,
 ) -> MathBox {
     let budget = Cell::new(MAX_ITEMS);
-    let boxed = layout_nodes(
-        &base_frame(ctx, run, &budget, true),
-        &paragraph.expression.nodes,
-    );
+    // AUD-50: one display line per `m:oMath` child.
+    let mut boxed = MathBox::empty();
+    for expression in &paragraph.equations {
+        let line = layout_nodes(&base_frame(ctx, run, &budget, true), &expression.nodes);
+        if boxed.is_empty() {
+            boxed = line;
+        } else {
+            let dy = boxed.size.height + boxed.size.depth + 2.0;
+            boxed.place(line, 0.0, dy);
+        }
+    }
     // `m:oMathParaPr/m:jc` places the display formula in the text column.
     let justification = paragraph
         .properties

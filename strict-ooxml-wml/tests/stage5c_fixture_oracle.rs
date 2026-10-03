@@ -168,7 +168,7 @@ fn our_model_sees_the_same_constructs() {
                 Inline::Math(expression) => expression,
                 Inline::MathParagraph(display_formula) => {
                     display += 1;
-                    &display_formula.expression
+                    display_formula.expression().expect("equation")
                 }
                 _ => continue,
             };
@@ -248,7 +248,7 @@ fn our_model_agrees_with_the_oracle_on_the_text() {
         for entry in &paragraph.inlines {
             let expression = match entry {
                 Inline::Math(expression) => expression,
-                Inline::MathParagraph(display) => &display.expression,
+                Inline::MathParagraph(display) => display.expression().expect("equation"),
                 _ => continue,
             };
             expression.walk(&mut |node| {
@@ -307,7 +307,7 @@ fn the_repro_packages_agree_with_the_oracle() {
             for entry in &paragraph.inlines {
                 let expression = match entry {
                     Inline::Math(expression) => expression,
-                    Inline::MathParagraph(display) => &display.expression,
+                    Inline::MathParagraph(display) => display.expression().expect("equation"),
                     _ => continue,
                 };
                 expression.walk(&mut |node| {

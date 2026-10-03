@@ -137,7 +137,7 @@ pub fn inline_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &InlineDra
             );
         }
     }
-    effect_extent(xml, None);
+    effect_extent(xml, inline.effect_extent.as_ref());
     document_properties(ctx, xml, &inline.doc_pr, "Picture", &inline.location);
     graphic(
         ctx,
@@ -1046,6 +1046,7 @@ mod tests {
                     cx: Emu(914_400),
                     cy: Emu(914_400),
                 }),
+                effect_extent: None,
                 doc_pr: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::Picture(Picture {

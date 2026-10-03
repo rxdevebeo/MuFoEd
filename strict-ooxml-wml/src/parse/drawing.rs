@@ -91,6 +91,7 @@ impl PartParser<'_> {
         self.nested(|parser| {
             let mut inline = InlineDrawing {
                 extent: None,
+                effect_extent: None,
                 doc_pr: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::None),
@@ -102,7 +103,7 @@ impl PartParser<'_> {
                         if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "extent"
                         {
-                            inline.extent = Some(parse_extent(&attrs));
+                            inline.extent = Some(parser.parse_extent(&attrs));
                             parser.skip_element()?;
                         } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "docPr"
@@ -112,6 +113,7 @@ impl PartParser<'_> {
                         } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "effectExtent"
                         {
+                            inline.effect_extent = Some(parser.parse_effect_extent(&attrs));
                             parser.skip_element()?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
                             let (uri, graphic) = parser.parse_graphic()?;
@@ -167,11 +169,11 @@ impl PartParser<'_> {
                                     anchor.position_v = Some(parser.parse_position(&attrs)?);
                                 }
                                 "extent" => {
-                                    anchor.extent = Some(parse_extent(&attrs));
+                                    anchor.extent = Some(parser.parse_extent(&attrs));
                                     parser.skip_element()?;
                                 }
                                 "effectExtent" => {
-                                    anchor.effect_extent = Some(parse_effect_extent(&attrs));
+                                    anchor.effect_extent = Some(parser.parse_effect_extent(&attrs));
                                     parser.skip_element()?;
                                 }
                                 "docPr" => {
@@ -588,7 +590,7 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
-                            extent = Some(parse_extent(&attrs));
+                            extent = Some(parser.parse_extent(&attrs));
                             parser.skip_element()?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
                             let parts = parser.parse_xfrm_parts(&attrs)?;
@@ -758,13 +760,13 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "off" {
-                            parts.offset = Some(parse_offset(&attrs));
+                            parts.offset = Some(parser.parse_offset(&attrs));
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
-                            parts.extent = Some(parse_extent(&attrs));
+                            parts.extent = Some(parser.parse_extent(&attrs));
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "chOff" {
-                            parts.child_offset = Some(parse_offset(&attrs));
+                            parts.child_offset = Some(parser.parse_offset(&attrs));
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "chExt" {
-                            parts.child_extent = Some(parse_extent(&attrs));
+                            parts.child_extent = Some(parser.parse_extent(&attrs));
                         }
                         parser.skip_element()?;
                     }
@@ -1448,29 +1450,6 @@ fn is_wml_name(name: &QName) -> bool {
     is_ns(name, crate::WML_STRICT_NS)
 }
 
-/// Parses an extent from `cx`/`cy` attributes.
-fn parse_extent(attrs: &[Attr]) -> Extent {
-    Extent {
-        cx: Emu(parse_emu(attrs, "cx")),
-        cy: Emu(parse_emu(attrs, "cy")),
-    }
-}
-
-/// Parses an offset from `x`/`y` attributes.
-fn parse_offset(attrs: &[Attr]) -> (Emu, Emu) {
-    (Emu(parse_emu(attrs, "x")), Emu(parse_emu(attrs, "y")))
-}
-
-/// Parses an `wp:effectExtent`.
-fn parse_effect_extent(attrs: &[Attr]) -> EffectExtent {
-    EffectExtent {
-        left: Emu(parse_emu(attrs, "l")),
-        top: Emu(parse_emu(attrs, "t")),
-        right: Emu(parse_emu(attrs, "r")),
-        bottom: Emu(parse_emu(attrs, "b")),
-    }
-}
-
 /// Parses an `a:srcRect` crop.
 fn parse_src_rect(attrs: &[Attr]) -> SrcRect {
     SrcRect {
@@ -1481,11 +1460,47 @@ fn parse_src_rect(attrs: &[Attr]) -> SrcRect {
     }
 }
 
-/// Parses an EMU attribute.
-fn parse_emu(attrs: &[Attr], local: &str) -> i64 {
-    plain_attr(attrs, local)
-        .and_then(|value| value.trim().parse().ok())
-        .unwrap_or(0)
+impl PartParser<'_> {
+    /// Parses an extent from `cx`/`cy` attributes (AUD-50 records invalid EMUs).
+    fn parse_extent(&mut self, attrs: &[Attr]) -> Extent {
+        Extent {
+            cx: Emu(self.parse_emu(attrs, "cx")),
+            cy: Emu(self.parse_emu(attrs, "cy")),
+        }
+    }
+
+    /// Parses an offset from `x`/`y` attributes.
+    fn parse_offset(&mut self, attrs: &[Attr]) -> (Emu, Emu) {
+        (
+            Emu(self.parse_emu(attrs, "x")),
+            Emu(self.parse_emu(attrs, "y")),
+        )
+    }
+
+    /// Parses an `wp:effectExtent`.
+    fn parse_effect_extent(&mut self, attrs: &[Attr]) -> EffectExtent {
+        EffectExtent {
+            left: Emu(self.parse_emu(attrs, "l")),
+            top: Emu(self.parse_emu(attrs, "t")),
+            right: Emu(self.parse_emu(attrs, "r")),
+            bottom: Emu(self.parse_emu(attrs, "b")),
+        }
+    }
+
+    /// Parses an EMU attribute; missing/invalid values become `0` with a `partial` record.
+    fn parse_emu(&mut self, attrs: &[Attr], local: &str) -> i64 {
+        if let Some(value) = plain_attr(attrs, local).and_then(|value| value.trim().parse().ok()) {
+            value
+        } else {
+            self.record(
+                &format!("wp:@{local}"),
+                SupportStatus::Partial,
+                Some(format!("invalid or missing EMU attribute {local}")),
+                Some(self.location()),
+            );
+            0
+        }
+    }
 }
 
 /// Parses an EMU-valued attribute.

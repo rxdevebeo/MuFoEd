@@ -295,6 +295,7 @@ mod tests {
             inlines: vec![crate::model::inline::Inline::Drawing(Drawing {
                 kind: DrawingKind::Inline(InlineDrawing {
                     extent: None,
+                    effect_extent: None,
                     doc_pr: None,
                     graphic_uri: None,
                     graphic: Box::new(Graphic::Shape(Shape {

@@ -46,6 +46,17 @@ pub(crate) fn layout_inline_image(
     let extent = extent.unwrap_or_default();
     let mut w = emu_to_px(extent.cx.value(), ctx.options.scale);
     let mut h = emu_to_px(extent.cy.value(), ctx.options.scale);
+    // AUD-50: `wp:effectExtent` expands the occupied block.
+    if let Some(effect) = &inline.effect_extent {
+        w += emu_to_px(
+            effect.left.value() + effect.right.value(),
+            ctx.options.scale,
+        );
+        h += emu_to_px(
+            effect.top.value() + effect.bottom.value(),
+            ctx.options.scale,
+        );
+    }
     if w <= 0.0 {
         w = DEFAULT_IMAGE_PX;
     }

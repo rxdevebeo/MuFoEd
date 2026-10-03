@@ -412,15 +412,30 @@ fn invalid_enum_value_is_recorded_and_defaulted() {
 }
 
 #[test]
-fn mce_elements_are_ignored_not_opaque_errors() {
+fn mce_alternate_content_is_resolved() {
     let body = format!(
-        "<w:p><mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"><mc:Choice Requires=\"w\"/></mc:AlternateContent></w:p>"
+        "<w:p><mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" \
+xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">\
+<mc:Choice Requires=\"wps\"><w:r><w:t>choice</w:t></w:r></mc:Choice>\
+<mc:Fallback><w:r><w:t>fallback</w:t></w:r></mc:Fallback>\
+</mc:AlternateContent></w:p>"
     );
     let document = parse_body(&body);
     assert_eq!(
         document.support.get("mc:AlternateContent").unwrap().status,
-        SupportStatus::Ignored
+        SupportStatus::Supported
     );
+    let text: String = first_paragraph(&document)
+        .inlines
+        .iter()
+        .filter_map(|inline| inline.as_run())
+        .flat_map(|run| run.content.iter())
+        .filter_map(|content| match content {
+            strict_ooxml_wml::model::inline::RunContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, "choice");
 }
 
 #[test]

@@ -42,8 +42,9 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_wml(&name) && name.local() == item {
-                            let note = parser.parse_note(&attrs, item_feature)?;
-                            table.insert(note);
+                            if let Some(note) = parser.parse_note(&attrs, item_feature)? {
+                                table.insert(note);
+                            }
                         } else {
                             parser.record_foreign(&name);
                             parser.skip_element()?;
@@ -60,9 +61,21 @@ impl PartParser<'_> {
     }
 
     /// Parses one `w:footnote`/`w:endnote`; its start element was consumed.
-    fn parse_note(&mut self, attrs: &[Attr], feature: &str) -> Result<Note> {
+    ///
+    /// A note without a valid `w:id` is skipped entirely (AUD-50): inventing `0`
+    /// would overwrite the continuation separator.
+    fn parse_note(&mut self, attrs: &[Attr], feature: &str) -> Result<Option<Note>> {
         let location = self.location();
-        let id = wml_attr(attrs, "id").and_then(parse_i32).unwrap_or(0);
+        let Some(id) = wml_attr(attrs, "id").and_then(parse_i32) else {
+            self.record(
+                feature,
+                SupportStatus::Partial,
+                Some("note without a valid w:id was skipped".to_owned()),
+                Some(location),
+            );
+            self.skip_element()?;
+            return Ok(None);
+        };
         let kind = wml_attr(attrs, "type")
             .and_then(NoteKind::from_strict)
             .unwrap_or(NoteKind::Normal);
@@ -73,12 +86,12 @@ impl PartParser<'_> {
             Some(location.clone()),
         );
         let blocks = self.nested_block(PartParser::parse_block_children)?;
-        Ok(Note {
+        Ok(Some(Note {
             id,
             kind,
             blocks,
             location,
-        })
+        }))
     }
 
     /// Parses a `w:footnotePr`/`w:endnotePr` element (start consumed).

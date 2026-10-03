@@ -33,7 +33,9 @@ pub fn math_paragraph(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &MathPa
             xml.end();
         }
     }
-    math_expression(ctx, xml, &paragraph.expression);
+    for expression in &paragraph.equations {
+        math_expression(ctx, xml, expression);
+    }
     xml.end();
 }
 

@@ -11,6 +11,7 @@ mod common;
 use strict_ooxml_wml::model::drawing::MediaKind;
 use strict_ooxml_wml::model::inline::RunContent;
 use strict_ooxml_wml::model::notes::NoteKind;
+use strict_ooxml_wml::model::support::SupportStatus;
 
 use common::{document_parts, parse_parts, rels, A_NS, PIC_NS, R_NS, WP_NS, W_NS};
 
@@ -169,5 +170,43 @@ fn parses_note_ref_marker_in_run() {
     assert!(
         has_note_ref,
         "expected a RunContent::NoteRef in the note body"
+    );
+}
+
+/// AUD-50: a footnote without `w:id` is skipped (does not overwrite id 0).
+#[test]
+fn footnote_without_id_is_skipped() {
+    let footnotes = format!(
+        "<?xml version=\"1.0\"?><w:footnotes xmlns:w=\"{W_NS}\">\
+<w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r><w:t>sep</w:t></w:r></w:p></w:footnote>\
+<w:footnote><w:p><w:r><w:t>orphan</w:t></w:r></w:p></w:footnote>\
+</w:footnotes>"
+    )
+    .into_bytes();
+    let rels = rels(&[("rIdFn", FOOTNOTES, "footnotes.xml")]);
+    let parts = document_parts(
+        "<w:p><w:r><w:footnoteReference/></w:r></w:p>",
+        &[
+            ("word/_rels/document.xml.rels", rels),
+            ("word/footnotes.xml", footnotes),
+        ],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    assert!(document.footnotes.get(0).is_some());
+    assert_eq!(
+        document.support.get("w:footnote").unwrap().status,
+        SupportStatus::Partial
+    );
+    assert_eq!(
+        document.support.get("w:footnoteReference").unwrap().status,
+        SupportStatus::Partial
+    );
+    let paragraph = document.body.blocks[0].as_paragraph().unwrap();
+    let run = paragraph.inlines[0].as_run().unwrap();
+    assert!(
+        !run.content
+            .iter()
+            .any(|content| matches!(content, RunContent::FootnoteRef(_))),
+        "reference without id must not invent FootnoteRef(0)"
     );
 }

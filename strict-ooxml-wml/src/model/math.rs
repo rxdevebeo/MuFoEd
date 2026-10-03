@@ -981,10 +981,18 @@ pub struct MathParagraphProperties {
 pub struct MathParagraph {
     /// Paragraph-level math properties.
     pub properties: Option<MathParagraphProperties>,
-    /// The formula.
-    pub expression: MathExpression,
+    /// One or more `m:oMath` children (AUD-50).
+    pub equations: Vec<MathExpression>,
     /// Source location.
     pub location: SourceLocation,
+}
+
+impl MathParagraph {
+    /// First equation, if any (compatibility helper).
+    #[must_use]
+    pub fn expression(&self) -> Option<&MathExpression> {
+        self.equations.first()
+    }
 }
 
 #[cfg(test)]

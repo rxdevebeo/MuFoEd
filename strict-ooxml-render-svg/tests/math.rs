@@ -43,7 +43,9 @@ fn formulas(document: &Document) -> Vec<strict_ooxml_wml::model::math::MathExpre
         for inline in &paragraph.inlines {
             match inline {
                 Inline::Math(expression) => out.push(expression.clone()),
-                Inline::MathParagraph(display) => out.push(display.expression.clone()),
+                Inline::MathParagraph(display) => {
+                    out.extend(display.equations.iter().cloned());
+                }
                 _ => {}
             }
         }
