@@ -22,16 +22,21 @@ use crate::xml::{WriteError, XmlWriter};
 ///
 /// # Errors
 ///
-/// Returns [`WriteError::BlockNesting`] when `blocks` nests a block container
-/// deeper than `limit`.
-pub fn check_block_nesting(blocks: &[Block], limit: u32) -> Result<(), WriteError> {
-    strict_ooxml_wml::nesting::check_blocks(blocks, limit).map_err(|exceeded| {
-        WriteError::BlockNesting {
+/// Returns [`WriteError::Nesting`] when `blocks` nests a container deeper than
+/// its budget in `limits`.
+pub fn check_block_nesting(
+    blocks: &[Block],
+    limits: &strict_ooxml_core::limits::ResourceLimits,
+) -> Result<(), WriteError> {
+    strict_ooxml_wml::nesting::check_blocks(blocks, limits).map_err(|exceeded| {
+        WriteError::Nesting {
+            kind: exceeded.kind,
             limit: exceeded.limit,
             actual: exceeded.actual,
         }
     })
 }
+
 /// Writes a sequence of block-level items.
 pub fn blocks(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, blocks: &[Block]) {
     for block in blocks {

@@ -402,14 +402,12 @@ mod nesting {
 
     #[test]
     fn six_nested_text_boxes_survive_the_whole_pipeline() {
-        // Six is not a smaller ambition than twelve, it is what a 1 MiB stack
-        // carries in a debug build: measured, the parser spends 125 KB of stack
-        // per text box, because a text box is a paragraph, a run, a drawing, an
-        // inline, a graphic, a graphic-data, a shape, a text box and a block
-        // children frame, and the debug build does not optimise any of them away.
-        // Twelve is reached in release (measured), and tables reach twelve in
-        // both - see `twelve_nested_tables_parse_and_survive_the_whole_pipeline`.
-        // The gap is recorded as an open question in REWORK-AUDIT-2026-10.
+        // Six is the whole budget for a text box, and the reason is measured
+        // rather than assumed: the parser spends 125408 bytes of stack per text
+        // box, because one is a paragraph, a run, a drawing, an inline, a
+        // graphic, a graphic-data, a shape, the box and its block children, and
+        // a 1 MiB stack is the size of a Windows main thread. Tables cost a
+        // seventh of that each, which is why the two have separate budgets.
         let document = open_ok(text_boxes(6));
         assert_survives("pipeline at six text boxes", move || {
             let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
@@ -423,24 +421,36 @@ mod nesting {
         });
     }
 
-    #[cfg(not(debug_assertions))]
     #[test]
-    fn thirteen_nested_text_boxes_are_refused_by_kind() {
-        // Release only, and the reason is measured rather than assumed: in debug
-        // the stack runs out around depth 7, before the counter can reach 13, so
-        // the same input would abort the process instead of being refused. In
-        // release the counter is what stops it, which is the property under test.
-        assert_eq!(open_limit(text_boxes(13)), LimitKind::BlockNesting);
+    fn a_text_box_past_its_own_budget_is_refused_by_kind() {
+        // Before the text box had its own budget, this input reached the
+        // seventh level and the process died with STATUS_STACK_OVERFLOW. Now the
+        // seventh level is an error, in debug and in release alike - which is the
+        // whole point of a separate number.
+        assert_eq!(open_limit(text_boxes(7)), LimitKind::TextBoxNesting);
+        assert_eq!(open_limit(text_boxes(40)), LimitKind::TextBoxNesting);
     }
 
-    #[cfg(not(debug_assertions))]
     #[test]
-    fn twelve_nested_text_boxes_reach_the_renderer() {
-        let document = open_ok(text_boxes(12));
-        assert_survives("render twelve text boxes", move || {
-            let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
-            assert!(svg.is_ok(), "render_svg: {svg:?}");
+    fn the_text_box_budget_is_the_callers() {
+        let tight = OpenOptions::default().limits(strict_ooxml_core::limits::ResourceLimits {
+            max_text_box_nesting: 2,
+            ..strict_ooxml_core::limits::ResourceLimits::default()
         });
+        let two = text_boxes(2).build();
+        let three = text_boxes(3).build();
+        let error = assert_survives("text boxes against a budget of two", move || {
+            StrictDocument::open_reader(Cursor::new(two), &tight).expect("two fit");
+            open(three, &tight)
+        });
+        match error {
+            StrictError::LimitExceeded {
+                kind: LimitKind::TextBoxNesting,
+                limit,
+                actual,
+            } => assert_eq!((limit, actual), (2, 3), "{error:?}"),
+            other => panic!("expected TextBoxNesting, got {other:?}"),
+        }
     }
 
     #[test]

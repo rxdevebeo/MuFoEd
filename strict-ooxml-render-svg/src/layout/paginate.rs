@@ -37,10 +37,10 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
     // before the layout because the layout's own depth guard answers an
     // over-deep document by laying out less of it, which is a wrong page rather
     // than a wrong answer.
-    strict_ooxml_wml::nesting::check_document_with(ctx.document, &ctx.options.limits).map_err(
+    strict_ooxml_wml::nesting::check_document(ctx.document, &ctx.options.limits).map_err(
         |exceeded| {
             crate::error::RenderError::LimitExceeded {
-                what: "block nesting",
+                what: exceeded.kind.as_str(),
                 limit: u64::from(exceeded.limit),
                 actual: u64::from(exceeded.actual),
             }

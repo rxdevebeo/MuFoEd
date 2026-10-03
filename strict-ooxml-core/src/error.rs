@@ -52,6 +52,12 @@ pub enum LimitKind {
     /// none, so a document can be well inside 256 XML levels and still overflow
     /// a 1 MiB stack by nesting tables.
     BlockNesting,
+    /// `ResourceLimits::max_text_box_nesting`.
+    ///
+    /// Its own bound because a text box costs ten parser frames where a table
+    /// costs one, so the number that fits the stack is a seventh of
+    /// [`BlockNesting`](Self::BlockNesting)'s.
+    TextBoxNesting,
     /// The per-formula node budget enforced by the OMML parser
     /// (`STAGE-5C-TASK.md` §5.1). Not a `ResourceLimits` field: the bound
     /// applies to one `m:oMath`, not to the whole package.
@@ -77,6 +83,7 @@ impl LimitKind {
             Self::RelationshipDepth => "relationship_depth",
             Self::Parts => "parts",
             Self::BlockNesting => "block_nesting",
+            Self::TextBoxNesting => "text_box_nesting",
             Self::MathNodes => "math_nodes",
             Self::MathDepth => "math_depth",
         }

@@ -320,12 +320,13 @@ fn text_box_items(
     let inner_width = (w - emu_to_px(left_inset + right_inset, scale)).max(1.0);
     let mut items = Vec::new();
     let mut content_y = 0.0;
-    // A text box is one block container, so its content is one level deeper than
+    // A text box is one container, so its content is one level deeper than
     // whatever was being laid out here. The depth is read from the context rather
     // than reset to 0: this function is reached from the paint stage, so the
     // literal 0 that stood here was the reason a text box inside a table cell
-    // looked like the top of the document, and eight of them overflowed the
-    // stack.
+    // looked like the top of the document, and a chain of them overflowed the
+    // stack. The over-deep case is already refused by the model walk in
+    // `layout_document`; this is the layout's own accounting.
     layout_blocks_inline(
         ctx,
         &text.blocks,

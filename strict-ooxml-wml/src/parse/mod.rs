@@ -619,6 +619,15 @@ pub(crate) struct PartParser<'a> {
     /// thread on Windows) takes with room to spare.
     pub(crate) block_depth: u32,
     pub(crate) max_block_nesting: u32,
+    /// Deepest text-box nesting, and the bound it is held to.
+    ///
+    /// A text box is ten frames of parser state where a table is one, measured
+    /// at 125 408 bytes per level in a debug build - so a 1 MiB stack carries
+    /// six and no setting of `max_block_nesting` changes that. Its own counter
+    /// is the honest answer: one bound for both would either overflow the stack
+    /// or refuse twelve-deep tables over a text box the document never had.
+    pub(crate) text_box_depth: u32,
+    pub(crate) max_text_box_nesting: u32,
     /// `w:gutterAtTop` seen inside a `w:sectPr`, where Transitional puts it.
     ///
     /// Strict has no slot for it there - `EG_SectPrContents` does not declare it
@@ -653,6 +662,8 @@ impl<'a> PartParser<'a> {
             depth: 0,
             block_depth: 0,
             max_block_nesting: limits.max_block_nesting,
+            text_box_depth: 0,
+            max_text_box_nesting: limits.max_text_box_nesting,
             section_gutter_at_top: false,
         })
     }
@@ -816,12 +827,45 @@ impl<'a> PartParser<'a> {
         out
     }
 
+    /// Runs `f` inside one level of text-box nesting.
+    ///
+    /// The text-box counterpart of [`nested_block`](Self::nested_block), with its
+    /// own counter for the measured reason: a text box is a paragraph, a run, a
+    /// drawing, an inline, a graphic, a graphic-data, a shape, the box and its
+    /// block children, and one of those costs a seventh of the stack a table does.
+    ///
+    /// # Errors
+    ///
+    /// `LimitKind::TextBoxNesting` past
+    /// [`max_text_box_nesting`](crate::parse::PartParser::max_text_box_nesting).
+    pub(crate) fn nested_text_box<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        let depth = self.text_box_depth.saturating_add(1);
+        if depth > self.max_text_box_nesting {
+            return Err(StrictError::LimitExceeded {
+                kind: strict_ooxml_core::error::LimitKind::TextBoxNesting,
+                limit: u64::from(self.max_text_box_nesting),
+                actual: u64::from(depth),
+            });
+        }
+        self.text_box_depth = depth;
+        let out = f(self);
+        self.text_box_depth = self.text_box_depth.saturating_sub(1);
+        out
+    }
+
     /// Whether `name` opens a container whose children are themselves blocks.
     ///
     /// The list is what [`PartParser::nested_block`] counts. `w:sdt` is here
     /// rather than `w:sdtContent` because the count is taken at block dispatch,
     /// where the two are the same element; a row-level or cell-level `w:sdt`
     /// holds rows and cells, not blocks, and is dispatched elsewhere.
+    ///
+    /// `w:txbxContent` is not here: a text box is counted by
+    /// [`nested_text_box`](Self::nested_text_box) against its own budget, which
+    /// is a seventh of this one.
     ///
     /// `w:comment` is listed by the plan and absent from the table because no
     /// `comments.xml` is read yet (`CORE-QUEUE.md`): there is no recursion to
@@ -831,7 +875,7 @@ impl<'a> PartParser<'a> {
     pub(crate) fn counts_block_nesting(name: &QName) -> bool {
         matches!(
             name.local(),
-            "tbl" | "sdt" | "customXml" | "txbxContent" | "footnote" | "endnote"
+            "tbl" | "sdt" | "customXml" | "footnote" | "endnote"
         )
     }
 

@@ -259,6 +259,55 @@ fn the_block_counter_is_shared_across_container_kinds() {
     );
 }
 
+/// `depth` text boxes, each holding the next in its `w:txbxContent`.
+fn text_boxes(depth: usize) -> String {
+    let ns = concat!(
+        " xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\"",
+        " xmlns:r=\"http://purl.oclc.org/ooxml/officeDocument/relationships\"",
+        " xmlns:wp=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing\"",
+        " xmlns:a=\"http://purl.oclc.org/ooxml/drawingml/main\"",
+        " xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
+    );
+    let open = format!(
+        "<w:p><w:r><w:drawing><wp:inline{ns}>\
+         <wp:extent cx=\"914400\" cy=\"914400\"/><wp:docPr id=\"1\" name=\"box\"/>\
+         <a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">\
+         <wps:wsp><wps:spPr/><wps:txbx><w:txbxContent>"
+    );
+    let close = "</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData>\
+         </a:graphic></wp:inline></w:drawing></w:r></w:p>";
+    let mut out = open.repeat(depth);
+    out.push_str("<w:p/>");
+    out.push_str(&close.repeat(depth));
+    out
+}
+
+#[test]
+fn text_box_nesting_has_its_own_budget_and_its_own_kind() {
+    // Six text boxes are inside the budget of six and eleven tables would be
+    // inside the budget of twelve at the same time - two counters, because a
+    // text box is ten frames of parser state and a table is one.
+    let six = parse_with_limits(
+        &document_parts(&text_boxes(6), &[]),
+        ResourceLimits::default(),
+    )
+    .expect("six text boxes fit");
+    assert_eq!(six.body.blocks.len(), 1);
+
+    let seven = parse_with_limits(
+        &document_parts(&text_boxes(7), &[]),
+        ResourceLimits::default(),
+    );
+    match seven {
+        Err(StrictError::LimitExceeded {
+            kind: LimitKind::TextBoxNesting,
+            limit,
+            actual,
+        }) => assert_eq!((limit, actual), (6, 7)),
+        other => panic!("expected TextBoxNesting, got {other:?}"),
+    }
+}
+
 #[test]
 fn truncated_document_is_an_error_not_a_panic() {
     let document = format!("<w:document xmlns:w=\"{W_NS}\"><w:body><w:p><w:r><w:t>x").into_bytes();

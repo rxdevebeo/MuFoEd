@@ -1196,12 +1196,13 @@ impl PartParser<'_> {
                     if name.local() == "txbxContent"
                         && (is_wml_name(&name) || is_ns(&name, MS_WORD_2006_WML_NS))
                     {
-                        // One level of block nesting for the text box, not two:
-                        // `wps:txbx` is the DrawingML wrapper and `w:txbxContent`
-                        // is the block container inside it, so counting both would
-                        // make one text box cost two levels and half the budget
-                        // would be gone before six boxes.
-                        let (blocks, _) = self.nested_block(PartParser::parse_block_children)?;
+                        // One level of text-box nesting, against its own budget. Not one
+                        // block level: `wps:txbx` is the DrawingML wrapper and
+                        // `w:txbxContent` the block container inside it, and a
+                        // text box is ten frames of parser state where a table is
+                        // one - so sharing the number would make twelve tables
+                        // unreachable.
+                        let (blocks, _) = self.nested_text_box(PartParser::parse_block_children)?;
                         text.blocks = blocks;
                         self.record(
                             "w:txbxContent",
