@@ -712,7 +712,19 @@ fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
     if let Some(run_props) = run.run_properties.as_deref() {
         crate::props::run_properties(xml, run_props);
     }
+    // AUD-64: same preserve rule as `w:t` — edge whitespace or a double space
+    // would be collapsed by an XML parser without `xml:space="preserve"`.
+    let needs_preserve = run.text.chars().next().is_some_and(char::is_whitespace)
+        || run
+            .text
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+        || run.text.contains("  ");
     xml.start("m:t");
+    if needs_preserve {
+        xml.attr("xml:space", "preserve");
+    }
     xml.text(&run.text);
     xml.end();
     xml.end();
@@ -807,6 +819,28 @@ mod tests {
             "<m:oMath><m:r><m:t>x+1</m:t></m:r></m:oMath>\n"
         );
         assert!(report.losses().is_empty());
+    }
+
+    #[test]
+    fn math_text_preserves_edge_whitespace() {
+        let expression = MathExpression {
+            nodes: vec![MathNode::Run(MathRun {
+                properties: MathRunProperties::default(),
+                run_properties: None,
+                text: " x ".to_owned(),
+                location: strict_ooxml_core::error::SourceLocation::unknown(),
+            })],
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        math_expression(&mut ctx, &mut xml, &expression);
+        let text = xml.finish().expect("balanced");
+        assert!(
+            text.contains("<m:t xml:space=\"preserve\"> x </m:t>"),
+            "{text}"
+        );
     }
 
     #[test]

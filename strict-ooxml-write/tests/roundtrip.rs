@@ -405,6 +405,45 @@ fn a_written_package_opens_under_the_strict_policy() {
     }
 }
 
+/// AUD-64: `m:t` with edge spaces keeps `xml:space="preserve"` through round-trip.
+#[test]
+fn math_text_preserves_spaces_round_trip() {
+    let body = "\
+<w:p><m:oMath><m:r><m:t xml:space=\"preserve\"> x </m:t></m:r></m:oMath></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
+w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let written = write(&document, &package);
+    let reopened = open(&written.bytes).expect("reopen");
+    let reparsed = parse(&reopened).expect("reparse");
+    let Inline::Math(math) = &reparsed.body.blocks[0]
+        .as_paragraph()
+        .expect("paragraph")
+        .inlines[0]
+    else {
+        panic!("expected math");
+    };
+    let strict_ooxml_wml::model::math::MathNode::Run(run) = &math.nodes[0] else {
+        panic!("expected math run");
+    };
+    assert_eq!(run.text, " x ");
+    let document_xml = String::from_utf8(
+        reopened
+            .read_part(&strict_ooxml_core::part::PartId::new("/word/document.xml"))
+            .expect("document"),
+    )
+    .expect("utf-8");
+    assert!(
+        document_xml.contains("<m:t xml:space=\"preserve\"> x </m:t>"),
+        "{document_xml}"
+    );
+}
+
 /// AUD-43: tracked-change runs round-trip with the same revision markers.
 #[test]
 fn tracked_changes_round_trip() {
