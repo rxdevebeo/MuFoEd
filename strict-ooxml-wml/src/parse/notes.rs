@@ -72,7 +72,7 @@ impl PartParser<'_> {
             None,
             Some(location.clone()),
         );
-        let (blocks, _sections) = self.nested_block(PartParser::parse_block_children)?;
+        let blocks = self.nested_block(PartParser::parse_block_children)?;
         Ok(Note {
             id,
             kind,

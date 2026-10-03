@@ -164,6 +164,127 @@ fn missing_referenced_part_is_an_error() {
     );
 }
 
+/// AUD-40: `w:sectPr` inside `w:sdt` and a trailing body `w:sectPr` stay in order.
+#[test]
+fn sections_from_sdt_and_body_stay_aligned() {
+    // p, sdt{ p[sectPr A] }, p, p[sectPr B], body/sectPr C → [A, B, C]
+    let body = "\
+<w:p><w:r><w:t>before</w:t></w:r></w:p>\
+<w:sdt><w:sdtContent>\
+<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"10000\" w:h=\"15840\"/></w:sectPr></w:pPr>\
+<w:r><w:t>in-sdt</w:t></w:r></w:p>\
+</w:sdtContent></w:sdt>\
+<w:p><w:r><w:t>middle</w:t></w:r></w:p>\
+<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"11000\" w:h=\"15840\"/></w:sectPr></w:pPr>\
+<w:r><w:t>end-sect</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12000\" w:h=\"15840\"/></w:sectPr>";
+    let document = parse_parts(&document_parts(body, &[])).expect("parse");
+    assert_eq!(document.sections.len(), 3);
+    let widths: Vec<i32> = document
+        .sections
+        .iter()
+        .map(|s| s.properties.page_size.unwrap().width.unwrap().value())
+        .collect();
+    assert_eq!(widths, vec![10000, 11000, 12000]);
+
+    // Paragraph copies stay aligned with `sections` (sync uses the same walk).
+    let seen = paragraph_section_widths(&document.body.blocks);
+    assert_eq!(seen, vec![10000, 11000]);
+}
+
+fn paragraph_section_widths(blocks: &[strict_ooxml_wml::model::block::Block]) -> Vec<i32> {
+    let mut out = Vec::new();
+    for block in blocks {
+        match block {
+            strict_ooxml_wml::model::block::Block::Paragraph(p) => {
+                if let Some(sect) = &p.props.section {
+                    out.push(sect.page_size.unwrap().width.unwrap().value());
+                }
+            }
+            strict_ooxml_wml::model::block::Block::SdtBlock(sdt) => {
+                out.extend(paragraph_section_widths(&sdt.blocks));
+            }
+            strict_ooxml_wml::model::block::Block::Table(table) => {
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        out.extend(paragraph_section_widths(&cell.blocks));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// AUD-40: a section break wrapped in `w:ins` is collected in document order.
+#[test]
+fn sections_inside_revision_markers_are_collected() {
+    let body = "\
+<w:p><w:r><w:t>a</w:t></w:r></w:p>\
+<w:ins w:id=\"0\" w:author=\"x\">\
+<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"9000\" w:h=\"15840\"/></w:sectPr></w:pPr>\
+<w:r><w:t>inserted</w:t></w:r></w:p>\
+</w:ins>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr>";
+    let document = parse_parts(&document_parts(body, &[])).expect("parse");
+    assert_eq!(document.sections.len(), 2);
+    assert_eq!(
+        document.sections[0]
+            .properties
+            .page_size
+            .unwrap()
+            .width
+            .unwrap()
+            .value(),
+        9000
+    );
+    assert_eq!(
+        document.sections[1]
+            .properties
+            .page_size
+            .unwrap()
+            .width
+            .unwrap()
+            .value(),
+        12240
+    );
+}
+
+/// AUD-40: `w:sectPr` inside a table cell is kept and reported as partial.
+#[test]
+fn section_break_inside_table_cell_is_recorded() {
+    let body = "\
+<w:tbl><w:tr><w:tc>\
+<w:p><w:pPr><w:sectPr><w:pgSz w:w=\"8000\" w:h=\"15840\"/></w:sectPr></w:pPr>\
+<w:r><w:t>cell</w:t></w:r></w:p>\
+</w:tc></w:tr></w:tbl>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr>";
+    let document = parse_parts(&document_parts(body, &[])).expect("parse");
+    assert_eq!(document.sections.len(), 2);
+    assert_eq!(
+        document.sections[0]
+            .properties
+            .page_size
+            .unwrap()
+            .width
+            .unwrap()
+            .value(),
+        8000
+    );
+    let entry = document.support.get("w:sectPr").expect("partial record");
+    assert_eq!(entry.status, SupportStatus::Partial);
+    assert!(
+        entry
+            .message
+            .as_deref()
+            .unwrap_or("")
+            .contains("table cell"),
+        "message={:?}",
+        entry.message
+    );
+}
+
 #[test]
 fn header_reference_with_wrong_relationship_type_is_partial() {
     let body = "<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdF\"/></w:sectPr>";

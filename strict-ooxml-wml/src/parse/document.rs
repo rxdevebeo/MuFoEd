@@ -26,19 +26,22 @@ use super::{
 
 impl PartParser<'_> {
     /// Parses the `w:document` root and its `w:body`.
-    pub(crate) fn parse_document_root(&mut self) -> Result<(Body, Vec<Section>)> {
+    ///
+    /// Sections are not returned here: AUD-40 collects them after the body is
+    /// built, with the same document-order walk used for header/footer sync.
+    pub(crate) fn parse_document_root(&mut self) -> Result<Body> {
         self.nested(|parser| {
             parser.expect_root("document")?;
 
             let mut body = Body::default();
-            let mut sections = Vec::new();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if name.local() == "body" && is_wml(&name) {
-                            let (blocks, found_sections) = parser.parse_block_children()?;
-                            body.blocks = blocks;
-                            sections = found_sections;
+                            // Bare `w:sectPr` as a body child is the final section.
+                            parser.capture_body_section = true;
+                            body.blocks = parser.parse_block_children()?;
+                            parser.capture_body_section = false;
                         } else if name.local() == "background" && is_wml(&name) {
                             parser.record(
                                 "w:background",
@@ -59,15 +62,14 @@ impl PartParser<'_> {
                 }
             }
             parser.expect_end_of_part()?;
-            Ok((body, sections))
+            Ok(body)
         })
     }
 
     /// Parses block-level children until the current element's end.
-    pub(crate) fn parse_block_children(&mut self) -> Result<(Vec<Block>, Vec<Section>)> {
+    pub(crate) fn parse_block_children(&mut self) -> Result<Vec<Block>> {
         self.nested(|parser| {
             let mut blocks = Vec::new();
-            let mut sections = Vec::new();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -76,19 +78,14 @@ impl PartParser<'_> {
                             parser.skip_element()?;
                             continue;
                         }
-                        parser.parse_block_element_into(
-                            &name,
-                            &attrs,
-                            &mut blocks,
-                            &mut sections,
-                        )?;
+                        parser.parse_block_element_into(&name, &attrs, &mut blocks)?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of block content")),
                 }
             }
-            Ok((blocks, sections))
+            Ok(blocks)
         })
     }
 
@@ -103,14 +100,11 @@ impl PartParser<'_> {
         name: &QName,
         attrs: &[Attr],
         blocks: &mut Vec<Block>,
-        sections: &mut Vec<Section>,
     ) -> Result<()> {
         if PartParser::counts_block_nesting(name) {
-            return self.nested_block(|parser| {
-                parser.dispatch_block_element(name, attrs, blocks, sections)
-            });
+            return self.nested_block(|parser| parser.dispatch_block_element(name, attrs, blocks));
         }
-        self.dispatch_block_element(name, attrs, blocks, sections)
+        self.dispatch_block_element(name, attrs, blocks)
     }
 
     /// The body of [`parse_block_element_into`](Self::parse_block_element_into),
@@ -120,21 +114,10 @@ impl PartParser<'_> {
         name: &QName,
         attrs: &[Attr],
         blocks: &mut Vec<Block>,
-        sections: &mut Vec<Section>,
     ) -> Result<()> {
         match body_kind(name.local()) {
             BodyKind::Paragraph => {
-                let paragraph = self.parse_paragraph(attrs)?;
-                if let Some(props) = &paragraph.props.section {
-                    sections.push(Section {
-                        properties: props.clone(),
-                        location: props
-                            .location
-                            .clone()
-                            .unwrap_or_else(|| paragraph.location.clone()),
-                    });
-                }
-                blocks.push(Block::Paragraph(paragraph));
+                blocks.push(Block::Paragraph(self.parse_paragraph(attrs)?));
             }
             BodyKind::Table => blocks.push(Block::Table(self.parse_table()?)),
             BodyKind::Sdt => blocks.push(Block::SdtBlock(self.parse_sdt(true)?)),
@@ -142,10 +125,14 @@ impl PartParser<'_> {
             BodyKind::Section => {
                 let location = self.location();
                 let properties = self.parse_section_properties()?;
-                sections.push(Section {
-                    properties,
-                    location,
-                });
+                // Only a bare `w:sectPr` at body top level is the final section.
+                // Nested block depth covers sdt/table; revisions clear the flag below.
+                if self.capture_body_section && self.block_depth == 0 {
+                    self.body_section = Some(Section {
+                        properties,
+                        location,
+                    });
+                }
             }
             BodyKind::Inserted | BodyKind::Deleted => {
                 let feature = if body_kind(name.local()) == BodyKind::Inserted {
@@ -159,7 +146,10 @@ impl PartParser<'_> {
                     Some("tracked change container flattened".to_owned()),
                     Some(self.location()),
                 );
-                let (mut children, _) = self.parse_block_children()?;
+                let was_capture = self.capture_body_section;
+                self.capture_body_section = false;
+                let mut children = self.parse_block_children()?;
+                self.capture_body_section = was_capture;
                 blocks.append(&mut children);
             }
             BodyKind::Ignored => self.skip_element()?,
@@ -701,7 +691,7 @@ impl PartParser<'_> {
                             }
                             "sdtContent" => {
                                 if is_block {
-                                    let (mut found, _) = parser.parse_block_children()?;
+                                    let mut found = parser.parse_block_children()?;
                                     blocks.append(&mut found);
                                 } else {
                                     let mut found = parser.parse_inline_children()?;

@@ -99,11 +99,16 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         package.read_part(&main)?,
         &options.limits,
     )?;
-    let (mut body, mut sections) = parser.parse_document_root()?;
+    let mut body = parser.parse_document_root()?;
+    let body_section = std::mem::take(&mut parser.body_section);
     let mut media = std::mem::take(&mut parser.media);
     let mut support = std::mem::take(&mut parser.support);
     let section_gutter_at_top = std::mem::take(&mut parser.section_gutter_at_top);
     drop(parser);
+
+    // AUD-40: collect sections with the same document-order walk that sync uses,
+    // so nested containers (sdt / table cells / flattened revisions) stay aligned.
+    let mut sections = collect_sections_from_body(&mut body, body_section, &mut support);
 
     let headers_footers = parse_decoration_parts(
         package,
@@ -443,37 +448,93 @@ fn parse_decoration_parts(
     Ok(decorations)
 }
 
+/// Walks paragraphs in document order through body blocks, `SdtBlock`, nested
+/// table cells, and (once modelled) revision containers.
+///
+/// Collection of `sections` and [`sync_resolved_sections_into_body`] must use
+/// this same walk so a `w:sectPr` inside an sdt or cell stays aligned with the
+/// paragraph that carries it (AUD-40).
+pub(crate) fn walk_paragraphs_in_order(
+    blocks: &mut [Block],
+    visit: &mut impl FnMut(&mut crate::model::block::Paragraph),
+) {
+    walk_paragraphs_in_order_ctx(blocks, false, &mut |paragraph, _in_cell| visit(paragraph));
+}
+
+fn walk_paragraphs_in_order_ctx(
+    blocks: &mut [Block],
+    in_table_cell: bool,
+    visit: &mut impl FnMut(&mut crate::model::block::Paragraph, bool),
+) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(paragraph) => visit(paragraph, in_table_cell),
+            Block::Table(table) => {
+                for row in &mut table.rows {
+                    for cell in &mut row.cells {
+                        walk_paragraphs_in_order_ctx(&mut cell.blocks, true, visit);
+                    }
+                }
+            }
+            Block::SdtBlock(sdt) => {
+                walk_paragraphs_in_order_ctx(&mut sdt.blocks, in_table_cell, visit);
+            }
+            Block::AltChunk(_) | Block::Opaque(_) => {}
+        }
+    }
+}
+
+/// Builds `sections` from every paragraph-level `w:sectPr` in document order,
+/// then appends the body-level `w:sectPr` last.
+fn collect_sections_from_body(
+    body: &mut Body,
+    body_section: Option<Section>,
+    support: &mut SupportModel,
+) -> Vec<Section> {
+    let mut sections = Vec::new();
+    walk_paragraphs_in_order_ctx(&mut body.blocks, false, &mut |paragraph, in_table_cell| {
+        if let Some(props) = &paragraph.props.section {
+            if in_table_cell {
+                support.record(
+                    "w:sectPr",
+                    SupportStatus::Partial,
+                    Some("section break inside a table cell".to_owned()),
+                    props
+                        .location
+                        .clone()
+                        .or_else(|| Some(paragraph.location.clone())),
+                );
+            }
+            sections.push(Section {
+                properties: props.clone(),
+                location: props
+                    .location
+                    .clone()
+                    .unwrap_or_else(|| paragraph.location.clone()),
+            });
+        }
+    });
+    if let Some(section) = body_section {
+        sections.push(section);
+    }
+    sections
+}
+
 /// Copies resolved section properties back onto the paragraphs that carry them.
 ///
 /// `sections` is built in document order from the paragraph-level `w:sectPr`
 /// first and the body-level one last, so the *n*-th paragraph-level `sectPr`
 /// is `sections[n]`.
 fn sync_resolved_sections_into_body(body: &mut Body, sections: &[Section]) {
-    fn walk(blocks: &mut [Block], sections: &[Section], next: &mut usize) {
-        for block in blocks {
-            match block {
-                Block::Paragraph(paragraph) => {
-                    if paragraph.props.section.is_some() {
-                        if let Some(section) = sections.get(*next) {
-                            paragraph.props.section = Some(section.properties.clone());
-                        }
-                        *next += 1;
-                    }
-                }
-                Block::Table(table) => {
-                    for row in &mut table.rows {
-                        for cell in &mut row.cells {
-                            walk(&mut cell.blocks, sections, next);
-                        }
-                    }
-                }
-                Block::SdtBlock(sdt) => walk(&mut sdt.blocks, sections, next),
-                _ => {}
-            }
-        }
-    }
     let mut next = 0;
-    walk(&mut body.blocks, sections, &mut next);
+    walk_paragraphs_in_order(&mut body.blocks, &mut |paragraph| {
+        if paragraph.props.section.is_some() {
+            if let Some(section) = sections.get(next) {
+                paragraph.props.section = Some(section.properties.clone());
+            }
+            next += 1;
+        }
+    });
 }
 
 /// Resolves one section header/footer reference to a parsed [`HeaderFooter`].
@@ -619,6 +680,12 @@ pub(crate) struct PartParser<'a> {
     /// field through [`parse_settings_root`], and the merge is an OR because a
     /// document-wide setting cannot be true in one section and false in another.
     pub(crate) section_gutter_at_top: bool,
+    /// When true, a bare `w:sectPr` child of the current block sequence is the
+    /// body-level final section (AUD-40). Off for headers, notes, sdt content,
+    /// and table cells — those must not steal the document's trailing sectPr.
+    pub(crate) capture_body_section: bool,
+    /// Body-level `w:sectPr` captured while `capture_body_section` is set.
+    pub(crate) body_section: Option<Section>,
 }
 
 impl<'a> PartParser<'a> {
@@ -645,6 +712,8 @@ impl<'a> PartParser<'a> {
             max_math_nodes: limits.max_math_nodes,
             max_math_depth: limits.max_math_depth,
             section_gutter_at_top: false,
+            capture_body_section: false,
+            body_section: None,
         })
     }
 

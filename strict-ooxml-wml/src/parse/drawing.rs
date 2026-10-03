@@ -1235,7 +1235,7 @@ impl PartParser<'_> {
                             // one - so sharing the number would make twelve tables
                             // unreachable.
                             let location = parser.location();
-                            if let Some((blocks, _)) =
+                            if let Some(blocks) =
                                 parser.nested_text_box(PartParser::parse_block_children)?
                             {
                                 text.blocks = blocks;

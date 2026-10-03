@@ -41,7 +41,7 @@ impl PartParser<'_> {
             // one level of block nesting: a table in a header nests no shallower than
             // a table in the body, and the header's own stack frame is paid for on
             // top of the body's.
-            let (blocks, _sections) = parser.nested_block(PartParser::parse_block_children)?;
+            let blocks = parser.nested_block(PartParser::parse_block_children)?;
             parser.expect_end_of_part()?;
             Ok((blocks, location))
         })
