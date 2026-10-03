@@ -85,9 +85,12 @@ pub struct ResourceLimits {
     /// one frame per parser level and moved this number from six to five, which
     /// is the cost of a guard that cannot leak and is worth paying.
     ///
-    /// Exceeding it is `LimitKind::TextBoxNesting` and refuses the whole
-    /// document. Word draws a text box hierarchy as a flat one past a level or
-    /// two, so no real document is refused by five.
+    /// The parser does not refuse a document over it: the text box past the
+    /// bound loses its content, `w:txbxContent` is recorded as `Unsupported`,
+    /// and the rest of the document is read (owner decision 2026-10-03). Word
+    /// does not nest text boxes from its UI, and no document in the corpus goes
+    /// past one level. The renderer and the writer return
+    /// `LimitKind::TextBoxNesting` for a model built by hand that goes past it.
     pub max_text_box_nesting: u32,
     /// Maximum number of nodes in one `m:oMath`. Default: 4096.
     ///

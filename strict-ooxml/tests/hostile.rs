@@ -400,16 +400,39 @@ mod nesting {
         assert_eq!(open_limit(tables(200)), LimitKind::BlockNesting);
     }
 
+    /// The `w:txbxContent` entry of the support report: status and message.
+    fn text_box_entry(
+        document: &StrictDocument,
+    ) -> Option<(strict_ooxml_report::FeatureStatus, Option<String>, bool)> {
+        document
+            .support_report()
+            .features
+            .iter()
+            .find(|feature| feature.feature_id == "w:txbxContent")
+            .map(|feature| {
+                (
+                    feature.status,
+                    feature.message.clone(),
+                    !feature.locations.is_empty(),
+                )
+            })
+    }
+
     #[test]
     fn text_boxes_fit_the_whole_pipeline() {
-        // Six is the whole budget for a text box, and the reason is measured
+        // Five is the whole budget for a text box, and the reason is measured
         // rather than assumed: the parser spends 125408 bytes of stack per text
         // box, because one is a paragraph, a run, a drawing, an inline, a
         // graphic, a graphic-data, a shape, the box and its block children, and
         // a 1 MiB stack is the size of a Windows main thread. Tables cost a
         // seventh of that each, which is why the two have separate budgets.
         let document = open_ok(text_boxes(5));
-        assert_survives("pipeline at six text boxes", move || {
+        assert_eq!(
+            text_box_entry(&document).map(|entry| entry.0),
+            Some(strict_ooxml_report::FeatureStatus::Supported),
+            "inside the budget nothing is degraded"
+        );
+        assert_survives("pipeline at five text boxes", move || {
             let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
             assert!(svg.is_ok(), "render_svg: {svg:?}");
             let written = strict_ooxml::write_package(
@@ -422,13 +445,43 @@ mod nesting {
     }
 
     #[test]
-    fn a_text_box_past_its_own_budget_is_refused_by_kind() {
-        // Before the text box had its own budget, this input reached the
-        // seventh level and the process died with STATUS_STACK_OVERFLOW. Now the
-        // seventh level is an error, in debug and in release alike - which is the
-        // whole point of a separate number.
-        assert_eq!(open_limit(text_boxes(7)), LimitKind::TextBoxNesting);
-        assert_eq!(open_limit(text_boxes(40)), LimitKind::TextBoxNesting);
+    fn a_text_box_past_its_own_budget_costs_its_content_not_the_document() {
+        // Before the text box had its own budget, forty levels killed the
+        // process with STATUS_STACK_OVERFLOW; after AUD-05 they refused the
+        // document. Owner decision 2026-10-03: the box past the budget loses its
+        // content and says so, the document opens, and the whole pipeline runs.
+        // A text box is nine XML levels, so past about 28 of them the reader's
+        // `max_xml_depth` (256) refuses the part first - the earlier defence, as
+        // for formulas in AUD-06.
+        assert_eq!(open_limit(text_boxes(40)), LimitKind::XmlDepth);
+        for depth in [6, 20] {
+            let document = open_ok(DocxBuilder::strict().body(&format!(
+                "<w:p><w:r><w:t>before</w:t></w:r></w:p>{}\
+                     <w:p><w:r><w:t>after</w:t></w:r></w:p>",
+                nested_text_boxes(depth, "<w:p><w:r><w:t>x</w:t></w:r></w:p>")
+            )));
+            let (status, message, located) =
+                text_box_entry(&document).expect("w:txbxContent is reported");
+            assert_eq!(status, strict_ooxml_report::FeatureStatus::Unsupported);
+            assert!(located, "the record carries a location");
+            assert!(
+                message
+                    .as_deref()
+                    .is_some_and(|text| text.contains("max_text_box_nesting (5)")),
+                "{message:?}"
+            );
+            assert_eq!(document.document().body.blocks.len(), 3, "depth {depth}");
+            assert_survives("pipeline after a skipped text box", move || {
+                let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+                assert!(svg.is_ok(), "render_svg: {svg:?}");
+                let written = strict_ooxml::write_package(
+                    document.document(),
+                    Some(document.package()),
+                    &strict_ooxml::WriteOptions::default(),
+                );
+                assert!(written.is_ok(), "write_package");
+            });
+        }
     }
 
     #[test]
@@ -439,18 +492,24 @@ mod nesting {
         });
         let two = text_boxes(2).build();
         let three = text_boxes(3).build();
-        let error = assert_survives("text boxes against a budget of two", move || {
-            StrictDocument::open_reader(Cursor::new(two), &tight).expect("two fit");
-            open(three, &tight)
+        let (two, three) = assert_survives("text boxes against a budget of two", move || {
+            let two = StrictDocument::open_reader(Cursor::new(two), &tight).expect("two fit");
+            let three = StrictDocument::open_reader(Cursor::new(three), &tight)
+                .expect("the third box is skipped, not refused");
+            (text_box_entry(&two), text_box_entry(&three))
         });
-        match error {
-            StrictError::LimitExceeded {
-                kind: LimitKind::TextBoxNesting,
-                limit,
-                actual,
-            } => assert_eq!((limit, actual), (2, 3), "{error:?}"),
-            other => panic!("expected TextBoxNesting, got {other:?}"),
-        }
+        assert_eq!(
+            two.map(|entry| entry.0),
+            Some(strict_ooxml_report::FeatureStatus::Supported)
+        );
+        let (status, message, _) = three.expect("w:txbxContent is reported");
+        assert_eq!(status, strict_ooxml_report::FeatureStatus::Unsupported);
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| text.contains("max_text_box_nesting (2)")),
+            "{message:?}"
+        );
     }
 
     #[test]

@@ -294,18 +294,13 @@ fn text_box_nesting_has_its_own_budget_and_its_own_kind() {
     .expect("five text boxes fit the budget of five");
     assert_eq!(five.body.blocks.len(), 1);
 
+    // The sixth box costs its content, not the document.
     let six = parse_with_limits(
         &document_parts(&text_boxes(6), &[]),
         ResourceLimits::default(),
-    );
-    match six {
-        Err(StrictError::LimitExceeded {
-            kind: LimitKind::TextBoxNesting,
-            limit,
-            actual,
-        }) => assert_eq!((limit, actual), (5, 6)),
-        other => panic!("expected TextBoxNesting, got {other:?}"),
-    }
+    )
+    .expect("a text box past the budget is skipped, not refused");
+    assert_eq!(six.body.blocks.len(), 1);
 }
 
 #[test]

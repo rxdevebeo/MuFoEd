@@ -57,6 +57,10 @@ pub enum LimitKind {
     /// Its own bound because a text box costs ten parser frames where a table
     /// costs one, so the number that fits the stack is a seventh of
     /// [`BlockNesting`](Self::BlockNesting)'s.
+    ///
+    /// Not returned by `parse_document`: the parser skips a text box past the
+    /// bound and records it. The renderer and the writer return it for a model
+    /// built by hand.
     TextBoxNesting,
     /// A ZIP field the writer could not fill without truncating it.
     ///

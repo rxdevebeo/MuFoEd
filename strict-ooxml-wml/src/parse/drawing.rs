@@ -1234,15 +1234,28 @@ impl PartParser<'_> {
                             // text box is ten frames of parser state where a table is
                             // one - so sharing the number would make twelve tables
                             // unreachable.
-                            let (blocks, _) =
-                                parser.nested_text_box(PartParser::parse_block_children)?;
-                            text.blocks = blocks;
-                            parser.record(
-                                "w:txbxContent",
-                                SupportStatus::Supported,
-                                None,
-                                Some(parser.location()),
-                            );
+                            let location = parser.location();
+                            if let Some((blocks, _)) =
+                                parser.nested_text_box(PartParser::parse_block_children)?
+                            {
+                                text.blocks = blocks;
+                                parser.record(
+                                    "w:txbxContent",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(location),
+                                );
+                            } else {
+                                let limit = parser.max_text_box_nesting;
+                                parser.record(
+                                    "w:txbxContent",
+                                    SupportStatus::Unsupported,
+                                    Some(format!(
+                                        "text box nested past max_text_box_nesting ({limit}); its content was skipped"
+                                    )),
+                                    Some(location),
+                                );
+                            }
                         } else {
                             parser.skip_element()?;
                         }

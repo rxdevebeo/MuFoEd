@@ -844,26 +844,23 @@ impl<'a> PartParser<'a> {
     /// drawing, an inline, a graphic, a graphic-data, a shape, the box and its
     /// block children, and one of those costs a seventh of the stack a table does.
     ///
-    /// # Errors
-    ///
-    /// `LimitKind::TextBoxNesting` past
-    /// [`max_text_box_nesting`](crate::parse::PartParser::max_text_box_nesting).
+    /// Past [`max_text_box_nesting`](crate::parse::PartParser::max_text_box_nesting)
+    /// the container is skipped and the result is `Ok(None)`: the box costs its
+    /// content, not the document, the same trade AUD-06 makes for a formula.
+    /// Skipping is iterative, so it spends no stack however deep the rest goes.
     pub(crate) fn nested_text_box<T>(
         &mut self,
         f: impl FnOnce(&mut Self) -> Result<T>,
-    ) -> Result<T> {
+    ) -> Result<Option<T>> {
         let depth = self.text_box_depth.saturating_add(1);
         if depth > self.max_text_box_nesting {
-            return Err(StrictError::LimitExceeded {
-                kind: strict_ooxml_core::error::LimitKind::TextBoxNesting,
-                limit: u64::from(self.max_text_box_nesting),
-                actual: u64::from(depth),
-            });
+            self.skip_element()?;
+            return Ok(None);
         }
         self.text_box_depth = depth;
         let out = f(self);
         self.text_box_depth = self.text_box_depth.saturating_sub(1);
-        out
+        out.map(Some)
     }
 
     /// Whether `name` opens a container whose children are themselves blocks.
