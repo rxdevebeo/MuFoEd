@@ -45,7 +45,8 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-30 | ✅ выполнена | `3d373c1` | ADR-0017; `Mutex<BTreeMap<PartId, NormalizationReport>>`, локальный отчёт + `insert` (замена); `report()` сливает по `PartId`; `PartialEq`; `T2.reltype x8` на Manual.docx; тесты идемпотентности |
 | AUD-31 | ✅ выполнена | `7313c7d` | `RawNormalizer::report`, `Package::normalization_report`, Feature Report `normalization` + `was_normalized`, CLI `report --transitional`; схема осталась `2.0` |
 | AUD-32 | ✅ выполнена | `3336076` | `namespace_declarations` на `quick_xml`; префиксы целые (`wpc`); текст `xmlns` не даёт ложных срабатываний |
-| AUD-33 … AUD-94 | ⏳ не начаты | — | — |
+| AUD-33 | ✅ выполнена | `11631b7` | `DirectionPolicy::{MapToStartEnd,Keep}`; `T4.jc-bidi` при `w:bidi`/`w:bidiVisual`; реэкспорт из мета-крейта |
+| AUD-34 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
 - Census-гейт был сломан до начала Ф1: `report()` печатал список сообщений из переменной `out_messages`, которой в нём нет (`NameError` на ветке, которая срабатывает всегда). Исправлено в `f3f3456`; до правки §0.4 нельзя было выполнить в принципе.
