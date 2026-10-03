@@ -35,6 +35,8 @@ miniz_oxide.workspace = true
 # Independent PDF reader used only as an oracle by the tests (SC-5/SC-7): it
 # re-reads what we wrote without sharing a line of our parsing code.
 lopdf = "0.45"
+# Hostile inputs (AUD-14): a tiny PNG whose IHDR claims a multi-gigabyte buffer.
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 # An external ZIP/XML implementation is not needed here; the package side of the
 # round trip is covered by `strict-ooxml-write`.
 

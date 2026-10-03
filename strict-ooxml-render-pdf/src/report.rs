@@ -104,7 +104,7 @@ impl PdfReport {
             match reject.kind {
                 RejectKind::UnsupportedFormat => "pdf.image.unsupported",
                 RejectKind::Damaged => "pdf.image.damaged",
-                RejectKind::TooLarge => "pdf.image.too_large",
+                RejectKind::TooLarge => "pdf.image.too-large",
             },
             format!("{} ({})", reject.part, reject.reason()),
             Severity::Placeholder,

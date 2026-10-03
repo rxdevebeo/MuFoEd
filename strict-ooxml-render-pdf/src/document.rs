@@ -21,7 +21,7 @@ use strict_ooxml_render_svg::layout::{Item, PathItem, PlacedPage, TextItem};
 use strict_ooxml_render_svg::{MediaSource, RenderOptions};
 
 use crate::font::{EmbeddedFont, FaceCollector, FaceKey};
-use crate::image::{encode, Encoded};
+use crate::image::{encode_with_limit, Encoded};
 use crate::matrix::Matrix;
 use crate::path::{self, Segment};
 use crate::report::PdfReport;
@@ -125,7 +125,14 @@ pub fn render_with_source(
             let Some(bytes) = read_media(media, part)? else {
                 continue;
             };
-            let encoded = match encode(part.as_str(), &bytes) {
+            // The uncompressed budget is the package's own part ceiling: a PNG
+            // cannot expand past what a part of the same document would be
+            // allowed to hold (AUD-14).
+            let encoded = match encode_with_limit(
+                part.as_str(),
+                &bytes,
+                options.limits.max_single_uncompressed,
+            ) {
                 Ok(encoded) => encoded,
                 Err(reject) => {
                     report.record_image_reject(&reject);
