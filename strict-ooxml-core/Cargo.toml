@@ -30,6 +30,10 @@ criterion = "0.5"
 # Independent ZIP implementation used only as an oracle by `tests/corpus_oracle.rs`.
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+[[test]]
+name = "parallel_report"
+required-features = ["parallel"]
+
 [[bench]]
 name = "xml_scan"
 harness = false
