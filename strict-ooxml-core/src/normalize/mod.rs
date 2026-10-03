@@ -20,7 +20,9 @@ use crate::error::Result;
 use crate::part::PartId;
 
 pub use report::{LossRecord, NormalizationReport, Severity, TransformRecord};
-pub use transitional::{InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer};
+pub use transitional::{
+    DirectionPolicy, InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
+};
 
 /// A raw-layer transformation applied to each part before namespace resolution.
 pub trait RawNormalizer: Send + Sync {

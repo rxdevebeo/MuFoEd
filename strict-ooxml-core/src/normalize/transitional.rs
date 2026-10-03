@@ -85,6 +85,19 @@ pub enum InvariantMode {
     Strict,
 }
 
+/// How to treat direction-sensitive `left`/`right` spellings (`TZ` §10.4–§10.5,
+/// AUD-33).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DirectionPolicy {
+    /// Map physical `left`/`right` to logical `start`/`end` (default).
+    #[default]
+    MapToStartEnd,
+    /// Leave direction-neutral renames and value maps alone; record each skip
+    /// as `T3.direction-kept` / `T4.direction-kept` (`Lossy`). The result may
+    /// fail Strict XSD — expected for the diagnostic mode.
+    Keep,
+}
+
 /// Configuration for [`TransitionalNormalizer`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NormalizerOptions {
@@ -105,6 +118,8 @@ pub struct NormalizerOptions {
     /// unimplementable: `verify_no_silent_loss` is the only invariant the pipeline
     /// could check, and it is unconditional.
     pub invariants: InvariantMode,
+    /// Direction-neutral rename / value-map policy (AUD-33).
+    pub direction: DirectionPolicy,
     /// A cap on the bytes one part may expand to while being rewritten.
     ///
     /// Rewriting can grow a part slightly; without a cap a crafted input
@@ -266,6 +281,7 @@ impl TransitionalNormalizer {
         let mut context = PartContext::new(part.clone());
         context.mce = self.options.mce;
         context.invariants = self.options.invariants;
+        context.direction = self.options.direction;
         context.used_prefixes = used_prefixes(bytes);
         if declares_a_vml_picture(bytes) {
             context.vml_picture_prefixes = vml::REQUIRED_NAMESPACES
@@ -728,14 +744,13 @@ impl TransitionalNormalizer {
         // which is a unit test on purpose: **a corpus gate cannot see a rule
         // that the corpus never exercises.**
         let element_uri = map_uri(&uri).unwrap_or_else(|| uri.clone());
-        let parent = context.parent_local().unwrap_or_default();
+        let parent = context.parent_local().unwrap_or("").to_owned();
+        note_bidi_marker(context, &element_uri, &local, &parent, start);
         let renamed = is_wml(&element_uri)
-            .then(|| tables::rename_element(parent, &local))
+            .then(|| tables::rename_element(&parent, &local))
             .flatten();
-        let new_local = renamed.unwrap_or(local.as_str());
-        if renamed.is_some() {
-            report.record("T3.rename", 1);
-        }
+        let new_local =
+            apply_direction_rename(context, report, &location, local.as_str(), renamed, false);
 
         // ---- T1: namespace declarations -------------------------------
         let mut buffer = start.to_owned().into_owned();
@@ -744,7 +759,7 @@ impl TransitionalNormalizer {
         // the element nor its parent is on the stack yet - the element is pushed
         // only after the pipeline has agreed to keep it, so the two are parked
         // here for the attribute loop.
-        context.pending_parent = parent.to_owned();
+        context.pending_parent.clone_from(&parent);
         context.pending_element.clone_from(&local);
         // ---- T4: the one attribute Strict spells as six ----------------
         //
@@ -1318,6 +1333,13 @@ pub(crate) struct PartContext {
     pub(crate) mce: McePolicy,
     /// The invariant mode this write runs with.
     pub(crate) invariants: InvariantMode,
+    /// Direction-neutral rename / value-map policy (AUD-33).
+    pub(crate) direction: DirectionPolicy,
+    /// `w:bidi` seen in the current `w:pPr` (AUD-33; style-inherited bidi is
+    /// out of scope — ADR-0017).
+    ppr_bidi: bool,
+    /// `w:bidiVisual` seen in the current `w:tblPr` (AUD-33).
+    tblpr_bidi_visual: bool,
 }
 
 impl PartContext {
@@ -1354,6 +1376,9 @@ impl PartContext {
             root_written: false,
             mce: McePolicy::default(),
             invariants: InvariantMode::default(),
+            direction: DirectionPolicy::default(),
+            ppr_bidi: false,
+            tblpr_bidi_visual: false,
         }
     }
 
@@ -1399,7 +1424,13 @@ impl PartContext {
 
     /// Forgets the innermost open element.
     fn pop_element(&mut self) {
-        self.open_elements.pop();
+        if let Some(name) = self.open_elements.pop() {
+            if name == "pPr" {
+                self.ppr_bidi = false;
+            } else if name == "tblPr" {
+                self.tblpr_bidi_visual = false;
+            }
+        }
     }
 
     /// The local name of the element that contains the one being rewritten.
@@ -1624,10 +1655,8 @@ fn rewrite_attribute(
     let renamed = is_wml(&uri)
         .then(|| tables::rename_attribute(&context.pending_element, &local))
         .flatten();
-    let new_local = renamed.unwrap_or(local.as_str());
-    if renamed.is_some() {
-        report.record("T3.rename", 1);
-    }
+    let new_local =
+        apply_direction_rename(context, report, &location, local.as_str(), renamed, true);
 
     // ---- T6: MCE bookkeeping that has nothing left to name --------------
     // `mc:Ignorable="w14 w15"` on a part whose `w14` and `w15` nodes are all gone
@@ -1683,6 +1712,7 @@ fn rewrite_attribute(
         &effective_uri,
         &decoded,
         &location,
+        context,
         report,
     )
     .unwrap_or(decoded);
@@ -1860,8 +1890,93 @@ fn decode_tbl_look(start: &BytesStart<'_>, context: &PartContext) -> Option<TblL
     Some(TblLook { flags })
 }
 
+/// Whether `from`→`to` is a direction-neutral left/right mapping (AUD-33).
+fn is_direction_neutral_pair(from: &str, to: &str) -> bool {
+    matches!((from, to), ("left", "start") | ("right", "end"))
+}
+
+/// `w:bidi` / `w:bidiVisual` is on when `@w:val` is absent or a true on/off.
+fn on_off_is_true(start: &BytesStart<'_>) -> bool {
+    for attribute in start.attributes().flatten() {
+        let key = attribute.key.as_ref();
+        let local = key.rsplit(|byte| *byte == b':').next().unwrap_or(key);
+        if local != b"val" {
+            continue;
+        }
+        let value = String::from_utf8_lossy(&attribute.value);
+        return matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "true" | "1" | "on"
+        );
+    }
+    true
+}
+
+/// AUD-33: record `w:bidi` / `w:bidiVisual` while still inside `pPr` / `tblPr`.
+fn note_bidi_marker(
+    context: &mut PartContext,
+    element_uri: &str,
+    local: &str,
+    parent: &str,
+    start: &BytesStart<'_>,
+) {
+    if !is_wml(element_uri) || !on_off_is_true(start) {
+        return;
+    }
+    if local == "bidi" && parent == "pPr" {
+        context.ppr_bidi = true;
+    } else if local == "bidiVisual" && parent == "tblPr" {
+        context.tblpr_bidi_visual = true;
+    }
+}
+
+/// Applies a T3 direction-neutral rename, or records `T3.direction-kept` under
+/// [`DirectionPolicy::Keep`]. `as_attribute` only changes the feature id shape.
+fn apply_direction_rename<'a>(
+    context: &PartContext,
+    report: &mut NormalizationReport,
+    location: &SourceLocation,
+    local: &'a str,
+    renamed: Option<&'a str>,
+    as_attribute: bool,
+) -> &'a str {
+    match renamed {
+        Some(mapped)
+            if context.direction == DirectionPolicy::Keep
+                && is_direction_neutral_pair(local, mapped) =>
+        {
+            let feature_id = if as_attribute {
+                format!("w:{}/@w:{local}", context.pending_element)
+            } else {
+                format!("w:{local}")
+            };
+            let kept = if as_attribute {
+                format!("@{local}")
+            } else {
+                local.to_owned()
+            };
+            report.record_loss(LossRecord {
+                transform_id: "T3.direction-kept",
+                feature_id,
+                reason: format!(
+                    "DirectionPolicy::Keep left {kept} unmapped (would become {mapped})"
+                ),
+                severity: Severity::Lossy,
+                locations: vec![location.clone()],
+            });
+            local
+        }
+        Some(mapped) => {
+            report.record("T3.rename", 1);
+            mapped
+        }
+        None => local,
+    }
+}
+
 /// Applies T4 and T2 to an attribute value, returning `None` when neither
 /// applies and the original must therefore be kept.
+#[allow(clippy::too_many_arguments)]
 fn mapped_value(
     element: &str,
     parent: &str,
@@ -1869,12 +1984,44 @@ fn mapped_value(
     uri: &str,
     value: &str,
     location: &SourceLocation,
+    context: &PartContext,
     report: &mut NormalizationReport,
 ) -> Option<String> {
     // ---- T4: an enumerated value Strict spells differently -------------
     if is_wml(uri) {
         if let Some(mapped) = tables::map_value(element, local, value) {
+            if context.direction == DirectionPolicy::Keep
+                && is_direction_neutral_pair(value, mapped)
+            {
+                report.record_loss(LossRecord {
+                    transform_id: "T4.direction-kept",
+                    feature_id: format!("w:{element}/@w:{local}"),
+                    reason: format!(
+                        "DirectionPolicy::Keep left {value} unmapped (would become {mapped})"
+                    ),
+                    severity: Severity::Lossy,
+                    locations: vec![location.clone()],
+                });
+                return None;
+            }
             report.record_mapping("T4.value", value, mapped);
+            // AUD-33: physical left/right inside a bidi paragraph/table may flip
+            // visually when mapped to logical start/end.
+            if element == "jc"
+                && is_direction_neutral_pair(value, mapped)
+                && ((parent == "pPr" && context.ppr_bidi)
+                    || (parent == "tblPr" && context.tblpr_bidi_visual))
+            {
+                report.record_loss(LossRecord {
+                    transform_id: "T4.jc-bidi",
+                    feature_id: "w:jc".to_owned(),
+                    reason: "physical left/right in a bidi paragraph mapped to logical \
+                             start/end; visual alignment may flip"
+                        .to_owned(),
+                    severity: Severity::Lossy,
+                    locations: vec![location.clone()],
+                });
+            }
             return Some(mapped.to_owned());
         }
         // ---- T4: a value whose TYPE Strict spells differently -----------
@@ -2238,7 +2385,7 @@ mod tests {
 
     use super::{
         map_rel_or_content_type, part_needs_normalization, repair_legacy_package_uri,
-        InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
+        DirectionPolicy, InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
     };
     use crate::error::SourceLocation;
     use crate::normalize::report::{NormalizationReport, Severity};
@@ -3754,6 +3901,104 @@ mod tests {
             .find(|record| record.id == "T2.reltype")
             .expect("T2.reltype");
         assert_eq!(reltype.count, 2, "two relationship types, counted once");
+    }
+
+    /// AUD-33: `w:bidi` + `w:jc=left` maps and records `T4.jc-bidi`.
+    #[test]
+    fn bidi_paragraph_jc_left_maps_and_is_reported() {
+        let source = r#"<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:p><w:pPr><w:bidi/><w:jc w:val="left"/></w:pPr></w:p></w:body></w:document>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let text = String::from_utf8(
+            normalizer
+                .normalize(&part(), source.as_bytes())
+                .unwrap()
+                .into_owned(),
+        )
+        .unwrap();
+        assert!(text.contains(r#"w:val="start""#), "{text}");
+        let losses = normalizer.report().losses();
+        assert!(
+            losses.iter().any(|loss| loss.transform_id == "T4.jc-bidi"),
+            "{}",
+            normalizer.report()
+        );
+    }
+
+    /// AUD-33: without `w:bidi`, `jc=left` maps with no bidi loss.
+    #[test]
+    fn jc_left_without_bidi_has_no_bidi_loss() {
+        let source = r#"<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr></w:p></w:body></w:document>"#;
+        let normalizer = TransitionalNormalizer::new();
+        normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        assert!(
+            normalizer
+                .report()
+                .losses()
+                .iter()
+                .all(|loss| loss.transform_id != "T4.jc-bidi"),
+            "{}",
+            normalizer.report()
+        );
+    }
+
+    /// AUD-33: `DirectionPolicy::Keep` leaves `left` and records the skip.
+    #[test]
+    fn direction_keep_leaves_jc_left_and_records_it() {
+        let source = r#"<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr></w:p></w:body></w:document>"#;
+        let normalizer = TransitionalNormalizer::with_options(NormalizerOptions {
+            direction: DirectionPolicy::Keep,
+            ..NormalizerOptions::default()
+        });
+        let text = String::from_utf8(
+            normalizer
+                .normalize(&part(), source.as_bytes())
+                .unwrap()
+                .into_owned(),
+        )
+        .unwrap();
+        assert!(text.contains(r#"w:val="left""#), "{text}");
+        assert!(
+            normalizer
+                .report()
+                .losses()
+                .iter()
+                .any(|loss| loss.transform_id == "T4.direction-kept"),
+            "{}",
+            normalizer.report()
+        );
+    }
+
+    /// AUD-33: `w:tblPr/w:bidiVisual` + `w:jc=right`.
+    #[test]
+    fn bidi_visual_table_jc_right_maps_and_is_reported() {
+        let source = r#"<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:tbl><w:tblPr><w:bidiVisual/><w:jc w:val="right"/></w:tblPr>
+<w:tr><w:tc><w:p/></w:tc></w:tr></w:tbl></w:body></w:document>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let text = String::from_utf8(
+            normalizer
+                .normalize(&part(), source.as_bytes())
+                .unwrap()
+                .into_owned(),
+        )
+        .unwrap();
+        assert!(text.contains(r#"w:val="end""#), "{text}");
+        assert!(
+            normalizer
+                .report()
+                .losses()
+                .iter()
+                .any(|loss| loss.transform_id == "T4.jc-bidi"),
+            "{}",
+            normalizer.report()
+        );
     }
 
     /// AUD-32: declarations come from the tokenizer, not a text search.
