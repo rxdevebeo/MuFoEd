@@ -74,6 +74,8 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-71 | ✅ выполнена | `57c8200` | defaultTabStop≤0 → 720 + warning; group scale clamp; fmt_num |v|>1e9; sanitize non-finite items; proptest; corpus без NaN/inf |
 | AUD-72 | ✅ выполнена | `64dcc80` | `max_render_items`/`max_pages` в ResourceLimits; счётчик на документ (тело+колонтитулы+рамки+якоря); hostile 1000×2000 |
 | AUD-73 | ✅ выполнена | `ea7519b` | pgSz ≤0/absent → Letter в раскладке; SupportModel Partial; Page::warnings |
+| AUD-74 | ✅ выполнена | `5d10cfd` | геометрия/колонтитулы по секции; nextPage/odd/even/continuous; наследование headerReference |
+| AUD-75 | ✅ выполнена | `5d10cfd` | пустые страницы от явных br/pageBreakBefore/section break сохраняются |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
