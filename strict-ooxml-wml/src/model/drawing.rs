@@ -200,15 +200,26 @@ pub enum PathCommand {
     Close,
 }
 
-/// A custom geometry path (`a:custGeom/a:pathLst/a:path`).
+/// One path inside `a:custGeom/a:pathLst` (AUD-49).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct CustomGeometry {
+pub struct GeometryPath {
     /// Path width (`a:path/@w`) in path units.
     pub width: i64,
     /// Path height (`a:path/@h`) in path units.
     pub height: i64,
-    /// Flattened commands.
+    /// Fill mode (`a:path/@fill`), when present.
+    pub fill: Option<Arc<str>>,
+    /// Whether the path is stroked (`a:path/@stroke`).
+    pub stroke: Option<bool>,
+    /// Path commands.
     pub commands: Vec<PathCommand>,
+}
+
+/// A custom geometry (`a:custGeom`), possibly with several paths (AUD-49).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct CustomGeometry {
+    /// Paths in document order; each keeps its own `w`/`h`.
+    pub paths: Vec<GeometryPath>,
 }
 
 /// A shape's geometry (`a:prstGeom`/`a:custGeom`).

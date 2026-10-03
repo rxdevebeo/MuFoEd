@@ -1086,7 +1086,11 @@ pub(crate) fn is_math(name: &QName) -> bool {
 /// The key comes from the resolved namespace URI, never from the document's
 /// prefix — a `w:` bound to a foreign URI becomes `ext:…`, not `w:…`.
 pub(crate) fn feature_id_for(name: &QName) -> String {
-    let key = namespace_feature_key(name.ns.as_ref().map(strict_ooxml_core::xml::qname::NsUri::as_str));
+    let key = namespace_feature_key(
+        name.ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+    );
     format!("{key}:{}", name.local())
 }
 

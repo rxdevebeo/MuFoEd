@@ -117,7 +117,7 @@ fn shape_items(
     h: f64,
 ) -> Vec<Item> {
     let mut items = Vec::new();
-    let path = shape_path(shape, w, h);
+    let paths = shape_paths(shape, w, h);
     let fill = shape.fill.as_ref().and_then(|fill| fill_color(ctx, fill));
     let (stroke, stroke_w, dash) = stroke_paint(ctx, shape.stroke.as_ref());
     let (rotate_deg, flip_h, flip_v) = shape.xfrm.map_or((0.0, false, false), |xfrm| {
@@ -127,23 +127,26 @@ fn shape_items(
             xfrm.flip_v,
         )
     });
-    if let Some(d) = path {
-        items.push(Item::Path(PathItem {
-            x,
-            y,
-            w,
-            h,
-            d,
-            fill,
-            stroke,
-            stroke_w,
-            dash,
-            rotate_deg,
-            flip_h,
-            flip_v,
-        }));
-    } else {
+    // AUD-49: one SVG `<path>` per `a:path`, each scaled by its own w/h.
+    if paths.is_empty() {
         items.push(placeholder(x, y, w, h));
+    } else {
+        for d in paths {
+            items.push(Item::Path(PathItem {
+                x,
+                y,
+                w,
+                h,
+                d,
+                fill: fill.clone(),
+                stroke: stroke.clone(),
+                stroke_w,
+                dash: dash.clone(),
+                rotate_deg,
+                flip_h,
+                flip_v,
+            }));
+        }
     }
     if let Some(text) = &shape.text {
         if !text.blocks.is_empty() {
@@ -355,15 +358,15 @@ fn text_box_items(
         .collect()
 }
 
-/// Returns the SVG path for a shape in local coordinates.
-fn shape_path(shape: &Shape, w: f64, h: f64) -> Option<String> {
+/// Returns SVG path `d` strings for a shape in local coordinates (AUD-49).
+fn shape_paths(shape: &Shape, w: f64, h: f64) -> Vec<String> {
     match &shape.geometry {
-        strict_ooxml_wml::model::drawing::ShapeGeometry::None => Some(rect_path(w, h)),
+        strict_ooxml_wml::model::drawing::ShapeGeometry::None => vec![rect_path(w, h)],
         strict_ooxml_wml::model::drawing::ShapeGeometry::Preset(preset) => {
-            preset_path(preset, w, h)
+            preset_path(preset, w, h).into_iter().collect()
         }
         strict_ooxml_wml::model::drawing::ShapeGeometry::Custom(custom) => {
-            Some(custom_path(custom, w, h))
+            custom_paths(custom, w, h)
         }
     }
 }
@@ -616,21 +619,34 @@ fn preset_path(preset: &str, w: f64, h: f64) -> Option<String> {
     Some(path)
 }
 
-/// Returns an SVG path for a custom geometry (scaled to the box).
-fn custom_path(custom: &CustomGeometry, w: f64, h: f64) -> String {
-    let scale_x = if custom.width > 0 {
-        w / custom.width as f64
+/// Returns one SVG `d` string per custom-geometry path (AUD-49).
+fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<String> {
+    custom
+        .paths
+        .iter()
+        .map(|path| geometry_path_d(path, w, h))
+        .filter(|d| !d.is_empty())
+        .collect()
+}
+
+fn geometry_path_d(
+    path: &strict_ooxml_wml::model::drawing::GeometryPath,
+    w: f64,
+    h: f64,
+) -> String {
+    let scale_x = if path.width > 0 {
+        w / path.width as f64
     } else {
         1.0
     };
-    let scale_y = if custom.height > 0 {
-        h / custom.height as f64
+    let scale_y = if path.height > 0 {
+        h / path.height as f64
     } else {
         1.0
     };
     let f = crate::units::fmt_num;
     let mut out = String::new();
-    for command in &custom.commands {
+    for command in &path.commands {
         match command {
             PathCommand::MoveTo { x, y } => {
                 let _ = write!(

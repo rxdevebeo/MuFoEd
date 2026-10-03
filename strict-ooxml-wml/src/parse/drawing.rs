@@ -8,9 +8,10 @@ use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::drawing::{
     AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
-    ForeignRefs, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing, MediaItem,
-    MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry,
-    ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap, WrapKind, Xfrm,
+    ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing,
+    MediaItem, MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill,
+    ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap,
+    WrapKind, Xfrm,
 };
 use crate::model::support::SupportStatus;
 use crate::model::values::{Color, Emu, ThemeColor, ThemeColorRef};
@@ -806,20 +807,27 @@ impl PartParser<'_> {
         })
     }
 
-    /// Parses `a:pathLst`.
+    /// Parses `a:pathLst` into one [`GeometryPath`] per `a:path` (AUD-49).
     fn parse_path_list(&mut self, geometry: &mut CustomGeometry) -> Result<()> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "path" {
-                            geometry.width = plain_attr(&attrs, "w")
-                                .and_then(|v| v.trim().parse().ok())
-                                .unwrap_or(0);
-                            geometry.height = plain_attr(&attrs, "h")
-                                .and_then(|v| v.trim().parse().ok())
-                                .unwrap_or(0);
-                            parser.parse_path(geometry)?;
+                            let mut path = GeometryPath {
+                                width: plain_attr(&attrs, "w")
+                                    .and_then(|v| v.trim().parse().ok())
+                                    .unwrap_or(0),
+                                height: plain_attr(&attrs, "h")
+                                    .and_then(|v| v.trim().parse().ok())
+                                    .unwrap_or(0),
+                                fill: plain_attr(&attrs, "fill").map(|v| parser.intern(v)),
+                                stroke: plain_attr(&attrs, "stroke")
+                                    .map(|v| matches!(v, "true" | "1" | "on" | "t")),
+                                commands: Vec::new(),
+                            };
+                            parser.parse_path(&mut path)?;
+                            geometry.paths.push(path);
                         } else {
                             parser.skip_element()?;
                         }
@@ -833,8 +841,8 @@ impl PartParser<'_> {
         })
     }
 
-    /// Parses one `a:path`.
-    fn parse_path(&mut self, geometry: &mut CustomGeometry) -> Result<()> {
+    /// Parses one `a:path` into `path.commands`.
+    fn parse_path(&mut self, path: &mut GeometryPath) -> Result<()> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
@@ -846,14 +854,14 @@ impl PartParser<'_> {
                         match name.local() {
                             "moveTo" => {
                                 let point = parser.parse_first_point()?;
-                                geometry.commands.push(PathCommand::MoveTo {
+                                path.commands.push(PathCommand::MoveTo {
                                     x: point.0,
                                     y: point.1,
                                 });
                             }
                             "lnTo" => {
                                 let point = parser.parse_first_point()?;
-                                geometry.commands.push(PathCommand::LineTo {
+                                path.commands.push(PathCommand::LineTo {
                                     x: point.0,
                                     y: point.1,
                                 });
@@ -861,7 +869,7 @@ impl PartParser<'_> {
                             "cubicBezTo" => {
                                 let points = parser.parse_points()?;
                                 if points.len() >= 3 {
-                                    geometry.commands.push(PathCommand::CubicBezTo {
+                                    path.commands.push(PathCommand::CubicBezTo {
                                         x1: points[0].0,
                                         y1: points[0].1,
                                         x2: points[1].0,
@@ -872,7 +880,7 @@ impl PartParser<'_> {
                                 }
                             }
                             "close" => {
-                                geometry.commands.push(PathCommand::Close);
+                                path.commands.push(PathCommand::Close);
                                 parser.skip_element()?;
                             }
                             _ => parser.skip_element()?,

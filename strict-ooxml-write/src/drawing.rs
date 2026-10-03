@@ -723,39 +723,48 @@ fn custom_geometry(xml: &mut XmlWriter, custom: &CustomGeometry) {
     xml.attr("b", "b");
     xml.end();
     xml.start("a:pathLst");
-    xml.start("a:path");
-    xml.attr("w", custom.width.max(1));
-    xml.attr("h", custom.height.max(1));
-    for command in &custom.commands {
-        match *command {
-            PathCommand::MoveTo { x, y } => {
-                xml.start("a:moveTo");
-                point(xml, "a:pt", x, y);
-                xml.end();
-            }
-            PathCommand::LineTo { x, y } => {
-                xml.start("a:lnTo");
-                point(xml, "a:pt", x, y);
-                xml.end();
-            }
-            PathCommand::CubicBezTo {
-                x1,
-                y1,
-                x2,
-                y2,
-                x,
-                y,
-            } => {
-                xml.start("a:cubicBezTo");
-                point(xml, "a:pt", x1, y1);
-                point(xml, "a:pt", x2, y2);
-                point(xml, "a:pt", x, y);
-                xml.end();
-            }
-            PathCommand::Close => xml.empty("a:close"),
+    // AUD-49: one `a:path` per modelled path, each with its own w/h.
+    for path in &custom.paths {
+        xml.start("a:path");
+        xml.attr("w", path.width.max(1));
+        xml.attr("h", path.height.max(1));
+        if let Some(fill) = path.fill.as_deref() {
+            xml.attr("fill", fill);
         }
+        if let Some(stroke) = path.stroke {
+            xml.attr("stroke", if stroke { "true" } else { "false" });
+        }
+        for command in &path.commands {
+            match *command {
+                PathCommand::MoveTo { x, y } => {
+                    xml.start("a:moveTo");
+                    point(xml, "a:pt", x, y);
+                    xml.end();
+                }
+                PathCommand::LineTo { x, y } => {
+                    xml.start("a:lnTo");
+                    point(xml, "a:pt", x, y);
+                    xml.end();
+                }
+                PathCommand::CubicBezTo {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                } => {
+                    xml.start("a:cubicBezTo");
+                    point(xml, "a:pt", x1, y1);
+                    point(xml, "a:pt", x2, y2);
+                    point(xml, "a:pt", x, y);
+                    xml.end();
+                }
+                PathCommand::Close => xml.empty("a:close"),
+            }
+        }
+        xml.end();
     }
-    xml.end();
     xml.end();
     xml.end();
 }

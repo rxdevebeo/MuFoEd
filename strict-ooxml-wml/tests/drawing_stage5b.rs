@@ -150,10 +150,14 @@ fn pattern_and_no_fill_and_custom_geometry() {
     let ShapeGeometry::Custom(custom) = &parsed.geometry else {
         panic!("custom geometry");
     };
-    assert_eq!(custom.width, 100);
-    assert_eq!(custom.commands.len(), 4);
-    assert!(matches!(custom.commands[0], PathCommand::MoveTo { .. }));
-    assert!(matches!(custom.commands[3], PathCommand::Close));
+    assert_eq!(custom.paths.len(), 1);
+    assert_eq!(custom.paths[0].width, 100);
+    assert_eq!(custom.paths[0].commands.len(), 4);
+    assert!(matches!(
+        custom.paths[0].commands[0],
+        PathCommand::MoveTo { .. }
+    ));
+    assert!(matches!(custom.paths[0].commands[3], PathCommand::Close));
     assert!(matches!(
         parsed.fill.as_ref().unwrap(),
         ShapeFill::Pattern { .. }
@@ -162,6 +166,32 @@ fn pattern_and_no_fill_and_custom_geometry() {
         document.support.get("a:custGeom").unwrap().status,
         strict_ooxml_wml::model::SupportStatus::Partial
     );
+}
+
+/// AUD-49: two `a:path` elements keep distinct w/h instead of overwriting.
+#[test]
+fn cust_geom_keeps_multiple_paths() {
+    let shape = "<wps:wsp><wps:cNvPr id=\"1\" name=\"c\"/><wps:spPr>\
+<a:custGeom><a:pathLst>\
+<a:path w=\"100\" h=\"50\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo>\
+<a:lnTo><a:pt x=\"100\" y=\"50\"/></a:lnTo></a:path>\
+<a:path w=\"200\" h=\"200\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo>\
+<a:lnTo><a:pt x=\"200\" y=\"200\"/></a:lnTo><a:close/></a:path>\
+</a:pathLst></a:custGeom>\
+<a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill>\
+</wps:spPr></wps:wsp>";
+    let (_document, anchor) = anchor_of(&wrap_anchor(shape));
+    let Graphic::Shape(parsed) = anchor.graphic.as_ref() else {
+        panic!("shape");
+    };
+    let ShapeGeometry::Custom(custom) = &parsed.geometry else {
+        panic!("custom geometry");
+    };
+    assert_eq!(custom.paths.len(), 2);
+    assert_eq!((custom.paths[0].width, custom.paths[0].height), (100, 50));
+    assert_eq!((custom.paths[1].width, custom.paths[1].height), (200, 200));
+    assert_eq!(custom.paths[0].commands.len(), 2);
+    assert_eq!(custom.paths[1].commands.len(), 3);
 }
 
 #[test]

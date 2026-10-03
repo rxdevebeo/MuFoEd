@@ -27,8 +27,8 @@ pub use block::{
 pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{
     AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
-    ForeignRefs, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing, MediaIndex,
-    MediaItem, MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill,
+    ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing,
+    MediaIndex, MediaItem, MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill,
     ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap,
     WrapKind, Xfrm,
 };
