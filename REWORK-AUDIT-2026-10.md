@@ -54,6 +54,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-42 | ✅ выполнена | `84b869a` | `customXml`/`smartTag` прозрачны (content kept); `Inline::Directional` для `dir`/`bdo`; writer round-trip + `W.custom-xml-wrapper`; рендер штампует `rtl` |
 | AUD-45 | ✅ выполнена | `3e37e85` | `percent_from_fiftieths` один знак; `w:sym` через `from_str_radix`, окно `F000..=F0FF`; тесты |
 | AUD-48 | ✅ выполнена | `963226b` | `merge_media` для footnotes/endnotes; тест картинки в сноске |
+| AUD-51 | ✅ выполнена | `bc77ff9` | `max_support_features` (10_000) + `support.overflow`; ключ фичи по URI (`w`/`a`/`ext:…`), не по префиксу документа |
 | AUD-52 | ✅ выполнена | `2bffce3` | `tests/traits.rs` Send+Sync; `render_page_svg(usize::MAX)` → Err |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
