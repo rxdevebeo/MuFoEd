@@ -3,14 +3,18 @@
 //! Strict-first: only `http://purl.oclc.org/ooxml/officeDocument/math` is
 //! accepted. Every node carries a
 //! [`SourceLocation`](strict_ooxml_core::error::SourceLocation), recursion is
-//! bounded by the shared XML depth limit and an additional node budget, and
-//! unmodelled constructs are recorded in the
-//! [`SupportModel`](crate::model::support::SupportModel) as
+//! bounded by the shared XML depth limit and by the per-formula budgets
+//! [`ResourceLimits::max_math_nodes`] and
+//! [`ResourceLimits::max_math_depth`], and unmodelled constructs are recorded in
+//! the [`SupportModel`](crate::model::support::SupportModel) as
 //! `Partial`/`Unsupported` instead of being dropped.
+//!
+//! A formula past either budget is skipped and reported, not refused: one hostile
+//! formula must not cost the reader the document around it (AUD-06).
 
 use std::sync::Arc;
 
-use strict_ooxml_core::error::{LimitKind, Result, StrictError};
+use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::math::{
@@ -25,22 +29,85 @@ use crate::model::support::SupportStatus;
 
 use super::{attr_in_ns, is_math, parse_i32, plain_attr, PartParser};
 
-/// Maximum number of nodes in one formula (output/hostile-input guard).
-const MAX_MATH_NODES: u32 = 4_096;
-/// Maximum nesting depth inside one formula.
-const MAX_MATH_DEPTH: u32 = 64;
-
-/// Re-enters the math parser with its own depth and node budget.
+/// The per-formula budgets, taken from `ResourceLimits`.
+///
+/// `exhausted` is why these are a struct and not two `u32`s: once a formula is
+/// past either budget the rest of it is skipped rather than refused, so the
+/// reason has to survive the rest of the subtree for the report to name.
 struct MathScope {
     depth: u32,
     nodes: u32,
+    exhausted: Option<&'static str>,
 }
+
+impl MathScope {
+    fn new() -> Self {
+        Self {
+            depth: 0,
+            nodes: 0,
+            exhausted: None,
+        }
+    }
+
+    /// Whether the formula is already over a budget.
+    fn is_exhausted(&self) -> bool {
+        self.exhausted.is_some()
+    }
+
+    /// Spends one node, reporting whether the budget is gone.
+    fn charge_node(&mut self, limit: u32) -> bool {
+        self.nodes = self.nodes.saturating_add(1);
+        self.nodes > limit
+    }
+
+    /// Enters one level of nesting, reporting whether the budget is gone.
+    fn enter(&mut self, limit: u32) -> bool {
+        self.depth = self.depth.saturating_add(1);
+        self.depth > limit
+    }
+
+    fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
+    }
+
+    /// Records that a budget ran out, keeping the first reason.
+    fn exhaust(&mut self, reason: &'static str) {
+        if self.exhausted.is_none() {
+            self.exhausted = Some(reason);
+        }
+    }
+}
+
+/// The message a report carries when a formula is over a budget.
+const OVER_BUDGET: &str = "formula exceeds max_math_nodes/max_math_depth";
 
 /// Parses `m:oMath` (its start element has been consumed).
 pub(crate) fn parse_omath(parser: &mut PartParser<'_>) -> Result<MathExpression> {
     let location = parser.location();
-    let mut scope = MathScope { depth: 0, nodes: 0 };
+    let mut scope = MathScope::new();
     let nodes = parse_omath_elements(parser, &mut scope)?;
+    if scope.is_exhausted() {
+        // One formula past its budget costs that formula and nothing else: the
+        // model keeps a node the report names, and the rest of the paragraph -
+        // the text around it, the next paragraph, the rest of the document -
+        // is read as if the formula had been short. Refusing the document would
+        // make a hostile formula a denial of service against a file whose text
+        // is perfectly readable.
+        let reason = format!("{OVER_BUDGET} ({})", scope.exhausted.unwrap_or("exhausted"));
+        parser.record(
+            "m:oMath",
+            SupportStatus::Unsupported,
+            Some(reason),
+            Some(location.clone()),
+        );
+        return Ok(MathExpression {
+            nodes: vec![MathNode::Unknown(Box::new(UnknownMathNode {
+                local: std::sync::Arc::from("oMath"),
+                location: location.clone(),
+            }))],
+            location,
+        });
+    }
     parser.record(
         "m:oMath",
         SupportStatus::Supported,
@@ -158,6 +225,14 @@ fn parse_omath_elements(
     loop {
         match parser.next_event()? {
             XmlEvent::StartElement { name, attrs } => {
+                if scope.is_exhausted() {
+                    // The formula is already over a budget: skip what is left of
+                    // it, one element at a time, until its end tag. Skipping is
+                    // the point - the alternative is walking a subtree that has
+                    // already been found too large.
+                    parser.skip_element()?;
+                    continue;
+                }
                 if !is_math(&name) {
                     // `w:r` / `w:br` may appear inside `m:r`; anything else
                     // foreign is reported and skipped.
@@ -178,20 +253,6 @@ fn parse_omath_elements(
     Ok(nodes)
 }
 
-/// Charges one node against the budget of a single formula.
-fn charge_node(parser: &PartParser<'_>, scope: &mut MathScope) -> Result<()> {
-    scope.nodes = scope.nodes.saturating_add(1);
-    if scope.nodes > MAX_MATH_NODES {
-        return Err(StrictError::LimitExceeded {
-            kind: LimitKind::MathNodes,
-            limit: u64::from(MAX_MATH_NODES),
-            actual: u64::from(scope.nodes),
-        });
-    }
-    let _ = parser;
-    Ok(())
-}
-
 /// Parses one math element into a [`MathNode`].
 #[allow(clippy::too_many_lines)]
 fn parse_math_node(
@@ -200,16 +261,17 @@ fn parse_math_node(
     _attrs: &[Attr],
     scope: &mut MathScope,
 ) -> Result<Option<MathNode>> {
-    scope.depth = scope.depth.saturating_add(1);
-    if scope.depth > MAX_MATH_DEPTH {
-        return Err(StrictError::LimitExceeded {
-            kind: LimitKind::MathDepth,
-            limit: u64::from(MAX_MATH_DEPTH),
-            actual: u64::from(scope.depth),
-        });
-    }
     let location = parser.location();
-    charge_node(parser, scope)?;
+    if scope.enter(parser.max_math_depth) {
+        scope.exhaust("max_math_depth");
+        parser.skip_element()?;
+        return Ok(None);
+    }
+    if scope.charge_node(parser.max_math_nodes) {
+        scope.exhaust("max_math_nodes");
+        parser.skip_element()?;
+        return Ok(None);
+    }
 
     // `<m:r>` is the only construct whose text we read directly.
     let node = match name.local() {
@@ -284,7 +346,7 @@ fn parse_math_node(
             })))
         }
     };
-    scope.depth = scope.depth.saturating_sub(1);
+    scope.leave();
     Ok(node)
 }
 
@@ -539,19 +601,23 @@ fn parse_argument(
 ) -> Result<Option<MathArgument>> {
     let location = parser.location();
     parser.enter()?;
-    scope.depth = scope.depth.saturating_add(1);
-    if scope.depth > MAX_MATH_DEPTH {
-        return Err(StrictError::LimitExceeded {
-            kind: LimitKind::MathDepth,
-            limit: u64::from(MAX_MATH_DEPTH),
-            actual: u64::from(scope.depth),
-        });
+    // Entering is *not* an early return here: the argument's start element has
+    // already been consumed by the caller, so bailing out now would leave the
+    // reader inside it and the caller's loop would read this element's end tag as
+    // its own. The loop below skips forward to the argument's end instead, which
+    // keeps every reader position where the shape of the markup says it is.
+    if scope.enter(parser.max_math_depth) {
+        scope.exhaust("max_math_depth");
     }
     let mut properties = ArgumentProperties::default();
     let mut nodes = Vec::new();
     loop {
         match parser.next_event()? {
             XmlEvent::StartElement { name, attrs } => {
+                if scope.is_exhausted() {
+                    parser.skip_element()?;
+                    continue;
+                }
                 if !is_math(&name) {
                     parser.record_foreign(&name);
                     parser.skip_element()?;
@@ -571,7 +637,7 @@ fn parse_argument(
         }
     }
     parser.leave();
-    scope.depth = scope.depth.saturating_sub(1);
+    scope.leave();
     if optional && nodes.is_empty() {
         return Ok(None);
     }

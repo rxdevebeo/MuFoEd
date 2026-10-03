@@ -58,12 +58,17 @@ pub enum LimitKind {
     /// costs one, so the number that fits the stack is a seventh of
     /// [`BlockNesting`](Self::BlockNesting)'s.
     TextBoxNesting,
-    /// The per-formula node budget enforced by the OMML parser
-    /// (`STAGE-5C-TASK.md` §5.1). Not a `ResourceLimits` field: the bound
-    /// applies to one `m:oMath`, not to the whole package.
+    /// The per-formula node budget (`ResourceLimits::max_math_nodes`).
+    ///
+    /// No longer returned by `parse_document`: a formula past the budget is
+    /// replaced by an `m:oMath` the report names as `Unsupported`, because one
+    /// hostile formula inside an otherwise ordinary document should not cost the
+    /// reader the whole document. Kept because a caller that walks the model
+    /// itself may still want to name the bound it holds to.
     MathNodes,
-    /// The per-formula nesting budget enforced by the OMML parser
-    /// (`STAGE-5C-TASK.md` §5.1).
+    /// The per-formula nesting budget (`ResourceLimits::max_math_depth`).
+    ///
+    /// As [`MathNodes`](Self::MathNodes): no longer returned by `parse_document`.
     MathDepth,
 }
 

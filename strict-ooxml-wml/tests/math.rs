@@ -14,7 +14,7 @@ use strict_ooxml_wml::model::math::{
 use strict_ooxml_wml::model::{Block, Inline, SupportStatus};
 use strict_ooxml_wml::M_NS;
 
-use common::{document_parts, parse_parts};
+use common::{document_parts, parse_parts, parse_parts_with_limits};
 
 /// Wraps a paragraph body into a package and parses it.
 fn parse_body(body: &str) -> strict_ooxml_wml::model::Document {
@@ -376,10 +376,17 @@ fn the_transitional_math_namespace_is_rejected() {
 }
 
 #[test]
-fn a_deeply_nested_formula_is_rejected_by_the_depth_budget() {
-    // The nesting budget (64) stops a hostile document long before the XML
-    // depth limit, with an error rather than a panic.
-    let deep = 200;
+fn a_deeply_nested_formula_is_degraded_and_reported() {
+    // The nesting budget (64) stops a hostile formula long before the XML depth
+    // limit. Since AUD-06 it costs that formula and not the document: one
+    // hostile formula must not make a file whose text is readable unopenable.
+    //
+    // Seventy levels, not two hundred: two hundred nested `m:d`/`m:e` pairs are
+    // 400 XML elements, and the reader's own `max_xml_depth` of 256 refuses that
+    // before the formula budget is even consulted. That is the earlier defence
+    // doing its job, and it is why this fixture is as deep as a formula can be
+    // and still exercise the formula budget rather than the reader's.
+    let deep = 70;
     let mut body = String::new();
     body.push_str("<m:oMath>");
     for _ in 0..deep {
@@ -390,25 +397,125 @@ fn a_deeply_nested_formula_is_rejected_by_the_depth_budget() {
         body.push_str("</m:e></m:d>");
     }
     body.push_str("</m:oMath>");
-    let error = parse_parts(&document_parts(&format!("<w:p>{body}</w:p>"), &[]))
-        .expect_err("the depth budget must be enforced");
-    let message = error.to_string();
-    assert!(
-        message.contains("math_depth") || message.contains("math_nodes"),
-        "unexpected error: {message}"
-    );
+    let document = parse_parts(&document_parts(
+        &format!("<w:p><w:r><w:t>before</w:t></w:r>{body}<w:r><w:t>after</w:t></w:r></w:p>"),
+        &[],
+    ))
+    .expect("a formula over budget must not take the document with it");
+
+    assert_over_budget_formula(&document);
+    assert_paragraph_text(&document, "before", "after");
 }
 
 #[test]
-fn a_wide_formula_is_rejected_by_the_node_budget() {
+fn a_wide_formula_is_degraded_and_reported() {
     let mut body = String::from("<m:oMath>");
     for _ in 0..5000 {
         body.push_str("<m:r><m:t>x</m:t></m:r>");
     }
     body.push_str("</m:oMath>");
-    let error = parse_parts(&document_parts(&format!("<w:p>{body}</w:p>"), &[]))
-        .expect_err("the node budget must be enforced");
-    assert!(error.to_string().contains("math_nodes"), "{error}");
+    let document = parse_parts(&document_parts(
+        &format!("<w:p><w:r><w:t>before</w:t></w:r>{body}<w:r><w:t>after</w:t></w:r></w:p>"),
+        &[],
+    ))
+    .expect("a formula over budget must not take the document with it");
+
+    assert_over_budget_formula(&document);
+    assert_paragraph_text(&document, "before", "after");
+}
+
+/// The formula is reported as `Unsupported`, at a location, and is one unknown
+/// node in the model rather than 5000 of them.
+fn assert_over_budget_formula(document: &strict_ooxml_wml::model::Document) {
+    let use_entry = document
+        .support()
+        .get("m:oMath")
+        .expect("m:oMath is in the report");
+    assert_eq!(use_entry.status, SupportStatus::Unsupported);
+    let reason = use_entry.message.as_deref().unwrap_or_default();
+    assert!(
+        reason.contains("max_math_nodes") || reason.contains("max_math_depth"),
+        "the reason names the budget: {reason}"
+    );
+    assert!(
+        use_entry.first_location().is_some(),
+        "the record carries a location"
+    );
+
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("a paragraph");
+    };
+    let math = paragraph
+        .inlines
+        .iter()
+        .find_map(|inline| match inline {
+            Inline::Math(expression) => Some(expression),
+            _ => None,
+        })
+        .expect("the formula is in the model");
+    assert_eq!(
+        math.nodes.len(),
+        1,
+        "the formula is one unknown node, not a partial tree"
+    );
+    assert!(matches!(math.nodes[0], MathNode::Unknown(_)));
+}
+
+/// The text around the formula survived.
+fn assert_paragraph_text(document: &strict_ooxml_wml::model::Document, before: &str, after: &str) {
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("a paragraph");
+    };
+    let texts: Vec<&str> = paragraph
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => run.content.iter().find_map(|content| match content {
+                strict_ooxml_wml::model::inline::RunContent::Text(node) => Some(node.text.as_ref()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, [before, after], "the text around the formula");
+}
+
+#[test]
+fn the_formula_budgets_are_the_callers() {
+    // A host with a bigger stack and an appetite for a long formula can say so;
+    // a hard-coded 4096 in the parser could not.
+    let mut body = String::from("<m:oMath>");
+    for _ in 0..40 {
+        body.push_str("<m:r><m:t>x</m:t></m:r>");
+    }
+    body.push_str("</m:oMath>");
+    let parts = document_parts(&format!("<w:p>{body}</w:p>"), &[]);
+
+    let generous = parse_parts_with_limits(
+        &parts,
+        strict_ooxml_core::limits::ResourceLimits {
+            max_math_nodes: 4096,
+            ..strict_ooxml_core::limits::ResourceLimits::default()
+        },
+    )
+    .expect("forty runs are inside the default budget");
+    assert!(generous
+        .support()
+        .get("m:oMath")
+        .is_some_and(|entry| entry.status == SupportStatus::Supported));
+
+    let tight = parse_parts_with_limits(
+        &parts,
+        strict_ooxml_core::limits::ResourceLimits {
+            max_math_nodes: 10,
+            ..strict_ooxml_core::limits::ResourceLimits::default()
+        },
+    )
+    .expect("a tight budget degrades the formula, it does not refuse the file");
+    assert!(tight
+        .support()
+        .get("m:oMath")
+        .is_some_and(|entry| entry.status == SupportStatus::Unsupported));
 }
 
 #[test]

@@ -88,6 +88,14 @@ pub struct ResourceLimits {
     /// document. Word draws a text box hierarchy as a flat one past a level or
     /// two, so no real document is refused by six.
     pub max_text_box_nesting: u32,
+    /// Maximum number of nodes in one `m:oMath`. Default: 4096.
+    ///
+    /// Per formula, not per package: a document may carry a thousand formulas,
+    /// and the budget that matters is the one that decides whether a single
+    /// hostile formula can exhaust the stack or the heap.
+    pub max_math_nodes: u32,
+    /// Maximum nesting depth inside one `m:oMath`. Default: 64.
+    pub max_math_depth: u32,
 }
 
 impl Default for ResourceLimits {
@@ -105,6 +113,8 @@ impl Default for ResourceLimits {
             max_parts: 4096,
             max_block_nesting: 12,
             max_text_box_nesting: 6,
+            max_math_nodes: 4096,
+            max_math_depth: 64,
         }
     }
 }
@@ -128,6 +138,8 @@ mod tests {
         assert_eq!(limits.max_parts, 4096);
         assert_eq!(limits.max_block_nesting, 12);
         assert_eq!(limits.max_text_box_nesting, 6);
+        assert_eq!(limits.max_math_nodes, 4096);
+        assert_eq!(limits.max_math_depth, 64);
     }
 
     #[test]

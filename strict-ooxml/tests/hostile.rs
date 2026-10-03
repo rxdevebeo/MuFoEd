@@ -572,8 +572,120 @@ mod nesting {
 
 mod math {
     //! AUD-06: formulas over `max_math_nodes` / `max_math_depth`.
-}
 
+    use super::*;
+    use strict_ooxml::model::inline::RunContent;
+    use strict_ooxml::model::{Block, Inline};
+    use strict_ooxml_report::FeatureStatus;
+
+    /// A paragraph holding one inline formula, with text either side of it.
+    fn formula(inner: &str) -> DocxBuilder {
+        DocxBuilder::strict().body(&format!(
+            "<w:p><w:r><w:t>before</w:t></w:r><m:oMath>{inner}</m:oMath>\
+             <w:r><w:t>after</w:t></w:r></w:p>"
+        ))
+    }
+
+    /// What the report says about the formula, and what survived next to it.
+    struct Seen {
+        status: Option<FeatureStatus>,
+        located: bool,
+        text: String,
+    }
+
+    /// Opens `builder` and reports the `m:oMath` entry plus the paragraph text.
+    fn open_and_see(builder: DocxBuilder) -> Seen {
+        assert_survives("open", move || {
+            let document =
+                StrictDocument::open_reader(Cursor::new(builder.build()), &OpenOptions::default())
+                    .expect("a formula over budget must not take the document with it");
+            let entry = document
+                .support_report()
+                .features
+                .iter()
+                .find(|feature| feature.feature_id == "m:oMath")
+                .cloned();
+            let text: String = document
+                .document()
+                .body
+                .blocks
+                .iter()
+                .filter_map(Block::as_paragraph)
+                .flat_map(|paragraph| paragraph.inlines.iter())
+                .filter_map(Inline::as_run)
+                .filter_map(|run| run.content.first())
+                .filter_map(|content| match content {
+                    RunContent::Text(node) => Some(&node.text[..]),
+                    _ => None,
+                })
+                .collect();
+            Seen {
+                status: entry.as_ref().map(|feature| feature.status),
+                located: entry.is_some_and(|feature| !feature.locations.is_empty()),
+                text,
+            }
+        })
+    }
+
+    #[test]
+    fn a_formula_with_five_thousand_nodes_costs_the_formula_and_not_the_document() {
+        let runs = "<m:r><m:t>x</m:t></m:r>".repeat(5000);
+        let seen = open_and_see(formula(&runs));
+        assert_eq!(seen.status, Some(FeatureStatus::Unsupported));
+        assert!(seen.located, "the record carries a location");
+        assert_eq!(
+            seen.text, "beforeafter",
+            "the text around the formula is untouched"
+        );
+    }
+
+    #[test]
+    fn a_formula_nested_past_its_depth_budget_is_degraded_the_same_way() {
+        // 35 `m:d`/`m:e` levels is a math depth of 70 against a budget of 64,
+        // and about 70 XML elements against the reader's 256 - so what is under
+        // test here is the formula budget, not the reader's depth limit. (Two
+        // hundred levels would be 400 XML elements, and the reader would refuse
+        // it first, which is the earlier defence doing its job.)
+        let mut deep = "<m:d><m:e>".repeat(35);
+        deep.push_str("<m:r><m:t>x</m:t></m:r>");
+        deep.push_str(&"</m:e></m:d>".repeat(35));
+        let seen = open_and_see(formula(&deep));
+        assert_eq!(seen.status, Some(FeatureStatus::Unsupported));
+        assert!(seen.located, "the record carries a location");
+        assert_eq!(seen.text, "beforeafter");
+    }
+
+    #[test]
+    fn an_ordinary_formula_is_still_supported() {
+        // The degradation must not fire on markup inside the budget, or it is a
+        // silent loss wearing a report.
+        let seen = open_and_see(formula(
+            "<m:f><m:num><m:r><m:t>a</m:t></m:r></m:num>\
+             <m:den><m:r><m:t>b</m:t></m:r></m:den></m:f>",
+        ));
+        assert_eq!(seen.status, Some(FeatureStatus::Supported));
+        assert_eq!(seen.text, "beforeafter");
+    }
+
+    #[test]
+    fn a_formula_past_the_budget_leaves_the_next_paragraph_alone() {
+        // The degradation is per formula, not per document: the paragraph after
+        // the hostile one is read as if nothing had happened.
+        let runs = "<m:r><m:t>x</m:t></m:r>".repeat(5000);
+        let builder = DocxBuilder::strict().body(&format!(
+            "<w:p><m:oMath>{runs}</m:oMath></w:p><w:p><w:r><w:t>tail</w:t></w:r></w:p>"
+        ));
+        let tail = assert_survives("open with a tail paragraph", move || {
+            StrictDocument::open_reader(Cursor::new(builder.build()), &OpenOptions::default())
+                .expect("open")
+                .document()
+                .body
+                .blocks
+                .len()
+        });
+        assert_eq!(tail, 2, "both paragraphs are in the model");
+    }
+}
 mod table {
     //! AUD-08, AUD-09: rows wider than `tblGrid`, overflowing grid sums.
 }

@@ -628,6 +628,14 @@ pub(crate) struct PartParser<'a> {
     /// or refuse twelve-deep tables over a text box the document never had.
     pub(crate) text_box_depth: u32,
     pub(crate) max_text_box_nesting: u32,
+    /// The per-formula budgets, from `ResourceLimits`.
+    ///
+    /// Kept on the parser rather than as constants in `parse/math.rs`, because
+    /// G-4 of the rework plan says a limit that is not in `ResourceLimits` is not
+    /// a limit the caller has: a host with its own stack and its own appetite for
+    /// a long formula needs to be able to say so.
+    pub(crate) max_math_nodes: u32,
+    pub(crate) max_math_depth: u32,
     /// `w:gutterAtTop` seen inside a `w:sectPr`, where Transitional puts it.
     ///
     /// Strict has no slot for it there - `EG_SectPrContents` does not declare it
@@ -664,6 +672,8 @@ impl<'a> PartParser<'a> {
             max_block_nesting: limits.max_block_nesting,
             text_box_depth: 0,
             max_text_box_nesting: limits.max_text_box_nesting,
+            max_math_nodes: limits.max_math_nodes,
+            max_math_depth: limits.max_math_depth,
             section_gutter_at_top: false,
         })
     }

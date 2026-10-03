@@ -102,6 +102,25 @@ pub fn parse_parts(parts: &[(String, Vec<u8>)]) -> Result<Document> {
     parse_document(&package, &ParseOptions::default())
 }
 
+/// Parses a package under `limits`.
+///
+/// The `ResourceLimits` are given to both the package reader and the parser: the
+/// same budget has to hold on both sides of the parse, and a test that tightened
+/// only one of them would be measuring the wrong thing.
+pub fn parse_parts_with_limits(
+    parts: &[(String, Vec<u8>)],
+    limits: strict_ooxml_core::limits::ResourceLimits,
+) -> Result<Document> {
+    let bytes = package_entries(parts);
+    let package = Package::open_reader(Cursor::new(bytes), &OpenOptions::default().limits(limits))?;
+    parse_document(
+        &package,
+        &ParseOptions {
+            conformance: ConformancePolicy::StrictOnly,
+            limits,
+        },
+    )
+}
 /// Parses a package with the permissive core policy (for Transitional input).
 pub fn parse_parts_permissive(parts: &[(String, Vec<u8>)]) -> (Package, Result<Document>) {
     let bytes = package_entries(parts);
