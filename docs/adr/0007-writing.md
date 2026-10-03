@@ -50,14 +50,14 @@ relationships», not «no document».
 
 ### Strict only
 
-Every namespace written is the `purl.oclc.org/ooxml` one, checked byte-wise in
-the output: the relationships part declares
-`http://purl.oclc.org/ooxml/package/relationships` and its `Type` attributes use
-`http://purl.oclc.org/ooxml/officeDocument/relationships/...`. The Transitional
-pair (`schemas.openxmlformats.org/...`) is what the neighbouring session's rework
-had to teach the writer to *recognise* on input; a write never emits it. There is
-no «write Transitional» mode and no second pass: the output of a write is already
-the target conformance.
+Every *document* namespace written is the `purl.oclc.org/ooxml` one
+(WordprocessingML, DrawingML, officeDocument relationships, …). OPC package
+vocabularies are the exception documented in **ADR-0015**: `.rels`,
+`[Content_Types].xml` and core-properties use the single
+`schemas.openxmlformats.org/package/2006/...` spelling in both families; a write
+emits that spelling, not a purl package URI. There is no «write Transitional»
+mode and no second pass: the output of a write is already the target
+conformance.
 
 ### Order is a function, not an accident
 
@@ -104,12 +104,12 @@ So the writer does the smallest honest thing, and the rule it follows is
   its ids are referenced from *inside* the part
   (`<c:externalData r:id="rId3"/>`), so renumbering them would break the part and
   nothing in this project would notice;
-- the **one** exception is the OPC relationship namespace of a copied `.rels`:
-  a Transitional producer writes
-  `xmlns="http://schemas.openxmlformats.org/package/2006/relationships"`, Strict
-  renamed it, and a package that mixes the two makes a conformance detector
-  report `unknown`. It is a declaration, not content, and rewriting it changes
-  no id, type or target;
+- the **one** exception is a *repair* of the OPC relationship namespace of a
+  copied `.rels` when an earlier version of this project wrote a non-standard
+  purl package URI: that declaration is rewritten to the standard
+  `schemas.openxmlformats.org/package/2006/relationships` form (ADR-0015). A
+  producer that already uses the standard URI needs no change. It is a
+  declaration, not content, and rewriting it changes no id, type or target;
 - a part's *content* is never rewritten. A Microsoft extension inside a chart
   carries a Transitional URI in an attribute **value**
   (`<dsp:dataModelExt minVer="…/drawingml/2006/diagram"/>`), and rewriting a

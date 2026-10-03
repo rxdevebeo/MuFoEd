@@ -15,9 +15,9 @@ use crate::part::PartId;
 use crate::xml::escape::escape_attr_into;
 use crate::xml::{XmlEvent, XmlReader};
 
-/// The Strict OPC package-relationships namespace, written into every `.rels`
-/// part this crate produces.
-pub const STRICT_PACKAGE_REL_NS: &str = "http://purl.oclc.org/ooxml/package/relationships";
+/// The OPC package-relationships namespace, written into every `.rels` part
+/// this crate produces (AUD-20 / ADR-0015: one URI for both families).
+pub const PACKAGE_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 
 /// Identifier of a relationship, unique within the `.rels` part that defines
 /// it (the `Id` attribute of a `Relationship` element).
@@ -305,7 +305,7 @@ pub fn write_relationships(relationships: &[Relationship]) -> String {
     let mut out = String::with_capacity(128 + 160 * relationships.len());
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
     out.push_str("<Relationships xmlns=\"");
-    out.push_str(STRICT_PACKAGE_REL_NS);
+    out.push_str(PACKAGE_REL_NS);
     out.push_str("\">");
     for relationship in relationships {
         out.push_str("<Relationship Id=\"");

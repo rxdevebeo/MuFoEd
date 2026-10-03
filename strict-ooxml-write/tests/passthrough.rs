@@ -177,8 +177,8 @@ fn an_unmodelled_part_and_its_reference_survive() {
 /// A copied part's own relationship ids are preserved, because the part refers to
 /// them from inside (`<c:externalData r:id="rId3"/>`). Renumbering them would
 /// produce a chart that cannot open its data, and nothing in this project would
-/// notice. The one thing the pass-through does change is the OPC namespace
-/// declaration, which is a declaration and not content.
+/// notice. AUD-20: the OPC namespace is left alone when it is already the
+/// standard URI; only a legacy purl declaration would be repaired.
 #[test]
 fn a_copied_parts_own_relationships_keep_their_ids() {
     let (document, package) = fixture();
@@ -189,9 +189,14 @@ fn a_copied_parts_own_relationships_keep_their_ids() {
         .read_part(&chart_rels)
         .expect("the chart's rels are there");
     let original = package.read_part(&chart_rels).expect("source rels");
-    assert_ne!(
-        copied, original,
-        "the OPC relationship namespace is rewritten to the Strict one"
+    let copied_text = String::from_utf8_lossy(&copied);
+    assert!(
+        copied_text.contains("schemas.openxmlformats.org/package/2006/relationships"),
+        "copied .rels must keep the standard OPC namespace:\n{copied_text}"
+    );
+    assert!(
+        !copied_text.contains("purl.oclc.org/ooxml/package"),
+        "legacy purl OPC URIs must not be written:\n{copied_text}"
     );
     let ids = |bytes: &[u8]| -> Vec<String> {
         let text = String::from_utf8_lossy(bytes);
@@ -347,20 +352,17 @@ fn the_document_properties_survive_a_write() {
         );
     }
 
-    // The namespace is ours: Strict renamed it, and a package carrying the
-    // Transitional spelling is one every reader has to normalize first. This is the
-    // same exception as the `.rels` namespace, for the same reason — a
-    // declaration is not content.
+    // AUD-20 / ADR-0015: OPC core-properties uses one URI for both families.
     assert!(
-        !core.contains("schemas.openxmlformats.org/package/2006/metadata/core-properties"),
-        "the copied part must carry the Strict core-properties namespace:\n{core}"
+        core.contains("schemas.openxmlformats.org/package/2006/metadata/core-properties"),
+        "the copied part must carry the standard OPC core-properties namespace:\n{core}"
     );
     assert!(
-        core.contains("purl.oclc.org/ooxml/package/metadata/coreProperties"),
-        "and it must be the Strict one"
+        !core.contains("purl.oclc.org/ooxml/package/metadata/coreProperties"),
+        "the legacy purl spelling must not be written"
     );
 
-    // The relationship that reaches it, with the Strict type, from the root.
+    // The relationship that reaches it, with the standard OPC type, from the root.
     let root = reopened.relationships(&PartId::new("/"));
     let core_rel = root
         .iter()
@@ -368,8 +370,8 @@ fn the_document_properties_survive_a_write() {
         .unwrap_or_else(|| panic!("no relationship to core.xml in {root:?}"));
     assert_eq!(
         core_rel.raw_type,
-        "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties",
-        "and it is declared with the Strict type"
+        "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+        "and it is declared with the standard OPC type"
     );
     assert_eq!(
         reopened.content_type(&id),
@@ -660,6 +662,7 @@ const ALWAYS_TRANSITIONAL: &[&str] = &[
     "schemas.openxmlformats.org/markup-compatibility/2006",
     "schemas.openxmlformats.org/package/2006/content-types",
     "schemas.openxmlformats.org/package/2006/relationships",
+    "schemas.openxmlformats.org/package/2006/metadata/core-properties",
     "schemas.openxmlformats.org/drawingml/2006/compatibility",
     "schemas.openxmlformats.org/officeDocument/2006/relationships",
 ];

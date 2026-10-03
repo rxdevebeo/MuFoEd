@@ -50,11 +50,23 @@ const STRICT_REL_BASE: &str = "http://purl.oclc.org/ooxml/officeDocument/relatio
 /// Markup Compatibility and Extensibility. The namespace is the same in
 /// Transitional and Strict, so `map_uri` leaves it alone.
 const MC_NAMESPACE: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-/// The Transitional package-relationships namespace (the `.rels` parts).
-const TRANSITIONAL_PACKAGE_REL_NS: &str =
-    "http://schemas.openxmlformats.org/package/2006/relationships";
-/// The Strict package-relationships namespace.
-const STRICT_PACKAGE_REL_NS: &str = "http://purl.oclc.org/ooxml/package/relationships";
+/// Standard OPC package-relationships namespace (both families; ADR-0015).
+const PACKAGE_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+/// Standard OPC core-properties namespace (both families; ADR-0015).
+const PACKAGE_CORE_PROPERTIES_NS: &str =
+    "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
+/// Legacy purl OPC URIs written by earlier versions of this project (AUD-20).
+const LEGACY_PURL_PACKAGE_REL_NS: &str = "http://purl.oclc.org/ooxml/package/relationships";
+const LEGACY_PURL_CORE_PROPERTIES_NS: &str =
+    "http://purl.oclc.org/ooxml/package/metadata/coreProperties";
+const LEGACY_PURL_CORE_PROPERTIES_REL: &str =
+    "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties";
+const LEGACY_PURL_THUMBNAIL_REL: &str =
+    "http://purl.oclc.org/ooxml/package/relationships/metadata/thumbnail";
+const PACKAGE_CORE_PROPERTIES_REL: &str =
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
+const PACKAGE_THUMBNAIL_REL: &str =
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail";
 
 /// Which markup-compatibility branch to keep (`TZ` §10.7).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1846,10 +1858,27 @@ fn mapped_value(
             }
         }
     }
+    // ---- AUD-20: repair legacy purl OPC relationship types -------------
+    if let Some(repaired) = repair_legacy_package_uri(value) {
+        report.record_mapping("T1.namespace-repair", value, repaired);
+        return Some(repaired.to_owned());
+    }
     // ---- T2: a relationship-type or content-type URI -------------------
     let (from, to) = map_rel_or_content_type(value)?;
     report.record_mapping("T2.reltype", &from, &to);
     Some(to)
+}
+
+/// Maps a legacy purl OPC URI (from earlier project versions) to the standard
+/// ECMA-376 Part 2 form (AUD-20 / ADR-0015).
+fn repair_legacy_package_uri(uri: &str) -> Option<&'static str> {
+    match uri {
+        LEGACY_PURL_PACKAGE_REL_NS => Some(PACKAGE_REL_NS),
+        LEGACY_PURL_CORE_PROPERTIES_NS => Some(PACKAGE_CORE_PROPERTIES_NS),
+        LEGACY_PURL_CORE_PROPERTIES_REL => Some(PACKAGE_CORE_PROPERTIES_REL),
+        LEGACY_PURL_THUMBNAIL_REL => Some(PACKAGE_THUMBNAIL_REL),
+        _ => None,
+    }
 }
 
 /// Maps a Transitional namespace URI to its Strict form.
@@ -1890,6 +1919,18 @@ fn map_namespace_declaration(
         };
         return Some((key, strict));
     }
+    // AUD-20: earlier writers emitted non-standard purl OPC URIs; repair them
+    // to the ECMA-376 Part 2 vocabulary without treating them as Transitional.
+    if let Some(repaired) = repair_legacy_package_uri(value) {
+        report.record_mapping("T1.namespace-repair", value, repaired);
+        context.remember_prefix(prefix.as_bytes().to_vec(), repaired.to_owned());
+        let key = if prefix.is_empty() {
+            "xmlns".to_owned()
+        } else {
+            format!("xmlns:{prefix}")
+        };
+        return Some((key, repaired.to_owned()));
+    }
     if VML_NAMESPACES.contains(&value) || tables::is_ignorable_extension(value) {
         context.remember_prefix(prefix.as_bytes().to_vec(), value.to_owned());
         context.forget_declaration(prefix.as_bytes());
@@ -1911,9 +1952,6 @@ fn map_namespace_declaration(
 fn map_rel_or_content_type(value: &str) -> Option<(String, String)> {
     if let Some(rest) = value.strip_prefix(TRANSITIONAL_REL_BASE) {
         return Some((value.to_owned(), format!("{STRICT_REL_BASE}{rest}")));
-    }
-    if value == TRANSITIONAL_PACKAGE_REL_NS {
-        return Some((value.to_owned(), STRICT_PACKAGE_REL_NS.to_owned()));
     }
     None
 }
@@ -1983,6 +2021,12 @@ impl crate::normalize::RawNormalizer for TransitionalNormalizer {
 pub fn part_needs_normalization(bytes: &[u8]) -> bool {
     const NEEDLE: &[u8] = b"schemas.openxmlformats.org";
     const MCE: &[u8] = b"schemas.openxmlformats.org/markup-compatibility/2006";
+    // AUD-20: legacy purl OPC URIs need a pass even when no Transitional
+    // openxmlformats marker is present.
+    const LEGACY_PURL_PACKAGE: &[u8] = b"purl.oclc.org/ooxml/package";
+    if memchr::memmem::find(bytes, LEGACY_PURL_PACKAGE).is_some() {
+        return true;
+    }
     let mut from = 0usize;
     while let Some(found) = memchr::memmem::find(&bytes[from..], NEEDLE) {
         let at = from + found;
@@ -2047,8 +2091,8 @@ mod tests {
     use std::borrow::Cow;
 
     use super::{
-        map_rel_or_content_type, part_needs_normalization, InvariantMode, McePolicy,
-        NormalizerOptions, TransitionalNormalizer,
+        map_rel_or_content_type, part_needs_normalization, repair_legacy_package_uri,
+        InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
     };
     use crate::normalize::report::Severity;
     use crate::part::PartId;
@@ -3011,6 +3055,58 @@ mod tests {
             "http://purl.oclc.org/ooxml/officeDocument/relationships/styles"
         )
         .is_none());
+    }
+
+    #[test]
+    fn legacy_purl_package_uris_are_repaired() {
+        // AUD-20: packages written before ADR-0015 carried non-standard purl
+        // OPC URIs; the normalizer puts the ECMA-376 Part 2 spelling back.
+        let normalizer = TransitionalNormalizer::new();
+        let source = concat!(
+            r#"<Relationships xmlns="http://purl.oclc.org/ooxml/package/relationships">"#,
+            r#"<Relationship Id="rId1" "#,
+            r#"Type="http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties" "#,
+            r#"Target="docProps/core.xml"/>"#,
+            r#"</Relationships>"#,
+        );
+        let output = normalizer
+            .normalize(&PartId::new("/_rels/.rels"), source.as_bytes())
+            .expect("normalize");
+        let text = String::from_utf8(output.into_owned()).expect("utf8");
+        assert!(
+            text.contains("http://schemas.openxmlformats.org/package/2006/relationships\""),
+            "xmlns must be the standard OPC URI: {text}"
+        );
+        assert!(
+            text.contains(
+                "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+            ),
+            "Type must be the standard OPC URI: {text}"
+        );
+        assert!(
+            !text.contains("purl.oclc.org/ooxml/package"),
+            "legacy purl OPC URIs must be gone: {text}"
+        );
+        let report = normalizer.report().to_string();
+        assert!(
+            report.contains("T1.namespace-repair"),
+            "repair must be recorded: {report}"
+        );
+    }
+
+    #[test]
+    fn standard_opc_package_uris_are_not_rewritten_to_purl() {
+        // AUD-20: the openxmlformats package vocabulary is already correct.
+        assert!(map_rel_or_content_type(
+            "http://schemas.openxmlformats.org/package/2006/relationships"
+        )
+        .is_none());
+        assert_eq!(
+            repair_legacy_package_uri(
+                "http://schemas.openxmlformats.org/package/2006/relationships"
+            ),
+            None
+        );
     }
 
     #[test]

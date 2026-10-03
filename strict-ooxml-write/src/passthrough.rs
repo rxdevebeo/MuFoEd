@@ -512,7 +512,7 @@ fn is_package_thumbnail(info: &RelationshipInfo) -> bool {
 /// `map_rel_or_content_type` rewrites exactly this string, so both are covered by
 /// building ours rather than copying the input's.
 fn thumbnail_type_uri() -> String {
-    "http://purl.oclc.org/ooxml/package/relationships/metadata/thumbnail".to_owned()
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail".to_owned()
 }
 
 /// The internal targets a property part's `.rels` reaches, copied beside it.
@@ -640,17 +640,17 @@ const APP_RENDERING_COUNTERS: &[&str] = &[
 /// no normalized variant: nothing in the body refers to it, so normalizing it
 /// would be a variant only this one use site needs.
 fn core_properties_type_uri() -> &'static str {
-    "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties"
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
 }
 
-/// The Strict relationship type of [`APP_PROPERTIES_PART`].
+/// The Strict relationship type of [`APP_PROPERTIES_PART`] (AUD-20).
 fn app_properties_type_uri() -> &'static str {
-    "http://purl.oclc.org/ooxml/officeDocument/relationships/extended-properties"
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/extendedProperties"
 }
 
-/// The Strict relationship type of [`CUSTOM_PROPERTIES_PART`].
+/// The Strict relationship type of [`CUSTOM_PROPERTIES_PART`] (AUD-20).
 fn custom_properties_type_uri() -> &'static str {
-    "http://purl.oclc.org/ooxml/officeDocument/relationships/custom-properties"
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/customProperties"
 }
 
 /// Rewrites the namespace of a copied `docProps/app.xml` and removes the
@@ -786,41 +786,32 @@ fn remove_element(bytes: &[u8], name: &str) -> Vec<u8> {
 /// The extension every relationship part carries, lowercased for the comparison.
 const CONTENT_TYPE_RELS_SUFFIX: &str = ".rels";
 
-/// The OPC relationship namespace a Transitional producer writes.
-const TRANSITIONAL_RELS_NS: &[u8] =
+/// Standard OPC relationship namespace (both families; ADR-0015 / AUD-20).
+const PACKAGE_RELS_NS: &[u8] =
     b"xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"";
 
-/// The Strict one this project writes everywhere else.
-const STRICT_RELS_NS: &[u8] = b"xmlns=\"http://purl.oclc.org/ooxml/package/relationships\"";
+/// Legacy purl spelling earlier versions of this project wrote into `.rels`.
+const LEGACY_PURL_RELS_NS: &[u8] = b"xmlns=\"http://purl.oclc.org/ooxml/package/relationships\"";
 
-/// The core-properties namespace a Transitional producer writes.
-const TRANSITIONAL_CORE_PROPERTIES_NS: &[u8] =
+/// Standard OPC core-properties namespace (both families; ADR-0015 / AUD-20).
+const PACKAGE_CORE_PROPERTIES_NS: &[u8] =
     b"http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
 
-/// The Strict name ISO/IEC 29500 gives the same part.
-const STRICT_CORE_PROPERTIES_NS: &[u8] =
+/// Legacy purl spelling earlier versions of this project wrote into `core.xml`.
+const LEGACY_PURL_CORE_PROPERTIES_NS: &[u8] =
     b"http://purl.oclc.org/ooxml/package/metadata/coreProperties";
 
-/// Rewrites the core-properties namespace of a copied `docProps/core.xml`.
+/// Rewrites a legacy purl core-properties namespace to the standard OPC form.
 ///
-/// **The second and last byte a pass-through changes, and for the same reason as
-/// the first** ([`strict_rels_namespace`]): a namespace *declaration* is not
-/// content. Unlike a chart's internals, this part is one OPC itself defines and
-/// Strict renamed, so a package carrying the Transitional spelling of it is a
-/// package a conformance detector reports as `unknown` — and the writer's promise
-/// is that its output is Strict on the first open
-/// (`normalize_roundtrip.rs::a_written_package_needs_no_second_normalization_pass`,
-/// which is what caught this).
-///
-/// Everything that is *in* the part — `dc:title`, `dc:creator`, `dcterms:created`,
-/// `dcterms:modified`, the revision — is the producer's and stays byte for byte.
-/// Those are the statements the part exists to make, and they are still true of the
-/// document this write copies.
+/// OPC has no Strict/Transitional split for this part (ADR-0015). A package that
+/// already carries the standard URI is left alone; only the non-standard purl
+/// URI from earlier project versions is repaired. Content of the part stays
+/// byte for byte.
 fn strict_core_properties_namespace(bytes: &[u8]) -> Vec<u8> {
     replace_all(
         bytes,
-        TRANSITIONAL_CORE_PROPERTIES_NS,
-        STRICT_CORE_PROPERTIES_NS,
+        LEGACY_PURL_CORE_PROPERTIES_NS,
+        PACKAGE_CORE_PROPERTIES_NS,
     )
 }
 
@@ -837,22 +828,14 @@ fn replace_all(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Rewrites the relationship namespace of a copied `.rels` part.
+/// Rewrites a legacy purl relationship namespace to the standard OPC form.
 ///
-/// This is the **only** byte a pass-through changes, and it is a declaration, not
-/// content: ISO/IEC 29500 Strict renamed the OPC relationships namespace, and a
-/// package that mixes the two makes a conformance detector report `unknown`,
-/// which is a claim a caller then has to investigate. Ids, types and targets are
-/// untouched — a part's own references (`<c:externalData r:id="rId3"/>`) keep
-/// working, which is the whole reason the rest of the file is copied verbatim.
-///
-/// A part's *content* is never rewritten. A Microsoft extension carries a
-/// Transitional URI in an attribute **value**
-/// (`<dsp:dataModelExt minVer="…/drawingml/2006/diagram"/>`), and rewriting a
-/// value is a semantic edit this writer does not make. That part stays the
-/// producer's own bytes, and the trade-off is recorded in ADR-0007.
+/// OPC has one relationships vocabulary for both families (ADR-0015 / AUD-20).
+/// A Transitional or Strict producer that already writes the standard URI needs
+/// no change; only earlier project versions that emitted a non-standard purl
+/// URI are repaired. Ids, types and targets stay untouched.
 fn strict_rels_namespace(bytes: &[u8]) -> Vec<u8> {
-    replace_all(bytes, TRANSITIONAL_RELS_NS, STRICT_RELS_NS)
+    replace_all(bytes, LEGACY_PURL_RELS_NS, PACKAGE_RELS_NS)
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {

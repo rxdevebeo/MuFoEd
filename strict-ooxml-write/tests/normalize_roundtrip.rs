@@ -205,14 +205,12 @@ fn write(document: &Document, package: &Package, case: &Case, generation: u8) ->
 /// writer's output and requiring an empty report is that definition applied to
 /// the writer's own claims.
 ///
-/// It found the `.rels` parts being written with the Transitional OPC
-/// namespace. That never showed up as a conformance verdict, because
-/// `detect_conformance` classifies relationship *types* and namespace
-/// *declarations* — and `write_relationships` was declaring
-/// `schemas.openxmlformats.org/package/2006/relationships`, a Transitional
-/// declaration, in a package the test `a_written_package_is_strict` called
-/// Strict. That test never noticed because it only inspected parts ending in
-/// `.xml`, and `.rels` does not.
+/// It found the `.rels` parts being rewritten to a non-standard purl OPC
+/// namespace. ADR-0015 / AUD-20 retract that: the openxmlformats package
+/// vocabulary is the correct spelling for both families, and
+/// `classify_namespace` treats it as family-neutral. The assertion that remains
+/// is the one that still has teeth — the written package must need no second
+/// normalization pass.
 #[test]
 fn a_written_package_needs_no_second_normalization_pass() {
     let mut checked = 0;
@@ -500,6 +498,7 @@ fn no_written_part_carries_a_transitional_uri() {
         // rename; changing them would make the package unreadable.
         "schemas.openxmlformats.org/package/2006/content-types",
         "schemas.openxmlformats.org/package/2006/relationships",
+        "schemas.openxmlformats.org/package/2006/metadata/core-properties",
         "schemas.openxmlformats.org/drawingml/2006/compatibility",
     ];
 

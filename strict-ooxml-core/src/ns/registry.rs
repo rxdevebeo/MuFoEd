@@ -2,7 +2,9 @@
 //!
 //! Data-only description of the namespaces from `TZ-STRICT-OOXML-RUST.md`
 //! §9.3, each entry carrying its [`ScopeSupport`] and `verified` flag (stage
-//! task S1.11).
+//! task S1.11). OPC package vocabularies have no Strict/Transitional split
+//! (ADR-0015 / AUD-20): both families use the `schemas.openxmlformats.org`
+//! URIs, and [`classify_namespace`] returns `None` for those entries.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -37,15 +39,18 @@ pub struct NamespaceEntry {
     pub in_scope: ScopeSupport,
     /// Whether the entry has been confirmed against official schemas.
     pub verified: bool,
+    /// The URI is the same in both families (OPC, MCE); not a conformance signal.
+    pub family_neutral: bool,
 }
 
-const NS: [NamespaceEntry; 17] = [
+const NS: [NamespaceEntry; 19] = [
     NamespaceEntry {
         key: "wordprocessingml.main",
         strict: Some("http://purl.oclc.org/ooxml/wordprocessingml/main"),
         transitional: Some("http://schemas.openxmlformats.org/wordprocessingml/2006/main"),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "officeDocument.relationships",
@@ -53,6 +58,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.main",
@@ -60,6 +66,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/main"),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.wordprocessingDrawing",
@@ -69,6 +76,7 @@ const NS: [NamespaceEntry; 17] = [
         ),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.picture",
@@ -76,6 +84,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/picture"),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.chart",
@@ -83,6 +92,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/chart"),
         in_scope: ScopeSupport::Partial,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.diagram",
@@ -90,6 +100,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/diagram"),
         in_scope: ScopeSupport::Partial,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.spreadsheetDrawing",
@@ -97,6 +108,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"),
         in_scope: ScopeSupport::None,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.chartDrawing",
@@ -104,6 +116,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/chartDrawing"),
         in_scope: ScopeSupport::None,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.lockedCanvas",
@@ -111,6 +124,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas"),
         in_scope: ScopeSupport::None,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "drawingml.compatibility",
@@ -118,6 +132,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/drawingml/2006/compatibility"),
         in_scope: ScopeSupport::None,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "officeDocument.extendedProperties",
@@ -127,6 +142,7 @@ const NS: [NamespaceEntry; 17] = [
         ),
         in_scope: ScopeSupport::Metadata,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "officeDocument.customProperties",
@@ -136,22 +152,42 @@ const NS: [NamespaceEntry; 17] = [
         ),
         in_scope: ScopeSupport::Optional,
         verified: true,
+        family_neutral: false,
     },
     NamespaceEntry {
+        key: "officeDocument.docPropsVTypes",
+        strict: Some("http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes"),
+        transitional: Some("http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"),
+        in_scope: ScopeSupport::Metadata,
+        verified: true,
+        family_neutral: false,
+    },
+    // AUD-20 / ADR-0015: OPC has one vocabulary for both families.
+    NamespaceEntry {
         key: "package.metadata.coreProperties",
-        strict: Some("http://purl.oclc.org/ooxml/package/metadata/coreProperties"),
+        strict: Some("http://schemas.openxmlformats.org/package/2006/metadata/core-properties"),
         transitional: Some(
             "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
         ),
         in_scope: ScopeSupport::Metadata,
         verified: true,
+        family_neutral: true,
     },
     NamespaceEntry {
         key: "package.relationships",
-        strict: Some("http://purl.oclc.org/ooxml/package/relationships"),
+        strict: Some("http://schemas.openxmlformats.org/package/2006/relationships"),
         transitional: Some("http://schemas.openxmlformats.org/package/2006/relationships"),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: true,
+    },
+    NamespaceEntry {
+        key: "package.contentTypes",
+        strict: Some("http://schemas.openxmlformats.org/package/2006/content-types"),
+        transitional: Some("http://schemas.openxmlformats.org/package/2006/content-types"),
+        in_scope: ScopeSupport::Full,
+        verified: true,
+        family_neutral: true,
     },
     NamespaceEntry {
         key: "officeDocument.math",
@@ -159,6 +195,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/officeDocument/2006/math"),
         in_scope: ScopeSupport::Optional,
         verified: false,
+        family_neutral: false,
     },
     NamespaceEntry {
         key: "markupCompatibility",
@@ -166,6 +203,7 @@ const NS: [NamespaceEntry; 17] = [
         transitional: Some("http://schemas.openxmlformats.org/markup-compatibility/2006"),
         in_scope: ScopeSupport::Full,
         verified: true,
+        family_neutral: true,
     },
 ];
 
@@ -218,9 +256,15 @@ impl Default for NamespaceRegistry {
 }
 
 /// Classifies a namespace URI as Strict or Transitional, if known.
+///
+/// Family-neutral URIs (OPC package vocabularies, MCE) are not a conformance
+/// signal: [`None`] rather than Strict or Transitional (AUD-20).
 #[must_use]
 pub fn classify_namespace(uri: &str) -> Option<Conformance> {
     let entry = NamespaceRegistry::global().lookup(uri)?;
+    if entry.family_neutral {
+        return None;
+    }
     if entry.strict == Some(uri) {
         Some(Conformance::Strict)
     } else if entry.transitional == Some(uri) {
@@ -289,6 +333,29 @@ mod tests {
             Some(Conformance::Transitional)
         );
         assert_eq!(classify_namespace("urn:x"), None);
+    }
+
+    #[test]
+    fn opc_package_namespaces_are_family_neutral() {
+        // AUD-20: the standard OPC URI is not a Strict/Transitional signal.
+        assert_eq!(
+            classify_namespace("http://schemas.openxmlformats.org/package/2006/relationships"),
+            None
+        );
+        assert_eq!(
+            classify_namespace("http://schemas.openxmlformats.org/package/2006/content-types"),
+            None
+        );
+        assert_eq!(
+            classify_namespace(
+                "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+            ),
+            None
+        );
+        assert_eq!(
+            classify_namespace("http://schemas.openxmlformats.org/markup-compatibility/2006"),
+            None
+        );
     }
 
     #[test]

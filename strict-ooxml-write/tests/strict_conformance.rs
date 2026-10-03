@@ -50,7 +50,9 @@ const ALLOWED: &[&str] = &[
     "http://purl.oclc.org/ooxml/officeDocument/extendedProperties",
     "http://purl.oclc.org/ooxml/officeDocument/customProperties",
     "http://purl.oclc.org/ooxml/officeDocument/customXmlProperties",
-    "http://purl.oclc.org/ooxml/package/relationships",
+    "http://schemas.openxmlformats.org/package/2006/relationships",
+    "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
+    "http://schemas.openxmlformats.org/package/2006/content-types",
     "http://purl.oclc.org/ooxml/schemaLibrary/main",
     // The MCE namespace is the mechanism by which a processor is TOLD to remove
     // extensions; a part that declares it and uses nothing else is conformant.
