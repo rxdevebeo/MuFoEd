@@ -559,6 +559,8 @@ pub trait Resources {
 pub struct Form<'a> {
     /// The form's content stream, decoded into operations.
     pub operations: std::rc::Rc<Vec<lopdf::content::Operation>>,
+    /// Inline images extracted before tokenisation (AUD-84).
+    pub inlines: std::rc::Rc<Vec<crate::inline::InlineImage>>,
     /// `/Matrix`, or the identity when the form states none.
     pub matrix: Matrix,
     /// The resources the form's own names resolve against.
@@ -684,9 +686,22 @@ pub fn interpret(
     limits: PdfLimits,
     tolerance: f64,
 ) -> Result<Content> {
+    interpret_with_inlines(operations, &[], resources, geometry, limits, tolerance)
+}
+
+/// As [`interpret`], with inline images extracted before tokenisation (AUD-84).
+pub fn interpret_with_inlines(
+    operations: &[lopdf::content::Operation],
+    inlines: &[crate::inline::InlineImage],
+    resources: &dyn Resources,
+    geometry: PageGeometry,
+    limits: PdfLimits,
+    tolerance: f64,
+) -> Result<Content> {
     let mut budget = PageBudget::default();
     let mut content = interpret_from(
         operations,
+        inlines,
         resources,
         geometry,
         limits,
@@ -715,6 +730,7 @@ pub fn interpret(
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn interpret_from(
     operations: &[lopdf::content::Operation],
+    inlines: &[crate::inline::InlineImage],
     resources: &dyn Resources,
     geometry: PageGeometry,
     limits: PdfLimits,
@@ -1175,24 +1191,15 @@ fn interpret_from(
                 }
             }
             "BI" => {
+                // A bare `BI` that survived extraction is a malformed stream;
+                // the samples were not pulled out and must not paint as ops.
                 out.ignored.push(Ignored::new(
                     "pdf.inline_image",
-                    "inline image is not carried",
+                    "inline image marker survived extraction without samples",
                 ));
-                // **The data is not skipped, and this arm cannot skip it.** The
-                // operations arrive as a flat list that `lopdf` has already
-                // tokenized, and an inline image's samples are inside those
-                // tokens: every `m`/`l`/`re`/`f`/`cm` byte pair in the binary
-                // payload is an operator by the time we see it, and the
-                // interpreter runs it. So a document with an inline image gets
-                // the picture lost *and* whatever geometry its bytes spell out.
-                //
-                // Carrying one means tokenizing the stream ourselves up to `ID`
-                // and then finding the `EI` that is delimited by whitespace
-                // (ISO 32000-1 §8.9.7) — the binary is allowed to contain
-                // anything at all, so no regular tokenizer can skip it. The
-                // corpus has none (checked with an independent reader: 0 of 46
-                // files), so this is a stated gap rather than a measured loss.
+            }
+            op if op == crate::inline::INLINE_OP => {
+                place_inline(args, inlines, &current, &mut out);
             }
             "sh" => out.ignored.push(Ignored::new(
                 "pdf.shading",
@@ -1269,6 +1276,7 @@ fn place_form(
     seed.ctm = Matrix::chain(form.matrix, state.ctm);
     let content = interpret_from(
         form.operations.as_ref(),
+        form.inlines.as_ref(),
         form.resources.as_ref(),
         geometry,
         limits,
@@ -1282,6 +1290,43 @@ fn place_form(
     out.unmapped_glyphs += content.unmapped_glyphs;
     out.estimated_widths += content.estimated_widths;
     Ok(())
+}
+
+/// Places an inline image extracted before tokenisation (AUD-84).
+fn place_inline(
+    args: &[lopdf::Object],
+    inlines: &[crate::inline::InlineImage],
+    state: &State,
+    out: &mut Content,
+) {
+    let Some(index) = args
+        .first()
+        .and_then(|value| value.as_i64().ok())
+        .and_then(|n| usize::try_from(n).ok())
+    else {
+        out.ignored.push(Ignored::new(
+            "pdf.inline_image",
+            "inline image marker has no index",
+        ));
+        return;
+    };
+    let Some(image) = inlines.get(index) else {
+        out.ignored.push(Ignored::new(
+            "pdf.inline_image",
+            format!("inline image {index} was not extracted"),
+        ));
+        return;
+    };
+    let lower = state.ctm.apply(0.0, 0.0);
+    let upper = state.ctm.apply(1.0, 1.0);
+    out.items.push(Item::Image(PlacedImage {
+        image: image.encoded.clone(),
+        x: lower.0.min(upper.0),
+        y: lower.1.min(upper.1),
+        width: (upper.0 - lower.0).abs(),
+        height: (upper.1 - lower.1).abs(),
+        missing: image.missing.clone(),
+    }));
 }
 
 /// Places an image XObject into the unit square of its own space.

@@ -60,6 +60,7 @@ pub mod document;
 pub mod error;
 pub mod fonts;
 pub mod image;
+pub mod inline;
 #[cfg(feature = "raster")]
 pub mod raster;
 pub mod report;

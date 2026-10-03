@@ -12,9 +12,7 @@ use std::rc::Rc;
 
 use lopdf::Object;
 
-use crate::content::{
-    interpret, Content, Item, Matrix, PageGeometry, Resources as ResourceProvider,
-};
+use crate::content::{Content, Item, Matrix, PageGeometry, Resources as ResourceProvider};
 use crate::error::{PdfError, PdfLimits, Result};
 use crate::fonts::{resolver, PdfFont};
 use crate::image::{Encoded, ImageCache, Reject};
@@ -46,6 +44,8 @@ pub(crate) fn bounded_decompress(
 /// A form's content, decoded once for the document (AUD-13).
 struct DecodedForm {
     operations: Rc<Vec<lopdf::content::Operation>>,
+    /// Inline images pulled out before tokenisation (AUD-84).
+    inlines: Rc<Vec<crate::inline::InlineImage>>,
     matrix: Matrix,
     /// The form's own `/Resources` object, when it declares one.
     resources: Option<Object>,
@@ -74,7 +74,8 @@ impl FormCache {
         }
         let stream = document.get_object(id).ok()?.as_stream().ok()?;
         let bytes = bounded_decompress(stream, limits.max_content_bytes).ok()?;
-        let operations = lopdf::content::Content::decode(&bytes).ok()?.operations;
+        let (cleaned, inlines) = crate::inline::extract(&bytes);
+        let operations = lopdf::content::Content::decode(&cleaned).ok()?.operations;
         let matrix = stream
             .dict
             .get(b"Matrix")
@@ -97,6 +98,7 @@ impl FormCache {
         let resources = stream.dict.get(b"Resources").ok().cloned();
         let decoded = Rc::new(DecodedForm {
             operations: Rc::new(operations),
+            inlines: Rc::new(inlines),
             matrix,
             resources,
         });
@@ -353,11 +355,13 @@ impl PdfDocument {
             .document
             .get_page_content_with_limit(id, self.limits.max_content_bytes)
             .map_err(|error| PdfError::from_lopdf(&error))?;
-        let operations = lopdf::content::Content::decode(&content_bytes)
+        let (cleaned, inlines) = crate::inline::extract(&content_bytes);
+        let operations = lopdf::content::Content::decode(&cleaned)
             .map_err(|error| PdfError::from_lopdf(&error))?
             .operations;
-        let content = interpret(
+        let content = crate::content::interpret_with_inlines(
             &operations,
+            &inlines,
             &resources,
             geometry,
             self.limits,
@@ -894,6 +898,7 @@ impl ResourceProvider for PageResources<'_> {
         );
         Some(crate::content::Form {
             operations: Rc::clone(&decoded.operations),
+            inlines: Rc::clone(&decoded.inlines),
             matrix: decoded.matrix,
             resources: Rc::new(child),
         })
