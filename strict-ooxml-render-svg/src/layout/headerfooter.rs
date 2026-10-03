@@ -20,6 +20,8 @@ use strict_ooxml_wml::model::props::SectionProperties;
 use strict_ooxml_wml::model::values::Twips;
 use strict_ooxml_wml::model::{Block, HeaderFooterKind};
 
+use strict_ooxml_core::error::Result;
+
 use crate::fields::{blocks_have_dynamic_fields, FieldEnv};
 use crate::layout::table::{layout_blocks_inline, offset_item};
 use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
@@ -49,9 +51,9 @@ pub(crate) fn decorate_pages(
     geometry: Geometry,
     section: Option<&SectionProperties>,
     total_pages: usize,
-) {
+) -> Result<()> {
     if pages.is_empty() {
-        return;
+        return Ok(());
     }
     let scale = ctx.options.scale;
     let content_width = geometry.content_width();
@@ -70,7 +72,7 @@ pub(crate) fn decorate_pages(
     let has_headers = section.is_some_and(|s| s.headers.iter().any(|r| r.part.is_some()));
     let has_footers = section.is_some_and(|s| s.footers.iter().any(|r| r.part.is_some()));
     if !has_headers && !has_footers {
-        return;
+        return Ok(());
     }
 
     let page_start = section
@@ -118,6 +120,7 @@ pub(crate) fn decorate_pages(
                     &mut dynamic,
                 )
             }) {
+                ctx.charge_items(region.items.len())?;
                 for item in &region.items {
                     decorated.push(offset_item(item, 0.0, header_offset));
                 }
@@ -139,6 +142,7 @@ pub(crate) fn decorate_pages(
                     &mut dynamic,
                 )
             }) {
+                ctx.charge_items(region.items.len())?;
                 let y = (page.height_px - footer_offset - region.height).max(0.0);
                 for item in &region.items {
                     decorated.push(offset_item(item, 0.0, y));
@@ -149,6 +153,7 @@ pub(crate) fn decorate_pages(
         page.items = decorated;
     }
     ctx.field_env.set(None);
+    Ok(())
 }
 
 /// Returns the `w:header`/`w:footer` margin in twips, if declared.

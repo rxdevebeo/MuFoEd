@@ -6,6 +6,8 @@ use strict_ooxml_wml::model::props::{
 };
 use strict_ooxml_wml::model::values::BorderStyle;
 
+use strict_ooxml_core::error::Result;
+
 use crate::layout::{Geometry, Item, LayoutContext, LineItem, PlacedPage};
 use crate::style::resolve_shape_color;
 use crate::units::{eighths_point_to_px, pt_to_px};
@@ -35,12 +37,12 @@ pub(crate) fn apply(
     pages: &mut [PlacedPage],
     geometry: &Geometry,
     section: Option<&SectionProperties>,
-) {
+) -> Result<()> {
     let Some(borders) = section.and_then(|section| section.page_borders.as_ref()) else {
-        return;
+        return Ok(());
     };
     if !has_visible_edge(borders) {
-        return;
+        return Ok(());
     }
     let scale = ctx.options.scale;
     let from_text = matches!(borders.offset_from, Some(BorderOffsetFrom::Text));
@@ -81,10 +83,11 @@ pub(crate) fn apply(
         }
     }
     if items.is_empty() {
-        return;
+        return Ok(());
     }
     let behind = matches!(borders.z_order, Some(BorderZOrder::Back));
     for page in pages.iter_mut() {
+        ctx.charge_items(items.len())?;
         if behind {
             let mut combined = items.clone();
             combined.append(&mut page.items);
@@ -93,6 +96,7 @@ pub(crate) fn apply(
             page.items.extend(items.clone());
         }
     }
+    Ok(())
 }
 
 /// Returns `true` when at least one edge is visible.

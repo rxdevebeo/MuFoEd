@@ -1115,4 +1115,57 @@ mod opc {
 
 mod render {
     //! AUD-71, AUD-72: non-finite geometry, output amplification.
+
+    use std::fmt::Write as _;
+
+    use super::*;
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn a_heavy_footer_on_many_pages_hits_the_render_item_budget() {
+        // AUD-72: 1000 footer paragraphs × 2000 pages amplifies past
+        // max_render_items without the document-wide counter.
+        let detail = assert_survives("render heavy footer", || {
+            let mut footer_paras = String::new();
+            for index in 0..1000 {
+                let _ = write!(
+                    footer_paras,
+                    "<w:p><w:r><w:t>f{index}</w:t></w:r></w:p>"
+                );
+            }
+            let footer = strict_ooxml_testkit::docx::part_xml(
+                strict_ooxml_testkit::docx::Family::Strict,
+                "w:ftr",
+                &footer_paras,
+            );
+            let mut body = String::new();
+            for index in 0..2000 {
+                if index > 0 {
+                    body.push_str("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>");
+                }
+                let _ = write!(body, "<w:p><w:r><w:t>p{index}</w:t></w:r></w:p>");
+            }
+            body.push_str(
+                "<w:sectPr>\
+<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\"/>\
+<w:footerReference w:type=\"default\" r:id=\"rIdF\"/></w:sectPr>",
+            );
+            let bytes = DocxBuilder::strict()
+                .body(&body)
+                .part("word/footer1.xml", footer)
+                .rel("rIdF", "footer", "footer1.xml")
+                .build();
+            let opened = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+                .expect("open");
+            let error = opened
+                .render_svg(&strict_ooxml::RenderOptions::default())
+                .expect_err("must exceed max_render_items");
+            error.to_string()
+        });
+        assert!(
+            detail.contains("render items"),
+            "expected render-items limit, got {detail}"
+        );
+    }
 }

@@ -398,6 +398,9 @@ pub(crate) struct LayoutContext<'a> {
     /// is being laid out; `None` during body pagination (body fields resolve in
     /// `Paginator::resolve_fields`).
     pub(crate) field_env: std::cell::Cell<Option<crate::fields::FieldEnv>>,
+    /// Document-wide paint-item counter for [`ResourceLimits::max_render_items`]
+    /// (AUD-72). Reset at the start of each layout pass.
+    pub(crate) render_items: std::cell::Cell<u64>,
 }
 
 impl LayoutContext<'_> {
@@ -422,6 +425,23 @@ impl LayoutContext<'_> {
     /// The depth recorded by [`set_block_depth`](Self::set_block_depth).
     pub(crate) fn block_depth(&self) -> u32 {
         self.block_depth.get()
+    }
+
+    /// Charges `count` paint items against the document-wide budget (AUD-72).
+    pub(crate) fn charge_items(&self, count: usize) -> strict_ooxml_core::error::Result<()> {
+        let limit = self.options.limits.max_render_items;
+        let added = u64::try_from(count).unwrap_or(u64::MAX);
+        let next = self.render_items.get().saturating_add(added);
+        if next > limit {
+            return Err(crate::error::RenderError::LimitExceeded {
+                what: "render items",
+                limit,
+                actual: next,
+            }
+            .into_strict());
+        }
+        self.render_items.set(next);
+        Ok(())
     }
 }
 

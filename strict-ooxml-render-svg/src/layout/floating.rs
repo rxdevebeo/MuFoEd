@@ -3,6 +3,8 @@
 use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, WrapKind};
 use strict_ooxml_wml::model::values::Emu;
 
+use strict_ooxml_core::error::Result;
+
 use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
 use crate::units::emu_to_px;
 
@@ -24,9 +26,9 @@ pub(crate) fn resolve(
     pages: &mut [PlacedPage],
     anchors: &[PendingAnchor],
     geometry: &Geometry,
-) {
+) -> Result<()> {
     if !ctx.options.floating {
-        return;
+        return Ok(());
     }
     let scale = ctx.options.scale;
     // Behind-document objects are inserted at the page front; the rest appended.
@@ -71,6 +73,7 @@ pub(crate) fn resolve(
     front.sort_by_key(|(page, order, _)| (*page, *order));
     for (page, _, mut items) in behind {
         if let Some(page) = pages.get_mut(page) {
+            ctx.charge_items(items.len())?;
             let mut combined = std::mem::take(&mut items);
             combined.append(&mut page.items);
             page.items = combined;
@@ -78,9 +81,11 @@ pub(crate) fn resolve(
     }
     for (page, _, items) in front {
         if let Some(page) = pages.get_mut(page) {
+            ctx.charge_items(items.len())?;
             page.items.extend(items);
         }
     }
+    Ok(())
 }
 
 /// Resolves a horizontal position to an absolute page x.

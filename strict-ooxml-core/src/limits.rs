@@ -106,6 +106,14 @@ pub struct ResourceLimits {
     /// `support.overflow` entry with a counter, so a hostile document cannot
     /// grow the report without bound.
     pub max_support_features: usize,
+    /// Maximum paint items across the whole document render (AUD-72).
+    ///
+    /// Counts body, headers/footers, page borders, anchors and repeated table
+    /// headers. Default: `2_000_000`. Exceeding it is
+    /// `RenderError::LimitExceeded` from the SVG/PDF shared layout.
+    pub max_render_items: u64,
+    /// Maximum pages produced by layout (AUD-72). Default: `10_000`.
+    pub max_pages: u32,
 }
 
 impl Default for ResourceLimits {
@@ -126,6 +134,8 @@ impl Default for ResourceLimits {
             max_math_nodes: 4096,
             max_math_depth: 64,
             max_support_features: 10_000,
+            max_render_items: 2_000_000,
+            max_pages: 10_000,
         }
     }
 }
@@ -152,6 +162,8 @@ mod tests {
         assert_eq!(limits.max_math_nodes, 4096);
         assert_eq!(limits.max_math_depth, 64);
         assert_eq!(limits.max_support_features, 10_000);
+        assert_eq!(limits.max_render_items, 2_000_000);
+        assert_eq!(limits.max_pages, 10_000);
     }
 
     #[test]

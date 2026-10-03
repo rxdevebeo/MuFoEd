@@ -15,10 +15,6 @@ use crate::layout::{
 };
 use strict_ooxml_wml::model::Block;
 
-/// Hard cap on the number of pages (output-size guard).
-const MAX_PAGES: usize = 10_000;
-/// Hard cap on the number of paint items (output-size guard).
-const MAX_ITEMS: usize = 2_000_000;
 /// Height reserved for the footnote separator, in px.
 const FOOTNOTE_SEPARATOR_HEIGHT: f64 = 10.0;
 /// Padding between the footnote area and the bottom content edge, in px.
@@ -127,6 +123,7 @@ fn item_coords_finite(item: &Item) -> bool {
 
 /// Lays out the document once, using `total_pages` for NUMPAGES/SECTIONPAGES.
 fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, bool)> {
+    ctx.render_items.set(0);
     let section = ctx
         .document
         .sections
@@ -159,17 +156,17 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
     if !has_fields {
         has_fields = headers_footers_have_dynamic_fields(ctx, section);
     }
-    let mut layout = paginator.finish();
+    let mut layout = paginator.finish()?;
     let page_count = layout.pages.len().max(1);
-    crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, &geometry);
-    crate::layout::pageborders::apply(ctx, &mut layout.pages, &geometry, section);
+    crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, &geometry)?;
+    crate::layout::pageborders::apply(ctx, &mut layout.pages, &geometry, section)?;
     crate::layout::headerfooter::decorate_pages(
         ctx,
         &mut layout.pages,
         geometry,
         section,
         total_pages.max(page_count),
-    );
+    )?;
     Ok((layout, has_fields))
 }
 
@@ -498,35 +495,35 @@ impl<'a> Paginator<'a> {
         self.cursor = (self.cursor + space).min(self.body_height());
     }
 
-    fn check_capacity(&self) -> Result<()> {
-        if self.pages.len() >= MAX_PAGES {
+    fn check_page_capacity(&self) -> Result<()> {
+        let limit = usize::try_from(self.ctx.options.limits.max_pages).unwrap_or(usize::MAX);
+        if self.pages.len() >= limit {
             return Err(RenderError::LimitExceeded {
                 what: "pages",
-                limit: MAX_PAGES as u64,
-                actual: (self.pages.len() + 1) as u64,
-            }
-            .into_strict());
-        }
-        if self.current.len() >= MAX_ITEMS {
-            return Err(RenderError::LimitExceeded {
-                what: "items",
-                limit: MAX_ITEMS as u64,
-                actual: self.current.len() as u64,
+                limit: u64::from(self.ctx.options.limits.max_pages),
+                actual: u64::try_from(self.pages.len().saturating_add(1)).unwrap_or(u64::MAX),
             }
             .into_strict());
         }
         Ok(())
     }
 
+    /// Pushes one paint item onto the current page, charging the document budget.
+    fn push_item(&mut self, item: Item) -> Result<()> {
+        self.ctx.charge_items(1)?;
+        self.current.push(item);
+        Ok(())
+    }
+
     /// Starts a new page, carrying deferred footnotes over as a continuation.
     fn page_break(&mut self) -> Result<()> {
-        self.check_capacity()?;
+        self.check_page_capacity()?;
         if self.current.is_empty() && !self.started {
             // A break before any content is ignored (no leading blank page).
             self.started = true;
             return Ok(());
         }
-        self.flush();
+        self.flush()?;
         self.cursor = 0.0;
         self.started = true;
         self.current = Vec::new();
@@ -543,12 +540,13 @@ impl<'a> Paginator<'a> {
     }
 
     /// Flushes the current page, appending its footnote area.
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<()> {
         if self.current.is_empty() && self.page_footnotes.is_empty() && !self.pages.is_empty() {
-            return;
+            return Ok(());
         }
         if !self.page_footnotes.is_empty() {
             let items = self.footnote_area_items();
+            self.ctx.charge_items(items.len())?;
             self.current.extend(items);
         }
         self.pages.push(PlacedPage {
@@ -556,6 +554,7 @@ impl<'a> Paginator<'a> {
             height_px: self.geometry.height,
             items: std::mem::take(&mut self.current),
         });
+        Ok(())
     }
 
     /// Builds the absolute-positioned paint items of the current footnote area.
@@ -609,7 +608,7 @@ impl<'a> Paginator<'a> {
                 let mut image = image;
                 image.y += self.geometry.top + self.cursor;
                 self.cursor += image.h;
-                self.current.push(Item::Image(image));
+                self.push_item(Item::Image(image))?;
                 Ok(())
             }
             Flow::Block { items, height } => {
@@ -619,7 +618,7 @@ impl<'a> Paginator<'a> {
                 }
                 let dy = self.geometry.top + self.cursor;
                 for item in &items {
-                    self.current.push(offset_item(item, 0.0, dy));
+                    self.push_item(offset_item(item, 0.0, dy))?;
                 }
                 self.cursor += height;
                 Ok(())
@@ -649,30 +648,31 @@ impl<'a> Paginator<'a> {
         self.started = true;
         if !self.current.is_empty() && self.cursor + row.height > self.body_height() {
             self.page_break()?;
-            self.repeat_table_headers();
+            self.repeat_table_headers()?;
         }
-        self.place_row_items(row);
-        Ok(())
+        self.place_row_items(row)
     }
 
     /// Places a row's items at the current cursor.
-    fn place_row_items(&mut self, row: &TableRowFlow) {
+    fn place_row_items(&mut self, row: &TableRowFlow) -> Result<()> {
         let dy = self.geometry.top + self.cursor;
         for item in &row.items {
-            self.current.push(offset_item(item, 0.0, dy));
+            self.push_item(offset_item(item, 0.0, dy))?;
         }
         self.cursor += row.height;
+        Ok(())
     }
 
     /// Re-emits the header rows at the top of a continued table page.
-    fn repeat_table_headers(&mut self) {
+    fn repeat_table_headers(&mut self) -> Result<()> {
         let headers = self.table_headers.clone();
         for header in headers {
             if !self.current.is_empty() && self.cursor + header.height > self.body_height() {
                 break;
             }
-            self.place_row_items(&header);
+            self.place_row_items(&header)?;
         }
+        Ok(())
     }
 
     fn place_line(&mut self, mut line: TextLine) -> Result<()> {
@@ -690,13 +690,13 @@ impl<'a> Paginator<'a> {
         self.resolve_fields(&mut line);
         line.offset(0.0, self.geometry.top + self.cursor);
         for item in line.items {
-            self.current.push(Item::Text(item));
+            self.push_item(Item::Text(item))?;
         }
         for item in line.graphics {
-            self.current.push(item);
+            self.push_item(item)?;
         }
         self.cursor += line.height;
-        self.check_capacity()
+        Ok(())
     }
 
     /// Substitutes computed-field placeholders with their page-dependent value.
@@ -779,9 +779,9 @@ impl<'a> Paginator<'a> {
         Ok(())
     }
 
-    fn finish(mut self) -> Layout {
+    fn finish(mut self) -> Result<Layout> {
         if self.started {
-            self.flush();
+            self.flush()?;
         }
         if self.pages.is_empty() {
             self.pages.push(PlacedPage {
@@ -790,10 +790,10 @@ impl<'a> Paginator<'a> {
                 items: Vec::new(),
             });
         }
-        Layout {
+        Ok(Layout {
             pages: self.pages,
             anchors: self.anchors,
             warnings: self.ctx.take_warnings(),
-        }
+        })
     }
 }
