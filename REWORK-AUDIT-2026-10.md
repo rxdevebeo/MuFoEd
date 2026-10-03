@@ -48,7 +48,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-33 | ✅ выполнена | `11631b7` | `DirectionPolicy::{MapToStartEnd,Keep}`; `T4.jc-bidi` при `w:bidi`/`w:bidiVisual`; реэкспорт из мета-крейта |
 | AUD-34 | ✅ выполнена | `5052659`, `04f2365` | `VmlFallback::{Convert,Report,Drop}`; Report/Drop удаляют `w:pict`/`w:object` с `T7.vml`; `Convert` = бывший RasterizeIfPossible |
 | AUD-35 | ✅ выполнена | `1795caa` | `ExpansionLimit::{Factor,Bytes}` вместо `max_expansion_bytes`; документация совпадает с кодом |
-| AUD-36 | ⏳ в работе | — | — |
+| AUD-36 | ✅ выполнена | `49315d0` | под `feature = "parallel"` отчёт при concurrent `normalize`/`read_part` == последовательному (Manual.docx + синтетика) |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
