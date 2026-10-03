@@ -730,14 +730,56 @@ pub fn write_package(
         )?;
     }
     if document.settings != Default::default() || options.always_write_settings {
-        add_part(
-            &mut zip,
-            SETTINGS_PART,
-            part_xml(&mut ctx, SETTINGS_PART, |ctx| {
+        // AUD-61: `w:attachedTemplate/@r:id` lives on settings.xml and needs
+        // its own `.rels` (External target, typically Normal.dotm).
+        let settings_alloc = if let Some(old_id) = &document.settings.attached_template {
+            ctx.begin_part_relationships(SETTINGS_PART);
+            let bound = document
+                .source
+                .settings
+                .as_ref()
+                .and_then(|from| source.relationship(from, old_id.as_ref()))
+                .and_then(|info| {
+                    let alloc = ctx.part_rels_mut()?;
+                    let new_id = alloc.ensure(&info.rel_type, info.target.clone(), info.external);
+                    ctx.set_part_foreign(old_id.to_string(), new_id);
+                    Some(())
+                });
+            if bound.is_none() {
+                ctx.report_unsupported(
+                    "W7.attached-template",
+                    &format!(
+                        "attachedTemplate relationship {old_id} could not be resolved from \
+                         settings.xml; element omitted"
+                    ),
+                    &strict_ooxml_core::error::SourceLocation::unknown(),
+                );
+            }
+            let xml = part_xml(&mut ctx, SETTINGS_PART, |ctx| {
                 parts::settings_part(ctx, &document.settings)
             })?
-            .into_bytes(),
-        )?;
+            .into_bytes();
+            let alloc = ctx.take_part_relationships();
+            add_part(&mut zip, SETTINGS_PART, xml)?;
+            alloc
+        } else {
+            add_part(
+                &mut zip,
+                SETTINGS_PART,
+                part_xml(&mut ctx, SETTINGS_PART, |ctx| {
+                    parts::settings_part(ctx, &document.settings)
+                })?
+                .into_bytes(),
+            )?;
+            RelAllocator::new()
+        };
+        if !settings_alloc.is_empty() {
+            add_part(
+                &mut zip,
+                "/word/_rels/settings.xml.rels",
+                write_relationships(settings_alloc.relationships()).into_bytes(),
+            )?;
+        }
     }
     if let Some(theme) = &document.theme {
         add_part(

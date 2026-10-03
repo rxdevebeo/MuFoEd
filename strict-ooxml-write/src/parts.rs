@@ -540,10 +540,15 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             }
         }
         "attachedTemplate" => {
+            // AUD-61: `r:id` must resolve through `settings.xml.rels`, not the
+            // document part. The package writer binds the source id into this
+            // part's allocator; without a binding the element is omitted.
             if let Some(id) = &settings.attached_template {
-                xml.start("w:attachedTemplate");
-                xml.attr("r:id", id.as_ref());
-                xml.end();
+                if let Some(remapped) = ctx.foreign_rel(id.as_ref()) {
+                    xml.start("w:attachedTemplate");
+                    xml.attr("r:id", remapped);
+                    xml.end();
+                }
             }
         }
         "stylePaneFormatFilter" => {
