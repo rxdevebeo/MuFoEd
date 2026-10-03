@@ -6,6 +6,17 @@
 //! in points (1/72 inch) with y **upwards from the bottom**. Every coordinate
 //! crossing the boundary goes through this module, so the flip lives in exactly
 //! one place.
+//!
+//! # G-2 audit (AUD-86)
+//!
+//! Every conversion in this file was checked for silent overflow:
+//! - `px_to_pt` / `px_y_to_pt` — `f64` only; a non-positive scale falls back to
+//!   96 px/inch rather than dividing by zero.
+//! - `rgb` — hex nibbles are `u8::try_from` of `to_digit(16)`; channel bytes are
+//!   built with saturating arithmetic and clamped to `0..=255` before the
+//!   `/255` scale. Garbage input is black, never a wrapping `as u8`.
+//! - `dash_array` — `f32` parse with a non-finite / negative filter.
+//! - `flate` — length comparison only; no integer cast of payload size.
 
 /// PDF points per inch.
 pub const POINTS_PER_INCH: f64 = 72.0;
@@ -36,26 +47,57 @@ pub fn px_y_to_pt(y_px: f64, page_height_pt: f64, scale: f64) -> f64 {
 #[must_use]
 pub fn rgb(color: &str) -> (f32, f32, f32) {
     let hex = color.trim().trim_start_matches('#');
-    let expand = |value: &str| -> Option<(f32, f32, f32)> {
-        let digits: Vec<u8> = value
-            .bytes()
-            .map(|b| (b as char).to_digit(16).map_or(255, |d| d as u8))
-            .collect();
-        match digits.len() {
-            3 => Some((
-                f32::from(digits[0] * 17) / 255.0,
-                f32::from(digits[1] * 17) / 255.0,
-                f32::from(digits[2] * 17) / 255.0,
-            )),
-            6 => Some((
-                f32::from(digits[0] * 16 + digits[1]) / 255.0,
-                f32::from(digits[2] * 16 + digits[3]) / 255.0,
-                f32::from(digits[4] * 16 + digits[5]) / 255.0,
-            )),
-            _ => None,
+    match hex.as_bytes() {
+        [r, g, b] => {
+            let Some(r) = nibble(*r) else {
+                return black();
+            };
+            let Some(g) = nibble(*g) else {
+                return black();
+            };
+            let Some(b) = nibble(*b) else {
+                return black();
+            };
+            // Expand `#rgb` → `#rrggbb` without overflowing a `u8` channel.
+            (
+                channel(r.saturating_mul(17)),
+                channel(g.saturating_mul(17)),
+                channel(b.saturating_mul(17)),
+            )
         }
-    };
-    expand(hex).unwrap_or((0.0, 0.0, 0.0))
+        [r1, r0, g1, g0, b1, b0] => {
+            let Some(r) = byte(*r1, *r0) else {
+                return black();
+            };
+            let Some(g) = byte(*g1, *g0) else {
+                return black();
+            };
+            let Some(b) = byte(*b1, *b0) else {
+                return black();
+            };
+            (channel(r), channel(g), channel(b))
+        }
+        _ => black(),
+    }
+}
+
+fn black() -> (f32, f32, f32) {
+    (0.0, 0.0, 0.0)
+}
+
+fn nibble(ascii: u8) -> Option<u8> {
+    let digit = char::from(ascii).to_digit(16)?;
+    u8::try_from(digit).ok()
+}
+
+fn byte(hi: u8, lo: u8) -> Option<u8> {
+    let high = nibble(hi)?;
+    let low = nibble(lo)?;
+    Some(high.saturating_mul(16).saturating_add(low))
+}
+
+fn channel(byte: u8) -> f32 {
+    f32::from(byte) / 255.0
 }
 
 /// Returns `true` when a colour is neither `none` nor empty.
@@ -123,6 +165,19 @@ mod tests {
         assert_eq!(rgb("#fff"), (1.0, 1.0, 1.0));
         // An unreadable colour is black, not a panic and not a missing glyph.
         assert_eq!(rgb("not-a-colour"), (0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn aud86_white_black_and_garbage_do_not_overflow() {
+        assert_eq!(rgb("FFFFFF"), (1.0, 1.0, 1.0));
+        assert_eq!(rgb("#FFFFFF"), (1.0, 1.0, 1.0));
+        assert_eq!(rgb("000000"), (0.0, 0.0, 0.0));
+        // Former bug: invalid nibbles were mapped to 255 and then
+        // `255 * 16 + 255` wrapped a `u8` channel in release builds.
+        assert_eq!(rgb("GGGGGG"), (0.0, 0.0, 0.0));
+        assert_eq!(rgb("#xyz"), (0.0, 0.0, 0.0));
+        assert_eq!(rgb(""), (0.0, 0.0, 0.0));
+        assert_eq!(rgb("#FFFFFFFF"), (0.0, 0.0, 0.0));
     }
 
     #[test]
