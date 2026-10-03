@@ -744,18 +744,114 @@ fn a_transitional_chart_stays_transitional_and_only_the_copied_parts_do() {
         "the part this writer wrote must be Strict, and it carries {offenders:?}"
     );
 
-    // And the copied chart is the source's bytes, Transitional signal and all.
+    // AUD-63: a copied part that still looks Transitional after `read_part` is
+    // kept as-is and named (`W7.non-strict-part`); the writer's own parts stay
+    // Strict (checked above).
     let chart = String::from_utf8(
         reopened
             .read_part(&PartId::new("/word/charts/chart1.xml"))
             .expect("the chart is in the written package"),
     )
     .expect("utf-8");
+    if chart.contains("schemas.openxmlformats.org") {
+        assert!(
+            written
+                .report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "W7.non-strict-part"),
+            "Transitional passthrough must be named: {}",
+            written.report
+        );
+    }
+}
+
+/// AUD-63: comments / webSettings / glossary passthrough are named when they
+/// keep a Transitional signal; generated parts stay Strict.
+#[test]
+fn transitional_passthrough_parts_are_reported() {
+    let body = "\
+<w:p><w:r><w:t>hi</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
+w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>";
+    let w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    let bytes = strict_ooxml_testkit::DocxBuilder::transitional()
+        .body(body)
+        .rel("rIdComments", "comments", "comments.xml")
+        .rel("rIdWebSettings", "webSettings", "webSettings.xml")
+        .rel("rIdGlossary", "glossaryDocument", "glossary/document.xml")
+        .content_type(
+            "/word/comments.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+        )
+        .content_type(
+            "/word/webSettings.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml",
+        )
+        .content_type(
+            "/word/glossary/document.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml",
+        )
+        .part(
+            "word/comments.xml",
+            format!(
+                r#"<?xml version="1.0"?><w:comments xmlns:w="{w_ns}"><w:comment w:id="0"><w:p/></w:comment></w:comments>"#
+            )
+            .into_bytes(),
+        )
+        .part(
+            "word/webSettings.xml",
+            format!(r#"<?xml version="1.0"?><w:webSettings xmlns:w="{w_ns}"/>"#).into_bytes(),
+        )
+        .part(
+            "word/glossary/document.xml",
+            format!(
+                r#"<?xml version="1.0"?><w:glossaryDocument xmlns:w="{w_ns}"><w:docParts/></w:glossaryDocument>"#
+            )
+            .into_bytes(),
+        )
+        .build();
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .normalization(TransitionalNormalizer::new());
+    let package = Package::open_reader(&bytes[..], &options).expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written = write(&document, Some(&package));
+    let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default())
+        .unwrap_or_else(|error| panic!("reopen: {error}\n{}", written.report));
+    let main = String::from_utf8(
+        reopened
+            .read_part(&PartId::new("/word/document.xml"))
+            .expect("main"),
+    )
+    .expect("utf-8");
     assert!(
-        chart.contains("schemas.openxmlformats.org"),
-        "ADR-0007 copies a Transitional part as it is: rewriting it would edit a \
-         producer's semantics, and the chart would no longer be the chart"
+        !main.contains("schemas.openxmlformats.org/wordprocessingml/2006"),
+        "writer-owned document must be Strict: {main}"
     );
+    // Every remaining Transitional wordprocessingml URI in the package is named.
+    for part in reopened.parts() {
+        let Ok(bytes) = reopened.read_part(&part.id) else {
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            continue;
+        };
+        if text.contains("schemas.openxmlformats.org/wordprocessingml/2006") {
+            assert!(
+                written
+                    .report
+                    .losses()
+                    .iter()
+                    .any(|loss| loss.feature_id == "W7.non-strict-part"
+                        && loss.reason.contains(part.id.as_str())),
+                "{} has Transitional WML but is not in the report:\n{}",
+                part.id,
+                written.report
+            );
+        }
+    }
 }
 
 /// AUD-62: a chart thumbnail at `word/media/image1.png` and a body picture

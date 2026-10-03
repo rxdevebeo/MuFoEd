@@ -90,6 +90,27 @@ fn is_shadow(info: &RelationshipInfo) -> bool {
         .contains(&strict_ooxml_core::opc::rels::strict_type_uri(&info.rel_type).as_str())
 }
 
+/// AUD-63: a generated relationship whose type is outside the AUD-22 table keeps
+/// its Transitional URI and is named in the report.
+fn report_transitional_reltype(ctx: &mut Ctx<'_>, info: &RelationshipInfo) {
+    let uri = match &info.rel_type {
+        RelType::Other(uri) => uri.as_str(),
+        _ => return,
+    };
+    if !uri.contains("schemas.openxmlformats.org") {
+        return;
+    }
+    ctx.report_lossy(
+        crate::ctx::RELTYPE_TRANSITIONAL_ID,
+        &format!(
+            "relationship {} uses Transitional type URI {uri} (not in the Strict \
+             table); written with the source URI",
+            info.id
+        ),
+        &SourceLocation::unknown(),
+    );
+}
+
 /// The most unmodelled parts one write will copy.
 ///
 /// A document does not have hundreds of charts, and a hostile `.rels` graph
@@ -174,6 +195,7 @@ pub(crate) fn plan(
         let Some(info) = source.relationship(main, old_id) else {
             continue;
         };
+        report_transitional_reltype(ctx, &info);
         let id = rels.add(&info.rel_type, info.target.clone(), info.external);
         out.document.insert(old_id.clone(), id);
         if !info.external {
@@ -207,6 +229,7 @@ pub(crate) fn plan(
             );
             continue;
         }
+        report_transitional_reltype(ctx, &info);
         let id = rels.add(&info.rel_type, info.target.clone(), info.external);
         out.document.insert(info.id.clone(), id);
         if !info.external {
@@ -277,13 +300,28 @@ pub(crate) fn plan(
             .as_str()
             .to_ascii_lowercase()
             .ends_with(CONTENT_TYPE_RELS_SUFFIX);
+        let bytes = if is_rels {
+            strict_rels_namespace(&bytes)
+        } else {
+            bytes
+        };
+        // AUD-63: bytes come from `Package::read_part` (normalized when the
+        // package was opened under Normalize). A part that still looks
+        // Transitional is copied as-is and named in the report.
+        if strict_ooxml_core::normalize::transitional::part_needs_normalization(&bytes) {
+            ctx.report_lossy(
+                crate::ctx::NON_STRICT_PART_ID,
+                &format!(
+                    "{} still carries a Transitional signal after read_part; \
+                     copied as-is (not modelled for Strict rewrite)",
+                    part.as_str()
+                ),
+                &SourceLocation::unknown(),
+            );
+        }
         out.parts.push(CopiedPart {
             name: part.as_str().to_owned(),
-            bytes: if is_rels {
-                strict_rels_namespace(&bytes)
-            } else {
-                bytes
-            },
+            bytes,
             content_type: source.content_type(&part),
         });
         if let Some(rels_part) = rels_part_of(&part) {

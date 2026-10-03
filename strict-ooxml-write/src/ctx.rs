@@ -86,6 +86,12 @@ pub const CUSTOM_XML_WRAPPER_ID: &str = "W.custom-xml-wrapper";
 /// Stable id: an embedded font's bytes could not be read (AUD-61).
 pub const FONT_LOSS_ID: &str = "W7.font";
 
+/// Stable id: a generated relationship kept a Transitional type URI (AUD-63).
+pub const RELTYPE_TRANSITIONAL_ID: &str = "W.reltype-transitional";
+
+/// Stable id: a passthrough part still carries a Transitional signal (AUD-63).
+pub const NON_STRICT_PART_ID: &str = "W7.non-strict-part";
+
 impl<'a> Ctx<'a> {
     /// Creates a context writing into `report`.
     #[must_use]
@@ -295,6 +301,17 @@ impl<'a> Ctx<'a> {
             locations: vec![location.clone()],
         });
         self.report.count_reported_removal(1);
+    }
+
+    /// Records a Lossy write fact that is not a removed node (AUD-63).
+    pub fn report_lossy(&mut self, feature_id: &str, reason: &str, location: &SourceLocation) {
+        self.report.record_loss(LossRecord {
+            transform_id: WRITE_LOSS_ID,
+            feature_id: feature_id.to_owned(),
+            reason: reason.to_owned(),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
     }
 
     /// Records a construct that was written only in part.
