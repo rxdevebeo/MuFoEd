@@ -76,24 +76,26 @@ mod escape {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn a_control_character_symbol_renders_to_well_formed_svg_with_a_warning() {
-        let pages = assert_survives("render sym 0001", || {
+    fn a_control_character_symbol_is_unsupported_and_renders_cleanly() {
+        // AUD-45: `w:sym/@w:char="0001"` is not a valid XML 1.0 character, so
+        // the parser records `w:sym` as unsupported and does not put U+0001
+        // into the model — the renderer therefore has nothing invalid to strip.
+        let (pages, debug) = assert_survives("render sym 0001", || {
             let bytes = DocxBuilder::strict()
                 .body("<w:p><w:r><w:t>a</w:t><w:sym w:font=\"Symbol\" w:char=\"0001\"/><w:t>b</w:t></w:r></w:p>")
                 .build();
-            StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
-                .expect("open")
+            let opened = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+                .expect("open");
+            let debug = opened.support_debug();
+            let pages = opened
                 .render_svg(&strict_ooxml::RenderOptions::default())
-                .expect("render")
+                .expect("render");
+            (pages, debug)
         });
         well_formed(&pages[0].svg).expect("the page is XML");
         assert!(
-            pages[0]
-                .warnings
-                .iter()
-                .any(|w| w.starts_with("render.invalid-xml-char")),
-            "{:?}",
-            pages[0].warnings
+            debug.contains("w:sym"),
+            "invalid w:sym must be recorded: {debug}"
         );
     }
 

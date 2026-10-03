@@ -246,16 +246,20 @@ fn our_model_agrees_with_the_oracle_on_the_text() {
             continue;
         };
         for entry in &paragraph.inlines {
-            let expression = match entry {
-                Inline::Math(expression) => expression,
-                Inline::MathParagraph(display) => display.expression().expect("equation"),
+            // AUD-50: `m:oMathPara` may hold several `m:oMath` children — walk
+            // every equation, not only the first.
+            let expressions: Vec<&_> = match entry {
+                Inline::Math(expression) => vec![expression],
+                Inline::MathParagraph(display) => display.equations.iter().collect(),
                 _ => continue,
             };
-            expression.walk(&mut |node| {
-                if let MathNode::Run(run) = node {
-                    ours.push_str(&run.text);
-                }
-            });
+            for expression in expressions {
+                expression.walk(&mut |node| {
+                    if let MathNode::Run(run) = node {
+                        ours.push_str(&run.text);
+                    }
+                });
+            }
         }
     }
     assert_eq!(ours, oracle, "the two readers must see the same characters");
