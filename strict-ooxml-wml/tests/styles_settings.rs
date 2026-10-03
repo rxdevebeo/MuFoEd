@@ -139,13 +139,14 @@ fn parses_full_style_definition() {
     assert_eq!(style.next.as_ref().unwrap().as_str(), "Normal");
     assert_eq!(style.link.as_ref().unwrap().as_str(), "Heading1Char");
     assert_eq!(style.ui_priority, Some(9));
-    assert!(style.is_default && style.hidden);
+    // AUD-46: `w:semiHidden` and `w:hidden` are separate fields.
+    assert!(style.is_default && style.semi_hidden && !style.hidden);
     assert!(style.paragraph.keep_next.is_on());
     assert!(style.run.bold.is_on());
     assert_eq!(style.table.style.as_ref().unwrap().as_str(), "Grid");
     let emph = document.styles.get(&StyleId::new("Emph")).unwrap();
     assert_eq!(emph.style_type, StyleType::Character);
-    assert!(emph.hidden);
+    assert!(emph.hidden && !emph.semi_hidden);
     // Styles without a type/id are skipped and recorded.
     assert_eq!(
         document.support.get("w:style").unwrap().status,
