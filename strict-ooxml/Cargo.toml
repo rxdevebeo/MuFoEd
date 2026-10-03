@@ -12,7 +12,9 @@ keywords = ["ooxml", "docx", "wordprocessingml", "strict"]
 categories = ["parser-implementations"]
 
 [features]
-default = ["report", "svg", "write", "pdf", "convert"]
+# AUD-90 / ADR-0019: thin default matches TZ §5.4 (`report` + `svg`).
+# Write/PDF/convert stay opt-in; binaries that need them list features explicitly.
+default = ["report", "svg"]
 # Stage 4: enables `strict-ooxml-render-svg` and the render methods on
 # `StrictDocument` (TZ §5.4).
 svg = ["dep:strict-ooxml-render-svg"]

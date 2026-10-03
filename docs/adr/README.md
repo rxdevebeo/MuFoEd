@@ -22,5 +22,6 @@ immutable once accepted; a superseding decision gets a new number.
 | [0016](0016-conformance-policy.md) | One conformance-policy matrix, decided from raw (T0) signals | Accepted |
 | [0017](0017-normalization-report.md) | Per-part NormalizationReport, merge on read | Accepted |
 | [0018](0018-revisions.md) | Tracked-change model for `w:ins`/`w:del`/`w:moveFrom`/`w:moveTo` | Accepted |
+| [0019](0019-tz-deviations.md) | Accepted deviations from `TZ-STRICT-OOXML-RUST.md` | Accepted |
 
 Copy `0000-template.md` when adding a new record.

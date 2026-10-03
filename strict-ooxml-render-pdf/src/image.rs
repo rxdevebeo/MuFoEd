@@ -253,9 +253,9 @@ fn png_ihdr_budget(bytes: &[u8]) -> Option<(u32, u32, u64)> {
     // After `normalize_to_color8` every sample is one byte; palette may grow to
     // RGBA when a tRNS chunk is present, so budget 4 channels for type 3.
     let channels: u64 = match color_type {
-        0 => 1, // grey (+ expand of 1/2/4-bit)
-        4 => 2, // grey+alpha
-        2 => 3, // RGB
+        0 => 1,     // grey (+ expand of 1/2/4-bit)
+        4 => 2,     // grey+alpha
+        2 => 3,     // RGB
         3 | 6 => 4, // indexed → RGB/A, or native RGBA
         _ => return None,
     };

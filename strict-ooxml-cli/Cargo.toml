@@ -20,7 +20,8 @@ doc = false
 
 [dependencies]
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
-strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write"] }
+# AUD-90: meta-crate default is only report+svg; CLI opts into write/pdf/convert.
+strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert"] }
 
 [lints]
 workspace = true

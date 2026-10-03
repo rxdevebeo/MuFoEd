@@ -516,7 +516,10 @@ mod tests {
         let font = collector.build(&key, &source).expect("subset");
         let space = *font.chars.get(&' ').expect("space");
         let nbsp = *font.chars.get(&'\u{A0}').expect("nbsp");
-        assert_ne!(space, nbsp, "shared-outline characters must not share a CID");
+        assert_ne!(
+            space, nbsp,
+            "shared-outline characters must not share a CID"
+        );
         assert_eq!(
             font.cid_to_gid[usize::from(space)],
             font.cid_to_gid[usize::from(nbsp)],

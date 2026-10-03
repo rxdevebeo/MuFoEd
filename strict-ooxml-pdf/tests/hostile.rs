@@ -563,11 +563,9 @@ trailer << /Root 1 0 R >>\n\
         };
         let reader = bounded({
             let bytes = cyclic();
-            move || {
-                match PdfDocument::open(&bytes, PdfLimits::default()) {
-                    Ok(_) => Ok(()),
-                    Err(error) => Err(error.to_string()),
-                }
+            move || match PdfDocument::open(&bytes, PdfLimits::default()) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(error.to_string()),
             }
         });
         assert!(

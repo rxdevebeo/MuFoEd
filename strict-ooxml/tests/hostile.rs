@@ -1128,10 +1128,7 @@ mod render {
         let detail = assert_survives("render heavy footer", || {
             let mut footer_paras = String::new();
             for index in 0..1000 {
-                let _ = write!(
-                    footer_paras,
-                    "<w:p><w:r><w:t>f{index}</w:t></w:r></w:p>"
-                );
+                let _ = write!(footer_paras, "<w:p><w:r><w:t>f{index}</w:t></w:r></w:p>");
             }
             let footer = strict_ooxml_testkit::docx::part_xml(
                 strict_ooxml_testkit::docx::Family::Strict,
