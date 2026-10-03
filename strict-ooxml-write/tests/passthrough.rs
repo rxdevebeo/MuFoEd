@@ -757,3 +757,86 @@ fn a_transitional_chart_stays_transitional_and_only_the_copied_parts_do() {
          producer's semantics, and the chart would no longer be the chart"
     );
 }
+
+/// AUD-62: a chart thumbnail at `word/media/image1.png` and a body picture
+/// that is a different part both survive under distinct names; a thumbnail
+/// referenced twice is a single part; the write never hits `DuplicatePart`.
+#[test]
+fn media_names_avoid_passthrough_collisions() {
+    let png_a = b"\x89PNG\r\n\x1a\nthumb".to_vec();
+    let png_b = b"\x89PNG\r\n\x1a\nbody!".to_vec();
+    let body = "\
+<w:p><w:r><w:drawing><wp:inline>\
+<wp:extent cx=\"100\" cy=\"100\"/><wp:docPr id=\"1\" name=\"p\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
+<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"p\"/><pic:cNvPicPr/>\
+</pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rIdImg\"/></pic:blipFill>\
+<pic:spPr><a:xfrm><a:ext cx=\"100\" cy=\"100\"/></a:xfrm></pic:spPr>\
+</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>\
+<w:p><w:r><w:drawing><wp:inline>\
+<wp:extent cx=\"100\" cy=\"100\"/><wp:docPr id=\"2\" name=\"c\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/chart\">\
+<c:chart xmlns:c=\"http://purl.oclc.org/ooxml/drawingml/chart\" r:id=\"rIdChart\"/>\
+</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
+w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .rel("rIdImg", "image", "media/photo.png")
+        .rel("rIdChart", "chart", "charts/chart1.xml")
+        .content_type("/word/media/photo.png", "image/png")
+        .content_type(
+            "/word/charts/chart1.xml",
+            "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+        )
+        .content_type("/word/media/image1.png", "image/png")
+        .part("word/media/photo.png", png_b.clone())
+        .part("word/media/image1.png", png_a.clone())
+        .part(
+            "word/charts/chart1.xml",
+            br#"<?xml version="1.0"?><c:chartSpace xmlns:c="http://purl.oclc.org/ooxml/drawingml/chart" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships"/>"#.to_vec(),
+        )
+        .part(
+            "word/charts/_rels/chart1.xml.rels",
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="../media/image1.png"/>
+</Relationships>"#.to_vec(),
+        )
+        .build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    assert!(
+        !document.media.is_empty(),
+        "body picture should be in the media index"
+    );
+
+    let written = write(&document, Some(&package));
+    let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default())
+        .unwrap_or_else(|error| panic!("reopen: {error}\n{}", written.report));
+
+    let thumb = reopened
+        .read_part(&PartId::new("/word/media/image1.png"))
+        .expect("passthrough thumbnail kept its name");
+    assert_eq!(thumb, png_a);
+
+    let mut body_media = None;
+    for part in reopened.parts() {
+        let name = part.id.as_str();
+        if name.starts_with("/word/media/") && !name.eq_ignore_ascii_case("/word/media/image1.png")
+        {
+            body_media = Some(reopened.read_part(&part.id).expect("body media"));
+            break;
+        }
+    }
+    let body_media = body_media.expect("body picture written under a free name");
+    assert_eq!(body_media, png_b);
+
+    // Corpus property: this write path never surfaces DuplicatePart.
+    assert!(
+        !written.report.to_string().contains("DuplicatePart"),
+        "{}",
+        written.report
+    );
+}

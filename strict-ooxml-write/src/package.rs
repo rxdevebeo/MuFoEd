@@ -5,7 +5,7 @@
 //! media parts are named by index, and the ZIP keeps insertion order with a
 //! fixed timestamp (SC-1). Nothing depends on a hash map's iteration order.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
@@ -68,6 +68,51 @@ const CONTENT_TYPE_FOOTER: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
 const CONTENT_TYPE_RELS: &str = "application/vnd.openxmlformats-package.relationships+xml";
 const CONTENT_TYPE_XML: &str = "application/xml";
+
+/// Allocates part names so generated media never collides with a passthrough
+/// part (AUD-62).
+///
+/// Passthrough keeps source spellings; generated images take the lowest free
+/// `word/media/image{N}.{ext}`. Re-reserving the same name is a no-op so a
+/// thumbnail referenced twice still becomes one part.
+#[derive(Debug, Default)]
+pub(crate) struct PartNameAllocator {
+    reserved: BTreeSet<PartId>,
+}
+
+impl PartNameAllocator {
+    /// Empty allocator.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Reserves an absolute part name. A second reservation of the same name
+    /// (ASCII case-insensitive, AUD-24) is a no-op.
+    pub(crate) fn reserve(&mut self, name: &str) {
+        self.reserved.insert(PartId::new(name));
+    }
+
+    /// Whether `name` is already reserved.
+    #[must_use]
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        self.reserved.contains(&PartId::new(name))
+    }
+
+    /// Next free `/word/media/image{N}.{ext}`; returns `(absolute, relative)`.
+    pub(crate) fn allocate_media(&mut self, extension: &str) -> (String, String) {
+        let mut n = 1u32;
+        loop {
+            let relative = format!("media/image{n}.{extension}");
+            let absolute = format!("/word/{relative}");
+            let id = PartId::new(absolute.as_str());
+            if !self.reserved.contains(&id) {
+                self.reserved.insert(id);
+                return (absolute, relative);
+            }
+            n = n.saturating_add(1);
+        }
+    }
+}
 
 /// A relationship target the source package knows and the model does not.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -519,19 +564,6 @@ pub fn write_package(
         );
     }
 
-    // Media, in `MediaIndex` order, which is the order the parser resolved them
-    // in and is therefore stable.
-    let mut media_map: BTreeMap<String, String> = BTreeMap::new();
-    let mut media_parts: Vec<(String, PartId)> = Vec::new();
-    for (index, item) in document.media.iter().enumerate() {
-        let extension = media_extension(item.kind);
-        let name = format!("media/image{}.{extension}", index + 1);
-        let id = rels.add(&RelType::Image, name.clone(), false);
-        media_map.insert(item.part.as_str().to_owned(), id);
-        media_parts.push((format!("/word/{name}"), item.part.clone()));
-        content_types.insert_default(extension, media_content_type(item.kind));
-    }
-
     // The embedded fonts, with **their own** relationship part.
     //
     // `word/_rels/fontTable.xml.rels` is not the document part's rels and cannot be
@@ -588,6 +620,46 @@ pub fn write_package(
         if let Some(content_type) = &part.content_type {
             content_types.insert_override(PartId::new(part.name.as_str()), content_type);
         }
+    }
+
+    // AUD-62: reserve every passthrough name first, then give generated media
+    // the lowest free `image{N}`. Media relationships are added after
+    // passthrough so a chart thumbnail at `word/media/image1.png` does not
+    // collide with the body's first picture.
+    let mut names = PartNameAllocator::new();
+    for part in pass.parts() {
+        names.reserve(part.name.as_str());
+    }
+    let mut media_map: BTreeMap<String, String> = BTreeMap::new();
+    let mut media_targets: BTreeMap<String, String> = BTreeMap::new();
+    let mut media_parts: Vec<(String, PartId)> = Vec::new();
+    for item in document.media.iter() {
+        let source_key = item.part.as_str().to_owned();
+        if media_targets.contains_key(&source_key) {
+            // Same source part referenced twice (e.g. a shared thumbnail): one
+            // written part, one document relationship.
+            continue;
+        }
+        let extension = media_extension(item.kind);
+        // If passthrough already reserved the source spelling (chart thumbnail),
+        // reuse that part instead of writing a second copy under a new name.
+        let reused = names.contains(&source_key);
+        let (absolute, relative) = if reused {
+            let relative = source_key
+                .strip_prefix("/word/")
+                .unwrap_or(source_key.as_str())
+                .to_owned();
+            (source_key.clone(), relative)
+        } else {
+            names.allocate_media(extension)
+        };
+        let id = rels.add(&RelType::Image, relative.clone(), false);
+        media_map.insert(source_key.clone(), id);
+        media_targets.insert(source_key, relative);
+        if !reused {
+            media_parts.push((absolute, item.part.clone()));
+        }
+        content_types.insert_default(extension, media_content_type(item.kind));
     }
 
     ctx = ctx
@@ -724,16 +796,19 @@ pub fn write_package(
             let media = decoration_media(header_footer.blocks.as_slice(), &media_map);
             let targets: Vec<Relationship> = media
                 .iter()
-                .map(|(source_part, id)| Relationship {
-                    id: id.clone(),
-                    rel_type: RelType::Image,
-                    raw_type: strict_type_uri(&RelType::Image),
-                    target: format!(
-                        "media/{}",
-                        source_part.rsplit('/').next().unwrap_or_default()
-                    ),
-                    target_mode: TargetMode::Internal,
-                    resolved: None,
+                .filter_map(|(source_part, id)| {
+                    // AUD-62/61: the target is the *written* media name, not the
+                    // source spelling — a body image may have been renamed to
+                    // avoid a passthrough collision.
+                    let target = media_targets.get(source_part)?.clone();
+                    Some(Relationship {
+                        id: id.clone(),
+                        rel_type: RelType::Image,
+                        raw_type: strict_type_uri(&RelType::Image),
+                        target,
+                        target_mode: TargetMode::Internal,
+                        resolved: None,
+                    })
                 })
                 .collect();
             ctx.set_decoration_relationships(part.as_str(), media);
@@ -1101,5 +1176,31 @@ pub fn media_content_type(kind: MediaKind) -> &'static str {
         MediaKind::Wmf => "image/x-wmf",
         MediaKind::Svg => "image/svg+xml",
         MediaKind::Other => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PartNameAllocator;
+
+    #[test]
+    fn allocator_skips_reserved_media_names() {
+        let mut names = PartNameAllocator::new();
+        names.reserve("/word/media/image1.png");
+        names.reserve("/word/media/IMAGE1.PNG"); // no-op (AUD-24)
+        assert!(names.contains("/word/media/image1.png"));
+        let (absolute, relative) = names.allocate_media("png");
+        assert_eq!(relative, "media/image2.png");
+        assert_eq!(absolute, "/word/media/image2.png");
+        let (_, relative) = names.allocate_media("jpeg");
+        assert_eq!(relative, "media/image1.jpeg");
+    }
+
+    #[test]
+    fn allocator_re_reserve_is_noop() {
+        let mut names = PartNameAllocator::new();
+        names.reserve("/word/media/image1.png");
+        names.reserve("/word/media/image1.png");
+        assert_eq!(names.reserved.len(), 1);
     }
 }
