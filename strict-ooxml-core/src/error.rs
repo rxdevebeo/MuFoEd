@@ -58,6 +58,13 @@ pub enum LimitKind {
     /// costs one, so the number that fits the stack is a seventh of
     /// [`BlockNesting`](Self::BlockNesting)'s.
     TextBoxNesting,
+    /// A ZIP field the writer could not fill without truncating it.
+    ///
+    /// Not a resource limit the caller sets: it is the ZIP format's own widths
+    /// (a 16-bit name length, a 32-bit size and offset, a 16-bit entry count),
+    /// reached because the package was larger than ZIP64 can describe without the
+    /// ZIP64 extensions this writer does not emit.
+    ZipWriteField,
     /// The per-formula node budget (`ResourceLimits::max_math_nodes`).
     ///
     /// No longer returned by `parse_document`: a formula past the budget is
@@ -89,6 +96,7 @@ impl LimitKind {
             Self::Parts => "parts",
             Self::BlockNesting => "block_nesting",
             Self::TextBoxNesting => "text_box_nesting",
+            Self::ZipWriteField => "zip_write_field",
             Self::MathNodes => "math_nodes",
             Self::MathDepth => "math_depth",
         }

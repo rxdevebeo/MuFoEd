@@ -148,56 +148,53 @@ impl ZipWriter {
     ///
     /// # Errors
     ///
-    /// Returns [`StrictError::InvalidZip`] when the result would need a 32-bit
-    /// size or offset field to overflow, and [`StrictError::LimitExceeded`]
-    /// when the compressed result exceeds `max_compressed_input`.
+    /// Returns [`StrictError::LimitExceeded`] with
+    /// [`LimitKind::ZipWriteField`] when a field the ZIP format fixes at 16 or 32
+    /// bits would have to be truncated - an entry count over 65535, a part name
+    /// over 65535 bytes, a size or offset past `u32::MAX` - and with
+    /// [`LimitKind::CompressedInput`] when the result exceeds
+    /// `max_compressed_input`.
     pub fn finish(self) -> Result<Vec<u8>> {
-        if self.entries.len() > u16::MAX as usize {
-            return Err(StrictError::InvalidZip(
-                "more than 65535 entries require ZIP64".to_owned(),
-            ));
-        }
+        // Every field below is checked rather than cast. A name of 65536 bytes
+        // used to write a length of 0 and then 65536 bytes of name, which is not
+        // a ZIP file but something a reader has to be told about (AUD-11).
+        // ZIP64 is not written, so the answer is the error.
+        let entries = u16_field(self.entries.len())?;
 
         let mut local = Vec::new();
         let mut central = Vec::new();
         for (name, data) in &self.entries {
-            let offset = local.len();
-            if offset > MAX_U32 {
-                return Err(StrictError::InvalidZip(
-                    "archive exceeds the 32-bit ZIP offset range (ZIP64 required)".to_owned(),
-                ));
-            }
+            let offset = u32_field(local.len())?;
             let crc = crc32_update(0, data);
             let compressed = compress(data);
-            if compressed.len() > MAX_U32 {
-                return Err(StrictError::InvalidZip(
-                    "entry exceeds the 32-bit ZIP size range (ZIP64 required)".to_owned(),
-                ));
-            }
-            write_local(&mut local, name, crc, &compressed, data.len());
+            let compressed_len = u32_field(compressed.len())?;
+            let uncompressed_len = u32_field(data.len())?;
+            let name_len = u16_field(name.len())?;
+            write_local(
+                &mut local,
+                name,
+                crc,
+                &compressed,
+                compressed_len,
+                uncompressed_len,
+                name_len,
+            );
             write_central(
                 &mut central,
                 name,
                 crc,
                 &compressed,
-                data.len(),
-                offset as u32,
+                compressed_len,
+                uncompressed_len,
+                name_len,
+                offset,
             );
         }
 
-        let central_offset = local.len();
-        if central_offset > MAX_U32 || central.len() > MAX_U32 {
-            return Err(StrictError::InvalidZip(
-                "archive exceeds the 32-bit ZIP range (ZIP64 required)".to_owned(),
-            ));
-        }
+        let central_offset = u32_field(local.len())?;
+        let central_size = u32_field(central.len())?;
         local.extend_from_slice(&central);
-        write_eocd(
-            &mut local,
-            self.entries.len(),
-            central.len(),
-            central_offset,
-        );
+        write_eocd(&mut local, entries, entries, central_size, central_offset);
 
         if local.len() as u64 > self.limits.max_compressed_input {
             return Err(StrictError::LimitExceeded {
@@ -233,41 +230,79 @@ fn method_for(compressed: &[u8], uncompressed_len: usize) -> u16 {
     }
 }
 
-fn write_local(out: &mut Vec<u8>, name: &str, crc: u32, compressed: &[u8], uncompressed: usize) {
+/// The largest value a 16-bit ZIP field can hold, as `usize`.
+const MAX_U16: usize = u16::MAX as usize;
+
+/// A ZIP field the format fixes at 16 bits, checked rather than truncated.
+///
+/// `LimitKind::ZipWriteField` and not `InvalidZip`: this is a bound a caller can
+/// compare, and the plan's G-4 says a bound belongs in the error rather than in
+/// a sentence of prose. Which field it was is on the line of the call.
+fn u16_field(value: usize) -> Result<u16> {
+    u16::try_from(value).map_err(|_| field_too_wide(value, MAX_U16))
+}
+
+/// A ZIP field the format fixes at 32 bits, checked rather than truncated.
+fn u32_field(value: usize) -> Result<u32> {
+    u32::try_from(value).map_err(|_| field_too_wide(value, MAX_U32))
+}
+
+/// The error a field that cannot be represented produces.
+fn field_too_wide(value: usize, ceiling: usize) -> StrictError {
+    StrictError::LimitExceeded {
+        kind: LimitKind::ZipWriteField,
+        limit: ceiling as u64,
+        actual: value as u64,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_local(
+    out: &mut Vec<u8>,
+    name: &str,
+    crc: u32,
+    compressed: &[u8],
+    compressed_len: u32,
+    uncompressed_len: u32,
+    name_len: u16,
+) {
     push_sig(out, LOCAL_SIG); // local file header
     push_u16(out, 20); // version needed: 2.0 (deflate)
     push_u16(out, 0x0800); // flags: UTF-8 names
-    push_u16(out, method_for(compressed, uncompressed));
+    push_u16(out, method_for(compressed, uncompressed_len as usize));
     push_u16(out, DOS_TIME_EPOCH);
     push_u16(out, DOS_DATE_EPOCH);
     push_u32(out, crc);
-    push_u32(out, compressed.len() as u32);
-    push_u32(out, uncompressed as u32);
-    push_u16(out, name.len() as u16);
+    push_u32(out, compressed_len);
+    push_u32(out, uncompressed_len);
+    push_u16(out, name_len);
     push_u16(out, 0); // extra field length
     out.extend_from_slice(name.as_bytes());
     out.extend_from_slice(compressed);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_central(
     out: &mut Vec<u8>,
     name: &str,
     crc: u32,
     compressed: &[u8],
-    uncompressed: usize,
+    compressed_len: u32,
+    uncompressed_len: u32,
+    name_len: u16,
     offset: u32,
 ) {
     push_sig(out, CENTRAL_SIG); // central directory header
     push_u16(out, 20); // version made by: 2.0, MS-DOS
     push_u16(out, 20); // version needed
     push_u16(out, 0x0800); // flags
-    push_u16(out, method_for(compressed, uncompressed));
+    push_u16(out, method_for(compressed, uncompressed_len as usize));
     push_u16(out, DOS_TIME_EPOCH);
     push_u16(out, DOS_DATE_EPOCH);
     push_u32(out, crc);
-    push_u32(out, compressed.len() as u32);
-    push_u32(out, uncompressed as u32);
-    push_u16(out, name.len() as u16);
+    push_u32(out, compressed_len);
+    push_u32(out, uncompressed_len);
+    push_u16(out, name_len);
     push_u16(out, 0); // extra
     push_u16(out, 0); // comment
     push_u16(out, 0); // disk number start
@@ -277,14 +312,20 @@ fn write_central(
     out.extend_from_slice(name.as_bytes());
 }
 
-fn write_eocd(out: &mut Vec<u8>, entries: usize, central_size: usize, central_offset: usize) {
+fn write_eocd(
+    out: &mut Vec<u8>,
+    entries: u16,
+    entries_here: u16,
+    central_size: u32,
+    central_offset: u32,
+) {
     push_sig(out, EOCD_SIG); // end of central directory
     push_u16(out, 0); // this disk
     push_u16(out, 0); // disk with the central directory
-    push_u16(out, entries as u16);
-    push_u16(out, entries as u16);
-    push_u32(out, central_size as u32);
-    push_u32(out, central_offset as u32);
+    push_u16(out, entries);
+    push_u16(out, entries_here);
+    push_u32(out, central_size);
+    push_u32(out, central_offset);
     push_u16(out, 0); // comment length
 }
 
@@ -315,6 +356,7 @@ mod tests {
     use std::io::Read;
     use std::sync::Arc;
 
+    use crate::error::{LimitKind, StrictError};
     use crate::limits::ResourceLimits;
     use crate::opc::{OpenOptions, Package};
     use crate::part::PartId;
@@ -436,5 +478,94 @@ mod tests {
         // that shrinks; the archive must be far smaller than the input.
         assert!(bytes.len() < payload.len() / 10, "{}", bytes.len());
         assert_eq!(&bytes[8..10], &[8, 0]);
+    }
+    /// A part name of about `length` bytes the canonicalizer will accept.
+    fn long_name(length: usize) -> PartId {
+        // Segments of at most 255 characters joined by `/`, which is what
+        // `canonicalize_part_name` allows; the total is what the ZIP header
+        // cannot hold.
+        let mut name = String::with_capacity(length);
+        while name.len() + 256 <= length {
+            name.push_str(&"n".repeat(255));
+            name.push('/');
+        }
+        name.push_str(&"n".repeat(length - name.len()));
+        PartId::new(format!("/{name}"))
+    }
+
+    #[test]
+    fn a_part_name_too_long_for_the_zip_field_is_refused() {
+        // The defect: the name's length was cast into the 16-bit field, which wrote
+        // a length of 0 for a name past 65535 bytes and then wrote all of the name,
+        // which is not a ZIP file and not an error the reader could report (AUD-11).
+        let mut writer = ZipWriter::new();
+        writer
+            .add_part(&long_name(70_000), Vec::new())
+            .expect("added");
+        match writer.finish() {
+            Err(StrictError::LimitExceeded {
+                kind: LimitKind::ZipWriteField,
+                limit,
+                actual,
+            }) => {
+                assert_eq!(limit, 65_535, "the field's own width");
+                assert!(actual > 65_535, "the name that did not fit: {actual}");
+            }
+            other => panic!("expected ZipWriteField, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn more_entries_than_the_field_holds_are_refused() {
+        // 65 536 parts is unreachable through a real document - `max_zip_entries`
+        // is 4096 - so the entry budget is raised to reach the format's own
+        // ceiling. The point is the answer: a bound, not a wrapped count.
+        let mut writer = ZipWriter::with_limits(ResourceLimits {
+            max_zip_entries: 70_000,
+            ..ResourceLimits::default()
+        });
+        for index in 0..65_536u32 {
+            writer
+                .add_part(&PartId::new(format!("/p{index}")), Vec::new())
+                .expect("added");
+        }
+        match writer.finish() {
+            Err(StrictError::LimitExceeded {
+                kind: LimitKind::ZipWriteField,
+                actual,
+                ..
+            }) => assert_eq!(actual, 65_536),
+            other => panic!("expected ZipWriteField, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_ordinary_package_is_byte_for_byte_what_it_was() {
+        // The determinism snapshot: if the checked conversions changed a byte,
+        // this is where it shows. Two writes, the same bytes twice, and an
+        // archive the reader still takes.
+        let build = || {
+            let mut writer = ZipWriter::new();
+            writer
+                .add_part(&PartId::new("/word/document.xml"), b"<a/>".to_vec())
+                .expect("added");
+            writer
+                .add_part(&PartId::new("/[Content_Types].xml"), b"<b/>".to_vec())
+                .expect("added");
+            writer.finish().expect("finish")
+        };
+        assert_eq!(build(), build());
+        let archive =
+            ZipArchive::new(Arc::new(build()), &ResourceLimits::default()).expect("archive");
+        assert_eq!(archive.entries().len(), 2);
+        let mut part = archive
+            .open_reader(
+                &PartId::new("/word/document.xml"),
+                &ResourceLimits::default(),
+            )
+            .expect("document part");
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut part, &mut text).expect("read");
+        assert_eq!(text, "<a/>");
     }
 }
