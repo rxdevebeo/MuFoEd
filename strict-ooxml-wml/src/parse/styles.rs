@@ -133,7 +133,7 @@ impl PartParser<'_> {
                             continue;
                         }
                         if name.local() == "pPr" {
-                            parsed = Some(parser.parse_paragraph_properties()?);
+                            parsed = Some(parser.parse_paragraph_properties()?.0);
                         } else {
                             parser.skip_element()?;
                         }
@@ -202,7 +202,7 @@ impl PartParser<'_> {
                                 hidden = true;
                                 parser.skip_element()?;
                             }
-                            "pPr" => paragraph = parser.parse_paragraph_properties()?,
+                            "pPr" => paragraph = parser.parse_paragraph_properties()?.0,
                             "rPr" => run = parser.parse_run_properties()?,
                             "tblPr" => table_props = parser.parse_table_properties()?,
                             _ => parser.skip_element()?,

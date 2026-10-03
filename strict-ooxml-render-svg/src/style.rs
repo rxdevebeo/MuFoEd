@@ -498,6 +498,7 @@ mod tests {
             rsids: Default::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         };
         let computed = compute_paragraph(&document, &para);
@@ -551,6 +552,7 @@ mod tests {
             rsids: Default::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         };
         let computed = compute_paragraph(&document, &para);
@@ -573,6 +575,7 @@ mod tests {
                 text: "x".to_owned(),
                 space: Default::default(),
             })],
+            revision: None,
             location: location(),
         };
         let computed = compute_run(&document, &para, &run);

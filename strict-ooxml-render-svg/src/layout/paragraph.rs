@@ -5,13 +5,23 @@ use strict_ooxml_wml::model::values::{
     BreakKind, FieldCharType, LineSpacingRule, TabAlignment, VertAlign,
 };
 use strict_ooxml_wml::model::{
-    AnchorDrawing, Drawing, DrawingKind, Inline, Paragraph, Run, RunContent,
+    AnchorDrawing, Drawing, DrawingKind, Inline, Paragraph, Revision, Run, RunContent,
 };
 
 use crate::layout::{Flow, ImageItem, Item, LayoutContext, TextItem, TextLine};
 use crate::paint::image::layout_inline_image;
 use crate::style::{apply_caps, compute_paragraph, compute_run, ComputedParagraph, ComputedRun};
 use crate::units::{pt_to_px, twips_to_px};
+use crate::RevisionView;
+
+/// Whether a run with the given revision marker is visible under `view` (ADR-0018).
+fn revision_visible(view: RevisionView, revision: Option<&Revision>) -> bool {
+    match revision.map(|revision| revision.kind) {
+        Some(kind) if kind.is_deletion() => view == RevisionView::Original,
+        Some(kind) if kind.is_insertion() => view == RevisionView::Final,
+        None | Some(_) => true,
+    }
+}
 
 /// A flattened inline segment.
 enum Seg {
@@ -405,6 +415,9 @@ fn flatten_run(
     out: &mut Vec<Seg>,
     field: &mut FieldState,
 ) {
+    if !revision_visible(ctx.options.revisions, run.revision.as_ref()) {
+        return;
+    }
     let run_style = compute_run(ctx.document, computed, run);
     for content in &run.content {
         match content {

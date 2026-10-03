@@ -15,6 +15,7 @@ use crate::model::inline::{
     FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent, Symbol, TextNode,
 };
 use crate::model::props::{ParagraphProperties, Section};
+use crate::model::revision::{Revision, RevisionKind};
 use crate::model::support::SupportStatus;
 use crate::model::values::{BreakKind, FieldCharType, Rsids, Space};
 use crate::RELS_STRICT_NS;
@@ -134,22 +135,20 @@ impl PartParser<'_> {
                     });
                 }
             }
-            BodyKind::Inserted | BodyKind::Deleted => {
-                let feature = if body_kind(name.local()) == BodyKind::Inserted {
-                    "w:ins"
-                } else {
-                    "w:del"
-                };
+            BodyKind::Inserted | BodyKind::Deleted | BodyKind::MovedTo | BodyKind::MovedFrom => {
+                let kind = RevisionKind::from_local(name.local()).unwrap_or(RevisionKind::Insert);
+                let revision = self.parse_revision_attrs(kind, attrs);
                 self.record(
-                    feature,
-                    SupportStatus::Partial,
-                    Some("tracked change container flattened".to_owned()),
+                    kind.feature_id(),
+                    SupportStatus::Supported,
+                    None,
                     Some(self.location()),
                 );
                 let was_capture = self.capture_body_section;
                 self.capture_body_section = false;
                 let mut children = self.parse_block_children()?;
                 self.capture_body_section = was_capture;
+                stamp_revision_on_blocks(&mut children, &revision);
                 blocks.append(&mut children);
             }
             BodyKind::Transparent => {
@@ -182,12 +181,15 @@ impl PartParser<'_> {
         let location = self.location();
         self.nested(|parser| {
             let mut props = ParagraphProperties::default();
+            let mut mark_revision = None;
             let mut inlines = Vec::new();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if name.local() == "pPr" && is_wml(&name) {
-                            props = parser.parse_paragraph_properties()?;
+                            let (parsed, revision) = parser.parse_paragraph_properties()?;
+                            props = parsed;
+                            mark_revision = revision;
                         } else if crate::parse::is_math(&name) {
                             parser.parse_math_into(&name, &mut inlines)?;
                         } else if is_wml(&name) {
@@ -207,6 +209,7 @@ impl PartParser<'_> {
                 props,
                 inlines,
                 rsids: rsids_from_attrs(attrs),
+                revision: mark_revision,
                 para_id: attr_in_ns(attrs, W14_NS, "paraId").map(ParaId::new),
                 text_id: attr_in_ns(attrs, W14_NS, "textId").map(TextId::new),
                 location,
@@ -347,19 +350,20 @@ impl PartParser<'_> {
                 self.skip_element()?;
             }
             InlineKind::Sdt => out.push(Inline::SdtInline(self.parse_sdt(false)?)),
-            InlineKind::Inserted | InlineKind::Deleted => {
-                let feature = if inline_kind(name.local()) == InlineKind::Inserted {
-                    "w:ins"
-                } else {
-                    "w:del"
-                };
+            InlineKind::Inserted
+            | InlineKind::Deleted
+            | InlineKind::MovedTo
+            | InlineKind::MovedFrom => {
+                let kind = RevisionKind::from_local(name.local()).unwrap_or(RevisionKind::Insert);
+                let revision = self.parse_revision_attrs(kind, attrs);
                 self.record(
-                    feature,
-                    SupportStatus::Partial,
-                    Some("tracked change container flattened".to_owned()),
+                    kind.feature_id(),
+                    SupportStatus::Supported,
+                    None,
                     Some(location),
                 );
                 let mut children = self.parse_inline_children()?;
+                stamp_revision_on_inlines(&mut children, &revision);
                 out.append(&mut children);
             }
             InlineKind::Transparent => {
@@ -615,11 +619,81 @@ impl PartParser<'_> {
             Ok(Run {
                 props,
                 content,
+                revision: None,
                 location,
             })
         })
     }
 
+    /// Reads `w:id` / `w:author` / `w:date` from a tracked-change wrapper.
+    fn parse_revision_attrs(&mut self, kind: RevisionKind, attrs: &[Attr]) -> Revision {
+        let id = wml_attr(attrs, "id").and_then(parse_u32).unwrap_or(0);
+        let author = wml_attr(attrs, "author").map(|value| self.intern(value));
+        let date = wml_attr(attrs, "date").map(|value| self.intern(value));
+        Revision {
+            kind,
+            id,
+            author,
+            date,
+        }
+    }
+}
+
+/// Stamps a revision onto every run inside the given inlines (nested containers too).
+fn stamp_revision_on_inlines(inlines: &mut [Inline], revision: &Revision) {
+    for inline in inlines {
+        match inline {
+            Inline::Run(run) => {
+                if run.revision.is_none() {
+                    run.revision = Some(revision.clone());
+                }
+            }
+            Inline::Hyperlink(link) => stamp_revision_on_inlines(&mut link.inlines, revision),
+            Inline::Field(field) => stamp_revision_on_inlines(&mut field.inlines, revision),
+            Inline::SdtInline(sdt) => stamp_revision_on_inlines(&mut sdt.inlines, revision),
+            Inline::Directional(dir) => stamp_revision_on_inlines(&mut dir.inlines, revision),
+            Inline::Drawing(_)
+            | Inline::Break(_)
+            | Inline::Tab
+            | Inline::BookmarkStart(_)
+            | Inline::BookmarkEnd(_)
+            | Inline::CommentRangeStart(_)
+            | Inline::CommentRangeEnd(_)
+            | Inline::CommentReference(_)
+            | Inline::FootnoteRef(_)
+            | Inline::EndnoteRef(_)
+            | Inline::Math(_)
+            | Inline::MathParagraph(_)
+            | Inline::Opaque(_) => {}
+        }
+    }
+}
+
+/// Stamps a revision onto runs (and paragraph marks) inside block children.
+fn stamp_revision_on_blocks(blocks: &mut [Block], revision: &Revision) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(paragraph) => {
+                if paragraph.revision.is_none() {
+                    paragraph.revision = Some(revision.clone());
+                }
+                stamp_revision_on_inlines(&mut paragraph.inlines, revision);
+            }
+            Block::Table(table) => {
+                for row in &mut table.rows {
+                    for cell in &mut row.cells {
+                        stamp_revision_on_blocks(&mut cell.blocks, revision);
+                    }
+                }
+            }
+            Block::SdtBlock(sdt) => stamp_revision_on_blocks(&mut sdt.blocks, revision),
+            Block::AltChunk(_) | Block::Opaque(_) => {}
+        }
+    }
+}
+
+// Re-open the impl block for the remaining helpers that lived after parse_run.
+impl PartParser<'_> {
     /// Parses a `w:t`/`w:delText` element, honouring `xml:space`.
     fn parse_text_element(&mut self, attrs: &[Attr]) -> Result<TextNode> {
         let space = attr_in_ns(attrs, XML_NS, "space")

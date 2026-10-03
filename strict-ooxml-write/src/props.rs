@@ -61,13 +61,18 @@ fn schema_order(
 /// in practice a hyperlink — so the header or footer disappears on the next
 /// open, silently, because a footer that resolves to nothing is simply not
 /// drawn.
-pub fn paragraph_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &ParagraphProperties) {
-    if is_empty_paragraph(props) {
+pub fn paragraph_properties(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    props: &ParagraphProperties,
+    mark_revision: Option<&strict_ooxml_wml::model::Revision>,
+) {
+    if is_empty_paragraph(props) && mark_revision.is_none() {
         return;
     }
     xml.start("w:pPr");
     schema_order(xml, order::PPR, |name, xml| {
-        paragraph_child(ctx, xml, props, name);
+        paragraph_child(ctx, xml, props, mark_revision, name);
     });
     xml.end();
 }
@@ -77,6 +82,7 @@ fn paragraph_child(
     ctx: &mut Ctx<'_>,
     xml: &mut XmlWriter,
     props: &ParagraphProperties,
+    mark_revision: Option<&strict_ooxml_wml::model::Revision>,
     name: &str,
 ) {
     match name {
@@ -184,17 +190,25 @@ fn paragraph_child(
             }
         }
         "rPr" => {
-            if let Some(run_props) = &props.run_props {
-                // `w:rPr` here marks the paragraph mark itself. It is written only
-                // when it carries something: an empty `<w:rPr/>` is legal and means
-                // nothing, and the reader does not read one back - so writing it
-                // made the document change on every round trip. `w:del` inside a
-                // paragraph mark's `w:rPr` is a revision marker this model does not
-                // keep, and the emptiness check is what stops it from masquerading
-                // as content that survived.
-                if !is_empty_run(run_props) {
-                    run_properties(xml, run_props);
+            let run_props = props.run_props.as_ref();
+            let has_props = run_props.is_some_and(|props| !is_empty_run(props));
+            if has_props || mark_revision.is_some() {
+                // `w:rPr` marks the paragraph mark. An empty `<w:rPr/>` is legal
+                // but pointless; we write the container only when it carries run
+                // props and/or a tracked-change marker (ADR-0018).
+                xml.start("w:rPr");
+                if let Some(run_props) = run_props {
+                    run_properties_children(xml, run_props);
                 }
+                if let Some(revision) = mark_revision {
+                    let tag = format!("w:{}", revision.kind.as_str());
+                    xml.start(&tag);
+                    xml.attr_w("id", revision.id);
+                    xml.attr_w_opt("author", revision.author.as_deref());
+                    xml.attr_w_opt("date", revision.date.as_deref());
+                    xml.end();
+                }
+                xml.end();
             }
         }
         "sectPr" => {
@@ -299,7 +313,12 @@ pub fn run_properties(xml: &mut XmlWriter, props: &RunProperties) {
         return;
     }
     xml.start("w:rPr");
+    run_properties_children(xml, props);
+    xml.end();
+}
 
+/// Writes the children of `w:rPr` without the wrapper element.
+fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(style) = &props.style {
         xml.empty_attr_w("w:rStyle", "val", style.as_str());
     }
@@ -394,7 +413,6 @@ pub fn run_properties(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(language) = &props.language {
         language_element(xml, language);
     }
-    xml.end();
 }
 
 fn language_element(xml: &mut XmlWriter, language: &strict_ooxml_wml::model::props::Language) {
@@ -1237,7 +1255,7 @@ mod tests {
         let mut xml = XmlWriter::new();
         let mut report = NormalizationReport::new();
         let mut ctx = Ctx::new(&mut report);
-        paragraph_properties(&mut ctx, &mut xml, &ParagraphProperties::default());
+        paragraph_properties(&mut ctx, &mut xml, &ParagraphProperties::default(), None);
         assert!(!xml.has_open_elements());
         assert_eq!(xml.finish().expect("balanced"), "\n");
     }
@@ -1256,7 +1274,7 @@ mod tests {
         let mut xml = XmlWriter::new();
         let mut report = NormalizationReport::new();
         let mut ctx = Ctx::new(&mut report);
-        paragraph_properties(&mut ctx, &mut xml, &props);
+        paragraph_properties(&mut ctx, &mut xml, &props, None);
         let text = xml.finish().expect("balanced");
         let keep = text.find("keepNext").expect("keepNext");
         let spacing = text.find("w:spacing").expect("spacing");

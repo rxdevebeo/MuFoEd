@@ -118,6 +118,16 @@ impl PageSelection {
     }
 }
 
+/// Which tracked-change view the renderer shows (ADR-0018).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RevisionView {
+    /// Final document: hide `w:del` / `w:moveFrom`, keep `w:ins` / `w:moveTo`.
+    #[default]
+    Final,
+    /// Original document: hide `w:ins` / `w:moveTo`, keep `w:del` / `w:moveFrom`.
+    Original,
+}
+
 /// Options controlling rendering.
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
@@ -139,6 +149,8 @@ pub struct RenderOptions {
     /// drawn. Setting it to `false` skips them (the parser still models them,
     /// so the Feature Report is unchanged).
     pub math: bool,
+    /// Tracked-change view (ADR-0018). Default [`RevisionView::Final`].
+    pub revisions: RevisionView,
     /// Resource limits, including the block-nesting bound.
     ///
     /// The renderer takes its budget from the same `ResourceLimits` the reader
@@ -159,6 +171,7 @@ impl Default for RenderOptions {
             background: true,
             floating: true,
             math: true,
+            revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
         }
     }
@@ -363,6 +376,7 @@ mod tests {
             rsids: Rsids::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         })];
         for _ in 0..depth {

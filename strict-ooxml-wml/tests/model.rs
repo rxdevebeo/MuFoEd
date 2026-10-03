@@ -475,6 +475,7 @@ fn block_and_inline_accessors() {
                     text: "x".to_owned(),
                     space: Space::Default,
                 })],
+                revision: None,
                 location: location(),
             }),
             strict_ooxml_wml::model::inline::Inline::BookmarkStart(Bookmark::new("b", "b")),
@@ -482,6 +483,7 @@ fn block_and_inline_accessors() {
         rsids: strict_ooxml_wml::model::values::Rsids::default(),
         para_id: Some(ParaId::new("1")),
         text_id: None,
+        revision: None,
         location: location(),
     };
     let block = Block::Paragraph(paragraph);
@@ -607,6 +609,7 @@ fn drawing_and_run_constructors() {
     let run = Run {
         props: strict_ooxml_wml::model::props::RunProperties::default(),
         content: vec![RunContent::Tab, RunContent::Break(BreakKind::Page)],
+        revision: None,
         location: location(),
     };
     assert_eq!(run.content.len(), 2);

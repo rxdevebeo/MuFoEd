@@ -1034,6 +1034,7 @@ mod tests {
             rsids: Default::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: Default::default(),
         })
     }

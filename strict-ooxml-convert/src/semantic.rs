@@ -528,6 +528,7 @@ fn new_paragraph(line: &GlyphLine, heading: Option<u8>, origin: f64) -> Paragrap
         rsids: Rsids::default(),
         para_id: None,
         text_id: None,
+        revision: None,
         location: strict_ooxml_core::error::SourceLocation::unknown(),
     }
 }
@@ -600,6 +601,7 @@ fn run(properties: RunProperties, text: String) -> Inline {
     Inline::Run(Run {
         props: properties,
         content: vec![RunContent::Text(TextNode { text, space })],
+        revision: None,
         location: strict_ooxml_core::error::SourceLocation::unknown(),
     })
 }
@@ -786,6 +788,7 @@ fn image_paragraph(
         rsids: Rsids::default(),
         para_id: None,
         text_id: None,
+        revision: None,
         location,
     }
 }

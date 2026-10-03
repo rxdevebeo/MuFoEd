@@ -79,6 +79,7 @@ pub(crate) fn build(
                 rsids: Rsids::default(),
                 para_id: None,
                 text_id: None,
+                revision: None,
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             };
             push_runs_public(&mut paragraph, line);

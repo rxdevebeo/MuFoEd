@@ -109,16 +109,52 @@ pub fn paragraph_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &Par
         );
     }
 
-    paragraph_properties(ctx, xml, &paragraph.props);
+    paragraph_properties(ctx, xml, &paragraph.props, paragraph.revision.as_ref());
 
-    for inline in &paragraph.inlines {
-        inline_item(ctx, xml, inline);
-    }
+    write_inlines_with_revisions(ctx, xml, &paragraph.inlines);
 
     // An empty paragraph is written as `<w:p/>`: `w:p`'s content model is
     // `EG_PContent*`, so zero children are legal, and inventing an empty run
     // would make the written model differ from the one that was parsed.
     xml.end();
+}
+
+/// Writes inlines, grouping consecutive runs that share the same revision wrapper.
+fn write_inlines_with_revisions(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inlines: &[Inline]) {
+    let mut index = 0;
+    while index < inlines.len() {
+        match &inlines[index] {
+            Inline::Run(run) if run.revision.is_some() => {
+                let revision = run.revision.as_ref().expect("checked");
+                let start = index;
+                index += 1;
+                while index < inlines.len() {
+                    match &inlines[index] {
+                        Inline::Run(next) if next.revision.as_ref() == Some(revision) => {
+                            index += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                let tag = format!("w:{}", revision.kind.as_str());
+                xml.start(&tag);
+                xml.attr_w("id", revision.id);
+                xml.attr_w_opt("author", revision.author.as_deref());
+                xml.attr_w_opt("date", revision.date.as_deref());
+                let deleted = revision.kind.is_deletion();
+                for inline in &inlines[start..index] {
+                    if let Inline::Run(run) = inline {
+                        run_element_body(ctx, xml, run, deleted);
+                    }
+                }
+                xml.end();
+            }
+            other => {
+                inline_item(ctx, xml, other);
+                index += 1;
+            }
+        }
+    }
 }
 
 /// Writes one inline-level item.
@@ -138,17 +174,13 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
             }
             xml.attr_w_opt("anchor", link.anchor.as_deref());
             xml.attr_w_opt("tooltip", link.tooltip.as_deref());
-            for child in &link.inlines {
-                inline_item(ctx, xml, child);
-            }
+            write_inlines_with_revisions(ctx, xml, &link.inlines);
             xml.end();
         }
         Inline::Field(field) => {
             xml.start("w:fldSimple");
             xml.attr_w_opt("instr", field.instruction.as_deref());
-            for child in &field.inlines {
-                inline_item(ctx, xml, child);
-            }
+            write_inlines_with_revisions(ctx, xml, &field.inlines);
             xml.end();
         }
         Inline::Drawing(drawing) => {
@@ -220,9 +252,7 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
             };
             xml.start(name);
             xml.attr_w("val", dir.val.as_str());
-            for child in &dir.inlines {
-                inline_item(ctx, xml, child);
-            }
+            write_inlines_with_revisions(ctx, xml, &dir.inlines);
             xml.end();
         }
         Inline::Opaque(opaque) => {
@@ -237,18 +267,33 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
 
 /// Writes `w:r` and its content.
 pub fn run_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &Run) {
+    if let Some(revision) = &run.revision {
+        let tag = format!("w:{}", revision.kind.as_str());
+        xml.start(&tag);
+        xml.attr_w("id", revision.id);
+        xml.attr_w_opt("author", revision.author.as_deref());
+        xml.attr_w_opt("date", revision.date.as_deref());
+        run_element_body(ctx, xml, run, revision.kind.is_deletion());
+        xml.end();
+        return;
+    }
+    run_element_body(ctx, xml, run, false);
+}
+
+/// Writes the bare `w:r` (caller may have opened a revision wrapper).
+fn run_element_body(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &Run, deleted: bool) {
     xml.start("w:r");
     crate::props::run_properties(xml, &run.props);
     for content in &run.content {
-        run_content(ctx, xml, content);
+        run_content(ctx, xml, content, deleted);
     }
     xml.end();
 }
 
 /// Writes one run child.
-pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent) {
+pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent, deleted: bool) {
     match content {
-        RunContent::Text(node) => text_node(xml, node),
+        RunContent::Text(node) => text_node(xml, node, if deleted { "w:delText" } else { "w:t" }),
         RunContent::Tab => xml.empty("w:tab"),
         RunContent::Break(kind) => match kind {
             BreakKind::Page => xml.empty_attr_w("w:br", "type", "page"),
@@ -258,7 +303,11 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent)
         RunContent::CarriageReturn => xml.empty("w:cr"),
         RunContent::Drawing(drawing) => crate::drawing::drawing_element(ctx, xml, drawing),
         RunContent::InstrText(text) => {
-            xml.start("w:instrText");
+            xml.start(if deleted {
+                "w:delInstrText"
+            } else {
+                "w:instrText"
+            });
             xml.attr("xml:space", "preserve");
             xml.text(text);
             xml.end();
@@ -326,12 +375,12 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent)
     }
 }
 
-/// Writes `w:t`, including the `xml:space` attribute the model recorded.
+/// Writes `w:t` or `w:delText`, including the `xml:space` attribute the model recorded.
 ///
 /// The attribute is only written when the text actually needs it: leading or
 /// trailing whitespace is stripped by an XML parser without `preserve`, so a
 /// text node without edge whitespace does not carry it.
-fn text_node(xml: &mut XmlWriter, node: &TextNode) {
+fn text_node(xml: &mut XmlWriter, node: &TextNode, tag: &str) {
     let needs_preserve = matches!(node.space, Space::Preserve)
         || node.text.chars().next().is_some_and(char::is_whitespace)
         || node
@@ -340,10 +389,10 @@ fn text_node(xml: &mut XmlWriter, node: &TextNode) {
             .next_back()
             .is_some_and(char::is_whitespace);
     if node.text.is_empty() && !needs_preserve {
-        xml.empty("w:t");
+        xml.empty(tag);
         return;
     }
-    xml.start("w:t");
+    xml.start(tag);
     if needs_preserve {
         xml.attr("xml:space", "preserve");
     }
@@ -491,11 +540,13 @@ mod tests {
                     text: text.to_owned(),
                     space,
                 })],
+                revision: None,
                 location: location(),
             })],
             rsids: Default::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         }
     }
@@ -535,6 +586,7 @@ mod tests {
             rsids: Default::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         };
         let mut report = NormalizationReport::new();

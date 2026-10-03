@@ -255,6 +255,7 @@ mod tests {
             rsids: Rsids::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         })
     }
@@ -320,6 +321,7 @@ mod tests {
             rsids: Rsids::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: location(),
         })
     }

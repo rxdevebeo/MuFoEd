@@ -8,6 +8,7 @@ use strict_ooxml_core::opc::rels::RelId;
 use super::ids::{ParaId, TextId};
 use super::inline::Inline;
 use super::props::{CellProperties, ParagraphProperties, RowProperties, TableProperties};
+use super::revision::Revision;
 use super::values::{Rsids, Twips};
 
 /// A paragraph (`w:p`).
@@ -19,6 +20,8 @@ pub struct Paragraph {
     pub inlines: Vec<Inline>,
     /// Revision identifiers carried by the paragraph and its runs.
     pub rsids: Rsids,
+    /// Tracked change of the paragraph mark (`w:pPr/w:rPr/w:ins|w:del`, ADR-0018).
+    pub revision: Option<Revision>,
     /// Unique paragraph id (`w14:paraId`).
     pub para_id: Option<ParaId>,
     /// Unique text id (`w14:textId`).

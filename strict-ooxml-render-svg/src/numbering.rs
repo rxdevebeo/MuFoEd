@@ -295,10 +295,7 @@ mod tests {
             multi_level_type: None,
             num_style_link: None,
             style_link: None,
-            levels: vec![
-                level(0, "decimal", "%1."),
-                level(1, "bullet", "\u{2022}"),
-            ],
+            levels: vec![level(0, "decimal", "%1."), level(1, "bullet", "\u{2022}")],
             location: location(),
         });
         // Override the first level's start (first-wins insert; build the num once).

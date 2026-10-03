@@ -405,6 +405,39 @@ fn a_written_package_opens_under_the_strict_policy() {
     }
 }
 
+/// AUD-43: tracked-change runs round-trip with the same revision markers.
+#[test]
+fn tracked_changes_round_trip() {
+    let body = "\
+<w:p><w:ins w:id=\"1\" w:author=\"Ann\"><w:r><w:t>added</w:t></w:r></w:ins>\
+<w:del w:id=\"2\"><w:r><w:delText>gone</w:delText></w:r></w:del></w:p>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let written = write(&document, &package);
+    let reopened = open(&written.bytes).expect("reopen");
+    let reparsed = parse(&reopened).expect("reparse");
+    let first = document.body.blocks[0].as_paragraph().unwrap();
+    let second = reparsed.body.blocks[0].as_paragraph().unwrap();
+    assert_eq!(first.inlines.len(), second.inlines.len());
+    for (left, right) in first.inlines.iter().zip(second.inlines.iter()) {
+        let (Inline::Run(a), Inline::Run(b)) = (left, right) else {
+            panic!("expected runs");
+        };
+        assert_eq!(a.revision, b.revision);
+        assert_eq!(a.content, b.content);
+    }
+    let document_xml = reopened
+        .read_part(&strict_ooxml_core::part::PartId::new("/word/document.xml"))
+        .expect("document part");
+    let xml = String::from_utf8_lossy(&document_xml);
+    assert!(xml.contains("<w:ins "), "{xml}");
+    assert!(xml.contains("<w:del "), "{xml}");
+    assert!(xml.contains("<w:delText"), "{xml}");
+}
+
 /// AUD-42: `w:dir` / `w:bdo` round-trip; `w:customXml` records an Ignorable write loss.
 #[test]
 fn directional_round_trips_and_custom_xml_is_reported() {

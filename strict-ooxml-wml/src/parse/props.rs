@@ -16,6 +16,7 @@ use crate::model::props::{
     PageSize, ParagraphProperties, RowProperties, RunProperties, SectionProperties,
     TableProperties,
 };
+use crate::model::revision::{Revision, RevisionKind};
 use crate::model::support::SupportStatus;
 use crate::model::values::{
     Border, BorderStyle, Borders, CellMargins, Color, DocGridType, EighthsPoint, Fonts, HalfPoints,
@@ -47,13 +48,16 @@ fn attr_on(attrs: &[Attr], local: &str) -> bool {
 impl PartParser<'_> {
     /// Parses the children of a `w:pPr`.
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn parse_paragraph_properties(&mut self) -> Result<ParagraphProperties> {
+    pub(crate) fn parse_paragraph_properties(
+        &mut self,
+    ) -> Result<(ParagraphProperties, Option<Revision>)> {
         let location = self.location();
         self.nested(|parser| {
             let mut props = ParagraphProperties {
                 location: Some(location),
                 ..ParagraphProperties::default()
             };
+            let mut mark_revision = None;
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -137,8 +141,24 @@ impl PartParser<'_> {
                                 );
                                 parser.skip_element()?;
                             }
-                            "rPr" => props.run_props = Some(parser.parse_run_properties()?),
+                            "rPr" => {
+                                let (run_props, revision) =
+                                    parser.parse_run_properties_inner(true)?;
+                                props.run_props = Some(run_props);
+                                if mark_revision.is_none() {
+                                    mark_revision = revision;
+                                }
+                            }
                             "sectPr" => props.section = Some(parser.parse_section_properties()?),
+                            "pPrChange" => {
+                                parser.record(
+                                    "w:pPrChange",
+                                    SupportStatus::Partial,
+                                    Some("property change history dropped".to_owned()),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
                             _ => parser.skip_element()?,
                         }
                     }
@@ -149,7 +169,7 @@ impl PartParser<'_> {
                     }
                 }
             }
-            Ok(props)
+            Ok((props, mark_revision))
         })
     }
 
@@ -186,12 +206,25 @@ impl PartParser<'_> {
 
     /// Parses the children of a `w:rPr`.
     pub(crate) fn parse_run_properties(&mut self) -> Result<RunProperties> {
+        self.parse_run_properties_inner(false)
+            .map(|(props, _)| props)
+    }
+
+    /// Parses `w:rPr`. When `paragraph_mark` is set, `w:ins`/`w:del` become the
+    /// paragraph-mark revision (ADR-0018); otherwise they are recorded as dropped
+    /// property-change history.
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn parse_run_properties_inner(
+        &mut self,
+        paragraph_mark: bool,
+    ) -> Result<(RunProperties, Option<Revision>)> {
         let location = self.location();
         self.nested(|parser| {
             let mut props = RunProperties {
                 location: Some(location),
                 ..RunProperties::default()
             };
+            let mut mark_revision = None;
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -270,6 +303,48 @@ impl PartParser<'_> {
                                     Some(parser.location()),
                                 );
                             }
+                            "ins" | "del" => {
+                                let kind = if name.local() == "ins" {
+                                    RevisionKind::Insert
+                                } else {
+                                    RevisionKind::Delete
+                                };
+                                if paragraph_mark && mark_revision.is_none() {
+                                    let id =
+                                        wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
+                                    let author = wml_attr(&attrs, "author")
+                                        .map(|value| parser.intern(value));
+                                    let date =
+                                        wml_attr(&attrs, "date").map(|value| parser.intern(value));
+                                    mark_revision = Some(Revision {
+                                        kind,
+                                        id,
+                                        author,
+                                        date,
+                                    });
+                                    parser.record(
+                                        kind.feature_id(),
+                                        SupportStatus::Supported,
+                                        Some("paragraph mark revision".to_owned()),
+                                        Some(parser.location()),
+                                    );
+                                } else {
+                                    parser.record(
+                                        kind.feature_id(),
+                                        SupportStatus::Partial,
+                                        Some("property change history dropped".to_owned()),
+                                        Some(parser.location()),
+                                    );
+                                }
+                            }
+                            "rPrChange" => {
+                                parser.record(
+                                    "w:rPrChange",
+                                    SupportStatus::Partial,
+                                    Some("property change history dropped".to_owned()),
+                                    Some(parser.location()),
+                                );
+                            }
                             _ => {}
                         }
                         parser.skip_element()?;
@@ -279,7 +354,7 @@ impl PartParser<'_> {
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of run properties")),
                 }
             }
-            Ok(props)
+            Ok((props, mark_revision))
         })
     }
 

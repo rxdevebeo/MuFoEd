@@ -14,6 +14,7 @@ pub mod math;
 pub mod notes;
 pub mod numbering;
 pub mod props;
+pub mod revision;
 pub mod settings;
 pub mod styles;
 pub mod support;
@@ -53,6 +54,7 @@ pub use props::{
     PageSize, ParagraphProperties, RowProperties, RunProperties, Section, SectionProperties,
     TableProperties,
 };
+pub use revision::{Revision, RevisionKind};
 pub use settings::{DocumentZoom, Settings, Zoom};
 pub use styles::{Style, StyleTable};
 pub use support::{FeatureUse, SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};

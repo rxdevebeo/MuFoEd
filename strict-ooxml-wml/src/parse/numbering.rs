@@ -184,7 +184,9 @@ impl PartParser<'_> {
                                 level.tentative = true;
                                 parser.skip_element()?;
                             }
-                            "pPr" => level.paragraph = parser.parse_paragraph_properties()?,
+                            "pPr" => {
+                                level.paragraph = parser.parse_paragraph_properties()?.0;
+                            }
                             "rPr" => level.run = parser.parse_run_properties()?,
                             _ => parser.skip_element()?,
                         }

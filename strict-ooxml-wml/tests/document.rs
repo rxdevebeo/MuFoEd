@@ -438,15 +438,39 @@ fn footnote_reference_is_fixed_and_recorded() {
 }
 
 #[test]
-fn tracks_change_containers_are_flattened() {
+fn tracked_change_containers_stamp_run_revisions() {
     let document = parse_body(
-        "<w:p><w:ins w:id=\"1\"><w:r><w:t>added</w:t></w:r></w:ins><w:del w:id=\"2\"><w:r><w:delText>gone</w:delText></w:r></w:del></w:p>",
+        "<w:p><w:ins w:id=\"1\" w:author=\"Ann\"><w:r><w:t>added</w:t></w:r></w:ins>\
+         <w:del w:id=\"2\"><w:r><w:delText>gone</w:delText></w:r></w:del></w:p>",
     );
     let paragraph = first_paragraph(&document);
     assert_eq!(paragraph.inlines.len(), 2);
+    let Inline::Run(inserted) = &paragraph.inlines[0] else {
+        panic!("expected inserted run");
+    };
+    let Inline::Run(deleted) = &paragraph.inlines[1] else {
+        panic!("expected deleted run");
+    };
+    let inserted_rev = inserted.revision.as_ref().expect("ins revision");
+    assert_eq!(
+        inserted_rev.kind,
+        strict_ooxml_wml::model::RevisionKind::Insert
+    );
+    assert_eq!(inserted_rev.id, 1);
+    assert_eq!(inserted_rev.author.as_deref(), Some("Ann"));
+    let deleted_rev = deleted.revision.as_ref().expect("del revision");
+    assert_eq!(
+        deleted_rev.kind,
+        strict_ooxml_wml::model::RevisionKind::Delete
+    );
+    assert_eq!(deleted_rev.id, 2);
     assert_eq!(
         document.support.get("w:ins").unwrap().status,
-        SupportStatus::Partial
+        SupportStatus::Supported
+    );
+    assert_eq!(
+        document.support.get("w:del").unwrap().status,
+        SupportStatus::Supported
     );
 }
 

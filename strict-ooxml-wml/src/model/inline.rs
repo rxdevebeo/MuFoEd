@@ -9,6 +9,7 @@ use super::block::SdtContainer;
 use super::drawing::Drawing;
 use super::math::{MathExpression, MathParagraph};
 use super::props::RunProperties;
+use super::revision::Revision;
 use super::values::{BreakKind, FieldCharType, Space};
 
 /// A text node with its `xml:space` handling (`w:t`).
@@ -111,6 +112,9 @@ pub struct Run {
     pub props: RunProperties,
     /// Run content.
     pub content: Vec<RunContent>,
+    /// Tracked-change marker when this run lived inside `w:ins`/`w:del`/
+    /// `w:moveFrom`/`w:moveTo` (ADR-0018).
+    pub revision: Option<Revision>,
     /// Source location of the run.
     pub location: SourceLocation,
 }

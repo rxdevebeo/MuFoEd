@@ -21,6 +21,10 @@ pub(crate) enum BodyKind {
     Inserted,
     /// `w:del`.
     Deleted,
+    /// `w:moveTo`.
+    MovedTo,
+    /// `w:moveFrom`.
+    MovedFrom,
     /// Transparent wrapper: children merge into the parent (`w:customXml`,
     /// `w:smartTag`, AUD-42).
     Transparent,
@@ -38,8 +42,8 @@ const BODY_TABLE: &[(&str, BodyKind)] = &[
     ("sectPr", BodyKind::Section),
     ("ins", BodyKind::Inserted),
     ("del", BodyKind::Deleted),
-    ("moveTo", BodyKind::Inserted),
-    ("moveFrom", BodyKind::Deleted),
+    ("moveTo", BodyKind::MovedTo),
+    ("moveFrom", BodyKind::MovedFrom),
     ("bookmarkStart", BodyKind::Ignored),
     ("bookmarkEnd", BodyKind::Ignored),
     ("proofErr", BodyKind::Ignored),
@@ -86,10 +90,14 @@ pub(crate) enum InlineKind {
     EndnoteRef,
     /// `w:sdt`.
     Sdt,
-    /// `w:ins` / `w:moveTo`.
+    /// `w:ins`.
     Inserted,
-    /// `w:del` / `w:moveFrom`.
+    /// `w:del`.
     Deleted,
+    /// `w:moveTo`.
+    MovedTo,
+    /// `w:moveFrom`.
+    MovedFrom,
     /// Transparent wrapper (`w:customXml`, `w:smartTag`, AUD-42).
     Transparent,
     /// Directional wrapper (`w:dir`, AUD-42).
@@ -117,8 +125,8 @@ const INLINE_TABLE: &[(&str, InlineKind)] = &[
     ("sdt", InlineKind::Sdt),
     ("ins", InlineKind::Inserted),
     ("del", InlineKind::Deleted),
-    ("moveTo", InlineKind::Inserted),
-    ("moveFrom", InlineKind::Deleted),
+    ("moveTo", InlineKind::MovedTo),
+    ("moveFrom", InlineKind::MovedFrom),
     ("customXml", InlineKind::Transparent),
     ("smartTag", InlineKind::Transparent),
     ("dir", InlineKind::Dir),

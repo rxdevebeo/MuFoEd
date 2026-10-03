@@ -107,7 +107,7 @@ fn doc_defaults(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, defaults: &DocDefaults) 
     run_properties(xml, &defaults.run);
     xml.end();
     xml.start("w:pPrDefault");
-    paragraph_properties(ctx, xml, &defaults.paragraph);
+    paragraph_properties(ctx, xml, &defaults.paragraph, None);
     xml.end();
     xml.end();
     let _ = ctx;
@@ -171,7 +171,7 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
             // before `w:uiPriority` - which is how the new order test found it
             // on its first run.
             "semiHidden" if style.hidden => xml.empty("w:semiHidden"),
-            "pPr" => paragraph_properties(ctx, xml, &style.paragraph),
+            "pPr" => paragraph_properties(ctx, xml, &style.paragraph, None),
             "rPr" => run_properties(xml, &style.run),
             "tblPr" if style.style_type == StyleType::Table => {
                 table_properties(xml, &style.table);
@@ -285,7 +285,7 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     if level.tentative {
         xml.empty("w:tentative");
     }
-    paragraph_properties(ctx, xml, &level.paragraph);
+    paragraph_properties(ctx, xml, &level.paragraph, None);
     run_properties(xml, &level.run);
     let _ = ctx;
     xml.end();
@@ -956,12 +956,14 @@ pub fn default_separator_notes(is_footnote: bool) -> Vec<Note> {
                     strict_ooxml_wml::model::inline::Run {
                         props: Default::default(),
                         content,
+                        revision: None,
                         location: strict_ooxml_core::error::SourceLocation::unknown(),
                     },
                 )],
                 rsids: Default::default(),
                 para_id: None,
                 text_id: None,
+                revision: None,
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             },
         )

@@ -603,11 +603,13 @@ fn paragraphs_of(text: &str, left: f64) -> Vec<Paragraph> {
                     text: line.to_owned(),
                     space: Space::default(),
                 })],
+                revision: None,
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             })],
             rsids: Rsids::default(),
             para_id: None,
             text_id: None,
+            revision: None,
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         })
         .collect()

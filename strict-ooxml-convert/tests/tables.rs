@@ -59,11 +59,13 @@ fn paragraph(value: &str) -> Paragraph {
                 text: value.to_owned(),
                 space: Space::default(),
             })],
+            revision: None,
             location: location(),
         })],
         rsids: Rsids::default(),
         para_id: None,
         text_id: None,
+        revision: None,
         location: location(),
     }
 }
