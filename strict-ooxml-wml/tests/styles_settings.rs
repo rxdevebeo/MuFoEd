@@ -17,7 +17,62 @@ use common::{document_parts, parse_parts, rels, W_NS};
 const STYLES: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/styles";
 const NUMBERING: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/numbering";
 const SETTINGS: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/settings";
+const FONT_TABLE: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/fontTable";
 
+/// A `settings.xml` body with `count` `m:mathPr` elements in a row.
+fn settings(count: usize) -> String {
+    format!(
+        "<w:settings xmlns:w=\"{W_NS}\" xmlns:m=\"{}\">{}</w:settings>",
+        strict_ooxml_wml::M_NS,
+        "<m:mathPr/>".repeat(count)
+    )
+}
+
+#[test]
+fn three_hundred_math_pr_in_a_row_are_not_nesting() {
+    // The defect AUD-07 names: `parse_math_properties` entered the recursion
+    // guard and never left it, so each sibling left the counter one higher and a
+    // `settings.xml` with 300 of them was refused as too deeply nested. Nothing
+    // about 300 siblings of an empty element is nested.
+    let document = parse_aux(None, None, Some(&settings(300)));
+    assert!(document.settings.math_properties.is_some());
+}
+
+#[test]
+fn a_thousand_math_pr_in_a_row_still_parse() {
+    // Well past the 256 XML depth limit, to pin that the bound it used to trip
+    // is gone rather than merely raised.
+    parse_aux(None, None, Some(&settings(1000)));
+}
+
+#[test]
+fn three_hundred_font_entries_still_parse() {
+    // A regression guard for the `nested()` conversion rather than a repro of
+    // the leak: `parse_font_table_root` entered the guard once and never left,
+    // but once per *part* is not visible from here - a part that parses once
+    // parses a hundred times too, which is what
+    // `parse::tests::the_recursion_guard_is_back_at_zero_after_every_part_of_the_corpus`
+    // reads back directly.
+    let fonts = std::iter::repeat_n("<w:font w:name=\"Font{index}\"/>", 300)
+        .enumerate()
+        .map(|(index, template)| template.replace("{index}", &index.to_string()))
+        .collect::<String>();
+    let table = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:fonts xmlns:w=\"{W_NS}\">{fonts}</w:fonts>"
+    )
+    .into_bytes();
+    let mut parts = document_parts("<w:p/>", &[]);
+    parts.push(("word/fontTable.xml".to_owned(), table));
+    parts.push((
+        "word/_rels/document.xml.rels".to_owned(),
+        rels(&[("rIdFonts", FONT_TABLE, "fontTable.xml")]),
+    ));
+    let document = parse_parts(&parts).expect("three hundred faces are not nested");
+    assert_eq!(
+        document.font_table.as_ref().map(|table| table.fonts.len()),
+        Some(300)
+    );
+}
 fn parse_aux(
     styles: Option<&str>,
     numbering: Option<&str>,

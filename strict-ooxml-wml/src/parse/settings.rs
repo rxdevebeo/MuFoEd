@@ -45,53 +45,53 @@ const FLAT_NUMERIC: &[&str] = &[
 impl PartParser<'_> {
     /// Parses a `settings.xml` part.
     pub(crate) fn parse_settings_root(&mut self) -> Result<Settings> {
-        self.enter()?;
-        let mut settings = Settings::default();
-        self.expect_root("settings")?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    // `m:mathPr` is the one child of `w:settings` in another
-                    // namespace, and it is the ONLY reason this branch exists:
-                    // the guard below drops everything that is not `wml`, so the
-                    // whole block was recorded as foreign markup and thrown away
-                    // in forty corpus documents. Checked before the guard, because
-                    // after it there is nothing left to check.
-                    if name.local() == "mathPr" {
-                        settings.math_properties = Some(self.parse_math_properties()?);
-                        continue;
+        self.nested(|parser| {
+            let mut settings = Settings::default();
+            parser.expect_root("settings")?;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        // `m:mathPr` is the one child of `w:settings` in another
+                        // namespace, and it is the ONLY reason this branch exists:
+                        // the guard below drops everything that is not `wml`, so the
+                        // whole block was recorded as foreign markup and thrown away
+                        // in forty corpus documents. Checked before the guard, because
+                        // after it there is nothing left to check.
+                        if name.local() == "mathPr" {
+                            settings.math_properties = Some(parser.parse_math_properties()?);
+                            continue;
+                        }
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        // `CT_Settings` declares ninety-six children and the model
+                        // carries fifty-one of them across seven shapes: a scalar, a
+                        // boolean, a keyed list, a nested block, and three name-keyed
+                        // maps. The dispatch is a separate function because the inline
+                        // form grew past the function-length lint, and a `w:settings`
+                        // reader that lives in one screen is a reader nobody re-checks
+                        // against the schema.
+                        //
+                        // A parser-closing element arrives as `StartElement` with a pending end, so
+                        // an element left open produces an `End` next - and this loop's
+                        // `End` is the end of `w:settings`. `true` means the child read
+                        // its own subtree and must not be skipped; `false` means it is
+                        // still open and skipping it is what consumes that `End`.
+                        if parser.settings_child(&name, &attrs, &mut settings)? {
+                            continue;
+                        }
+                        parser.skip_element()?;
                     }
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    // `CT_Settings` declares ninety-six children and the model
-                    // carries fifty-one of them across seven shapes: a scalar, a
-                    // boolean, a keyed list, a nested block, and three name-keyed
-                    // maps. The dispatch is a separate function because the inline
-                    // form grew past the function-length lint, and a `w:settings`
-                    // reader that lives in one screen is a reader nobody re-checks
-                    // against the schema.
-                    //
-                    // A self-closing element arrives as `StartElement` with a pending end, so
-                    // an element left open produces an `End` next - and this loop's
-                    // `End` is the end of `w:settings`. `true` means the child read
-                    // its own subtree and must not be skipped; `false` means it is
-                    // still open and skipping it is what consumes that `End`.
-                    if self.settings_child(&name, &attrs, &mut settings)? {
-                        continue;
-                    }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of settings")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of settings")),
             }
-        }
-        self.expect_end_of_part()?;
-        self.leave();
-        Ok(settings)
+            parser.expect_end_of_part()?;
+            Ok(settings)
+        })
     }
 
     /// Applies one `w:settings` child. Returns `true` when the element was fully
@@ -310,61 +310,62 @@ impl PartParser<'_> {
     /// XSD gate names it, which is the project's rule: a named bad value is a
     /// measurement, a silently defaulted one is not.
     fn parse_math_properties(&mut self) -> Result<MathProperties> {
-        self.enter()?;
-        let mut properties = MathProperties::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_math(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    // `m:dispDef` is an on/off flag the producer may write bare,
-                    // so the element's presence is the signal and @m:val refines it.
-                    let value = attr_in_ns(&attrs, crate::MATH_STRICT_NS, "val");
-                    let slot = match name.local() {
-                        "mathFont" => &mut properties.math_font,
-                        "brkBin" => &mut properties.break_binary_operator,
-                        "brkBinSub" => &mut properties.break_binary_sub,
-                        "smallFrac" => &mut properties.small_fraction,
-                        "dispDef" => &mut properties.display_default,
-                        "lMargin" => &mut properties.left_margin,
-                        "rMargin" => &mut properties.right_margin,
-                        "defJc" => &mut properties.default_justification,
-                        "preSp" => &mut properties.pre_space,
-                        "postSp" => &mut properties.post_space,
-                        "interSp" => &mut properties.inter_space,
-                        "intraSp" => &mut properties.intra_space,
-                        "wrapIndent" => &mut properties.wrap_indent,
-                        "wrapRight" => &mut properties.wrap_right,
-                        "intLim" => &mut properties.integral_limit,
-                        "naryLim" => &mut properties.nary_limit,
-                        _ => {
-                            self.record_foreign(&name);
-                            self.skip_element()?;
+        self.nested(|parser| {
+            let mut properties = MathProperties::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_math(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
                             continue;
                         }
-                    };
-                    *slot = Some(match value {
-                        Some(text) => self.intern(text),
-                        // Bare `<m:dispDef/>` means on, and `CT_OnOff` says so by
-                        // its default. Writing it back as absent would turn a set
-                        // flag into an unset one on the round trip.
-                        None => self.intern("1"),
-                    });
-                    self.skip_element()?;
+                        // `m:dispDef` is an on/off flag the producer may write bare,
+                        // so the element's presence is the signal and @m:val refines it.
+                        let value = attr_in_ns(&attrs, crate::MATH_STRICT_NS, "val");
+                        let slot = match name.local() {
+                            "mathFont" => &mut properties.math_font,
+                            "brkBin" => &mut properties.break_binary_operator,
+                            "brkBinSub" => &mut properties.break_binary_sub,
+                            "smallFrac" => &mut properties.small_fraction,
+                            "dispDef" => &mut properties.display_default,
+                            "lMargin" => &mut properties.left_margin,
+                            "rMargin" => &mut properties.right_margin,
+                            "defJc" => &mut properties.default_justification,
+                            "preSp" => &mut properties.pre_space,
+                            "postSp" => &mut properties.post_space,
+                            "interSp" => &mut properties.inter_space,
+                            "intraSp" => &mut properties.intra_space,
+                            "wrapIndent" => &mut properties.wrap_indent,
+                            "wrapRight" => &mut properties.wrap_right,
+                            "intLim" => &mut properties.integral_limit,
+                            "naryLim" => &mut properties.nary_limit,
+                            _ => {
+                                parser.record_foreign(&name);
+                                parser.skip_element()?;
+                                continue;
+                            }
+                        };
+                        *slot = Some(match value {
+                            Some(text) => parser.intern(text),
+                            // Bare `<m:dispDef/>` means on, and `CT_OnOff` says so by
+                            // its default. Writing it back as absent would turn a set
+                            // flag into an unset one on the round trip.
+                            None => parser.intern("1"),
+                        });
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    // Defence in depth (AUD-04). This loop was written as `_ => {}`,
+                    // so `Eof` was a spin: the reader said the part ended, the loop
+                    // said nothing happened, and a `w:settings` truncated inside
+                    // `m:mathPr` never returned.
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:mathPr")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                // Defence in depth (AUD-04). This loop was written as `_ => {}`,
-                // so `Eof` was a spin: the reader said the part ended, the loop
-                // said nothing happened, and a `w:settings` truncated inside
-                // `m:mathPr` never returned.
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of m:mathPr")),
             }
-        }
-        Ok(properties)
+            Ok(properties)
+        })
     }
 
     /// Every `w:`-namespaced attribute of an element as (local name, value).
@@ -412,59 +413,61 @@ impl PartParser<'_> {
         &mut self,
         child: &str,
     ) -> Result<Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>> {
-        self.enter()?;
-        let mut pairs = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) && name.local() == child {
-                        if let (Some(key), Some(value)) =
-                            (wml_attr(&attrs, "name"), wml_attr(&attrs, "val"))
-                        {
-                            pairs.push((self.intern(key), self.intern(value)));
+        self.nested(|parser| {
+            let mut pairs = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) && name.local() == child {
+                            if let (Some(key), Some(value)) =
+                                (wml_attr(&attrs, "name"), wml_attr(&attrs, "val"))
+                            {
+                                pairs.push((parser.intern(key), parser.intern(value)));
+                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of keyed container"))
+                    }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of keyed container")),
             }
-        }
-        self.leave();
-        Ok(pairs)
+            Ok(pairs)
+        })
     }
 
     /// Parses a `w:rsids` block: one root and an unbounded list of entries.
     fn parse_revision_save_ids(&mut self) -> Result<RevisionSaveIds> {
-        self.enter()?;
-        let mut ids = RevisionSaveIds::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) {
-                        let value = val_attr(&attrs).map(|text| self.intern(text));
-                        match name.local() {
-                            "rsidRoot" => ids.root = value,
-                            "rsid" => {
-                                if let Some(value) = value {
-                                    ids.entries.push(value);
+        self.nested(|parser| {
+            let mut ids = RevisionSaveIds::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) {
+                            let value = val_attr(&attrs).map(|text| parser.intern(text));
+                            match name.local() {
+                                "rsidRoot" => ids.root = value,
+                                "rsid" => {
+                                    if let Some(value) = value {
+                                        ids.entries.push(value);
+                                    }
+                                }
+                                _ => {
+                                    parser.record_foreign(&name);
                                 }
                             }
-                            _ => {
-                                self.record_foreign(&name);
-                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of rsids")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of rsids")),
             }
-        }
-        self.leave();
-        Ok(ids)
+            Ok(ids)
+        })
     }
 
     /// Parses `w:clrSchemeMapping`'s twelve optional attributes.
@@ -504,51 +507,57 @@ impl PartParser<'_> {
     fn parse_compat(
         &mut self,
     ) -> Result<(Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>, CompatFlags)> {
-        self.enter()?;
-        let mut pairs = Vec::new();
-        let mut flags = CompatFlags::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) && name.local() == "compatSetting" {
-                        let key = wml_attr(&attrs, "name").map(|value| self.intern(value));
-                        let value = wml_attr(&attrs, "val").map(|value| self.intern(value));
-                        if let (Some(key), Some(value)) = (key, value) {
-                            pairs.push((key, value));
-                        }
-                    } else if is_wml(&name) {
-                        // `CT_OnOff` is a union: a bare element means on, and
-                        // `w:val="0"`/`"false"`/`"off"` mean off. The corpus writes
-                        // every flag bare, so treating presence as on is what the
-                        // input says; reading only `@w:val` would have seen none
-                        // of them at all.
-                        let on = match wml_attr(&attrs, "val") {
-                            None => true,
-                            Some(value) => !matches!(value.trim(), "0" | "false" | "off" | "no"),
-                        };
-                        match name.local() {
-                            "spaceForUL" => flags.space_for_underline = on,
-                            "balanceSingleByteDoubleByteWidth" => {
-                                flags.balance_single_byte_double_byte_width = on;
+        self.nested(|parser| {
+            let mut pairs = Vec::new();
+            let mut flags = CompatFlags::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) && name.local() == "compatSetting" {
+                            let key = wml_attr(&attrs, "name").map(|value| parser.intern(value));
+                            let value = wml_attr(&attrs, "val").map(|value| parser.intern(value));
+                            if let (Some(key), Some(value)) = (key, value) {
+                                pairs.push((key, value));
                             }
-                            "doNotLeaveBackslashAlone" => flags.do_not_leave_backslash_alone = on,
-                            "ulTrailSpace" => flags.underline_trailing_space = on,
-                            "doNotExpandShiftReturn" => flags.do_not_expand_shift_return = on,
-                            "adjustLineHeightInTable" => flags.adjust_line_height_in_table = on,
-                            "applyBreakingRules" => flags.apply_breaking_rules = on,
-                            _ => {
-                                self.record_foreign(&name);
+                        } else if is_wml(&name) {
+                            // `CT_OnOff` is a union: a bare element means on, and
+                            // `w:val="0"`/`"false"`/`"off"` mean off. The corpus writes
+                            // every flag bare, so treating presence as on is what the
+                            // input says; reading only `@w:val` would have seen none
+                            // of them at all.
+                            let on = match wml_attr(&attrs, "val") {
+                                None => true,
+                                Some(value) => {
+                                    !matches!(value.trim(), "0" | "false" | "off" | "no")
+                                }
+                            };
+                            match name.local() {
+                                "spaceForUL" => flags.space_for_underline = on,
+                                "balanceSingleByteDoubleByteWidth" => {
+                                    flags.balance_single_byte_double_byte_width = on;
+                                }
+                                "doNotLeaveBackslashAlone" => {
+                                    flags.do_not_leave_backslash_alone = on;
+                                }
+                                "ulTrailSpace" => flags.underline_trailing_space = on,
+                                "doNotExpandShiftReturn" => flags.do_not_expand_shift_return = on,
+                                "adjustLineHeightInTable" => flags.adjust_line_height_in_table = on,
+                                "applyBreakingRules" => flags.apply_breaking_rules = on,
+                                _ => {
+                                    parser.record_foreign(&name);
+                                }
                             }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of compat settings"))
+                    }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of compat settings")),
             }
-        }
-        self.leave();
-        Ok((pairs, flags))
+            Ok((pairs, flags))
+        })
     }
 }

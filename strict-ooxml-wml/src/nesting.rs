@@ -367,40 +367,40 @@ mod tests {
     #[test]
     fn a_text_box_has_its_own_budget_and_does_not_spend_the_block_one() {
         let limits = ResourceLimits::default();
-        // Six text boxes: inside the text-box budget of six, and the twelve-level
+        // Five text boxes: inside the text-box budget of five, and the twelve-level
         // block budget is barely touched, because a text box is not a table.
         let mut blocks = vec![paragraph()];
-        for _ in 0..6 {
+        for _ in 0..5 {
             blocks = vec![drawing(blocks)];
         }
         assert!(check_document(&shell(blocks), &limits).is_ok());
 
         let mut blocks = vec![paragraph()];
-        for _ in 0..7 {
+        for _ in 0..6 {
             blocks = vec![drawing(blocks)];
         }
         assert_eq!(
             check_document(&shell(blocks), &limits),
             Err(Exceeded {
                 kind: NestingKind::TextBox,
-                limit: 6,
-                actual: 7
+                limit: 5,
+                actual: 6
             })
         );
     }
 
     #[test]
     fn the_two_budgets_are_independent() {
-        // Eleven tables inside six text boxes: inside both budgets, and neither
+        // Eleven tables inside five text boxes: inside both budgets, and neither
         // counter has to make room for the other. A single shared number would
-        // have to be six (and refuse the tables the plan requires) or twelve
+        // have to be five (and refuse the tables the plan requires) or twelve
         // (and let the stack overflow on the boxes).
         let limits = ResourceLimits::default();
         let mut blocks = vec![paragraph()];
         for _ in 0..11 {
             blocks = vec![table(blocks)];
         }
-        for _ in 0..6 {
+        for _ in 0..5 {
             blocks = vec![drawing(blocks)];
         }
         assert_eq!(check_document(&shell(blocks), &limits), Ok(()));
@@ -410,15 +410,15 @@ mod tests {
         for _ in 0..11 {
             blocks = vec![table(blocks)];
         }
-        for _ in 0..7 {
+        for _ in 0..6 {
             blocks = vec![drawing(blocks)];
         }
         assert_eq!(
             check_document(&shell(blocks), &limits),
             Err(Exceeded {
                 kind: NestingKind::TextBox,
-                limit: 6,
-                actual: 7
+                limit: 5,
+                actual: 6
             })
         );
     }

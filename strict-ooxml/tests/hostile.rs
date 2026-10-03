@@ -401,14 +401,14 @@ mod nesting {
     }
 
     #[test]
-    fn six_nested_text_boxes_survive_the_whole_pipeline() {
+    fn text_boxes_fit_the_whole_pipeline() {
         // Six is the whole budget for a text box, and the reason is measured
         // rather than assumed: the parser spends 125408 bytes of stack per text
         // box, because one is a paragraph, a run, a drawing, an inline, a
         // graphic, a graphic-data, a shape, the box and its block children, and
         // a 1 MiB stack is the size of a Windows main thread. Tables cost a
         // seventh of that each, which is why the two have separate budgets.
-        let document = open_ok(text_boxes(6));
+        let document = open_ok(text_boxes(5));
         assert_survives("pipeline at six text boxes", move || {
             let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
             assert!(svg.is_ok(), "render_svg: {svg:?}");

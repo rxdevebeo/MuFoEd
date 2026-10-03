@@ -28,22 +28,22 @@ impl PartParser<'_> {
         root: &str,
         feature: &str,
     ) -> Result<(Vec<Block>, SourceLocation)> {
-        self.enter()?;
-        self.expect_root(root)?;
-        let location = self.location();
-        self.record(
-            feature,
-            SupportStatus::Supported,
-            None,
-            Some(location.clone()),
-        );
-        // `parse_block_children` consumes the root's matching end element. A header is
-        // one level of block nesting: a table in a header nests no shallower than
-        // a table in the body, and the header's own stack frame is paid for on
-        // top of the body's.
-        let (blocks, _sections) = self.nested_block(PartParser::parse_block_children)?;
-        self.expect_end_of_part()?;
-        self.leave();
-        Ok((blocks, location))
+        self.nested(|parser| {
+            parser.expect_root(root)?;
+            let location = parser.location();
+            parser.record(
+                feature,
+                SupportStatus::Supported,
+                None,
+                Some(location.clone()),
+            );
+            // `parse_block_children` consumes the root's matching end element. A header is
+            // one level of block nesting: a table in a header nests no shallower than
+            // a table in the body, and the header's own stack frame is paid for on
+            // top of the body's.
+            let (blocks, _sections) = parser.nested_block(PartParser::parse_block_children)?;
+            parser.expect_end_of_part()?;
+            Ok((blocks, location))
+        })
     }
 }

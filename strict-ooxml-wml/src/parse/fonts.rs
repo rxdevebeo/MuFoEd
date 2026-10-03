@@ -44,49 +44,53 @@ pub const LOST_FONT_PART: &str = "/word/fonts/none";
 impl PartParser<'_> {
     /// Parses a `word/fontTable.xml` part.
     pub(crate) fn parse_font_table_root(&mut self) -> Result<FontTable> {
-        self.enter()?;
-        let mut table = FontTable::default();
-        self.expect_root("fonts")?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    if name.local() == "font" {
-                        let entry = self.parse_font_entry(&attrs)?;
-                        if entry.name.is_empty() {
-                            // `CT_Font/@w:name` is `use="required"`, so an
-                            // entry without one is a malformed element rather
-                            // than an unusual family, and inventing a name for
-                            // it would put a face in the written table that the
-                            // document never had.
-                            self.record(
-                                "w:font",
-                                SupportStatus::Partial,
-                                Some("w:font has no @w:name, which the schema requires".to_owned()),
-                                Some(self.location()),
-                            );
-                        } else {
-                            table.fonts.push(entry);
+        self.nested(|parser| {
+            let mut table = FontTable::default();
+            parser.expect_root("fonts")?;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
                         }
-                    } else {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
+                        if name.local() == "font" {
+                            let entry = parser.parse_font_entry(&attrs)?;
+                            if entry.name.is_empty() {
+                                // `CT_Font/@w:name` is `use="required"`, so an
+                                // entry without one is a malformed element rather
+                                // than an unusual family, and inventing a name for
+                                // it would put a face in the written table that the
+                                // document never had.
+                                parser.record(
+                                    "w:font",
+                                    SupportStatus::Partial,
+                                    Some(
+                                        "w:font has no @w:name, which the schema requires"
+                                            .to_owned(),
+                                    ),
+                                    Some(parser.location()),
+                                );
+                            } else {
+                                table.fonts.push(entry);
+                            }
+                        } else {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    // Defence in depth (AUD-04): the reader already refuses to hand
+                    // back `Eof` for a truncated part, and a loop that treated it as
+                    // "nothing more" was the hang this arm exists to make impossible.
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of fontTable")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                // Defence in depth (AUD-04): the reader already refuses to hand
-                // back `Eof` for a truncated part, and a loop that treated it as
-                // "nothing more" was the hang this arm exists to make impossible.
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of fontTable")),
             }
-        }
-        self.expect_end_of_part()?;
-        Ok(table)
+            parser.expect_end_of_part()?;
+            Ok(table)
+        })
     }
 
     /// One `w:font` and the faces it embeds.

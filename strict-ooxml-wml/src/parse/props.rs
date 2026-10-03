@@ -49,228 +49,238 @@ impl PartParser<'_> {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_paragraph_properties(&mut self) -> Result<ParagraphProperties> {
         let location = self.location();
-        self.enter()?;
-        let mut props = ParagraphProperties {
-            location: Some(location),
-            ..ParagraphProperties::default()
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
+        self.nested(|parser| {
+            let mut props = ParagraphProperties {
+                location: Some(location),
+                ..ParagraphProperties::default()
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "pStyle" => {
+                                props.style = parser.val_string(&attrs).map(StyleId::new);
+                                parser.skip_element()?;
+                            }
+                            "keepNext" => {
+                                props.keep_next = parse_on_off(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "keepLines" => {
+                                props.keep_lines = parse_on_off(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "pageBreakBefore" => {
+                                props.page_break_before = parse_on_off(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "widowControl" => {
+                                props.widow_control = tristate(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "numPr" => props.numbering = Some(parser.parse_num_pr()?),
+                            "suppressLineNumbers" => {
+                                props.suppress_line_numbers = parse_on_off(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "contextualSpacing" => {
+                                props.contextual_spacing = parse_on_off(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "wordWrap" => {
+                                props.word_wrap = tristate(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "snapToGrid" => {
+                                props.snap_to_grid = tristate(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "bidi" => {
+                                props.bidi = parse_on_off(&attrs);
+                                parser.skip_element()?;
+                            }
+                            "pBdr" => props.borders = parser.parse_borders()?,
+                            "shd" => {
+                                props.shading = Some(parser.parse_shading(&attrs));
+                                parser.skip_element()?;
+                            }
+                            "tabs" => props.tabs = parser.parse_tabs()?,
+                            "spacing" => {
+                                props.spacing = Some(parser.parse_paragraph_spacing(&attrs));
+                                parser.skip_element()?;
+                            }
+                            "ind" => {
+                                props.indentation = Some(parser.parse_indentation(&attrs));
+                                parser.skip_element()?;
+                            }
+                            "jc" => {
+                                props.alignment =
+                                    parser.val_enum(&attrs, "w:jc", Justification::from_strict);
+                                parser.skip_element()?;
+                            }
+                            "outlineLvl" => {
+                                props.outline_level = parser
+                                    .val_u32(&attrs, "w:outlineLvl")
+                                    .map(|value| u8::try_from(value.min(9)).unwrap_or(9));
+                                parser.skip_element()?;
+                            }
+                            "textDirection" => {
+                                props.text_direction = parser.val_enum(
+                                    &attrs,
+                                    "w:textDirection",
+                                    TextDirection::from_strict,
+                                );
+                                parser.skip_element()?;
+                            }
+                            "rPr" => props.run_props = Some(parser.parse_run_properties()?),
+                            "sectPr" => props.section = Some(parser.parse_section_properties()?),
+                            _ => parser.skip_element()?,
+                        }
                     }
-                    match name.local() {
-                        "pStyle" => {
-                            props.style = self.val_string(&attrs).map(StyleId::new);
-                            self.skip_element()?;
-                        }
-                        "keepNext" => {
-                            props.keep_next = parse_on_off(&attrs);
-                            self.skip_element()?;
-                        }
-                        "keepLines" => {
-                            props.keep_lines = parse_on_off(&attrs);
-                            self.skip_element()?;
-                        }
-                        "pageBreakBefore" => {
-                            props.page_break_before = parse_on_off(&attrs);
-                            self.skip_element()?;
-                        }
-                        "widowControl" => {
-                            props.widow_control = tristate(&attrs);
-                            self.skip_element()?;
-                        }
-                        "numPr" => props.numbering = Some(self.parse_num_pr()?),
-                        "suppressLineNumbers" => {
-                            props.suppress_line_numbers = parse_on_off(&attrs);
-                            self.skip_element()?;
-                        }
-                        "contextualSpacing" => {
-                            props.contextual_spacing = parse_on_off(&attrs);
-                            self.skip_element()?;
-                        }
-                        "wordWrap" => {
-                            props.word_wrap = tristate(&attrs);
-                            self.skip_element()?;
-                        }
-                        "snapToGrid" => {
-                            props.snap_to_grid = tristate(&attrs);
-                            self.skip_element()?;
-                        }
-                        "bidi" => {
-                            props.bidi = parse_on_off(&attrs);
-                            self.skip_element()?;
-                        }
-                        "pBdr" => props.borders = self.parse_borders()?,
-                        "shd" => {
-                            props.shading = Some(self.parse_shading(&attrs));
-                            self.skip_element()?;
-                        }
-                        "tabs" => props.tabs = self.parse_tabs()?,
-                        "spacing" => {
-                            props.spacing = Some(self.parse_paragraph_spacing(&attrs));
-                            self.skip_element()?;
-                        }
-                        "ind" => {
-                            props.indentation = Some(self.parse_indentation(&attrs));
-                            self.skip_element()?;
-                        }
-                        "jc" => {
-                            props.alignment =
-                                self.val_enum(&attrs, "w:jc", Justification::from_strict);
-                            self.skip_element()?;
-                        }
-                        "outlineLvl" => {
-                            props.outline_level = self
-                                .val_u32(&attrs, "w:outlineLvl")
-                                .map(|value| u8::try_from(value.min(9)).unwrap_or(9));
-                            self.skip_element()?;
-                        }
-                        "textDirection" => {
-                            props.text_direction = self.val_enum(
-                                &attrs,
-                                "w:textDirection",
-                                TextDirection::from_strict,
-                            );
-                            self.skip_element()?;
-                        }
-                        "rPr" => props.run_props = Some(self.parse_run_properties()?),
-                        "sectPr" => props.section = Some(self.parse_section_properties()?),
-                        _ => self.skip_element()?,
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of paragraph properties"))
                     }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of paragraph properties")),
             }
-        }
-        self.leave();
-        Ok(props)
+            Ok(props)
+        })
     }
 
     /// Parses `w:numPr`.
     fn parse_num_pr(&mut self) -> Result<NumPr> {
-        self.enter()?;
-        let mut num_pr = NumPr::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) {
-                        match name.local() {
-                            "numId" => {
-                                num_pr.num_id = self.val_u32(&attrs, "w:numId").map(NumId);
+        self.nested(|parser| {
+            let mut num_pr = NumPr::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) {
+                            match name.local() {
+                                "numId" => {
+                                    num_pr.num_id = parser.val_u32(&attrs, "w:numId").map(NumId);
+                                }
+                                "ilvl" => {
+                                    num_pr.ilvl = parser
+                                        .val_u32(&attrs, "w:ilvl")
+                                        .map(|value| Ilvl(u8::try_from(value.min(8)).unwrap_or(8)));
+                                }
+                                _ => {}
                             }
-                            "ilvl" => {
-                                num_pr.ilvl = self
-                                    .val_u32(&attrs, "w:ilvl")
-                                    .map(|value| Ilvl(u8::try_from(value.min(8)).unwrap_or(8)));
-                            }
-                            _ => {}
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of numPr")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of numPr")),
             }
-        }
-        self.leave();
-        Ok(num_pr)
+            Ok(num_pr)
+        })
     }
 
     /// Parses the children of a `w:rPr`.
     pub(crate) fn parse_run_properties(&mut self) -> Result<RunProperties> {
         let location = self.location();
-        self.enter()?;
-        let mut props = RunProperties {
-            location: Some(location),
-            ..RunProperties::default()
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "rStyle" => props.style = self.val_string(&attrs).map(StyleId::new),
-                        "rFonts" => props.fonts = Some(self.parse_fonts(&attrs)),
-                        "b" => props.bold = tristate(&attrs),
-                        "i" => props.italic = tristate(&attrs),
-                        "u" => {
-                            props.underline = self.val_enum(&attrs, "w:u", Underline::from_strict);
-                            props.underline_color = wml_attr(&attrs, "color").map(Color::new);
+        self.nested(|parser| {
+            let mut props = RunProperties {
+                location: Some(location),
+                ..RunProperties::default()
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
                         }
-                        "strike" => props.strike = tristate(&attrs),
-                        "dstrike" => props.double_strike = tristate(&attrs),
-                        "color" => {
-                            props.color = self.val_string(&attrs).map(Color::new);
-                            if let Some(theme) = wml_attr(&attrs, "themeColor") {
-                                props.color_theme = Some(ThemeColorRef {
-                                    color: ThemeColor::new(self.intern(theme)),
-                                    tint: wml_attr(&attrs, "themeTint")
-                                        .map(|value| self.intern(value)),
-                                    shade: wml_attr(&attrs, "themeShade")
-                                        .map(|value| self.intern(value)),
-                                });
+                        match name.local() {
+                            "rStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
+                            "rFonts" => props.fonts = Some(parser.parse_fonts(&attrs)),
+                            "b" => props.bold = tristate(&attrs),
+                            "i" => props.italic = tristate(&attrs),
+                            "u" => {
+                                props.underline =
+                                    parser.val_enum(&attrs, "w:u", Underline::from_strict);
+                                props.underline_color = wml_attr(&attrs, "color").map(Color::new);
                             }
+                            "strike" => props.strike = tristate(&attrs),
+                            "dstrike" => props.double_strike = tristate(&attrs),
+                            "color" => {
+                                props.color = parser.val_string(&attrs).map(Color::new);
+                                if let Some(theme) = wml_attr(&attrs, "themeColor") {
+                                    props.color_theme = Some(ThemeColorRef {
+                                        color: ThemeColor::new(parser.intern(theme)),
+                                        tint: wml_attr(&attrs, "themeTint")
+                                            .map(|value| parser.intern(value)),
+                                        shade: wml_attr(&attrs, "themeShade")
+                                            .map(|value| parser.intern(value)),
+                                    });
+                                }
+                            }
+                            "highlight" => {
+                                props.highlight =
+                                    parser.val_enum(&attrs, "w:highlight", Highlight::from_strict);
+                            }
+                            "sz" => props.size = parser.val_i32(&attrs, "w:sz").map(HalfPoints),
+                            "szCs" => {
+                                props.size_cs = parser.val_i32(&attrs, "w:szCs").map(HalfPoints);
+                            }
+                            "vertAlign" => {
+                                props.vert_align =
+                                    parser.val_enum(&attrs, "w:vertAlign", VertAlign::from_strict);
+                            }
+                            "spacing" => {
+                                props.spacing = parser.val_i32(&attrs, "w:spacing").map(Twips);
+                            }
+                            "position" => {
+                                props.position =
+                                    parser.val_i32(&attrs, "w:position").map(HalfPoints);
+                            }
+                            "w" => {
+                                props.scale = parser.val_text_scale(&attrs, "w:rPr/w:w");
+                            }
+                            "kern" => {
+                                props.kerning = parser.val_i32(&attrs, "w:kern").map(HalfPoints);
+                            }
+                            "em" => props.emphasis = parser.val_string(&attrs),
+                            "lang" => props.language = Some(parser.parse_language(&attrs)),
+                            "caps" => props.caps = parse_on_off(&attrs),
+                            "smallCaps" => props.small_caps = parse_on_off(&attrs),
+                            "rtl" => props.rtl = parse_on_off(&attrs),
+                            "vanish" => props.vanish = parse_on_off(&attrs),
+                            "emboss" => props.emboss = parse_on_off(&attrs),
+                            "imprint" => props.imprint = parse_on_off(&attrs),
+                            "outline" => props.outline = parse_on_off(&attrs),
+                            "shadow" => props.shadow = parse_on_off(&attrs),
+                            "noProof" => props.no_proof = parse_on_off(&attrs),
+                            "snapToGrid" => props.snap_to_grid = tristate(&attrs),
+                            "shd" => props.shading = Some(parser.parse_shading(&attrs)),
+                            "bdr" => {
+                                parser.record(
+                                    "w:bdr",
+                                    SupportStatus::Partial,
+                                    Some("run borders are not retained".to_owned()),
+                                    Some(parser.location()),
+                                );
+                            }
+                            _ => {}
                         }
-                        "highlight" => {
-                            props.highlight =
-                                self.val_enum(&attrs, "w:highlight", Highlight::from_strict);
-                        }
-                        "sz" => props.size = self.val_i32(&attrs, "w:sz").map(HalfPoints),
-                        "szCs" => props.size_cs = self.val_i32(&attrs, "w:szCs").map(HalfPoints),
-                        "vertAlign" => {
-                            props.vert_align =
-                                self.val_enum(&attrs, "w:vertAlign", VertAlign::from_strict);
-                        }
-                        "spacing" => props.spacing = self.val_i32(&attrs, "w:spacing").map(Twips),
-                        "position" => {
-                            props.position = self.val_i32(&attrs, "w:position").map(HalfPoints);
-                        }
-                        "w" => {
-                            props.scale = self.val_text_scale(&attrs, "w:rPr/w:w");
-                        }
-                        "kern" => props.kerning = self.val_i32(&attrs, "w:kern").map(HalfPoints),
-                        "em" => props.emphasis = self.val_string(&attrs),
-                        "lang" => props.language = Some(self.parse_language(&attrs)),
-                        "caps" => props.caps = parse_on_off(&attrs),
-                        "smallCaps" => props.small_caps = parse_on_off(&attrs),
-                        "rtl" => props.rtl = parse_on_off(&attrs),
-                        "vanish" => props.vanish = parse_on_off(&attrs),
-                        "emboss" => props.emboss = parse_on_off(&attrs),
-                        "imprint" => props.imprint = parse_on_off(&attrs),
-                        "outline" => props.outline = parse_on_off(&attrs),
-                        "shadow" => props.shadow = parse_on_off(&attrs),
-                        "noProof" => props.no_proof = parse_on_off(&attrs),
-                        "snapToGrid" => props.snap_to_grid = tristate(&attrs),
-                        "shd" => props.shading = Some(self.parse_shading(&attrs)),
-                        "bdr" => {
-                            self.record(
-                                "w:bdr",
-                                SupportStatus::Partial,
-                                Some("run borders are not retained".to_owned()),
-                                Some(self.location()),
-                            );
-                        }
-                        _ => {}
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of run properties")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of run properties")),
             }
-        }
-        self.leave();
-        Ok(props)
+            Ok(props)
+        })
     }
 
     /// Parses a `w:lang` element.
@@ -299,32 +309,32 @@ impl PartParser<'_> {
 
     /// Parses a border-collection element (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
     fn parse_borders(&mut self) -> Result<Borders> {
-        self.enter()?;
-        let mut borders = Borders::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) {
-                        let border = self.parse_border_edge(&attrs);
-                        match name.local() {
-                            "top" => borders.top = Some(border),
-                            "bottom" => borders.bottom = Some(border),
-                            "start" | "left" => borders.start = Some(border),
-                            "end" | "right" => borders.end = Some(border),
-                            "insideH" => borders.inside_horizontal = Some(border),
-                            "insideV" => borders.inside_vertical = Some(border),
-                            _ => {}
+        self.nested(|parser| {
+            let mut borders = Borders::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) {
+                            let border = parser.parse_border_edge(&attrs);
+                            match name.local() {
+                                "top" => borders.top = Some(border),
+                                "bottom" => borders.bottom = Some(border),
+                                "start" | "left" => borders.start = Some(border),
+                                "end" | "right" => borders.end = Some(border),
+                                "insideH" => borders.inside_horizontal = Some(border),
+                                "insideV" => borders.inside_vertical = Some(border),
+                                _ => {}
+                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of borders")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of borders")),
             }
-        }
-        self.leave();
-        Ok(borders)
+            Ok(borders)
+        })
     }
 
     /// Parses a single border edge element.
@@ -391,227 +401,235 @@ impl PartParser<'_> {
     /// `w:jc` on `w:tab` (STAGE-2-WORK-ORDER D-1). The stop is always retained;
     /// a missing/invalid value is recorded rather than dropped.
     fn parse_tabs(&mut self) -> Result<Vec<TabStop>> {
-        self.enter()?;
-        let mut tabs = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) && name.local() == "tab" {
-                        let alignment = self
-                            .enum_attr(&attrs, "val", "w:tab", TabAlignment::from_lexical)
-                            .unwrap_or(TabAlignment::Start);
-                        let leader =
-                            self.enum_attr(&attrs, "leader", "w:tab", TabLeader::from_strict);
-                        let position = self
-                            .measure_twips(&attrs, "pos", "w:tab")
-                            .unwrap_or(Twips(0));
-                        tabs.push(TabStop {
-                            position,
-                            alignment,
-                            leader,
-                        });
+        self.nested(|parser| {
+            let mut tabs = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) && name.local() == "tab" {
+                            let alignment = parser
+                                .enum_attr(&attrs, "val", "w:tab", TabAlignment::from_lexical)
+                                .unwrap_or(TabAlignment::Start);
+                            let leader =
+                                parser.enum_attr(&attrs, "leader", "w:tab", TabLeader::from_strict);
+                            let position = parser
+                                .measure_twips(&attrs, "pos", "w:tab")
+                                .unwrap_or(Twips(0));
+                            tabs.push(TabStop {
+                                position,
+                                alignment,
+                                leader,
+                            });
+                        }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of tabs")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of tabs")),
             }
-        }
-        self.leave();
-        Ok(tabs)
+            Ok(tabs)
+        })
     }
 
     /// Parses the children of a `w:tblPr`.
     pub(crate) fn parse_table_properties(&mut self) -> Result<TableProperties> {
         let location = self.location();
-        self.enter()?;
-        let mut props = TableProperties {
-            location: Some(location),
-            ..TableProperties::default()
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "tblStyle" => props.style = self.val_string(&attrs).map(StyleId::new),
-                        "tblW" => props.width = Some(self.parse_width(&attrs, "w:tblW")),
-                        "jc" => {
-                            props.alignment =
-                                self.val_enum(&attrs, "w:jc", Justification::from_strict);
-                        }
-                        "tblLayout" => {
-                            props.layout = self.enum_attr(
-                                &attrs,
-                                "type",
-                                "w:tblLayout",
-                                TableLayout::from_strict,
-                            );
-                        }
-                        "tblCellMar" => {
-                            props.cell_margins = self.parse_cell_margins()?;
+        self.nested(|parser| {
+            let mut props = TableProperties {
+                location: Some(location),
+                ..TableProperties::default()
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
                             continue;
                         }
-                        "tblBorders" => {
-                            props.borders = self.parse_borders()?;
-                            continue;
+                        match name.local() {
+                            "tblStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
+                            "tblW" => props.width = Some(parser.parse_width(&attrs, "w:tblW")),
+                            "jc" => {
+                                props.alignment =
+                                    parser.val_enum(&attrs, "w:jc", Justification::from_strict);
+                            }
+                            "tblLayout" => {
+                                props.layout = parser.enum_attr(
+                                    &attrs,
+                                    "type",
+                                    "w:tblLayout",
+                                    TableLayout::from_strict,
+                                );
+                            }
+                            "tblCellMar" => {
+                                props.cell_margins = parser.parse_cell_margins()?;
+                                continue;
+                            }
+                            "tblBorders" => {
+                                props.borders = parser.parse_borders()?;
+                                continue;
+                            }
+                            "shd" => props.shading = Some(parser.parse_shading(&attrs)),
+                            "tblLook" => props.look = Some(Self::parse_table_look(&attrs)),
+                            "tblInd" => {
+                                props.indent = parser
+                                    .measure_or_percent(&attrs, "w", "w:tblInd")
+                                    .map(Twips);
+                            }
+                            "bidiVisual" => props.bidi_visual = parse_on_off(&attrs),
+                            _ => {}
                         }
-                        "shd" => props.shading = Some(self.parse_shading(&attrs)),
-                        "tblLook" => props.look = Some(Self::parse_table_look(&attrs)),
-                        "tblInd" => {
-                            props.indent =
-                                self.measure_or_percent(&attrs, "w", "w:tblInd").map(Twips);
-                        }
-                        "bidiVisual" => props.bidi_visual = parse_on_off(&attrs),
-                        _ => {}
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of table properties"))
+                    }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of table properties")),
             }
-        }
-        self.leave();
-        Ok(props)
+            Ok(props)
+        })
     }
 
     /// Parses `w:trPr`.
     pub(crate) fn parse_row_properties(&mut self) -> Result<RowProperties> {
         let location = self.location();
-        self.enter()?;
-        let mut props = RowProperties {
-            location: Some(location),
-            ..RowProperties::default()
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "trHeight" => props.height = Some(self.parse_row_height(&attrs)),
-                        "tblHeader" => {
-                            props.header = parse_on_off(&attrs);
-                            if props.header {
-                                self.record(
-                                    "w:tblHeader",
-                                    SupportStatus::Supported,
-                                    None,
-                                    Some(self.location()),
-                                );
-                            }
-                        }
-                        "cantSplit" => props.cant_split = parse_on_off(&attrs),
-                        "tblCellMar" => {
-                            props.cell_margins = self.parse_cell_margins()?;
+        self.nested(|parser| {
+            let mut props = RowProperties {
+                location: Some(location),
+                ..RowProperties::default()
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
                             continue;
                         }
-                        "gridBefore" => props.grid_before = self.val_i32(&attrs, "w:gridBefore"),
-                        "gridAfter" => props.grid_after = self.val_i32(&attrs, "w:gridAfter"),
-                        "wBefore" => {
-                            props.width_before = Some(self.parse_width(&attrs, "w:wBefore"));
+                        match name.local() {
+                            "trHeight" => props.height = Some(parser.parse_row_height(&attrs)),
+                            "tblHeader" => {
+                                props.header = parse_on_off(&attrs);
+                                if props.header {
+                                    parser.record(
+                                        "w:tblHeader",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(parser.location()),
+                                    );
+                                }
+                            }
+                            "cantSplit" => props.cant_split = parse_on_off(&attrs),
+                            "tblCellMar" => {
+                                props.cell_margins = parser.parse_cell_margins()?;
+                                continue;
+                            }
+                            "gridBefore" => {
+                                props.grid_before = parser.val_i32(&attrs, "w:gridBefore");
+                            }
+                            "gridAfter" => props.grid_after = parser.val_i32(&attrs, "w:gridAfter"),
+                            "wBefore" => {
+                                props.width_before = Some(parser.parse_width(&attrs, "w:wBefore"));
+                            }
+                            "wAfter" => {
+                                props.width_after = Some(parser.parse_width(&attrs, "w:wAfter"));
+                            }
+                            "rsid" => props.rsid = parser.val_string(&attrs),
+                            _ => {}
                         }
-                        "wAfter" => {
-                            props.width_after = Some(self.parse_width(&attrs, "w:wAfter"));
-                        }
-                        "rsid" => props.rsid = self.val_string(&attrs),
-                        _ => {}
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of row properties")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of row properties")),
             }
-        }
-        self.leave();
-        Ok(props)
+            Ok(props)
+        })
     }
 
     /// Parses `w:tcPr`.
     pub(crate) fn parse_cell_properties(&mut self) -> Result<CellProperties> {
         let location = self.location();
-        self.enter()?;
-        let mut props = CellProperties {
-            location: Some(location),
-            ..CellProperties::default()
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "tcW" => props.width = Some(self.parse_width(&attrs, "w:tcW")),
-                        "gridSpan" => {
-                            props.grid_span = self
-                                .val_u32(&attrs, "w:gridSpan")
-                                .map(|value| u16::try_from(value).unwrap_or(u16::MAX));
-                            self.record(
-                                "w:gridSpan",
-                                SupportStatus::Supported,
-                                None,
-                                Some(self.location()),
-                            );
-                        }
-                        "vMerge" => {
-                            props.vertical_merge = Some(
-                                self.val_enum(&attrs, "w:vMerge", VerticalMerge::from_strict)
-                                    .unwrap_or(VerticalMerge::Continue),
-                            );
-                            self.record(
-                                "w:vMerge",
-                                SupportStatus::Supported,
-                                None,
-                                Some(self.location()),
-                            );
-                        }
-                        "vAlign" => {
-                            props.vertical_align =
-                                self.val_enum(&attrs, "w:vAlign", VerticalJc::from_strict);
-                        }
-                        "textDirection" => {
-                            props.text_direction = self.val_enum(
-                                &attrs,
-                                "w:textDirection",
-                                TextDirection::from_strict,
-                            );
-                        }
-                        "tcBorders" => {
-                            props.borders = self.parse_borders()?;
+        self.nested(|parser| {
+            let mut props = CellProperties {
+                location: Some(location),
+                ..CellProperties::default()
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
                             continue;
                         }
-                        "shd" => props.shading = Some(self.parse_shading(&attrs)),
-                        "tcMar" => {
-                            props.margins = self.parse_cell_margins()?;
-                            continue;
+                        match name.local() {
+                            "tcW" => props.width = Some(parser.parse_width(&attrs, "w:tcW")),
+                            "gridSpan" => {
+                                props.grid_span = parser
+                                    .val_u32(&attrs, "w:gridSpan")
+                                    .map(|value| u16::try_from(value).unwrap_or(u16::MAX));
+                                parser.record(
+                                    "w:gridSpan",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(parser.location()),
+                                );
+                            }
+                            "vMerge" => {
+                                props.vertical_merge = Some(
+                                    parser
+                                        .val_enum(&attrs, "w:vMerge", VerticalMerge::from_strict)
+                                        .unwrap_or(VerticalMerge::Continue),
+                                );
+                                parser.record(
+                                    "w:vMerge",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(parser.location()),
+                                );
+                            }
+                            "vAlign" => {
+                                props.vertical_align =
+                                    parser.val_enum(&attrs, "w:vAlign", VerticalJc::from_strict);
+                            }
+                            "textDirection" => {
+                                props.text_direction = parser.val_enum(
+                                    &attrs,
+                                    "w:textDirection",
+                                    TextDirection::from_strict,
+                                );
+                            }
+                            "tcBorders" => {
+                                props.borders = parser.parse_borders()?;
+                                continue;
+                            }
+                            "shd" => props.shading = Some(parser.parse_shading(&attrs)),
+                            "tcMar" => {
+                                props.margins = parser.parse_cell_margins()?;
+                                continue;
+                            }
+                            "hideMark" => props.hide_mark = parse_on_off(&attrs),
+                            "tcFitText" => props.fit_text = parse_on_off(&attrs),
+                            "noWrap" => props.no_wrap = parse_on_off(&attrs),
+                            _ => {}
                         }
-                        "hideMark" => props.hide_mark = parse_on_off(&attrs),
-                        "tcFitText" => props.fit_text = parse_on_off(&attrs),
-                        "noWrap" => props.no_wrap = parse_on_off(&attrs),
-                        _ => {}
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of cell properties"))
+                    }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of cell properties")),
             }
-        }
-        self.leave();
-        Ok(props)
+            Ok(props)
+        })
     }
 
     /// Parses a width attribute set (`w:tblW`, `w:tcW`, `w:wBefore`, `w:wAfter`).
@@ -636,30 +654,30 @@ impl PartParser<'_> {
 
     /// Parses a cell-margin container (`w:tblCellMar`, `w:tcMar`).
     fn parse_cell_margins(&mut self) -> Result<CellMargins> {
-        self.enter()?;
-        let mut margins = CellMargins::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) {
-                        let value = self.measure_twips(&attrs, "w", "w:cellMar");
-                        match name.local() {
-                            "top" => margins.top = value,
-                            "start" | "left" => margins.start = value,
-                            "bottom" => margins.bottom = value,
-                            "end" | "right" => margins.end = value,
-                            _ => {}
+        self.nested(|parser| {
+            let mut margins = CellMargins::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) {
+                            let value = parser.measure_twips(&attrs, "w", "w:cellMar");
+                            match name.local() {
+                                "top" => margins.top = value,
+                                "start" | "left" => margins.start = value,
+                                "bottom" => margins.bottom = value,
+                                "end" | "right" => margins.end = value,
+                                _ => {}
+                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of cell margins")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of cell margins")),
             }
-        }
-        self.leave();
-        Ok(margins)
+            Ok(margins)
+        })
     }
 
     /// Parses a `w:tblLook` element.
@@ -678,127 +696,137 @@ impl PartParser<'_> {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_section_properties(&mut self) -> Result<SectionProperties> {
         let location = self.location();
-        self.enter()?;
-        let mut props = SectionProperties {
-            location: Some(location),
-            ..SectionProperties::default()
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "headerReference" => {
-                            if let Some(reference) = Self::parse_header_footer_ref(&attrs) {
-                                props.headers.push(reference);
-                                self.record(
-                                    "w:headerReference",
-                                    SupportStatus::Supported,
-                                    None,
-                                    Some(self.location()),
+        self.nested(|parser| {
+            let mut props = SectionProperties {
+                location: Some(location),
+                ..SectionProperties::default()
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "headerReference" => {
+                                if let Some(reference) = Self::parse_header_footer_ref(&attrs) {
+                                    props.headers.push(reference);
+                                    parser.record(
+                                        "w:headerReference",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(parser.location()),
+                                    );
+                                }
+                            }
+                            "footerReference" => {
+                                if let Some(reference) = Self::parse_header_footer_ref(&attrs) {
+                                    props.footers.push(reference);
+                                    parser.record(
+                                        "w:footerReference",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(parser.location()),
+                                    );
+                                }
+                            }
+                            "type" => {
+                                props.section_type =
+                                    parser.val_enum(&attrs, "w:type", SectionType::from_strict);
+                            }
+                            "pgSz" => {
+                                props.page_size = Some(PageSize {
+                                    width: parser.measure_twips(&attrs, "w", "w:pgSz"),
+                                    height: parser.measure_twips(&attrs, "h", "w:pgSz"),
+                                    orientation: wml_attr(&attrs, "orient")
+                                        .and_then(PageOrientation::from_strict),
+                                });
+                            }
+                            "pgMar" => {
+                                props.page_margins = Some(PageMargins {
+                                    top: parser.measure_twips(&attrs, "top", "w:pgMar"),
+                                    right: parser.measure_twips(&attrs, "right", "w:pgMar"),
+                                    bottom: parser.measure_twips(&attrs, "bottom", "w:pgMar"),
+                                    left: parser.measure_twips(&attrs, "left", "w:pgMar"),
+                                    header: parser.measure_twips(&attrs, "header", "w:pgMar"),
+                                    footer: parser.measure_twips(&attrs, "footer", "w:pgMar"),
+                                    gutter: parser.measure_twips(&attrs, "gutter", "w:pgMar"),
+                                });
+                            }
+                            "cols" => {
+                                props.columns = Some(parser.parse_columns(&attrs)?);
+                                continue;
+                            }
+                            "titlePg" => props.title_page = parse_on_off(&attrs),
+                            "docGrid" => {
+                                props.doc_grid = Some(DocGrid {
+                                    grid_type: wml_attr(&attrs, "type")
+                                        .and_then(DocGridType::from_strict),
+                                    line_pitch: parser.measure_i32(
+                                        &attrs,
+                                        "linePitch",
+                                        "w:docGrid",
+                                    ),
+                                    character_space: parser.measure_i32(
+                                        &attrs,
+                                        "charSpace",
+                                        "w:docGrid",
+                                    ),
+                                });
+                            }
+                            "vAlign" => {
+                                props.vertical_align =
+                                    parser.val_enum(&attrs, "w:vAlign", VerticalJc::from_strict);
+                            }
+                            "bidi" => props.bidi = parse_on_off(&attrs),
+                            "rtlGutter" => props.rtl_gutter = parse_on_off(&attrs),
+                            // Transitional's `EG_SectPrContents` declares `w:gutterAtTop`
+                            // and Strict's does not; `w:settings` is where Strict puts
+                            // it. Parked on the parser and merged into the settings.
+                            "gutterAtTop" => parser.section_gutter_at_top = parse_on_off(&attrs),
+                            "textDirection" => {
+                                props.text_direction = parser.val_enum(
+                                    &attrs,
+                                    "w:textDirection",
+                                    TextDirection::from_strict,
                                 );
                             }
-                        }
-                        "footerReference" => {
-                            if let Some(reference) = Self::parse_header_footer_ref(&attrs) {
-                                props.footers.push(reference);
-                                self.record(
-                                    "w:footerReference",
+                            "lnNumType" => {
+                                props.line_numbering = Some(parser.parse_line_numbering(&attrs));
+                            }
+                            "footnotePr" => {
+                                props.footnote_properties = parser.parse_note_properties()?;
+                                continue;
+                            }
+                            "endnotePr" => {
+                                props.endnote_properties = parser.parse_note_properties()?;
+                                continue;
+                            }
+                            "pgBorders" => {
+                                props.page_borders = Some(parser.parse_page_borders(&attrs)?);
+                                parser.record(
+                                    "w:pgBorders",
                                     SupportStatus::Supported,
                                     None,
-                                    Some(self.location()),
+                                    Some(parser.location()),
                                 );
+                                continue;
                             }
+                            _ => {}
                         }
-                        "type" => {
-                            props.section_type =
-                                self.val_enum(&attrs, "w:type", SectionType::from_strict);
-                        }
-                        "pgSz" => {
-                            props.page_size = Some(PageSize {
-                                width: self.measure_twips(&attrs, "w", "w:pgSz"),
-                                height: self.measure_twips(&attrs, "h", "w:pgSz"),
-                                orientation: wml_attr(&attrs, "orient")
-                                    .and_then(PageOrientation::from_strict),
-                            });
-                        }
-                        "pgMar" => {
-                            props.page_margins = Some(PageMargins {
-                                top: self.measure_twips(&attrs, "top", "w:pgMar"),
-                                right: self.measure_twips(&attrs, "right", "w:pgMar"),
-                                bottom: self.measure_twips(&attrs, "bottom", "w:pgMar"),
-                                left: self.measure_twips(&attrs, "left", "w:pgMar"),
-                                header: self.measure_twips(&attrs, "header", "w:pgMar"),
-                                footer: self.measure_twips(&attrs, "footer", "w:pgMar"),
-                                gutter: self.measure_twips(&attrs, "gutter", "w:pgMar"),
-                            });
-                        }
-                        "cols" => {
-                            props.columns = Some(self.parse_columns(&attrs)?);
-                            continue;
-                        }
-                        "titlePg" => props.title_page = parse_on_off(&attrs),
-                        "docGrid" => {
-                            props.doc_grid = Some(DocGrid {
-                                grid_type: wml_attr(&attrs, "type")
-                                    .and_then(DocGridType::from_strict),
-                                line_pitch: self.measure_i32(&attrs, "linePitch", "w:docGrid"),
-                                character_space: self.measure_i32(&attrs, "charSpace", "w:docGrid"),
-                            });
-                        }
-                        "vAlign" => {
-                            props.vertical_align =
-                                self.val_enum(&attrs, "w:vAlign", VerticalJc::from_strict);
-                        }
-                        "bidi" => props.bidi = parse_on_off(&attrs),
-                        "rtlGutter" => props.rtl_gutter = parse_on_off(&attrs),
-                        // Transitional's `EG_SectPrContents` declares `w:gutterAtTop`
-                        // and Strict's does not; `w:settings` is where Strict puts
-                        // it. Parked on the parser and merged into the settings.
-                        "gutterAtTop" => self.section_gutter_at_top = parse_on_off(&attrs),
-                        "textDirection" => {
-                            props.text_direction = self.val_enum(
-                                &attrs,
-                                "w:textDirection",
-                                TextDirection::from_strict,
-                            );
-                        }
-                        "lnNumType" => {
-                            props.line_numbering = Some(self.parse_line_numbering(&attrs));
-                        }
-                        "footnotePr" => {
-                            props.footnote_properties = self.parse_note_properties()?;
-                            continue;
-                        }
-                        "endnotePr" => {
-                            props.endnote_properties = self.parse_note_properties()?;
-                            continue;
-                        }
-                        "pgBorders" => {
-                            props.page_borders = Some(self.parse_page_borders(&attrs)?);
-                            self.record(
-                                "w:pgBorders",
-                                SupportStatus::Supported,
-                                None,
-                                Some(self.location()),
-                            );
-                            continue;
-                        }
-                        _ => {}
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of section properties"))
+                    }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of section properties")),
             }
-        }
-        self.leave();
-        Ok(props)
+            Ok(props)
+        })
     }
 
     /// Parses `w:pgBorders` (start element consumed).
@@ -808,29 +836,29 @@ impl PartParser<'_> {
             z_order: wml_attr(attrs, "zOrder").and_then(BorderZOrder::from_strict),
             ..PageBorders::default()
         };
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) {
-                        let edge = self.parse_page_border_edge(&attrs);
-                        match name.local() {
-                            "top" => borders.top = Some(edge),
-                            "left" => borders.left = Some(edge),
-                            "bottom" => borders.bottom = Some(edge),
-                            "right" => borders.right = Some(edge),
-                            _ => {}
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) {
+                            let edge = parser.parse_page_border_edge(&attrs);
+                            match name.local() {
+                                "top" => borders.top = Some(edge),
+                                "left" => borders.left = Some(edge),
+                                "bottom" => borders.bottom = Some(edge),
+                                "right" => borders.right = Some(edge),
+                                _ => {}
+                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of page borders")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of page borders")),
             }
-        }
-        self.leave();
-        Ok(borders)
+            Ok(borders)
+        })
     }
 
     /// Parses one page-border edge element's attributes.
@@ -869,36 +897,36 @@ impl PartParser<'_> {
 
     /// Parses `w:cols`.
     fn parse_columns(&mut self, attrs: &[Attr]) -> Result<Columns> {
-        self.enter()?;
-        let equal_width = match wml_attr(attrs, "equalWidth") {
-            None => true,
-            Some(value) => matches!(value, "true" | "on" | "1"),
-        };
-        let mut columns = Columns {
-            count: self.measure_u16(attrs, "num", "w:cols"),
-            space: self.measure_twips(attrs, "space", "w:cols"),
-            equal_width,
-            separator: attr_on(attrs, "sep"),
-            columns: Vec::new(),
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_wml(&name) && name.local() == "col" {
-                        columns.columns.push(ColumnSpec {
-                            width: self.measure_twips(&attrs, "w", "w:col"),
-                            space: self.measure_twips(&attrs, "space", "w:col"),
-                        });
+        self.nested(|parser| {
+            let equal_width = match wml_attr(attrs, "equalWidth") {
+                None => true,
+                Some(value) => matches!(value, "true" | "on" | "1"),
+            };
+            let mut columns = Columns {
+                count: parser.measure_u16(attrs, "num", "w:cols"),
+                space: parser.measure_twips(attrs, "space", "w:cols"),
+                equal_width,
+                separator: attr_on(attrs, "sep"),
+                columns: Vec::new(),
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) && name.local() == "col" {
+                            columns.columns.push(ColumnSpec {
+                                width: parser.measure_twips(&attrs, "w", "w:col"),
+                                space: parser.measure_twips(&attrs, "space", "w:col"),
+                            });
+                        }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of columns")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of columns")),
             }
-        }
-        self.leave();
-        Ok(columns)
+            Ok(columns)
+        })
     }
 
     /// Parses `w:lnNumType` (attribute-only).

@@ -421,21 +421,21 @@ trait MathText {
 
 impl MathText for PartParser<'_> {
     fn parse_math_text(&mut self) -> Result<String> {
-        self.enter()?;
-        let mut text = String::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::Text(chunk) | XmlEvent::CData(chunk) => text.push_str(&chunk),
-                XmlEvent::StartElement { name, .. } => {
-                    self.record_foreign(&name);
-                    self.skip_element()?;
+        self.nested(|parser| {
+            let mut text = String::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::Text(chunk) | XmlEvent::CData(chunk) => text.push_str(&chunk),
+                    XmlEvent::StartElement { name, .. } => {
+                        parser.record_foreign(&name);
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:t")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of m:t")),
             }
-        }
-        self.leave();
-        Ok(text)
+            Ok(text)
+        })
     }
 }
 

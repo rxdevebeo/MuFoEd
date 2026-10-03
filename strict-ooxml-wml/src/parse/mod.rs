@@ -889,8 +889,34 @@ impl<'a> PartParser<'a> {
         )
     }
 
-    /// Recursion guard: rejects input deeper than the configured XML limit.
-    pub(crate) fn enter(&mut self) -> Result<()> {
+    /// The current recursion depth; `#[cfg(test)]` so the property test can read
+    /// what the parser thinks it is holding.
+    #[cfg(test)]
+    pub(crate) fn debug_depth(&self) -> u32 {
+        self.depth
+    }
+    /// Runs `f` inside one level of the XML recursion guard.
+    ///
+    /// The guard is a pair and the second half was the bug: `enter()` without a
+    /// matching `leave()` on some path leaves the counter above where it
+    /// started, and the next 256 siblings of the same element fail with a
+    /// `LimitExceeded` that says nothing about the input that caused it. A
+    /// `settings.xml` with 300 `m:mathPr` in a row was refused as too deeply
+    /// nested, having nothing to do with nesting.
+    ///
+    /// RAII cannot do it here - the guard would have to borrow the parser, and
+    /// the parser is what the body mutates - so the pairing is a wrapper instead:
+    /// `leave` runs on every path out of `f`, including the `?` ones, and there
+    /// is no way to reach the recursion without going through it.
+    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        self.enter()?;
+        let out = f(self);
+        self.leave();
+        out
+    }
+
+    /// Enters the recursion guard; private to [`nested`](Self::nested).
+    fn enter(&mut self) -> Result<()> {
         self.depth = self.depth.saturating_add(1);
         if self.depth > self.max_depth {
             return Err(StrictError::LimitExceeded {
@@ -902,8 +928,8 @@ impl<'a> PartParser<'a> {
         Ok(())
     }
 
-    /// Leaves the current recursion level.
-    pub(crate) fn leave(&mut self) {
+    /// Leaves the recursion guard; private to [`nested`](Self::nested).
+    fn leave(&mut self) {
         self.depth = self.depth.saturating_sub(1);
     }
 
@@ -1144,4 +1170,103 @@ mod measure_tests {
         assert_eq!(parse_signed_twips("12zz"), None);
         assert_eq!(parse_signed_twips("abc"), None);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use strict_ooxml_core::limits::ResourceLimits;
+    use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
+    use strict_ooxml_core::part::PartId;
+
+    use super::PartParser;
+
+    /// Every `.docx` of the committed Strict corpus.
+    fn corpus() -> Vec<std::path::PathBuf> {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/strict");
+        let mut files: Vec<_> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("docx"))
+            .collect();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn the_recursion_guard_is_back_at_zero_after_every_part_of_the_corpus() {
+        // The property AUD-07 is about. A leaked `enter()` does not fail where it
+        // happens: it makes the *next* part fail, or the hundredth sibling, with
+        // a depth error that says nothing about the input that caused it. Two
+        // hundred and fifty-six is not a number any corpus document reaches, so
+        // the only way to see it is to read the counter back.
+        let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+        let limits = ResourceLimits::default();
+        let files = corpus();
+        assert!(!files.is_empty(), "the Strict corpus is not there");
+
+        let mut parts = 0usize;
+        for path in &files {
+            let Ok(package) = Package::open_path(path, &options) else {
+                continue;
+            };
+            let Ok(main) = package.main_document_part().cloned() else {
+                continue;
+            };
+            let Ok(bytes) = package.read_part(&main) else {
+                continue;
+            };
+            let Ok(mut parser) = PartParser::new(&package, main.clone(), bytes, &limits) else {
+                continue;
+            };
+            // Any outcome is fine; the counter is what is being checked.
+            let _ = parser.parse_document_root();
+            assert_eq!(
+                parser.debug_depth(),
+                0,
+                "{} left the recursion guard open in {}",
+                main,
+                path.display()
+            );
+            parts += 1;
+        }
+        assert!(parts > 0, "no part of the corpus was parsed");
+    }
+
+    #[test]
+    fn the_guard_does_not_leak_across_repeated_parses_of_one_part() {
+        // The same observation from the outside: a part that parses once must
+        // parse the next hundred times too. With a leak, the second parse of a
+        // part whose siblings are counted would already be refused.
+        let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+        let limits = ResourceLimits::default();
+        let Some(path) = corpus().into_iter().next() else {
+            return;
+        };
+        let Ok(package) = Package::open_path(&path, &options) else {
+            return;
+        };
+        let Ok(main) = package.main_document_part().cloned() else {
+            return;
+        };
+        let Ok(bytes) = package.read_part(&main) else {
+            return;
+        };
+        for round in 0..100 {
+            let mut parser = PartParser::new(&package, PartId::new(MAIN), bytes.clone(), &limits)
+                .expect("reader");
+            let _ = parser.parse_document_root();
+            assert_eq!(
+                parser.debug_depth(),
+                0,
+                "round {round} of {} left the guard open",
+                path.display()
+            );
+        }
+    }
+
+    const MAIN: &str = "/word/document.xml";
 }

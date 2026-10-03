@@ -27,64 +27,69 @@ use super::{
 impl PartParser<'_> {
     /// Parses the `w:document` root and its `w:body`.
     pub(crate) fn parse_document_root(&mut self) -> Result<(Body, Vec<Section>)> {
-        self.enter()?;
-        self.expect_root("document")?;
+        self.nested(|parser| {
+            parser.expect_root("document")?;
 
-        let mut body = Body::default();
-        let mut sections = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if name.local() == "body" && is_wml(&name) {
-                        let (blocks, found_sections) = self.parse_block_children()?;
-                        body.blocks = blocks;
-                        sections = found_sections;
-                    } else if name.local() == "background" && is_wml(&name) {
-                        self.record(
-                            "w:background",
-                            SupportStatus::Partial,
-                            None,
-                            Some(self.location()),
-                        );
-                        self.skip_element()?;
-                    } else {
-                        self.record_foreign(&name);
-                        let _ = attrs;
-                        self.skip_element()?;
+            let mut body = Body::default();
+            let mut sections = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if name.local() == "body" && is_wml(&name) {
+                            let (blocks, found_sections) = parser.parse_block_children()?;
+                            body.blocks = blocks;
+                            sections = found_sections;
+                        } else if name.local() == "background" && is_wml(&name) {
+                            parser.record(
+                                "w:background",
+                                SupportStatus::Partial,
+                                None,
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        } else {
+                            parser.record_foreign(&name);
+                            let _ = attrs;
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of document part")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of document part")),
             }
-        }
-        self.expect_end_of_part()?;
-        self.leave();
-        Ok((body, sections))
+            parser.expect_end_of_part()?;
+            Ok((body, sections))
+        })
     }
 
     /// Parses block-level children until the current element's end.
     pub(crate) fn parse_block_children(&mut self) -> Result<(Vec<Block>, Vec<Section>)> {
-        self.enter()?;
-        let mut blocks = Vec::new();
-        let mut sections = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
+        self.nested(|parser| {
+            let mut blocks = Vec::new();
+            let mut sections = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        parser.parse_block_element_into(
+                            &name,
+                            &attrs,
+                            &mut blocks,
+                            &mut sections,
+                        )?;
                     }
-                    self.parse_block_element_into(&name, &attrs, &mut blocks, &mut sections)?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of block content")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of block content")),
             }
-        }
-        self.leave();
-        Ok((blocks, sections))
+            Ok((blocks, sections))
+        })
     }
 
     /// Dispatches one block element (start already consumed) into `blocks`.
@@ -170,63 +175,63 @@ impl PartParser<'_> {
     /// Parses a paragraph (`w:p`); its start element has been consumed.
     fn parse_paragraph(&mut self, attrs: &[Attr]) -> Result<Paragraph> {
         let location = self.location();
-        self.enter()?;
-        let mut props = ParagraphProperties::default();
-        let mut inlines = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if name.local() == "pPr" && is_wml(&name) {
-                        props = self.parse_paragraph_properties()?;
-                    } else if crate::parse::is_math(&name) {
-                        self.parse_math_into(&name, &mut inlines)?;
-                    } else if is_wml(&name) {
-                        self.parse_inline_into(&name, &attrs, &mut inlines)?;
-                    } else {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut props = ParagraphProperties::default();
+            let mut inlines = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if name.local() == "pPr" && is_wml(&name) {
+                            props = parser.parse_paragraph_properties()?;
+                        } else if crate::parse::is_math(&name) {
+                            parser.parse_math_into(&name, &mut inlines)?;
+                        } else if is_wml(&name) {
+                            parser.parse_inline_into(&name, &attrs, &mut inlines)?;
+                        } else {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of paragraph")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of paragraph")),
             }
-        }
-        self.leave();
 
-        Ok(Paragraph {
-            props,
-            inlines,
-            rsids: rsids_from_attrs(attrs),
-            para_id: attr_in_ns(attrs, W14_NS, "paraId").map(ParaId::new),
-            text_id: attr_in_ns(attrs, W14_NS, "textId").map(TextId::new),
-            location,
+            Ok(Paragraph {
+                props,
+                inlines,
+                rsids: rsids_from_attrs(attrs),
+                para_id: attr_in_ns(attrs, W14_NS, "paraId").map(ParaId::new),
+                text_id: attr_in_ns(attrs, W14_NS, "textId").map(TextId::new),
+                location,
+            })
         })
     }
 
     /// Parses inline children until the current element's end.
     fn parse_inline_children(&mut self) -> Result<Vec<Inline>> {
-        self.enter()?;
-        let mut out = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if crate::parse::is_math(&name) {
-                        self.parse_math_into(&name, &mut out)?;
-                    } else if is_wml(&name) {
-                        self.parse_inline_into(&name, &attrs, &mut out)?;
-                    } else {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut out = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if crate::parse::is_math(&name) {
+                            parser.parse_math_into(&name, &mut out)?;
+                        } else if is_wml(&name) {
+                            parser.parse_inline_into(&name, &attrs, &mut out)?;
+                        } else {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of inline content")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of inline content")),
             }
-        }
-        self.leave();
-        Ok(out)
+            Ok(out)
+        })
     }
 
     /// Dispatches one OMML element into `out` (`STAGE-5C-TASK.md` §3.1.1).
@@ -365,207 +370,211 @@ impl PartParser<'_> {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_run(&mut self, _attrs: &[Attr]) -> Result<Run> {
         let location = self.location();
-        self.enter()?;
-        let mut props = crate::model::props::RunProperties::default();
-        let mut content = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match run_kind(name.local()) {
-                        RunKind::Text | RunKind::DeletedText => {
-                            content.push(RunContent::Text(self.parse_text_element(&attrs)?));
+        self.nested(|parser| {
+            let mut props = crate::model::props::RunProperties::default();
+            let mut content = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
                         }
-                        RunKind::Tab => {
-                            content.push(RunContent::Tab);
-                            self.skip_element()?;
-                        }
-                        RunKind::Break => {
-                            let kind = wml_attr(&attrs, "type")
-                                .and_then(BreakKind::from_strict)
-                                .unwrap_or(BreakKind::TextWrapping);
-                            content.push(RunContent::Break(kind));
-                            self.skip_element()?;
-                        }
-                        RunKind::CarriageReturn => {
-                            content.push(RunContent::CarriageReturn);
-                            self.skip_element()?;
-                        }
-                        RunKind::Drawing => {
-                            content.push(RunContent::Drawing(self.parse_drawing()?));
-                        }
-                        RunKind::InstrText => {
-                            let text = self.parse_text_content()?;
-                            let computed = super::field_is_computed(&text);
-                            self.record(
-                                "w:instrText",
-                                if computed {
-                                    SupportStatus::Supported
-                                } else {
-                                    SupportStatus::Partial
-                                },
-                                Some(if computed {
-                                    "computed at render time".to_owned()
-                                } else {
-                                    "field result taken from cache (not computed)".to_owned()
-                                }),
-                                Some(self.location()),
-                            );
-                            content.push(RunContent::InstrText(text));
-                        }
-                        RunKind::FieldChar => {
-                            let kind = wml_attr(&attrs, "fldCharType")
-                                .and_then(FieldCharType::from_strict)
-                                .unwrap_or(FieldCharType::Begin);
-                            let dirty = wml_attr(&attrs, "dirty").is_some_and(parse_on_off_value);
-                            content.push(RunContent::FieldChar(FieldChar { kind, dirty }));
-                            self.skip_element()?;
-                        }
-                        RunKind::FootnoteRef => {
-                            let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
-                            content.push(RunContent::FootnoteRef(id));
-                            self.record(
-                                "w:footnoteReference",
-                                SupportStatus::Supported,
-                                None,
-                                Some(self.location()),
-                            );
-                            self.skip_element()?;
-                        }
-                        RunKind::EndnoteRef => {
-                            let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
-                            content.push(RunContent::EndnoteRef(id));
-                            self.record(
-                                "w:endnoteReference",
-                                SupportStatus::Supported,
-                                None,
-                                Some(self.location()),
-                            );
-                            self.skip_element()?;
-                        }
-                        RunKind::Ptab => {
-                            // All three attributes are `use="required"`. An element
-                            // missing one cannot be written back without inventing a
-                            // value, so it is recorded and skipped rather than
-                            // defaulted - the schema names the defect, and a
-                            // defaulted one would not be named at all.
-                            let alignment = wml_attr(&attrs, "alignment");
-                            let relative_to = wml_attr(&attrs, "relativeTo");
-                            let leader = wml_attr(&attrs, "leader");
-                            match (alignment, relative_to, leader) {
-                                (Some(alignment), Some(relative_to), Some(leader)) => {
-                                    content.push(RunContent::Ptab {
-                                        alignment: self.intern(alignment),
-                                        relative_to: self.intern(relative_to),
-                                        leader: self.intern(leader),
-                                    });
-                                    self.record(
-                                        "w:ptab",
-                                        SupportStatus::Supported,
-                                        None,
-                                        Some(self.location()),
-                                    );
-                                }
-                                _ => {
-                                    self.record(
-                                        "w:ptab",
-                                        SupportStatus::Partial,
-                                        Some(
-                                            "w:ptab requires alignment, relativeTo and leader"
-                                                .to_owned(),
-                                        ),
-                                        Some(self.location()),
-                                    );
-                                }
+                        match run_kind(name.local()) {
+                            RunKind::Text | RunKind::DeletedText => {
+                                content.push(RunContent::Text(parser.parse_text_element(&attrs)?));
                             }
-                            self.skip_element()?;
-                        }
-                        RunKind::CommentReference => {
-                            // Without the anchor a w:commentRangeStart/End pair
-                            // is a range that points at nothing: the comment text
-                            // survives in comments.xml and no run refers to it,
-                            // so Word shows a comment that is not attached to
-                            // any word. The two halves of a range have to be
-                            // written together or neither should be.
-                            let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
-                            content.push(RunContent::CommentReference(id));
-                            self.record(
-                                "w:commentReference",
-                                SupportStatus::Supported,
-                                Some("the comment body is carried in word/comments.xml".to_owned()),
-                                Some(self.location()),
-                            );
-                            self.skip_element()?;
-                        }
-                        RunKind::NoteRef => {
-                            content.push(RunContent::NoteRef);
-                            self.skip_element()?;
-                        }
-                        RunKind::Symbol => {
-                            if let (Some(font), Some(code)) =
-                                (wml_attr(&attrs, "font"), wml_attr(&attrs, "char"))
-                            {
-                                if let Some(character) =
-                                    u32::from_str_radix(code.trim_start_matches('F'), 16)
-                                        .ok()
-                                        .and_then(char::from_u32)
+                            RunKind::Tab => {
+                                content.push(RunContent::Tab);
+                                parser.skip_element()?;
+                            }
+                            RunKind::Break => {
+                                let kind = wml_attr(&attrs, "type")
+                                    .and_then(BreakKind::from_strict)
+                                    .unwrap_or(BreakKind::TextWrapping);
+                                content.push(RunContent::Break(kind));
+                                parser.skip_element()?;
+                            }
+                            RunKind::CarriageReturn => {
+                                content.push(RunContent::CarriageReturn);
+                                parser.skip_element()?;
+                            }
+                            RunKind::Drawing => {
+                                content.push(RunContent::Drawing(parser.parse_drawing()?));
+                            }
+                            RunKind::InstrText => {
+                                let text = parser.parse_text_content()?;
+                                let computed = super::field_is_computed(&text);
+                                parser.record(
+                                    "w:instrText",
+                                    if computed {
+                                        SupportStatus::Supported
+                                    } else {
+                                        SupportStatus::Partial
+                                    },
+                                    Some(if computed {
+                                        "computed at render time".to_owned()
+                                    } else {
+                                        "field result taken from cache (not computed)".to_owned()
+                                    }),
+                                    Some(parser.location()),
+                                );
+                                content.push(RunContent::InstrText(text));
+                            }
+                            RunKind::FieldChar => {
+                                let kind = wml_attr(&attrs, "fldCharType")
+                                    .and_then(FieldCharType::from_strict)
+                                    .unwrap_or(FieldCharType::Begin);
+                                let dirty =
+                                    wml_attr(&attrs, "dirty").is_some_and(parse_on_off_value);
+                                content.push(RunContent::FieldChar(FieldChar { kind, dirty }));
+                                parser.skip_element()?;
+                            }
+                            RunKind::FootnoteRef => {
+                                let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
+                                content.push(RunContent::FootnoteRef(id));
+                                parser.record(
+                                    "w:footnoteReference",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
+                            RunKind::EndnoteRef => {
+                                let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
+                                content.push(RunContent::EndnoteRef(id));
+                                parser.record(
+                                    "w:endnoteReference",
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
+                            RunKind::Ptab => {
+                                // All three attributes are `use="required"`. An element
+                                // missing one cannot be written back without inventing a
+                                // value, so it is recorded and skipped rather than
+                                // defaulted - the schema names the defect, and a
+                                // defaulted one would not be named at all.
+                                let alignment = wml_attr(&attrs, "alignment");
+                                let relative_to = wml_attr(&attrs, "relativeTo");
+                                let leader = wml_attr(&attrs, "leader");
+                                match (alignment, relative_to, leader) {
+                                    (Some(alignment), Some(relative_to), Some(leader)) => {
+                                        content.push(RunContent::Ptab {
+                                            alignment: parser.intern(alignment),
+                                            relative_to: parser.intern(relative_to),
+                                            leader: parser.intern(leader),
+                                        });
+                                        parser.record(
+                                            "w:ptab",
+                                            SupportStatus::Supported,
+                                            None,
+                                            Some(parser.location()),
+                                        );
+                                    }
+                                    _ => {
+                                        parser.record(
+                                            "w:ptab",
+                                            SupportStatus::Partial,
+                                            Some(
+                                                "w:ptab requires alignment, relativeTo and leader"
+                                                    .to_owned(),
+                                            ),
+                                            Some(parser.location()),
+                                        );
+                                    }
+                                }
+                                parser.skip_element()?;
+                            }
+                            RunKind::CommentReference => {
+                                // Without the anchor a w:commentRangeStart/End pair
+                                // is a range that points at nothing: the comment text
+                                // survives in comments.xml and no run refers to it,
+                                // so Word shows a comment that is not attached to
+                                // any word. The two halves of a range have to be
+                                // written together or neither should be.
+                                let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
+                                content.push(RunContent::CommentReference(id));
+                                parser.record(
+                                    "w:commentReference",
+                                    SupportStatus::Supported,
+                                    Some(
+                                        "the comment body is carried in word/comments.xml"
+                                            .to_owned(),
+                                    ),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
+                            RunKind::NoteRef => {
+                                content.push(RunContent::NoteRef);
+                                parser.skip_element()?;
+                            }
+                            RunKind::Symbol => {
+                                if let (Some(font), Some(code)) =
+                                    (wml_attr(&attrs, "font"), wml_attr(&attrs, "char"))
                                 {
-                                    content.push(RunContent::Symbol(Symbol {
-                                        font: self.intern(font),
-                                        character,
-                                    }));
+                                    if let Some(character) =
+                                        u32::from_str_radix(code.trim_start_matches('F'), 16)
+                                            .ok()
+                                            .and_then(char::from_u32)
+                                    {
+                                        content.push(RunContent::Symbol(Symbol {
+                                            font: parser.intern(font),
+                                            character,
+                                        }));
+                                    }
                                 }
+                                parser.skip_element()?;
                             }
-                            self.skip_element()?;
-                        }
-                        RunKind::LastRenderedPageBreak => {
-                            content.push(RunContent::LastRenderedPageBreak);
-                            self.skip_element()?;
-                        }
-                        RunKind::NoBreakHyphen => {
-                            content.push(RunContent::NoBreakHyphen);
-                            self.skip_element()?;
-                        }
-                        RunKind::SoftHyphen => {
-                            content.push(RunContent::SoftHyphen);
-                            self.skip_element()?;
-                        }
-                        RunKind::RunProperties => {
-                            props = self.parse_run_properties()?;
-                        }
-                        RunKind::Separator => {
-                            let feature = feature_id_for(&name);
-                            self.record(
-                                &feature,
-                                SupportStatus::Supported,
-                                None,
-                                Some(self.location()),
-                            );
-                            self.skip_element()?;
-                        }
-                        RunKind::Opaque => {
-                            self.record_foreign(&name);
-                            content.push(RunContent::Opaque(
-                                self.capture_opaque_inline(&name, &attrs),
-                            ));
-                            self.skip_element()?;
+                            RunKind::LastRenderedPageBreak => {
+                                content.push(RunContent::LastRenderedPageBreak);
+                                parser.skip_element()?;
+                            }
+                            RunKind::NoBreakHyphen => {
+                                content.push(RunContent::NoBreakHyphen);
+                                parser.skip_element()?;
+                            }
+                            RunKind::SoftHyphen => {
+                                content.push(RunContent::SoftHyphen);
+                                parser.skip_element()?;
+                            }
+                            RunKind::RunProperties => {
+                                props = parser.parse_run_properties()?;
+                            }
+                            RunKind::Separator => {
+                                let feature = feature_id_for(&name);
+                                parser.record(
+                                    &feature,
+                                    SupportStatus::Supported,
+                                    None,
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
+                            RunKind::Opaque => {
+                                parser.record_foreign(&name);
+                                content.push(RunContent::Opaque(
+                                    parser.capture_opaque_inline(&name, &attrs),
+                                ));
+                                parser.skip_element()?;
+                            }
                         }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of run")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of run")),
             }
-        }
-        self.leave();
-        Ok(Run {
-            props,
-            content,
-            location,
+            Ok(Run {
+                props,
+                content,
+                location,
+            })
         })
     }
 
@@ -580,21 +589,21 @@ impl PartParser<'_> {
 
     /// Concatenates the text children of the current element.
     fn parse_text_content(&mut self) -> Result<String> {
-        self.enter()?;
-        let mut text = String::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::Text(chunk) | XmlEvent::CData(chunk) => text.push_str(&chunk),
-                XmlEvent::StartElement { name, .. } => {
-                    self.record_foreign(&name);
-                    self.skip_element()?;
+        self.nested(|parser| {
+            let mut text = String::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::Text(chunk) | XmlEvent::CData(chunk) => text.push_str(&chunk),
+                    XmlEvent::StartElement { name, .. } => {
+                        parser.record_foreign(&name);
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of text")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of text")),
             }
-        }
-        self.leave();
-        Ok(text)
+            Ok(text)
+        })
     }
 
     /// Parses a hyperlink (`w:hyperlink`).
@@ -665,60 +674,60 @@ impl PartParser<'_> {
     /// Parses a structured document tag (`w:sdt`).
     pub(crate) fn parse_sdt(&mut self, is_block: bool) -> Result<SdtContainer> {
         let location = self.location();
-        self.enter()?;
-        let mut tag = None;
-        let mut alias = None;
-        let mut id = None;
-        let mut placeholder = None;
-        let mut showing_placeholder = false;
-        let mut blocks = Vec::new();
-        let mut inlines = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
-                    if !is_wml(&name) {
-                        self.record_foreign(&name);
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "sdtPr" => {
-                            let props = self.parse_sdt_properties()?;
-                            tag = props.0.or(tag);
-                            alias = props.1.or(alias);
-                            id = props.2.or(id);
-                            placeholder = props.3.or(placeholder);
-                            showing_placeholder |= props.4;
+        self.nested(|parser| {
+            let mut tag = None;
+            let mut alias = None;
+            let mut id = None;
+            let mut placeholder = None;
+            let mut showing_placeholder = false;
+            let mut blocks = Vec::new();
+            let mut inlines = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
                         }
-                        "sdtContent" => {
-                            if is_block {
-                                let (mut found, _) = self.parse_block_children()?;
-                                blocks.append(&mut found);
-                            } else {
-                                let mut found = self.parse_inline_children()?;
-                                inlines.append(&mut found);
+                        match name.local() {
+                            "sdtPr" => {
+                                let props = parser.parse_sdt_properties()?;
+                                tag = props.0.or(tag);
+                                alias = props.1.or(alias);
+                                id = props.2.or(id);
+                                placeholder = props.3.or(placeholder);
+                                showing_placeholder |= props.4;
                             }
+                            "sdtContent" => {
+                                if is_block {
+                                    let (mut found, _) = parser.parse_block_children()?;
+                                    blocks.append(&mut found);
+                                } else {
+                                    let mut found = parser.parse_inline_children()?;
+                                    inlines.append(&mut found);
+                                }
+                            }
+                            _ => parser.skip_element()?,
                         }
-                        _ => self.skip_element()?,
                     }
-                }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => {
-                    return Err(self.invalid("unexpected end of structured document tag"))
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of structured document tag"))
+                    }
                 }
             }
-        }
-        self.leave();
-        Ok(SdtContainer {
-            tag,
-            alias,
-            id,
-            placeholder,
-            showing_placeholder,
-            blocks,
-            inlines,
-            location,
+            Ok(SdtContainer {
+                tag,
+                alias,
+                id,
+                placeholder,
+                showing_placeholder,
+                blocks,
+                inlines,
+                location,
+            })
         })
     }
 
@@ -732,34 +741,34 @@ impl PartParser<'_> {
         Option<Arc<str>>,
         bool,
     )> {
-        self.enter()?;
-        let mut tag = None;
-        let mut alias = None;
-        let mut id = None;
-        let mut placeholder = None;
-        let mut showing = false;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    match name.local() {
-                        "tag" => tag = val_attr(&attrs).map(|value| self.intern(value)),
-                        "alias" => alias = val_attr(&attrs).map(|value| self.intern(value)),
-                        "id" => id = val_attr(&attrs).map(|value| self.intern(value)),
-                        "showingPlcHdr" => showing = true,
-                        "placeholder" => {
-                            placeholder = Some(Arc::from("<placeholder>"));
+        self.nested(|parser| {
+            let mut tag = None;
+            let mut alias = None;
+            let mut id = None;
+            let mut placeholder = None;
+            let mut showing = false;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        match name.local() {
+                            "tag" => tag = val_attr(&attrs).map(|value| parser.intern(value)),
+                            "alias" => alias = val_attr(&attrs).map(|value| parser.intern(value)),
+                            "id" => id = val_attr(&attrs).map(|value| parser.intern(value)),
+                            "showingPlcHdr" => showing = true,
+                            "placeholder" => {
+                                placeholder = Some(Arc::from("<placeholder>"));
+                            }
+                            _ => {}
                         }
-                        _ => {}
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of sdt properties")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of sdt properties")),
             }
-        }
-        self.leave();
-        Ok((tag, alias, id, placeholder, showing))
+            Ok((tag, alias, id, placeholder, showing))
+        })
     }
 
     /// Captures an unknown block element as an [`OpaqueBlock`].

@@ -284,26 +284,26 @@ fn text_boxes(depth: usize) -> String {
 
 #[test]
 fn text_box_nesting_has_its_own_budget_and_its_own_kind() {
-    // Six text boxes are inside the budget of six and eleven tables would be
+    // Five text boxes are inside the budget of five and eleven tables would be
     // inside the budget of twelve at the same time - two counters, because a
     // text box is ten frames of parser state and a table is one.
+    let five = parse_with_limits(
+        &document_parts(&text_boxes(5), &[]),
+        ResourceLimits::default(),
+    )
+    .expect("five text boxes fit the budget of five");
+    assert_eq!(five.body.blocks.len(), 1);
+
     let six = parse_with_limits(
         &document_parts(&text_boxes(6), &[]),
         ResourceLimits::default(),
-    )
-    .expect("six text boxes fit");
-    assert_eq!(six.body.blocks.len(), 1);
-
-    let seven = parse_with_limits(
-        &document_parts(&text_boxes(7), &[]),
-        ResourceLimits::default(),
     );
-    match seven {
+    match six {
         Err(StrictError::LimitExceeded {
             kind: LimitKind::TextBoxNesting,
             limit,
             actual,
-        }) => assert_eq!((limit, actual), (6, 7)),
+        }) => assert_eq!((limit, actual), (5, 6)),
         other => panic!("expected TextBoxNesting, got {other:?}"),
     }
 }

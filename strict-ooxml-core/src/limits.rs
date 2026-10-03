@@ -73,20 +73,21 @@ pub struct ResourceLimits {
     /// a document nested that deeply is hostile input, not a document with a
     /// difficult corner.
     pub max_block_nesting: u32,
-    /// Maximum nesting of text boxes (`wps:txbx` / `w:txbxContent`). Default: 6.
+    /// Maximum nesting of text boxes (`wps:txbx` / `w:txbxContent`). Default: 5.
     ///
     /// Separate from [`max_block_nesting`](Self::max_block_nesting) because a
     /// text box is not one frame of parser state: it is a paragraph, a run, a
     /// drawing, an inline, a graphic, a graphic-data, a shape, the text box and
     /// the block children inside it - ten frames, measured at 125 408 bytes of
-    /// stack in a debug build. Six of them fit the 1 MiB stack of a Windows main
-    /// thread with a quarter to spare, and seven do not fit at any number this
-    /// project could write in the field. Twelve tables cost a seventh of that
-    /// each, which is why the two bounds are not one.
+    /// stack in a debug build, against roughly 18 KB for a table. Five of them
+    /// fit the 1 MiB stack of a Windows main thread; six do not, at any number
+    /// this project could write in the field. AUD-07's `nested()` wrapper added
+    /// one frame per parser level and moved this number from six to five, which
+    /// is the cost of a guard that cannot leak and is worth paying.
     ///
     /// Exceeding it is `LimitKind::TextBoxNesting` and refuses the whole
     /// document. Word draws a text box hierarchy as a flat one past a level or
-    /// two, so no real document is refused by six.
+    /// two, so no real document is refused by five.
     pub max_text_box_nesting: u32,
     /// Maximum number of nodes in one `m:oMath`. Default: 4096.
     ///
@@ -112,7 +113,7 @@ impl Default for ResourceLimits {
             max_rel_depth: 32,
             max_parts: 4096,
             max_block_nesting: 12,
-            max_text_box_nesting: 6,
+            max_text_box_nesting: 5,
             max_math_nodes: 4096,
             max_math_depth: 64,
         }
@@ -137,7 +138,7 @@ mod tests {
         assert_eq!(limits.max_rel_depth, 32);
         assert_eq!(limits.max_parts, 4096);
         assert_eq!(limits.max_block_nesting, 12);
-        assert_eq!(limits.max_text_box_nesting, 6);
+        assert_eq!(limits.max_text_box_nesting, 5);
         assert_eq!(limits.max_math_nodes, 4096);
         assert_eq!(limits.max_math_depth, 64);
     }

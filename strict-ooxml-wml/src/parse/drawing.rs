@@ -45,169 +45,179 @@ impl PartParser<'_> {
     /// Parses a `w:drawing` element; its start element has been consumed.
     pub(crate) fn parse_drawing(&mut self) -> Result<Drawing> {
         let location = self.location();
-        self.enter()?;
-        let mut kind = DrawingKind::Opaque(crate::model::inline::OpaqueInline {
-            namespace: self.intern(crate::WML_STRICT_NS),
-            local: self.intern("drawing"),
-            attributes: Vec::new(),
-            location: location.clone(),
-        });
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) && name.local() == "inline" {
-                        let inline = self.parse_inline_drawing()?;
-                        kind = DrawingKind::Inline(inline);
-                    } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
-                        && name.local() == "anchor"
-                    {
-                        let anchor = self.parse_anchor(&attrs)?;
-                        kind = DrawingKind::Anchor(anchor);
-                    } else {
-                        self.record(
-                            &super::feature_id_for(&name),
-                            SupportStatus::Unsupported,
-                            Some("drawing content is not supported".to_owned()),
-                            Some(self.location()),
-                        );
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut kind = DrawingKind::Opaque(crate::model::inline::OpaqueInline {
+                namespace: parser.intern(crate::WML_STRICT_NS),
+                local: parser.intern("drawing"),
+                attributes: Vec::new(),
+                location: location.clone(),
+            });
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                            && name.local() == "inline"
+                        {
+                            let inline = parser.parse_inline_drawing()?;
+                            kind = DrawingKind::Inline(inline);
+                        } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                            && name.local() == "anchor"
+                        {
+                            let anchor = parser.parse_anchor(&attrs)?;
+                            kind = DrawingKind::Anchor(anchor);
+                        } else {
+                            parser.record(
+                                &super::feature_id_for(&name),
+                                SupportStatus::Unsupported,
+                                Some("drawing content is not supported".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of drawing")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of drawing")),
             }
-        }
-        self.leave();
-        Ok(Drawing { kind, location })
+            Ok(Drawing { kind, location })
+        })
     }
 
     /// Parses `wp:inline`.
     fn parse_inline_drawing(&mut self) -> Result<InlineDrawing> {
         let location = self.location();
-        self.enter()?;
-        let mut inline = InlineDrawing {
-            extent: None,
-            doc_pr: None,
-            graphic_uri: None,
-            graphic: Box::new(Graphic::None),
-            location,
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) && name.local() == "extent" {
-                        inline.extent = Some(parse_extent(&attrs));
-                        self.skip_element()?;
-                    } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
-                        && name.local() == "docPr"
-                    {
-                        inline.doc_pr = Some(self.parse_doc_pr(&attrs));
-                        self.skip_element()?;
-                    } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
-                        && name.local() == "effectExtent"
-                    {
-                        self.skip_element()?;
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
-                        let (uri, graphic) = self.parse_graphic()?;
-                        inline.graphic_uri = uri;
-                        inline.graphic = Box::new(graphic);
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut inline = InlineDrawing {
+                extent: None,
+                doc_pr: None,
+                graphic_uri: None,
+                graphic: Box::new(Graphic::None),
+                location,
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                            && name.local() == "extent"
+                        {
+                            inline.extent = Some(parse_extent(&attrs));
+                            parser.skip_element()?;
+                        } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                            && name.local() == "docPr"
+                        {
+                            inline.doc_pr = Some(parser.parse_doc_pr(&attrs));
+                            parser.skip_element()?;
+                        } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                            && name.local() == "effectExtent"
+                        {
+                            parser.skip_element()?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
+                            let (uri, graphic) = parser.parse_graphic()?;
+                            inline.graphic_uri = uri;
+                            inline.graphic = Box::new(graphic);
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of inline drawing")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of inline drawing")),
             }
-        }
-        self.leave();
-        Ok(inline)
+            Ok(inline)
+        })
     }
 
     /// Parses `wp:anchor`.
     fn parse_anchor(&mut self, attrs: &[Attr]) -> Result<AnchorDrawing> {
         let location = self.location();
-        self.enter()?;
-        let mut anchor = AnchorDrawing {
-            extent: None,
-            effect_extent: None,
-            doc_pr: None,
-            simple_pos: bool_attr(attrs, "simplePos"),
-            position_h: None,
-            position_v: None,
-            wrap: None,
-            behind_doc: bool_attr(attrs, "behindDoc"),
-            relative_height: parse_u32_attr(attrs, "relativeHeight"),
-            dist_top: parse_u32_attr(attrs, "distT"),
-            dist_bottom: parse_u32_attr(attrs, "distB"),
-            dist_left: parse_u32_attr(attrs, "distL"),
-            dist_right: parse_u32_attr(attrs, "distR"),
-            allow_overlap: !attr_is_false(attrs, "allowOverlap"),
-            layout_in_cell: !attr_is_false(attrs, "layoutInCell"),
-            locked: bool_attr(attrs, "locked"),
-            graphic_uri: None,
-            graphic: Box::new(Graphic::None),
-            location,
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
-                        match name.local() {
-                            "positionH" => anchor.position_h = Some(self.parse_position(&attrs)?),
-                            "positionV" => anchor.position_v = Some(self.parse_position(&attrs)?),
-                            "extent" => {
-                                anchor.extent = Some(parse_extent(&attrs));
-                                self.skip_element()?;
+        self.nested(|parser| {
+            let mut anchor = AnchorDrawing {
+                extent: None,
+                effect_extent: None,
+                doc_pr: None,
+                simple_pos: bool_attr(attrs, "simplePos"),
+                position_h: None,
+                position_v: None,
+                wrap: None,
+                behind_doc: bool_attr(attrs, "behindDoc"),
+                relative_height: parse_u32_attr(attrs, "relativeHeight"),
+                dist_top: parse_u32_attr(attrs, "distT"),
+                dist_bottom: parse_u32_attr(attrs, "distB"),
+                dist_left: parse_u32_attr(attrs, "distL"),
+                dist_right: parse_u32_attr(attrs, "distR"),
+                allow_overlap: !attr_is_false(attrs, "allowOverlap"),
+                layout_in_cell: !attr_is_false(attrs, "layoutInCell"),
+                locked: bool_attr(attrs, "locked"),
+                graphic_uri: None,
+                graphic: Box::new(Graphic::None),
+                location,
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
+                            match name.local() {
+                                "positionH" => {
+                                    anchor.position_h = Some(parser.parse_position(&attrs)?);
+                                }
+                                "positionV" => {
+                                    anchor.position_v = Some(parser.parse_position(&attrs)?);
+                                }
+                                "extent" => {
+                                    anchor.extent = Some(parse_extent(&attrs));
+                                    parser.skip_element()?;
+                                }
+                                "effectExtent" => {
+                                    anchor.effect_extent = Some(parse_effect_extent(&attrs));
+                                    parser.skip_element()?;
+                                }
+                                "docPr" => {
+                                    anchor.doc_pr = Some(parser.parse_doc_pr(&attrs));
+                                    parser.skip_element()?;
+                                }
+                                "wrapNone" => {
+                                    anchor.wrap = Some(parser.parse_wrap(WrapKind::None, &attrs)?);
+                                }
+                                "wrapSquare" => {
+                                    anchor.wrap =
+                                        Some(parser.parse_wrap(WrapKind::Square, &attrs)?);
+                                }
+                                "wrapTight" => {
+                                    anchor.wrap = Some(parser.parse_wrap(WrapKind::Tight, &attrs)?);
+                                }
+                                "wrapThrough" => {
+                                    anchor.wrap =
+                                        Some(parser.parse_wrap(WrapKind::Through, &attrs)?);
+                                }
+                                "wrapTopAndBottom" => {
+                                    anchor.wrap =
+                                        Some(parser.parse_wrap(WrapKind::TopAndBottom, &attrs)?);
+                                }
+                                _ => parser.skip_element()?,
                             }
-                            "effectExtent" => {
-                                anchor.effect_extent = Some(parse_effect_extent(&attrs));
-                                self.skip_element()?;
-                            }
-                            "docPr" => {
-                                anchor.doc_pr = Some(self.parse_doc_pr(&attrs));
-                                self.skip_element()?;
-                            }
-                            "wrapNone" => {
-                                anchor.wrap = Some(self.parse_wrap(WrapKind::None, &attrs)?);
-                            }
-                            "wrapSquare" => {
-                                anchor.wrap = Some(self.parse_wrap(WrapKind::Square, &attrs)?);
-                            }
-                            "wrapTight" => {
-                                anchor.wrap = Some(self.parse_wrap(WrapKind::Tight, &attrs)?);
-                            }
-                            "wrapThrough" => {
-                                anchor.wrap = Some(self.parse_wrap(WrapKind::Through, &attrs)?);
-                            }
-                            "wrapTopAndBottom" => {
-                                anchor.wrap =
-                                    Some(self.parse_wrap(WrapKind::TopAndBottom, &attrs)?);
-                            }
-                            _ => self.skip_element()?,
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
+                            let (uri, graphic) = parser.parse_graphic()?;
+                            anchor.graphic_uri = uri;
+                            anchor.graphic = Box::new(graphic);
+                        } else {
+                            parser.skip_element()?;
                         }
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
-                        let (uri, graphic) = self.parse_graphic()?;
-                        anchor.graphic_uri = uri;
-                        anchor.graphic = Box::new(graphic);
-                    } else {
-                        self.skip_element()?;
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of anchor")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of anchor")),
             }
-        }
-        self.leave();
-        self.record(
-            "wp:anchor",
-            SupportStatus::Supported,
-            None,
-            Some(anchor.location.clone()),
-        );
-        Ok(anchor)
+            parser.record(
+                "wp:anchor",
+                SupportStatus::Supported,
+                None,
+                Some(anchor.location.clone()),
+            );
+            Ok(anchor)
+        })
     }
 
     /// Parses `wp:positionH`/`wp:positionV`.
@@ -217,34 +227,34 @@ impl PartParser<'_> {
             align: None,
             offset: None,
         };
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
-                    if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
-                        if name.local() == "posOffset" {
-                            let text = self.read_element_text()?;
-                            position.offset = text.trim().parse::<i64>().ok().map(Emu);
-                        } else if name.local() == "align" {
-                            let text = self.read_element_text()?;
-                            let value = text.trim().to_owned();
-                            if !value.is_empty() {
-                                position.align = Some(self.intern(&value));
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
+                            if name.local() == "posOffset" {
+                                let text = parser.read_element_text()?;
+                                position.offset = text.trim().parse::<i64>().ok().map(Emu);
+                            } else if name.local() == "align" {
+                                let text = parser.read_element_text()?;
+                                let value = text.trim().to_owned();
+                                if !value.is_empty() {
+                                    position.align = Some(parser.intern(&value));
+                                }
+                            } else {
+                                parser.skip_element()?;
                             }
                         } else {
-                            self.skip_element()?;
+                            parser.skip_element()?;
                         }
-                    } else {
-                        self.skip_element()?;
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of position")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of position")),
             }
-        }
-        self.leave();
-        Ok(position)
+            Ok(position)
+        })
     }
 
     /// Parses a `wp:wrap*` element.
@@ -319,27 +329,27 @@ impl PartParser<'_> {
 
     /// Parses `a:graphic`, returning `(uri, graphic)`.
     fn parse_graphic(&mut self) -> Result<(Option<std::sync::Arc<str>>, Graphic)> {
-        self.enter()?;
-        let mut graphic_uri = None;
-        let mut graphic = Graphic::None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphicData" {
-                        let (uri, parsed) = self.parse_graphic_data(&attrs)?;
-                        graphic_uri = uri;
-                        graphic = parsed;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut graphic_uri = None;
+            let mut graphic = Graphic::None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphicData" {
+                            let (uri, parsed) = parser.parse_graphic_data(&attrs)?;
+                            graphic_uri = uri;
+                            graphic = parsed;
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of graphic")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of graphic")),
             }
-        }
-        self.leave();
-        Ok((graphic_uri, graphic))
+            Ok((graphic_uri, graphic))
+        })
     }
 
     /// Parses `a:graphicData`, returning `(uri, graphic)`.
@@ -348,75 +358,79 @@ impl PartParser<'_> {
         attrs: &[Attr],
     ) -> Result<(Option<std::sync::Arc<str>>, Graphic)> {
         let uri = plain_attr(attrs, "uri").map(|value| self.intern(value));
-        self.enter()?;
-        let mut graphic = Graphic::None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement {
-                    name,
-                    attrs: element,
-                } => {
-                    if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
-                        graphic = Graphic::Picture(self.parse_picture()?);
-                    } else if name.local() == "wsp" && is_shape_ns(&name) {
-                        if !is_ns(&name, WORD_PROCESSING_SHAPE_STRICT_NS) {
-                            self.record(
-                                "wps:wsp",
-                                SupportStatus::Partial,
-                                Some("Microsoft/legacy shape namespace compatibility".to_owned()),
-                                Some(self.location()),
+        self.nested(|parser| {
+            let mut graphic = Graphic::None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement {
+                        name,
+                        attrs: element,
+                    } => {
+                        if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
+                            graphic = Graphic::Picture(parser.parse_picture()?);
+                        } else if name.local() == "wsp" && is_shape_ns(&name) {
+                            if !is_ns(&name, WORD_PROCESSING_SHAPE_STRICT_NS) {
+                                parser.record(
+                                    "wps:wsp",
+                                    SupportStatus::Partial,
+                                    Some(
+                                        "Microsoft/legacy shape namespace compatibility".to_owned(),
+                                    ),
+                                    Some(parser.location()),
+                                );
+                            }
+                            graphic = Graphic::Shape(parser.parse_shape()?);
+                        } else if name.local() == "wgp" && is_group_ns(&name) {
+                            if !is_ns(&name, WORD_PROCESSING_GROUP_STRICT_NS) {
+                                parser.record(
+                                    "wpg:wgp",
+                                    SupportStatus::Partial,
+                                    Some(
+                                        "Microsoft/legacy group namespace compatibility".to_owned(),
+                                    ),
+                                    Some(parser.location()),
+                                );
+                            }
+                            graphic = Graphic::Group(parser.parse_group()?);
+                        } else if name.local() == "chart" {
+                            // The attributes of *this* element, not of the
+                            // `a:graphicData` that carries it: `r:id` is where the
+                            // chart part is named, and reading the wrong element's
+                            // attributes looks exactly like a document with no
+                            // reference at all.
+                            graphic = Graphic::Chart(parser.foreign_refs(&element, &[R_ID]));
+                            parser.skip_element()?;
+                        } else if name.local() == "relIds" {
+                            // `dgm:relIds` carries four ids in a fixed order, and the
+                            // order is the only thing that says which is which: the
+                            // attributes have no positional meaning in XML.
+                            graphic = Graphic::Diagram(
+                                parser.foreign_refs(&element, &[REL_DM, REL_LO, REL_QS, REL_CS]),
                             );
+                            parser.skip_element()?;
+                        } else if is_ns(&name, CHART_STRICT_NS) || is_ns(&name, DIAGRAM_STRICT_NS) {
+                            graphic = Graphic::Other;
+                            parser.skip_element()?;
+                        } else {
+                            parser.skip_element()?;
                         }
-                        graphic = Graphic::Shape(self.parse_shape()?);
-                    } else if name.local() == "wgp" && is_group_ns(&name) {
-                        if !is_ns(&name, WORD_PROCESSING_GROUP_STRICT_NS) {
-                            self.record(
-                                "wpg:wgp",
-                                SupportStatus::Partial,
-                                Some("Microsoft/legacy group namespace compatibility".to_owned()),
-                                Some(self.location()),
-                            );
-                        }
-                        graphic = Graphic::Group(self.parse_group()?);
-                    } else if name.local() == "chart" {
-                        // The attributes of *this* element, not of the
-                        // `a:graphicData` that carries it: `r:id` is where the
-                        // chart part is named, and reading the wrong element's
-                        // attributes looks exactly like a document with no
-                        // reference at all.
-                        graphic = Graphic::Chart(self.foreign_refs(&element, &[R_ID]));
-                        self.skip_element()?;
-                    } else if name.local() == "relIds" {
-                        // `dgm:relIds` carries four ids in a fixed order, and the
-                        // order is the only thing that says which is which: the
-                        // attributes have no positional meaning in XML.
-                        graphic = Graphic::Diagram(
-                            self.foreign_refs(&element, &[REL_DM, REL_LO, REL_QS, REL_CS]),
-                        );
-                        self.skip_element()?;
-                    } else if is_ns(&name, CHART_STRICT_NS) || is_ns(&name, DIAGRAM_STRICT_NS) {
-                        graphic = Graphic::Other;
-                        self.skip_element()?;
-                    } else {
-                        self.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of graphic data")),
+                }
+            }
+            if matches!(graphic, Graphic::None) {
+                if let Some(uri) = uri.as_deref() {
+                    if uri.contains("/chart") {
+                        graphic = Graphic::Chart(ForeignRefs::default());
+                    } else if uri.contains("/diagram") {
+                        graphic = Graphic::Diagram(ForeignRefs::default());
                     }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of graphic data")),
             }
-        }
-        self.leave();
-        if matches!(graphic, Graphic::None) {
-            if let Some(uri) = uri.as_deref() {
-                if uri.contains("/chart") {
-                    graphic = Graphic::Chart(ForeignRefs::default());
-                } else if uri.contains("/diagram") {
-                    graphic = Graphic::Diagram(ForeignRefs::default());
-                }
-            }
-        }
-        Ok((uri, graphic))
+            Ok((uri, graphic))
+        })
     }
 
     /// Captures the relationship ids a foreign graphic element carries.
@@ -444,281 +458,290 @@ impl PartParser<'_> {
 
     /// Parses `pic:pic`.
     fn parse_picture(&mut self) -> Result<Picture> {
-        self.enter()?;
-        let mut picture = Picture {
-            name: None,
-            descr: None,
-            blip: None,
-            extent: None,
-            src_rect: None,
-            xfrm: None,
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
-                    if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "nvPicPr" {
-                        let (name, descr) = self.parse_nv_pic_pr()?;
-                        picture.name = name;
-                        picture.descr = descr;
-                    } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
-                        let (blip, src_rect) = self.parse_blip_fill()?;
-                        picture.blip = blip;
-                        picture.src_rect = src_rect;
-                    } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "spPr" {
-                        let (extent, xfrm) = self.parse_sp_pr()?;
-                        picture.extent = extent;
-                        picture.xfrm = xfrm;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut picture = Picture {
+                name: None,
+                descr: None,
+                blip: None,
+                extent: None,
+                src_rect: None,
+                xfrm: None,
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "nvPicPr" {
+                            let (name, descr) = parser.parse_nv_pic_pr()?;
+                            picture.name = name;
+                            picture.descr = descr;
+                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
+                            let (blip, src_rect) = parser.parse_blip_fill()?;
+                            picture.blip = blip;
+                            picture.src_rect = src_rect;
+                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "spPr" {
+                            let (extent, xfrm) = parser.parse_sp_pr()?;
+                            picture.extent = extent;
+                            picture.xfrm = xfrm;
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of picture")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of picture")),
             }
-        }
-        self.leave();
-        Ok(picture)
+            Ok(picture)
+        })
     }
 
     /// Parses `pic:nvPicPr`.
     fn parse_nv_pic_pr(
         &mut self,
     ) -> Result<(Option<std::sync::Arc<str>>, Option<std::sync::Arc<str>>)> {
-        self.enter()?;
-        let mut name = None;
-        let mut descr = None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement {
-                    name: element,
-                    attrs,
-                } => {
-                    if is_ns(&element, PICTURE_STRICT_NS) && element.local() == "cNvPr" {
-                        name = plain_attr(&attrs, "name").map(|value| self.intern(value));
-                        descr = plain_attr(&attrs, "descr").map(|value| self.intern(value));
+        self.nested(|parser| {
+            let mut name = None;
+            let mut descr = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement {
+                        name: element,
+                        attrs,
+                    } => {
+                        if is_ns(&element, PICTURE_STRICT_NS) && element.local() == "cNvPr" {
+                            name = plain_attr(&attrs, "name").map(|value| parser.intern(value));
+                            descr = plain_attr(&attrs, "descr").map(|value| parser.intern(value));
+                        }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of nvPicPr")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of nvPicPr")),
             }
-        }
-        self.leave();
-        Ok((name, descr))
+            Ok((name, descr))
+        })
     }
 
     /// Parses `pic:blipFill`, resolving the image reference and crop.
     fn parse_blip_fill(&mut self) -> Result<(Option<BlipRef>, Option<SrcRect>)> {
-        self.enter()?;
-        let mut blip = None;
-        let mut src_rect = None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "blip" {
-                        let embed = attr_in_ns(&attrs, RELS_STRICT_NS, "embed").map(RelId::new);
-                        let link = attr_in_ns(&attrs, RELS_STRICT_NS, "link").map(RelId::new);
-                        let resolved = embed
-                            .as_ref()
-                            .and_then(|id| self.resolve_relationship_target(id.as_str()));
-                        if let Some(part) = &resolved {
-                            let content_type = self.content_type(part);
-                            let kind = content_type.as_deref().map_or_else(
-                                || {
-                                    let extension =
-                                        part.as_str().rsplit_once('.').map_or("", |(_, ext)| ext);
-                                    MediaKind::from_extension(extension)
-                                },
-                                MediaKind::from_content_type,
-                            );
-                            self.media.insert(MediaItem {
-                                part: part.clone(),
-                                content_type,
-                                kind,
+        self.nested(|parser| {
+            let mut blip = None;
+            let mut src_rect = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "blip" {
+                            let embed = attr_in_ns(&attrs, RELS_STRICT_NS, "embed").map(RelId::new);
+                            let link = attr_in_ns(&attrs, RELS_STRICT_NS, "link").map(RelId::new);
+                            let resolved = embed
+                                .as_ref()
+                                .and_then(|id| parser.resolve_relationship_target(id.as_str()));
+                            if let Some(part) = &resolved {
+                                let content_type = parser.content_type(part);
+                                let kind = content_type.as_deref().map_or_else(
+                                    || {
+                                        let extension = part
+                                            .as_str()
+                                            .rsplit_once('.')
+                                            .map_or("", |(_, ext)| ext);
+                                        MediaKind::from_extension(extension)
+                                    },
+                                    MediaKind::from_content_type,
+                                );
+                                parser.media.insert(MediaItem {
+                                    part: part.clone(),
+                                    content_type,
+                                    kind,
+                                });
+                            }
+                            blip = Some(BlipRef {
+                                embed,
+                                link,
+                                resolved,
+                                location: parser.location(),
                             });
+                            parser.skip_element()?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "srcRect" {
+                            src_rect = Some(parse_src_rect(&attrs));
+                            parser.skip_element()?;
+                        } else {
+                            parser.skip_element()?;
                         }
-                        blip = Some(BlipRef {
-                            embed,
-                            link,
-                            resolved,
-                            location: self.location(),
-                        });
-                        self.skip_element()?;
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "srcRect" {
-                        src_rect = Some(parse_src_rect(&attrs));
-                        self.skip_element()?;
-                    } else {
-                        self.skip_element()?;
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of blipFill")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of blipFill")),
             }
-        }
-        self.leave();
-        Ok((blip, src_rect))
+            Ok((blip, src_rect))
+        })
     }
 
     /// Parses `pic:spPr`, extracting the extent and transform.
     fn parse_sp_pr(&mut self) -> Result<(Option<Extent>, Option<Xfrm>)> {
-        self.enter()?;
-        let mut extent = None;
-        let mut xfrm = None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
-                        extent = Some(parse_extent(&attrs));
-                        self.skip_element()?;
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
-                        let parts = self.parse_xfrm_parts(&attrs)?;
-                        if parts.extent.is_some() {
-                            extent = parts.extent;
+        self.nested(|parser| {
+            let mut extent = None;
+            let mut xfrm = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
+                            extent = Some(parse_extent(&attrs));
+                            parser.skip_element()?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
+                            let parts = parser.parse_xfrm_parts(&attrs)?;
+                            if parts.extent.is_some() {
+                                extent = parts.extent;
+                            }
+                            if parts.offset.is_some()
+                                || parts.rot.is_some()
+                                || parts.flip_h
+                                || parts.flip_v
+                            {
+                                xfrm = Some(Xfrm {
+                                    offset: parts.offset,
+                                    rot: parts.rot,
+                                    flip_h: parts.flip_h,
+                                    flip_v: parts.flip_v,
+                                });
+                            }
+                        } else {
+                            parser.skip_element()?;
                         }
-                        if parts.offset.is_some()
-                            || parts.rot.is_some()
-                            || parts.flip_h
-                            || parts.flip_v
-                        {
-                            xfrm = Some(Xfrm {
-                                offset: parts.offset,
-                                rot: parts.rot,
-                                flip_h: parts.flip_h,
-                                flip_v: parts.flip_v,
-                            });
-                        }
-                    } else {
-                        self.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of shape properties"))
                     }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of shape properties")),
             }
-        }
-        self.leave();
-        Ok((extent, xfrm))
+            Ok((extent, xfrm))
+        })
     }
 
     /// Parses a `wps:wsp` shape.
     fn parse_shape(&mut self) -> Result<Shape> {
         let location = self.location();
-        self.enter()?;
-        let mut shape = Shape {
-            name: None,
-            descr: None,
-            geometry: ShapeGeometry::None,
-            xfrm: None,
-            offset: None,
-            extent: None,
-            fill: None,
-            stroke: None,
-            text: None,
-            style: None,
-            location,
-        };
-        let mut body = None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_shape_ns(&name) {
-                        match name.local() {
-                            "cNvPr" => {
-                                shape.name = plain_attr(&attrs, "name").map(|v| self.intern(v));
-                                shape.descr = plain_attr(&attrs, "descr").map(|v| self.intern(v));
-                                self.skip_element()?;
+        self.nested(|parser| {
+            let mut shape = Shape {
+                name: None,
+                descr: None,
+                geometry: ShapeGeometry::None,
+                xfrm: None,
+                offset: None,
+                extent: None,
+                fill: None,
+                stroke: None,
+                text: None,
+                style: None,
+                location,
+            };
+            let mut body = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_shape_ns(&name) {
+                            match name.local() {
+                                "cNvPr" => {
+                                    shape.name =
+                                        plain_attr(&attrs, "name").map(|v| parser.intern(v));
+                                    shape.descr =
+                                        plain_attr(&attrs, "descr").map(|v| parser.intern(v));
+                                    parser.skip_element()?;
+                                }
+                                "spPr" => parser.parse_shape_sp_pr(&mut shape)?,
+                                "style" => shape.style = Some(parser.parse_shape_style()?),
+                                "txbx" => shape.text = Some(parser.parse_text_box()?),
+                                "bodyPr" => body = Some(parser.parse_text_box_body(&attrs)?),
+                                _ => parser.skip_element()?,
                             }
-                            "spPr" => self.parse_shape_sp_pr(&mut shape)?,
-                            "style" => shape.style = Some(self.parse_shape_style()?),
-                            "txbx" => shape.text = Some(self.parse_text_box()?),
-                            "bodyPr" => body = Some(self.parse_text_box_body(&attrs)?),
-                            _ => self.skip_element()?,
+                        } else {
+                            parser.skip_element()?;
                         }
-                    } else {
-                        self.skip_element()?;
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of shape")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of shape")),
             }
-        }
-        self.leave();
-        if let Some(body) = body {
-            if let Some(text) = &mut shape.text {
-                text.body = Some(body);
-            } else {
-                shape.text = Some(TextBox {
-                    body: Some(body),
-                    blocks: Vec::new(),
-                    location: shape.location.clone(),
-                });
+            if let Some(body) = body {
+                if let Some(text) = &mut shape.text {
+                    text.body = Some(body);
+                } else {
+                    shape.text = Some(TextBox {
+                        body: Some(body),
+                        blocks: Vec::new(),
+                        location: shape.location.clone(),
+                    });
+                }
             }
-        }
-        self.record(
-            "wps:wsp",
-            SupportStatus::Supported,
-            None,
-            Some(shape.location.clone()),
-        );
-        Ok(shape)
+            parser.record(
+                "wps:wsp",
+                SupportStatus::Supported,
+                None,
+                Some(shape.location.clone()),
+            );
+            Ok(shape)
+        })
     }
 
     /// Parses `wps:spPr` into `shape`.
     fn parse_shape_sp_pr(&mut self, shape: &mut Shape) -> Result<()> {
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) {
-                        match name.local() {
-                            "xfrm" => {
-                                let parts = self.parse_xfrm_parts(&attrs)?;
-                                shape.offset = parts.offset;
-                                shape.extent = parts.extent;
-                                if parts.rot.is_some() || parts.flip_h || parts.flip_v {
-                                    shape.xfrm = Some(Xfrm {
-                                        offset: None,
-                                        rot: parts.rot,
-                                        flip_h: parts.flip_h,
-                                        flip_v: parts.flip_v,
-                                    });
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) {
+                            match name.local() {
+                                "xfrm" => {
+                                    let parts = parser.parse_xfrm_parts(&attrs)?;
+                                    shape.offset = parts.offset;
+                                    shape.extent = parts.extent;
+                                    if parts.rot.is_some() || parts.flip_h || parts.flip_v {
+                                        shape.xfrm = Some(Xfrm {
+                                            offset: None,
+                                            rot: parts.rot,
+                                            flip_h: parts.flip_h,
+                                            flip_v: parts.flip_v,
+                                        });
+                                    }
                                 }
-                            }
-                            "prstGeom" => {
-                                let preset = plain_attr(&attrs, "prst")
-                                    .map_or_else(|| "rect".to_owned(), str::to_owned);
-                                shape.geometry = ShapeGeometry::Preset(self.intern(&preset));
-                                self.skip_element()?;
-                            }
-                            "custGeom" => {
-                                shape.geometry = ShapeGeometry::Custom(self.parse_cust_geom()?);
-                            }
-                            "solidFill" | "gradFill" | "pattFill" | "noFill" | "blipFill"
-                            | "grpFill" => {
-                                if shape.fill.is_none() {
-                                    shape.fill = self.parse_shape_fill(&name, &attrs)?;
-                                } else {
-                                    self.skip_element()?;
+                                "prstGeom" => {
+                                    let preset = plain_attr(&attrs, "prst")
+                                        .map_or_else(|| "rect".to_owned(), str::to_owned);
+                                    shape.geometry = ShapeGeometry::Preset(parser.intern(&preset));
+                                    parser.skip_element()?;
                                 }
+                                "custGeom" => {
+                                    shape.geometry =
+                                        ShapeGeometry::Custom(parser.parse_cust_geom()?);
+                                }
+                                "solidFill" | "gradFill" | "pattFill" | "noFill" | "blipFill"
+                                | "grpFill" => {
+                                    if shape.fill.is_none() {
+                                        shape.fill = parser.parse_shape_fill(&name, &attrs)?;
+                                    } else {
+                                        parser.skip_element()?;
+                                    }
+                                }
+                                "ln" => shape.stroke = Some(parser.parse_shape_stroke(&attrs)?),
+                                _ => parser.skip_element()?,
                             }
-                            "ln" => shape.stroke = Some(self.parse_shape_stroke(&attrs)?),
-                            _ => self.skip_element()?,
+                        } else {
+                            parser.skip_element()?;
                         }
-                    } else {
-                        self.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of shape properties"))
                     }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of shape properties")),
             }
-        }
-        self.leave();
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Parses `a:xfrm` attributes and children.
@@ -729,137 +752,139 @@ impl PartParser<'_> {
             flip_v: bool_attr(attrs, "flipV"),
             ..XfrmParts::default()
         };
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "off" {
-                        parts.offset = Some(parse_offset(&attrs));
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
-                        parts.extent = Some(parse_extent(&attrs));
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "chOff" {
-                        parts.child_offset = Some(parse_offset(&attrs));
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "chExt" {
-                        parts.child_extent = Some(parse_extent(&attrs));
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "off" {
+                            parts.offset = Some(parse_offset(&attrs));
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
+                            parts.extent = Some(parse_extent(&attrs));
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "chOff" {
+                            parts.child_offset = Some(parse_offset(&attrs));
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "chExt" {
+                            parts.child_extent = Some(parse_extent(&attrs));
+                        }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of transform")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of transform")),
             }
-        }
-        self.leave();
-        Ok(parts)
+            Ok(parts)
+        })
     }
 
     /// Parses `a:custGeom` (a subset: moveTo/lnTo/cubicBezTo/close).
     fn parse_cust_geom(&mut self) -> Result<CustomGeometry> {
-        self.enter()?;
-        let mut geometry = CustomGeometry::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pathLst" {
-                        self.parse_path_list(&mut geometry)?;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut geometry = CustomGeometry::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pathLst" {
+                            parser.parse_path_list(&mut geometry)?;
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of custom geometry"))
                     }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of custom geometry")),
             }
-        }
-        self.leave();
-        self.record(
-            "a:custGeom",
-            SupportStatus::Partial,
-            Some("custom geometry supports moveTo/lnTo/cubicBezTo/close only".to_owned()),
-            Some(self.location()),
-        );
-        Ok(geometry)
+            parser.record(
+                "a:custGeom",
+                SupportStatus::Partial,
+                Some("custom geometry supports moveTo/lnTo/cubicBezTo/close only".to_owned()),
+                Some(parser.location()),
+            );
+            Ok(geometry)
+        })
     }
 
     /// Parses `a:pathLst`.
     fn parse_path_list(&mut self, geometry: &mut CustomGeometry) -> Result<()> {
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "path" {
-                        geometry.width = plain_attr(&attrs, "w")
-                            .and_then(|v| v.trim().parse().ok())
-                            .unwrap_or(0);
-                        geometry.height = plain_attr(&attrs, "h")
-                            .and_then(|v| v.trim().parse().ok())
-                            .unwrap_or(0);
-                        self.parse_path(geometry)?;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "path" {
+                            geometry.width = plain_attr(&attrs, "w")
+                                .and_then(|v| v.trim().parse().ok())
+                                .unwrap_or(0);
+                            geometry.height = plain_attr(&attrs, "h")
+                                .and_then(|v| v.trim().parse().ok())
+                                .unwrap_or(0);
+                            parser.parse_path(geometry)?;
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of path list")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of path list")),
             }
-        }
-        self.leave();
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Parses one `a:path`.
     fn parse_path(&mut self, geometry: &mut CustomGeometry) -> Result<()> {
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
-                    if !is_ns(&name, DRAWINGML_STRICT_NS) {
-                        self.skip_element()?;
-                        continue;
-                    }
-                    match name.local() {
-                        "moveTo" => {
-                            let point = self.parse_first_point()?;
-                            geometry.commands.push(PathCommand::MoveTo {
-                                x: point.0,
-                                y: point.1,
-                            });
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if !is_ns(&name, DRAWINGML_STRICT_NS) {
+                            parser.skip_element()?;
+                            continue;
                         }
-                        "lnTo" => {
-                            let point = self.parse_first_point()?;
-                            geometry.commands.push(PathCommand::LineTo {
-                                x: point.0,
-                                y: point.1,
-                            });
-                        }
-                        "cubicBezTo" => {
-                            let points = self.parse_points()?;
-                            if points.len() >= 3 {
-                                geometry.commands.push(PathCommand::CubicBezTo {
-                                    x1: points[0].0,
-                                    y1: points[0].1,
-                                    x2: points[1].0,
-                                    y2: points[1].1,
-                                    x: points[2].0,
-                                    y: points[2].1,
+                        match name.local() {
+                            "moveTo" => {
+                                let point = parser.parse_first_point()?;
+                                geometry.commands.push(PathCommand::MoveTo {
+                                    x: point.0,
+                                    y: point.1,
                                 });
                             }
+                            "lnTo" => {
+                                let point = parser.parse_first_point()?;
+                                geometry.commands.push(PathCommand::LineTo {
+                                    x: point.0,
+                                    y: point.1,
+                                });
+                            }
+                            "cubicBezTo" => {
+                                let points = parser.parse_points()?;
+                                if points.len() >= 3 {
+                                    geometry.commands.push(PathCommand::CubicBezTo {
+                                        x1: points[0].0,
+                                        y1: points[0].1,
+                                        x2: points[1].0,
+                                        y2: points[1].1,
+                                        x: points[2].0,
+                                        y: points[2].1,
+                                    });
+                                }
+                            }
+                            "close" => {
+                                geometry.commands.push(PathCommand::Close);
+                                parser.skip_element()?;
+                            }
+                            _ => parser.skip_element()?,
                         }
-                        "close" => {
-                            geometry.commands.push(PathCommand::Close);
-                            self.skip_element()?;
-                        }
-                        _ => self.skip_element()?,
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of path")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of path")),
             }
-        }
-        self.leave();
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Parses the first `a:pt` of the current element.
@@ -870,27 +895,27 @@ impl PartParser<'_> {
 
     /// Parses all `a:pt` children of the current element.
     fn parse_points(&mut self) -> Result<Vec<(i64, i64)>> {
-        self.enter()?;
-        let mut points = Vec::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pt" {
-                        let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
-                        let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
-                        if let (Some(x), Some(y)) = (x, y) {
-                            points.push((x, y));
+        self.nested(|parser| {
+            let mut points = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pt" {
+                            let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
+                            let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
+                            if let (Some(x), Some(y)) = (x, y) {
+                                points.push((x, y));
+                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of point list")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of point list")),
             }
-        }
-        self.leave();
-        Ok(points)
+            Ok(points)
+        })
     }
 
     /// Parses a fill element.
@@ -909,31 +934,35 @@ impl PartParser<'_> {
             "gradFill" => Ok(Some(self.parse_grad_fill()?)),
             "pattFill" => {
                 let preset = plain_attr(attrs, "prst").map(|v| self.intern(v));
-                let mut foreground = None;
-                let mut background = None;
-                self.enter()?;
-                loop {
-                    match self.next_event()? {
-                        XmlEvent::StartElement { name, attrs: _ } => {
-                            if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "fgClr" {
-                                foreground = self.parse_child_color()?;
-                            } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "bgClr" {
-                                background = self.parse_child_color()?;
-                            } else {
-                                self.skip_element()?;
+                self.nested(|parser| {
+                    let mut foreground = None;
+                    let mut background = None;
+                    loop {
+                        match parser.next_event()? {
+                            XmlEvent::StartElement { name, attrs: _ } => {
+                                if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "fgClr" {
+                                    foreground = parser.parse_child_color()?;
+                                } else if is_ns(&name, DRAWINGML_STRICT_NS)
+                                    && name.local() == "bgClr"
+                                {
+                                    background = parser.parse_child_color()?;
+                                } else {
+                                    parser.skip_element()?;
+                                }
+                            }
+                            XmlEvent::EndElement { .. } => break,
+                            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                            XmlEvent::Eof => {
+                                return Err(parser.invalid("unexpected end of pattern fill"));
                             }
                         }
-                        XmlEvent::EndElement { .. } => break,
-                        XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                        XmlEvent::Eof => return Err(self.invalid("unexpected end of pattern fill")),
                     }
-                }
-                self.leave();
-                Ok(Some(ShapeFill::Pattern {
-                    preset,
-                    foreground,
-                    background,
-                }))
+                    Ok(Some(ShapeFill::Pattern {
+                        preset,
+                        foreground,
+                        background,
+                    }))
+                })
             }
             _ => {
                 self.skip_element()?;
@@ -950,46 +979,46 @@ impl PartParser<'_> {
 
     /// Parses the first colour child of `a:solidFill`-like containers.
     fn parse_fill_color(&mut self) -> Result<Option<ShapeColor>> {
-        self.enter()?;
-        let mut color = None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if color.is_none() && is_ns(&name, DRAWINGML_STRICT_NS) {
-                        color = self.parse_shape_color(&name, &attrs)?;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut color = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if color.is_none() && is_ns(&name, DRAWINGML_STRICT_NS) {
+                            color = parser.parse_shape_color(&name, &attrs)?;
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of fill")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of fill")),
             }
-        }
-        self.leave();
-        Ok(color)
+            Ok(color)
+        })
     }
 
     /// Parses one colour element child of a fill wrapper.
     fn parse_child_color(&mut self) -> Result<Option<ShapeColor>> {
-        self.enter()?;
-        let mut color = None;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if color.is_none() && is_ns(&name, DRAWINGML_STRICT_NS) {
-                        color = self.parse_shape_color(&name, &attrs)?;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut color = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if color.is_none() && is_ns(&name, DRAWINGML_STRICT_NS) {
+                            color = parser.parse_shape_color(&name, &attrs)?;
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of colour")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of colour")),
             }
-        }
-        self.leave();
-        Ok(color)
+            Ok(color)
+        })
     }
 
     /// Parses an `a:srgbClr`/`a:schemeClr` colour element.
@@ -1005,35 +1034,37 @@ impl PartParser<'_> {
             }
             "schemeClr" => {
                 let slot = plain_attr(attrs, "val").map(str::to_owned);
-                let mut tint = None;
-                let mut shade = None;
-                self.enter()?;
-                loop {
-                    match self.next_event()? {
-                        XmlEvent::StartElement { name, attrs } => {
-                            if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "tint" {
-                                tint = plain_attr(&attrs, "val").map(|v| self.intern(v));
-                            } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "shade" {
-                                shade = plain_attr(&attrs, "val").map(|v| self.intern(v));
+                self.nested(|parser| {
+                    let mut tint = None;
+                    let mut shade = None;
+                    loop {
+                        match parser.next_event()? {
+                            XmlEvent::StartElement { name, attrs } => {
+                                if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "tint" {
+                                    tint = plain_attr(&attrs, "val").map(|v| parser.intern(v));
+                                } else if is_ns(&name, DRAWINGML_STRICT_NS)
+                                    && name.local() == "shade"
+                                {
+                                    shade = plain_attr(&attrs, "val").map(|v| parser.intern(v));
+                                }
+                                parser.skip_element()?;
                             }
-                            self.skip_element()?;
-                        }
-                        XmlEvent::EndElement { .. } => break,
-                        XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                        XmlEvent::Eof => {
-                            return Err(self.invalid("unexpected end of scheme colour"));
+                            XmlEvent::EndElement { .. } => break,
+                            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                            XmlEvent::Eof => {
+                                return Err(parser.invalid("unexpected end of scheme colour"));
+                            }
                         }
                     }
-                }
-                self.leave();
-                Ok(slot.map(|slot| ShapeColor {
-                    value: None,
-                    theme: Some(ThemeColorRef {
-                        color: ThemeColor::new(slot),
-                        tint,
-                        shade,
-                    }),
-                }))
+                    Ok(slot.map(|slot| ShapeColor {
+                        value: None,
+                        theme: Some(ThemeColorRef {
+                            color: ThemeColor::new(slot),
+                            tint,
+                            shade,
+                        }),
+                    }))
+                })
             }
             "prstClr" | "sysClr" | "scrgbClr" | "hslClr" => {
                 self.skip_element()?;
@@ -1056,49 +1087,49 @@ impl PartParser<'_> {
     fn parse_grad_fill(&mut self) -> Result<ShapeFill> {
         let mut stops = Vec::new();
         let mut angle = None;
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "gsLst" {
-                        self.parse_gradient_stops(&mut stops)?;
-                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "lin" {
-                        angle = parse_i32_attr(&attrs, "ang");
-                        self.skip_element()?;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "gsLst" {
+                            parser.parse_gradient_stops(&mut stops)?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "lin" {
+                            angle = parse_i32_attr(&attrs, "ang");
+                            parser.skip_element()?;
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of gradient fill")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of gradient fill")),
             }
-        }
-        self.leave();
-        Ok(ShapeFill::Gradient { stops, angle })
+            Ok(ShapeFill::Gradient { stops, angle })
+        })
     }
 
     /// Parses `a:gsLst`.
     fn parse_gradient_stops(&mut self, stops: &mut Vec<GradientStop>) -> Result<()> {
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "gs" {
-                        let position = parse_i32_attr(&attrs, "pos").unwrap_or(0);
-                        let color = self.parse_fill_color()?.unwrap_or_default();
-                        stops.push(GradientStop { position, color });
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "gs" {
+                            let position = parse_i32_attr(&attrs, "pos").unwrap_or(0);
+                            let color = parser.parse_fill_color()?.unwrap_or_default();
+                            stops.push(GradientStop { position, color });
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of gradient stops")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of gradient stops")),
             }
-        }
-        self.leave();
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Parses `a:ln`.
@@ -1109,118 +1140,120 @@ impl PartParser<'_> {
                 .map(Emu),
             ..ShapeStroke::default()
         };
-        self.enter()?;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) {
-                        match name.local() {
-                            "noFill" => {
-                                stroke.none = true;
-                                self.skip_element()?;
-                            }
-                            "solidFill" | "gradFill" | "pattFill" => {
-                                if let Some(fill) = self.parse_shape_fill(&name, &attrs)? {
-                                    stroke.color = fill_color(&fill);
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) {
+                            match name.local() {
+                                "noFill" => {
+                                    stroke.none = true;
+                                    parser.skip_element()?;
                                 }
+                                "solidFill" | "gradFill" | "pattFill" => {
+                                    if let Some(fill) = parser.parse_shape_fill(&name, &attrs)? {
+                                        stroke.color = fill_color(&fill);
+                                    }
+                                }
+                                "prstDash" => {
+                                    stroke.dash =
+                                        plain_attr(&attrs, "val").map(|v| parser.intern(v));
+                                    parser.skip_element()?;
+                                }
+                                "headEnd" => {
+                                    stroke.head_end =
+                                        plain_attr(&attrs, "type").map(|v| parser.intern(v));
+                                    parser.skip_element()?;
+                                }
+                                "tailEnd" => {
+                                    stroke.tail_end =
+                                        plain_attr(&attrs, "type").map(|v| parser.intern(v));
+                                    parser.skip_element()?;
+                                }
+                                _ => parser.skip_element()?,
                             }
-                            "prstDash" => {
-                                stroke.dash = plain_attr(&attrs, "val").map(|v| self.intern(v));
-                                self.skip_element()?;
-                            }
-                            "headEnd" => {
-                                stroke.head_end =
-                                    plain_attr(&attrs, "type").map(|v| self.intern(v));
-                                self.skip_element()?;
-                            }
-                            "tailEnd" => {
-                                stroke.tail_end =
-                                    plain_attr(&attrs, "type").map(|v| self.intern(v));
-                                self.skip_element()?;
-                            }
-                            _ => self.skip_element()?,
+                        } else {
+                            parser.skip_element()?;
                         }
-                    } else {
-                        self.skip_element()?;
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of outline")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of outline")),
             }
-        }
-        self.leave();
-        Ok(stroke)
+            Ok(stroke)
+        })
     }
 
     /// Parses `wps:style`.
     fn parse_shape_style(&mut self) -> Result<ShapeStyle> {
-        self.enter()?;
-        let mut style = ShapeStyle::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) {
-                        let index = parse_i32_attr(&attrs, "idx");
-                        match name.local() {
-                            "lnRef" => style.line_ref = index,
-                            "fillRef" => style.fill_ref = index,
-                            "effectRef" => style.effect_ref = index,
-                            "fontRef" => style.font_ref = index,
-                            _ => {}
+        self.nested(|parser| {
+            let mut style = ShapeStyle::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) {
+                            let index = parse_i32_attr(&attrs, "idx");
+                            match name.local() {
+                                "lnRef" => style.line_ref = index,
+                                "fillRef" => style.fill_ref = index,
+                                "effectRef" => style.effect_ref = index,
+                                "fontRef" => style.font_ref = index,
+                                _ => {}
+                            }
                         }
+                        parser.skip_element()?;
                     }
-                    self.skip_element()?;
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of shape style")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of shape style")),
             }
-        }
-        self.leave();
-        Ok(style)
+            Ok(style)
+        })
     }
 
     /// Parses `wps:txbx`.
     fn parse_text_box(&mut self) -> Result<TextBox> {
         let location = self.location();
-        self.enter()?;
-        let mut text = TextBox {
-            body: None,
-            blocks: Vec::new(),
-            location,
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, .. } => {
-                    if name.local() == "txbxContent"
-                        && (is_wml_name(&name) || is_ns(&name, MS_WORD_2006_WML_NS))
-                    {
-                        // One level of text-box nesting, against its own budget. Not one
-                        // block level: `wps:txbx` is the DrawingML wrapper and
-                        // `w:txbxContent` the block container inside it, and a
-                        // text box is ten frames of parser state where a table is
-                        // one - so sharing the number would make twelve tables
-                        // unreachable.
-                        let (blocks, _) = self.nested_text_box(PartParser::parse_block_children)?;
-                        text.blocks = blocks;
-                        self.record(
-                            "w:txbxContent",
-                            SupportStatus::Supported,
-                            None,
-                            Some(self.location()),
-                        );
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut text = TextBox {
+                body: None,
+                blocks: Vec::new(),
+                location,
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if name.local() == "txbxContent"
+                            && (is_wml_name(&name) || is_ns(&name, MS_WORD_2006_WML_NS))
+                        {
+                            // One level of text-box nesting, against its own budget. Not one
+                            // block level: `wps:txbx` is the DrawingML wrapper and
+                            // `w:txbxContent` the block container inside it, and a
+                            // text box is ten frames of parser state where a table is
+                            // one - so sharing the number would make twelve tables
+                            // unreachable.
+                            let (blocks, _) =
+                                parser.nested_text_box(PartParser::parse_block_children)?;
+                            text.blocks = blocks;
+                            parser.record(
+                                "w:txbxContent",
+                                SupportStatus::Supported,
+                                None,
+                                Some(parser.location()),
+                            );
+                        } else {
+                            parser.skip_element()?;
+                        }
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of text box")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of text box")),
             }
-        }
-        self.leave();
-        Ok(text)
+            Ok(text)
+        })
     }
 
     /// Parses `wps:bodyPr`.
@@ -1246,96 +1279,104 @@ impl PartParser<'_> {
     /// Parses a `wpg:wgp` group.
     fn parse_group(&mut self) -> Result<GroupShape> {
         let location = self.location();
-        self.enter()?;
-        let mut group = GroupShape {
-            name: None,
-            descr: None,
-            xfrm: None,
-            children: Vec::new(),
-            location,
-        };
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_group_ns(&name) {
-                        match name.local() {
-                            "cNvPr" => {
-                                group.name = plain_attr(&attrs, "name").map(|v| self.intern(v));
-                                group.descr = plain_attr(&attrs, "descr").map(|v| self.intern(v));
-                                self.skip_element()?;
+        self.nested(|parser| {
+            let mut group = GroupShape {
+                name: None,
+                descr: None,
+                xfrm: None,
+                children: Vec::new(),
+                location,
+            };
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_group_ns(&name) {
+                            match name.local() {
+                                "cNvPr" => {
+                                    group.name =
+                                        plain_attr(&attrs, "name").map(|v| parser.intern(v));
+                                    group.descr =
+                                        plain_attr(&attrs, "descr").map(|v| parser.intern(v));
+                                    parser.skip_element()?;
+                                }
+                                "grpSpPr" => {
+                                    group.xfrm = Some(parser.parse_group_transform(&attrs)?);
+                                }
+                                _ => parser.skip_element()?,
                             }
-                            "grpSpPr" => group.xfrm = Some(self.parse_group_transform(&attrs)?),
-                            _ => self.skip_element()?,
+                        } else if name.local() == "wsp" && is_shape_ns(&name) {
+                            group.children.push(Graphic::Shape(parser.parse_shape()?));
+                        } else if name.local() == "wgp" && is_group_ns(&name) {
+                            group.children.push(Graphic::Group(parser.parse_group()?));
+                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
+                            group
+                                .children
+                                .push(Graphic::Picture(parser.parse_picture()?));
+                        } else {
+                            parser.skip_element()?;
                         }
-                    } else if name.local() == "wsp" && is_shape_ns(&name) {
-                        group.children.push(Graphic::Shape(self.parse_shape()?));
-                    } else if name.local() == "wgp" && is_group_ns(&name) {
-                        group.children.push(Graphic::Group(self.parse_group()?));
-                    } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
-                        group.children.push(Graphic::Picture(self.parse_picture()?));
-                    } else {
-                        self.skip_element()?;
                     }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of group")),
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of group")),
             }
-        }
-        self.leave();
-        self.record(
-            "wpg:wgp",
-            SupportStatus::Supported,
-            None,
-            Some(group.location.clone()),
-        );
-        Ok(group)
+            parser.record(
+                "wpg:wgp",
+                SupportStatus::Supported,
+                None,
+                Some(group.location.clone()),
+            );
+            Ok(group)
+        })
     }
 
     /// Parses `wpg:grpSpPr` (start consumed), reading its `a:xfrm` child.
     fn parse_group_transform(&mut self, _attrs: &[Attr]) -> Result<GroupTransform> {
-        self.enter()?;
-        let mut parts = XfrmParts::default();
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
-                        parts = self.parse_xfrm_parts(&attrs)?;
-                    } else {
-                        self.skip_element()?;
+        self.nested(|parser| {
+            let mut parts = XfrmParts::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
+                            parts = parser.parse_xfrm_parts(&attrs)?;
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of group transform"))
                     }
                 }
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of group transform")),
             }
-        }
-        self.leave();
-        Ok(GroupTransform {
-            offset: parts.offset,
-            extent: parts.extent,
-            child_offset: parts.child_offset,
-            child_extent: parts.child_extent,
-            rot: parts.rot,
-            flip_h: parts.flip_h,
-            flip_v: parts.flip_v,
+            Ok(GroupTransform {
+                offset: parts.offset,
+                extent: parts.extent,
+                child_offset: parts.child_offset,
+                child_extent: parts.child_extent,
+                rot: parts.rot,
+                flip_h: parts.flip_h,
+                flip_v: parts.flip_v,
+            })
         })
     }
 
     /// Reads the text content of the current element (start consumed).
     fn read_element_text(&mut self) -> Result<String> {
-        self.enter()?;
-        let mut out = String::new();
-        loop {
-            match self.next_event()? {
-                XmlEvent::Text(text) | XmlEvent::CData(text) => out.push_str(text.as_ref()),
-                XmlEvent::StartElement { .. } => self.skip_element()?,
-                XmlEvent::EndElement { .. } => break,
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of text content")),
+        self.nested(|parser| {
+            let mut out = String::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::Text(text) | XmlEvent::CData(text) => out.push_str(text.as_ref()),
+                    XmlEvent::StartElement { .. } => parser.skip_element()?,
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of text content")),
+                }
             }
-        }
-        self.leave();
-        Ok(out)
+            Ok(out)
+        })
     }
 
     /// Parses `wp:docPr` attributes.
