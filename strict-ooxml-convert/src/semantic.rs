@@ -137,7 +137,15 @@ pub(crate) fn build(
         report.lines += lines.len();
         let body = body_size(&lines);
         let pitch = body_pitch(&lines);
-        let plan = tables::plan(page, index + 1, &lines, &options.tables, report);
+        let plan = tables::plan(
+            page,
+            index + 1,
+            &lines,
+            &options.tables,
+            options.max_table_lines,
+            options.max_table_cells,
+            report,
+        );
 
         // A table takes the place of the text inside it, and the page's own flow
         // runs around it: the paragraphs before it, the table, the paragraphs

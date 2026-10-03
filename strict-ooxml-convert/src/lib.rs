@@ -157,6 +157,17 @@ pub struct PdfOptions {
     pub lists: ListRules,
     /// Pages to convert; `None` means all of them.
     pub pages: Option<(usize, usize)>,
+    /// Ruling lines on one page past which tables are not sought. Default: 4000.
+    ///
+    /// Past this ceiling the page's text stays as paragraphs and the report
+    /// records `convert.table.budget` (AUD-15). The match that builds figures
+    /// is O(n log n), but a page of twenty thousand rules is still not a table.
+    pub max_table_lines: usize,
+    /// Cells a single inferred grid may hold. Default: 10 000.
+    ///
+    /// A grid past this is left as paragraphs with the same report id: the
+    /// text is kept, the table is not built.
+    pub max_table_cells: usize,
     /// Whether to embed the images the PDF carries.
     ///
     /// Off by default because an image is the largest thing a document can
@@ -250,6 +261,8 @@ impl Default for PdfOptions {
             tables: TableRules::default(),
             lists: ListRules::default(),
             pages: None,
+            max_table_lines: 4000,
+            max_table_cells: 10_000,
             embed_images: true,
             figure_classifier: None,
             #[cfg(feature = "raster")]

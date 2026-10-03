@@ -160,6 +160,8 @@ enum Rejected {
     NotEnoughText { filled: usize, total: usize },
     /// A rule is missing and the cell it would have merged into is not there.
     DanglingSpan,
+    /// The grid would have more cells than the page budget allows (AUD-15).
+    TooManyCells { cells: usize, limit: usize },
 }
 
 impl std::fmt::Display for Rejected {
@@ -178,6 +180,10 @@ impl std::fmt::Display for Rejected {
             ),
             Self::DanglingSpan => f.write_str(
                 "a rule is missing inside the grid and the cell it would have merged into is not there",
+            ),
+            Self::TooManyCells { cells, limit } => write!(
+                f,
+                "the grid would have {cells} cells, past the budget of {limit}"
             ),
         }
     }
@@ -304,11 +310,17 @@ impl Plan {
 ///
 /// Reporting happens here rather than in the caller, because a rejected grid is
 /// a fact about the page and the caller has no other place to put it.
+///
+/// `max_table_lines` / `max_table_cells` come from [`crate::PdfOptions`] (AUD-15):
+/// past either ceiling the page's text stays as paragraphs and the report
+/// records `convert.table.budget`.
 pub(crate) fn plan(
     page: &PdfPage,
     page_number: usize,
     lines: &[GlyphLine],
     config: &TableRules,
+    max_table_lines: usize,
+    max_table_cells: usize,
     report: &mut ConversionReport,
 ) -> Plan {
     let mut plan = Plan {
@@ -316,8 +328,20 @@ pub(crate) fn plan(
         tables: Vec::new(),
     };
     let found = rules_of(page, config);
+    if found.len() > max_table_lines {
+        report.record(
+            "convert.table.budget",
+            Severity::Unsupported,
+            format!(
+                "page {page_number}: {} ruling lines exceed max_table_lines ({max_table_lines}); \
+                 tables were not sought",
+                found.len()
+            ),
+        );
+        return plan;
+    }
     for component in components(&found, config.tolerance) {
-        let grid = grid_of(&found, &component, config);
+        let grid = grid_of(&found, &component, config, max_table_cells);
         let index = plan.tables.len();
         match grid.and_then(|grid| attach(&grid, lines, config, index, &mut plan.owner)) {
             Ok(table) => {
@@ -344,6 +368,14 @@ pub(crate) fn plan(
                 plan.tables.push(table);
             }
             Err(Rejected::NotAFigure) => {}
+            Err(Rejected::TooManyCells { cells, limit }) => report.record(
+                "convert.table.budget",
+                Severity::Unsupported,
+                format!(
+                    "page {page_number}: a grid of {cells} cells exceeds max_table_cells ({limit}); \
+                     its text was left as paragraphs"
+                ),
+            ),
             Err(reason) => report.record(
                 "table.detected",
                 Severity::Unsupported,
@@ -600,58 +632,38 @@ fn components(rules: &[Rule], tolerance: f64) -> Vec<Vec<usize>> {
 
 /// Unions the rules that cross rather than meet.
 ///
-/// A horizontal rule at `y` crosses a vertical rule at `x` when the point
-/// `(x, y)` is on both of them, so the test is two containment checks and no
-/// arithmetic on the coordinates against each other. Looking for the verticals a
-/// horizontal runs over means a range of buckets, not one, which is why the
-/// verticals are indexed by `x` on a coarser lattice than the point test uses.
+/// Verticals are sorted by `x`; each horizontal walks only the sliding window of
+/// verticals whose `x` falls in `[x0 − tolerance, x1 + tolerance]` (AUD-15).
+/// That is O(n log n + k) rather than a pairwise scan of every horizontal against
+/// every vertical.
 fn union_crossings(rules: &[Rule], parent: &mut [usize], tolerance: f64) {
-    let cell = tolerance.max(8.0);
-    let mut columns: BTreeMap<i64, Vec<usize>> = BTreeMap::new();
+    let mut verticals: Vec<usize> = rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| !rule.horizontal())
+        .map(|(index, _)| index)
+        .collect();
+    verticals.sort_by(|&left, &right| {
+        rules[left]
+            .x0
+            .partial_cmp(&rules[right].x0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     for (index, rule) in rules.iter().enumerate() {
-        if !rule.horizontal() {
-            columns
-                .entry((rule.x0 / cell).floor() as i64)
-                .or_default()
-                .push(index);
-        }
-    }
-    let mut budget = MAX_CROSSING_COMPARISONS;
-    'figures: for (index, rule) in rules.iter().enumerate() {
         if !rule.horizontal() {
             continue;
         }
-        let first = (rule.x0 / cell).floor() as i64;
-        let last = (rule.x1 / cell).floor() as i64;
-        for bucket in first..=last {
-            if budget == 0 {
-                break 'figures;
+        let lo = verticals.partition_point(|&other| rules[other].x0 < rule.x0 - tolerance);
+        for &other in &verticals[lo..] {
+            if rules[other].x0 > rule.x1 + tolerance {
+                break;
             }
-            budget -= 1;
-            let Some(near) = columns.get(&bucket) else {
-                continue;
-            };
-            for &other in near {
-                if budget == 0 {
-                    break 'figures;
-                }
-                budget -= 1;
-                if crosses(rule, &rules[other], tolerance) {
-                    union(parent, index, other);
-                }
+            if crosses(rule, &rules[other], tolerance) {
+                union(parent, index, other);
             }
         }
     }
 }
-
-/// How many bucket visits and rule pairs the crossing pass may afford.
-///
-/// Endpoint-only connectivity is enough for a table whose cells share their
-/// edges, which is what this project's renderer draws. Finding whole rules that
-/// cross in the middle is a range question over a page that may hold millions of
-/// operators, and a page that needs more comparisons than this is not a table:
-/// the budget is where the answer stops being worth computing.
-const MAX_CROSSING_COMPARISONS: usize = 2_000_000;
 
 /// Whether a horizontal and a vertical rule cross.
 ///
@@ -693,7 +705,12 @@ fn union(parent: &mut [usize], left: usize, right: usize) {
 }
 
 /// Turns one component of rules into a grid of boundaries.
-fn grid_of(rules: &[Rule], component: &[usize], config: &TableRules) -> Result<Grid, Rejected> {
+fn grid_of(
+    rules: &[Rule],
+    component: &[usize],
+    config: &TableRules,
+    max_table_cells: usize,
+) -> Result<Grid, Rejected> {
     let member: Vec<&Rule> = component.iter().map(|index| &rules[*index]).collect();
     let verticals: Vec<&Rule> = member.iter().copied().filter(|r| !r.horizontal()).collect();
     let horizontals: Vec<&Rule> = member.iter().copied().filter(|r| r.horizontal()).collect();
@@ -720,6 +737,15 @@ fn grid_of(rules: &[Rule], component: &[usize], config: &TableRules) -> Result<G
         return Err(Rejected::TooFewRules {
             verticals: verticals.len(),
             horizontals: horizontals.len(),
+        });
+    }
+    let columns = xs.len() - 1;
+    let rows = ys.len() - 1;
+    let cells = columns.saturating_mul(rows);
+    if cells > max_table_cells {
+        return Err(Rejected::TooManyCells {
+            cells,
+            limit: max_table_cells,
         });
     }
     let vertical: Vec<Vec<(f64, f64)>> = xs
@@ -1249,7 +1275,15 @@ mod tests {
         let page = filled_grid();
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert_eq!(plan.tables.len(), 1, "{report}");
         let table = &plan.tables[0];
         assert_eq!(table.rows.len(), 2);
@@ -1280,7 +1314,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert!(plan.tables.is_empty());
         assert!(!plan.inside_table(0), "the text stays in the page");
         assert!(report.to_string().contains("table.detected"), "{report}");
@@ -1296,7 +1338,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert!(plan.tables.is_empty());
         assert!(report.is_lossless(), "{report}");
         assert!(!report.to_string().contains("table."), "{report}");
@@ -1309,7 +1359,15 @@ mod tests {
         let page = page(grid_rules());
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert!(plan.tables.is_empty());
         assert!(
             report.to_string().contains("no text falls inside"),
@@ -1330,7 +1388,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert!(plan.tables.is_empty());
     }
 
@@ -1352,7 +1418,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         let table = &plan.tables[0];
         assert_eq!(table.rows[0].cells.len(), 1, "one cell over three columns");
         assert_eq!(table.rows[0].cells[0].span, 3);
@@ -1381,7 +1455,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         let table = &plan.tables[0];
         assert_eq!(table.rows[0].cells[0].merge, Some(VerticalMerge::Restart));
         assert_eq!(table.rows[1].cells[0].merge, Some(VerticalMerge::Continue));
@@ -1400,7 +1482,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert_eq!(plan.tables.len(), 1);
         let owned: Vec<String> = lines
             .iter()
@@ -1433,7 +1523,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert_eq!(plan.tables.len(), 1, "{report}");
         let table = &plan.tables[0];
         assert_eq!(table.rows.len(), 2);
@@ -1451,7 +1549,15 @@ mod tests {
         let page = page(items);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let mut report = ConversionReport::new(Mode::Semantic);
-        let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+        let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
         assert_eq!(plan.tables.len(), 2, "{report}");
         assert_eq!(report.tables(), 2);
         assert!(plan.tables[0].first_line < plan.tables[1].first_line);
@@ -1466,7 +1572,15 @@ mod tests {
         let lines = strict_ooxml_pdf::text::lines(page.items());
         let run = || {
             let mut report = ConversionReport::new(Mode::Semantic);
-            let plan = plan(&page, 1, &lines, &TableRules::default(), &mut report);
+            let plan = plan(
+            &page,
+            1,
+            &lines,
+            &TableRules::default(),
+            4000,
+            10_000,
+            &mut report,
+        );
             (plan, report.to_string())
         };
         let (first, first_report) = run();
@@ -1506,6 +1620,8 @@ mod tests {
                 min_filled_cells: 0,
                 ..TableRules::default()
             },
+            4000,
+            10_000,
             &mut report,
         );
         assert!(plan.tables.is_empty(), "{}", report);
@@ -1528,6 +1644,8 @@ mod tests {
                 min_columns: 4,
                 ..TableRules::default()
             },
+            4000,
+            10_000,
             &mut report,
         );
         assert!(strict.tables.is_empty(), "four columns are not on the page");
