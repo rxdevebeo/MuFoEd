@@ -2283,6 +2283,7 @@ dependencies = [
  "skrifa 0.44.0",
  "strict-ooxml-core",
  "strict-ooxml-render-svg",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "subsetter",
 ]
