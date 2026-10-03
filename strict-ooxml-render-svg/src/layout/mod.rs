@@ -12,7 +12,7 @@ pub(crate) mod paragraph;
 pub(crate) mod table;
 
 use strict_ooxml_core::part::PartId;
-use strict_ooxml_wml::model::props::{PageMargins, PageSize, SectionProperties};
+use strict_ooxml_wml::model::props::{PageMargins, SectionProperties};
 use strict_ooxml_wml::model::values::{PageOrientation, Twips};
 use strict_ooxml_wml::model::Document;
 
@@ -298,18 +298,37 @@ const DEFAULT_PAGE_HEIGHT: i32 = 15_840;
 const DEFAULT_MARGIN: i32 = 1_440;
 
 /// Builds [`Geometry`] from optional section properties.
+///
+/// AUD-73: missing or non-positive `w:pgSz` dimensions become US Letter; when
+/// `ctx` is provided a page warning is recorded.
 #[must_use]
-pub(crate) fn geometry_for(section: Option<&SectionProperties>, scale: f64) -> Geometry {
-    let page = section
-        .and_then(|section| section.page_size)
-        .unwrap_or(PageSize {
-            width: Some(Twips(DEFAULT_PAGE_WIDTH)),
-            height: Some(Twips(DEFAULT_PAGE_HEIGHT)),
-            orientation: None,
-        });
-    let mut width = twips_to_px(page.width.map_or(DEFAULT_PAGE_WIDTH, Twips::value), scale);
-    let mut height = twips_to_px(page.height.map_or(DEFAULT_PAGE_HEIGHT, Twips::value), scale);
-    if matches!(page.orientation, Some(PageOrientation::Landscape)) && width < height {
+pub(crate) fn geometry_for(
+    section: Option<&SectionProperties>,
+    scale: f64,
+    ctx: Option<&LayoutContext<'_>>,
+) -> Geometry {
+    let page = section.and_then(|section| section.page_size);
+    let raw_w = page.and_then(|page| page.width).map(Twips::value);
+    let raw_h = page.and_then(|page| page.height).map(Twips::value);
+    let replaced = raw_w.is_none_or(|value| value <= 0) || raw_h.is_none_or(|value| value <= 0);
+    if replaced {
+        if let Some(ctx) = ctx {
+            ctx.warn("render.pgSz: non-positive or missing page size; using Letter".to_owned());
+        }
+    }
+    let page_w = raw_w
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_PAGE_WIDTH);
+    let page_h = raw_h
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_PAGE_HEIGHT);
+    let mut width = twips_to_px(page_w, scale);
+    let mut height = twips_to_px(page_h, scale);
+    if matches!(
+        page.and_then(|page| page.orientation),
+        Some(PageOrientation::Landscape)
+    ) && width < height
+    {
         std::mem::swap(&mut width, &mut height);
     }
 

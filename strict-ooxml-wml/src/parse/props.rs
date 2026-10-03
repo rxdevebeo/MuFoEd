@@ -942,9 +942,27 @@ impl PartParser<'_> {
                                     parser.val_enum(&attrs, "w:type", SectionType::from_strict);
                             }
                             "pgSz" => {
+                                // AUD-73: missing or non-positive dimensions are
+                                // kept as declared (or absent) but recorded as
+                                // Partial; layout substitutes US Letter.
+                                let width = parser.measure_twips(&attrs, "w", "w:pgSz");
+                                let height = parser.measure_twips(&attrs, "h", "w:pgSz");
+                                let width_bad = width.is_none_or(|twips| twips.value() <= 0);
+                                let height_bad = height.is_none_or(|twips| twips.value() <= 0);
+                                if width_bad || height_bad {
+                                    parser.record(
+                                        "w:pgSz",
+                                        SupportStatus::Partial,
+                                        Some(
+                                            "non-positive or missing page size; using Letter"
+                                                .to_owned(),
+                                        ),
+                                        Some(parser.location()),
+                                    );
+                                }
                                 props.page_size = Some(PageSize {
-                                    width: parser.measure_twips(&attrs, "w", "w:pgSz"),
-                                    height: parser.measure_twips(&attrs, "h", "w:pgSz"),
+                                    width,
+                                    height,
                                     orientation: wml_attr(&attrs, "orient")
                                         .and_then(PageOrientation::from_strict),
                                 });

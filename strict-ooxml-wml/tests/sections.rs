@@ -10,7 +10,7 @@ mod common;
 
 use strict_ooxml_wml::model::props::HeaderFooterKind;
 use strict_ooxml_wml::model::support::SupportStatus;
-use strict_ooxml_wml::model::values::{DocGridType, PageOrientation, SectionType};
+use strict_ooxml_wml::model::values::{DocGridType, PageOrientation, SectionType, Twips};
 
 use common::{document_parts, parse_parts, rels, W_NS};
 
@@ -304,5 +304,25 @@ fn header_reference_with_wrong_relationship_type_is_partial() {
     assert_eq!(
         document.support.get("w:headerReference").unwrap().status,
         SupportStatus::Partial
+    );
+}
+
+#[test]
+fn zero_page_size_is_partial() {
+    // AUD-73: pgSz w="0" h="0" stays in the model but is recorded as Partial.
+    let body = "<w:sectPr><w:pgSz w:w=\"0\" w:h=\"0\"/></w:sectPr>";
+    let document = parse_parts(&document_parts(body, &[])).expect("parse");
+    let size = document.sections[0]
+        .properties
+        .page_size
+        .expect("page_size");
+    assert_eq!(size.width.map(Twips::value), Some(0));
+    assert_eq!(size.height.map(Twips::value), Some(0));
+    let entry = document.support.get("w:pgSz").expect("w:pgSz");
+    assert_eq!(entry.status, SupportStatus::Partial);
+    assert!(
+        entry.message.as_deref().unwrap_or("").contains("Letter"),
+        "message={:?}",
+        entry.message
     );
 }

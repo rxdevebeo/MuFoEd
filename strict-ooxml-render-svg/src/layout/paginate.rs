@@ -129,7 +129,7 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
         .sections
         .last()
         .map(|section| &section.properties);
-    let geometry = geometry_for(section, ctx.options.scale);
+    let geometry = geometry_for(section, ctx.options.scale, Some(ctx));
     let page_start = section
         .and_then(|properties| properties.page_number.as_ref())
         .and_then(|page_number| page_number.start)

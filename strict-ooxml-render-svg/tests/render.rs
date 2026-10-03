@@ -47,6 +47,34 @@ fn default_page_is_letter_at_96_dpi() {
 }
 
 #[test]
+fn zero_page_size_falls_back_to_letter() {
+    // AUD-73: pgSz w="0" h="0" → non-zero Letter viewBox + warning.
+    let pages = render_body(
+        "<w:p><w:r><w:t>x</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"0\" w:h=\"0\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/></w:sectPr>",
+    );
+    assert_eq!(pages.len(), 1);
+    assert!(pages[0].width_px > 1.0, "viewBox width");
+    assert!(pages[0].height_px > 1.0, "viewBox height");
+    assert!((pages[0].width_px - 816.0).abs() < 0.001);
+    assert!((pages[0].height_px - 1056.0).abs() < 0.001);
+    assert!(
+        pages[0].svg.contains("viewBox=\"0 0 816 1056\""),
+        "{}",
+        pages[0].svg
+    );
+    assert!(
+        pages[0]
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("pgSz")),
+        "expected pgSz warning: {:?}",
+        pages[0].warnings
+    );
+}
+
+#[test]
 fn scale_changes_page_dimensions() {
     let (_package, document) = open_body("<w:p><w:r><w:t>x</w:t></w:r></w:p>");
     let pages = render(&document, &RenderOptions::default().scale(48.0)).expect("render");
