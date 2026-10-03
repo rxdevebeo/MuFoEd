@@ -31,6 +31,13 @@
 
 use crate::normalize::report::Severity;
 
+// AUD-22: the relationship-type table lives in `opc::rels`, not here — `opc`
+// already depends on `normalize` (for `RawNormalizer`), and `RelType` itself
+// lives in `opc`, so putting the table here would pull `normalize` into
+// `opc`'s own module in the other direction too. Re-exported so code that
+// already reaches for `tables::` finds it anyway.
+pub use crate::opc::rels::{RelTypeRow, REL_TYPES};
+
 /// An element or attribute that Strict spells differently.
 ///
 /// The `parent` field is what makes the entry safe to apply. `left` is an edge

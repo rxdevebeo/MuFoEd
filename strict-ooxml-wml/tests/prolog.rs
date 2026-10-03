@@ -92,11 +92,26 @@ fn significant_text_before_root_is_rejected() {
 }
 
 #[test]
-fn unknown_conformance_matches_root_by_local_name() {
-    // A package with no Strict/Transitional signals cannot be namespace-checked;
-    // the root is matched by local name so `check` can report the missing signal.
+fn non_strict_conformance_matches_root_by_local_name() {
+    // The root is matched by local name whenever conformance is not `Strict`,
+    // so a root element outside either family's namespace still parses.
+    //
+    // AUD-22 closed the hole an earlier version of this test relied on: the
+    // `officeDocument` relationship used to carry a bogus authority
+    // (`https://example.invalid/officeDocument`), which the pre-fix
+    // `RelType::from_uri` matched by trailing path segment regardless of who
+    // wrote the rest of the URI — the same bug that made
+    // `http://evil.example/officeDocument` indistinguishable from the real
+    // relationship type. `locate_main_document` now only recognizes the two
+    // real `officeDocument` URIs, and `ns::registry::classify_relationship`
+    // reads both of those as a conformance signal, so a package whose main
+    // document actually resolves can no longer be conformance-`Unknown`. The
+    // real Transitional URI is used instead; conformance comes out
+    // `Transitional`, not `Strict`, which is what the parser's root check
+    // keys on (`expect_root_ns`'s `require_strict_ns`) and so is exactly as
+    // good a fixture for "root matched by local name" as `Unknown` was.
     let content_types = "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/xml\"/></Types>";
-    let rels = "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"https://example.invalid/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
+    let rels = "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
     let document =
         "<?xml version=\"1.0\"?><w:document xmlns:w=\"urn:custom\"><w:body/></w:document>";
     let bytes = common::zip(&[
@@ -104,17 +119,21 @@ fn unknown_conformance_matches_root_by_local_name() {
         ("_rels/.rels", rels.as_bytes()),
         ("word/document.xml", document.as_bytes()),
     ]);
-    let package = strict_ooxml_core::opc::Package::open_reader(
-        std::io::Cursor::new(bytes),
-        &strict_ooxml_core::opc::OpenOptions::default(),
-    )
-    .expect("open package");
+    let open_options = strict_ooxml_core::opc::OpenOptions::default()
+        .conformance(strict_ooxml_core::opc::ConformancePolicy::Permissive);
+    let package =
+        strict_ooxml_core::opc::Package::open_reader(std::io::Cursor::new(bytes), &open_options)
+            .expect("open package");
     assert_eq!(
         package.conformance(),
-        strict_ooxml_core::ns::Conformance::Unknown
+        strict_ooxml_core::ns::Conformance::Transitional
     );
-    strict_ooxml_wml::parse_document(&package, &Default::default())
-        .expect("unknown-conformance document must still parse");
+    let parse_options = strict_ooxml_wml::ParseOptions {
+        conformance: strict_ooxml_core::opc::ConformancePolicy::Permissive,
+        ..Default::default()
+    };
+    strict_ooxml_wml::parse_document(&package, &parse_options)
+        .expect("non-strict conformance document must still parse");
 }
 
 #[test]

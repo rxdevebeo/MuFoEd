@@ -377,9 +377,9 @@ pub(crate) fn plan(
             }
         };
         let type_uri = match target.as_str() {
-            CORE_PROPERTIES_PART => core_properties_type_uri().to_owned(),
-            APP_PROPERTIES_PART => app_properties_type_uri().to_owned(),
-            _ => custom_properties_type_uri().to_owned(),
+            CORE_PROPERTIES_PART => core_properties_type_uri(),
+            APP_PROPERTIES_PART => app_properties_type_uri(),
+            _ => custom_properties_type_uri(),
         };
         match source.read_part(&target) {
             Ok(bytes) => {
@@ -489,13 +489,15 @@ pub(crate) fn report_what_was_dropped(ctx: &mut Ctx<'_>, source: &dyn Source, wr
 
 /// Whether a root relationship is the package thumbnail.
 ///
-/// Named by its type suffix, because there is no normalized variant for it —
-/// `RelationshipInfo` keeps a *normalized* `RelType` and everything unrecognised
-/// becomes `Other`, and the thumbnail lands there. `package/2006` is Transitional
-/// and `purl.oclc.org` is Strict, so a Strict package can carry this relationship
-/// and it still has to be recognized; matching the suffix is what sees both.
+/// AUD-22 gave the standard OPC thumbnail URI its own `RelType::Thumbnail`
+/// variant, so the common case is now a direct match. The suffix fallback
+/// stays for a URI the table does not recognize at all — a pre-AUD-20 source
+/// package still carrying the legacy `purl.oclc.org` spelling, say — where
+/// `RelType::from_uri` has nothing better to return than `Other` and matching
+/// the suffix is what still sees it as a thumbnail.
 fn is_package_thumbnail(info: &RelationshipInfo) -> bool {
     match &info.rel_type {
+        RelType::Thumbnail => true,
         RelType::Other(uri) => uri
             .rsplit('/')
             .next()
@@ -636,21 +638,20 @@ const APP_RENDERING_COUNTERS: &[&str] = &[
 
 /// The Strict relationship type of [`CORE_PROPERTIES_PART`].
 ///
-/// Written out rather than taken from `RelType::from_uri`, because this type has
-/// no normalized variant: nothing in the body refers to it, so normalizing it
-/// would be a variant only this one use site needs.
-fn core_properties_type_uri() -> &'static str {
-    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+/// Read from [`RelType::CoreProperties`] via [`strict_ooxml_core::opc::rels::strict_type_uri`]
+/// (AUD-22), so this and `RelType::from_uri` can never disagree about the URI.
+fn core_properties_type_uri() -> String {
+    strict_ooxml_core::opc::rels::strict_type_uri(&RelType::CoreProperties)
 }
 
-/// The Strict relationship type of [`APP_PROPERTIES_PART`] (AUD-20).
-fn app_properties_type_uri() -> &'static str {
-    "http://purl.oclc.org/ooxml/officeDocument/relationships/extendedProperties"
+/// The Strict relationship type of [`APP_PROPERTIES_PART`] (AUD-20 / AUD-22).
+fn app_properties_type_uri() -> String {
+    strict_ooxml_core::opc::rels::strict_type_uri(&RelType::ExtendedProperties)
 }
 
-/// The Strict relationship type of [`CUSTOM_PROPERTIES_PART`] (AUD-20).
-fn custom_properties_type_uri() -> &'static str {
-    "http://purl.oclc.org/ooxml/officeDocument/relationships/customProperties"
+/// The Strict relationship type of [`CUSTOM_PROPERTIES_PART`] (AUD-20 / AUD-22).
+fn custom_properties_type_uri() -> String {
+    strict_ooxml_core::opc::rels::strict_type_uri(&RelType::CustomProperties)
 }
 
 /// Rewrites the namespace of a copied `docProps/app.xml` and removes the

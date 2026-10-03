@@ -180,8 +180,17 @@ fn inspect_prints_conformance_and_parts() {
 }
 
 #[test]
-fn check_unknown_conformance_reports_unknown() {
-    // A package with no recognized namespace/relationship/conformance signals.
+fn check_rejects_an_unrecognized_office_document_relationship() {
+    // Before AUD-22, `RelType::from_uri` matched a URI's trailing path
+    // segment, so this bogus `officeDocument` relationship still resolved as
+    // the main document and left the package with no conformance signal at
+    // all - `check` reported `Conformance::Unknown`. `from_uri` now requires
+    // an exact match against the real Transitional or Strict URI, so this
+    // relationship no longer resolves to anything, and the package has no
+    // main document to open at all. This is also why `Unknown` can no longer
+    // happen for a package that *does* open: the only two URIs that resolve
+    // as the main document both carry a conformance signal of their own, so
+    // an openable package is always at least Strict, Transitional or Mixed.
     let doc = document("urn:custom");
     let bytes = build_stored_zip(&[
         ("[Content_Types].xml", CONTENT_TYPES.as_bytes()),
@@ -192,11 +201,11 @@ fn check_unknown_conformance_reports_unknown() {
         ("word/document.xml", doc.as_bytes()),
     ]);
     let path = write_temp("unknown.docx", &bytes);
-    let (code, stdout, _) = run(&["check", path.to_str().unwrap()]);
+    let (code, stdout, stderr) = run(&["check", path.to_str().unwrap()]);
     let _ = std::fs::remove_file(&path);
-    assert_eq!(code, 2, "stdout: {stdout}");
-    assert!(stdout.contains("unknown"), "stdout: {stdout}");
+    assert_eq!(code, 2, "stdout: {stdout} stderr: {stderr}");
     assert!(!stdout.contains("ok: strict"), "stdout: {stdout}");
+    assert!(stderr.contains("officeDocument"), "stderr: {stderr}");
 }
 
 #[test]

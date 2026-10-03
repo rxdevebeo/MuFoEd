@@ -40,13 +40,11 @@ use crate::normalize::report::{LossRecord, NormalizationReport, Severity};
 use crate::normalize::tables::{self, is_ignorable_extension, VML_NAMESPACES};
 use crate::normalize::vml;
 use crate::ns::registry::NamespaceRegistry;
+use crate::opc::rels::{
+    PACKAGE_CORE_PROPERTIES_REL, PACKAGE_THUMBNAIL_REL, REL_TYPES, TRANSITIONAL_OFFICE_BASE,
+};
 use crate::part::PartId;
 
-/// The relationship-type base for Transitional office documents.
-const TRANSITIONAL_REL_BASE: &str =
-    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
-/// The relationship-type base for Strict office documents.
-const STRICT_REL_BASE: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/";
 /// Markup Compatibility and Extensibility. The namespace is the same in
 /// Transitional and Strict, so `map_uri` leaves it alone.
 const MC_NAMESPACE: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
@@ -63,10 +61,6 @@ const LEGACY_PURL_CORE_PROPERTIES_REL: &str =
     "http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties";
 const LEGACY_PURL_THUMBNAIL_REL: &str =
     "http://purl.oclc.org/ooxml/package/relationships/metadata/thumbnail";
-const PACKAGE_CORE_PROPERTIES_REL: &str =
-    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
-const PACKAGE_THUMBNAIL_REL: &str =
-    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail";
 
 /// Which markup-compatibility branch to keep (`TZ` §10.7).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1483,6 +1477,7 @@ fn rewrite_attribute(
     report: &mut NormalizationReport,
 ) -> RewrittenAttribute {
     let version = context.xml_version;
+    let location = context.location();
     let key = String::from_utf8_lossy(attribute.key.as_ref()).into_owned();
     // The value is kept in its original escaped form and only decoded when a
     // stage has something to map. Re-encoding an untouched value would be a
@@ -1630,6 +1625,7 @@ fn rewrite_attribute(
         new_local,
         &effective_uri,
         &decoded,
+        &location,
         report,
     )
     .unwrap_or(decoded);
@@ -1815,6 +1811,7 @@ fn mapped_value(
     local: &str,
     uri: &str,
     value: &str,
+    location: &SourceLocation,
     report: &mut NormalizationReport,
 ) -> Option<String> {
     // ---- T4: an enumerated value Strict spells differently -------------
@@ -1863,10 +1860,8 @@ fn mapped_value(
         report.record_mapping("T1.namespace-repair", value, repaired);
         return Some(repaired.to_owned());
     }
-    // ---- T2: a relationship-type or content-type URI -------------------
-    let (from, to) = map_rel_or_content_type(value)?;
-    report.record_mapping("T2.reltype", &from, &to);
-    Some(to)
+    // ---- T2: a relationship-type URI ------------------------------------
+    map_rel_or_content_type(value, location, report)
 }
 
 /// Maps a legacy purl OPC URI (from earlier project versions) to the standard
@@ -1948,10 +1943,68 @@ fn map_namespace_declaration(
     Some((key, value.to_owned()))
 }
 
-/// Maps a relationship-type or content-type URI to its Strict form.
-fn map_rel_or_content_type(value: &str) -> Option<(String, String)> {
-    if let Some(rest) = value.strip_prefix(TRANSITIONAL_REL_BASE) {
-        return Some((value.to_owned(), format!("{STRICT_REL_BASE}{rest}")));
+/// Maps a relationship-type URI to its Strict form (AUD-22, T2).
+///
+/// Reads [`REL_TYPES`] by **exact URI**, never by rewriting a prefix: the bug
+/// this replaces rewrote the Transitional *base* and kept the Transitional
+/// *suffix*, which turned `extended-properties` into `extended-properties`
+/// again instead of `extendedProperties` — the base changed, the one place the
+/// two columns actually differ in spelling did not.
+///
+/// Three outcomes, and only the first changes the value:
+///
+/// * the URI is a table row whose `strict` differs from it → rewritten,
+///   `T2.reltype` records the mapping;
+/// * the URI is a table row with `strict: None` (`stylesWithEffects`, the only
+///   such row) → kept, `T2.reltype-no-strict` records that Strict has nothing
+///   to rewrite it to rather than inventing a URI;
+/// * the URI is **not** a table row but sits under the Transitional
+///   officeDocument base anyway → kept, `T2.reltype-unknown` names the URI so
+///   the gap is visible instead of silently passed through.
+///
+/// Anything else (a URI already Strict, an OPC package type, a content type —
+/// the function's old name notwithstanding, content types do not differ
+/// between the families; AUD-26) returns `None` unchanged and unreported.
+fn map_rel_or_content_type(
+    value: &str,
+    location: &SourceLocation,
+    report: &mut NormalizationReport,
+) -> Option<String> {
+    if let Some(entry) = REL_TYPES.iter().find(|entry| entry.transitional == value) {
+        return match entry.strict {
+            Some(strict) if strict != value => {
+                report.record_mapping("T2.reltype", value, strict);
+                Some(strict.to_owned())
+            }
+            // Transitional and Strict happen to be the same URI (the two OPC
+            // package rows): nothing changed, so nothing is reported.
+            Some(_) => None,
+            None => {
+                report.record_loss(LossRecord {
+                    transform_id: "T2.reltype-no-strict",
+                    feature_id: value.to_owned(),
+                    reason: format!(
+                        "{value} has no Strict relationship type at all (Strict declares no \
+                         equivalent part); the Transitional URI is kept rather than invented"
+                    ),
+                    severity: Severity::Lossy,
+                    locations: vec![location.clone()],
+                });
+                None
+            }
+        };
+    }
+    if value.starts_with(TRANSITIONAL_OFFICE_BASE) {
+        report.record_loss(LossRecord {
+            transform_id: "T2.reltype-unknown",
+            feature_id: value.to_owned(),
+            reason: format!(
+                "{value} is under the Transitional officeDocument relationships base but is \
+                 not a relationship type this project's table recognizes; left unchanged"
+            ),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
     }
     None
 }
@@ -2094,7 +2147,8 @@ mod tests {
         map_rel_or_content_type, part_needs_normalization, repair_legacy_package_uri,
         InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
     };
-    use crate::normalize::report::Severity;
+    use crate::error::SourceLocation;
+    use crate::normalize::report::{NormalizationReport, Severity};
     use crate::part::PartId;
 
     fn part() -> PartId {
@@ -3038,23 +3092,92 @@ mod tests {
 
     #[test]
     fn relationship_types_are_mapped() {
-        let (from, to) = map_rel_or_content_type(
+        let mut report = NormalizationReport::new();
+        let location = SourceLocation::new(PartId::new("/_rels/.rels"), 1, 1, 0);
+        let to = map_rel_or_content_type(
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+            &location,
+            &mut report,
         )
         .expect("a Transitional relationship type maps");
         assert_eq!(
             to,
             "http://purl.oclc.org/ooxml/officeDocument/relationships/styles"
         );
-        assert!(from.contains("schemas.openxmlformats.org"));
+        assert_eq!(report.applied()[0].id, "T2.reltype");
     }
 
     #[test]
     fn strict_relationship_types_are_left_alone() {
+        let mut report = NormalizationReport::new();
+        let location = SourceLocation::new(PartId::new("/_rels/.rels"), 1, 1, 0);
         assert!(map_rel_or_content_type(
-            "http://purl.oclc.org/ooxml/officeDocument/relationships/styles"
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/styles",
+            &location,
+            &mut report,
         )
         .is_none());
+        assert!(report.is_noop());
+    }
+
+    #[test]
+    fn an_unrecognized_transitional_office_relationship_is_not_rewritten_but_is_reported() {
+        // AUD-22: a Transitional URI under the officeDocument base with no
+        // table row must not be rewritten (there is nothing to rewrite it to)
+        // and must not be silently dropped either.
+        let mut report = NormalizationReport::new();
+        let location = SourceLocation::new(PartId::new("/_rels/.rels"), 1, 1, 0);
+        let value = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/zzz";
+        assert!(map_rel_or_content_type(value, &location, &mut report).is_none());
+        let losses = report.losses();
+        assert_eq!(losses.len(), 1);
+        assert_eq!(losses[0].transform_id, "T2.reltype-unknown");
+        assert!(losses[0].reason.contains(value), "{}", losses[0].reason);
+        assert_eq!(losses[0].severity, Severity::Lossy);
+    }
+
+    #[test]
+    fn styles_with_effects_has_no_strict_form_and_is_reported_not_rewritten() {
+        // AUD-22: `stylesWithEffects` is in the table with `strict: None`; it
+        // must be kept exactly and reported as `T2.reltype-no-strict`, never
+        // rewritten into an invented Strict URI.
+        let mut report = NormalizationReport::new();
+        let location = SourceLocation::new(PartId::new("/word/_rels/document.xml.rels"), 1, 1, 0);
+        let value = "http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects";
+        assert!(map_rel_or_content_type(value, &location, &mut report).is_none());
+        let losses = report.losses();
+        assert_eq!(losses.len(), 1);
+        assert_eq!(losses[0].transform_id, "T2.reltype-no-strict");
+        assert_eq!(losses[0].severity, Severity::Lossy);
+    }
+
+    #[test]
+    fn extended_and_custom_properties_rewrite_to_their_strict_spelling_exactly() {
+        // AUD-22: the bug this table replaces rewrote the base and kept the
+        // suffix, producing `extended-properties` (unchanged) instead of
+        // `extendedProperties`.
+        let mut report = NormalizationReport::new();
+        let location = SourceLocation::new(PartId::new("/_rels/.rels"), 1, 1, 0);
+        let to = map_rel_or_content_type(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+            &location,
+            &mut report,
+        )
+        .expect("extended-properties maps");
+        assert_eq!(
+            to,
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/extendedProperties"
+        );
+        let to = map_rel_or_content_type(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties",
+            &location,
+            &mut report,
+        )
+        .expect("custom-properties maps");
+        assert_eq!(
+            to,
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/customProperties"
+        );
     }
 
     #[test]
@@ -3097,10 +3220,15 @@ mod tests {
     #[test]
     fn standard_opc_package_uris_are_not_rewritten_to_purl() {
         // AUD-20: the openxmlformats package vocabulary is already correct.
+        let mut report = NormalizationReport::new();
+        let location = SourceLocation::new(PartId::new("/_rels/.rels"), 1, 1, 0);
         assert!(map_rel_or_content_type(
-            "http://schemas.openxmlformats.org/package/2006/relationships"
+            "http://schemas.openxmlformats.org/package/2006/relationships",
+            &location,
+            &mut report,
         )
         .is_none());
+        assert!(report.is_noop());
         assert_eq!(
             repair_legacy_package_uri(
                 "http://schemas.openxmlformats.org/package/2006/relationships"

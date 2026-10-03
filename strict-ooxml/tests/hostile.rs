@@ -274,12 +274,15 @@ mod xml {
                 // Every other part is reached through a relationship, and the
                 // header only through a `w:headerReference` - a relationship
                 // alone does not make a reader open it.
-                hostile = hostile
-                    .rel("rIdPart", &family.rel_type(rel_type), file)
-                    .content_type(
-                        &format!("/{name}"),
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.part+xml",
-                    );
+                // `rel` applies `family.rel_type` itself, so `rel_type` is
+                // passed bare (AUD-22: a pre-fix double application here
+                // produced a URI `from_uri`'s suffix match tolerated but its
+                // exact-match table does not, which is exactly the kind of
+                // mismatch the table is supposed to catch).
+                hostile = hostile.rel("rIdPart", rel_type, file).content_type(
+                    &format!("/{name}"),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.part+xml",
+                );
             }
             if name == "word/header1.xml" {
                 hostile = hostile.body(
@@ -318,11 +321,7 @@ mod xml {
                 "w:settings",
                 "<w:zoom w:percent=\"100\"/>",
             )
-            .rel(
-                "rIdSettings",
-                &Family::Strict.rel_type("settings"),
-                "settings.xml",
-            )
+            .rel("rIdSettings", "settings", "settings.xml")
             .build();
         let opened = assert_survives("open short settings", || {
             StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default()).expect("open")
@@ -550,11 +549,7 @@ mod nesting {
         let bytes = DocxBuilder::strict()
             .body(body)
             .part("word/header1.xml", header)
-            .rel(
-                "rIdHeader",
-                &strict_ooxml_testkit::docx::Family::Strict.rel_type("header"),
-                "header1.xml",
-            )
+            .rel("rIdHeader", "header", "header1.xml")
             .build();
         assert_survives("open deep header", move || {
             StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default()).expect("open");
@@ -568,11 +563,7 @@ mod nesting {
         let bytes = DocxBuilder::strict()
             .body(body)
             .part("word/header1.xml", header14)
-            .rel(
-                "rIdHeader",
-                &strict_ooxml_testkit::docx::Family::Strict.rel_type("header"),
-                "header1.xml",
-            )
+            .rel("rIdHeader", "header", "header1.xml")
             .build();
         let error = assert_survives("open deeper header", move || {
             open(bytes, &OpenOptions::default())
@@ -965,11 +956,7 @@ mod overflow {
         let bytes = DocxBuilder::strict()
             .body(body)
             .part("word/numbering.xml", numbering.as_bytes().to_vec())
-            .rel(
-                "rIdNum",
-                &strict_ooxml_testkit::docx::Family::Strict.rel_type("numbering"),
-                "numbering.xml",
-            )
+            .rel("rIdNum", "numbering", "numbering.xml")
             .build();
         let text = assert_survives("numbering at the top of the range", move || {
             let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())

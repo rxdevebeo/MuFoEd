@@ -299,6 +299,34 @@ fn streaming_open_part_also_applies_normalization() {
     assert!(!text.contains(TRANSITIONAL_W_NS), "{text}");
 }
 
+/// AUD-22: a hostile `_rels/.rels` names an `officeDocument` relationship
+/// under an attacker's own authority *first*, then the real one. Before the
+/// fix, `RelType::from_uri` matched on a URI's last path segment, so
+/// `http://evil.example/officeDocument` classified as `OfficeDocument` just
+/// as readily as the real relationship type — and `locate_main_document`
+/// takes the *first* match, so the evil part would have won.
+#[test]
+fn an_evil_office_document_relationship_does_not_win_over_the_real_one() {
+    let doc = document(STRICT_W_NS);
+    let rels = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://evil.example/officeDocument" Target="evil.xml"/>
+ <Relationship Id="rId2" Type="{STRICT_DOC_REL}" Target="word/document.xml"/>
+</Relationships>"#
+    );
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
+        ("_rels/.rels", rels.as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+    ]);
+    let package = open(bytes, ConformancePolicy::StrictOnly).unwrap();
+    assert_eq!(
+        package.main_document_part().unwrap().as_str(),
+        "/word/document.xml"
+    );
+}
+
 #[test]
 fn conformance_survives_root_beyond_prefix() {
     // A long comment pushes the root element past the 64 KiB prefix window,
