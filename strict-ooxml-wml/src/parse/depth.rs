@@ -7,19 +7,32 @@
 //! `LimitExceeded { XmlDepth, 256, 257 }`, a statement about nesting that the
 //! document never made.
 //!
-//! So the counter lives here and `enter`/`leave` are visible only to
-//! `parse::mod`. A parser file can reach the recursion through
-//! [`PartParser::nested`](super::PartParser::nested) and cannot touch the counter
-//! itself, so there is no spelling of a direct call that compiles. The previous
-//! shape made the correct thing a convention and the defect a mistake anyone
-//! could repeat — and `math.rs` repeated it 21 times, because it is a *child*
-//! module of `parse` and `PartParser`'s private methods were visible to it.
-//!
-//! `pub(super)` rather than `pub(crate)`: the narrowest reach that still lets the
-//! one legitimate caller pair the two halves. The pairing itself still happens in
-//! exactly one place.
+//! So the counter, `enter`/`leave` and the one function that pairs them,
+//! [`PartParser::nested`](super::PartParser::nested), all live here, and
+//! `enter`/`leave` are private to this module. `pub(super)` would not do: a
+//! `pub(super)` item is visible to `parse` *and every module under it*, which is
+//! how `math.rs` - a child of `parse` - made 21 direct calls in the first place.
+//! A parser file reaches the recursion through `nested` and has no spelling of a
+//! direct call that compiles.
 
 use strict_ooxml_core::error::{LimitKind, Result, StrictError};
+
+impl super::PartParser<'_> {
+    /// Runs `f` inside one level of the XML recursion guard.
+    ///
+    /// RAII cannot do it here - the guard would have to borrow the parser, and
+    /// the parser is what the body mutates - so the pairing is a wrapper: `leave`
+    /// runs on every path out of `f`, including the `?` ones. A refused entry
+    /// returns before `f` and never moved the counter, so it needs no `leave`.
+    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        // Two steps rather than a closure over `self.recursion`: the counter and
+        // the parser are both fields of `self`.
+        self.recursion.enter()?;
+        let out = f(self);
+        self.recursion.leave();
+        out
+    }
+}
 
 /// How deep the parser currently is, and how deep it may go.
 #[derive(Clone, Copy, Debug, Default)]
@@ -39,8 +52,7 @@ impl Depth {
     /// Panics are not an option here and an early return from a caller would be
     /// exactly the leak this module exists to prevent, so the caller is
     /// [`PartParser::nested`](super::PartParser::nested) and nothing else.
-    #[doc(hidden)]
-    pub(super) fn enter(&mut self) -> Result<()> {
+    fn enter(&mut self) -> Result<()> {
         // Checked *before* the counter moves, so a refused entry leaves it where
         // it was: `nested` propagates the error and never reaches its `leave`,
         // and a parser that is abandoned on an error should not be holding an
@@ -58,8 +70,7 @@ impl Depth {
     }
 
     /// Leaves one level. See [`enter`](Self::enter) for the visibility.
-    #[doc(hidden)]
-    pub(super) fn leave(&mut self) {
+    fn leave(&mut self) {
         self.depth = self.depth.saturating_sub(1);
     }
 

@@ -933,29 +933,6 @@ impl<'a> PartParser<'a> {
         u32::try_from(clamped).unwrap_or(0)
     }
 
-    /// Runs `f` inside one level of the XML recursion guard.
-    ///
-    /// The guard is a pair and the second half was the bug: `enter()` without a
-    /// matching `leave()` on some path leaves the counter above where it
-    /// started, and the next 256 siblings of the same element fail with a
-    /// `LimitExceeded` that says nothing about the input that caused it. A
-    /// `settings.xml` with 300 `m:mathPr` in a row was refused as too deeply
-    /// nested, having nothing to do with nesting.
-    ///
-    /// RAII cannot do it here - the guard would have to borrow the parser, and
-    /// the parser is what the body mutates - so the pairing is a wrapper instead:
-    /// `leave` runs on every path out of `f`, including the `?` ones, and there
-    /// is no way to reach the recursion without going through it.
-    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
-        // Two steps rather than `self.recursion.nested(|_| f(self))`: the
-        // counter and the parser are both fields of `self`, so a closure taking
-        // `*self` while `self.recursion` is borrowed does not compile.
-        self.recursion.enter()?;
-        let out = f(self);
-        self.recursion.leave();
-        out
-    }
-
     /// Resolves a relationship declared by the current part to a target part.
     pub(crate) fn resolve_relationship_target(&self, rel_id: &str) -> Option<PartId> {
         self.package
