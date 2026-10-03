@@ -799,8 +799,65 @@ mod numbering {
 
 mod writer {
     //! AUD-10, AUD-11: pass-through byte scanning, ZIP field widths.
-}
 
+    use super::*;
+
+    /// Opens a Strict package carrying `docProps/app.xml`, writes it and renders
+    /// it back, on a 1 MiB stack.
+    fn survives(app_xml: &str) {
+        let app = app_xml.as_bytes().to_vec();
+        assert_survives("write a truncated app.xml", move || {
+            let bytes = DocxBuilder::strict()
+                .body("<w:p><w:r><w:t>x</w:t></w:r></w:p>")
+                .part("docProps/app.xml", app)
+                .root_rel(strict_ooxml_testkit::docx::Rel::new(
+                    "rIdApp",
+                    "http://purl.oclc.org/ooxml/officeDocument/relationships/extendedProperties",
+                    "docProps/app.xml",
+                ))
+                .content_type(
+                    "/docProps/app.xml",
+                    "application/vnd.openxmlformats-officedocument.extended-properties+xml",
+                )
+                .build();
+            let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+                .expect("open");
+            let written = strict_ooxml::write_package(
+                document.document(),
+                Some(document.package()),
+                &strict_ooxml::WriteOptions::default(),
+            );
+            assert!(written.is_ok(), "write_package: {written:?}");
+        });
+    }
+
+    #[test]
+    fn an_app_properties_part_cut_short_inside_a_tag_is_written() {
+        // The bytes after the last `<` do not exist, and the scanner read one of
+        // them to tell `<Pages` from `<PagesWords>`: "range end index 16 out of
+        // range" (AUD-10). A producer that writes half a `docProps/app.xml` is
+        // unusual; one that writes a document whose text is readable is not.
+        survives("<Properties><Pages");
+    }
+
+    #[test]
+    fn an_app_properties_part_cut_short_anywhere_in_a_tag_is_written() {
+        for cut in ["<", "<P", "<Pa", "<Pag", "<Page", "<Pages", "<Pages/"] {
+            survives(cut);
+        }
+    }
+
+    #[test]
+    fn a_complete_app_properties_part_still_loses_its_rendering_counters() {
+        // The guard must not have become "copy everything": the counters are a
+        // decision, and a copy that stopped making it would put a producer''s
+        // word count into a Strict package.
+        survives(
+            "<Properties><Pages>7</Pages><Characters>9</Characters>\
+             <Company>ACME</Company></Properties>",
+        );
+    }
+}
 mod opc {
     //! AUD-20, AUD-22, AUD-24, AUD-25: relationship types, part names, `.rels`
     //! outside `_rels/`.

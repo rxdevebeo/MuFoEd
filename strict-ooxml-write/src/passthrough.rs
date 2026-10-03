@@ -745,7 +745,16 @@ fn remove_element(bytes: &[u8], name: &str) -> Vec<u8> {
             break;
         };
         // A longer element name that merely starts with `name`: skip it.
-        let after = rest[at + open.len()];
+        //
+        // `get` rather than an index: the input ends wherever it ends, and a
+        // part cut short on `<Pages` - a real `docProps/app.xml` truncated by a
+        // producer - has no byte after the last `<` it contains (AUD-10).
+        let Some(&after) = rest.get(at + open.len()) else {
+            // `return`, not `break`: the tail is appended again below the loop,
+            // and copying it here as well would duplicate the part.
+            out.extend_from_slice(rest);
+            return out;
+        };
         if after != b'>' && after != b'/' && after != b' ' {
             out.extend_from_slice(&rest[..at + open.len()]);
             rest = &rest[at + open.len()..];
@@ -994,7 +1003,9 @@ fn push(out: &mut Vec<String>, id: String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{referenced_ids, rels_part_of, resolve};
+    use super::{
+        referenced_ids, rels_part_of, remove_element, resolve, without_rendering_counters,
+    };
     use strict_ooxml_core::part::PartId;
     use strict_ooxml_wml::model::block::{Block, Paragraph, Table, TableCell, TableRow};
     use strict_ooxml_wml::model::drawing::{
@@ -1092,6 +1103,56 @@ mod tests {
         assert_eq!(
             referenced_ids(&blocks),
             vec!["rId4".to_owned(), "rId5".to_owned()]
+        );
+    }
+
+    /// A part cut short in the middle of a tag must not be indexed past its end.
+    ///
+    /// `docProps/app.xml` truncated on `<Pages` is a real input, not a torture
+    /// case: the file ends there, the bytes after the last `<` do not exist, and
+    /// the byte the scanner wanted to read next to tell `<Pages` from
+    /// `<PagesWords>` was that one (AUD-10).
+    #[test]
+    fn remove_element_survives_a_part_that_ends_inside_a_tag() {
+        for input in [
+            &b"<x><Pages"[..],
+            &b"<x><Pages"[0..6],
+            &b"<Pages"[..],
+            &b"<Pages/"[..],
+            &b""[..],
+            &b"<"[..],
+            &b"<x><Pages></Pages></x>"[..],
+            &b"<x><PagesWords>1</PagesWords></x>"[..],
+            &b"<x><Pages>1</Pages><PagesWords>2</PagesWords></x>"[..],
+        ] {
+            let out = remove_element(input, "Pages");
+            if input == b"<x><PagesWords>1</PagesWords></x>" {
+                // A longer name that starts with the one we remove.
+                assert_eq!(out, input, "a longer name must not be touched");
+            }
+            if input == b"<x><Pages>1</Pages><PagesWords>2</PagesWords></x>" {
+                assert_eq!(
+                    String::from_utf8_lossy(&out),
+                    "<x><PagesWords>2</PagesWords></x>"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_truncated_app_properties_part_is_returned_as_it_arrived() {
+        // Same input, through the function that calls `remove_element` for each
+        // rendering counter: the counters are gone, everything else is intact,
+        // and nothing is invented. The counters are gone and the values the producer
+        let full = b"<Properties><Pages>1</Pages><Company>ACME</Company></Properties>";
+        assert_eq!(
+            String::from_utf8_lossy(&without_rendering_counters(full)),
+            "<Properties><Company>ACME</Company></Properties>"
+        );
+        let cut = b"<Properties><Pages";
+        assert_eq!(
+            String::from_utf8_lossy(&without_rendering_counters(cut)),
+            "<Properties><Pages"
         );
     }
 }
