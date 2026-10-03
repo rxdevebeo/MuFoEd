@@ -6,14 +6,165 @@
 //! `/MediaBox` and `/Rotate` walk down the page tree until a page sets them —
 //! and getting that wrong yields a page of the wrong size rather than an error.
 
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use lopdf::Object;
 
-use crate::content::{interpret, Content, Item, PageGeometry, Resources as ResourceProvider};
+use crate::content::{
+    interpret, Content, Item, Matrix, PageGeometry, Resources as ResourceProvider,
+};
 use crate::error::{PdfError, PdfLimits, Result};
 use crate::fonts::{resolver, PdfFont};
-use crate::image::{Encoded, ImageCache};
+use crate::image::{Encoded, ImageCache, Reject};
+
+/// Decompresses a stream, refusing output past `limit` bytes (AUD-13).
+///
+/// Every call site that used to ask `lopdf` for unbounded
+/// `decompressed_content` goes through this function, so a flate bomb in a
+/// form, a `ToUnicode` CMap or an image is rejected before the allocation.
+/// Page content uses `get_page_content_with_limit` instead, which is already
+/// bounded the same way.
+///
+/// The underlying decoder is lopdf's bounded path (its Flate stage is
+/// `miniz_oxide` with a limit); naming the bound here is what keeps every
+/// call site honest under `rg "decompressed_content"`.
+pub(crate) fn bounded_decompress(
+    stream: &lopdf::Stream,
+    limit: usize,
+) -> std::result::Result<Vec<u8>, Reject> {
+    match stream.decompressed_content_with_limit(limit) {
+        Ok(bytes) => Ok(bytes),
+        Err(lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. })) => {
+            Err(Reject::TooLarge)
+        }
+        Err(_) => Err(Reject::Broken("stream could not be inflated")),
+    }
+}
+
+/// A form's content, decoded once for the document (AUD-13).
+struct DecodedForm {
+    operations: Rc<Vec<lopdf::content::Operation>>,
+    matrix: Matrix,
+    /// The form's own `/Resources` object, when it declares one.
+    resources: Option<Object>,
+}
+
+/// Forms already decoded, by object id.
+struct FormCache {
+    entries: RefCell<HashMap<lopdf::ObjectId, Rc<DecodedForm>>>,
+}
+
+impl FormCache {
+    fn new() -> Self {
+        Self {
+            entries: RefCell::new(HashMap::new()),
+        }
+    }
+
+    fn get_or_decode(
+        &self,
+        id: lopdf::ObjectId,
+        document: &lopdf::Document,
+        limits: &PdfLimits,
+    ) -> Option<Rc<DecodedForm>> {
+        if let Some(hit) = self.entries.borrow().get(&id).cloned() {
+            return Some(hit);
+        }
+        let stream = document.get_object(id).ok()?.as_stream().ok()?;
+        let bytes = bounded_decompress(stream, limits.max_content_bytes).ok()?;
+        let operations = lopdf::content::Content::decode(&bytes).ok()?.operations;
+        let matrix = stream
+            .dict
+            .get(b"Matrix")
+            .ok()
+            .and_then(|value| {
+                crate::fonts::array_items(value, resolver(document))
+                    .iter()
+                    .map(number_of_object)
+                    .collect::<Option<Vec<f64>>>()
+            })
+            .filter(|values| values.len() == 6)
+            .map_or(Matrix::IDENTITY, |values| Matrix {
+                a: values[0],
+                b: values[1],
+                c: values[2],
+                d: values[3],
+                e: values[4],
+                f: values[5],
+            });
+        let resources = stream.dict.get(b"Resources").ok().cloned();
+        let decoded = Rc::new(DecodedForm {
+            operations: Rc::new(operations),
+            matrix,
+            resources,
+        });
+        self.entries.borrow_mut().insert(id, Rc::clone(&decoded));
+        Some(decoded)
+    }
+}
+
+/// Fonts already decoded, by object id, bounded by [`PdfLimits::max_fonts`].
+struct FontCache {
+    entries: RefCell<HashMap<lopdf::ObjectId, Rc<PdfFont>>>,
+    /// Notes produced while filling the cache (`pdf.font.budget`, …).
+    notes: RefCell<Vec<(String, String)>>,
+}
+
+impl FontCache {
+    fn new() -> Self {
+        Self {
+            entries: RefCell::new(HashMap::new()),
+            notes: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// The font under `name`, decoded at most once per object id.
+    ///
+    /// Past [`PdfLimits::max_fonts`] the font is not decoded: a stub with no
+    /// Unicode map is returned so glyphs still advance, and `pdf.font.budget`
+    /// is recorded once (AUD-13).
+    fn get_or_build(
+        &self,
+        id: lopdf::ObjectId,
+        name: &str,
+        dictionary: &lopdf::Dictionary,
+        document: &lopdf::Document,
+        limits: &PdfLimits,
+    ) -> PdfFont {
+        if let Some(hit) = self.entries.borrow().get(&id).cloned() {
+            let mut font = (*hit).clone();
+            font.name = name.to_owned();
+            return font;
+        }
+        if self.entries.borrow().len() >= limits.max_fonts {
+            self.notes.borrow_mut().push((
+                "pdf.font.budget".to_owned(),
+                format!(
+                    "font `{name}` was not decoded: the document already holds {} fonts",
+                    limits.max_fonts
+                ),
+            ));
+            return PdfFont::stub(name);
+        }
+        match PdfFont::build(name, dictionary, document, limits) {
+            Ok(font) => {
+                self.entries.borrow_mut().insert(id, Rc::new(font.clone()));
+                font
+            }
+            Err(_) => {
+                // A font the reader cannot build is not a reason to lose the
+                // page: its text is recorded as unmapped instead.
+                PdfFont::stub(name)
+            }
+        }
+    }
+
+    fn take_notes(&self) -> Vec<(String, String)> {
+        std::mem::take(&mut *self.notes.borrow_mut())
+    }
+}
 
 /// An opened PDF.
 pub struct PdfDocument {
@@ -32,6 +183,10 @@ pub struct PdfDocument {
     /// here instead of once per draw; the budget is
     /// [`PdfLimits::max_cached_image_bytes`].
     images: ImageCache,
+    /// Forms already decoded, shared by every page (AUD-13).
+    forms: FormCache,
+    /// Fonts already decoded, shared by every page (AUD-13).
+    fonts: FontCache,
     report: crate::report::ReadReport,
 }
 
@@ -54,8 +209,14 @@ impl PdfDocument {
     /// Returns [`PdfError::Malformed`] for a file that is not a PDF,
     /// [`PdfError::Encrypted`] for one that is, and
     /// [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded) when
-    /// the page count is over budget.
+    /// the input size or the page count is over budget.
     pub fn open(bytes: &[u8], limits: PdfLimits) -> Result<Self> {
+        if bytes.len() > limits.max_input_bytes {
+            return Err(limits.exceeded(
+                crate::error::LimitKind::InputBytes,
+                bytes.len() as u64,
+            ));
+        }
         let document =
             lopdf::Document::load_mem(bytes).map_err(|error| PdfError::from_lopdf(&error))?;
         if document.is_encrypted() {
@@ -70,6 +231,8 @@ impl PdfDocument {
             source: bytes.to_vec(),
             limits,
             images: ImageCache::new(limits.max_cached_image_bytes),
+            forms: FormCache::new(),
+            fonts: FontCache::new(),
             report: crate::report::ReadReport::new(),
         })
     }
@@ -180,7 +343,14 @@ impl PdfDocument {
             .map_err(|error| PdfError::from_lopdf(&error))?;
         let inherited = self.inherited(id);
         let geometry = geometry_of(dictionary, &inherited)?;
-        let resources = PageResources::new(&self.document, &self.images, &inherited, self.limits);
+        let resources = PageResources::new(
+            &self.document,
+            &self.images,
+            &self.forms,
+            &self.fonts,
+            &inherited,
+            self.limits,
+        );
 
         let content_bytes = self
             .document
@@ -202,6 +372,9 @@ impl PdfDocument {
         }
         for (id, detail) in resources.notes() {
             report.record_ignored(id, detail);
+        }
+        for (id, detail) in self.fonts.take_notes() {
+            report.record_ignored(&id, &detail);
         }
         if self.images.saw_mask_cycle() {
             // A picture whose `/SMask` points at itself, or a cycle of them. The
@@ -482,6 +655,10 @@ struct PageResources<'a> {
     document: &'a lopdf::Document,
     /// The document's picture cache: a form's pictures are the document's.
     cache: &'a ImageCache,
+    /// The document's form cache: a form drawn many times is decoded once.
+    form_cache: &'a FormCache,
+    /// The document's font cache: a font object is decoded once (AUD-13).
+    font_cache: &'a FontCache,
     fonts: BTreeMap<String, PdfFont>,
     images: BTreeMap<String, lopdf::ObjectId>,
     forms: BTreeMap<String, lopdf::ObjectId>,
@@ -497,26 +674,48 @@ impl<'a> PageResources<'a> {
     fn new(
         document: &'a lopdf::Document,
         cache: &'a ImageCache,
+        form_cache: &'a FormCache,
+        font_cache: &'a FontCache,
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
     ) -> Self {
-        Self::load(document, cache, inherited, limits, None)
+        Self::load(
+            document,
+            cache,
+            form_cache,
+            font_cache,
+            inherited,
+            limits,
+            None,
+        )
     }
 
     /// Builds the resource set of a form, falling back on `parent`.
     fn for_form(
         document: &'a lopdf::Document,
         cache: &'a ImageCache,
+        form_cache: &'a FormCache,
+        font_cache: &'a FontCache,
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
         parent: &'a PageResources<'a>,
     ) -> Self {
-        Self::load(document, cache, inherited, limits, Some(parent))
+        Self::load(
+            document,
+            cache,
+            form_cache,
+            font_cache,
+            inherited,
+            limits,
+            Some(parent),
+        )
     }
 
     fn load(
         document: &'a lopdf::Document,
         cache: &'a ImageCache,
+        form_cache: &'a FormCache,
+        font_cache: &'a FontCache,
         inherited: &BTreeMap<Vec<u8>, Object>,
         limits: PdfLimits,
         parent: Option<&'a PageResources<'a>>,
@@ -534,6 +733,8 @@ impl<'a> PageResources<'a> {
             return Self {
                 document,
                 cache,
+                form_cache,
+                font_cache,
                 fonts,
                 images,
                 forms,
@@ -559,22 +760,12 @@ impl<'a> PageResources<'a> {
                 else {
                     continue;
                 };
-                match PdfFont::build(&name, dictionary, document, &limits) {
-                    Ok(font) => {
-                        // What reading the font cost is carried on the font and
-                        // collected here: the page's report is assembled after
-                        // the resources are, and this is the route that does not
-                        // thread a `&mut` through a graph a form borrows from its
-                        // page (AUD-12).
-                        notes.extend(font.notes.iter().cloned());
-                        fonts.insert(name, font);
-                    }
-                    Err(error) => {
-                        // A font the reader cannot build is not a reason to lose
-                        // the page: its text is recorded as unmapped instead.
-                        let _ = error;
-                    }
-                }
+                // Through the document's font cache: the same object under two
+                // names, or on two pages, is decoded once, and `max_fonts` is
+                // checked at insert (AUD-13).
+                let font = font_cache.get_or_build(id, &name, dictionary, document, &limits);
+                notes.extend(font.notes.iter().cloned());
+                fonts.insert(name, font);
             }
         }
 
@@ -610,6 +801,8 @@ impl<'a> PageResources<'a> {
         Self {
             document,
             cache,
+            form_cache,
+            font_cache,
             fonts,
             images,
             forms,
@@ -683,38 +876,13 @@ impl ResourceProvider for PageResources<'_> {
 
     fn form(&self, name: &str) -> Option<crate::content::Form<'_>> {
         let id = *self.forms.get(name)?;
-        let stream = self.document.get_object(id).ok()?.as_stream().ok()?;
-        // A form's content is a stream like any other; the reader that decodes
-        // page content decodes this one.
-        let bytes = stream.decompressed_content().ok()?;
-        let operations = lopdf::content::Content::decode(&bytes).ok()?.operations;
-        // `/Matrix` places the form; without it the form is drawn where the CTM
-        // already is, which is the identity multiplied into it.
-        let matrix = stream
-            .dict
-            .get(b"Matrix")
-            .ok()
-            .and_then(|value| {
-                crate::fonts::array_items(value, resolver(self.document))
-                    .iter()
-                    .map(number_of_object)
-                    .collect::<Option<Vec<f64>>>()
-            })
-            .filter(|values| values.len() == 6)
-            .map_or(crate::content::Matrix::IDENTITY, |values| {
-                crate::content::Matrix {
-                    a: values[0],
-                    b: values[1],
-                    c: values[2],
-                    d: values[3],
-                    e: values[4],
-                    f: values[5],
-                }
-            });
+        // Through the document's form cache: a form drawn ten thousand times is
+        // inflated once, not once per `Do` (AUD-13).
+        let decoded = self.form_cache.get_or_decode(id, self.document, &self.limits)?;
         // A form with no `/Resources` of its own inherits the invoking page's, so
         // an empty dictionary is treated the same way: a producer that writes
         // `/Resources <<>>` meant "nothing extra", not "nothing at all".
-        let inherited: BTreeMap<Vec<u8>, Object> = match stream.dict.get(b"Resources").ok() {
+        let inherited: BTreeMap<Vec<u8>, Object> = match &decoded.resources {
             Some(resources) => {
                 let mut map = BTreeMap::new();
                 map.insert(b"Resources".to_vec(), resources.clone());
@@ -722,12 +890,19 @@ impl ResourceProvider for PageResources<'_> {
             }
             None => BTreeMap::new(),
         };
-        let child =
-            PageResources::for_form(self.document, self.cache, &inherited, self.limits, self);
+        let child = PageResources::for_form(
+            self.document,
+            self.cache,
+            self.form_cache,
+            self.font_cache,
+            &inherited,
+            self.limits,
+            self,
+        );
         Some(crate::content::Form {
-            operations,
-            matrix,
-            resources: std::rc::Rc::new(child),
+            operations: Rc::clone(&decoded.operations),
+            matrix: decoded.matrix,
+            resources: Rc::new(child),
         })
     }
 }

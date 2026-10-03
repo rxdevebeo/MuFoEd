@@ -106,7 +106,18 @@ impl PdfBuilder {
     /// Adds a page with a resource dictionary given as PDF source, e.g.
     /// `"<< /Font << /F1 7 0 R >> >>"`.
     pub fn page_with(&mut self, content: &[u8], resources: &str) -> u32 {
-        let contents = self.stream("", content, false);
+        self.page_with_stream(content, resources, false)
+    }
+
+    /// Like [`page_with`](Self::page_with), but zlib-compresses the content
+    /// stream (`/Filter /FlateDecode`). Used by hostile tests that need a
+    /// small compressed payload that expands past a budget (AUD-13).
+    pub fn page_flate(&mut self, content: &[u8], resources: &str) -> u32 {
+        self.page_with_stream(content, resources, true)
+    }
+
+    fn page_with_stream(&mut self, content: &[u8], resources: &str, compress: bool) -> u32 {
+        let contents = self.stream("", content, compress);
         let [x0, y0, x1, y1] = self.media_box;
         let page = self.object(format!(
             "<< /Type /Page /Parent {PAGES} 0 R /MediaBox [{x0} {y0} {x1} {y1}] /Resources {resources} /Contents {contents} 0 R >>"

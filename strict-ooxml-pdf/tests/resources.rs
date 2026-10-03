@@ -425,9 +425,10 @@ fn a_form_that_draws_itself_is_refused_by_the_depth_bound() {
 }
 
 /// Breadth is counted too: a form drawn many times is many times the work, and a
-/// per-invocation count would call that cheap.
+/// per-invocation count would call that cheap. Past the budget the page stops
+/// soft and records `pdf.page.budget` (AUD-13), rather than refusing the page.
 #[test]
-fn a_form_drawn_often_is_refused_by_the_operation_budget() {
+fn a_form_drawn_often_is_stopped_by_the_operation_budget() {
     let mut document = PdfDocument::open(
         &form_drawn_often(),
         PdfLimits {
@@ -436,10 +437,17 @@ fn a_form_drawn_often_is_refused_by_the_operation_budget() {
         },
     )
     .expect("open");
-    let error = document
+    let page = document
         .page(1)
-        .expect_err("thirty invocations of a form is past twenty operations");
-    assert!(error.to_string().contains("operations"), "{error}");
+        .expect("thirty invocations stop soft, they do not refuse the page");
+    assert!(
+        page.report
+            .losses()
+            .iter()
+            .any(|loss| loss.id == "pdf.page.budget" && loss.detail.contains("operations")),
+        "the page budget names operations:\n{}",
+        page.report
+    );
 }
 
 /// A form nested a few deep, with its own matrix, is read and placed where the

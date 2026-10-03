@@ -258,6 +258,163 @@ mod images {
 }
 
 mod budget {
-    //! AUD-13, AUD-84: per-page glyph and operation budgets, form reuse,
-    //! inline images.
+    //! AUD-13: per-page glyph and operation budgets, form reuse, flate bombs,
+    //! and the font-object ceiling. AUD-84 will extend this module for inline
+    //! images.
+
+    use super::*;
+
+    /// A form whose content draws `glyph_count` glyphs of `A`, under `/F1`.
+    fn form_of_glyphs(pdf: &mut PdfBuilder, glyph_count: usize) -> u32 {
+        let text = "A".repeat(glyph_count);
+        let content = format!("BT /F1 12 Tf ({text}) Tj ET");
+        pdf.stream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 100 100]",
+            content.as_bytes(),
+            false,
+        )
+    }
+
+    /// A Type1 font dictionary good enough for `Tj` of ASCII.
+    fn simple_font(pdf: &mut PdfBuilder) -> u32 {
+        pdf.object(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica \
+             /Encoding /WinAnsiEncoding >>",
+        )
+    }
+
+    #[test]
+    fn a_form_drawn_many_times_stops_on_the_page_glyph_budget() {
+        // 10 000 × 1 000 glyphs would be ten million without a shared page
+        // budget; with one, the page stops at `max_glyphs` and records
+        // `pdf.page.budget`. The form is decoded once (the cache), so the
+        // harness finishes well inside 10 s.
+        let (ids, pages, _) = assert_survives("form glyph budget", || {
+            let mut pdf = PdfBuilder::new();
+            let font = simple_font(&mut pdf);
+            let form = form_of_glyphs(&mut pdf, 1_000);
+            let do_ops = "/Fm Do ".repeat(10_000);
+            pdf.page_with(
+                do_ops.as_bytes(),
+                &format!("<< /Font << /F1 {font} 0 R >> /XObject << /Fm {form} 0 R >> >>"),
+            );
+            let bytes = pdf.build();
+            let mut document = PdfDocument::open(&bytes, PdfLimits::default()).expect("open");
+            let pages = document.pages().expect("pages");
+            let ids: Vec<String> = document
+                .report()
+                .losses()
+                .iter()
+                .map(|loss| loss.id.clone())
+                .collect();
+            (ids, pages.len(), document.page_count())
+        });
+        assert_eq!(pages, 1);
+        assert!(
+            ids.iter().any(|id| id == "pdf.page.budget"),
+            "expected pdf.page.budget, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn a_flate_bomb_in_page_content_is_refused_without_hanging() {
+        // ~40 MiB of zeros compress to a few KiB; the page content budget is
+        // 32 MiB, so inflate stops and the page is refused (AUD-13).
+        let zeros = vec![0u8; 40 * 1024 * 1024];
+        let err = assert_survives("content flate bomb", move || {
+            let mut pdf = PdfBuilder::new();
+            pdf.page_flate(&zeros, "<< >>");
+            let bytes = pdf.build();
+            assert!(
+                bytes.len() < 256 * 1024,
+                "compressed page should be tiny, got {} bytes",
+                bytes.len()
+            );
+            PdfDocument::open(&bytes, PdfLimits::default())
+                .expect("open")
+                .page(1)
+                .expect_err("40 MiB of content is past max_content_bytes")
+        });
+        let text = err.to_string();
+        assert!(
+            text.contains("decompress") || text.contains("limit") || text.contains("Memory"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_flate_bomb_in_an_image_is_refused_without_hanging() {
+        // The picture's samples expand past `max_image_bytes`; bounded
+        // decompress refuses before the allocation (AUD-13). The page still
+        // opens; the picture is recorded as missing / too large.
+        let zeros = vec![0u8; 65 * 1024 * 1024];
+        let (ids, _, _) = assert_survives("image flate bomb", move || {
+            let mut pdf = PdfBuilder::new();
+            // `compress: true` writes `/Filter /FlateDecode` and a tiny payload.
+            let image = pdf.stream(
+                "/Type /XObject /Subtype /Image /Width 1 /Height 1 \
+                 /ColorSpace /DeviceGray /BitsPerComponent 8",
+                &zeros,
+                true,
+            );
+            pdf.page_with(
+                b"q 10 0 0 10 10 10 cm /Im Do Q",
+                &format!("<< /XObject << /Im {image} 0 R >> >>"),
+            );
+            let built = pdf.build();
+            assert!(
+                built.len() < 256 * 1024,
+                "compressed image should be tiny, got {} bytes",
+                built.len()
+            );
+            let mut document = PdfDocument::open(&built, PdfLimits::default()).expect("open");
+            let _ = document.pages().expect("pages");
+            let ids: Vec<String> = document
+                .report()
+                .losses()
+                .iter()
+                .map(|loss| loss.id.clone())
+                .collect();
+            (ids, 0usize, 0usize)
+        });
+        assert!(
+            ids.iter()
+                .any(|id| id == "pdf.image.missing" || id.starts_with("pdf.image.")),
+            "expected an image loss, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn ten_thousand_fonts_trip_the_font_budget() {
+        let (ids, _, _) = assert_survives("font budget", || {
+            let mut pdf = PdfBuilder::new();
+            let mut font_entries = String::new();
+            for index in 0..10_000 {
+                let id = pdf.object(format!(
+                    "<< /Type /Font /Subtype /Type1 /BaseFont /F{index} \
+                     /Encoding /WinAnsiEncoding >>"
+                ));
+                font_entries.push_str(&format!("/F{index} {id} 0 R "));
+            }
+            // One glyph so the resources are actually walked.
+            pdf.page_with(
+                b"BT /F0 12 Tf (A) Tj ET",
+                &format!("<< /Font << {font_entries} >> >>"),
+            );
+            let mut document =
+                PdfDocument::open(&pdf.build(), PdfLimits::default()).expect("open");
+            let _ = document.pages().expect("pages");
+            let ids: Vec<String> = document
+                .report()
+                .losses()
+                .iter()
+                .map(|loss| loss.id.clone())
+                .collect();
+            (ids, 0usize, 0usize)
+        });
+        assert!(
+            ids.iter().any(|id| id == "pdf.font.budget"),
+            "expected pdf.font.budget, got {ids:?}"
+        );
+    }
 }

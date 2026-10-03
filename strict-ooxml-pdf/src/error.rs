@@ -99,6 +99,8 @@ pub enum LimitKind {
     /// rather than a byte one: a page at scale 8 is 4 000 × 6 000 pixels before
     /// anybody asks what that costs in memory.
     RasterPixels,
+    /// `PdfLimits::max_input_bytes`, the size of the file before it is loaded.
+    InputBytes,
 }
 
 impl LimitKind {
@@ -116,6 +118,7 @@ impl LimitKind {
             Self::Fonts => "fonts",
             Self::FormDepth => "form_depth",
             Self::RasterPixels => "raster_pixels",
+            Self::InputBytes => "input_bytes",
         }
     }
 }
@@ -141,10 +144,20 @@ pub struct PdfLimits {
     pub max_font_glyphs: usize,
     /// Decoded bytes of one image. Default: 64 MiB.
     pub max_image_bytes: usize,
-    /// Points in one flattened path. Default: 200 000.
+    /// Points in one flattened path across a page (forms included). Default: 200 000.
     pub max_path_points: usize,
-    /// Fonts one page may reference. Default: 512.
+    /// Distinct font objects one document may decode. Default: 512.
+    ///
+    /// Checked when a font is first inserted into the document's font cache
+    /// (AUD-13). Past this ceiling the font is not decoded: its glyphs still
+    /// advance the pen, but without a Unicode map, and the report records
+    /// `pdf.font.budget`.
     pub max_fonts: usize,
+    /// Bytes of the PDF file itself, checked before `lopdf` loads it. Default: 256 MiB.
+    ///
+    /// Object-stream inflation inside the loader is not bounded by this crate
+    /// (waiver `PDF-OBJSTM-BOMB`); this ceiling is the outer fence on the input.
+    pub max_input_bytes: usize,
     /// How deep form XObjects may nest. Default: 12.
     ///
     /// Deep enough for the real cases (a page of a catalogue is usually one form
@@ -182,6 +195,7 @@ impl Default for PdfLimits {
             max_image_bytes: 64 * 1024 * 1024,
             max_path_points: 200_000,
             max_fonts: 512,
+            max_input_bytes: 256 * 1024 * 1024,
             max_form_depth: 12,
             max_cached_image_bytes: 64 * 1024 * 1024,
             max_raster_pixels: 4096 * 4096,
@@ -208,6 +222,7 @@ impl PdfLimits {
             LimitKind::Fonts => self.max_fonts as u64,
             LimitKind::FormDepth => self.max_form_depth as u64,
             LimitKind::RasterPixels => self.max_raster_pixels,
+            LimitKind::InputBytes => self.max_input_bytes as u64,
         };
         PdfError::LimitExceeded {
             kind,
@@ -229,6 +244,7 @@ mod tests {
         let limits = PdfLimits::default();
         assert_eq!(limits.max_pages, 2048);
         assert_eq!(limits.max_content_bytes, 32 * 1024 * 1024);
+        assert_eq!(limits.max_input_bytes, 256 * 1024 * 1024);
         assert!(limits.max_glyphs > 0);
         assert!(limits.max_fonts > 0);
     }

@@ -167,6 +167,31 @@ pub struct PdfFont {
 }
 
 impl PdfFont {
+    /// A font that was not decoded: no Unicode map, estimated widths.
+    ///
+    /// Used when [`PdfLimits::max_fonts`] is exhausted (AUD-13). Glyphs still
+    /// advance the pen; their characters come from the fallback and count as
+    /// unmapped.
+    #[must_use]
+    pub fn stub(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            two_byte: false,
+            base: BaseEncoding::Standard,
+            encoding_stated: false,
+            differences: BTreeMap::new(),
+            to_unicode: BTreeMap::new(),
+            widths: BTreeMap::new(),
+            default_width: 1000.0,
+            default_width_stated: false,
+            embedded: false,
+            base_font: String::new(),
+            ascent: None,
+            descent: None,
+            notes: Vec::new(),
+        }
+    }
+
     /// Builds a font from a resource dictionary.
     ///
     /// # Errors
@@ -210,7 +235,7 @@ impl PdfFont {
             // A composite font's encoding is a CMap; only the two-byte case is
             // read here, which is what every real document uses.
             if let Ok(encoding) = dictionary.get(b"Encoding") {
-                if let Some(bytes) = stream_bytes(encoding, resolve) {
+                if let Some(bytes) = stream_bytes(encoding, resolve, limits.max_content_bytes) {
                     if bytes
                         .windows(2)
                         .any(|pair| pair == b"H\x00" || pair == b"V\x00")
@@ -278,7 +303,7 @@ impl PdfFont {
         }
 
         if let Ok(to_unicode) = dictionary.get(b"ToUnicode") {
-            if let Some(bytes) = stream_bytes(to_unicode, resolve) {
+            if let Some(bytes) = stream_bytes(to_unicode, resolve, limits.max_content_bytes) {
                 read_to_unicode(&bytes, &mut font.to_unicode, limits, &mut font.notes)?;
             }
         }
@@ -985,11 +1010,11 @@ pub fn array_items(object: &Object, resolve: Resolver<'_>) -> Vec<Object> {
     }
 }
 
-/// The decompressed bytes of a stream object, dereferenced.
-pub fn stream_bytes(object: &Object, resolve: Resolver<'_>) -> Option<Vec<u8>> {
+/// The decompressed bytes of a stream object, dereferenced, bounded by `limit`.
+pub fn stream_bytes(object: &Object, resolve: Resolver<'_>, limit: usize) -> Option<Vec<u8>> {
     let object = resolve.get(object)?;
     let stream = object.as_stream().ok()?;
-    stream.decompressed_content().ok()
+    crate::document::bounded_decompress(stream, limit).ok()
 }
 
 /// Decodes UTF-16BE bytes of a text string, which is how a PDF writes

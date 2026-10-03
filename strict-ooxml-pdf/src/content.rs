@@ -300,16 +300,28 @@ impl Default for PathBuilder {
 }
 
 impl PathBuilder {
-    /// Moves to a point, starting a new subpath.
-    fn move_to(&mut self, x: f64, y: f64) {
+    /// How many points the builder currently holds.
+    fn point_count(&self) -> usize {
+        self.subpaths
+            .iter()
+            .map(|subpath| subpath.points.len())
+            .sum::<usize>()
+            + self.current.len()
+    }
+
+    /// Moves to a point, starting a new subpath. Returns points added.
+    fn move_to(&mut self, x: f64, y: f64) -> usize {
+        let before = self.point_count();
         self.flush();
         self.current = vec![(x, y)];
         self.start = (x, y);
         self.last_cubic = None;
+        self.point_count().saturating_sub(before)
     }
 
-    /// Adds a straight line.
-    fn line_to(&mut self, x: f64, y: f64) {
+    /// Adds a straight line. Returns points added.
+    fn line_to(&mut self, x: f64, y: f64) -> usize {
+        let before = self.point_count();
         if self.current.is_empty() {
             self.current = vec![(x, y)];
             self.start = (x, y);
@@ -317,12 +329,24 @@ impl PathBuilder {
             self.current.push((x, y));
         }
         self.last_cubic = None;
+        self.point_count().saturating_sub(before)
     }
 
     /// Adds a cubic curve, flattened.
     /// The six coordinates of a `c` operator plus the flattening tolerance.
+    /// Returns points added.
     #[allow(clippy::too_many_arguments)]
-    fn curve_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64, tolerance: f64) {
+    fn curve_to(
+        &mut self,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        x: f64,
+        y: f64,
+        tolerance: f64,
+    ) -> usize {
+        let before = self.point_count();
         if self.current.is_empty() {
             self.current = vec![(x, y)];
             self.start = (x, y);
@@ -331,15 +355,18 @@ impl PathBuilder {
         let points = flatten_cubic(from, (x1, y1), (x2, y2), (x, y), tolerance);
         self.current.extend(points);
         self.last_cubic = Some((x2, y2));
+        self.point_count().saturating_sub(before)
     }
 
-    /// Closes the current subpath.
-    fn close(&mut self) {
+    /// Closes the current subpath. Returns points added.
+    fn close(&mut self) -> usize {
         if self.current.is_empty() {
-            return;
+            return 0;
         }
+        let before = self.point_count();
         self.current.push(self.start);
         self.flush();
+        self.point_count().saturating_sub(before)
     }
 
     /// Moves the current subpath into the list.
@@ -525,14 +552,82 @@ pub trait Resources {
 /// the `Do`, the CTM multiplied by `/Matrix`, and every name resolved against the
 /// form's `/Resources` — and a form that declares no resources of its own
 /// inherits the page's.
+///
+/// `operations` is an [`Rc`] so a form drawn a thousand times is decoded once
+/// for the document and shared (AUD-13).
 #[derive(Clone)]
 pub struct Form<'a> {
     /// The form's content stream, decoded into operations.
-    pub operations: Vec<lopdf::content::Operation>,
+    pub operations: std::rc::Rc<Vec<lopdf::content::Operation>>,
     /// `/Matrix`, or the identity when the form states none.
     pub matrix: Matrix,
     /// The resources the form's own names resolve against.
     pub resources: std::rc::Rc<dyn Resources + 'a>,
+}
+
+/// Counters shared by a page and every form it draws (AUD-13).
+///
+/// Glyphs, operators and path points are **per page**, not per form invocation:
+/// a form drawn ten thousand times with a thousand glyphs each would otherwise
+/// reset the glyph count on every `Do` and never trip the budget. When a counter
+/// exceeds its limit, interpretation of the page stops; what was already
+/// collected is kept and the report records `pdf.page.budget`.
+#[derive(Clone, Debug, Default)]
+pub struct PageBudget {
+    /// Operators seen on this page, nested forms included.
+    pub operations: usize,
+    /// Glyphs placed on this page, nested forms included.
+    pub glyphs: usize,
+    /// Flattened path points produced on this page, nested forms included.
+    pub path_points: usize,
+    /// Which limit stopped the page, if any (`"glyphs"`, `"operations"`, …).
+    pub stopped: Option<&'static str>,
+}
+
+impl PageBudget {
+    /// Returns `false` when the page has already stopped or this charge stops it.
+    fn charge_operation(&mut self, limits: &PdfLimits) -> bool {
+        if self.stopped.is_some() {
+            return false;
+        }
+        if self.operations >= limits.max_operations {
+            self.stopped = Some("operations");
+            return false;
+        }
+        self.operations += 1;
+        true
+    }
+
+    /// Returns `false` when the next glyph would exceed the page budget.
+    fn charge_glyph(&mut self, limits: &PdfLimits) -> bool {
+        if self.stopped.is_some() {
+            return false;
+        }
+        if self.glyphs >= limits.max_glyphs {
+            self.stopped = Some("glyphs");
+            return false;
+        }
+        self.glyphs += 1;
+        true
+    }
+
+    /// Charges `added` flattened path points; returns `false` when the budget stops.
+    fn charge_path_points(&mut self, added: usize, limits: &PdfLimits) -> bool {
+        if self.stopped.is_some() {
+            return false;
+        }
+        if added == 0 {
+            return true;
+        }
+        let next = self.path_points.saturating_add(added);
+        if next > limits.max_path_points {
+            self.path_points = limits.max_path_points;
+            self.stopped = Some("path_points");
+            return false;
+        }
+        self.path_points = next;
+        true
+    }
 }
 
 /// The result of interpreting one page.
@@ -573,10 +668,11 @@ impl PageGeometry {
 
 /// Interprets one page's content stream.
 ///
-/// # Errors
+/// Operators, glyphs and path points share one [`PageBudget`]. Exceeding a
+/// page budget stops interpretation and keeps what was already collected; the
+/// caller records `pdf.page.budget` (AUD-13). Form nesting past
+/// [`PdfLimits::max_form_depth`] is still a hard [`PdfError::LimitExceeded`].
 ///
-/// Returns [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded) when
-/// a budget is hit: operators, glyphs or flattened path points.
 /// The operator dispatch is one function on purpose: the graphics state it
 /// threads through `q`/`Q` is only correct if every arm sees the same one,
 /// and splitting it by operator family would put that in two places.
@@ -588,8 +684,8 @@ pub fn interpret(
     limits: PdfLimits,
     tolerance: f64,
 ) -> Result<Content> {
-    let mut budget = 0usize;
-    interpret_from(
+    let mut budget = PageBudget::default();
+    let mut content = interpret_from(
         operations,
         resources,
         geometry,
@@ -598,11 +694,18 @@ pub fn interpret(
         State::default(),
         0,
         &mut budget,
-    )
+    )?;
+    if let Some(limit) = budget.stopped {
+        content.ignored.push(Ignored::new(
+            "pdf.page.budget",
+            format!("page exceeded the {limit} budget"),
+        ));
+    }
+    Ok(content)
 }
 
 /// Interprets content that starts from a given graphics state, at a given nesting
-/// depth, drawing against one shared operation budget.
+/// depth, drawing against one shared [`PageBudget`].
 ///
 /// A form XObject is interpreted by a recursive call, and the three extra
 /// parameters are what make that safe and correct: the **seed state** so the form
@@ -618,7 +721,7 @@ fn interpret_from(
     tolerance: f64,
     seed: State,
     depth: usize,
-    budget: &mut usize,
+    budget: &mut PageBudget,
 ) -> Result<Content> {
     let mut out = Content::default();
     let mut stack: Vec<State> = vec![seed.clone()];
@@ -629,10 +732,9 @@ fn interpret_from(
     for operation in operations {
         // The budget counts **operators across the whole page**, forms included:
         // a form drawn a thousand times is a thousand times the work, and a
-        // per-invocation count would multiply that by the nesting depth.
-        *budget += 1;
-        if *budget > limits.max_operations {
-            return Err(limits.exceeded(LimitKind::Operations, *budget as u64));
+        // per-invocation count would reset on every `Do` (AUD-13).
+        if !budget.charge_operation(&limits) {
+            break;
         }
         let operator = operation.operator.as_str();
         let args = &operation.operands;
@@ -860,8 +962,9 @@ fn interpret_from(
                 };
                 if let Some(bytes) = args.get(string_index).and_then(string_of) {
                     show_text(
-                        &bytes, &mut text, &current, resources, geometry, limits, &mut out,
-                    )?;
+                        &bytes, &mut text, &current, resources, geometry, limits, budget,
+                        &mut out,
+                    );
                 }
             }
             "TJ" => {
@@ -871,8 +974,8 @@ fn interpret_from(
                             Object::String(bytes, _) => {
                                 show_text(
                                     bytes, &mut text, &current, resources, geometry, limits,
-                                    &mut out,
-                                )?;
+                                    budget, &mut out,
+                                );
                             }
                             other => {
                                 if let Some(adjust) = number_of(other) {
@@ -891,12 +994,18 @@ fn interpret_from(
             }
             "m" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
-                    path.move_to(x, y);
+                    let added = path.move_to(x, y);
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
             }
             "l" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
-                    path.line_to(x, y);
+                    let added = path.line_to(x, y);
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
             }
             "c" => {
@@ -908,7 +1017,10 @@ fn interpret_from(
                     number_at(args, 4),
                     number_at(args, 5),
                 ) {
-                    path.curve_to(x1, y1, x2, y2, x, y, tolerance);
+                    let added = path.curve_to(x1, y1, x2, y2, x, y, tolerance);
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
             }
             "v" => {
@@ -920,7 +1032,10 @@ fn interpret_from(
                     number_at(args, 2),
                     number_at(args, 3),
                 ) {
-                    path.curve_to(from.0, from.1, x2, y2, x, y, tolerance);
+                    let added = path.curve_to(from.0, from.1, x2, y2, x, y, tolerance);
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
             }
             "y" => {
@@ -937,10 +1052,18 @@ fn interpret_from(
                     if let Some(last) = path.last_cubic {
                         let _ = last;
                     }
-                    path.curve_to(x1, y1, x2, y2, x, y, tolerance);
+                    let added = path.curve_to(x1, y1, x2, y2, x, y, tolerance);
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
             }
-            "h" => path.close(),
+            "h" => {
+                let added = path.close();
+                if !budget.charge_path_points(added, &limits) {
+                    break;
+                }
+            }
             "re" => {
                 if let (Some(x), Some(y), Some(w), Some(h)) = (
                     number_at(args, 0),
@@ -948,11 +1071,14 @@ fn interpret_from(
                     number_at(args, 2),
                     number_at(args, 3),
                 ) {
-                    path.move_to(x, y);
-                    path.line_to(x + w, y);
-                    path.line_to(x + w, y + h);
-                    path.line_to(x, y + h);
-                    path.close();
+                    let mut added = path.move_to(x, y);
+                    added += path.line_to(x + w, y);
+                    added += path.line_to(x + w, y + h);
+                    added += path.line_to(x, y + h);
+                    added += path.close();
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
             }
             // `S` is stroke and `s` is close-then-stroke: neither fills. The
@@ -967,7 +1093,10 @@ fn interpret_from(
                 false,
             ),
             "s" => {
-                path.close();
+                let added = path.close();
+                if !budget.charge_path_points(added, &limits) {
+                    break;
+                }
                 paint(
                     &mut out,
                     std::mem::take(&mut path).finish(),
@@ -995,7 +1124,10 @@ fn interpret_from(
             ),
             "B" | "b" => {
                 if operator == "b" {
-                    path.close();
+                    let added = path.close();
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
                 paint(
                     &mut out,
@@ -1008,7 +1140,10 @@ fn interpret_from(
             }
             "B*" | "b*" => {
                 if operator == "b*" {
-                    path.close();
+                    let added = path.close();
+                    if !budget.charge_path_points(added, &limits) {
+                        break;
+                    }
                 }
                 paint(
                     &mut out,
@@ -1115,7 +1250,7 @@ fn place_form(
     limits: PdfLimits,
     tolerance: f64,
     depth: usize,
-    budget: &mut usize,
+    budget: &mut PageBudget,
     out: &mut Content,
 ) -> Result<()> {
     if depth >= limits.max_form_depth {
@@ -1134,7 +1269,7 @@ fn place_form(
     let mut seed = state.clone();
     seed.ctm = Matrix::chain(form.matrix, state.ctm);
     let content = interpret_from(
-        &form.operations,
+        form.operations.as_ref(),
         form.resources.as_ref(),
         geometry,
         limits,
@@ -1203,6 +1338,10 @@ fn place_image(
 }
 
 /// Shows a string, placing a glyph per code and advancing the text matrix.
+///
+/// Glyphs share the page's [`PageBudget`]: a form drawn many times cannot reset
+/// the count on every `Do` (AUD-13). Past the ceiling the page stops; already
+/// placed glyphs stay.
 #[allow(clippy::too_many_arguments)]
 fn show_text(
     bytes: &[u8],
@@ -1211,20 +1350,24 @@ fn show_text(
     resources: &dyn Resources,
     geometry: PageGeometry,
     limits: PdfLimits,
+    budget: &mut PageBudget,
     out: &mut Content,
-) -> Result<()> {
+) {
     let Some(name) = state.font_name.clone() else {
-        return Ok(());
+        return;
     };
     let Some(font) = resources.font(&name) else {
         out.ignored.push(Ignored::new(
             "pdf.font.missing",
             format!("font resource `{name}` is not in the page's resources"),
         ));
-        return Ok(());
+        return;
     };
     let codes = font.codes(bytes);
     for code in codes {
+        if budget.stopped.is_some() {
+            return;
+        }
         // The advance is computed first so the glyph can report it: a consumer
         // that lays text out from the reader's output needs the pen movement,
         // and recomputing it from `/W` is exactly the work the reader has
@@ -1240,13 +1383,12 @@ fn show_text(
         }
         adjust_text(advance, text, state, geometry);
         if let Some(glyph) = glyph {
-            if out.items.len() >= limits.max_glyphs {
-                return Err(limits.exceeded(LimitKind::Glyphs, out.items.len() as u64 + 1));
+            if !budget.charge_glyph(&limits) {
+                return;
             }
             out.items.push(Item::Glyph(glyph));
         }
     }
-    Ok(())
 }
 
 /// Builds the glyph at the current text position, or `None` when it is not drawn.

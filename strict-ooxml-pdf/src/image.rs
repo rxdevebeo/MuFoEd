@@ -424,10 +424,14 @@ fn decode_inner(
             // reason for a real loss — the kind of message that sends somebody to
             // look for a codec instead of at the file. It is also not a *missing
             // dictionary*, which is what the same message used to say.
-            let samples = stream.decompressed_content().map_err(|_| match first {
-                Some(_) => Reject::Broken("flate samples could not be inflated"),
-                None => Reject::Broken("samples are not a decodable stream"),
-            })?;
+            // Bounded inflate (AUD-13): a flate bomb is refused before the
+            // allocation, not after `samples.len()` is already the bomb's size.
+            let samples = crate::document::bounded_decompress(stream, limits.max_image_bytes)
+                .map_err(|reject| match (&reject, first) {
+                    (Reject::TooLarge, _) => Reject::TooLarge,
+                    (_, Some(_)) => Reject::Broken("flate samples could not be inflated"),
+                    (_, None) => Reject::Broken("samples are not a decodable stream"),
+                })?;
             let expected = (width as usize)
                 .saturating_mul(height as usize)
                 .saturating_mul(components as usize);

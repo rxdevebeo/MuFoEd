@@ -247,8 +247,13 @@ impl Rasterizer {
         let page = self.page(number)?;
         let scale = scale_of(options)?;
         let (width, height) = page.render_dimensions();
-        let requested = u64::from(pixels(width, scale)) * u64::from(pixels(height, scale));
-        if requested > options.max_pixels {
+        // `checked_mul` before any buffer is asked for (AUD-13): a nonsense
+        // scale must not wrap the pixel count and allocate under the ceiling.
+        let requested = u64::from(pixels(width, scale))
+            .checked_mul(u64::from(pixels(height, scale)))
+            .unwrap_or(u64::MAX);
+        let ceiling = options.max_pixels.min(self.limits.max_raster_pixels);
+        if requested > ceiling {
             return Err(self.limits.exceeded(LimitKind::RasterPixels, requested));
         }
         let cache = RenderCache::new();

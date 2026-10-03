@@ -764,3 +764,29 @@ are decisions to keep, and the waiver is the record of that — with a review da
 """
 opened = "2026-10-02"
 review = "2027-01-02"
+
+[[waivers]]
+id = "PDF-OBJSTM-BOMB"
+subject = "PDF reader — object-stream inflation inside lopdf::Document::load"
+binds = "process:pdf-objstm-bomb"
+summary = """
+Stream decompression for page content, forms, images and ToUnicode is bounded
+by `bounded_decompress` / `get_page_content_with_limit` (AUD-13). Object streams
+inflated while `lopdf::Document::load_mem` builds the object graph are not: that
+path is inside the dependency. The outer fence is `PdfLimits::max_input_bytes`
+(256 MiB, checked before load). The residual risk is accepted; the long-run
+guard is the fuzz target `fuzz_pdf` (AUD-92).
+"""
+risk = """
+A crafted PDF whose object streams expand far beyond the compressed input could
+allocate heavily during load, up to what the process can give, before any page
+is read. The input-size ceiling bounds how large the compressed file may be; it
+does not bound the expansion ratio of object streams.
+"""
+exit = """
+Land `fuzz_pdf` (AUD-92) and keep a corpus of object-stream bombs under it; or
+switch the loader to a path that applies `LoadOptions::max_decompressed_size`
+(or an equivalent) and close this waiver.
+"""
+opened = "2026-10-03"
+review = "2027-01-03"
