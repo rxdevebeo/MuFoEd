@@ -1,14 +1,19 @@
 //! Conformance detection.
 //!
-//! Combines namespace, relationship-type and content-type signals into a single
+//! Combines namespace and relationship-type signals into a single
 //! [`Conformance`] verdict; disagreeing signals yield [`Conformance::Mixed`]
 //! rather than a silent choice (`TZ-STRICT-OOXML-RUST.md` §4.1, §9.4; stage
 //! task S1.12).
+//!
+//! Content types are **not** a conformance signal (AUD-26): the MIME strings
+//! are identical across Strict and Transitional families. The main-part
+//! content type is validated separately in `Package::open_*` (see
+//! `opc::check_main_content_type`). Deviation from TZ §4.1 item 4 is recorded
+//! in ADR-0019 (AUD-90).
 
 use crate::error::Result;
 use crate::ns::registry::{classify_namespace, classify_relationship};
 use crate::ns::Conformance;
-use crate::opc::content_types::ContentTypeIndex;
 
 /// Signals gathered from a package, used to detect conformance.
 #[derive(Debug, Default)]
@@ -17,8 +22,6 @@ pub struct ConformanceSignals<'a> {
     pub namespaces: Vec<&'a str>,
     /// Raw relationship-type URIs found in the package.
     pub relationship_types: Vec<&'a str>,
-    /// Content-type index of the package.
-    pub content_types: Option<&'a ContentTypeIndex>,
 }
 
 /// Detects conformance from a set of signals.
@@ -45,13 +48,6 @@ pub fn detect_conformance(signals: &ConformanceSignals<'_>) -> Result<Conformanc
             _ => {}
         }
     }
-    if let Some(index) = signals.content_types {
-        match classify_content_types(index) {
-            Some(Conformance::Strict) => see_strict = true,
-            Some(Conformance::Transitional) => see_transitional = true,
-            _ => {}
-        }
-    }
 
     let verdict = match (see_strict, see_transitional) {
         (true, true) => Conformance::Mixed,
@@ -60,24 +56,6 @@ pub fn detect_conformance(signals: &ConformanceSignals<'_>) -> Result<Conformanc
         (false, false) => Conformance::Unknown,
     };
     Ok(verdict)
-}
-
-/// Classifies a content-type index by scanning declared type strings.
-fn classify_content_types(index: &ContentTypeIndex) -> Option<Conformance> {
-    let mut strict = false;
-    let mut transitional = false;
-    for content_type in index.iter_content_types() {
-        if content_type.contains("purl.oclc.org/ooxml") {
-            strict = true;
-        } else if content_type.contains("schemas.openxmlformats.org") {
-            transitional = true;
-        }
-    }
-    match (strict, transitional) {
-        (true, false) => Some(Conformance::Strict),
-        (false, true) => Some(Conformance::Transitional),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
@@ -92,7 +70,6 @@ mod tests {
             relationship_types: vec![
                 "http://purl.oclc.org/ooxml/officeDocument/relationships/styles",
             ],
-            content_types: None,
         };
         assert_eq!(detect_conformance(&strict).unwrap(), Conformance::Strict);
 
@@ -101,7 +78,6 @@ mod tests {
             relationship_types: vec![
                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
             ],
-            content_types: None,
         };
         assert_eq!(
             detect_conformance(&transitional).unwrap(),
@@ -117,7 +93,6 @@ mod tests {
                 "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
             ],
             relationship_types: vec![],
-            content_types: None,
         };
         assert_eq!(detect_conformance(&signals).unwrap(), Conformance::Mixed);
     }

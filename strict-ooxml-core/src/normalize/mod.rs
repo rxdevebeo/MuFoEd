@@ -34,6 +34,15 @@ pub trait RawNormalizer: Send + Sync {
     /// Implementations return a [`StrictError`](crate::error::StrictError) when
     /// normalization cannot proceed.
     fn normalize_part<'a>(&self, part: &PartId, bytes: &'a [u8]) -> Result<Cow<'a, [u8]>>;
+
+    /// Records that the main document's content type was not one of the
+    /// `WordprocessingML` main/template (macro-enabled) MIME types (AUD-26).
+    ///
+    /// Called under `Normalize`/`Permissive` instead of failing the open; the
+    /// default is a no-op so a bare [`NoopNormalizer`] stays silent.
+    fn note_unexpected_main_content_type(&self, part: &PartId, content_type: &str) {
+        let _ = (part, content_type);
+    }
 }
 
 /// A [`RawNormalizer`] that leaves parts unchanged.

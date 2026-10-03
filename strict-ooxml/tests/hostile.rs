@@ -1095,7 +1095,10 @@ mod opc {
             // core integration test uses.
             let bytes = DocxBuilder::strict()
                 .raw_entry("aaa.rels", evil_rels.to_vec())
-                .raw_entry("evil.xml", b"<w:document xmlns:w=\"http://evil.example/\"/>".to_vec())
+                .raw_entry(
+                    "evil.xml",
+                    b"<w:document xmlns:w=\"http://evil.example/\"/>".to_vec(),
+                )
                 .build();
             let package = Package::open_reader(&bytes[..], &OpenOptions::default())
                 .expect("package must still open from real _rels/.rels");

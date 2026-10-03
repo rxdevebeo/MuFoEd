@@ -269,6 +269,15 @@ pub enum StrictError {
     /// A part name is not a safe, canonical OPC part path.
     #[error("invalid part name: {0}")]
     InvalidPartName(String),
+    /// The main document part declares a content type that is not a
+    /// `WordprocessingML` main/template (macro-enabled) MIME type (AUD-26).
+    #[error("unexpected content type for {part}: {content_type}")]
+    UnexpectedContentType {
+        /// The main document part id.
+        part: PartId,
+        /// The content type that was declared.
+        content_type: String,
+    },
     /// The package contains two parts with the same canonical name.
     #[error("duplicate package part: {0}")]
     DuplicatePart(PartId),

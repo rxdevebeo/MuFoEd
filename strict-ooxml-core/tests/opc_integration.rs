@@ -478,7 +478,11 @@ fn a_rels_entry_outside_rels_dir_does_not_replace_the_package_root() {
     );
     let bytes = build_zip(&[
         ("aaa.rels", evil_rels.as_bytes(), false),
-        ("evil.xml", b"<w:document xmlns:w=\"http://evil.example/\"/>", false),
+        (
+            "evil.xml",
+            b"<w:document xmlns:w=\"http://evil.example/\"/>",
+            false,
+        ),
         ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
         ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
         ("word/document.xml", doc.as_bytes(), false),
@@ -508,11 +512,7 @@ fn relationship_depth_limit_is_enforced() {
             root_rels(STRICT_DOC_REL).into_bytes(),
             false,
         ),
-        (
-            "word/document.xml".to_owned(),
-            doc.into_bytes(),
-            false,
-        ),
+        ("word/document.xml".to_owned(), doc.into_bytes(), false),
     ];
     // Chain p00 → p01 → … → p33 under `/word/`. Depth 33 exceeds the default
     // bound of 32 when walking from p00.
@@ -552,6 +552,68 @@ fn relationship_depth_limit_is_enforced() {
             }
         ),
         "{err:?}"
+    );
+}
+
+/// AUD-26: under `StrictOnly` the main part must declare a `WordprocessingML`
+/// main/template content type.
+#[test]
+fn unexpected_main_content_type_is_rejected_under_strict_only() {
+    let doc = document(STRICT_W_NS);
+    let content_types = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="xml" ContentType="application/xml"/>
+ <Override PartName="/word/document.xml" ContentType="application/xml"/>
+</Types>"#;
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", content_types.as_bytes(), false),
+        ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+    ]);
+    let error = open(bytes, ConformancePolicy::StrictOnly).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            StrictError::UnexpectedContentType {
+                content_type: ref ct,
+                ..
+            } if ct == "application/xml"
+        ),
+        "{error:?}"
+    );
+}
+
+/// AUD-26: under `Normalize` an unexpected main content type is recorded, not
+/// fatal.
+#[test]
+fn unexpected_main_content_type_is_recorded_under_normalize() {
+    use std::sync::Arc;
+    use strict_ooxml_core::normalize::transitional::TransitionalNormalizer;
+    use strict_ooxml_core::normalize::RawNormalizer;
+
+    let doc = document(STRICT_W_NS);
+    let content_types = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="xml" ContentType="application/xml"/>
+ <Override PartName="/word/document.xml" ContentType="application/xml"/>
+</Types>"#;
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", content_types.as_bytes(), false),
+        ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+    ]);
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer.clone() as Arc<dyn RawNormalizer>);
+    let package = Package::open_reader(Cursor::new(bytes), &options).expect("open");
+    assert_eq!(package.conformance(), Conformance::Strict);
+    let report = normalizer.report().to_string();
+    assert!(
+        report.contains("T2.content-type"),
+        "unexpected content type must be recorded: {report}"
     );
 }
 

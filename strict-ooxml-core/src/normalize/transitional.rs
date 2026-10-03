@@ -2048,6 +2048,28 @@ impl crate::normalize::RawNormalizer for TransitionalNormalizer {
     fn normalize_part<'a>(&self, part: &PartId, bytes: &'a [u8]) -> Result<Cow<'a, [u8]>> {
         self.normalize(part, bytes)
     }
+
+    fn note_unexpected_main_content_type(&self, part: &PartId, content_type: &str) {
+        // AUD-26: under Normalize/Permissive the open continues; the report
+        // names the MIME so the operator can see why the package is odd.
+        let mut report = self.report.lock().expect("normalizer report lock");
+        report.record_mapping(
+            "T2.content-type",
+            content_type,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        );
+        report.record_loss(LossRecord {
+            transform_id: "T2.content-type",
+            feature_id: "contentTypes".to_owned(),
+            reason: format!(
+                "main part {} declares content type {content_type}; expected a \
+                 WordprocessingML document/template (macro-enabled) main type",
+                part.as_str()
+            ),
+            severity: Severity::Ignorable,
+            locations: vec![SourceLocation::new(part.clone(), 1, 1, 0)],
+        });
+    }
 }
 
 /// Whether a part carries any Transitional signal at all.

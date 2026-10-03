@@ -229,10 +229,15 @@ impl Package {
         rels.rewrite_resolved_to_zip_spelling(&zip);
 
         let main_document = locate_main_document(&rels, &zip)?;
+        check_main_content_type(
+            &content_types,
+            &main_document,
+            options.conformance,
+            normalizer,
+        )?;
 
         let (conformance, detection_touched) = detect(
             &zip,
-            &content_types,
             &raw_relationship_types,
             &rels,
             &main_document,
@@ -469,6 +474,42 @@ fn locate_main_document(rels: &RelationshipGraph, zip: &ZipArchive) -> Result<Pa
     Ok(target)
 }
 
+/// `WordprocessingML` main-part content types accepted by AUD-26.
+const MAIN_CONTENT_TYPES: &[&str] = &[
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+    "application/vnd.ms-word.document.macroEnabled.main+xml",
+    "application/vnd.ms-word.template.macroEnabled.main+xml",
+];
+
+/// Validates the main document's content type (AUD-26).
+///
+/// Under [`ConformancePolicy::StrictOnly`] an unexpected MIME is a hard error.
+/// Under `Normalize`/`Permissive` with a normalizer, the open continues and the
+/// normalizer records `T2.content-type`. Without a normalizer the open still
+/// continues (the inspect path under `Permissive`).
+fn check_main_content_type(
+    content_types: &ContentTypeIndex,
+    main: &PartId,
+    policy: ConformancePolicy,
+    normalizer: Option<&dyn RawNormalizer>,
+) -> Result<()> {
+    let content_type = content_types.content_type_for(main).unwrap_or("");
+    if MAIN_CONTENT_TYPES.contains(&content_type) {
+        return Ok(());
+    }
+    if policy == ConformancePolicy::StrictOnly {
+        return Err(StrictError::UnexpectedContentType {
+            part: main.clone(),
+            content_type: content_type.to_owned(),
+        });
+    }
+    if let Some(normalizer) = normalizer {
+        normalizer.note_unexpected_main_content_type(main, content_type);
+    }
+    Ok(())
+}
+
 /// Gathers T0 conformance signals and detects the package conformance.
 ///
 /// Returns the detected [`Conformance`] and whether `normalizer`, if any,
@@ -485,7 +526,6 @@ fn locate_main_document(rels: &RelationshipGraph, zip: &ZipArchive) -> Result<Pa
 /// as `Strict`).
 fn detect(
     zip: &ZipArchive,
-    content_types: &ContentTypeIndex,
     raw_relationship_types: &[String],
     rels: &RelationshipGraph,
     main_document: &PartId,
@@ -535,7 +575,6 @@ fn detect(
     let signals = ConformanceSignals {
         namespaces: namespaces.iter().map(String::as_str).collect(),
         relationship_types: raw_relationship_types.iter().map(String::as_str).collect(),
-        content_types: Some(content_types),
     };
     Ok((detect_conformance(&signals)?, touched))
 }

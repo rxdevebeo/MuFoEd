@@ -19,7 +19,6 @@ use std::collections::BTreeMap;
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_core::ns::detect::{detect_conformance, ConformanceSignals};
-use strict_ooxml_core::opc::content_types::ContentTypeIndex;
 use strict_ooxml_core::opc::rels::parse_relationships;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package, CONTENT_TYPES_PART};
 use strict_ooxml_core::part::PartId;
@@ -144,18 +143,9 @@ fn a_written_package_is_strict() {
             relationship_types.push(relationship.raw_type.clone());
         }
 
-        let content_types = ContentTypeIndex::parse(
-            reopened
-                .read_part(&PartId::new(CONTENT_TYPES_PART))
-                .expect("content types"),
-            PartId::new(CONTENT_TYPES_PART),
-            &ResourceLimits::default(),
-        )
-        .expect("content types parse");
         let signals = ConformanceSignals {
             namespaces: namespaces.iter().map(String::as_str).collect(),
             relationship_types: relationship_types.iter().map(String::as_str).collect(),
-            content_types: Some(&content_types),
         };
         let conformance = detect_conformance(&signals).expect("conformance");
         assert_eq!(
