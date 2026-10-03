@@ -140,19 +140,45 @@ fn write_run(out: &mut String, run: &MathRun) {
     }
     let tag = run_tag(run, text);
     let mut attributes = String::new();
-    if let Some(style) = run.properties.style {
-        let _ = write!(attributes, " mathvariant=\"{}\"", style.as_str());
-    }
-    if let Some(script) = run.properties.script {
-        let _ = write!(attributes, " mathvariant=\"{}\"", script_name(script));
-    }
-    if run.properties.normal {
-        attributes.push_str(" mathvariant=\"normal\"");
-    }
-    if run.properties.literal {
-        attributes.push_str(" mathvariant=\"normal\"");
+    // AUD-76: exactly one `mathvariant`, by priority nor/lit > scr×sty > sty.
+    if let Some(variant) = math_variant(&run.properties) {
+        let _ = write!(attributes, " mathvariant=\"{variant}\"");
     }
     let _ = write!(out, "<{tag}{attributes}>{}</{tag}>", escape(text));
+}
+
+/// Resolves OMML `m:nor`/`m:lit`/`m:scr`/`m:sty` to one MathML `mathvariant` (AUD-76).
+fn math_variant(
+    properties: &strict_ooxml_wml::model::math::MathRunProperties,
+) -> Option<&'static str> {
+    use strict_ooxml_wml::model::math::{MathScript, MathStyle};
+    if properties.normal || properties.literal {
+        return Some("normal");
+    }
+    match (properties.script, properties.style) {
+        (Some(MathScript::Script), Some(MathStyle::Bold | MathStyle::BoldItalic)) => {
+            Some("bold-script")
+        }
+        (Some(MathScript::Fraktur), Some(MathStyle::Bold | MathStyle::BoldItalic)) => {
+            Some("bold-fraktur")
+        }
+        (Some(MathScript::DoubleStruck), _) => Some("double-struck"),
+        (Some(MathScript::Script), _) => Some("script"),
+        (Some(MathScript::Fraktur), _) => Some("fraktur"),
+        (Some(MathScript::SansSerif), Some(MathStyle::BoldItalic)) => {
+            Some("sans-serif-bold-italic")
+        }
+        (Some(MathScript::SansSerif), Some(MathStyle::Italic)) => Some("sans-serif-italic"),
+        (Some(MathScript::SansSerif), Some(MathStyle::Bold)) => Some("bold-sans-serif"),
+        (Some(MathScript::SansSerif), _) => Some("sans-serif"),
+        (Some(MathScript::Monospace), _) => Some("monospace"),
+        (Some(MathScript::Roman) | None, Some(MathStyle::BoldItalic)) => Some("bold-italic"),
+        (Some(MathScript::Roman) | None, Some(MathStyle::Bold)) => Some("bold"),
+        (Some(MathScript::Roman) | None, Some(MathStyle::Italic)) => Some("italic"),
+        (Some(MathScript::Roman), Some(MathStyle::Plain) | None)
+        | (None, Some(MathStyle::Plain)) => Some("normal"),
+        (None, None) => None,
+    }
 }
 
 /// Chooses the MathML token element of a run.
@@ -174,19 +200,6 @@ fn run_tag(run: &MathRun, text: &str) -> &'static str {
         return "mi";
     }
     "mtext"
-}
-
-/// The MathML name of an OMML script.
-fn script_name(script: strict_ooxml_wml::model::math::MathScript) -> &'static str {
-    use strict_ooxml_wml::model::math::MathScript;
-    match script {
-        MathScript::DoubleStruck => "double-struck",
-        MathScript::Fraktur => "fraktur",
-        MathScript::Roman => "normal",
-        MathScript::SansSerif => "sans-serif",
-        MathScript::Monospace => "monospace",
-        MathScript::Script => "script",
-    }
 }
 
 /// Writes one node.
@@ -519,5 +532,94 @@ mod tests {
                 element: "m:newThing".to_owned()
             })
         );
+    }
+
+    #[test]
+    fn scr_sty_combinations_emit_one_mathvariant() {
+        // AUD-76: every scr×sty pair → exactly one mathvariant attribute.
+        use strict_ooxml_wml::model::math::{MathScript, MathStyle};
+        let cases = [
+            (
+                Some(MathScript::Script),
+                Some(MathStyle::Bold),
+                "bold-script",
+            ),
+            (
+                Some(MathScript::Fraktur),
+                Some(MathStyle::Bold),
+                "bold-fraktur",
+            ),
+            (Some(MathScript::DoubleStruck), None, "double-struck"),
+            (Some(MathScript::Script), None, "script"),
+            (Some(MathScript::Fraktur), None, "fraktur"),
+            (Some(MathScript::SansSerif), None, "sans-serif"),
+            (
+                Some(MathScript::SansSerif),
+                Some(MathStyle::Bold),
+                "bold-sans-serif",
+            ),
+            (
+                Some(MathScript::SansSerif),
+                Some(MathStyle::Italic),
+                "sans-serif-italic",
+            ),
+            (
+                Some(MathScript::SansSerif),
+                Some(MathStyle::BoldItalic),
+                "sans-serif-bold-italic",
+            ),
+            (Some(MathScript::Monospace), None, "monospace"),
+            (None, Some(MathStyle::Bold), "bold"),
+            (None, Some(MathStyle::Italic), "italic"),
+            (None, Some(MathStyle::BoldItalic), "bold-italic"),
+            (None, Some(MathStyle::Plain), "normal"),
+        ];
+        for (script, style, expected) in cases {
+            let expression = MathExpression {
+                nodes: vec![MathNode::Run(MathRun {
+                    properties: MathRunProperties {
+                        script,
+                        style,
+                        ..MathRunProperties::default()
+                    },
+                    run_properties: None,
+                    text: "A".to_owned(),
+                    location: location(),
+                })],
+                location: location(),
+            };
+            let mathml = math_expression_to_mathml(&expression).expect("mathml");
+            assert_eq!(
+                mathml.matches("mathvariant=").count(),
+                1,
+                "duplicate mathvariant: {mathml}"
+            );
+            assert!(
+                mathml.contains(&format!("mathvariant=\"{expected}\"")),
+                "expected {expected} in {mathml}"
+            );
+            roxmltree::Document::parse(&format!(
+                "<math xmlns=\"http://www.w3.org/1998/Math/MathML\">{mathml}</math>"
+            ))
+            .unwrap_or_else(|error| panic!("roxmltree {error}: {mathml}"));
+        }
+        // nor/lit wins over scr/sty.
+        let expression = MathExpression {
+            nodes: vec![MathNode::Run(MathRun {
+                properties: MathRunProperties {
+                    normal: true,
+                    script: Some(MathScript::Script),
+                    style: Some(MathStyle::Bold),
+                    ..MathRunProperties::default()
+                },
+                run_properties: None,
+                text: "A".to_owned(),
+                location: location(),
+            })],
+            location: location(),
+        };
+        let mathml = math_expression_to_mathml(&expression).expect("mathml");
+        assert_eq!(mathml.matches("mathvariant=").count(), 1);
+        assert!(mathml.contains("mathvariant=\"normal\""));
     }
 }
