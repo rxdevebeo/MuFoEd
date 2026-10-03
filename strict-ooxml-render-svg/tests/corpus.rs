@@ -43,7 +43,8 @@ fn corpus_renders_or_refuses_without_panics() {
                 assert!(!pages.is_empty());
                 for page in &pages {
                     roxmltree::Document::parse(&page.svg).expect("valid SVG");
-                    assert!(!page.svg.contains("NaN"));
+                    assert!(!page.svg.contains("NaN"), "{}", page.svg);
+                    assert!(!page.svg.contains("inf"), "{}", page.svg);
                 }
                 rendered += 1;
             }

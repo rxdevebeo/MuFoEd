@@ -18,6 +18,19 @@ use crate::units::emu_to_px;
 const DEFAULT_INSET_EMU: i64 = 91_440;
 /// Default top/bottom text-box inset in EMU (0.05").
 const DEFAULT_VERTICAL_INSET_EMU: i64 = 45_720;
+/// Minimum group `ext`/`chExt` scale factor (AUD-71).
+const MIN_GROUP_SCALE: f64 = 1e-6;
+/// Maximum group `ext`/`chExt` scale factor (AUD-71).
+const MAX_GROUP_SCALE: f64 = 1e6;
+
+/// Clamps a group scale into `[1e-6, 1e6]`; non-finite becomes `1` (AUD-71).
+fn clamp_group_scale(scale: f64) -> f64 {
+    if scale.is_finite() {
+        scale.clamp(MIN_GROUP_SCALE, MAX_GROUP_SCALE)
+    } else {
+        1.0
+    }
+}
 
 /// Builds the paint items for an anchored graphic.
 pub(crate) fn anchor_items(
@@ -200,16 +213,18 @@ fn group_items(
     let ch_ext_h = transform
         .child_extent
         .map_or(ext_h, |ext| emu_to_px(ext.cy.value(), scale));
-    let scale_x = if ch_ext_w.abs() > f64::EPSILON {
+    // AUD-71: a 1-EMU `chExt` under a normal `ext` yields ~1e19; clamp so
+    // nested groups cannot inject NaN/inf into placement.
+    let scale_x = clamp_group_scale(if ch_ext_w.abs() > f64::EPSILON {
         ext_w / ch_ext_w
     } else {
         1.0
-    };
-    let scale_y = if ch_ext_h.abs() > f64::EPSILON {
+    });
+    let scale_y = clamp_group_scale(if ch_ext_h.abs() > f64::EPSILON {
         ext_h / ch_ext_h
     } else {
         1.0
-    };
+    });
     let base_x = x + off_x - ch_off_x * scale_x;
     let base_y = y + off_y - ch_off_y * scale_y;
     let mut items = Vec::new();

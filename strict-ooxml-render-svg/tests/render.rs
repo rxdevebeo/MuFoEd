@@ -10,7 +10,9 @@
 
 mod common;
 
-use common::{open_body, render_body};
+use common::{
+    build_docx, content_types, document, open_body, open_bytes, render_body, root_rels, W,
+};
 use strict_ooxml_render_svg::{render, PageSelection, RenderOptions};
 
 #[test]
@@ -96,6 +98,58 @@ fn no_nan_or_infinite_coordinates() {
         assert!(!page.svg.contains("inf"), "{}", page.svg);
         assert!(!page.svg.contains("-0."), "{}", page.svg);
     }
+}
+
+#[test]
+fn zero_default_tab_stop_advances_text() {
+    // AUD-71: defaultTabStop=0 must not produce NaN; text after a tab sits
+    // to the right of the line start (Word's 720-twip default).
+    const SETTINGS_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/settings";
+    let settings = format!(
+        "<?xml version=\"1.0\"?><w:settings xmlns:w=\"{W}\"><w:defaultTabStop w:val=\"0\"/></w:settings>"
+    );
+    let rels = format!(
+        "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
+<Relationship Id=\"rIdS\" Type=\"{SETTINGS_REL}\" Target=\"settings.xml\"/></Relationships>"
+    );
+    let body = "<w:p><w:r><w:tab/><w:t>TABBED</w:t></w:r></w:p>";
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+        ("word/_rels/document.xml.rels", rels.into_bytes()),
+        ("word/settings.xml", settings.into_bytes()),
+    ]);
+    let (_package, parsed) = open_bytes(bytes);
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    assert_eq!(pages.len(), 1);
+    let svg = &pages[0].svg;
+    assert!(!svg.contains("NaN"), "{svg}");
+    assert!(!svg.contains("inf"), "{svg}");
+    let document = roxmltree::Document::parse(svg).expect("svg");
+    let text_x = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "text"
+                && node.text().is_some_and(|text| text.contains("TABBED"))
+        })
+        .and_then(|node| node.attribute("x"))
+        .and_then(|x| x.parse::<f64>().ok())
+        .expect("TABBED x");
+    // Content left is 96 px (1"); default tab 720 twips = 48 px → x ≈ 144.
+    assert!(
+        text_x > 96.0 + 1.0,
+        "tabbed text should sit right of the content edge: x={text_x}"
+    );
+    assert!(
+        pages[0]
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("default-tab-stop")),
+        "expected default-tab-stop warning: {:?}",
+        pages[0].warnings
+    );
 }
 
 #[test]

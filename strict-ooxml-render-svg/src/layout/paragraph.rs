@@ -538,10 +538,18 @@ fn build_lines(
     let first_x = content_left + indent_start + first_offset;
     let line_width = (content_width - indent_start - indent_end).max(1.0);
 
-    let default_tab = ctx.document.settings.default_tab_stop.map_or(
-        DEFAULT_TAB_TWIPS,
-        strict_ooxml_wml::model::values::Twips::value,
-    );
+    // AUD-71: Word's default when `defaultTabStop` is missing or non-positive
+    // is 720 twips (0.5"); a zero step would make `relative / tab_step` NaN.
+    let default_tab = match ctx.document.settings.default_tab_stop {
+        Some(twips) if twips.value() > 0 => twips.value(),
+        Some(_) => {
+            ctx.warn(
+                "render.default-tab-stop: non-positive defaultTabStop; using 720 twips".to_owned(),
+            );
+            DEFAULT_TAB_TWIPS
+        }
+        None => DEFAULT_TAB_TWIPS,
+    };
 
     let marker = ctx
         .numbering
@@ -1175,7 +1183,7 @@ fn next_tab_x(
     {
         return content_left + position;
     }
-    let tab_step = twips_to_px(default_tab, scale);
+    let tab_step = twips_to_px(default_tab.max(1), scale).max(1e-6);
     let steps = (relative / tab_step).floor() + 1.0;
     content_left + steps * tab_step
 }

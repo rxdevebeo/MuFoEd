@@ -108,6 +108,27 @@ fn group_renders_all_children() {
 }
 
 #[test]
+fn tiny_ch_ext_nested_groups_stay_finite() {
+    // AUD-71: chExt cx="1" with six nesting levels must not emit NaN/inf.
+    let mut inner = rect_shape("FF0000");
+    for level in 0..6 {
+        inner = format!(
+            "<wpg:wgp><wpg:cNvPr id=\"{id}\" name=\"g{level}\"/><wpg:cNvSpPr/>\
+<wpg:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"914400\"/>\
+<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"1\" cy=\"1\"/></a:xfrm></wpg:grpSpPr>\
+{inner}</wpg:wgp>",
+            id = level + 10,
+        );
+    }
+    let body = anchor(&format!(
+        "<a:graphic><a:graphicData uri=\"{GROUP_DATA_URI}\">{inner}</a:graphicData></a:graphic>"
+    ));
+    let svg = assert_single_page(&body);
+    assert!(!svg.contains("NaN"), "{svg}");
+    assert!(!svg.contains("inf"), "{svg}");
+}
+
+#[test]
 fn shape_text_box_renders_text() {
     let shape = "<wps:wsp><wps:cNvPr id=\"2\" name=\"box\"/><wps:cNvSpPr/><wps:spPr>\
 <a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>\

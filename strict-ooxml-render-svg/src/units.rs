@@ -81,10 +81,15 @@ pub fn to_i64_saturating(value: f64) -> i64 {
 
 /// Formats a number deterministically (millipixel precision, no `-0`).
 ///
-/// Non-finite values render as `0`. Integers render without a decimal part.
+/// Non-finite values render as `0`. Magnitudes above `1e9` are clamped
+/// (AUD-71). Integers render without a decimal part.
 #[must_use]
 pub fn fmt_num(value: f64) -> String {
-    let value = finite(value);
+    let value = if value.is_finite() {
+        value.clamp(-1e9, 1e9)
+    } else {
+        0.0
+    };
     let rounded = (value * 1000.0).round() / 1000.0;
     let normalized = if rounded == 0.0 { 0.0 } else { rounded };
     let mut rendered = format!("{normalized:.3}");
@@ -123,7 +128,29 @@ mod tests {
         assert_eq!(fmt_num(12.3456), "12.346");
         assert_eq!(fmt_num(f64::NAN), "0");
         assert_eq!(fmt_num(f64::INFINITY), "0");
+        assert_eq!(fmt_num(f64::NEG_INFINITY), "0");
         assert_eq!(fmt_num(-0.0004), "0");
+        assert_eq!(fmt_num(1e10), "1000000000");
+        assert_eq!(fmt_num(-1e10), "-1000000000");
+    }
+
+    #[cfg(test)]
+    mod properties {
+        use super::fmt_num;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(256))]
+            /// AUD-71: every f64 formats to a finite decimal string.
+            #[test]
+            fn fmt_num_always_finite_string(value in proptest::num::f64::ANY) {
+                let rendered = fmt_num(value);
+                assert!(!rendered.contains("NaN"), "{rendered}");
+                assert!(!rendered.contains("inf"), "{rendered}");
+                assert!(!rendered.contains("INF"), "{rendered}");
+                assert!(rendered.parse::<f64>().is_ok(), "{rendered}");
+            }
+        }
     }
 
     #[test]

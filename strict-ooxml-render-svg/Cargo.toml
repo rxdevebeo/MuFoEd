@@ -25,6 +25,8 @@ skrifa.workspace = true
 [dev-dependencies]
 # Independent XML/SVG parser used only as an oracle by the tests (ADR-0006).
 roxmltree = "0.20"
+# AUD-71: property test that `fmt_num` never emits NaN/inf.
+proptest.workspace = true
 criterion = "0.5"
 # Rasterize our SVG for the SSIM harness (S4F.5).
 resvg.workspace = true

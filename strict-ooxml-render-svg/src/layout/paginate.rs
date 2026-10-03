@@ -48,22 +48,81 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
     )?;
     // First pass: count pages. If no computed field is present, it is final.
     let (layout, has_fields) = layout_once(ctx, 1)?;
-    if !has_fields {
-        return Ok(layout);
-    }
-    // Second pass onward: substitute the real page total (NUMPAGES) and re-run
-    // until the page count is stable (a bounded, deterministic iteration).
-    let mut total = layout.pages.len().max(1);
-    let mut layout = layout;
-    for _ in 0..8 {
-        let (next, _) = layout_once(ctx, total)?;
-        if next.pages.len() == total {
-            return Ok(next);
+    let mut layout = if has_fields {
+        // Second pass onward: substitute the real page total (NUMPAGES) and re-run
+        // until the page count is stable (a bounded, deterministic iteration).
+        let mut total = layout.pages.len().max(1);
+        let mut layout = layout;
+        for _ in 0..8 {
+            let (next, _) = layout_once(ctx, total)?;
+            if next.pages.len() == total {
+                layout = next;
+                break;
+            }
+            total = next.pages.len().max(1);
+            layout = next;
         }
-        total = next.pages.len().max(1);
-        layout = next;
-    }
+        layout
+    } else {
+        layout
+    };
+    // AUD-71: placement guarantee for SVG and PDF — every coordinate is finite.
+    sanitize_finite_coords(&mut layout);
     Ok(layout)
+}
+
+/// Drops paint items with non-finite coordinates and records a warning (AUD-71).
+fn sanitize_finite_coords(layout: &mut Layout) {
+    let mut removed = false;
+    for page in &mut layout.pages {
+        let before = page.items.len();
+        page.items.retain(item_coords_finite);
+        removed |= page.items.len() < before;
+    }
+    if removed {
+        let message =
+            "render.non-finite-coord: removed paint item with non-finite coordinates".to_owned();
+        if !layout.warnings.contains(&message) {
+            layout.warnings.push(message);
+        }
+    }
+}
+
+/// Whether every numeric coordinate on `item` is finite.
+fn item_coords_finite(item: &Item) -> bool {
+    match item {
+        Item::Text(text) => {
+            text.x.is_finite()
+                && text.baseline.is_finite()
+                && text.width.is_finite()
+                && text.size_px.is_finite()
+        }
+        Item::Rect(rect) => {
+            rect.x.is_finite()
+                && rect.y.is_finite()
+                && rect.w.is_finite()
+                && rect.h.is_finite()
+                && rect.stroke_w.is_finite()
+        }
+        Item::Line(line) => {
+            line.x1.is_finite()
+                && line.y1.is_finite()
+                && line.x2.is_finite()
+                && line.y2.is_finite()
+                && line.width.is_finite()
+        }
+        Item::Path(path) => {
+            path.x.is_finite()
+                && path.y.is_finite()
+                && path.w.is_finite()
+                && path.h.is_finite()
+                && path.stroke_w.is_finite()
+                && path.rotate_deg.is_finite()
+        }
+        Item::Image(image) => {
+            image.x.is_finite() && image.y.is_finite() && image.w.is_finite() && image.h.is_finite()
+        }
+    }
 }
 
 /// Lays out the document once, using `total_pages` for NUMPAGES/SECTIONPAGES.
