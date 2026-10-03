@@ -491,6 +491,9 @@ fn locate_main_document(rels: &RelationshipGraph, zip: &ZipArchive) -> Result<Pa
 const MAIN_CONTENT_TYPES: &[&str] = &[
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+    // Older / alternate Word spellings seen in real Strict corpus packages.
+    "application/vnd.ms-word.document.main+xml",
+    "application/vnd.ms-word.template.main+xml",
     "application/vnd.ms-word.document.macroEnabled.main+xml",
     "application/vnd.ms-word.template.macroEnabled.main+xml",
 ];
