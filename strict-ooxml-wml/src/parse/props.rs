@@ -22,23 +22,16 @@ use crate::model::values::{
     Border, BorderStyle, Borders, CellMargins, Color, DocGridType, EighthsPoint, Fonts, HalfPoints,
     HeightRule, Highlight, Indentation, Justification, LineNumberRestart, LineSpacingRule,
     PageOrientation, RowHeight, SectionType, Shading, Spacing, TabAlignment, TabLeader, TabStop,
-    TableLayout, TableLook, TextDirection, ThemeColor, ThemeColorRef, TriState, Twips, Underline,
+    TableLayout, TableLook, TextDirection, ThemeColor, ThemeColorRef, Twips, Underline,
     VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use crate::RELS_STRICT_NS;
 
 use super::{
     attr_in_ns, decimal_to_i32, is_wml, parse_decimal, parse_i32, parse_measurement_or_percent,
-    parse_on_off, parse_signed_twips, parse_text_scale, parse_u32, val_attr, wml_attr, PartParser,
+    parse_on_off, parse_on_off_tristate, parse_signed_twips, parse_text_scale, parse_u32, val_attr,
+    wml_attr, PartParser,
 };
-
-/// Parses a tri-state on/off element (present without a value means `on`).
-fn tristate(attrs: &[Attr]) -> TriState {
-    match val_attr(attrs) {
-        None => TriState::On,
-        Some(value) => TriState::from_strict(value).unwrap_or(TriState::On),
-    }
-}
 
 /// Parses a boolean attribute value.
 fn attr_on(attrs: &[Attr], local: &str) -> bool {
@@ -72,40 +65,48 @@ impl PartParser<'_> {
                                 parser.skip_element()?;
                             }
                             "keepNext" => {
-                                props.keep_next = parse_on_off(&attrs);
+                                props.keep_next =
+                                    parse_on_off_tristate(parser, &attrs, "w:keepNext");
                                 parser.skip_element()?;
                             }
                             "keepLines" => {
-                                props.keep_lines = parse_on_off(&attrs);
+                                props.keep_lines =
+                                    parse_on_off_tristate(parser, &attrs, "w:keepLines");
                                 parser.skip_element()?;
                             }
                             "pageBreakBefore" => {
-                                props.page_break_before = parse_on_off(&attrs);
+                                props.page_break_before =
+                                    parse_on_off_tristate(parser, &attrs, "w:pageBreakBefore");
                                 parser.skip_element()?;
                             }
                             "widowControl" => {
-                                props.widow_control = tristate(&attrs);
+                                props.widow_control =
+                                    parse_on_off_tristate(parser, &attrs, "w:widowControl");
                                 parser.skip_element()?;
                             }
                             "numPr" => props.numbering = Some(parser.parse_num_pr()?),
                             "suppressLineNumbers" => {
-                                props.suppress_line_numbers = parse_on_off(&attrs);
+                                props.suppress_line_numbers =
+                                    parse_on_off_tristate(parser, &attrs, "w:suppressLineNumbers");
                                 parser.skip_element()?;
                             }
                             "contextualSpacing" => {
-                                props.contextual_spacing = parse_on_off(&attrs);
+                                props.contextual_spacing =
+                                    parse_on_off_tristate(parser, &attrs, "w:contextualSpacing");
                                 parser.skip_element()?;
                             }
                             "wordWrap" => {
-                                props.word_wrap = tristate(&attrs);
+                                props.word_wrap =
+                                    parse_on_off_tristate(parser, &attrs, "w:wordWrap");
                                 parser.skip_element()?;
                             }
                             "snapToGrid" => {
-                                props.snap_to_grid = tristate(&attrs);
+                                props.snap_to_grid =
+                                    parse_on_off_tristate(parser, &attrs, "w:snapToGrid");
                                 parser.skip_element()?;
                             }
                             "bidi" => {
-                                props.bidi = parse_on_off(&attrs);
+                                props.bidi = parse_on_off_tristate(parser, &attrs, "w:bidi");
                                 parser.skip_element()?;
                             }
                             "pBdr" => props.borders = parser.parse_borders()?,
@@ -236,15 +237,20 @@ impl PartParser<'_> {
                         match name.local() {
                             "rStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
                             "rFonts" => props.fonts = Some(parser.parse_fonts(&attrs)),
-                            "b" => props.bold = tristate(&attrs),
-                            "i" => props.italic = tristate(&attrs),
+                            "b" => props.bold = parse_on_off_tristate(parser, &attrs, "w:b"),
+                            "i" => props.italic = parse_on_off_tristate(parser, &attrs, "w:i"),
                             "u" => {
                                 props.underline =
                                     parser.val_enum(&attrs, "w:u", Underline::from_strict);
                                 props.underline_color = wml_attr(&attrs, "color").map(Color::new);
                             }
-                            "strike" => props.strike = tristate(&attrs),
-                            "dstrike" => props.double_strike = tristate(&attrs),
+                            "strike" => {
+                                props.strike = parse_on_off_tristate(parser, &attrs, "w:strike");
+                            }
+                            "dstrike" => {
+                                props.double_strike =
+                                    parse_on_off_tristate(parser, &attrs, "w:dstrike");
+                            }
                             "color" => {
                                 props.color = parser.val_string(&attrs).map(Color::new);
                                 if let Some(theme) = wml_attr(&attrs, "themeColor") {
@@ -284,16 +290,34 @@ impl PartParser<'_> {
                             }
                             "em" => props.emphasis = parser.val_string(&attrs),
                             "lang" => props.language = Some(parser.parse_language(&attrs)),
-                            "caps" => props.caps = parse_on_off(&attrs),
-                            "smallCaps" => props.small_caps = parse_on_off(&attrs),
-                            "rtl" => props.rtl = parse_on_off(&attrs),
-                            "vanish" => props.vanish = parse_on_off(&attrs),
-                            "emboss" => props.emboss = parse_on_off(&attrs),
-                            "imprint" => props.imprint = parse_on_off(&attrs),
-                            "outline" => props.outline = parse_on_off(&attrs),
-                            "shadow" => props.shadow = parse_on_off(&attrs),
-                            "noProof" => props.no_proof = parse_on_off(&attrs),
-                            "snapToGrid" => props.snap_to_grid = tristate(&attrs),
+                            "caps" => props.caps = parse_on_off_tristate(parser, &attrs, "w:caps"),
+                            "smallCaps" => {
+                                props.small_caps =
+                                    parse_on_off_tristate(parser, &attrs, "w:smallCaps");
+                            }
+                            "rtl" => props.rtl = parse_on_off_tristate(parser, &attrs, "w:rtl"),
+                            "vanish" => {
+                                props.vanish = parse_on_off_tristate(parser, &attrs, "w:vanish");
+                            }
+                            "emboss" => {
+                                props.emboss = parse_on_off_tristate(parser, &attrs, "w:emboss");
+                            }
+                            "imprint" => {
+                                props.imprint = parse_on_off_tristate(parser, &attrs, "w:imprint");
+                            }
+                            "outline" => {
+                                props.outline = parse_on_off_tristate(parser, &attrs, "w:outline");
+                            }
+                            "shadow" => {
+                                props.shadow = parse_on_off_tristate(parser, &attrs, "w:shadow");
+                            }
+                            "noProof" => {
+                                props.no_proof = parse_on_off_tristate(parser, &attrs, "w:noProof");
+                            }
+                            "snapToGrid" => {
+                                props.snap_to_grid =
+                                    parse_on_off_tristate(parser, &attrs, "w:snapToGrid");
+                            }
                             "shd" => props.shading = Some(parser.parse_shading(&attrs)),
                             "bdr" => {
                                 parser.record(
@@ -553,7 +577,9 @@ impl PartParser<'_> {
                                     .measure_or_percent(&attrs, "w", "w:tblInd")
                                     .map(Twips);
                             }
-                            "bidiVisual" => props.bidi_visual = parse_on_off(&attrs),
+                            "bidiVisual" => {
+                                props.bidi_visual = parse_on_off(&attrs).unwrap_or(false);
+                            }
                             _ => {}
                         }
                         parser.skip_element()?;
@@ -588,7 +614,7 @@ impl PartParser<'_> {
                         match name.local() {
                             "trHeight" => props.height = Some(parser.parse_row_height(&attrs)),
                             "tblHeader" => {
-                                props.header = parse_on_off(&attrs);
+                                props.header = parse_on_off(&attrs).unwrap_or(false);
                                 if props.header {
                                     parser.record(
                                         "w:tblHeader",
@@ -598,7 +624,7 @@ impl PartParser<'_> {
                                     );
                                 }
                             }
-                            "cantSplit" => props.cant_split = parse_on_off(&attrs),
+                            "cantSplit" => props.cant_split = parse_on_off(&attrs).unwrap_or(false),
                             "tblCellMar" => {
                                 props.cell_margins = parser.parse_cell_margins()?;
                                 continue;
@@ -689,9 +715,9 @@ impl PartParser<'_> {
                                 props.margins = parser.parse_cell_margins()?;
                                 continue;
                             }
-                            "hideMark" => props.hide_mark = parse_on_off(&attrs),
-                            "tcFitText" => props.fit_text = parse_on_off(&attrs),
-                            "noWrap" => props.no_wrap = parse_on_off(&attrs),
+                            "hideMark" => props.hide_mark = parse_on_off(&attrs).unwrap_or(false),
+                            "tcFitText" => props.fit_text = parse_on_off(&attrs).unwrap_or(false),
+                            "noWrap" => props.no_wrap = parse_on_off(&attrs).unwrap_or(false),
                             _ => {}
                         }
                         parser.skip_element()?;
@@ -834,7 +860,7 @@ impl PartParser<'_> {
                                 props.columns = Some(parser.parse_columns(&attrs)?);
                                 continue;
                             }
-                            "titlePg" => props.title_page = parse_on_off(&attrs),
+                            "titlePg" => props.title_page = parse_on_off(&attrs).unwrap_or(false),
                             "docGrid" => {
                                 props.doc_grid = Some(DocGrid {
                                     grid_type: wml_attr(&attrs, "type")
@@ -855,12 +881,14 @@ impl PartParser<'_> {
                                 props.vertical_align =
                                     parser.val_enum(&attrs, "w:vAlign", VerticalJc::from_strict);
                             }
-                            "bidi" => props.bidi = parse_on_off(&attrs),
-                            "rtlGutter" => props.rtl_gutter = parse_on_off(&attrs),
+                            "bidi" => props.bidi = parse_on_off(&attrs).unwrap_or(false),
+                            "rtlGutter" => props.rtl_gutter = parse_on_off(&attrs).unwrap_or(false),
                             // Transitional's `EG_SectPrContents` declares `w:gutterAtTop`
                             // and Strict's does not; `w:settings` is where Strict puts
                             // it. Parked on the parser and merged into the settings.
-                            "gutterAtTop" => parser.section_gutter_at_top = parse_on_off(&attrs),
+                            "gutterAtTop" => {
+                                parser.section_gutter_at_top = parse_on_off(&attrs).unwrap_or(false);
+                            }
                             "textDirection" => {
                                 props.text_direction = parser.val_enum(
                                     &attrs,

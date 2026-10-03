@@ -1299,11 +1299,43 @@ pub(crate) fn parse_text_scale(value: &str) -> Option<u16> {
         .filter(|scale| *scale <= crate::model::values::TEXT_SCALE_MAX)
 }
 
-/// Parses an on/off attribute or a bare element (default `true`).
-pub(crate) fn parse_on_off(attrs: &[Attr]) -> bool {
+/// Parses a `CT_OnOff` value (AUD-44).
+///
+/// - missing `w:val`, or `true`/`1`/`on` → `Some(true)`
+/// - `false`/`0`/`off` → `Some(false)`
+/// - anything else → `None` (caller records the defect)
+pub(crate) fn parse_on_off(attrs: &[Attr]) -> Option<bool> {
     match val_attr(attrs) {
-        None => true,
-        Some(value) => matches!(value, "true" | "on" | "1"),
+        None => Some(true),
+        Some(value) => match value {
+            "true" | "on" | "1" => Some(true),
+            "false" | "off" | "0" => Some(false),
+            _ => None,
+        },
+    }
+}
+
+/// Parses a `CT_OnOff` into [`TriState`], recording invalid values.
+pub(crate) fn parse_on_off_tristate(
+    parser: &mut PartParser<'_>,
+    attrs: &[Attr],
+    feature: &str,
+) -> crate::model::values::TriState {
+    use crate::model::values::TriState;
+    match parse_on_off(attrs) {
+        Some(true) => TriState::On,
+        Some(false) => TriState::Off,
+        None => {
+            if let Some(value) = val_attr(attrs) {
+                parser.record(
+                    feature,
+                    crate::model::support::SupportStatus::Partial,
+                    Some(format!("invalid on/off value {value:?}")),
+                    Some(parser.location()),
+                );
+            }
+            TriState::Absent
+        }
     }
 }
 

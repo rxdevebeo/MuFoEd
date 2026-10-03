@@ -95,8 +95,12 @@ fn parses_rich_paragraph_properties() {
     assert_eq!(props.word_wrap, TriState::Off);
     assert_eq!(props.snap_to_grid, TriState::On);
     assert_eq!(props.widow_control, TriState::Off);
-    assert!(props.bidi && props.contextual_spacing && props.suppress_line_numbers);
-    assert!(props.keep_lines && props.keep_next && props.page_break_before);
+    assert!(
+        props.bidi.is_on()
+            && props.contextual_spacing.is_on()
+            && props.suppress_line_numbers.is_on()
+    );
+    assert!(props.keep_lines.is_on() && props.keep_next.is_on() && props.page_break_before.is_on());
     let numbering = props.numbering.unwrap();
     assert_eq!(numbering.ilvl.unwrap().0, 3);
     assert_eq!(numbering.num_id.unwrap().0, 9);
@@ -136,9 +140,19 @@ fn parses_rich_run_properties() {
     assert_eq!(language.val.as_deref(), Some("en-US"));
     assert_eq!(language.east_asia.as_deref(), Some("ja-JP"));
     assert_eq!(language.bidi.as_deref(), Some("ar-SA"));
-    assert!(run.props.caps && run.props.small_caps && run.props.rtl && run.props.vanish);
-    assert!(run.props.emboss && run.props.imprint && run.props.outline && run.props.shadow);
-    assert!(run.props.no_proof);
+    assert!(
+        run.props.caps.is_on()
+            && run.props.small_caps.is_on()
+            && run.props.rtl.is_on()
+            && run.props.vanish.is_on()
+    );
+    assert!(
+        run.props.emboss.is_on()
+            && run.props.imprint.is_on()
+            && run.props.outline.is_on()
+            && run.props.shadow.is_on()
+    );
+    assert!(run.props.no_proof.is_on());
     assert_eq!(run.props.snap_to_grid, TriState::Off);
     assert_eq!(run.props.strike, TriState::Off);
     assert_eq!(run.props.italic, TriState::On);

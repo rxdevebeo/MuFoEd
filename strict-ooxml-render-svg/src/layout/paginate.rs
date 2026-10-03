@@ -128,7 +128,7 @@ fn layout_blocks(
         match block {
             Block::Paragraph(para) => {
                 let flow = layout_paragraph(ctx, para, left, width, grid, None);
-                if para.props.page_break_before && !paginator.at_page_top() {
+                if para.props.page_break_before.is_on() && !paginator.at_page_top() {
                     paginator.page_break()?;
                     pending_after = 0.0;
                 }

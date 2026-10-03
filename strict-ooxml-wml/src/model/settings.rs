@@ -57,8 +57,8 @@ pub struct Settings {
     pub hide_spelling_errors: bool,
     /// Hide grammatical errors (`w:hideGrammaticalErrors`).
     pub hide_grammatical_errors: bool,
-    /// Show proofing marks (`w:proofState`).
-    pub proofing: bool,
+    /// Proofing state (`w:proofState` spelling/grammar), AUD-44.
+    pub proof_state: Option<ProofState>,
     /// Track revisions (`w:trackRevisions`).
     pub track_revisions: bool,
     /// Do not hyphenate automatically (`w:doNotHyphenateCaps`).
@@ -192,6 +192,45 @@ pub struct Settings {
     /// the relationship as well, and a template part the package does not carry
     /// is a part-level question this model does not own.
     pub attached_template: Option<Arc<str>>,
+}
+
+/// Spelling/grammar cleanliness from `w:proofState` (AUD-44).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct ProofState {
+    /// Spelling state (`@w:spelling`).
+    pub spelling: Option<ProofCleanliness>,
+    /// Grammar state (`@w:grammar`).
+    pub grammar: Option<ProofCleanliness>,
+}
+
+/// `clean` / `dirty` for [`ProofState`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProofCleanliness {
+    /// `clean`.
+    Clean,
+    /// `dirty`.
+    Dirty,
+}
+
+impl ProofCleanliness {
+    /// Parses a Strict lexical value.
+    #[must_use]
+    pub fn from_strict(value: &str) -> Option<Self> {
+        match value {
+            "clean" => Some(Self::Clean),
+            "dirty" => Some(Self::Dirty),
+            _ => None,
+        }
+    }
+
+    /// Lexical form.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Clean => "clean",
+            Self::Dirty => "dirty",
+        }
+    }
 }
 
 /// The seven on/off children `CT_Compat` declares, in the order it declares them.

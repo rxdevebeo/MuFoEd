@@ -521,7 +521,11 @@ fn new_paragraph(line: &GlyphLine, heading: Option<u8>, origin: f64) -> Paragrap
                 ..Indentation::default()
             }),
             outline_level: heading,
-            keep_next: heading.is_some(),
+            keep_next: if heading.is_some() {
+                strict_ooxml_wml::model::values::TriState::On
+            } else {
+                strict_ooxml_wml::model::values::TriState::Absent
+            },
             ..ParagraphProperties::default()
         },
         inlines: Vec::new(),

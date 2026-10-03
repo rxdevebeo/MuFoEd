@@ -93,7 +93,7 @@ fn parses_paragraph_properties() {
     let indentation = props.indentation.unwrap();
     assert_eq!(indentation.start.unwrap().value(), 720);
     assert_eq!(indentation.hanging.unwrap().value(), 360);
-    assert!(props.keep_next);
+    assert!(props.keep_next.is_on());
 }
 
 #[test]

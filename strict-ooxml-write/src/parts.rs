@@ -393,7 +393,18 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         "hideGrammaticalErrors" if settings.hide_grammatical_errors => {
             xml.empty("w:hideGrammaticalErrors");
         }
-        "proofState" if settings.proofing => xml.empty("w:proofState"),
+        "proofState" => {
+            if let Some(state) = &settings.proof_state {
+                xml.start("w:proofState");
+                if let Some(spelling) = state.spelling {
+                    xml.attr_w("spelling", spelling.as_str());
+                }
+                if let Some(grammar) = state.grammar {
+                    xml.attr_w("grammar", grammar.as_str());
+                }
+                xml.end();
+            }
+        }
         "trackRevisions" if settings.track_revisions => xml.empty("w:trackRevisions"),
         "documentProtection" => {
             // `@w:edit` is the mode and the corpus usually writes `@w:enforcement`

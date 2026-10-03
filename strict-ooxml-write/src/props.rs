@@ -91,9 +91,9 @@ fn paragraph_child(
                 xml.empty_attr_w("w:pStyle", "val", style.as_str());
             }
         }
-        "keepNext" if props.keep_next => xml.empty("w:keepNext"),
-        "keepLines" if props.keep_lines => xml.empty("w:keepLines"),
-        "pageBreakBefore" if props.page_break_before => xml.empty("w:pageBreakBefore"),
+        "keepNext" => toggle(xml, "w:keepNext", props.keep_next),
+        "keepLines" => toggle(xml, "w:keepLines", props.keep_lines),
+        "pageBreakBefore" => toggle(xml, "w:pageBreakBefore", props.page_break_before),
         "widowControl" => match props.widow_control {
             TriState::On => xml.empty_attr_w("w:widowControl", "val", "true"),
             TriState::Off => xml.empty_attr_w("w:widowControl", "val", "false"),
@@ -130,9 +130,7 @@ fn paragraph_child(
                 }
             }
         }
-        "suppressLineNumbers" if props.suppress_line_numbers => {
-            xml.empty("w:suppressLineNumbers");
-        }
+        "suppressLineNumbers" => toggle(xml, "w:suppressLineNumbers", props.suppress_line_numbers),
         "pBdr" => {
             if !borders_empty(&props.borders) {
                 borders_element(xml, "w:pBdr", &props.borders, EdgeNames::Paragraph);
@@ -157,7 +155,7 @@ fn paragraph_child(
             TriState::Off => xml.empty_attr_w("w:wordWrap", "val", "false"),
             TriState::Absent => {}
         },
-        "bidi" if props.bidi => xml.empty("w:bidi"),
+        "bidi" => toggle(xml, "w:bidi", props.bidi),
         "snapToGrid" => match props.snap_to_grid {
             TriState::On => xml.empty_attr_w("w:snapToGrid", "val", "true"),
             TriState::Off => xml.empty_attr_w("w:snapToGrid", "val", "false"),
@@ -173,7 +171,7 @@ fn paragraph_child(
                 indentation_element(xml, indentation);
             }
         }
-        "contextualSpacing" if props.contextual_spacing => xml.empty("w:contextualSpacing"),
+        "contextualSpacing" => toggle(xml, "w:contextualSpacing", props.contextual_spacing),
         "jc" => {
             if let Some(alignment) = &props.alignment {
                 xml.empty_attr_w("w:jc", "val", alignment.as_str());
@@ -240,17 +238,17 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && borders_empty(&props.borders)
         && props.shading.is_none()
         && props.tabs.is_empty()
-        && !props.keep_next
-        && !props.keep_lines
-        && !props.page_break_before
+        && props.keep_next == TriState::Absent
+        && props.keep_lines == TriState::Absent
+        && props.page_break_before == TriState::Absent
         && props.widow_control == TriState::Absent
         && props.outline_level.is_none()
-        && !props.bidi
+        && props.bidi == TriState::Absent
         && props.run_props.as_ref().is_none_or(is_empty_run)
         && props.section.is_none()
         && props.text_direction.is_none()
-        && !props.suppress_line_numbers
-        && !props.contextual_spacing
+        && props.suppress_line_numbers == TriState::Absent
+        && props.contextual_spacing == TriState::Absent
         && props.word_wrap == TriState::Absent
         && props.snap_to_grid == TriState::Absent
 }
@@ -327,36 +325,18 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     }
     toggle(xml, "w:b", props.bold);
     toggle(xml, "w:i", props.italic);
-    if props.caps {
-        xml.empty("w:caps");
-    }
-    if props.small_caps {
-        xml.empty("w:smallCaps");
-    }
+    toggle(xml, "w:caps", props.caps);
+    toggle(xml, "w:smallCaps", props.small_caps);
     toggle(xml, "w:strike", props.strike);
     toggle(xml, "w:dstrike", props.double_strike);
-    if props.outline {
-        xml.empty("w:outline");
-    }
-    if props.shadow {
-        xml.empty("w:shadow");
-    }
-    if props.emboss {
-        xml.empty("w:emboss");
-    }
-    if props.imprint {
-        xml.empty("w:imprint");
-    }
-    if props.no_proof {
-        xml.empty("w:noProof");
-    }
+    toggle(xml, "w:outline", props.outline);
+    toggle(xml, "w:shadow", props.shadow);
+    toggle(xml, "w:emboss", props.emboss);
+    toggle(xml, "w:imprint", props.imprint);
+    toggle(xml, "w:noProof", props.no_proof);
     toggle(xml, "w:snapToGrid", props.snap_to_grid);
-    if props.vanish {
-        xml.empty("w:vanish");
-    }
-    if props.rtl {
-        xml.empty("w:rtl");
-    }
+    toggle(xml, "w:vanish", props.vanish);
+    toggle(xml, "w:rtl", props.rtl);
     if let Some(color) = &props.color {
         color_element(xml, "w:color", color, props.color_theme.as_ref());
     }
@@ -439,15 +419,15 @@ fn is_empty_run(props: &RunProperties) -> bool {
         && props.vert_align.is_none()
         && props.spacing.is_none()
         && props.position.is_none()
-        && !props.caps
-        && !props.small_caps
-        && !props.rtl
-        && !props.vanish
-        && !props.emboss
-        && !props.imprint
-        && !props.outline
-        && !props.shadow
-        && !props.no_proof
+        && props.caps == TriState::Absent
+        && props.small_caps == TriState::Absent
+        && props.rtl == TriState::Absent
+        && props.vanish == TriState::Absent
+        && props.emboss == TriState::Absent
+        && props.imprint == TriState::Absent
+        && props.outline == TriState::Absent
+        && props.shadow == TriState::Absent
+        && props.no_proof == TriState::Absent
         && props.snap_to_grid == TriState::Absent
         && props.scale.is_none()
         && props.kerning.is_none()
@@ -1268,7 +1248,7 @@ mod tests {
                 before: Some(Twips(120)),
                 ..Spacing::default()
             }),
-            keep_next: true,
+            keep_next: strict_ooxml_wml::model::values::TriState::On,
             ..ParagraphProperties::default()
         };
         let mut xml = XmlWriter::new();

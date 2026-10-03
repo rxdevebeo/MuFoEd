@@ -381,7 +381,7 @@ fn stamp_rtl(inline: &Inline) -> Inline {
     match inline {
         Inline::Run(run) => {
             let mut run = run.clone();
-            run.props.rtl = true;
+            run.props.rtl = strict_ooxml_wml::model::values::TriState::On;
             Inline::Run(run)
         }
         Inline::Hyperlink(link) => {
@@ -419,6 +419,9 @@ fn flatten_run(
         return;
     }
     let run_style = compute_run(ctx.document, computed, run);
+    if run_style.vanish {
+        return;
+    }
     for content in &run.content {
         match content {
             RunContent::FieldChar(field_char) => field.on_char(field_char.kind, out, &run_style),

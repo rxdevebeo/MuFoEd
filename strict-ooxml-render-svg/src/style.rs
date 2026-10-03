@@ -36,6 +36,8 @@ pub struct ComputedRun {
     pub vert_align: VertAlign,
     /// All-capitals (`w:caps`).
     pub caps: bool,
+    /// Hidden text (`w:vanish`).
+    pub vanish: bool,
 }
 
 impl Default for ComputedRun {
@@ -51,6 +53,7 @@ impl Default for ComputedRun {
             highlight: None,
             vert_align: VertAlign::Baseline,
             caps: false,
+            vanish: false,
         }
     }
 }
@@ -217,15 +220,9 @@ pub fn apply_paragraph_props(
     if !props.tabs.is_empty() {
         computed.tabs.clone_from(&props.tabs);
     }
-    if props.keep_lines {
-        computed.keep_lines = true;
-    }
-    if props.keep_next {
-        computed.keep_next = true;
-    }
-    if props.page_break_before {
-        computed.page_break_before = true;
-    }
+    apply_flag(&mut computed.keep_lines, props.keep_lines);
+    apply_flag(&mut computed.keep_next, props.keep_next);
+    apply_flag(&mut computed.page_break_before, props.page_break_before);
     if let Some(numbering) = &props.numbering {
         if let Some(num_id) = numbering.num_id {
             computed.numbering = Some(NumberingRef {
@@ -273,21 +270,14 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme:
     if let Some(fonts) = &props.fonts {
         apply_fonts(computed, fonts, theme);
     }
-    if let Some(bold) = toggle(props.bold) {
-        computed.bold = bold;
-    }
-    if let Some(italic) = toggle(props.italic) {
-        computed.italic = italic;
-    }
+    // Toggle properties use XOR across the style cascade (ECMA-376 §17.7.3, AUD-44).
+    apply_toggle_xor(&mut computed.bold, props.bold);
+    apply_toggle_xor(&mut computed.italic, props.italic);
     if let Some(underline) = &props.underline {
         computed.underline = !matches!(underline, Underline::None);
     }
-    if let Some(strike) = toggle(props.strike) {
-        computed.strike = strike;
-    }
-    if let Some(strike) = toggle(props.double_strike) {
-        computed.strike = strike;
-    }
+    apply_toggle_xor(&mut computed.strike, props.strike);
+    apply_toggle_xor(&mut computed.strike, props.double_strike);
     if let Some(color) = &props.color {
         computed.color = parse_color(color);
     }
@@ -305,9 +295,8 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme:
     if let Some(vert) = props.vert_align {
         computed.vert_align = vert;
     }
-    if props.caps {
-        computed.caps = true;
-    }
+    apply_toggle_xor(&mut computed.caps, props.caps);
+    apply_toggle_xor(&mut computed.vanish, props.vanish);
 }
 
 fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>) {
@@ -373,11 +362,21 @@ fn parse_hex(value: &str) -> Option<(u8, u8, u8)> {
     Some((red, green, blue))
 }
 
-fn toggle(state: TriState) -> Option<bool> {
+/// Non-toggle on/off: `On`/`Off` override, `Absent` inherits.
+fn apply_flag(computed: &mut bool, state: TriState) {
     match state {
-        TriState::On => Some(true),
-        TriState::Off => Some(false),
-        TriState::Absent => None,
+        TriState::On => *computed = true,
+        TriState::Off => *computed = false,
+        TriState::Absent => {}
+    }
+}
+
+/// Toggle property: `On` XORs, `Off` clears, `Absent` inherits (AUD-44).
+fn apply_toggle_xor(computed: &mut bool, state: TriState) {
+    match state {
+        TriState::On => *computed = !*computed,
+        TriState::Off => *computed = false,
+        TriState::Absent => {}
     }
 }
 

@@ -13,7 +13,7 @@ use crate::model::settings::{
 };
 use crate::model::values::Twips;
 
-use super::{attr_in_ns, is_math, is_wml, parse_i32, val_attr, wml_attr, PartParser};
+use super::{attr_in_ns, is_math, is_wml, parse_i32, parse_on_off, val_attr, wml_attr, PartParser};
 
 /// `CT_OnOff` children of `w:settings` carried as a (name, value) pair.
 ///
@@ -96,6 +96,7 @@ impl PartParser<'_> {
 
     /// Applies one `w:settings` child. Returns `true` when the element was fully
     /// consumed, so the caller does not have to skip it again.
+    #[allow(clippy::too_many_lines)]
     fn settings_child(
         &mut self,
         name: &super::QName,
@@ -110,14 +111,35 @@ impl PartParser<'_> {
                 settings.default_tab_stop = val_attr(attrs).and_then(parse_i32).map(Twips);
             }
             "zoom" => settings.zoom = Some(Self::parse_zoom(attrs)),
-            "evenAndOddHeaders" => settings.even_and_odd_headers = true,
-            "displayBackgroundShape" => settings.display_background_shape = true,
-            "hideSpellingErrors" => settings.hide_spelling_errors = true,
-            "hideGrammaticalErrors" => settings.hide_grammatical_errors = true,
-            "proofState" => settings.proofing = true,
-            "trackRevisions" => settings.track_revisions = true,
-            "doNotHyphenateCaps" => settings.do_not_hyphenate_caps = true,
-            "autoHyphenation" => settings.auto_hyphenation = true,
+            "evenAndOddHeaders" => {
+                settings.even_and_odd_headers = parse_on_off(attrs).unwrap_or(false);
+            }
+            "displayBackgroundShape" => {
+                settings.display_background_shape = parse_on_off(attrs).unwrap_or(false);
+            }
+            "hideSpellingErrors" => {
+                settings.hide_spelling_errors = parse_on_off(attrs).unwrap_or(false);
+            }
+            "hideGrammaticalErrors" => {
+                settings.hide_grammatical_errors = parse_on_off(attrs).unwrap_or(false);
+            }
+            "proofState" => {
+                settings.proof_state = Some(crate::model::settings::ProofState {
+                    spelling: wml_attr(attrs, "spelling")
+                        .and_then(crate::model::settings::ProofCleanliness::from_strict),
+                    grammar: wml_attr(attrs, "grammar")
+                        .and_then(crate::model::settings::ProofCleanliness::from_strict),
+                });
+            }
+            "trackRevisions" => {
+                settings.track_revisions = parse_on_off(attrs).unwrap_or(false);
+            }
+            "doNotHyphenateCaps" => {
+                settings.do_not_hyphenate_caps = parse_on_off(attrs).unwrap_or(false);
+            }
+            "autoHyphenation" => {
+                settings.auto_hyphenation = parse_on_off(attrs).unwrap_or(false);
+            }
             "hyphenationZone" => {
                 settings.hyphenation_zone = val_attr(attrs).and_then(parse_i32).map(Twips);
             }
@@ -246,10 +268,14 @@ impl PartParser<'_> {
             "themeFontLang" => {
                 settings.theme_font_lang = wml_attr(attrs, "val").map(|value| self.intern(value));
             }
-            "mirrorMargins" => settings.mirror_margins = true,
+            "mirrorMargins" => {
+                settings.mirror_margins = parse_on_off(attrs).unwrap_or(false);
+            }
             // The Strict spelling of the flag Transitional puts in
             // `w:sectPr`; both land on the same field.
-            "gutterAtTop" => settings.gutter_at_top = true,
+            "gutterAtTop" => {
+                settings.gutter_at_top = parse_on_off(attrs).unwrap_or(false);
+            }
             "footnotePr" => {
                 settings.footnote_properties = self.parse_note_properties()?;
                 return Ok(Some(true));

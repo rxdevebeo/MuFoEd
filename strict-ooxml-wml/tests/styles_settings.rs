@@ -140,7 +140,7 @@ fn parses_full_style_definition() {
     assert_eq!(style.link.as_ref().unwrap().as_str(), "Heading1Char");
     assert_eq!(style.ui_priority, Some(9));
     assert!(style.is_default && style.hidden);
-    assert!(style.paragraph.keep_next);
+    assert!(style.paragraph.keep_next.is_on());
     assert!(style.run.bold.is_on());
     assert_eq!(style.table.style.as_ref().unwrap().as_str(), "Grid");
     let emph = document.styles.get(&StyleId::new("Emph")).unwrap();
@@ -174,7 +174,7 @@ fn parses_all_settings_elements() {
     assert!(settings.even_and_odd_headers);
     assert!(settings.display_background_shape);
     assert!(settings.hide_spelling_errors && settings.hide_grammatical_errors);
-    assert!(settings.proofing && settings.track_revisions);
+    assert!(settings.proof_state.is_some() && settings.track_revisions);
     assert!(settings.do_not_hyphenate_caps && settings.auto_hyphenation);
     assert_eq!(settings.hyphenation_zone.unwrap().value(), 360);
     assert_eq!(settings.document_protection.as_deref(), Some("readOnly"));

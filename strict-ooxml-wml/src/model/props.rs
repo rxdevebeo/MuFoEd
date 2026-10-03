@@ -55,17 +55,17 @@ pub struct ParagraphProperties {
     /// Custom tab stops (`w:tabs`).
     pub tabs: Vec<TabStop>,
     /// Keep with next paragraph (`w:keepNext`).
-    pub keep_next: bool,
+    pub keep_next: TriState,
     /// Keep lines together (`w:keepLines`).
-    pub keep_lines: bool,
+    pub keep_lines: TriState,
     /// Start on a new page (`w:pageBreakBefore`).
-    pub page_break_before: bool,
+    pub page_break_before: TriState,
     /// Widow/orphan control (`w:widowControl`), tri-state.
     pub widow_control: TriState,
     /// Outline level 0..=9 (`w:outlineLvl`).
     pub outline_level: Option<u8>,
     /// Bidirectional paragraph (`w:bidi`).
-    pub bidi: bool,
+    pub bidi: TriState,
     /// Marker run properties (`w:rPr` inside `w:pPr`).
     pub run_props: Option<RunProperties>,
     /// Section properties (`w:sectPr` inside `w:pPr`).
@@ -73,9 +73,9 @@ pub struct ParagraphProperties {
     /// Text flow direction (`w:textDirection`).
     pub text_direction: Option<TextDirection>,
     /// Suppress line numbers (`w:suppressLineNumbers`).
-    pub suppress_line_numbers: bool,
+    pub suppress_line_numbers: TriState,
     /// Contextual spacing (`w:contextualSpacing`).
-    pub contextual_spacing: bool,
+    pub contextual_spacing: TriState,
     /// Word wrap (`w:wordWrap`).
     pub word_wrap: TriState,
     /// Snap to grid (`w:snapToGrid`).
@@ -120,23 +120,23 @@ pub struct RunProperties {
     /// Vertical position in half-points (`w:position`).
     pub position: Option<super::values::HalfPoints>,
     /// All capitals (`w:caps`).
-    pub caps: bool,
+    pub caps: TriState,
     /// Small capitals (`w:smallCaps`).
-    pub small_caps: bool,
+    pub small_caps: TriState,
     /// Right-to-left run (`w:rtl`).
-    pub rtl: bool,
+    pub rtl: TriState,
     /// Hidden text (`w:vanish`).
-    pub vanish: bool,
+    pub vanish: TriState,
     /// Emboss (`w:emboss`).
-    pub emboss: bool,
+    pub emboss: TriState,
     /// Imprint (`w:imprint`).
-    pub imprint: bool,
+    pub imprint: TriState,
     /// Outline (`w:outline`).
-    pub outline: bool,
+    pub outline: TriState,
     /// Shadow (`w:shadow`).
-    pub shadow: bool,
+    pub shadow: TriState,
     /// Do not proof (`w:noProof`).
-    pub no_proof: bool,
+    pub no_proof: TriState,
     /// Snap to grid (`w:snapToGrid`).
     pub snap_to_grid: TriState,
     /// Character scale percentage (`w:w`).
