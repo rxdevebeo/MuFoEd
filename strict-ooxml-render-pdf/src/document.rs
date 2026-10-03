@@ -663,13 +663,19 @@ fn write_image(pdf: &mut Pdf, id: Ref, mask: Option<Ref>, encoded: &Encoded) {
             width,
             height,
             data,
+            color_space,
+            invert_cmyk,
         } => {
             let mut image = pdf.image_xobject(id, data.as_slice());
             image.filter(Filter::DctDecode);
             image.width(i32::try_from(*width).unwrap_or(i32::MAX));
             image.height(i32::try_from(*height).unwrap_or(i32::MAX));
-            image.color_space_name(Name(b"DeviceRGB"));
+            image.color_space_name(Name(color_space.pdf_name()));
             image.bits_per_component(8);
+            // AUD-81: Adobe YCCK (`transform = 2`) stores inverted CMYK.
+            if *invert_cmyk {
+                image.decode([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]);
+            }
         }
         Encoded::Raw {
             width,

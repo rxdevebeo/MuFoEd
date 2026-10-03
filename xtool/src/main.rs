@@ -18,6 +18,8 @@
 //! - `gen-docx --out <path> [--paragraphs <n>] [--stage5] [--stage5b]
 //!   [--stage5c]` — writes a synthetic Strict `.docx` for benchmarks and
 //!   no-panic corpus runs; the stage flags select the echelon fixture.
+//! - `gen-jpeg [--out <dir>]` — writes the minimal JPEG fixtures used by
+//!   AUD-81 (`strict-ooxml-render-pdf/tests/fixtures`).
 
 #![allow(clippy::cast_possible_truncation, clippy::doc_markdown)]
 
@@ -351,6 +353,7 @@ fn main() -> ExitCode {
         Some("corpus-elements") => corpus_elements(&args[1..]),
         Some("lint-eof") => lint_eof(&args[1..]),
         Some("gen-docx") => gen_docx(&args[1..]),
+        Some("gen-jpeg") => gen_jpeg(&args[1..]),
         Some("--help" | "-h") | None => {
             print_usage();
             ExitCode::SUCCESS
@@ -365,14 +368,43 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: xtool <xsd-inventory|coverage|corpus-elements|lint-eof|gen-docx> [options]\n\
+        "usage: xtool <xsd-inventory|coverage|corpus-elements|lint-eof|gen-docx|gen-jpeg> [options]\n\
          \n\
          xsd-inventory   [--xsd <file>]... [--out <path>]\n\
          coverage        [--file <path>] [--min <percent>]\n\
          corpus-elements [--corpus <dir>]\n\
          lint-eof        [<root>...]  (default: strict-ooxml-wml/src)\n\
-         gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b] [--stage5c]"
+         gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b] [--stage5c]\n\
+         gen-jpeg        [--out <dir>]  (default: strict-ooxml-render-pdf/tests/fixtures)"
     );
+}
+
+mod jpeg_fixtures {
+    include!("jpeg_fixtures.rs");
+}
+
+/// Writes the committed JPEG fixtures for AUD-81 (grey / RGB / Adobe CMYK).
+fn gen_jpeg(args: &[String]) -> ExitCode {
+    let out = arg_value(args, "--out").unwrap_or("strict-ooxml-render-pdf/tests/fixtures");
+    let dir = std::path::Path::new(out);
+    if let Err(error) = std::fs::create_dir_all(dir) {
+        eprintln!("error: create {}: {error}", dir.display());
+        return ExitCode::from(1);
+    }
+    let files = [
+        ("jpeg-rgb-red.jpg", jpeg_fixtures::JPEG_RGB_RED_JPG),
+        ("jpeg-gray-128.jpg", jpeg_fixtures::JPEG_GRAY_128_JPG),
+        ("jpeg-cmyk-adobe.jpg", jpeg_fixtures::JPEG_CMYK_ADOBE_JPG),
+    ];
+    for (name, bytes) in files {
+        let path = dir.join(name);
+        if let Err(error) = std::fs::write(&path, bytes) {
+            eprintln!("error: write {}: {error}", path.display());
+            return ExitCode::from(1);
+        }
+        println!("wrote {} ({} bytes)", path.display(), bytes.len());
+    }
+    ExitCode::SUCCESS
 }
 
 fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

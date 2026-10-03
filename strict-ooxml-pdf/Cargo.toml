@@ -71,6 +71,10 @@ strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 name = "pdf_pixels"
 required-features = ["raster"]
 
+[[test]]
+name = "formats"
+required-features = ["raster"]
+
 [[example]]
 name = "pdf_page_diff"
 required-features = ["raster"]
