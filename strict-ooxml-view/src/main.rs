@@ -12,7 +12,6 @@
 //! With no directory it looks in the workspace's two corpora, so it can be run
 //! from a checkout without arguments.
 
-mod catalog;
 mod http;
 mod ui;
 
@@ -22,8 +21,8 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
-use catalog::{Cache, DocumentView, Entry};
 use http::Response;
+use strict_ooxml_view::{discover, failed, render, Cache, DocumentView, Entry};
 
 /// Exit code: the viewer ran and stopped cleanly.
 const EXIT_OK: u8 = 0;
@@ -47,7 +46,7 @@ fn main() -> ExitCode {
         eprintln!("hint: pass one explicitly, e.g. strict-ooxml-view path/to/corpus");
         return ExitCode::from(EXIT_ERROR);
     };
-    let entries = catalog::discover(&dir);
+    let entries = discover(&dir);
     if entries.is_empty() {
         eprintln!("error: no .docx files in {}", dir.display());
         return ExitCode::from(EXIT_ERROR);
@@ -117,9 +116,9 @@ impl State {
         let entry = self.entries.iter().find(|entry| entry.name == name)?;
         // A document that will not open is still a menu entry that has to say
         // so; showing nothing would look like a viewer bug.
-        let view = match catalog::render(entry, self.transitional, self.scale) {
+        let view = match render(entry, self.transitional, self.scale) {
             Ok(view) => view,
-            Err(error) => catalog::failed(entry, &error.to_string()),
+            Err(error) => failed(entry, &error.to_string()),
         };
         self.cache
             .lock()
@@ -324,7 +323,7 @@ impl Config {
         DEFAULT_DIRS
             .iter()
             .map(PathBuf::from)
-            .find(|dir| !catalog::discover(dir).is_empty())
+            .find(|dir| !discover(dir).is_empty())
     }
 }
 
@@ -340,7 +339,7 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::{json_number, json_string, query_value, Config, DEFAULT_DIRS, EXIT_OK};
-    use crate::catalog::{self, DocumentView};
+    use strict_ooxml_view::DocumentView;
 
     #[test]
     fn defaults_are_sensible() {
@@ -460,7 +459,7 @@ mod tests {
         let view = DocumentView {
             name: "a.docx".to_owned(),
             conformance: "strict".to_owned(),
-            summary: Some(catalog::Summary {
+            summary: Some(strict_ooxml_view::Summary {
                 supported: 3,
                 partial: 1,
                 unsupported: 0,
@@ -468,7 +467,7 @@ mod tests {
                 error: 0,
             }),
             note: None,
-            pages: vec![catalog::Rendered {
+            pages: vec![strict_ooxml_view::Rendered {
                 number: 1,
                 width: 816.0,
                 height: 1056.0,

@@ -11,6 +11,10 @@ readme = false
 keywords = ["ooxml", "docx", "viewer", "svg"]
 categories = ["command-line-utilities", "visualization"]
 
+[lib]
+name = "strict_ooxml_view"
+path = "src/lib.rs"
+
 [[bin]]
 name = "strict-ooxml-view"
 path = "src/main.rs"

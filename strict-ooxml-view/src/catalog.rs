@@ -16,7 +16,7 @@ use strict_ooxml_core::error::Result;
 
 /// One `.docx` the viewer can open.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Entry {
+pub struct Entry {
     /// File name, used as the menu label and the URL key.
     pub name: String,
     /// Absolute path, resolved once so a later working-directory change cannot
@@ -31,7 +31,7 @@ pub(crate) struct Entry {
 /// Not recursive: the viewer is pointed at a corpus, and a recursive walk
 /// would pick up temporary copies and nested build output.
 #[must_use]
-pub(crate) fn discover(dir: &Path) -> Vec<Entry> {
+pub fn discover(dir: &Path) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -62,7 +62,7 @@ pub(crate) fn discover(dir: &Path) -> Vec<Entry> {
 
 /// Rendered pages of one document.
 #[derive(Clone, Debug)]
-pub(crate) struct Rendered {
+pub struct Rendered {
     /// Page number in the document, starting at 1.
     pub number: usize,
     /// Page width in px at the requested scale.
@@ -75,7 +75,7 @@ pub(crate) struct Rendered {
 
 /// The counts a reader wants next to a document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Summary {
+pub struct Summary {
     /// Fully supported constructs.
     pub supported: u32,
     /// Supported with a documented limitation.
@@ -92,14 +92,14 @@ impl Summary {
     /// Whether the document has anything that blocks a faithful render.
     #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
-    pub(crate) fn has_blockers(self) -> bool {
+    pub fn has_blockers(self) -> bool {
         self.unsupported > 0 || self.error > 0
     }
 }
 
 /// A rendered document, ready to serve.
 #[derive(Clone, Debug)]
-pub(crate) struct DocumentView {
+pub struct DocumentView {
     /// File name shown in the header.
     pub name: String,
     /// Conformance as the package reports it.
@@ -119,7 +119,7 @@ pub(crate) struct DocumentView {
 /// Returns the underlying error when the document cannot be opened or
 /// rendered. The caller turns that into a page with a note rather than a
 /// failed request, so one bad document does not break the viewer.
-pub(crate) fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentView> {
+pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentView> {
     let options = if transitional {
         OpenOptions::default()
             .conformance(ConformancePolicy::Normalize)
@@ -164,7 +164,7 @@ pub(crate) fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<Do
 ///
 /// Built here rather than at the call site so the reason is always recorded.
 #[must_use]
-pub(crate) fn failed(entry: &Entry, reason: &str) -> DocumentView {
+pub fn failed(entry: &Entry, reason: &str) -> DocumentView {
     DocumentView {
         name: entry.name.clone(),
         conformance: "—".to_owned(),
@@ -180,39 +180,39 @@ pub(crate) fn failed(entry: &Entry, reason: &str) -> DocumentView {
 /// every page navigation would make the viewer unusable, and cheap enough
 /// that a cache which never evicts is fine for a local tool.
 #[derive(Debug, Default)]
-pub(crate) struct Cache {
+pub struct Cache {
     views: BTreeMap<String, DocumentView>,
 }
 
 impl Cache {
     /// Creates an empty cache.
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Returns a cached view.
     #[must_use]
-    pub(crate) fn get(&self, name: &str) -> Option<&DocumentView> {
+    pub fn get(&self, name: &str) -> Option<&DocumentView> {
         self.views.get(name)
     }
 
     /// Stores a view.
-    pub(crate) fn insert(&mut self, view: DocumentView) {
+    pub fn insert(&mut self, view: DocumentView) {
         self.views.insert(view.name.clone(), view);
     }
 
     /// How many documents are rendered.
     #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.views.len()
     }
 
     /// Whether nothing has been rendered yet.
     #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.views.is_empty()
     }
 }
