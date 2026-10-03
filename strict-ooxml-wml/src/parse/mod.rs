@@ -136,13 +136,15 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     // saying it cannot disagree.
     let settings = merge_gutter_at_top(settings, section_gutter_at_top);
 
-    let (footnotes, endnotes, note_support) = parse_notes_parts(
+    let (footnotes, endnotes, note_support, note_media) = parse_notes_parts(
         package,
         footnotes_part.as_ref(),
         endnotes_part.as_ref(),
         options,
     )?;
     support.merge(note_support);
+    // AUD-48: footnotes/endnotes discover media the same way headers do.
+    merge_media(&mut media, &note_media);
 
     let theme = parse_theme_part(package, theme_part.as_ref(), options, &mut support)?;
 
@@ -320,27 +322,53 @@ fn parse_aux_font_table(
 }
 
 /// Parses the independent `footnotes`/`endnotes` parts and returns their tables.
+///
+/// Media discovered inside note bodies is returned separately so
+/// [`parse_document`] can [`merge_media`] it into the document index (AUD-48).
 fn parse_notes_parts(
     package: &Package,
     footnotes_part: Option<&PartId>,
     endnotes_part: Option<&PartId>,
     options: &ParseOptions,
-) -> Result<(NoteTable, NoteTable, SupportModel)> {
+) -> Result<(NoteTable, NoteTable, SupportModel, MediaIndex)> {
+    let mut media = MediaIndex::new();
     let (footnotes, footnotes_support) = match footnotes_part {
-        Some(part) => parse_part_with(package, part, options, |parser| {
+        Some(part) => parse_note_part(package, part, options, &mut media, |parser| {
             parser.parse_footnotes_root().map(|(table, _)| table)
         })?,
         None => (NoteTable::new(), SupportModel::new()),
     };
     let (endnotes, endnotes_support) = match endnotes_part {
-        Some(part) => parse_part_with(package, part, options, |parser| {
+        Some(part) => parse_note_part(package, part, options, &mut media, |parser| {
             parser.parse_endnotes_root().map(|(table, _)| table)
         })?,
         None => (NoteTable::new(), SupportModel::new()),
     };
     let mut support = footnotes_support;
     support.merge(endnotes_support);
-    Ok((footnotes, endnotes, support))
+    Ok((footnotes, endnotes, support, media))
+}
+
+/// Parses one notes part, merging its media into `media`.
+fn parse_note_part<T>(
+    package: &Package,
+    part: &PartId,
+    options: &ParseOptions,
+    media: &mut MediaIndex,
+    parse: impl FnOnce(&mut PartParser<'_>) -> Result<T>,
+) -> Result<(T, SupportModel)> {
+    let mut parser = PartParser::new(
+        package,
+        part.clone(),
+        package.read_part(part)?,
+        &options.limits,
+    )?;
+    let value = parse(&mut parser)?;
+    let support = std::mem::take(&mut parser.support);
+    let part_media = std::mem::take(&mut parser.media);
+    drop(parser);
+    merge_media(media, &part_media);
+    Ok((value, support))
 }
 
 /// Parses the theme part into a [`Theme`], if present.
