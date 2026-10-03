@@ -51,6 +51,7 @@
     clippy::too_many_lines
 )]
 
+mod columns;
 mod geometry;
 mod lists;
 mod media;

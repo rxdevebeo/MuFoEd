@@ -23,13 +23,16 @@
 //!    Recorded as [`Severity::Inferred`] every time, because a large first line
 //!    is a title at least as often as it is a heading.
 //!
-//! # What is not reconstructed
+//! # Columns
 //!
-//! Columns, absolute positioning and vertical alignment: none of them are in the
-//! PDF, and a two-column page is a page whose lines do not continue, which the
-//! paragraph rules already describe honestly.
+//! Two-column pages are reordered when a **measured gutter** separates two
+//! vertically overlapping clusters (`columns` / AUD-85). Without that gap the
+//! page stays in draw order. Three-plus columns, uneven widths, and a floating
+//! picture in the column band are recorded as [`Severity::Unsupported`].
 //!
-//! Lists too, and for the same reason with a twist: in a PDF a bullet *is* text.
+//! Absolute positioning and vertical alignment are not reconstructed.
+//!
+//! Lists too, with a twist: in a PDF a bullet *is* text.
 //! Turning it into a `w:numPr` would mean deleting the character the reader drew
 //! and writing another one in its place, so the marker stays in the text and the
 //! report says nothing was inferred. A later increment may take that on with a
@@ -133,8 +136,10 @@ pub(crate) fn build(
     let mut numbering = strict_ooxml_wml::model::numbering::NumberingTable::new();
 
     for (index, page) in pages.iter().enumerate() {
-        let lines = strict_ooxml_pdf::text::lines(page.items());
-        report.lines += lines.len();
+        let raw_lines = strict_ooxml_pdf::text::lines(page.items());
+        report.lines += raw_lines.len();
+        let column_plan = crate::columns::plan(page, &raw_lines, report);
+        let lines = crate::columns::apply(raw_lines, &column_plan);
         let body = body_size(&lines);
         let pitch = body_pitch(&lines);
         let plan = tables::plan(
