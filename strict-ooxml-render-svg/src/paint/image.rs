@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 
 use strict_ooxml_core::part::PartId;
+use strict_ooxml_wml::model::MediaIndex;
 
 use crate::layout::{ImageItem, LayoutContext};
 use crate::units::emu_to_px;
@@ -86,7 +87,7 @@ pub(crate) fn layout_inline_image(
 pub(crate) fn media_href(ctx: &LayoutContext<'_>, part: &PartId) -> Option<String> {
     match ctx.media_mode {
         MediaMode::None => None,
-        MediaMode::ExternalFiles => Some(media_file_name(part)),
+        MediaMode::ExternalFiles => Some(unique_media_file_name(&ctx.document.media, part)),
         MediaMode::EmbedDataUri => {
             let media = ctx.media?;
             let bytes = media.read_media(part).ok()?;
@@ -106,14 +107,56 @@ pub(crate) fn media_href(ctx: &LayoutContext<'_>, part: &PartId) -> Option<Strin
     }
 }
 
-/// Returns the file name of a media part (`/word/media/image1.png` → `image1.png`).
+/// Returns the sanitized external file name of a media part (AUD-78).
+///
+/// The part path without a leading `/` becomes the name: `/` and every character
+/// outside `[A-Za-z0-9._-]` is replaced with `_`. Collision suffixes among an
+/// index are applied by [`unique_media_file_name`].
 #[must_use]
 pub fn media_file_name(part: &PartId) -> String {
-    part.as_str()
-        .rsplit('/')
-        .next()
-        .unwrap_or("media.bin")
-        .to_owned()
+    let sanitized = sanitize_media_file_name(part.as_str());
+    if sanitized.is_empty() {
+        "media.bin".to_owned()
+    } else {
+        sanitized
+    }
+}
+
+/// Unique external file name for `part` among `index` (AUD-78).
+///
+/// After [`media_file_name`] sanitization, later collisions in `MediaIndex`
+/// order receive the suffixes `-2`, `-3`, …
+#[must_use]
+pub fn unique_media_file_name(index: &MediaIndex, part: &PartId) -> String {
+    let base = media_file_name(part);
+    let mut ordinal = 0u32;
+    for item in index.iter() {
+        if media_file_name(&item.part) != base {
+            continue;
+        }
+        ordinal += 1;
+        if &item.part == part {
+            return if ordinal == 1 {
+                base
+            } else {
+                format!("{base}-{ordinal}")
+            };
+        }
+    }
+    base
+}
+
+fn sanitize_media_file_name(path: &str) -> String {
+    path.trim_start_matches('/')
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// Writes an `<image>` (or a placeholder) for a placed image.
@@ -183,8 +226,9 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{base64_encode, media_file_name};
+    use super::{base64_encode, media_file_name, unique_media_file_name};
     use strict_ooxml_core::part::PartId;
+    use strict_ooxml_wml::model::{MediaIndex, MediaItem, MediaKind};
 
     #[test]
     fn base64_matches_known_vectors() {
@@ -198,11 +242,39 @@ mod tests {
     }
 
     #[test]
-    fn media_file_name_extracts_basename() {
+    fn media_file_name_sanitizes_path() {
+        // AUD-78: full path, not basename; unsafe characters → `_`.
         assert_eq!(
             media_file_name(&PartId::new("/word/media/image1.png")),
-            "image1.png"
+            "word_media_image1.png"
         );
         assert_eq!(media_file_name(&PartId::new("image2.jpeg")), "image2.jpeg");
+        assert_eq!(
+            media_file_name(&PartId::new("/word/media/a:b.png")),
+            "word_media_a_b.png"
+        );
+    }
+
+    #[test]
+    fn media_file_names_disambiguate_basename_collisions() {
+        // AUD-78: same basename under different directories → distinct names;
+        // paths that sanitize identically get `-2` in MediaIndex order.
+        let media = PartId::new("/word/media/a.png");
+        let other = PartId::new("/word/x/a.png");
+        let left = PartId::new("/word/a/b.png");
+        let right = PartId::new("/word/a:b.png");
+        let mut index = MediaIndex::new();
+        for part in [&media, &other, &left, &right] {
+            index.insert(MediaItem {
+                part: part.clone(),
+                content_type: None,
+                kind: MediaKind::Png,
+            });
+        }
+        assert_eq!(unique_media_file_name(&index, &media), "word_media_a.png");
+        assert_eq!(unique_media_file_name(&index, &other), "word_x_a.png");
+        assert_eq!(media_file_name(&left), media_file_name(&right));
+        assert_eq!(unique_media_file_name(&index, &left), "word_a_b.png");
+        assert_eq!(unique_media_file_name(&index, &right), "word_a_b.png-2");
     }
 }

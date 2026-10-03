@@ -34,7 +34,9 @@ fn external_files_uses_the_part_file_name() {
     )
     .expect("render");
     assert!(
-        pages[0].svg.contains("xlink:href=\"image1.png\""),
+        pages[0]
+            .svg
+            .contains("xlink:href=\"word_media_image1.png\""),
         "{}",
         pages[0].svg
     );

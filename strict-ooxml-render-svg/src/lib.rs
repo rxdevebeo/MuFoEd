@@ -61,7 +61,7 @@ use strict_ooxml_wml::model::Document;
 pub use error::RenderError;
 pub use font::{FontMetrics, FontProvider, FontProviderKind};
 pub use math::{math_expression_to_mathml, math_paragraph_to_mathml, MathMlError};
-pub use paint::image::media_file_name;
+pub use paint::image::{media_file_name, unique_media_file_name};
 
 /// Supplies image bytes for referenced media parts.
 pub trait MediaSource {
