@@ -58,6 +58,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-49 | ✅ выполнена | `b9f2a52` | GeometryPath Vec; writer/SVG по одному path; тесты двух путей |
 | AUD-52 | ✅ выполнена | `2bffce3` | `tests/traits.rs` Send+Sync; `render_page_svg(usize::MAX)` → Err |
 | AUD-47 | ✅ выполнена | `8145acf` | `numStyleLink` → numbering-стиль → `numId` → abstract (≤8, cycle→`partial`); `ilvl>8` clamp+запись; дубли `abstractNumId`/`numId` first-wins+`partial`; SVG через `resolved_abstract` |
+| AUD-43 | ✅ выполнена | `d113e00` | ADR-0018; `Run`/`Paragraph::revision`; Final/Original; writer grouping + `delText`; property-change → `partial` |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
