@@ -49,10 +49,10 @@ enum Seg {
     EndnoteMarker(u32, ComputedRun),
     /// The note number marker inside a note body (`w:footnoteRef`).
     NoteNumber(ComputedRun),
-    /// A computed field result (PAGE/NUMPAGES/SECTIONPAGES).
+    /// A computed field result (PAGE/NUMPAGES/SECTIONPAGES/SECTION).
     FieldResult(
         crate::fields::FieldKind,
-        crate::notes::NumberFormat,
+        Option<crate::notes::NumberFormat>,
         ComputedRun,
     ),
 }
@@ -191,7 +191,7 @@ enum FieldStage {
 struct FieldState {
     stage: FieldStage,
     instruction: String,
-    computed: Option<(crate::fields::FieldKind, crate::notes::NumberFormat)>,
+    computed: Option<(crate::fields::FieldKind, Option<crate::notes::NumberFormat>)>,
 }
 
 impl FieldState {
@@ -1019,7 +1019,17 @@ fn push_field_marker(
     run: &ComputedRun,
     marker: crate::fields::FieldMarker,
 ) {
-    let text = marker.format.format(1);
+    // AUD-70: headers/footers set `field_env` so PAGE/NUMPAGES resolve per page
+    // during layout. The body still places a placeholder and fixes it in
+    // `Paginator::resolve_fields`.
+    let (value, format) = match ctx.field_env.get() {
+        Some(env) => env.resolve(marker),
+        None => (
+            1,
+            marker.format.unwrap_or(crate::notes::NumberFormat::Decimal),
+        ),
+    };
+    let text = format.format(value);
     let width = ctx.measure(&text, run);
     let size_px = ctx.size_px(run.size_pt);
     current.items.push(TextItem {

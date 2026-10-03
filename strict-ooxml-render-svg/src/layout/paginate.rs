@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use strict_ooxml_core::error::Result;
 
 use crate::error::RenderError;
-use crate::fields::FieldKind;
 use crate::layout::floating::{reserves_vertical_space, PendingAnchor};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::table::{layout_blocks_inline, layout_table, offset_item};
@@ -79,7 +78,13 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
         .and_then(|properties| properties.page_number.as_ref())
         .and_then(|page_number| page_number.start)
         .unwrap_or(1);
-    let mut paginator = Paginator::new(ctx, geometry, total_pages, page_start);
+    let page_format = crate::notes::NumberFormat::from_strict(
+        section
+            .and_then(|properties| properties.page_number.as_ref())
+            .and_then(|page_number| page_number.format.as_deref()),
+        crate::notes::NumberFormat::Decimal,
+    );
+    let mut paginator = Paginator::new(ctx, geometry, total_pages, page_start, page_format);
     layout_blocks(
         ctx,
         &ctx.document.body.blocks,
@@ -89,12 +94,44 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
     )?;
     append_endnotes(ctx, &mut paginator)?;
     paginator.flush_pending()?;
-    let has_fields = paginator.has_fields;
+    let mut has_fields = paginator.has_fields;
+    // AUD-70: PAGE/NUMPAGES in headers/footers also force a second pass so
+    // NUMPAGES sees the real page count.
+    if !has_fields {
+        has_fields = headers_footers_have_dynamic_fields(ctx, section);
+    }
     let mut layout = paginator.finish();
+    let page_count = layout.pages.len().max(1);
     crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, &geometry);
     crate::layout::pageborders::apply(ctx, &mut layout.pages, &geometry, section);
-    crate::layout::headerfooter::decorate_pages(ctx, &mut layout.pages, geometry, section);
+    crate::layout::headerfooter::decorate_pages(
+        ctx,
+        &mut layout.pages,
+        geometry,
+        section,
+        total_pages.max(page_count),
+    );
     Ok((layout, has_fields))
+}
+
+/// Whether any referenced header/footer part contains a computed page field.
+fn headers_footers_have_dynamic_fields(
+    ctx: &LayoutContext<'_>,
+    section: Option<&strict_ooxml_wml::model::props::SectionProperties>,
+) -> bool {
+    let Some(section) = section else {
+        return false;
+    };
+    section
+        .headers
+        .iter()
+        .chain(section.footers.iter())
+        .filter_map(|reference| reference.part.as_ref())
+        .any(|part| {
+            ctx.document
+                .header_footer(part)
+                .is_some_and(|hf| crate::fields::blocks_have_dynamic_fields(&hf.blocks))
+        })
 }
 
 /// Walks blocks, appending their flows to the paginator.
@@ -288,6 +325,8 @@ struct Paginator<'a> {
     total_pages: usize,
     /// First page number from `w:pgNumType/@w:start` (AUD-46).
     page_start: u32,
+    /// Number format from `w:pgNumType/@w:fmt` (AUD-70).
+    page_format: crate::notes::NumberFormat,
     has_fields: bool,
     pages: Vec<PlacedPage>,
     current: Vec<Item>,
@@ -316,6 +355,7 @@ impl<'a> Paginator<'a> {
         geometry: Geometry,
         total_pages: usize,
         page_start: u32,
+        page_format: crate::notes::NumberFormat,
     ) -> Self {
         let mut note_cache = HashMap::new();
         for id in ctx.note_numbers.footnotes_in_order() {
@@ -348,6 +388,7 @@ impl<'a> Paginator<'a> {
             geometry,
             total_pages,
             page_start: page_start.max(1),
+            page_format,
             has_fields: false,
             pages: Vec::new(),
             current: Vec::new(),
@@ -604,25 +645,23 @@ impl<'a> Paginator<'a> {
         if !line.items.iter().any(|item| item.field.is_some()) {
             return;
         }
-        let page_number = self.pages.len() + 1;
+        let page_ordinal = self.pages.len() + 1;
+        let env = crate::fields::FieldEnv {
+            page_number: usize::try_from(self.page_start.saturating_sub(1))
+                .unwrap_or(0)
+                .saturating_add(page_ordinal),
+            page_count: self.total_pages,
+            // Single-section until AUD-74.
+            section_index: 1,
+            section_pages: self.total_pages,
+            page_format: self.page_format,
+        };
         for item in &mut line.items {
             let Some(marker) = item.field else {
                 continue;
             };
-            let value = match marker.kind {
-                FieldKind::Page => {
-                    // AUD-46: `w:pgNumType/@w:start` offsets PAGE (fmt is AUD-70).
-                    usize::try_from(self.page_start.saturating_sub(1))
-                        .unwrap_or(0)
-                        .saturating_add(page_number)
-                }
-                FieldKind::NumPages | FieldKind::SectionPages => self.total_pages,
-            };
-            // `try_from`, not `as`: the page count comes from a document whose
-            // number of pages is itself a limit, and G-2 says an integer cast of a
-            // value from the input is a checked conversion (AUD-09).
-            let value = u32::try_from(value).unwrap_or(u32::MAX);
-            let text = marker.format.format(value);
+            let (value, format) = env.resolve(marker);
+            let text = format.format(value);
             item.width = self.ctx.measure(&text, &item.run);
             item.text = text;
             self.has_fields = true;

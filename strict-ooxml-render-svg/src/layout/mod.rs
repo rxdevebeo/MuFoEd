@@ -36,8 +36,8 @@ pub struct TextItem {
     pub run: ComputedRun,
     /// Font size in px.
     pub size_px: f64,
-    /// Computed field marker, when this item is a PAGE/NUMPAGES/SECTIONPAGES
-    /// placeholder resolved at placement time.
+    /// Computed field marker, when this item is a PAGE/NUMPAGES/SECTIONPAGES/
+    /// SECTION placeholder resolved at placement time.
     ///
     /// A backend that draws the text needs to know which fragment is a page
     /// number, so the marker is public — but the marker type stays crate-internal
@@ -392,6 +392,12 @@ pub(crate) struct LayoutContext<'a> {
     /// return a value the callers already use. A channel is the alternative to
     /// threading a `Vec<String>` through every one of them.
     pub(crate) warnings: std::cell::RefCell<Vec<String>>,
+    /// Page-dependent field values for header/footer layout (AUD-70).
+    ///
+    /// Set while a header/footer region with PAGE/NUMPAGES/SECTIONPAGES/SECTION
+    /// is being laid out; `None` during body pagination (body fields resolve in
+    /// `Paginator::resolve_fields`).
+    pub(crate) field_env: std::cell::Cell<Option<crate::fields::FieldEnv>>,
 }
 
 impl LayoutContext<'_> {

@@ -262,6 +262,7 @@ pub fn place_pages(
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
         warnings: std::cell::RefCell::new(Vec::new()),
+        field_env: std::cell::Cell::new(None),
     };
     Ok(layout::paginate::layout_document(&context)?.pages)
 }
@@ -299,6 +300,7 @@ pub fn render_with_media(
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
         warnings: std::cell::RefCell::new(Vec::new()),
+        field_env: std::cell::Cell::new(None),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
     let layout_warnings = laid_out.warnings.clone();
