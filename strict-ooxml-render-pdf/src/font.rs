@@ -4,10 +4,13 @@
 //! extractable. That needs an embedded font, an `Identity-H` encoding, a width
 //! array in 1000-unit text space and a `ToUnicode` CMap.
 //!
-//! [`subsetter`] does the hard part: it rewrites the face to CID-keyed outlines
-//! with an identity GID→CID mapping, which is precisely what a PDF CID font
-//! expects, and `subset_with_variations` instances a variable face so the
-//! bundled Arimo can be embedded at the weight the layout used.
+//! [`subsetter`] does the hard part: it rewrites the face to CID-keyed outlines,
+//! and `subset_with_variations` instances a variable face so the bundled Arimo
+//! can be embedded at the weight the layout used.
+//!
+//! CID and GID are **not** the same (AUD-82). Two characters that share a glyph
+//! (U+0020 and U+00A0) each get their own CID; `/CIDToGIDMap` points both at the
+//! one outline, and `ToUnicode` recovers each character from its CID.
 //!
 //! The faces come from [`strict_ooxml_render_svg::font`], so the program that
 //! gets embedded is the same one that produced the advances. That is what makes
@@ -69,9 +72,12 @@ struct UsedGlyph {
 /// The two passes are deliberate: the set has to be complete before a subset can
 /// be built, and the subset decides the new glyph ids, so the text cannot be
 /// encoded until every page has been walked.
+///
+/// Keys are `(glyph, character)` pairs (AUD-82): space and NBSP share a glyph
+/// but must keep distinct CIDs, so a map keyed only by glyph would drop one.
 #[derive(Debug, Default)]
 pub struct FaceCollector {
-    faces: BTreeMap<FaceKey, BTreeMap<GlyphId, Option<char>>>,
+    faces: BTreeMap<FaceKey, BTreeSet<(GlyphId, Option<char>)>>,
     /// Faces requested that the bundle does not carry.
     unknown: BTreeSet<FaceKey>,
 }
@@ -99,11 +105,7 @@ impl FaceCollector {
             self.unknown.insert(key);
             return;
         };
-        self.faces
-            .entry(key)
-            .or_default()
-            .entry(glyph)
-            .or_insert(Some(ch));
+        self.faces.entry(key).or_default().insert((glyph, Some(ch)));
     }
 
     /// The faces that carry at least one glyph, in a deterministic order.
@@ -121,14 +123,35 @@ impl FaceCollector {
     /// Records glyph 0 (`.notdef`) for every face, which a font must keep.
     pub fn add_notdef(&mut self) {
         for glyphs in self.faces.values_mut() {
-            glyphs.entry(GlyphId::new(0)).or_insert(None);
+            glyphs.insert((GlyphId::new(0), None));
         }
+    }
+
+    /// Records two characters against the same source glyph (AUD-82 tests).
+    #[cfg(test)]
+    fn add_shared_glyph(
+        &mut self,
+        source: &FaceSource,
+        bold: bool,
+        italic: bool,
+        glyph: GlyphId,
+        first: char,
+        second: char,
+    ) {
+        let key = FaceKey {
+            family: source.family,
+            bold,
+            italic,
+        };
+        let entry = self.faces.entry(key).or_default();
+        entry.insert((glyph, Some(first)));
+        entry.insert((glyph, Some(second)));
     }
 
     /// Builds the subset of one face.
     ///
-    /// Returns the subset program, the new id of each source glyph and the width
-    /// of each new glyph in 1000-unit text space.
+    /// Returns the subset program, a CID→GID map, widths keyed by CID and the
+    /// character→CID table the drawing pass needs.
     ///
     /// # Errors
     ///
@@ -148,9 +171,14 @@ impl FaceCollector {
             })
             .unwrap_or_default();
 
+        // Subset once per distinct source glyph; several CIDs may share it.
         let mut remapper = GlyphRemapper::new();
+        let mut seen_gids = BTreeSet::new();
         for glyph in &used {
-            remapper.remap(glyph.source.to_u32() as u16);
+            let old = glyph.source.to_u32() as u16;
+            if seen_gids.insert(old) {
+                remapper.remap(old);
+            }
         }
         let subset_bytes = match source.weight {
             Some(weight) => {
@@ -177,9 +205,8 @@ impl FaceCollector {
         // `/W` array is specified in. Keeping it an integer rather than an `f32`
         // is what lets the run-detection in the writer compare widths exactly
         // instead of with a margin that would have to be justified.
-        let mut widths: BTreeMap<u16, u16> = BTreeMap::new();
-        for glyph in &used {
-            let old = glyph.source.to_u32() as u16;
+        let mut gid_widths: BTreeMap<u16, u16> = BTreeMap::new();
+        for &old in &seen_gids {
             let Some(new_gid) = remapper.get(old) else {
                 continue;
             };
@@ -187,20 +214,27 @@ impl FaceCollector {
                 .advance_width(GlyphId::new(u32::from(new_gid)))
                 .unwrap_or(0.0);
             let width = (f64::from(advance) * scale).round();
-            widths.insert(new_gid, width.clamp(0.0, f64::from(u16::MAX)) as u16);
+            gid_widths.insert(new_gid, width.clamp(0.0, f64::from(u16::MAX)) as u16);
         }
 
+        // AUD-82: one CID per (glyph, character) pair, in sorted order so the
+        // assignment is deterministic. The content stream writes CIDs; the map
+        // stream turns them back into subset GIDs for painting.
         let mut chars: BTreeMap<char, u16> = BTreeMap::new();
         let mut to_unicode: BTreeMap<u16, char> = BTreeMap::new();
+        let mut widths: BTreeMap<u16, u16> = BTreeMap::new();
+        let mut cid_to_gid: Vec<u16> = Vec::with_capacity(used.len());
         for glyph in &used {
             let Some(new_gid) = remapper.get(glyph.source.to_u32() as u16) else {
                 continue;
             };
-            let Some(ch) = glyph.character else {
-                continue;
-            };
-            chars.insert(ch, new_gid);
-            to_unicode.insert(new_gid, ch);
+            let cid = u16::try_from(cid_to_gid.len()).unwrap_or(u16::MAX);
+            cid_to_gid.push(new_gid);
+            widths.insert(cid, *gid_widths.get(&new_gid).unwrap_or(&0));
+            if let Some(ch) = glyph.character {
+                chars.insert(ch, cid);
+                to_unicode.insert(cid, ch);
+            }
         }
 
         Ok(EmbeddedFont {
@@ -209,6 +243,7 @@ impl FaceCollector {
             widths,
             chars,
             to_unicode,
+            cid_to_gid,
             is_cff,
             ascent: f64::from(metrics.ascent) * scale,
             descent: f64::from(metrics.descent) * scale,
@@ -224,17 +259,18 @@ pub struct EmbeddedFont {
     pub key: FaceKey,
     /// The subsetted font program.
     pub data: Vec<u8>,
-    /// Advance width per subset glyph id, in 1000-unit text space.
+    /// Advance width per **CID**, in 1000-unit text space.
     pub widths: BTreeMap<u16, u16>,
-    /// The character a subset glyph id stands for.
+    /// Character → CID.
     ///
     /// This is the table the drawing pass needs: a text run arrives as
-    /// characters, and encoding it means asking "which glyph is this character
-    /// *in this subset*". Re-deriving that from the source face would be wrong
-    /// for a variable face, whose glyph ids move with the instance.
+    /// characters, and encoding it means asking "which CID is this character".
+    /// Two characters that share a glyph get two CIDs (AUD-82).
     pub chars: BTreeMap<char, u16>,
-    /// Subset glyph id → the character it stands for, for the `ToUnicode` CMap.
+    /// CID → the character it stands for, for the `ToUnicode` CMap.
     pub to_unicode: BTreeMap<u16, char>,
+    /// CID → subset GID, written as `/CIDToGIDMap` (AUD-82).
+    pub cid_to_gid: Vec<u16>,
     /// Whether the program carries CFF (OpenType/PostScript) outlines.
     pub is_cff: bool,
     /// Ascender in 1000-unit text space.
@@ -243,6 +279,16 @@ pub struct EmbeddedFont {
     pub descent: f64,
     /// Cap height in 1000-unit text space, when the face declares one.
     pub cap_height: Option<f64>,
+}
+
+/// Builds the `/CIDToGIDMap` stream body: two big-endian bytes per CID.
+#[must_use]
+pub fn cid_to_gid_bytes(font: &EmbeddedFont) -> Vec<u8> {
+    let mut out = Vec::with_capacity(font.cid_to_gid.len() * 2);
+    for &gid in &font.cid_to_gid {
+        out.extend_from_slice(&gid.to_be_bytes());
+    }
+    out
 }
 
 /// Failure while preparing a face.
@@ -448,5 +494,35 @@ mod tests {
         assert!(cmap.contains("<0041>"), "A must map to U+0041:\n{cmap}");
         let identity = String::from_utf8(super::identity_h_cmap()).expect("utf-8");
         assert!(identity.contains("begincidrange"), "{identity}");
+    }
+
+    /// AUD-82: two characters that share a source glyph get distinct CIDs.
+    #[test]
+    fn two_characters_that_share_a_glyph_get_distinct_cids() {
+        use skrifa::{FontRef, MetadataProvider};
+
+        let source = face_source("Calibri", false, false).expect("bundled");
+        let face = FontRef::new(source.data).expect("face");
+        let space_gid = face.charmap().map(' ').expect("space glyph");
+        let mut collector = FaceCollector::new();
+        // Carlito gives NBSP its own id; force the collision the bug is about.
+        collector.add_shared_glyph(&source, false, false, space_gid, ' ', '\u{A0}');
+        collector.add_notdef();
+        let key = FaceKey {
+            family: source.family,
+            bold: false,
+            italic: false,
+        };
+        let font = collector.build(&key, &source).expect("subset");
+        let space = *font.chars.get(&' ').expect("space");
+        let nbsp = *font.chars.get(&'\u{A0}').expect("nbsp");
+        assert_ne!(space, nbsp, "shared-outline characters must not share a CID");
+        assert_eq!(
+            font.cid_to_gid[usize::from(space)],
+            font.cid_to_gid[usize::from(nbsp)],
+            "both CIDs must paint the same outline"
+        );
+        assert_eq!(font.to_unicode.get(&space), Some(&' '));
+        assert_eq!(font.to_unicode.get(&nbsp), Some(&'\u{A0}'));
     }
 }

@@ -161,9 +161,10 @@ pub fn render_with_source(
             images: image_ids,
         });
     }
-    // A CID font needs six objects: the program, its descriptor, the CID font,
-    // the ToUnicode CMap, the Identity-H CMap and the Type0 wrapper.
-    let font_ids: Vec<FontIds> = fonts.iter().map(|_| builder.allocate_six()).collect();
+    // A CID font needs seven objects: the program, its descriptor, the CID font,
+    // the ToUnicode CMap, the Identity-H CMap, the CIDToGIDMap stream and the
+    // Type0 wrapper.
+    let font_ids: Vec<FontIds> = fonts.iter().map(|_| builder.allocate_seven()).collect();
 
     let mut pdf = Pdf::new();
     pdf.catalog(builder.catalog).pages(builder.pages);
@@ -229,7 +230,8 @@ struct PageObjects {
     images: BTreeMap<PartId, (Ref, Option<Ref>)>,
 }
 
-/// The six object ids a CID font occupies.
+/// The object ids a CID font occupies (seven: Type0, program, descriptor, CID
+/// font, ToUnicode, Identity-H, and the `/CIDToGIDMap` stream).
 #[derive(Clone, Copy, Debug)]
 struct FontIds {
     type0: Ref,
@@ -238,6 +240,7 @@ struct FontIds {
     cid: Ref,
     to_unicode: Ref,
     identity: Ref,
+    cid_to_gid: Ref,
 }
 
 /// Allocates ids in a fixed order and holds the objects still to be written.
@@ -268,8 +271,8 @@ impl PdfBuilder {
         id
     }
 
-    /// Hands out six consecutive ids, in the order `write_font` consumes them.
-    fn allocate_six(&mut self) -> FontIds {
+    /// Hands out seven consecutive ids, in the order `write_font` consumes them.
+    fn allocate_seven(&mut self) -> FontIds {
         FontIds {
             type0: self.allocate(),
             file: self.allocate(),
@@ -277,6 +280,7 @@ impl PdfBuilder {
             cid: self.allocate(),
             to_unicode: self.allocate(),
             identity: self.allocate(),
+            cid_to_gid: self.allocate(),
         }
     }
 }
@@ -731,6 +735,7 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         cid: cid_id,
         to_unicode: to_unicode_id,
         identity: identity_id,
+        cid_to_gid: cid_to_gid_id,
     } = ids;
     // A PDF name, so the base font is a PostScript-style identifier with no
     // spaces; the family goes in the descriptor as a string, where spaces are
@@ -798,6 +803,14 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         }
     }
     {
+        // AUD-82: CID ≠ GID when two characters share an outline.
+        let (data, compressed) = flate(&crate::font::cid_to_gid_bytes(font));
+        let mut stream = pdf.stream(cid_to_gid_id, &data);
+        if compressed {
+            stream.filter(Filter::FlateDecode);
+        }
+    }
+    {
         let mut cid = pdf.cid_font(cid_id);
         cid.subtype(if font.is_cff {
             pdf_writer::types::CidFontType::Type0
@@ -807,19 +820,19 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         cid.base_font(postscript_name);
         cid.font_descriptor(descriptor_id);
         cid.default_width(0.0);
-        // The `/W` array is written in runs: a document's glyphs are mostly
-        // consecutive, and one range per run keeps it short. The runs are
-        // collected before writing because `widths()` borrows the writer, and the
-        // widths are integers, so the run test is exact.
+        // The `/W` array is written in runs of CIDs: consecutive CIDs with the
+        // same width share one range. The runs are collected before writing
+        // because `widths()` borrows the writer, and the widths are integers, so
+        // the run test is exact.
         let mut runs: Vec<(u16, u16, u16)> = Vec::new();
-        for (gid, width) in &font.widths {
+        for (cid_code, width) in &font.widths {
             match runs.last_mut() {
                 Some((_, last, last_width))
-                    if *gid == last.saturating_add(1) && *last_width == *width =>
+                    if *cid_code == last.saturating_add(1) && *last_width == *width =>
                 {
-                    *last = *gid;
+                    *last = *cid_code;
                 }
-                _ => runs.push((*gid, *gid, *width)),
+                _ => runs.push((*cid_code, *cid_code, *width)),
             }
         }
         {
@@ -828,7 +841,7 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
                 let _ = widths.same(start, last, f32::from(width));
             }
         }
-        cid.cid_to_gid_map_predefined(Name(b"Identity"));
+        cid.cid_to_gid_map_stream(cid_to_gid_id);
     }
     {
         let mut type0 = pdf.type0_font(type0_id);
