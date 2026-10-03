@@ -101,10 +101,10 @@ pub enum DirectionPolicy {
 /// How to treat VML `w:pict` / `w:object` (`TZ` §6.3/§10.8, AUD-34).
 ///
 /// The TZ name `RasterizeIfPossible` is not used: this implementation converts
-/// to DrawingML rather than rasterising. The rename is recorded for ADR-0019.
+/// to `DrawingML` rather than rasterising. The rename is recorded for ADR-0019.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VmlFallback {
-    /// Convert VML shapes to DrawingML (default, current behaviour).
+    /// Convert VML shapes to `DrawingML` (default, current behaviour).
     #[default]
     Convert,
     /// Do not convert; drop the subtree and record `T7.vml` (`Lossy`) with the
@@ -456,8 +456,7 @@ impl TransitionalNormalizer {
         // AUD-34: Report/Drop skip conversion and remove the subtree.
         if context.vml != VmlFallback::Convert {
             let class = vml::classify(subtree, context)
-                .map(|(shape, _)| vml_shape_class(&shape))
-                .unwrap_or("unknown");
+                .map_or("unknown", |(shape, _)| vml_shape_class(&shape));
             let reason = match context.vml {
                 VmlFallback::Report => format!(
                     "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
