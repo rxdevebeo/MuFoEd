@@ -255,6 +255,56 @@ fn cell_level_sdt_unwraps_into_table_cells() {
     );
 }
 
+/// AUD-42: text inside transparent wrappers reaches the model.
+#[test]
+fn transparent_wrappers_keep_their_content() {
+    // Block-level customXml
+    let document =
+        parse_body("<w:customXml><w:p><w:r><w:t>block-xml</w:t></w:r></w:p></w:customXml>");
+    assert!(matches!(document.body.blocks[0], Block::Paragraph(_)));
+    assert_eq!(
+        document.support.get("w:customXml").unwrap().status,
+        SupportStatus::Partial
+    );
+
+    // Inline smartTag
+    let document = parse_body("<w:p><w:smartTag><w:r><w:t>tagged</w:t></w:r></w:smartTag></w:p>");
+    let Inline::Run(run) = &first_paragraph(&document).inlines[0] else {
+        panic!("expected run from smartTag");
+    };
+    let RunContent::Text(text) = &run.content[0] else {
+        panic!("expected text");
+    };
+    assert_eq!(text.text, "tagged");
+
+    // dir / bdo keep a Directional node
+    let document = parse_body(
+        "<w:p><w:dir w:val=\"rtl\"><w:r><w:t>مرحبا</w:t></w:r></w:dir>\
+         <w:bdo w:val=\"ltr\"><w:r><w:t>abc</w:t></w:r></w:bdo></w:p>",
+    );
+    let inlines = &first_paragraph(&document).inlines;
+    assert!(matches!(
+        &inlines[0],
+        Inline::Directional(d) if d.kind == strict_ooxml_wml::model::inline::DirectionalKind::Dir
+            && d.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl
+    ));
+    assert!(matches!(
+        &inlines[1],
+        Inline::Directional(d) if d.kind == strict_ooxml_wml::model::inline::DirectionalKind::Bdo
+    ));
+
+    // customXml inside a table cell
+    let document = parse_body(
+        "<w:tbl><w:tr><w:tc><w:customXml>\
+         <w:p><w:r><w:t>cell-xml</w:t></w:r></w:p>\
+         </w:customXml></w:tc></w:tr></w:tbl>",
+    );
+    let Block::Table(table) = &document.body.blocks[0] else {
+        panic!("expected table");
+    };
+    assert_eq!(cell_text(&table.rows[0].cells[0]), "cell-xml");
+}
+
 fn cell_text(cell: &strict_ooxml_wml::model::block::TableCell) -> String {
     let mut out = String::new();
     for block in &cell.blocks {

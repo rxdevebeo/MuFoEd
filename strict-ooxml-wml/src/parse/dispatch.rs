@@ -21,6 +21,9 @@ pub(crate) enum BodyKind {
     Inserted,
     /// `w:del`.
     Deleted,
+    /// Transparent wrapper: children merge into the parent (`w:customXml`,
+    /// `w:smartTag`, AUD-42).
+    Transparent,
     /// Recognised and deliberately ignored (bookmarks, proof marks, ...).
     Ignored,
     /// Unknown.
@@ -42,7 +45,8 @@ const BODY_TABLE: &[(&str, BodyKind)] = &[
     ("proofErr", BodyKind::Ignored),
     ("permStart", BodyKind::Ignored),
     ("permEnd", BodyKind::Ignored),
-    ("customXml", BodyKind::Opaque),
+    ("customXml", BodyKind::Transparent),
+    ("smartTag", BodyKind::Transparent),
     ("oMath", BodyKind::Opaque),
     ("oMathPara", BodyKind::Opaque),
 ];
@@ -86,6 +90,12 @@ pub(crate) enum InlineKind {
     Inserted,
     /// `w:del` / `w:moveFrom`.
     Deleted,
+    /// Transparent wrapper (`w:customXml`, `w:smartTag`, AUD-42).
+    Transparent,
+    /// Directional wrapper (`w:dir`, AUD-42).
+    Dir,
+    /// Bidirectional override (`w:bdo`, AUD-42).
+    Bdo,
     /// Recognised and ignored.
     Ignored,
     /// Unknown.
@@ -109,6 +119,10 @@ const INLINE_TABLE: &[(&str, InlineKind)] = &[
     ("del", InlineKind::Deleted),
     ("moveTo", InlineKind::Inserted),
     ("moveFrom", InlineKind::Deleted),
+    ("customXml", InlineKind::Transparent),
+    ("smartTag", InlineKind::Transparent),
+    ("dir", InlineKind::Dir),
+    ("bdo", InlineKind::Bdo),
     ("proofErr", InlineKind::Ignored),
     ("permStart", InlineKind::Ignored),
     ("permEnd", InlineKind::Ignored),

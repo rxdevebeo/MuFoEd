@@ -213,6 +213,18 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
         Inline::MathParagraph(paragraph) => {
             crate::math::math_paragraph(ctx, xml, paragraph);
         }
+        Inline::Directional(dir) => {
+            let name = match dir.kind {
+                strict_ooxml_wml::model::inline::DirectionalKind::Dir => "w:dir",
+                strict_ooxml_wml::model::inline::DirectionalKind::Bdo => "w:bdo",
+            };
+            xml.start(name);
+            xml.attr_w("val", dir.val.as_str());
+            for child in &dir.inlines {
+                inline_item(ctx, xml, child);
+            }
+            xml.end();
+        }
         Inline::Opaque(opaque) => {
             ctx.report_unsupported(
                 &opaque.feature_id(),

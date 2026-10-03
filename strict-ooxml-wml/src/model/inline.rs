@@ -226,6 +226,58 @@ impl OpaqueInline {
     }
 }
 
+/// Which directional wrapper was used (`w:dir` or `w:bdo`, AUD-42).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DirectionalKind {
+    /// `w:dir` — embedding level change.
+    Dir,
+    /// `w:bdo` — bidirectional override.
+    Bdo,
+}
+
+/// Direction value on `w:dir` / `w:bdo` (`w:val`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DirectionalVal {
+    /// Left-to-right.
+    Ltr,
+    /// Right-to-left.
+    Rtl,
+}
+
+impl DirectionalVal {
+    /// Parses the Strict lexical value.
+    #[must_use]
+    pub fn from_strict(value: &str) -> Option<Self> {
+        match value {
+            "ltr" => Some(Self::Ltr),
+            "rtl" => Some(Self::Rtl),
+            _ => None,
+        }
+    }
+
+    /// Returns the Strict lexical value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ltr => "ltr",
+            Self::Rtl => "rtl",
+        }
+    }
+}
+
+/// A directional inline container (`w:dir` / `w:bdo`, AUD-42).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Directional {
+    /// Whether this is `w:dir` or `w:bdo`.
+    pub kind: DirectionalKind,
+    /// Requested direction.
+    pub val: DirectionalVal,
+    /// Nested inline content.
+    pub inlines: Vec<Inline>,
+    /// Source location of the wrapper.
+    pub location: SourceLocation,
+}
+
 /// Inline-level content of a paragraph.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Inline {
@@ -261,6 +313,8 @@ pub enum Inline {
     Math(MathExpression),
     /// A display formula (`m:oMathPara`, Stage 5C).
     MathParagraph(MathParagraph),
+    /// Directional wrapper (`w:dir` / `w:bdo`, AUD-42).
+    Directional(Directional),
     /// Unknown inline element.
     Opaque(OpaqueInline),
 }

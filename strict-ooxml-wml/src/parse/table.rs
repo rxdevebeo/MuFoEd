@@ -161,7 +161,8 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "tcPr" => props = parser.parse_cell_properties()?,
-                            "p" | "tbl" | "sdt" | "altChunk" | "ins" | "del" | "customXml" => {
+                            "p" | "tbl" | "sdt" | "altChunk" | "ins" | "del" | "customXml"
+                            | "smartTag" => {
                                 parser.parse_block_element_into(&name, &attrs, &mut blocks)?;
                             }
                             _ => parser.skip_element()?,

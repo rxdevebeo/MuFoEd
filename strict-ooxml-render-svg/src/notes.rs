@@ -250,6 +250,7 @@ fn collect_inlines(inlines: &[Inline], refs: &mut NoteRefs) {
             Inline::Hyperlink(link) => collect_inlines(&link.inlines, refs),
             Inline::Field(field) => collect_inlines(&field.inlines, refs),
             Inline::SdtInline(sdt) => collect_inlines(&sdt.inlines, refs),
+            Inline::Directional(dir) => collect_inlines(&dir.inlines, refs),
             Inline::FootnoteRef(id) => refs.footnotes.push(*id),
             Inline::EndnoteRef(id) => refs.endnotes.push(*id),
             _ => {}

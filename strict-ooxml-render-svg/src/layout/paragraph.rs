@@ -286,6 +286,30 @@ fn flatten_inlines(
                 out,
                 field,
             ),
+            Inline::Directional(dir) => {
+                // AUD-42: apply direction like `w:rtl` on nested runs.
+                if dir.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl {
+                    flatten_directional_rtl(
+                        ctx,
+                        computed,
+                        &dir.inlines,
+                        content_left,
+                        content_width,
+                        out,
+                        field,
+                    );
+                } else {
+                    flatten_inlines(
+                        ctx,
+                        computed,
+                        &dir.inlines,
+                        content_left,
+                        content_width,
+                        out,
+                        field,
+                    );
+                }
+            }
             Inline::FootnoteRef(id) => out.push(Seg::FootnoteMarker(
                 *id,
                 superscript(computed.default_run.clone()),
@@ -318,6 +342,59 @@ fn flatten_inlines(
             | Inline::MathParagraph(_)
             | Inline::Opaque(_) => {}
         }
+    }
+}
+
+/// Flattens directional content after stamping `w:rtl` onto nested runs (AUD-42).
+fn flatten_directional_rtl(
+    ctx: &LayoutContext<'_>,
+    computed: &ComputedParagraph,
+    inlines: &[Inline],
+    content_left: f64,
+    content_width: f64,
+    out: &mut Vec<Seg>,
+    field: &mut FieldState,
+) {
+    let stamped: Vec<Inline> = inlines.iter().map(stamp_rtl).collect();
+    flatten_inlines(
+        ctx,
+        computed,
+        &stamped,
+        content_left,
+        content_width,
+        out,
+        field,
+    );
+}
+
+fn stamp_rtl(inline: &Inline) -> Inline {
+    match inline {
+        Inline::Run(run) => {
+            let mut run = run.clone();
+            run.props.rtl = true;
+            Inline::Run(run)
+        }
+        Inline::Hyperlink(link) => {
+            let mut link = link.clone();
+            link.inlines = link.inlines.iter().map(stamp_rtl).collect();
+            Inline::Hyperlink(link)
+        }
+        Inline::Field(field) => {
+            let mut field = field.clone();
+            field.inlines = field.inlines.iter().map(stamp_rtl).collect();
+            Inline::Field(field)
+        }
+        Inline::SdtInline(sdt) => {
+            let mut sdt = sdt.clone();
+            sdt.inlines = sdt.inlines.iter().map(stamp_rtl).collect();
+            Inline::SdtInline(sdt)
+        }
+        Inline::Directional(dir) => {
+            let mut dir = dir.clone();
+            dir.inlines = dir.inlines.iter().map(stamp_rtl).collect();
+            Inline::Directional(dir)
+        }
+        other => other.clone(),
     }
 }
 

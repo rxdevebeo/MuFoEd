@@ -35,8 +35,8 @@ pub use drawing::{
 pub use fonts::{EmbedKind, EmbeddedFont, FontEntry, FontTable};
 pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 pub use inline::{
-    Bookmark, BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run,
-    RunContent, Symbol, TextNode,
+    Bookmark, BookmarkId, CommentId, Directional, DirectionalKind, DirectionalVal, Field,
+    FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent, Symbol, TextNode,
 };
 pub use math::{
     Accent, ArgumentProperties, Bar, BorderBox, Boxed, Delimiter, EquationArray, Fraction,

@@ -957,6 +957,7 @@ fn inlines(items: &[Inline], out: &mut Vec<String>) {
             Inline::Hyperlink(link) => inlines(&link.inlines, out),
             Inline::Field(field) => inlines(&field.inlines, out),
             Inline::SdtInline(sdt) => inlines(&sdt.inlines, out),
+            Inline::Directional(dir) => inlines(&dir.inlines, out),
             _ => {}
         }
     }

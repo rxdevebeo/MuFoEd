@@ -23,6 +23,7 @@ use strict_ooxml_core::opc::rels::parse_relationships;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package, CONTENT_TYPES_PART};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::Block;
+use strict_ooxml_wml::model::inline::{DirectionalKind, DirectionalVal, Inline};
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{
@@ -402,6 +403,51 @@ fn a_written_package_opens_under_the_strict_policy() {
             strict_ooxml_core::ns::Conformance::Strict
         );
     }
+}
+
+/// AUD-42: `w:dir` / `w:bdo` round-trip; `w:customXml` records an Ignorable write loss.
+#[test]
+fn directional_round_trips_and_custom_xml_is_reported() {
+    let body = "\
+<w:p><w:dir w:val=\"rtl\"><w:r><w:t>rtl</w:t></w:r></w:dir>\
+<w:bdo w:val=\"ltr\"><w:r><w:t>ltr</w:t></w:r></w:bdo></w:p>\
+<w:customXml><w:p><w:r><w:t>kept</w:t></w:r></w:p></w:customXml>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let paragraph = document.body.blocks[0].as_paragraph().unwrap();
+    assert!(matches!(
+        &paragraph.inlines[0],
+        Inline::Directional(d)
+            if d.kind == DirectionalKind::Dir && d.val == DirectionalVal::Rtl
+    ));
+    assert!(document.support.get("w:customXml").is_some());
+
+    let written = write(&document, &package);
+    assert!(
+        written
+            .report
+            .losses()
+            .iter()
+            .any(|loss| loss.feature_id == "W.custom-xml-wrapper"),
+        "expected W.custom-xml-wrapper loss, got {}",
+        written.report
+    );
+    let reopened = open(&written.bytes).expect("reopen");
+    let reparsed = parse(&reopened).expect("reparse");
+    let paragraph = reparsed.body.blocks[0].as_paragraph().unwrap();
+    assert!(matches!(
+        &paragraph.inlines[0],
+        Inline::Directional(d) if d.kind == DirectionalKind::Dir
+    ));
+    assert!(matches!(
+        &paragraph.inlines[1],
+        Inline::Directional(d) if d.kind == DirectionalKind::Bdo
+    ));
+    // customXml content survives as a plain paragraph
+    assert!(matches!(reparsed.body.blocks[1], Block::Paragraph(_)));
 }
 
 /// AUD-41: row-level `w:sdt` round-trips (parse → write → parse → write is a fixed point).

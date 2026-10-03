@@ -11,8 +11,8 @@ use crate::model::block::{AltChunkInfo, Block, OpaqueBlock, Paragraph, SdtContai
 use crate::model::document::Body;
 use crate::model::ids::{ParaId, TextId};
 use crate::model::inline::{
-    Bookmark, BookmarkId, CommentId, Field, FieldChar, Hyperlink, Inline, OpaqueInline, Run,
-    RunContent, Symbol, TextNode,
+    Bookmark, BookmarkId, CommentId, Directional, DirectionalKind, DirectionalVal, Field,
+    FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent, Symbol, TextNode,
 };
 use crate::model::props::{ParagraphProperties, Section};
 use crate::model::support::SupportStatus;
@@ -152,6 +152,21 @@ impl PartParser<'_> {
                 self.capture_body_section = was_capture;
                 blocks.append(&mut children);
             }
+            BodyKind::Transparent => {
+                // AUD-42: customXml / smartTag — keep content, drop the wrapper.
+                let feature = feature_id_for(name);
+                self.record(
+                    &feature,
+                    SupportStatus::Partial,
+                    Some("wrapper dropped, content kept".to_owned()),
+                    Some(self.location()),
+                );
+                let was_capture = self.capture_body_section;
+                self.capture_body_section = false;
+                let mut children = self.parse_block_children()?;
+                self.capture_body_section = was_capture;
+                blocks.append(&mut children);
+            }
             BodyKind::Ignored => self.skip_element()?,
             BodyKind::Opaque => {
                 self.record_foreign(name);
@@ -248,6 +263,7 @@ impl PartParser<'_> {
     }
 
     /// Dispatches one paragraph child element into `out`.
+    #[allow(clippy::too_many_lines)]
     fn parse_inline_into(
         &mut self,
         name: &QName,
@@ -345,6 +361,34 @@ impl PartParser<'_> {
                 );
                 let mut children = self.parse_inline_children()?;
                 out.append(&mut children);
+            }
+            InlineKind::Transparent => {
+                let feature = feature_id_for(name);
+                self.record(
+                    &feature,
+                    SupportStatus::Partial,
+                    Some("wrapper dropped, content kept".to_owned()),
+                    Some(location),
+                );
+                let mut children = self.parse_inline_children()?;
+                out.append(&mut children);
+            }
+            InlineKind::Dir | InlineKind::Bdo => {
+                let kind = if inline_kind(name.local()) == InlineKind::Dir {
+                    DirectionalKind::Dir
+                } else {
+                    DirectionalKind::Bdo
+                };
+                let val = wml_attr(attrs, "val")
+                    .and_then(DirectionalVal::from_strict)
+                    .unwrap_or(DirectionalVal::Ltr);
+                let inlines = self.parse_inline_children()?;
+                out.push(Inline::Directional(Directional {
+                    kind,
+                    val,
+                    inlines,
+                    location,
+                }));
             }
             InlineKind::Ignored => self.skip_element()?,
             InlineKind::Opaque => {

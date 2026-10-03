@@ -85,6 +85,9 @@ pub struct Ctx<'a> {
 /// Stable id of the loss "a character XML cannot carry was removed".
 pub const INVALID_XML_CHAR_ID: &str = "W.invalid-xml-char";
 
+/// Stable id: a `w:customXml` / `w:smartTag` wrapper was dropped on read (AUD-42).
+pub const CUSTOM_XML_WRAPPER_ID: &str = "W.custom-xml-wrapper";
+
 impl<'a> Ctx<'a> {
     /// Creates a context writing into `report`.
     #[must_use]

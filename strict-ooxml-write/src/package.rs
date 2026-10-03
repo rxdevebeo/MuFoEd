@@ -425,6 +425,22 @@ pub fn write_package(
         }
     })?;
     let mut report = crate::WriteReport::new();
+    // AUD-42: the parser drops customXml/smartTag wrappers (content kept). The
+    // writer cannot restore them — surface the Ignorable loss once per feature.
+    for feature in ["w:customXml", "w:smartTag"] {
+        if let Some(entry) = document.support.get(feature) {
+            if entry.status == strict_ooxml_wml::model::support::SupportStatus::Partial {
+                use strict_ooxml_core::normalize::report::{LossRecord, Severity};
+                report.record_loss(LossRecord {
+                    transform_id: crate::ctx::WRITE_PARTIAL_ID,
+                    feature_id: crate::ctx::CUSTOM_XML_WRAPPER_ID.to_owned(),
+                    reason: format!("{feature}: wrapper dropped, content kept"),
+                    severity: Severity::Ignorable,
+                    locations: entry.locations.clone(),
+                });
+            }
+        }
+    }
     let mut ctx = Ctx::new(&mut report);
 
     let mut rels = RelBuilder::new();
@@ -858,6 +874,7 @@ fn media_parts_in_inlines(inlines: &[Inline], out: &mut Vec<PartId>) {
             Inline::Hyperlink(link) => media_parts_in_inlines(&link.inlines, out),
             Inline::Field(field) => media_parts_in_inlines(&field.inlines, out),
             Inline::SdtInline(sdt) => media_parts_in_inlines(&sdt.inlines, out),
+            Inline::Directional(dir) => media_parts_in_inlines(&dir.inlines, out),
             _ => {}
         }
     }
@@ -959,6 +976,7 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
             }
             Inline::Field(field) => collect_hyperlink_ids_inline(&field.inlines, out),
             Inline::SdtInline(sdt) => collect_hyperlink_ids_inline(&sdt.inlines, out),
+            Inline::Directional(dir) => collect_hyperlink_ids_inline(&dir.inlines, out),
             _ => {}
         }
     }
