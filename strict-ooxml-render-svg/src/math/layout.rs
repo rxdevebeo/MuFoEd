@@ -1356,8 +1356,13 @@ impl Grid {
             let mut height: f64 = 0.0;
             let mut depth: f64 = 0.0;
             for (index, cell) in row.iter().enumerate() {
-                if index < column_widths.len() {
-                    column_widths[index] = column_widths[index].max(cell.size.width);
+                // `get_mut` and not an index: a matrix row may carry more cells
+                // than the matrix declares columns, and the acceptance
+                // criterion for AUD-08 is that no indexed write on a
+                // layout-sized vector is left in this crate. The cell is still
+                // laid out - it is the *column* that has nowhere to go.
+                if let Some(width) = column_widths.get_mut(index) {
+                    *width = width.max(cell.size.width);
                 }
                 height = height.max(cell.size.height);
                 depth = depth.max(cell.size.depth);

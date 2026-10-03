@@ -128,8 +128,15 @@ mod fonts {
                 "endcmap end end"
             ),
         ));
+        // Its own id, not `widths-truncated`: a `bfrange` is a `ToUnicode`
+        // destination range and has no widths to do with, and a report that
+        // names the wrong mechanism sends a caller to the wrong dictionary.
         assert!(
-            ids.iter().any(|id| id == "pdf.font.widths-truncated"),
+            ids.iter().any(|id| id == "pdf.font.bfrange-truncated"),
+            "{ids:?}"
+        );
+        assert!(
+            !ids.iter().any(|id| id == "pdf.font.widths-truncated"),
             "{ids:?}"
         );
     }

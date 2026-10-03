@@ -745,6 +745,158 @@ mod math {
         assert_eq!(tail, 2, "both paragraphs are in the model");
     }
 }
+mod table {
+    //! AUD-08: a row that claims more grid columns than `w:tblGrid` declares.
+
+    use super::*;
+
+    /// A table whose `w:tblGrid` declares `grid` and whose only row holds `cells`.
+    fn table(grid: &str, cells: usize) -> DocxBuilder {
+        // `w:sectPr` is the last child of `w:body`, as the schema has it.
+        let body = format!(
+            "<w:tbl><w:tblGrid>{grid}</w:tblGrid><w:tr>{}</w:tr></w:tbl>\
+             <w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+             <w:pgMar w:left=\"1440\" w:right=\"1440\"/></w:sectPr>",
+            "<w:tc><w:tcPr><w:tcW w:w=\"2000\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>"
+                .repeat(cells)
+        );
+        DocxBuilder::strict().body(&body)
+    }
+
+    const ONE: &str = "<w:gridCol w:w=\"2000\"/>";
+
+    /// The content width the page in this module's fixtures has: 12240 twips
+    /// wide, 1440 of margin on each side, at the default 96 DPI.
+    ///
+    /// Derived from the `w:sectPr` these fixtures state, not hardcoded: a test
+    /// that asserts "no wider than the content box" against a literal 816 - the
+    /// width of the *page*, which is always in the output as the root `<svg>` -
+    /// is a test that cannot fail.
+    const CONTENT_WIDTH_PX: f64 = 624.0;
+
+    /// The widest `width` attribute on a `<rect>` in `svg`.
+    ///
+    /// Only `<rect>`: a table's cells and shading are rectangles, while the root
+    /// `<svg>` is the page and would always be the widest thing in the document.
+    fn widest_rect(svg: &str) -> f64 {
+        let mut widest: f64 = 0.0;
+        let mut rest = svg;
+        while let Some(open) = rest.find("<rect") {
+            let after = &rest[open..];
+            let Some(space) = after.find(' ') else { break };
+            let tail = &after[space + 1..];
+            let Some(width_at) = tail.find("width=\"") else {
+                rest = &after[after.len()..];
+                continue;
+            };
+            let value = &tail[width_at + "width=\"".len()..];
+            let Some(end) = value.find('"') else { break };
+            if let Ok(parsed) = value[..end].parse::<f64>() {
+                widest = widest.max(parsed);
+            }
+            rest = &value[end..];
+        }
+        widest
+    }
+
+    #[test]
+    fn a_row_wider_than_the_grid_renders_and_says_so() {
+        // Before AUD-08 this was `widths[..column]` with `column` past the end
+        // of the widths: a three-cell row under a one-column `w:tblGrid` ended
+        // the process with an index panic.
+        let pages = assert_survives("wide row", move || {
+            StrictDocument::open_reader(Cursor::new(table(ONE, 3).build()), &OpenOptions::default())
+                .expect("open")
+                .render_svg(&strict_ooxml::RenderOptions::default())
+                .expect("render")
+        });
+        assert!(
+            pages[0]
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("table row has 3 grid columns")
+                    && warning.contains("tblGrid declares 1")),
+            "{:?}",
+            pages[0].warnings
+        );
+    }
+
+    #[test]
+    fn an_empty_grid_with_two_cells_renders() {
+        // A control test from the plan's list: the old code did not panic on
+        // this one either, because two columns fall inside the one the grid
+        // claimed. It stays because the fix must not have become "refuse a row
+        // the grid disagrees with".
+        assert_survives("no grid", move || {
+            StrictDocument::open_reader(Cursor::new(table("", 2).build()), &OpenOptions::default())
+                .expect("open")
+                .render_svg(&strict_ooxml::RenderOptions::default())
+                .expect("render")
+        });
+    }
+
+    #[test]
+    fn a_grid_span_of_65535_is_rendered_within_the_content_width() {
+        // **Two** cells. The panic was on the slice for the cell *after* the
+        // merged one: with a single cell there is no second `column += span` and
+        // no index past the end, which is why a one-cell version of this test
+        // passed against the broken code.
+        // Two declared columns and **three** cells, the first merged across
+        // 65535. The third cell is what reproduces the defect: the second leaves
+        // the running column past the widths the grid declared, and the third
+        // indexes `widths[..column]` one past the end of it. With only two cells
+        // the slice is empty rather than out of bounds, and the test passes
+        // against the broken code.
+        let body =
+            "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"2000\"/></w:tblGrid>\
+             <w:tr>\
+             <w:tc><w:tcPr><w:gridSpan w:val=\"65535\"/></w:tcPr><w:p/></w:tc>\
+             <w:tc><w:tcPr><w:tcW w:w=\"2000\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>\
+             <w:tc><w:tcPr><w:tcW w:w=\"2000\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>\
+             </w:tr></w:tbl>\
+             <w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+             <w:pgMar w:left=\"1440\" w:right=\"1440\"/></w:sectPr>";
+        // `background: false`: with it on, the page itself is drawn as a
+        // `<rect>` the width of the *paper*, which is wider than the content box
+        // by exactly the margins - and the assertion below is about the table.
+        let options = strict_ooxml::RenderOptions {
+            background: false,
+            ..strict_ooxml::RenderOptions::default()
+        };
+        let pages = assert_survives("huge span", move || {
+            StrictDocument::open_reader(
+                Cursor::new(DocxBuilder::strict().body(body).build()),
+                &OpenOptions::default(),
+            )
+            .expect("open")
+            .render_svg(&options)
+            .expect("render")
+        });
+        assert!(
+            widest_rect(&pages[0].svg) <= CONTENT_WIDTH_PX + 1.0,
+            "the table is {} px wide, the content box is {CONTENT_WIDTH_PX}",
+            widest_rect(&pages[0].svg)
+        );
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn a_row_wider_than_the_grid_reaches_the_pdf_backend_too() {
+        // The PDF backend lays out through the same table code, so the same
+        // input that used to panic the SVG renderer used to panic here - and this
+        // was the only test covering that path.
+        assert_survives("wide row, pdf", move || {
+            let document = StrictDocument::open_reader(
+                Cursor::new(table(ONE, 3).build()),
+                &OpenOptions::default(),
+            )
+            .expect("open");
+            let pdf = document.render_pdf(&strict_ooxml::RenderOptions::default());
+            assert!(pdf.is_ok(), "render_pdf: {pdf:?}");
+        });
+    }
+}
+
 mod overflow {
     //! AUD-09: arithmetic on values from the input, in debug *and* in release.
 
@@ -909,7 +1061,7 @@ mod writer {
     #[test]
     fn a_complete_app_properties_part_still_loses_its_rendering_counters() {
         // The guard must not have become "copy everything": the counters are a
-        // decision, and a copy that stopped making it would put a producer''s
+        // decision, and a copy that stopped making it would put a producer's
         // word count into a Strict package.
         survives(
             "<Properties><Pages>7</Pages><Characters>9</Characters>\

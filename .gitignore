@@ -14,6 +14,9 @@ fuzz/artifacts
 # note: strict-ooxml-core/tests/samples/ is the PUBLIC synthetic corpus and is
 # tracked on purpose; only the local tests/docx/ corpus is ignored here.
 strict-ooxml-core/tests/docx/
+# New corpus documents awaiting triage: not read by any test or gate until
+# their defects are closed and they move to docx/ (docs/corpus-incoming.md).
+strict-ooxml-core/tests/docx-incoming/
 # Stage-5C sample deliveries (STAGE-5C-REWORK-1 D5): the ZIP archives are NOT
 # committed - only the individual packages that ended up in
 # strict-ooxml-core/tests/strict/ (see that directory's README for provenance).
@@ -33,6 +36,11 @@ strict-ooxml-core/tests/docx/
 
 # a hard link to one corpus file, for timing one document repeatedly
 /.tmp-bench/
+
+# Вспомогательные файлы сессии: одноразовые пробы, временные тесты, отдельные
+# worktree и цели для проверок «падает до правки». Описание и соглашение об
+# именах — в .scratch/README.md.
+/.scratch/
 
 # page_diff's default output directory
 /.page-diff/

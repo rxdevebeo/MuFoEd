@@ -78,6 +78,7 @@ pub(crate) fn layout_table(
         return Vec::new();
     }
     let widths = column_widths(ctx, table, column_count, content_width);
+    let widths = fit_to_box(widths, content_width);
     let total_width: f64 = widths.iter().sum();
     let table_x = table_x(ctx, table, content_left, content_width, total_width);
 
@@ -225,6 +226,27 @@ fn layout_row(
         cells,
         height: max_content,
     }
+}
+
+/// Scales `widths` down so their sum is at most `ceiling`.
+///
+/// `split_widths` hands every column the grid does not declare the *average* of
+/// the columns it does, which is what AUD-08 prescribes and is right for the one
+/// or two columns a producer misspells. It is not right for `w:gridSpan` of
+/// 65535: 65 535 columns at the average of two is millions of pixels across, and
+/// the acceptance criterion for the task is "no wider than the content box plus
+/// one pixel". The table is the thing that has to fit, so the fitting happens
+/// here, where the content box is known, and the per-column rule stays the one the
+/// plan states.
+fn fit_to_box(mut widths: Vec<f64>, ceiling: f64) -> Vec<f64> {
+    let total: f64 = widths.iter().sum();
+    if total > ceiling && total > 0.0 {
+        let factor = ceiling / total;
+        for width in &mut widths {
+            *width *= factor;
+        }
+    }
+    widths
 }
 
 /// Returns the total height of the merged region starting at `row`/`cell`.

@@ -668,7 +668,7 @@ fn read_bfrange(
             .min(limits.max_font_glyphs.saturating_sub(out.len()).max(1));
         if span as usize + 1 > wanted {
             notes.push((
-                "pdf.font.widths-truncated".to_owned(),
+                "pdf.font.bfrange-truncated".to_owned(),
                 format!(
                     "a bfrange of {} codes was cut to {wanted} by the glyph budget",
                     span as usize + 1
