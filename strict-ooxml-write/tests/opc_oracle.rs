@@ -192,7 +192,15 @@ fn written_transitional_packages_match_lo_strict_opc_uris() {
     );
 
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
-    assert!(dir.is_dir(), "transitional corpus dir missing: {dir:?}");
+    // Local-only corpus (`.gitignore`d); CI and clean clones skip honestly,
+    // same pattern as `normalize_roundtrip.rs`.
+    if !dir.is_dir() {
+        eprintln!(
+            "skipping written_transitional_packages_match_lo_strict_opc_uris: {} is not present",
+            dir.display()
+        );
+        return;
+    }
     let mut checked = 0usize;
     for path in list_docx(&dir) {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
