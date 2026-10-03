@@ -98,6 +98,23 @@ pub enum DirectionPolicy {
     Keep,
 }
 
+/// How to treat VML `w:pict` / `w:object` (`TZ` §6.3/§10.8, AUD-34).
+///
+/// The TZ name `RasterizeIfPossible` is not used: this implementation converts
+/// to DrawingML rather than rasterising. The rename is recorded for ADR-0019.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VmlFallback {
+    /// Convert VML shapes to DrawingML (default, current behaviour).
+    #[default]
+    Convert,
+    /// Do not convert; drop the subtree and record `T7.vml` (`Lossy`) with the
+    /// shape class.
+    Report,
+    /// Do not convert; drop the subtree and record `T7.vml` with reason
+    /// "dropped by policy".
+    Drop,
+}
+
 /// Configuration for [`TransitionalNormalizer`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NormalizerOptions {
@@ -120,6 +137,8 @@ pub struct NormalizerOptions {
     pub invariants: InvariantMode,
     /// Direction-neutral rename / value-map policy (AUD-33).
     pub direction: DirectionPolicy,
+    /// VML `w:pict` / `w:object` policy (AUD-34).
+    pub vml: VmlFallback,
     /// A cap on the bytes one part may expand to while being rewritten.
     ///
     /// Rewriting can grow a part slightly; without a cap a crafted input
@@ -282,8 +301,10 @@ impl TransitionalNormalizer {
         context.mce = self.options.mce;
         context.invariants = self.options.invariants;
         context.direction = self.options.direction;
+        context.vml = self.options.vml;
         context.used_prefixes = used_prefixes(bytes);
-        if declares_a_vml_picture(bytes) {
+        // DrawingML prefixes are only needed when we convert (AUD-34).
+        if self.options.vml == VmlFallback::Convert && declares_a_vml_picture(bytes) {
             context.vml_picture_prefixes = vml::REQUIRED_NAMESPACES
                 .iter()
                 .map(|(prefix, strict, _)| (*prefix, *strict))
@@ -431,6 +452,29 @@ impl TransitionalNormalizer {
     ) -> Result<()> {
         let location = context.location();
         let element = legacy_graphics_element(subtree);
+
+        // AUD-34: Report/Drop skip conversion and remove the subtree.
+        if context.vml != VmlFallback::Convert {
+            let class = vml::classify(subtree, context)
+                .map(|(shape, _)| vml_shape_class(&shape))
+                .unwrap_or("unknown");
+            let reason = match context.vml {
+                VmlFallback::Report => format!(
+                    "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
+                ),
+                VmlFallback::Drop => format!("VML {class} dropped by policy"),
+                VmlFallback::Convert => unreachable!("checked above"),
+            };
+            report.record_loss(LossRecord {
+                transform_id: "T7.vml",
+                feature_id: format!("{element}/{class}"),
+                reason,
+                severity: Severity::Lossy,
+                locations: vec![location],
+            });
+            report.count_reported_removal(1);
+            return Ok(());
+        }
 
         let Some((shape, wrap)) = vml::classify(subtree, context) else {
             // Not a shape this converts. Everything under `w:pict` is VML, and
@@ -1335,6 +1379,8 @@ pub(crate) struct PartContext {
     pub(crate) invariants: InvariantMode,
     /// Direction-neutral rename / value-map policy (AUD-33).
     pub(crate) direction: DirectionPolicy,
+    /// VML fallback policy (AUD-34).
+    pub(crate) vml: VmlFallback,
     /// `w:bidi` seen in the current `w:pPr` (AUD-33; style-inherited bidi is
     /// out of scope — ADR-0017).
     ppr_bidi: bool,
@@ -1377,6 +1423,7 @@ impl PartContext {
             mce: McePolicy::default(),
             invariants: InvariantMode::default(),
             direction: DirectionPolicy::default(),
+            vml: VmlFallback::default(),
             ppr_bidi: false,
             tblpr_bidi_visual: false,
         }
@@ -1890,6 +1937,16 @@ fn decode_tbl_look(start: &BytesStart<'_>, context: &PartContext) -> Option<TblL
     Some(TblLook { flags })
 }
 
+/// Short class name for a classified VML shape (AUD-34).
+fn vml_shape_class(shape: &vml::Shape) -> &'static str {
+    match shape {
+        vml::Shape::Picture(_) => "picture",
+        vml::Shape::TextBox(_) => "textbox",
+        vml::Shape::Rectangle(_) => "rectangle",
+        vml::Shape::Freeform(_) => "freeform",
+    }
+}
+
 /// Whether `from`→`to` is a direction-neutral left/right mapping (AUD-33).
 fn is_direction_neutral_pair(from: &str, to: &str) -> bool {
     matches!((from, to), ("left", "start") | ("right", "end"))
@@ -2386,6 +2443,7 @@ mod tests {
     use super::{
         map_rel_or_content_type, part_needs_normalization, repair_legacy_package_uri,
         DirectionPolicy, InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
+        VmlFallback,
     };
     use crate::error::SourceLocation;
     use crate::normalize::report::{NormalizationReport, Severity};
@@ -3901,6 +3959,51 @@ mod tests {
             .find(|record| record.id == "T2.reltype")
             .expect("T2.reltype");
         assert_eq!(reltype.count, 2, "two relationship types, counted once");
+    }
+
+    /// AUD-34: `VmlFallback::Report` / `Drop` remove VML without converting.
+    #[test]
+    fn vml_fallback_report_and_drop_remove_pict_without_converting() {
+        let source = r##"<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body><w:p><w:r><w:pict><v:shape id="s1" style="width:10pt;height:10pt" type="#_x0000_t75">
+<v:imagedata r:id="rId1"/></v:shape></w:pict><w:t>text</w:t></w:r></w:p></w:body></w:document>"##;
+        for policy in [VmlFallback::Report, VmlFallback::Drop] {
+            let normalizer = TransitionalNormalizer::with_options(NormalizerOptions {
+                vml: policy,
+                ..NormalizerOptions::default()
+            });
+            let text = String::from_utf8(
+                normalizer
+                    .normalize(&part(), source.as_bytes())
+                    .unwrap()
+                    .into_owned(),
+            )
+            .unwrap();
+            assert!(!text.contains("v:"), "{policy:?}: {text}");
+            assert!(!text.contains("w:pict"), "{policy:?}: {text}");
+            assert!(text.contains("text"), "{policy:?}: {text}");
+            let report = normalizer.report();
+            report
+                .verify_no_silent_loss()
+                .unwrap_or_else(|error| panic!("{policy:?}: {error}"));
+            assert!(
+                report
+                    .losses()
+                    .iter()
+                    .any(|loss| loss.transform_id == "T7.vml"),
+                "{policy:?}: {report}"
+            );
+            if policy == VmlFallback::Drop {
+                assert!(
+                    report
+                        .losses()
+                        .iter()
+                        .any(|loss| loss.reason.contains("dropped by policy")),
+                    "{policy:?}: {report}"
+                );
+            }
+        }
     }
 
     /// AUD-33: `w:bidi` + `w:jc=left` maps and records `T4.jc-bidi`.

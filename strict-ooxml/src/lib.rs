@@ -43,7 +43,7 @@ pub use strict_ooxml_core::limits::ResourceLimits;
 pub use strict_ooxml_core::normalize::Severity as LossSeverity;
 pub use strict_ooxml_core::normalize::{
     DirectionPolicy, InvariantMode, LossRecord, McePolicy, NormalizationReport, NormalizerOptions,
-    TransitionalNormalizer,
+    TransitionalNormalizer, VmlFallback,
 };
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
 #[cfg(feature = "convert")]
