@@ -33,13 +33,14 @@ mod tables {
     /// 10 000 horizontal and 10 000 vertical short rules — past
     /// `max_table_lines` (4000), so the converter skips table search.
     fn many_rules_page() -> Vec<u8> {
+        use std::fmt::Write as _;
         let mut content = String::new();
         for index in 0..10_000 {
             let y = f64::from(index) * 0.05;
             let x = f64::from(index) * 0.05;
             // Thin strokes that pass `max_rule_thickness` / `min_rule_length`.
-            content.push_str(&format!("0.5 w 10 {y} m 40 {y} l S "));
-            content.push_str(&format!("0.5 w {x} 10 m {x} 40 l S "));
+            let _ = write!(content, "0.5 w 10 {y} m 40 {y} l S ");
+            let _ = write!(content, "0.5 w {x} 10 m {x} 40 l S ");
         }
         let mut pdf = PdfBuilder::new();
         pdf.page(content.as_bytes());

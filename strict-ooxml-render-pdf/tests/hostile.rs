@@ -36,7 +36,11 @@ fn ihdr_bomb(width: u32, height: u32) -> Vec<u8> {
     let mut typed = b"IHDR".to_vec();
     typed.extend_from_slice(&ihdr);
     let mut out = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-    out.extend_from_slice(&(ihdr.len() as u32).to_be_bytes());
+    out.extend_from_slice(
+        &u32::try_from(ihdr.len())
+            .expect("IHDR payload fits a PNG chunk length")
+            .to_be_bytes(),
+    );
     out.extend_from_slice(&typed);
     out.extend_from_slice(&crc32(&typed).to_be_bytes());
     out.extend_from_slice(&0u32.to_be_bytes());
@@ -88,7 +92,7 @@ mod image {
         });
         assert!(ok);
         assert!(
-            ids.iter().any(|id| *id == "pdf.image.too-large"),
+            ids.contains(&"pdf.image.too-large"),
             "expected pdf.image.too-large, got {ids:?}"
         );
     }

@@ -135,7 +135,7 @@ impl FontCache {
     ) -> PdfFont {
         if let Some(hit) = self.entries.borrow().get(&id).cloned() {
             let mut font = (*hit).clone();
-            font.name = name.to_owned();
+            name.clone_into(&mut font.name);
             return font;
         }
         if self.entries.borrow().len() >= limits.max_fonts {
