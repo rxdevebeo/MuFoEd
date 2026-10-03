@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::limits::ResourceLimits;
-use crate::opc::path::canonicalize_part_name;
+use crate::opc::path::{canonicalize_part_name, percent_decode};
 use crate::part::PartId;
 use crate::xml::escape::escape_attr_into;
 use crate::xml::{XmlEvent, XmlReader};
@@ -58,7 +58,12 @@ impl ContentTypeIndex {
                             attr_value(&attrs, "PartName"),
                             attr_value(&attrs, "ContentType"),
                         ) {
-                            let trimmed = part_name.trim_start_matches('/');
+                            // AUD-24: `PartName` is a URI (ECMA-376 Part 2
+                            // §10.1.2.1), so it may carry percent-encoding;
+                            // decode before canonicalizing, same as an
+                            // `Internal` relationship `Target`.
+                            let decoded = percent_decode(part_name)?;
+                            let trimmed = decoded.trim_start_matches('/');
                             let id = canonicalize_part_name(trimmed)?;
                             index.overrides.insert(id, Arc::from(content_type));
                         }
@@ -197,6 +202,33 @@ mod tests {
             index.content_type_for(&PartId::new("/word/media/x.png")),
             None
         );
+    }
+
+    /// AUD-24: `Override/@PartName` is a URI and may be percent-encoded.
+    #[test]
+    fn override_part_name_is_percent_decoded() {
+        let xml = br#"<?xml version="1.0"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Override PartName="/word/media/image%201.png" ContentType="image/png"/>
+</Types>"#;
+        let part = PartId::new("/[Content_Types].xml");
+        let index = ContentTypeIndex::parse(xml, part, &ResourceLimits::default()).unwrap();
+        assert_eq!(
+            index.content_type_for(&PartId::new("/word/media/image 1.png")),
+            Some("image/png")
+        );
+    }
+
+    /// An invalid escape in `PartName` is rejected, same as in a relationship
+    /// `Target`.
+    #[test]
+    fn override_part_name_with_invalid_percent_encoding_is_rejected() {
+        let xml = br#"<?xml version="1.0"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Override PartName="/word/%FF.xml" ContentType="application/xml"/>
+</Types>"#;
+        let part = PartId::new("/[Content_Types].xml");
+        assert!(ContentTypeIndex::parse(xml, part, &ResourceLimits::default()).is_err());
     }
 
     #[test]

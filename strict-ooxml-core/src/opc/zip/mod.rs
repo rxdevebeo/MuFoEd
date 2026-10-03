@@ -736,6 +736,20 @@ mod tests {
         assert_eq!(s, "compressed content compressed content");
     }
 
+    /// AUD-24: OPC part names are compared ASCII case-insensitively, so two
+    /// ZIP entries differing only in case name the same part.
+    #[test]
+    fn case_variant_duplicate_parts_are_rejected() {
+        let bytes = build_test_zip(&[
+            ("word/document.xml", b"a", false),
+            ("WORD/DOCUMENT.XML", b"b", false),
+        ]);
+        assert!(matches!(
+            ZipArchive::new(Arc::new(bytes), &ResourceLimits::default()),
+            Err(StrictError::DuplicatePart(_))
+        ));
+    }
+
     #[test]
     fn detects_bad_signature() {
         let mut bytes = build_test_zip(&[("a.txt", b"x", false)]);

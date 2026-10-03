@@ -80,6 +80,60 @@ pub fn resolve_target(base: &PartId, target: &str, external: bool) -> Result<Opt
     Ok(Some(PartId::new(format!("/{joined}").as_str())))
 }
 
+/// Percent-decodes `%XX` escapes in a URI component (RFC 3986 §2.1).
+///
+/// OPC targets are URIs: a relationship's `Target` attribute (AUD-24,
+/// ECMA-376 Part 2 §13.3, §19.3) and `Override/@PartName` in
+/// `[Content_Types].xml` (§10.1.2.1) may both carry percent-encoding, which
+/// must be undone before the value is canonicalized into a [`PartId`].
+/// **ZIP entry names are not URIs and must never be passed through this
+/// function** — they are already the literal bytes OPC compares.
+///
+/// # Errors
+///
+/// Returns [`StrictError::InvalidPartName`] for a `%` not followed by two hex
+/// digits, or for decoded bytes that are not valid UTF-8 (OPC part names and
+/// targets are Unicode text, never raw bytes).
+pub fn percent_decode(input: &str) -> Result<String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = bytes
+                .get(i + 1..i + 3)
+                .and_then(|pair| hex_byte(pair[0], pair[1]));
+            let Some(decoded) = hex else {
+                return Err(StrictError::InvalidPartName(format!(
+                    "invalid percent-encoding in {input}"
+                )));
+            };
+            out.push(decoded);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|_| {
+        StrictError::InvalidPartName(format!("percent-decoded value is not valid UTF-8: {input}"))
+    })
+}
+
+/// Decodes one `%XX` pair into its byte, or `None` if either digit is not hex.
+fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
+    Some((hex_digit(hi)? << 4) | hex_digit(lo)?)
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// Splits a package path on `/`, rejecting unsafe segments and normalizing
 /// `.`/`..`. Returns the normalized segments (without a leading empty segment).
 fn split_and_normalize(path: &str) -> Result<Vec<String>> {
@@ -120,8 +174,42 @@ fn split_and_normalize(path: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonicalize_part_name, resolve_target};
+    use super::{canonicalize_part_name, percent_decode, resolve_target};
     use crate::part::PartId;
+
+    #[test]
+    fn percent_decode_decodes_valid_escapes() {
+        assert_eq!(
+            percent_decode("Media/Image%201.png").unwrap(),
+            "Media/Image 1.png"
+        );
+        // Lowercase hex digits are accepted too.
+        assert_eq!(percent_decode("a%2fb").unwrap(), "a/b");
+    }
+
+    #[test]
+    fn percent_decode_passes_through_plain_text() {
+        assert_eq!(
+            percent_decode("word/document.xml").unwrap(),
+            "word/document.xml"
+        );
+        assert_eq!(percent_decode("").unwrap(), "");
+    }
+
+    #[test]
+    fn percent_decode_rejects_invalid_utf8() {
+        assert!(percent_decode("%FF").is_err());
+    }
+
+    #[test]
+    fn percent_decode_rejects_malformed_escapes() {
+        assert!(
+            percent_decode("100%").is_err(),
+            "truncated at end of string"
+        );
+        assert!(percent_decode("%G1").is_err(), "not a hex digit");
+        assert!(percent_decode("%2").is_err(), "only one hex digit present");
+    }
 
     #[test]
     fn canonicalizes_plain_relative_names() {

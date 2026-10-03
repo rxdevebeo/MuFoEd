@@ -240,6 +240,53 @@ fn rejects_duplicate_part_names() {
     assert!(matches!(error, StrictError::DuplicatePart(_)));
 }
 
+/// AUD-24: a percent-encoded, case-variant `Target` resolves to the ZIP
+/// entry it names, and the resolved `PartId` is rewritten to that entry's own
+/// spelling rather than keeping the `Target`'s casing.
+#[test]
+fn percent_encoded_and_case_variant_target_resolves_to_the_zip_entry() {
+    let doc = document(STRICT_W_NS);
+    let doc_rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId2" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="Media/Image%201.png"/>
+</Relationships>"#;
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
+        ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+        ("word/_rels/document.xml.rels", doc_rels.as_bytes(), false),
+        ("word/media/image 1.png", b"\x89PNG", false),
+    ]);
+    let package = open(bytes, ConformancePolicy::StrictOnly).unwrap();
+    let main = package.main_document_part().unwrap().clone();
+    let rel = package.resolve_relationship(&main, "rId2").unwrap();
+    assert_eq!(
+        rel.resolved.as_ref().unwrap().as_str(),
+        "/word/media/image 1.png",
+        "resolved target must use the ZIP entry's own spelling, not the Target's"
+    );
+}
+
+/// AUD-24: `%FF` in an `Internal` target decodes to a byte that is not valid
+/// UTF-8 on its own, so opening the package fails rather than silently
+/// dropping or mangling the target.
+#[test]
+fn an_invalid_percent_encoded_internal_target_is_rejected() {
+    let doc = document(STRICT_W_NS);
+    let doc_rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId2" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="media/%FF.png"/>
+</Relationships>"#;
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
+        ("_rels/.rels", root_rels(STRICT_DOC_REL).as_bytes(), false),
+        ("word/document.xml", doc.as_bytes(), false),
+        ("word/_rels/document.xml.rels", doc_rels.as_bytes(), false),
+    ]);
+    let error = open(bytes, ConformancePolicy::StrictOnly).unwrap_err();
+    assert!(matches!(error, StrictError::InvalidPartName(_)));
+}
+
 #[test]
 fn rejects_path_traversal_entry() {
     let bytes = build_zip(&[

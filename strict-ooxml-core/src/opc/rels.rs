@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use crate::error::{Result, StrictError};
 use crate::limits::ResourceLimits;
-use crate::opc::path::resolve_target;
+use crate::opc::path::{percent_decode, resolve_target};
+use crate::opc::zip::ZipArchive;
 use crate::part::PartId;
 use crate::xml::escape::escape_attr_into;
 use crate::xml::{XmlEvent, XmlReader};
@@ -407,6 +408,35 @@ impl RelationshipGraph {
     pub fn iter(&self) -> impl Iterator<Item = &Relationship> {
         self.by_source.values().flatten()
     }
+
+    /// Rewrites every internal relationship's resolved target to the exact
+    /// spelling of the matching ZIP entry (AUD-24).
+    ///
+    /// `PartId` equality is ASCII case-insensitive, so a `Target` spelled
+    /// `Word/Styles.xml` resolves to a `PartId` that is *equal* to the ZIP
+    /// entry `word/styles.xml` without being the *same spelling*. Left alone,
+    /// a resolved target would carry whichever casing its own `Target`
+    /// attribute happened to use, so two relationships pointing at the same
+    /// part through different casings would resolve to `PartId`s that compare
+    /// equal but print differently — forcing every later consumer (part
+    /// lookup, content-type lookup, the writer's passthrough path) to treat
+    /// casing as insignificant all over again. This pass does it once: after
+    /// it runs, every resolved target carries the one spelling the ZIP
+    /// central directory actually has. A target with no matching entry (a
+    /// dangling relationship) is left as resolved by [`resolve_target`]; the
+    /// part lookup that follows reports it as missing.
+    pub(crate) fn rewrite_resolved_to_zip_spelling(&mut self, zip: &ZipArchive) {
+        for relationships in self.by_source.values_mut() {
+            for relationship in relationships.iter_mut() {
+                if let Some(resolved) = relationship.resolved.take() {
+                    relationship.resolved = Some(match zip.entry(&resolved) {
+                        Some(entry) => entry.id.clone(),
+                        None => resolved,
+                    });
+                }
+            }
+        }
+    }
 }
 
 /// Derives the source part that owns a `.rels` part.
@@ -453,7 +483,19 @@ pub fn parse_relationships(
                 } else {
                     TargetMode::Internal
                 };
-                let resolved = resolve_target(source, &target, external)?;
+                // AUD-24: `Target` is a URI (ECMA-376 Part 2 §13.3); only
+                // `Internal` targets are ever resolved to a part, so only
+                // those are percent-decoded. An `External` target is left
+                // exactly as written — it names a resource outside the
+                // package (often an `http(s)` URL), where a literal `%`
+                // sequence is meaningful on its own terms, not a package
+                // path to canonicalize.
+                let resolved = if external {
+                    None
+                } else {
+                    let decoded_target = percent_decode(&target)?;
+                    resolve_target(source, &decoded_target, false)?
+                };
                 out.push(Relationship {
                     id,
                     rel_type: RelType::from_uri(&raw_type),
@@ -560,6 +602,7 @@ mod tests {
         parse_relationships, source_part_for_rels, strict_type_uri, write_relationships, RelType,
         Relationship, RelationshipGraph, TargetMode, REL_TYPES,
     };
+    use crate::error::StrictError;
     use crate::limits::ResourceLimits;
     use crate::part::PartId;
 
@@ -732,6 +775,46 @@ mod tests {
             "/word/styles.xml"
         );
         assert_eq!(again[1].target_mode, TargetMode::External);
+    }
+
+    /// AUD-24: a percent-encoded `Internal` `Target` is decoded before it is
+    /// resolved against the owning part.
+    #[test]
+    fn internal_target_is_percent_decoded_before_resolving() {
+        let xml = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="Media/Image%201.png"/></Relationships>"#;
+        let source = PartId::new("/word/document.xml");
+        let rels = parse_relationships(xml, &source, &ResourceLimits::default()).unwrap();
+        assert_eq!(
+            rels[0].resolved.as_ref().unwrap().as_str(),
+            "/word/Media/Image 1.png"
+        );
+        // The raw `target` field (what the writer round-trips) keeps the
+        // original encoding.
+        assert_eq!(rels[0].target, "Media/Image%201.png");
+    }
+
+    /// An `External` target is never percent-decoded: it is a URL, not a
+    /// package path, and is never resolved either way.
+    #[test]
+    fn external_target_is_not_percent_decoded() {
+        let xml = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/hyperlink" Target="http://example.com/100%25" TargetMode="External"/></Relationships>"#;
+        let source = PartId::new("/word/document.xml");
+        let rels = parse_relationships(xml, &source, &ResourceLimits::default()).unwrap();
+        assert!(rels[0].resolved.is_none());
+        assert_eq!(rels[0].target, "http://example.com/100%25");
+    }
+
+    /// AUD-24: `%FF` decodes to a byte that is not valid UTF-8 on its own, so
+    /// an `Internal` target carrying it is rejected rather than silently
+    /// truncated or passed through.
+    #[test]
+    fn invalid_percent_encoding_in_internal_target_is_rejected() {
+        let xml = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="media/%FF.png"/></Relationships>"#;
+        let source = PartId::new("/word/document.xml");
+        assert!(matches!(
+            parse_relationships(xml, &source, &ResourceLimits::default()),
+            Err(StrictError::InvalidPartName(_))
+        ));
     }
 
     #[test]

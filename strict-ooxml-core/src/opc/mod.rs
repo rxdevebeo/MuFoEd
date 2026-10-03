@@ -216,6 +216,11 @@ impl Package {
                 );
             }
         }
+        // AUD-24: every resolved target so far carries whatever casing its
+        // own `Target` attribute used; rewrite them all to the spelling the
+        // ZIP central directory actually has before anything (including
+        // `locate_main_document` below) reads a resolved `PartId`.
+        rels.rewrite_resolved_to_zip_spelling(&zip);
 
         let main_document = locate_main_document(&rels, &zip)?;
 

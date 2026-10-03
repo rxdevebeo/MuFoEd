@@ -1059,6 +1059,27 @@ mod writer {
 mod opc {
     //! AUD-20, AUD-22, AUD-24, AUD-25: relationship types, part names, `.rels`
     //! outside `_rels/`.
+
+    use super::*;
+
+    /// AUD-24: OPC part names are compared ASCII case-insensitively
+    /// (ECMA-376 Part 2 §10.1.2.1), so a ZIP that lists both
+    /// `word/document.xml` and `WORD/DOCUMENT.XML` names the same part twice.
+    #[test]
+    fn a_case_variant_duplicate_part_is_rejected() {
+        assert_survives("case-variant duplicate part", || {
+            let error = open(
+                DocxBuilder::strict()
+                    .raw_entry("WORD/DOCUMENT.XML", b"<w:document/>".to_vec())
+                    .build(),
+                &OpenOptions::default(),
+            );
+            assert!(
+                matches!(error, strict_ooxml::StrictError::DuplicatePart(_)),
+                "{error:?}"
+            );
+        });
+    }
 }
 
 mod render {
