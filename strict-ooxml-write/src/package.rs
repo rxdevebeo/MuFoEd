@@ -16,9 +16,9 @@ use strict_ooxml_core::opc::rels::{
 use strict_ooxml_core::opc::zip::write::ZipWriter;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::Block;
-use strict_ooxml_wml::model::drawing::{Drawing, DrawingKind, Graphic, MediaKind};
+use strict_ooxml_wml::model::drawing::MediaKind;
 use strict_ooxml_wml::model::fonts::FontTable;
-use strict_ooxml_wml::model::inline::{Inline, RunContent};
+use strict_ooxml_wml::model::inline::Inline;
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_wml::parse::LOST_FONT_PART;
 
@@ -422,6 +422,45 @@ impl RelBuilder {
     }
 }
 
+/// Per-part relationship allocator (AUD-61).
+///
+/// Deduplicates by `(external, target)` so two pictures of the same media part
+/// share one id inside the part being written.
+#[derive(Debug, Default)]
+pub(crate) struct RelAllocator {
+    builder: RelBuilder,
+    by_target: BTreeMap<(bool, String), String>,
+}
+
+impl RelAllocator {
+    /// Empty allocator starting at `rId1`.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Ensures a relationship for `target` and returns its id.
+    pub(crate) fn ensure(&mut self, rel_type: &RelType, target: String, external: bool) -> String {
+        let key = (external, target.clone());
+        if let Some(id) = self.by_target.get(&key) {
+            return id.clone();
+        }
+        let id = self.builder.add(rel_type, target, external);
+        self.by_target.insert(key, id.clone());
+        id
+    }
+
+    /// Relationships in allocation order.
+    pub(crate) fn relationships(&self) -> &[Relationship] {
+        self.builder.relationships()
+    }
+
+    /// Whether nothing was allocated.
+    #[must_use]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.builder.relationships().is_empty()
+    }
+}
+
 /// Serialises one part, naming the part if the writer gives up.
 ///
 /// The writer can fail on its own terms - an element left open, or a document
@@ -564,29 +603,20 @@ pub fn write_package(
         );
     }
 
-    // The embedded fonts, with **their own** relationship part.
-    //
-    // `word/_rels/fontTable.xml.rels` is not the document part's rels and cannot be
-    // copied from it: an `r:id` inside `word/fontTable.xml` names a relationship of
-    // THAT part, and the ids here are this write's. This is the same per-part rule
-    // a header's picture ran into, written twice because the two parts have
-    // different owners rather than because the rule is unclear.
-    let mut font_rels = RelBuilder::new();
-    let mut font_parts: Vec<(String, PartId)> = Vec::new();
-    let mut font_map: BTreeMap<String, String> = BTreeMap::new();
-    if let Some(table) = &document.font_table {
-        for (index, font) in table.embedded_parts().iter().enumerate() {
-            if font.part.as_str() == LOST_FONT_PART {
-                continue;
-            }
-            let extension = font_extension(font.part.as_str());
-            let name = format!("fonts/font{index}.{extension}");
-            let id = font_rels.add(&RelType::Font, name.clone(), false);
-            font_map.insert(font.part.as_str().to_owned(), id);
-            font_parts.push((format!("/word/{name}"), font.part.clone()));
-            content_types.insert_default(extension, font_content_type(extension));
-        }
-    }
+    // Embedded-font candidates. AUD-61: relationships are allocated only after
+    // the bytes are read successfully — see the font-table write below.
+    let font_candidates: Vec<PartId> = document
+        .font_table
+        .as_ref()
+        .map(|table| {
+            table
+                .embedded_parts()
+                .iter()
+                .filter(|font| font.part.as_str() != LOST_FONT_PART)
+                .map(|font| font.part.clone())
+                .collect()
+        })
+        .unwrap_or_default();
 
     // Hyperlinks: the target only exists in the source package.
     let main = PartId::new(MAIN_DOCUMENT);
@@ -663,8 +693,12 @@ pub fn write_package(
     }
 
     ctx = ctx
-        .with_relationships(hyperlink_map, media_map.clone(), header_footer_map)
-        .with_font_relationships(font_map)
+        .with_relationships(
+            hyperlink_map,
+            media_map.clone(),
+            media_targets.clone(),
+            header_footer_map,
+        )
         .with_passthrough(&pass);
 
     // The parts themselves. Each is written only when the model carries the
@@ -712,27 +746,66 @@ pub fn write_package(
             part_xml(&mut ctx, THEME_PART, |ctx| parts::theme_part(ctx, theme))?.into_bytes(),
         )?;
     }
+    // Extra parts copied because a header/footer/notes part referenced them
+    // (AUD-61); merged with the document passthrough by name when writing.
+    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
+
     if !document.footnotes.is_empty() {
-        add_part(
+        let foreign = note_foreign_ids(&document.footnotes);
+        write_content_part_with_rels(
             &mut zip,
+            &mut ctx,
+            source,
             FOOTNOTES_PART,
-            part_xml(&mut ctx, FOOTNOTES_PART, |ctx| {
-                parts::notes_part(ctx, &document.footnotes, true)
-            })?
-            .into_bytes(),
+            "footnotes.xml",
+            document.source.footnotes.as_ref(),
+            &foreign,
+            &mut part_extra_copies,
+            |ctx| parts::notes_part(ctx, &document.footnotes, true),
         )?;
     }
     if !document.endnotes.is_empty() {
-        add_part(
+        let foreign = note_foreign_ids(&document.endnotes);
+        write_content_part_with_rels(
             &mut zip,
+            &mut ctx,
+            source,
             ENDNOTES_PART,
-            part_xml(&mut ctx, ENDNOTES_PART, |ctx| {
-                parts::notes_part(ctx, &document.endnotes, false)
-            })?
-            .into_bytes(),
+            "endnotes.xml",
+            document.source.endnotes.as_ref(),
+            &foreign,
+            &mut part_extra_copies,
+            |ctx| parts::notes_part(ctx, &document.endnotes, false),
         )?;
     }
     if options.write_font_table {
+        // AUD-61: read every font first; only successful reads enter
+        // `fontTable.xml.rels` (loss `W7.font` otherwise).
+        let mut font_rels = RelBuilder::new();
+        let mut font_map: BTreeMap<String, String> = BTreeMap::new();
+        let mut font_parts: Vec<(String, PartId, Vec<u8>)> = Vec::new();
+        for (index, source_part) in font_candidates.iter().enumerate() {
+            match source.read_part(source_part) {
+                Ok(bytes) => {
+                    let extension = font_extension(source_part.as_str());
+                    let name = format!("fonts/font{index}.{extension}");
+                    let id = font_rels.add(&RelType::Font, name.clone(), false);
+                    font_map.insert(source_part.as_str().to_owned(), id);
+                    content_types.insert_default(extension, font_content_type(extension));
+                    font_parts.push((format!("/word/{name}"), source_part.clone(), bytes));
+                }
+                Err(error) => ctx.report_unsupported(
+                    crate::ctx::FONT_LOSS_ID,
+                    &format!(
+                        "{source_part} is an embedded font whose bytes could not be read ({error}), \
+                         so the face is lost and the relationship is dropped rather than left \
+                         pointing at nothing"
+                    ),
+                    &strict_ooxml_core::error::SourceLocation::unknown(),
+                ),
+            }
+        }
+        ctx.set_font_relationships(font_map);
         let families = parts::font_families(&document.styles);
         add_part(
             &mut zip,
@@ -749,89 +822,48 @@ pub fn write_package(
             })?
             .into_bytes(),
         )?;
-        // The relationship part goes beside the part it describes, and only when
-        // there is something to relate: a font table with no embedded face needs
-        // no `.rels`, and an empty one beside it is the unused-declaration debt in
-        // its OPC form.
-        if !font_parts.is_empty() {
+        if !font_rels.relationships().is_empty() {
             add_part(
                 &mut zip,
                 "/word/_rels/fontTable.xml.rels",
                 write_relationships(font_rels.relationships()).into_bytes(),
             )?;
         }
-    }
-    for (part, source_part) in &font_parts {
-        // A font binary this write cannot read is a **loss, not a failure**. The
-        // write is handed a model, and a model may name a part that is not in the
-        // package that produced it — a hand-built table does exactly that, and so
-        // does a document whose `word/fontTable.xml` referred to something the
-        // producer no longer shipped. Returning an error there would make the
-        // whole document unwritable over one missing font, which is a worse
-        // outcome than a document with a named hole in its font table.
-        match source.read_part(source_part) {
-            Ok(bytes) => add_part(&mut zip, part, bytes)?,
-            Err(error) => ctx.report_unsupported(
-                "w:embed*",
-                &format!(
-                    "{source_part} is an embedded font whose bytes could not be read ({error}), \
-                     so the face is lost and the relationship is dropped rather than left \
-                     pointing at nothing"
-                ),
-                &strict_ooxml_core::error::SourceLocation::unknown(),
-            ),
+        for (part, _, bytes) in font_parts {
+            add_part(&mut zip, &part, bytes)?;
         }
     }
     for part in &header_footer_parts {
         let name = part.rsplit('/').next().unwrap_or(part.as_str()).to_owned();
         if let Some(header_footer) = name_header_footer(document, &name) {
-            // Each decoration part carries **its own** relationships, because
-            // `rId3` in `word/header1.xml` is a different relationship from `rId3`
-            // in `word/document.xml`. Before 2026-10-02 no header could hold a
-            // picture — VML was dropped before the model existed — so the writer
-            // emitted no `.rels` for one at all and nothing noticed. A converted
-            // VML picture is the first thing that puts an `r:embed` in a header,
-            // and a reference with no relationship part beside it resolves to
-            // nothing: the picture is drawn at no size on the next open.
-            let media = decoration_media(header_footer.blocks.as_slice(), &media_map);
-            let targets: Vec<Relationship> = media
-                .iter()
-                .filter_map(|(source_part, id)| {
-                    // AUD-62/61: the target is the *written* media name, not the
-                    // source spelling — a body image may have been renamed to
-                    // avoid a passthrough collision.
-                    let target = media_targets.get(source_part)?.clone();
-                    Some(Relationship {
-                        id: id.clone(),
-                        rel_type: RelType::Image,
-                        raw_type: strict_type_uri(&RelType::Image),
-                        target,
-                        target_mode: TargetMode::Internal,
-                        resolved: None,
-                    })
-                })
-                .collect();
-            ctx.set_decoration_relationships(part.as_str(), media);
-            let xml = part_xml(&mut ctx, part.as_str(), |ctx| {
-                parts::header_footer_part(ctx, header_footer)
-            })?
-            .into_bytes();
-            ctx.clear_decoration_relationships();
-            add_part(&mut zip, part.as_str(), xml)?;
-            if !targets.is_empty() {
-                add_part(
-                    &mut zip,
-                    &format!("/word/_rels/{name}.rels"),
-                    write_relationships(&targets).into_bytes(),
-                )?;
-            }
+            let foreign = passthrough::referenced_ids(header_footer.blocks.as_slice());
+            write_content_part_with_rels(
+                &mut zip,
+                &mut ctx,
+                source,
+                part.as_str(),
+                &name,
+                Some(&header_footer.part),
+                &foreign,
+                &mut part_extra_copies,
+                |ctx| parts::header_footer_part(ctx, header_footer),
+            )?;
         }
     }
     for (part, source_part) in &media_parts {
         add_part(&mut zip, part, source.read_part(source_part)?)?;
     }
     // W7: the copied parts, each next to its own `.rels`, in name order.
-    for part in pass.parts() {
+    for part in &part_extra_copies {
+        if let Some(content_type) = &part.content_type {
+            content_types.insert_override(PartId::new(part.name.as_str()), content_type);
+        }
+    }
+    let mut written_pass: BTreeSet<String> = BTreeSet::new();
+    for part in pass.parts().iter().chain(part_extra_copies.iter()) {
+        if !written_pass.insert(part.name.clone()) {
+            continue;
+        }
         add_part(&mut zip, part.name.as_str(), part.bytes.clone())?;
     }
 
@@ -879,6 +911,23 @@ pub fn write_package(
     // produced would call that document's numbering a non-loss.
     passthrough::report_what_was_dropped(&mut ctx, source, &zip.part_names());
     let bytes = zip.finish()?;
+    // AUD-61: every r:* in every written part must resolve through that part's
+    // .rels to an existing part or External. A target named in a W7.* loss was
+    // intentionally not copied (unreadable bytes) — that is a reported loss,
+    // not a silent dangling id.
+    let known_gaps: Vec<String> = ctx
+        .report()
+        .losses()
+        .iter()
+        .filter(|loss| {
+            loss.feature_id.starts_with("W7.") || loss.feature_id == crate::ctx::FONT_LOSS_ID
+        })
+        .map(|loss| loss.reason.clone())
+        .collect();
+    verify_no_dangling_relationships(&bytes, &known_gaps).map_err(|error| StrictError::Write {
+        part: PartId::new(MAIN_DOCUMENT),
+        detail: error.to_string(),
+    })?;
     Ok(WriteOutput {
         bytes,
         report: ctx.into_report(),
@@ -886,111 +935,198 @@ pub fn write_package(
     })
 }
 
-/// Finds the header/footer a written part name refers to.
-/// The media parts a decoration part's blocks reference, mapped to the relationship
-/// id that part's own `.rels` will carry.
-///
-/// Keyed by **media part** rather than by the document's relationship id, for the
-/// reason [`Ctx::media_rel`] needs two maps: the ids in the source header's
-/// `.rels` belong to that header, and a relationship id from one part means
-/// nothing in another. The **target** is the same name the document part's
-/// relationship uses — `media/imageN.ext` — because that is where
-/// [`media_parts`](Self::write) wrote the bytes.
-fn decoration_media(
-    blocks: &[Block],
-    media_map: &BTreeMap<String, String>,
-) -> BTreeMap<String, String> {
-    let mut referenced: Vec<PartId> = Vec::new();
-    media_parts_in(blocks, &mut referenced);
-    let mut out = BTreeMap::new();
-    for part in referenced {
-        let key = part.as_str().to_owned();
-        if let Some(id) = media_map.get(&key) {
-            out.insert(key, id.clone());
+/// Writes a content part that owns its own `.rels` (AUD-61).
+#[allow(clippy::too_many_arguments)]
+fn write_content_part_with_rels(
+    zip: &mut ZipWriter,
+    ctx: &mut Ctx<'_>,
+    source: &dyn Source,
+    part: &str,
+    file_name: &str,
+    source_part: Option<&PartId>,
+    foreign_ids: &[String],
+    extra: &mut Vec<passthrough::CopiedPart>,
+    write: impl FnOnce(&mut Ctx<'_>) -> std::result::Result<String, WriteError>,
+) -> Result<()> {
+    ctx.begin_part_relationships(part);
+    if let Some(from) = source_part {
+        bind_part_foreign(ctx, source, from, foreign_ids, extra);
+    }
+    let xml = part_xml(ctx, part, write)?.into_bytes();
+    let alloc = ctx.take_part_relationships();
+    add_part(zip, part, xml)?;
+    if !alloc.is_empty() {
+        add_part(
+            zip,
+            &format!("/word/_rels/{file_name}.rels"),
+            write_relationships(alloc.relationships()).into_bytes(),
+        )?;
+    }
+    Ok(())
+}
+
+/// Resolves chart/diagram ids of a non-document part into that part's allocator.
+fn bind_part_foreign(
+    ctx: &mut Ctx<'_>,
+    source: &dyn Source,
+    from: &PartId,
+    foreign_ids: &[String],
+    extra: &mut Vec<passthrough::CopiedPart>,
+) {
+    for old_id in foreign_ids {
+        let Some(info) = source.relationship(from, old_id) else {
+            continue;
+        };
+        let Some(alloc) = ctx.part_rels_mut() else {
+            continue;
+        };
+        let new_id = alloc.ensure(&info.rel_type, info.target.clone(), info.external);
+        ctx.set_part_foreign(old_id.clone(), new_id);
+        if info.external {
+            continue;
+        }
+        let Ok(Some(target)) =
+            strict_ooxml_core::opc::path::resolve_target(from, &info.target, false)
+        else {
+            continue;
+        };
+        let mut seeds = vec![target];
+        if let Ok(reached) = source.reachable_parts(&seeds[0]) {
+            seeds.extend(reached);
+        }
+        for seed in seeds {
+            if extra.iter().any(|part| part.name == seed.as_str()) {
+                continue;
+            }
+            let Ok(bytes) = source.read_part(&seed) else {
+                continue;
+            };
+            // Also copy the part's own .rels so its internal ids keep working.
+            extra.push(passthrough::CopiedPart {
+                name: seed.as_str().to_owned(),
+                bytes,
+                content_type: source.content_type(&seed),
+            });
+            if let Some(rels_part) = passthrough::rels_part_of(&seed) {
+                if let Ok(rels_bytes) = source.read_part(&rels_part) {
+                    let rels_name = rels_part.as_str().to_owned();
+                    if !extra.iter().any(|part| part.name == rels_name) {
+                        extra.push(passthrough::CopiedPart {
+                            name: rels_name,
+                            bytes: rels_bytes,
+                            content_type: Some(
+                                "application/vnd.openxmlformats-package.relationships+xml"
+                                    .to_owned(),
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn note_foreign_ids(table: &strict_ooxml_wml::model::notes::NoteTable) -> Vec<String> {
+    let mut out = Vec::new();
+    for note in table.iter() {
+        for id in passthrough::referenced_ids(&note.blocks) {
+            if !out.contains(&id) {
+                out.push(id);
+            }
         }
     }
     out
 }
 
-/// Every media part the blocks of one part reference, in document order.
-///
-/// The traversal mirrors `collect_hyperlink_ids` because the two ask the same
-/// question about the same tree — a picture inside a table cell is ordinary, and
-/// a header that holds a table of logos is the normal case rather than the exotic
-/// one.
-fn media_parts_in(blocks: &[Block], out: &mut Vec<PartId>) {
-    for block in blocks {
-        match block {
-            Block::Paragraph(paragraph) => media_parts_in_inlines(&paragraph.inlines, out),
-            Block::Table(table) => {
-                for row in &table.rows {
-                    for cell in &row.cells {
-                        media_parts_in(&cell.blocks, out);
-                    }
+/// AUD-61 invariant: every `r:*` attribute resolves through its part's `.rels`.
+fn verify_no_dangling_relationships(
+    bytes: &[u8],
+    known_gaps: &[String],
+) -> std::result::Result<(), WriteError> {
+    let package = strict_ooxml_core::opc::Package::open_reader(
+        bytes,
+        &strict_ooxml_core::opc::OpenOptions::default(),
+    )
+    .map_err(|error| WriteError::DanglingRelationship {
+        part: MAIN_DOCUMENT.to_owned(),
+        id: format!("package open failed: {error}"),
+    })?;
+    for part in package.parts() {
+        let name = part.id.as_str();
+        if !std::path::Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("xml"))
+            || name.contains("/_rels/")
+        {
+            continue;
+        }
+        let Ok(xml_bytes) = package.read_part(&part.id) else {
+            continue;
+        };
+        let Ok(xml) = std::str::from_utf8(&xml_bytes) else {
+            continue;
+        };
+        let rels = package.relationships(&part.id);
+        let declared: BTreeSet<&str> = rels.iter().map(|rel| rel.id.as_str()).collect();
+        for id in office_relationship_ids(xml) {
+            if !declared.contains(id.as_str()) {
+                return Err(WriteError::DanglingRelationship {
+                    part: name.to_owned(),
+                    id,
+                });
+            }
+            let Some(rel) = rels.iter().find(|rel| rel.id == id) else {
+                return Err(WriteError::DanglingRelationship {
+                    part: name.to_owned(),
+                    id,
+                });
+            };
+            if rel.target_mode == TargetMode::External {
+                continue;
+            }
+            let Ok(Some(resolved)) =
+                strict_ooxml_core::opc::path::resolve_target(&part.id, &rel.target, false)
+            else {
+                return Err(WriteError::DanglingRelationship {
+                    part: name.to_owned(),
+                    id,
+                });
+            };
+            if package.read_part(&resolved).is_err() {
+                let path = resolved.as_str();
+                let reported = known_gaps.iter().any(|reason| reason.contains(path));
+                if !reported {
+                    return Err(WriteError::DanglingRelationship {
+                        part: name.to_owned(),
+                        id,
+                    });
                 }
             }
-            Block::SdtBlock(sdt) => media_parts_in(&sdt.blocks, out),
-            _ => {}
         }
     }
+    Ok(())
 }
 
-fn media_parts_in_inlines(inlines: &[Inline], out: &mut Vec<PartId>) {
-    for inline in inlines {
-        match inline {
-            Inline::Run(run) => {
-                for content in &run.content {
-                    if let RunContent::Drawing(drawing) = content {
-                        picture_parts(drawing, out);
-                    }
-                }
+/// Collects relationship-bearing `r:*` attribute values from a Strict part.
+fn office_relationship_ids(xml: &str) -> Vec<String> {
+    const NAMES: &[&str] = &["embed", "id", "link", "dm", "lo", "qs", "cs"];
+    let mut out = Vec::new();
+    for attr in NAMES {
+        let needle = format!(" r:{attr}=\"");
+        let mut rest = xml;
+        while let Some(at) = rest.find(&needle) {
+            let value_start = &rest[at + needle.len()..];
+            let Some(end) = value_start.find('"') else {
+                break;
+            };
+            let value = value_start[..end].to_owned();
+            if !value.is_empty() && !out.contains(&value) {
+                out.push(value);
             }
-            Inline::Drawing(drawing) => picture_parts(drawing, out),
-            Inline::Hyperlink(link) => media_parts_in_inlines(&link.inlines, out),
-            Inline::Field(field) => media_parts_in_inlines(&field.inlines, out),
-            Inline::SdtInline(sdt) => media_parts_in_inlines(&sdt.inlines, out),
-            Inline::Directional(dir) => media_parts_in_inlines(&dir.inlines, out),
-            _ => {}
+            rest = &value_start[end + 1..];
         }
     }
-}
-
-/// The media parts one drawing references, including the ones inside a shape's
-/// text box and a group's children.
-fn picture_parts(drawing: &Drawing, out: &mut Vec<PartId>) {
-    let payload: &Graphic = match &drawing.kind {
-        DrawingKind::Inline(inline) => inline.graphic.as_ref(),
-        DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
-        DrawingKind::Opaque(_) => return,
-    };
-    match payload {
-        Graphic::Picture(picture) => {
-            if let Some(part) = picture
-                .blip
-                .as_ref()
-                .and_then(|blip| blip.resolved.as_ref())
-            {
-                if !out.contains(part) {
-                    out.push(part.clone());
-                }
-            }
-        }
-        Graphic::Shape(shape) => {
-            if let Some(text_box) = &shape.text {
-                media_parts_in(text_box.blocks.as_slice(), out);
-            }
-        }
-        Graphic::Group(group) => {
-            for child in &group.children {
-                if let Graphic::Shape(shape) = child {
-                    if let Some(text_box) = &shape.text {
-                        media_parts_in(text_box.blocks.as_slice(), out);
-                    }
-                }
-            }
-        }
-        Graphic::None | Graphic::Chart(_) | Graphic::Diagram(_) | Graphic::Other => {}
-    }
+    out
 }
 
 fn name_header_footer<'a>(

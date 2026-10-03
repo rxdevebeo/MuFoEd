@@ -897,7 +897,7 @@ fn resolve(from: &PartId, target: &str) -> Option<PartId> {
 }
 
 /// The `.rels` part that belongs to a part, per OPC.
-fn rels_part_of(part: &PartId) -> Option<PartId> {
+pub(crate) fn rels_part_of(part: &PartId) -> Option<PartId> {
     let name = part.as_str().rsplit('/').next()?;
     let dir = part.as_str().rsplit_once('/').map_or("", |(dir, _)| dir);
     if dir.is_empty() {

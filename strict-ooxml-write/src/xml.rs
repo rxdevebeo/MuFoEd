@@ -380,7 +380,7 @@ fn prefix_of(name: &str) -> String {
 }
 
 /// Failures the writer itself can raise, independent of the DOM it walks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WriteError {
     /// The document nested deeper than the configured budget.
@@ -402,6 +402,14 @@ pub enum WriteError {
         /// Observed nesting.
         actual: u32,
     },
+    /// An `r:*` attribute in a written part does not resolve through that
+    /// part's `.rels` (AUD-61 invariant).
+    DanglingRelationship {
+        /// Part that carries the attribute.
+        part: String,
+        /// Relationship id that does not resolve.
+        id: String,
+    },
 }
 
 impl Display for WriteError {
@@ -420,6 +428,9 @@ impl Display for WriteError {
                 "{} {actual} deeper than the budget of {limit}",
                 kind.as_str()
             ),
+            Self::DanglingRelationship { part, id } => {
+                write!(f, "dangling relationship {id} in {part}")
+            }
         }
     }
 }

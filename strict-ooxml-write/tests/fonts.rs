@@ -66,6 +66,36 @@ fn write(
         .expect("the corpus document writes")
 }
 
+/// Prefers [`MediaBag`] bytes, then falls back to the package (AUD-61 font test).
+struct Overlay<'a>(&'a Package, &'a strict_ooxml_write::package::MediaBag);
+
+impl strict_ooxml_write::package::Source for Overlay<'_> {
+    fn read_part(&self, part: &PartId) -> Result<Vec<u8>> {
+        use strict_ooxml_write::package::Source;
+        Source::read_part(self.1, part).or_else(|_| Source::read_part(self.0, part))
+    }
+    fn relationship(
+        &self,
+        from: &PartId,
+        rel_id: &str,
+    ) -> Option<strict_ooxml_write::package::RelationshipInfo> {
+        use strict_ooxml_write::package::Source;
+        Source::relationship(self.0, from, rel_id)
+    }
+    fn relationships(&self, from: &PartId) -> Vec<strict_ooxml_write::package::RelationshipInfo> {
+        use strict_ooxml_write::package::Source;
+        Source::relationships(self.0, from)
+    }
+    fn content_type(&self, part: &PartId) -> Option<String> {
+        use strict_ooxml_write::package::Source;
+        Source::content_type(self.0, part)
+    }
+    fn parts(&self) -> Vec<PartId> {
+        use strict_ooxml_write::package::Source;
+        Source::parts(self.0)
+    }
+}
+
 /// Every part of a package by name, with its bytes.
 fn parts(package: &Package) -> BTreeMap<String, Vec<u8>> {
     package
@@ -310,7 +340,19 @@ fn the_four_faces_are_four_named_cases_in_the_schemas_order() {
     );
     document.font_table = Some(strict_ooxml_wml::model::fonts::FontTable { fonts: vec![entry] });
 
-    let written = write(&document, &package);
+    // The hand-built face needs readable bytes; a MediaBag supplies them without
+    // changing the fixture package's own fonts.
+    let mut bag = strict_ooxml_write::package::MediaBag::new();
+    bag.insert(
+        PartId::new("/word/fonts/only-bold.ttf"),
+        b"font-bytes".to_vec(),
+    );
+    let written = write_package(
+        &document,
+        Some(&Overlay(&package, &bag)),
+        &WriteOptions::default(),
+    )
+    .expect("write");
     let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default()).unwrap();
     let table = String::from_utf8_lossy(
         &reopened

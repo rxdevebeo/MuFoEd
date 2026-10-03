@@ -587,6 +587,126 @@ fn row_level_sdt_round_trips() {
     );
 }
 
+/// AUD-61: the same source id `rId5` in the body, a header and a footnote
+/// resolves to the correct media bytes after write; each part owns its `.rels`.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn relationships_are_per_part_for_media() {
+    let body_png = b"\x89PNG\r\n\x1a\nbody-img".to_vec();
+    let header_png = b"\x89PNG\r\n\x1a\nhdr-img!".to_vec();
+    let note_png = b"\x89PNG\r\n\x1a\nnote-img".to_vec();
+    let picture = |rid: &str| {
+        format!(
+            "<w:drawing><wp:inline>\
+<wp:extent cx=\"100\" cy=\"100\"/><wp:docPr id=\"1\" name=\"p\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
+<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"p\"/><pic:cNvPicPr/>\
+</pic:nvPicPr><pic:blipFill><a:blip r:embed=\"{rid}\"/></pic:blipFill>\
+<pic:spPr><a:xfrm><a:ext cx=\"100\" cy=\"100\"/></a:xfrm></pic:spPr>\
+</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>"
+        )
+    };
+    let body = format!(
+        "<w:p><w:r>{}</w:r>\
+<w:r><w:footnoteReference w:id=\"1\"/></w:r></w:p>\
+<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdHdr\"/>\
+<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
+w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+        picture("rId5")
+    );
+    let header = format!("<w:p><w:r>{}</w:r></w:p>", picture("rId5"));
+    let footnotes = format!(
+        "<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:footnoteRef/></w:r></w:p></w:footnote>\
+<w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p/></w:footnote>\
+<w:footnote w:id=\"1\"><w:p><w:r><w:footnoteRef/></w:r><w:r>{}</w:r></w:p></w:footnote>",
+        picture("rId5")
+    );
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(&body)
+        .rel("rId5", "image", "media/body.png")
+        .rel("rIdHdr", "header", "header1.xml")
+        .rel("rIdFootnotes", "footnotes", "footnotes.xml")
+        .content_type("/word/media/body.png", "image/png")
+        .content_type("/word/media/header.png", "image/png")
+        .content_type("/word/media/note.png", "image/png")
+        .content_type(
+            "/word/header1.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+        )
+        .content_type(
+            "/word/footnotes.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+        )
+        .part("word/media/body.png", body_png.clone())
+        .part("word/media/header.png", header_png.clone())
+        .part("word/media/note.png", note_png.clone())
+        .part_xml("word/header1.xml", "w:hdr", &header)
+        .part(
+            "word/header1.xml.rels",
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId5" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="media/header.png"/>
+</Relationships>"#
+                .to_vec(),
+        )
+        .part_xml("word/footnotes.xml", "w:footnotes", &footnotes)
+        .part(
+            "word/footnotes.xml.rels",
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId5" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="media/note.png"/>
+</Relationships>"#
+                .to_vec(),
+        )
+        .build();
+    // DocxBuilder puts header rels under word/header1.xml.rels — OPC wants
+    // word/_rels/header1.xml.rels. Rewrite the archive entries.
+    let bytes = {
+        let mut zip = strict_ooxml_core::opc::zip::write::ZipWriter::new();
+        let pkg = open(&bytes).expect("open built");
+        for part in pkg.parts() {
+            let name = part.id.as_str();
+            let data = pkg.read_part(&part.id).expect("read");
+            let name = match name {
+                "/word/header1.xml.rels" => "/word/_rels/header1.xml.rels",
+                "/word/footnotes.xml.rels" => "/word/_rels/footnotes.xml.rels",
+                other => other,
+            };
+            zip.add_part(&PartId::new(name), data).expect("add");
+        }
+        zip.finish().expect("finish")
+    };
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let written = write(&document, &package);
+    let reopened = open(&written.bytes).expect("reopen");
+
+    let find_bytes = |needle: &[u8]| {
+        reopened.parts().find_map(|part| {
+            let data = reopened.read_part(&part.id).ok()?;
+            (data == needle).then_some(part.id.as_str().to_owned())
+        })
+    };
+    assert!(find_bytes(&body_png).is_some(), "body media missing");
+    assert!(find_bytes(&header_png).is_some(), "header media missing");
+    assert!(find_bytes(&note_png).is_some(), "footnote media missing");
+
+    // Each content part has its own .rels (not borrowed from the document).
+    assert!(
+        reopened
+            .read_part(&PartId::new("/word/_rels/header1.xml.rels"))
+            .is_ok(),
+        "header .rels missing"
+    );
+    assert!(
+        reopened
+            .read_part(&PartId::new("/word/_rels/footnotes.xml.rels"))
+            .is_ok(),
+        "footnotes .rels missing"
+    );
+}
+
 fn paragraph_style(block: &Block) -> Option<&str> {
     match block {
         Block::Paragraph(p) => p

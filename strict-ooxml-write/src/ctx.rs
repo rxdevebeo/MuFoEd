@@ -5,8 +5,10 @@ use std::collections::BTreeMap;
 
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::normalize::report::{LossRecord, NormalizationReport, Severity};
+use strict_ooxml_core::opc::rels::RelType;
 use strict_ooxml_core::part::PartId;
 
+use crate::package::RelAllocator;
 use crate::passthrough::PassThrough;
 
 /// Stable id of the writer's own loss class.
@@ -49,33 +51,26 @@ impl NoteRole {
 pub struct Ctx<'a> {
     report: &'a mut NormalizationReport,
     next_doc_pr_id: u32,
-    /// Old hyperlink relationship id → the id this write emits.
+    /// Old hyperlink relationship id → the id this write emits (document part).
     hyperlinks: BTreeMap<String, String>,
-    /// Media part id → the relationship id this write emits.
+    /// Media source part → document-part relationship id.
     media: BTreeMap<String, String>,
+    /// Media source part → written relative target (`media/imageN.ext`).
+    media_targets: BTreeMap<String, String>,
     /// Header/footer part id → the relationship id this write emits.
     header_footers: BTreeMap<String, String>,
     /// The pass-through of unmodelled parts, when the package has one.
     passthrough: Option<PassThrough>,
     /// Which notes part is being written, when writing one.
     note_role: Option<NoteRole>,
-    /// The decoration part being written, when writing one.
-    ///
-    /// Relationship ids are **per part**: `rId3` in `word/header1.xml` is a
-    /// different relationship from `rId3` in `word/document.xml`, and a reference
-    /// only resolves against its own part's `.rels`. A header that holds a picture
-    /// therefore needs its own relationship part, and the ids inside it are this
-    /// write's — the same reason the header's rels cannot simply be copied from
-    /// the source's.
-    decoration: Option<(String, BTreeMap<String, String>)>,
+    /// The part currently being written (AUD-61).
+    current_part: Option<PartId>,
+    /// Fresh relationship allocator for the current non-document content part.
+    part_rels: Option<RelAllocator>,
+    /// Foreign (chart/diagram) old id → new id for the current part.
+    part_foreign: BTreeMap<String, String>,
     /// The font table's own relationships: media part id → the id
     /// `word/_rels/fontTable.xml.rels` will carry.
-    ///
-    /// The same per-part rule as [`Self::decoration`], and the same reason it
-    /// had to be written twice rather than generalised: an `r:id` in
-    /// `w:embedRegular` names a relationship of `word/fontTable.xml`, and using
-    /// the document part's id would point at an image relationship instead of a
-    /// font one.
     fonts: BTreeMap<String, String>,
     /// Characters removed from the part being written because XML 1.0 cannot
     /// carry them; drained into the report by [`Self::report_invalid_chars`].
@@ -88,6 +83,9 @@ pub const INVALID_XML_CHAR_ID: &str = "W.invalid-xml-char";
 /// Stable id: a `w:customXml` / `w:smartTag` wrapper was dropped on read (AUD-42).
 pub const CUSTOM_XML_WRAPPER_ID: &str = "W.custom-xml-wrapper";
 
+/// Stable id: an embedded font's bytes could not be read (AUD-61).
+pub const FONT_LOSS_ID: &str = "W7.font";
+
 impl<'a> Ctx<'a> {
     /// Creates a context writing into `report`.
     #[must_use]
@@ -99,10 +97,13 @@ impl<'a> Ctx<'a> {
             next_doc_pr_id: 1,
             hyperlinks: BTreeMap::new(),
             media: BTreeMap::new(),
+            media_targets: BTreeMap::new(),
             header_footers: BTreeMap::new(),
             passthrough: None,
             note_role: None,
-            decoration: None,
+            current_part: None,
+            part_rels: None,
+            part_foreign: BTreeMap::new(),
             fonts: BTreeMap::new(),
             invalid_chars: 0,
         }
@@ -145,11 +146,6 @@ impl<'a> Ctx<'a> {
     }
 
     /// Declares which notes part is being written.
-    ///
-    /// The role is what tells [`NoteRole::reference_element`] which of the two
-    /// reference elements to emit; outside a notes part it is unset and a
-    /// `NoteRef` cannot be written at all, which is reported rather than
-    /// guessed.
     pub fn set_note_role(&mut self, role: NoteRole) {
         self.note_role = Some(role);
     }
@@ -166,10 +162,12 @@ impl<'a> Ctx<'a> {
         mut self,
         hyperlinks: BTreeMap<String, String>,
         media: BTreeMap<String, String>,
+        media_targets: BTreeMap<String, String>,
         header_footers: BTreeMap<String, String>,
     ) -> Self {
         self.hyperlinks = hyperlinks;
         self.media = media;
+        self.media_targets = media_targets;
         self.header_footers = header_footers;
         self
     }
@@ -183,42 +181,50 @@ impl<'a> Ctx<'a> {
     /// Returns the relationship id to write for a reference into an unmodelled
     /// part, when the pass-through resolved it.
     ///
-    /// `None` is the answer that matters: the part is not in the written package,
-    /// so the reference cannot be written and the caller records the loss.
+    /// Inside a decoration or notes part the map is that part's own (AUD-61);
+    /// otherwise it is the document part's.
     #[must_use]
     pub fn foreign_rel(&self, old_id: &str) -> Option<&str> {
+        if self.part_rels.is_some() {
+            return self.part_foreign.get(old_id).map(String::as_str);
+        }
         self.passthrough
             .as_ref()
             .and_then(|pass| pass.document_rel(old_id))
     }
 
-    /// Declares the relationship ids the decoration part being written will carry.
-    ///
-    /// `media` maps a media **part** to the id this part's own `.rels` will use.
-    /// Inside a decoration the reference the model holds is a resolved part rather
-    /// than a relationship id, because the ids belong to the source part and are
-    /// not ours to reuse — so the map is keyed by part, exactly as
-    /// [`Ctx::media_rel`] expects when a decoration is current.
-    pub fn set_decoration_relationships(&mut self, part: &str, media: BTreeMap<String, String>) {
-        self.decoration = Some((part.to_owned(), media));
+    /// Begins writing a content part that owns its own `.rels` (AUD-61).
+    pub fn begin_part_relationships(&mut self, part: &str) {
+        self.current_part = Some(PartId::new(part));
+        self.part_rels = Some(RelAllocator::new());
+        self.part_foreign.clear();
     }
 
-    /// Ends the decoration scope, so the next part written is the document part
-    /// again.
-    pub fn clear_decoration_relationships(&mut self) {
-        self.decoration = None;
+    /// Records a foreign (chart/diagram) id for the current part.
+    pub fn set_part_foreign(&mut self, old_id: String, new_id: String) {
+        self.part_foreign.insert(old_id, new_id);
+    }
+
+    /// Mutable access to the current part's relationship allocator.
+    pub(crate) fn part_rels_mut(&mut self) -> Option<&mut RelAllocator> {
+        self.part_rels.as_mut()
+    }
+
+    /// Ends the part-local relationship scope and returns what was allocated.
+    pub(crate) fn take_part_relationships(&mut self) -> RelAllocator {
+        self.current_part = None;
+        self.part_foreign.clear();
+        self.part_rels.take().unwrap_or_default()
     }
 
     /// Returns the relationship id to write for a hyperlink that referenced
     /// `old_id` in the parsed document.
     ///
-    /// **Inside a decoration part the document's ids are not the answer**: they
-    /// name the document part's relationships, and the reference resolves against
-    /// the header's own `.rels`. A header with a hyperlink therefore gets `None`
-    /// here, which the writer records rather than writing a dangling id.
+    /// Inside a decoration/notes part the document's ids are not the answer
+    /// (AUD-61): they name the document part's relationships.
     #[must_use]
     pub fn hyperlink_rel(&self, old_id: &str) -> Option<&str> {
-        if self.decoration.is_some() {
+        if self.part_rels.is_some() {
             return None;
         }
         self.hyperlinks.get(old_id).map(String::as_str)
@@ -227,17 +233,15 @@ impl<'a> Ctx<'a> {
     /// Returns the relationship id to write for a picture that referenced
     /// `part`.
     ///
-    /// Inside a decoration part the id comes from **that part's** map, because the
-    /// relationship a picture needs is declared in the header's own `.rels` and
-    /// nowhere else. That is why both maps exist rather than one of them being
-    /// wrong.
-    #[must_use]
-    pub fn media_rel(&self, part: Option<&PartId>) -> Option<&str> {
+    /// Inside a decoration or notes part a fresh id is allocated in that
+    /// part's [`RelAllocator`] against the **written** media target (AUD-61).
+    pub fn media_rel(&mut self, part: Option<&PartId>) -> Option<String> {
         let part = part?;
-        if let Some((_, media)) = &self.decoration {
-            return media.get(part.as_str()).map(String::as_str);
+        let target = self.media_targets.get(part.as_str())?.clone();
+        if let Some(alloc) = self.part_rels.as_mut() {
+            return Some(alloc.ensure(&RelType::Image, target, false));
         }
-        self.media.get(part.as_str()).map(String::as_str)
+        self.media.get(part.as_str()).cloned()
     }
 
     /// Returns the relationship id to write for a header/footer part.
@@ -253,10 +257,12 @@ impl<'a> Ctx<'a> {
         self
     }
 
+    /// Replaces the font-table relationship map (AUD-61: after bytes are read).
+    pub fn set_font_relationships(&mut self, fonts: BTreeMap<String, String>) {
+        self.fonts = fonts;
+    }
+
     /// Returns the relationship id to write into `w:embed*`.
-    ///
-    /// `None` means the font binary is not in the written package, and the
-    /// caller writes nothing rather than an `r:id` that resolves to nothing.
     #[must_use]
     pub fn font_rel(&self, part: &PartId) -> Option<&str> {
         self.fonts.get(part.as_str()).map(String::as_str)

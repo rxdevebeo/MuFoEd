@@ -561,7 +561,7 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     let embed = picture
         .blip
         .as_ref()
-        .and_then(|blip| ctx.media_rel(blip.resolved.as_ref()).map(ToOwned::to_owned));
+        .and_then(|blip| ctx.media_rel(blip.resolved.as_ref()));
     match embed {
         Some(embed) => xml.attr("r:embed", embed),
         None => ctx.report_unsupported(
@@ -1072,8 +1072,17 @@ mod tests {
         let mut report = NormalizationReport::new();
         let mut media = BTreeMap::new();
         media.insert("/word/media/image1.png".to_owned(), "rId7".to_owned());
-        let mut ctx =
-            Ctx::new(&mut report).with_relationships(BTreeMap::new(), media, BTreeMap::new());
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "/word/media/image1.png".to_owned(),
+            "media/image1.png".to_owned(),
+        );
+        let mut ctx = Ctx::new(&mut report).with_relationships(
+            BTreeMap::new(),
+            media,
+            targets,
+            BTreeMap::new(),
+        );
         let mut xml = XmlWriter::new();
         drawing_element(&mut ctx, &mut xml, &drawing);
         let text = xml.finish().expect("balanced");
