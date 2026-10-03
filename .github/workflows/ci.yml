@@ -151,6 +151,12 @@ jobs:
       # trusted rather than a flaky one.
       - name: The gate is reproducible (second run, same answer)
         run: python xtool/xsd-gate/xsd_gate.py --written /tmp/strict-xsd-gate --quiet-messages
+      # AUD-21: OPC parts against ECMA-376 Part 2. The selftest proves the gate
+      # can fail (legacy purl .rels); the gate itself judges the written corpus.
+      - name: OPC gate can fail (purl fixture)
+        run: python xtool/xsd-gate/opc_gate_selftest.py
+      - name: OPC gate (ECMA-376 Part 2)
+        run: python xtool/xsd-gate/opc_gate.py --written /tmp/strict-xsd-gate
 
   # The census gate (`xtool/xsd-gate/census_gate.py`, Transitional -> Strict) is
   # not a job here: half of its corpus, `strict-ooxml-core/tests/docx/`, is local

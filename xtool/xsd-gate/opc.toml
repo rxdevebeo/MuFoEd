@@ -1,0 +1,32 @@
+# OPC schema source for AUD-21 / ADR-0015.
+#
+# ECMA-376 Part 2, 5th edition (December 2021). Schemas are downloaded at run
+# time and never committed (`no_ecma_bytes.py`). Dublin Core imports of
+# `opc-coreProperties.xsd` are fetched into the same cache and rewritten to
+# local `schemaLocation`s so the gate does not need the network after the first
+# resolve.
+
+[source]
+name = "ECMA-376-2 5th edition, OpenPackagingConventions-XMLSchema"
+edition = "5th edition, December 2021"
+url = "https://ecma-international.org/wp-content/uploads/ECMA-376-2_5th_edition_december_2021.zip"
+sha256 = "1d489dc491168ea1f9e9a59063acc8dd5f02b4ad1d21aa7ec19ba9a58d020c70"
+bytes = 1899204
+member = "OpenPackagingConventions-XMLSchema.zip"
+expected_xsd = 4
+
+# Registry items OP-01… — closed only on a measured zero.
+[[item]]
+id = "OP-01"
+title = ".rels validates against opc-relationships.xsd"
+signal = "rels"
+
+[[item]]
+id = "OP-02"
+title = "[Content_Types].xml validates against opc-contentTypes.xsd"
+signal = "content-types"
+
+[[item]]
+id = "OP-03"
+title = "core-properties parts validate against opc-coreProperties.xsd"
+signal = "core-properties"
