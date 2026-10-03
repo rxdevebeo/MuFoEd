@@ -31,6 +31,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-12 | ✅ выполнена | `3f1b359` | `ToUnicode`: токен проверяется как ASCII hex до любого среза, срезы по `as_bytes()`/`chunks_exact(4)`; `hex_pairs` больше не подставляет U+0000 вместо нечитаемого токена — `None` плюс запись `pdf.font.tounicode-invalid` (один раз на шрифт). `/W` и `bfrange`: длина диапазона ограничена остатком бюджета `max_font_glyphs`, обрезание `/W` даёт `pdf.font.widths-truncated`, обрезание `bfrange` — `pdf.font.bfrange-truncated` (Д-3: это диапазон назначений `ToUnicode`, а не ширины, и отчёт с неверным именем механизма отправляет читателя в другой словарь), `second < first` — `pdf.font.widths-reversed` / `pdf.font.bfrange-reversed` и пропуск группы. `/SMask`: `ImageCache` держит `in_progress: RefCell<BTreeSet<ObjectId>>` (повторный вход — цикл, маски нет) и `decode_mask`, который декодирует маску с `mask_of = |_| None` и отмечает `pdf.image.smask-cycle`, если у маски есть свой `/SMask`. `PdfFont` несёт `notes: Vec<(String,String)>`, `PageResources` их собирает, страница пишет их в отчёт. Тесты: 9 в `hostile.rs` (4 умирают на pre-fix, два образа маски — аварийное завершение процесса) |
 | AUD-13 | ✅ выполнена | `2574704` | `PageBudget` на страницу (glyphs/operations/path_points) через вложенные формы; превышение — мягкая остановка и `pdf.page.budget`. Кэш форм и шрифтов по `ObjectId` на документ; `max_fonts` при вставке → stub без Unicode и `pdf.font.budget`. `bounded_decompress` (единственное место с `decompressed_content*`); `max_input_bytes` 256 MiB до `load`; waiver `PDF-OBJSTM-BOMB`. `max_raster_pixels` через `checked_mul`. Тесты: 4 в `hostile.rs::budget`, обновлён `resources.rs` |
 | AUD-17, AUD-37, AUD-38, AUD-68, AUD-69 | ⏳ не начаты (новые, 2026-10-03) | — | Находки на новом корпусе, раздел ниже; документы ждут в `docx-incoming/` (`docs/corpus-incoming.md`) |
+| AUD-88 | ⏳ не начата (новая, 2026-10-03) | — | Растеризатор `hayro` (фича `raster`): 4 враждебных PDF воспроизводят падение стека и зацикливание (подтверждено опытом). Решение владельца — вендорить `hayro` с патчами PrintCraft (`storytold/printcraft`) и предложить апстриму. Раздел Ф8 |
 | AUD-14 | ✅ выполнена | `4bfc85e` | До `png::Decoder` читается IHDR вручную; `width×height×channels×bytes_per_sample` через `checked_mul` ≤ `RenderOptions::limits.max_single_uncompressed`; превышение — `pdf.image.too-large`, картинка не встраивается. `encode_with_limit` из `document.rs`. Тесты: юнит на IHDR-бомбу, `tests/hostile.rs` через `render_with_source` |
 | AUD-15 | ✅ выполнена | `a95507d` | `PdfOptions::{max_table_lines=4000, max_table_cells=10_000}`; сверх линий — `convert.table.budget`, таблицы не ищутся; сверх ячеек — та же запись, текст абзацами. `union_crossings` — сортировка вертикалей + скользящее окно (O(n log n)). Тесты: hostile 20k линий; `tests/tables.rs` без смены ожиданий |
 | AUD-16 | ✅ выполнена | `fbe73cf` | Строка/заголовок через `Read::take(8 KiB)`, ≤100 заголовков, тело ≤1 MiB (`413`), иначе `431`; `set_read/write_timeout(10s)`; всегда `Connection: close`; сокет после `accept` снова blocking. Тесты: 100 KiB → 431, 101 заголовок → 431, Content-Length → 413, idle ≤11 с + следующий запрос |
@@ -241,7 +242,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 Ф5  Модель WML: потери        AUD-40…52   секции, sdt, контейнеры, правки, toggles, свойства
 Ф6  Писатель                  AUD-60…67   сноски, связи, имена, ZIP, passthrough
 Ф7  Рендер SVG                AUD-70…78   поля, табуляция, секции, бюджет, MathML
-Ф8  PDF, конвертер, вьюер     AUD-80…87   корректность writer/reader/convert/view
+Ф8  PDF, конвертер, вьюер     AUD-80…88   корректность writer/reader/convert/view
 Ф9  Процесс, ТЗ, документы    AUD-90…94   ADR, ТЗ, fuzz, CI, финальная приёмка
 ```
 
@@ -1762,6 +1763,50 @@ JPEG — минимальные файлы, сгенерированные за�
 файл `tests/strict/`), без паник; результат — тест `view/tests/catalog.rs`.
 
 **Приёмка.** Тест.
+
+---
+
+### AUD-88. Растеризатор `hayro`: падение стека и зацикливание на враждебном PDF
+
+**Проблема (подтверждена опытом 2026-10-03).** Фича `raster` (`strict-ooxml-pdf`, ADR-0011)
+строится на `hayro` 0.7.1 / `hayro-interpret` 0.7.0 / `hayro-syntax` 0.7.2. Апстрим этих версий
+не защищён от нескольких враждебных входов, и наш конвейер наследует дыры: все гарантии §0
+(без паники, без зацикливания) держатся только до вызова `hayro`, после — нет. Воспроизведено
+через `strict-ooxml-testkit::PdfBuilder` + `doc.rasterizer().page_png(1, …)` под `+1.92.0`,
+release (контрольные «красный квадрат» и обычный tiling-паттерн рисуются — значит, входы
+корректны):
+
+| Враждебный вход | Поведение нашего `raster` сейчас |
+|---|---|
+| Самоссылающийся tiling-паттерн (`/Pattern` с именем, ведущим на себя) | `STATUS_STACK_OVERFLOW`, процесс падает |
+| Самоссылающийся глиф Type 3 (`/CharProcs`, рисующий себя) | `STATUS_STACK_OVERFLOW`, процесс падает |
+| Инлайн- или XObject-изображение `/Width 4294967295` | зацикливание в ресэмплинге (поймано только таймаутом `harness::bounded`, 10 с) |
+| CID-шрифт с `/W [0 4294967295 …]` (и `/W2`) | зацикливание (поймано только таймаутом) |
+
+Эти же четыре случая (плюс пятый — цикл в дереве страниц через `/Kids`) закрыты патчами
+проекта PrintCraft (`storytold/printcraft`, `vendor/`, MIT/Apache-2.0): `MAX_PAINT_NESTING`
+в `hayro-interpret` (tiling + Type 3), `MAX_IMAGE_PIXELS` в `hayro` (размеры), `MAX_CID` в
+`hayro-interpret` (диапазоны `/W`, `/W2`), guard дерева страниц в `hayro-syntax`.
+
+**Решение (владелец, 2026-10-03): вендорить `hayro` с патчами и предложить их апстриму.**
+- Завести `vendor/hayro`, `vendor/hayro-syntax`, `vendor/hayro-interpret` (апстрим 0.7.x +
+  патчи), `[patch.crates-io]` в корневом `Cargo.toml`; лицензии апстрима оставить как есть.
+- Каждый патч помечается в исходнике, покрыт тестом и формулируется для отправки апстрим;
+  вендорная копия удаляется, как только апстрим выпустит фикс (см. `vendor/README.md` PrintCraft
+  как образец формата учёта).
+- Пятый случай (цикл `/Kids` в объектных потоках) сверить с нашим путём `lopdf::load` +
+  waiver `PDF-OBJSTM-BOMB` (AUD-13): если уже закрыт — зафиксировать это тестом, а не патчить.
+- `deny.toml`, `ATTRIBUTION`/учёт стороннего кода и `docs/waivers.toml` обновить под вендоринг.
+
+**Тесты (fail-before-fix, §0.1).** `strict-ooxml-pdf/tests/hostile.rs`, новый `mod raster`
+(`required-features = ["raster"]`): четыре случая из таблицы выше строятся через `PdfBuilder`,
+прогоняются через `doc.rasterizer().page_png(1, …)` внутри `harness::bounded` и обязаны
+`Returned(Ok(_))` за < 10 с без падения процесса. До патчей два дают `STATUS_STACK_OVERFLOW`,
+два — `TimedOut` (проверено). Пятый случай — тест на корпусе/`PdfBuilder`, подтверждающий, что
+цикл `/Kids` уже обрабатывается нашим кодом.
+
+**Приёмка.** Тесты зелёные; шаг CI «Hostile inputs (release)» прогоняет `mod raster`;
+полный гейт §0.4 с `--all-features`; ADR-0011 дополнен решением о вендоринге.
 
 ---
 
