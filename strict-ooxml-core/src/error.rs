@@ -218,6 +218,14 @@ pub enum StrictError {
         /// Location of the first detected non-conformance.
         location: SourceLocation,
     },
+    /// No Strict or Transitional signal was found while
+    /// `ConformancePolicy::StrictOnly` (AUD-23 / ADR-0016): an undetermined
+    /// package is not silently accepted as Strict.
+    #[error("conformance could not be determined: {detail}")]
+    UndeterminedConformance {
+        /// Human-readable detail.
+        detail: String,
+    },
     /// A normalization invariant was violated.
     #[error("normalization invariant violated at {location}: {detail}")]
     NormalizationInvariantViolation {

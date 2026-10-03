@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::limits::ResourceLimits;
+use strict_ooxml_core::normalize::NoopNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 
 /// Collects `.docx` files from a corpus directory (sorted).
@@ -70,7 +71,13 @@ fn scan_xml(bytes: &[u8]) -> (u32, usize) {
 #[test]
 fn corpus_stays_within_default_limits() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let permissive = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+    // This audit is about resource limits, not conformance (AUD-23 /
+    // ADR-0016): `Permissive` without a normalizer now refuses Transitional
+    // and Mixed content, so a `Noop` normalizer is installed to open every
+    // corpus file regardless of family without changing a single byte.
+    let permissive = OpenOptions::default()
+        .conformance(ConformancePolicy::Permissive)
+        .normalization(NoopNormalizer);
 
     let mut max_compressed_input: u64 = 0;
     let mut max_single_uncompressed: u64 = 0;

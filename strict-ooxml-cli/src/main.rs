@@ -3,8 +3,10 @@
 //! Commands:
 //!
 //! - `inspect <file>` — prints conformance, the part map and the relationship
-//!   graph (opens with [`ConformancePolicy::Permissive`] so Transitional
-//!   packages can be inspected).
+//!   graph (opens with [`ConformancePolicy::Permissive`], which accepts
+//!   Strict and conformance-`Unknown` packages with no normalizer installed;
+//!   a Transitional or Mixed package is refused, per the policy matrix in
+//!   ADR-0016).
 //! - `check <file>` — validates and parses a Strict package under
 //!   [`ConformancePolicy::StrictOnly`] and prints a brief support summary.
 //! - `report <file> [--json|--text] [--out <path>]` — emits the full Stage-3
@@ -233,33 +235,19 @@ fn run_check(args: &[String]) -> ExitCode {
         return ExitCode::from(EXIT_ERROR);
     };
     let (options, normalizer) = open_options(args.iter().any(|arg| arg == "--transitional"));
+    // AUD-23 / ADR-0016: `opc::policy::decide` is now the only place that
+    // weighs conformance against policy; by the time `open_path` returns
+    // `Ok`, the package was already accepted. There is nothing left for
+    // `check` to branch on — only how to word a success that is already won.
     let code = match StrictDocument::open_path(path, &options) {
-        // `Mixed` and `Unknown` are the expected *starting* state under
-        // normalization, not a verdict: they are what stage T0 sees before any
-        // part is rewritten. Reporting them as errors would make
-        // `--transitional` useless on most real documents. Without a
-        // normalizer they stay errors — a package whose conformance cannot be
-        // determined is not something to report on as strict.
-        Ok(document)
-            if matches!(
-                document.package().conformance(),
-                Conformance::Strict | Conformance::Transitional
-            ) || (normalizer.is_some()
-                && matches!(
-                    document.package().conformance(),
-                    Conformance::Mixed | Conformance::Unknown
-                )) =>
-        {
-            report_support(&document, "ok: strict")
-        }
         Ok(document) => {
-            match document.package().conformance() {
-                Conformance::Mixed => {
-                    println!("mixed: the package carries Strict and Transitional signals");
-                }
-                _ => println!("unknown: conformance could not be determined"),
-            }
-            ExitCode::from(EXIT_ERROR)
+            let package = document.package();
+            let ok_line = if package.was_normalized() {
+                format!("ok: normalized from {:?}", package.conformance()).to_lowercase()
+            } else {
+                "ok: strict".to_owned()
+            };
+            report_support(&document, &ok_line)
         }
         Err(error @ StrictError::TransitionalNotSupported { .. }) => {
             println!("transitional: {error}");

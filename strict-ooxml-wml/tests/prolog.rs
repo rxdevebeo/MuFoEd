@@ -92,26 +92,24 @@ fn significant_text_before_root_is_rejected() {
 }
 
 #[test]
-fn non_strict_conformance_matches_root_by_local_name() {
-    // The root is matched by local name whenever conformance is not `Strict`,
-    // so a root element outside either family's namespace still parses.
+fn foreign_namespace_root_is_rejected_even_when_detected_as_strict() {
+    // Before AUD-23 / ADR-0016, the parser's root check keyed on
+    // `package.conformance() == Strict` (`require_strict_ns`) rather than on
+    // the root element it was actually looking at. A package detected
+    // `Strict` purely by its `officeDocument` relationship type — while its
+    // own root sat in some unrelated namespace — used to have its root
+    // matched by local name only and parse anyway. The root is now always
+    // required to be in the WML Strict namespace, so this same fixture is now
+    // rejected instead (`expect_root_ns`'s `root_namespace_error`).
     //
-    // AUD-22 closed the hole an earlier version of this test relied on: the
-    // `officeDocument` relationship used to carry a bogus authority
-    // (`https://example.invalid/officeDocument`), which the pre-fix
-    // `RelType::from_uri` matched by trailing path segment regardless of who
-    // wrote the rest of the URI — the same bug that made
-    // `http://evil.example/officeDocument` indistinguishable from the real
-    // relationship type. `locate_main_document` now only recognizes the two
-    // real `officeDocument` URIs, and `ns::registry::classify_relationship`
-    // reads both of those as a conformance signal, so a package whose main
-    // document actually resolves can no longer be conformance-`Unknown`. The
-    // real Transitional URI is used instead; conformance comes out
-    // `Transitional`, not `Strict`, which is what the parser's root check
-    // keys on (`expect_root_ns`'s `require_strict_ns`) and so is exactly as
-    // good a fixture for "root matched by local name" as `Unknown` was.
+    // AUD-22 is still why this fixture names a *resolving* `officeDocument`
+    // relationship rather than a bogus one: `locate_main_document` only
+    // recognizes the two real `officeDocument` URIs, and
+    // `ns::registry::classify_relationship` reads both as a conformance
+    // signal, so a package whose main document actually resolves can no
+    // longer be conformance-`Unknown` at all.
     let content_types = "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/xml\"/></Types>";
-    let rels = "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
+    let rels = "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
     let document =
         "<?xml version=\"1.0\"?><w:document xmlns:w=\"urn:custom\"><w:body/></w:document>";
     let bytes = common::zip(&[
@@ -126,14 +124,18 @@ fn non_strict_conformance_matches_root_by_local_name() {
             .expect("open package");
     assert_eq!(
         package.conformance(),
-        strict_ooxml_core::ns::Conformance::Transitional
+        strict_ooxml_core::ns::Conformance::Strict
     );
-    let parse_options = strict_ooxml_wml::ParseOptions {
-        conformance: strict_ooxml_core::opc::ConformancePolicy::Permissive,
-        ..Default::default()
-    };
-    strict_ooxml_wml::parse_document(&package, &parse_options)
-        .expect("non-strict conformance document must still parse");
+    let error =
+        strict_ooxml_wml::parse_document(&package, &strict_ooxml_wml::ParseOptions::default())
+            .expect_err("a foreign-namespace root must be rejected");
+    assert!(
+        matches!(
+            error,
+            strict_ooxml_core::error::StrictError::InvalidXml { .. }
+        ),
+        "{error:?}"
+    );
 }
 
 #[test]

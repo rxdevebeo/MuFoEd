@@ -32,7 +32,7 @@ use strict_ooxml_core::error::{Result, SourceLocation, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::rels::{RelId, RelType, Relationship};
-use strict_ooxml_core::opc::{ConformancePolicy, Package};
+use strict_ooxml_core::opc::Package;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_core::xml::qname::QName;
 use strict_ooxml_core::xml::{Attr, XmlEvent, XmlReader};
@@ -61,63 +61,29 @@ pub(crate) const MCE_NS: &str = "http://schemas.openxmlformats.org/markup-compat
 pub(crate) const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
 /// Options controlling document parsing.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct ParseOptions {
-    /// Conformance policy; only `Strict` input is accepted (Stage 2).
-    pub conformance: ConformancePolicy,
     /// Resource limits applied while reading parts.
     pub limits: ResourceLimits,
-}
-
-impl Default for ParseOptions {
-    fn default() -> Self {
-        Self {
-            conformance: ConformancePolicy::StrictOnly,
-            limits: ResourceLimits::default(),
-        }
-    }
 }
 
 /// Parses the WordprocessingML Strict parts of `package` into an immutable
 /// [`Document`].
 ///
-/// Runs both phases (parse + resolve). A Transitional package is rejected
-/// unless a normalizer is installed, in which case the parts arrive already
-/// normalized and the same Strict parser handles them (Stage 6).
-///
-/// `Mixed` is not a contradiction here. It is what stage T0 sees *before* any
-/// transformation: a Transitional document whose parts have been rewritten to
-/// different degrees, or a producer that mixed a Strict-native part into a
-/// Transitional package. Under a normalizing policy the normalizer maps every
-/// registered URI into one family, so refusing the input would make the policy
-/// unable to open a single real document — which is the only reason it exists.
+/// Runs both phases (parse + resolve). The conformance policy is no longer
+/// this function's concern (AUD-23 / ADR-0016): `Package::open_*` is the only
+/// place a [`ConformancePolicy`] is weighed, through
+/// `opc::policy::decide`, so a `Package` that opened at all has already
+/// cleared that gate. What this function still enforces is that every part it
+/// reads actually arrives in the WordprocessingML Strict namespace — see
+/// [`PartParser::expect_root_ns`].
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`] for conformance mismatch, malformed XML, a
+/// Returns a [`StrictError`] for a non-Strict root element, malformed XML, a
 /// resource-limit violation or an unresolved required reference.
 pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Document> {
     let main = package.main_document_part()?.clone();
-    let normalizing = matches!(
-        options.conformance,
-        ConformancePolicy::Normalize | ConformancePolicy::Permissive
-    );
-    match package.conformance() {
-        Conformance::Transitional if !normalizing => {
-            return Err(StrictError::TransitionalNotSupported {
-                location: SourceLocation::new(main, 1, 1, 0),
-            });
-        }
-        Conformance::Mixed if !normalizing => {
-            return Err(StrictError::MixedConformance {
-                detail: "both Strict and Transitional signals were detected".to_owned(),
-            });
-        }
-        Conformance::Strict
-        | Conformance::Transitional
-        | Conformance::Mixed
-        | Conformance::Unknown => {}
-    }
 
     let styles_part = find_related_part(package, &main, &RelType::Styles);
     let numbering_part = find_related_part(package, &main, &RelType::Numbering);
@@ -701,10 +667,11 @@ impl<'a> PartParser<'a> {
     /// are skipped. Non-whitespace text or any other leading element is
     /// malformed input.
     ///
-    /// For a package detected as Strict the root must also be in the WML Strict
-    /// namespace; packages of undetermined conformance (`Unknown`) keep matching
-    /// by local name so the CLI can still report the missing signal. The root
-    /// occurs once, so this is not recursive.
+    /// The root element must always be in the WML Strict namespace: either
+    /// the package was already Strict, or a normalizer rewrote it on the way
+    /// in — `Package::open_*` is the only place that lets anything else
+    /// through (AUD-23 / ADR-0016, point 5). The root occurs once, so this is
+    /// not recursive.
     pub(crate) fn expect_root(&mut self, expected_local: &str) -> Result<()> {
         self.expect_root_ns(expected_local, crate::WML_STRICT_NS)
     }
@@ -712,15 +679,13 @@ impl<'a> PartParser<'a> {
     /// Like [`expect_root`](Self::expect_root) but for another schema namespace
     /// (for example DrawingML for `theme1.xml`).
     pub(crate) fn expect_root_ns(&mut self, expected_local: &str, namespace: &str) -> Result<()> {
-        let require_strict_ns = self.package.conformance() == Conformance::Strict;
         loop {
             match self.next_event()? {
-                XmlEvent::StartElement { name, .. }
-                    if name.local() == expected_local
-                        && (!require_strict_ns
-                            || name.ns.as_ref().is_some_and(|ns| ns == namespace)) =>
-                {
-                    return Ok(());
+                XmlEvent::StartElement { name, .. } if name.local() == expected_local => {
+                    if name.ns.as_ref().is_some_and(|ns| ns == namespace) {
+                        return Ok(());
+                    }
+                    return Err(self.root_namespace_error());
                 }
                 XmlEvent::StartElement { name, .. } => {
                     return Err(self.invalid(format!(
@@ -738,6 +703,31 @@ impl<'a> PartParser<'a> {
                     return Err(self.invalid(format!("expected '{expected_local}' root element")));
                 }
             }
+        }
+    }
+
+    /// The error for a root element that parsed but is not in the namespace
+    /// [`expect_root_ns`](Self::expect_root_ns) required (AUD-23 / ADR-0016,
+    /// point 5).
+    ///
+    /// A package `opc::policy::decide` let open with `conformance() ==
+    /// Transitional` and no normalizer cannot actually reach here: that cell
+    /// of the matrix requires a normalizer, and the normalizer that made
+    /// detection say `Transitional` always touched the very part whose root
+    /// carried the signal, so [`Package::was_normalized`] is already `true`
+    /// by the time parsing starts. The `TransitionalNotSupported` arm is kept
+    /// anyway, defensively, for a normalizer that chose not to rewrite the
+    /// part it was handed; every other case — a `Strict`- or `Unknown`-by-signal
+    /// package whose actual root sits in some unrelated namespace — is
+    /// `InvalidXml`.
+    fn root_namespace_error(&self) -> StrictError {
+        if !self.package.was_normalized() && self.package.conformance() == Conformance::Transitional
+        {
+            StrictError::TransitionalNotSupported {
+                location: self.location(),
+            }
+        } else {
+            self.invalid("root element is not in the WordprocessingML Strict namespace")
         }
     }
 

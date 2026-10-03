@@ -622,12 +622,10 @@ fn drawing_and_run_constructors() {
 }
 
 #[test]
-fn parse_options_default_is_strict() {
+fn parse_options_default_builds() {
+    // AUD-23 / ADR-0016: `ParseOptions` no longer carries a conformance
+    // policy at all - `Package::open_*` is the only place one is weighed.
     let options = ParseOptions::default();
-    assert_eq!(
-        options.conformance,
-        strict_ooxml_core::opc::ConformancePolicy::StrictOnly
-    );
     let _ = options.limits;
     let _ = Arc::<str>::from("x");
     let _: Table = Table {

@@ -110,9 +110,28 @@ fn rejects_transitional_under_strict_only() {
 }
 
 #[test]
-fn inspect_transitional_under_permissive() {
-    let package = open(transitional_docx(), ConformancePolicy::Permissive).unwrap();
-    assert_eq!(package.conformance(), Conformance::Transitional);
+fn permissive_without_a_normalizer_no_longer_opens_transitional_as_is() {
+    // AUD-23 / ADR-0016: this used to `.unwrap()` into an open package with
+    // `conformance() == Transitional` — `Permissive` accepted Transitional
+    // content unconditionally, normalizer or not. The matrix now requires a
+    // normalizer for this cell, same as `Normalize`.
+    let error = open(transitional_docx(), ConformancePolicy::Permissive).unwrap_err();
+    assert!(matches!(error, StrictError::Unsupported(_)));
+}
+
+#[test]
+fn permissive_without_a_normalizer_still_opens_unknown_for_inspect() {
+    // The one cell that still distinguishes `Permissive` from `Normalize`:
+    // a package with no determinable conformance can still be opened (for
+    // `inspect`), even with no normalizer installed. An openable package can
+    // no longer be genuinely `Unknown` (AUD-22 made `officeDocument`
+    // resolution exact, and either canonical URI is itself a conformance
+    // signal), so this is exercised directly against `Package::open_*`'s own
+    // policy call via a `Strict`-by-signal package instead; the full 20-cell
+    // matrix (including `Unknown`) is covered unit-for-unit in
+    // `opc::policy::tests`.
+    let package = open(strict_docx(), ConformancePolicy::Permissive).unwrap();
+    assert_eq!(package.conformance(), Conformance::Strict);
 }
 
 #[test]
@@ -276,13 +295,68 @@ impl RawNormalizer for TransitionalToStrict {
 }
 
 #[test]
-fn normalization_is_applied_before_conformance_detection() {
+fn conformance_is_detected_from_raw_bytes_even_with_a_normalizer_installed() {
+    // AUD-23 / ADR-0016: this used to assert `Conformance::Strict` here,
+    // which was the regression the audit named directly — `conformance()`
+    // reported the *post-normalization* family instead of what the package
+    // actually arrived as, because the old root-namespace scan projected a
+    // Transitional URI through the normalizer's registry before classifying
+    // it. Detection is now T0: raw namespaces, raw `.rels` relationship
+    // types, no projection, so the verdict does not depend on whether a
+    // normalizer happens to be installed.
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)
         .normalization(TransitionalToStrict);
     let package = Package::open_reader(Cursor::new(transitional_docx()), &options).unwrap();
-    // The raw part is Transitional; once normalized it is detected as Strict.
+    assert_eq!(package.conformance(), Conformance::Transitional);
+    // The bytes a reader actually gets are still normalized to Strict - T0
+    // detection does not change what `read_part`/`open_part` return.
+    assert!(package.was_normalized());
+}
+
+#[test]
+fn relationship_type_signal_is_read_before_the_normalizer_rewrites_it() {
+    // AUD-23 / ADR-0016: the second half of the T0 fix. The main document's
+    // namespace is Strict, but the root `.rels` names the officeDocument
+    // relationship with the *Transitional* base URI — a package that really
+    // is Mixed. `TransitionalToStrict` rewrites that very URI to its Strict
+    // form inside `.rels`, so if detection read the relationship type from
+    // normalized bytes (the old behaviour this closes), the Transitional
+    // signal would vanish and the package would misreport as plain `Strict`.
+    let doc = document(STRICT_W_NS);
+    let bytes = build_zip(&[
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes(), false),
+        (
+            "_rels/.rels",
+            root_rels(TRANSITIONAL_DOC_REL).as_bytes(),
+            false,
+        ),
+        ("word/document.xml", doc.as_bytes(), false),
+    ]);
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .normalization(TransitionalToStrict);
+    let package = Package::open_reader(Cursor::new(bytes), &options).unwrap();
+    assert_eq!(package.conformance(), Conformance::Mixed);
+    assert!(package.was_normalized());
+}
+
+#[test]
+fn was_normalized_is_false_with_no_normalizer_installed() {
+    let package = open(strict_docx(), ConformancePolicy::StrictOnly).unwrap();
+    assert!(!package.was_normalized());
+}
+
+#[test]
+fn was_normalized_is_false_when_the_normalizer_has_nothing_to_rewrite() {
+    // A Strict package handed to a normalizer that only acts on Transitional
+    // signals: nothing changes, so `was_normalized()` must say so.
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .normalization(TransitionalToStrict);
+    let package = Package::open_reader(Cursor::new(strict_docx()), &options).unwrap();
     assert_eq!(package.conformance(), Conformance::Strict);
+    assert!(!package.was_normalized());
 }
 
 #[test]

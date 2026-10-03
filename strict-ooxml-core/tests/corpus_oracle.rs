@@ -21,6 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use strict_ooxml_core::normalize::NoopNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_core::part::PartId;
 
@@ -93,7 +94,14 @@ fn corpus_matches_independent_zip() {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
         let reference = reference_parts(&path);
 
-        let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+        // This test is about ZIP/OPC fidelity, not conformance (AUD-23 /
+        // ADR-0016): `Permissive` without a normalizer now refuses
+        // Transitional and Mixed content, same as `Normalize`, so a `Noop`
+        // normalizer is installed to open every sample regardless of family
+        // without touching a single byte - part (2) below depends on that.
+        let options = OpenOptions::default()
+            .conformance(ConformancePolicy::Permissive)
+            .normalization(NoopNormalizer);
         let package = Package::open_path(&path, &options)
             .unwrap_or_else(|error| panic!("{name}: open failed: {error}"));
 

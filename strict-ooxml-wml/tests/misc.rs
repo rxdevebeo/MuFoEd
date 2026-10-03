@@ -29,13 +29,7 @@ fn parse_with_limits(
 ) -> strict_ooxml_core::error::Result<Document> {
     let bytes = package_entries(parts);
     let package = Package::open_reader(Cursor::new(bytes), &OpenOptions::default().limits(limits))?;
-    parse_document(
-        &package,
-        &ParseOptions {
-            conformance: strict_ooxml_core::opc::ConformancePolicy::StrictOnly,
-            limits,
-        },
-    )
+    parse_document(&package, &ParseOptions { limits })
 }
 
 #[test]

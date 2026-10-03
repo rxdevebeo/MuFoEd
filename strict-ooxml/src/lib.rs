@@ -315,9 +315,11 @@ impl StrictDocument {
 }
 
 /// Builds Stage-2 parse options from the core open options.
+///
+/// No conformance policy to carry across any more (AUD-23 / ADR-0016):
+/// `Package::open_*` already weighed it through `opc::policy::decide`.
 fn parse_options_from(options: &OpenOptions) -> ParseOptions {
     ParseOptions {
-        conformance: options.conformance,
         limits: options.limits,
     }
 }

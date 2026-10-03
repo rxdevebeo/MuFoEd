@@ -161,6 +161,21 @@ fn check_transitional_returns_one() {
 }
 
 #[test]
+fn check_transitional_with_flag_normalizes_and_returns_zero() {
+    // AUD-23 / ADR-0016: the success line now names the T0-detected
+    // conformance rather than always saying "strict", so a normalized
+    // package is distinguishable from one that was already Strict.
+    let path = write_temp("transitional-flag.docx", &transitional_docx());
+    let (code, stdout, _) = run(&["check", path.to_str().unwrap(), "--transitional"]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(
+        stdout.contains("ok: normalized from transitional"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
 fn check_damaged_returns_two() {
     let path = write_temp("damaged.docx", b"not a zip at all");
     let (code, _, stderr) = run(&["check", path.to_str().unwrap()]);

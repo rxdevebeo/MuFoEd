@@ -13,6 +13,7 @@ use std::path::Path;
 
 use strict_ooxml_core::error::{LimitKind, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
+use strict_ooxml_core::normalize::NoopNormalizer;
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 
@@ -45,7 +46,13 @@ fn public_corpus_opens_detects_and_reads() {
     let files = sample_files();
     assert!(!files.is_empty(), "no samples to check");
 
-    let permissive = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+    // AUD-23 / ADR-0016: `Permissive` without a normalizer now refuses
+    // Transitional and Mixed content, so a `Noop` normalizer is installed to
+    // keep this test's actual purpose - panic-free inspection of whatever
+    // family the corpus happens to be - independent of that policy.
+    let permissive = OpenOptions::default()
+        .conformance(ConformancePolicy::Permissive)
+        .normalization(NoopNormalizer);
     let strict_only = OpenOptions::default();
 
     let mut checked = 0usize;
@@ -110,10 +117,13 @@ fn legitimate_stress_document_opens_and_strict_ratio_still_rejects() {
     );
 
     // C-1: the 201 KB → 44 MB legitimate document opens under the default
-    // *limits*. (The sample is Transitional, so it is opened permissively to
+    // *limits*. (The sample is Transitional, so it is opened permissively,
+    // with a `Noop` normalizer so AUD-23's policy matrix lets it through, to
     // reach conformance detection; the point of this regression is that the
     // compression-ratio limit no longer rejects it.)
-    let permissive = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+    let permissive = OpenOptions::default()
+        .conformance(ConformancePolicy::Permissive)
+        .normalization(NoopNormalizer);
     let package = Package::open_path(&path, &permissive)
         .expect("default limits must accept the legitimate stress document");
     let main = package.main_document_part().expect("main document").clone();

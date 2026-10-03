@@ -113,13 +113,7 @@ pub fn parse_parts_with_limits(
 ) -> Result<Document> {
     let bytes = package_entries(parts);
     let package = Package::open_reader(Cursor::new(bytes), &OpenOptions::default().limits(limits))?;
-    parse_document(
-        &package,
-        &ParseOptions {
-            conformance: ConformancePolicy::StrictOnly,
-            limits,
-        },
-    )
+    parse_document(&package, &ParseOptions { limits })
 }
 /// Parses a package with the permissive core policy (for Transitional input).
 pub fn parse_parts_permissive(parts: &[(String, Vec<u8>)]) -> (Package, Result<Document>) {
@@ -127,7 +121,6 @@ pub fn parse_parts_permissive(parts: &[(String, Vec<u8>)]) -> (Package, Result<D
     let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
     let package = Package::open_reader(Cursor::new(bytes), &options).expect("open package");
     let parse_options = ParseOptions {
-        conformance: ConformancePolicy::Permissive,
         limits: strict_ooxml_core::limits::ResourceLimits::default(),
     };
     let document = parse_document(&package, &parse_options);

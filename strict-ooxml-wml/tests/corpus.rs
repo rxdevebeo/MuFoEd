@@ -13,6 +13,7 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
+use strict_ooxml_core::normalize::NoopNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
@@ -34,9 +35,14 @@ fn docx_files(dir: &Path) -> Vec<PathBuf> {
 /// The contract is "never panic": a damaged or non-ZIP file is counted as a
 /// failure to open and skipped, never an error that aborts the run.
 fn run_corpus(dir: &Path) -> (usize, usize) {
-    let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+    // AUD-23 / ADR-0016: `Permissive` without a normalizer now refuses
+    // Transitional and Mixed content, so a `Noop` normalizer is installed to
+    // keep this corpus run's actual purpose - "never panic", independent of
+    // family - rather than measuring the policy matrix a second time.
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Permissive)
+        .normalization(NoopNormalizer);
     let parse_options = ParseOptions {
-        conformance: ConformancePolicy::Permissive,
         limits: strict_ooxml_core::limits::ResourceLimits::default(),
     };
     let mut checked = 0;

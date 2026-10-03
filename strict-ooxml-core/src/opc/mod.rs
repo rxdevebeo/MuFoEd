@@ -7,6 +7,7 @@
 
 pub mod content_types;
 pub mod path;
+pub mod policy;
 pub mod rels;
 pub mod zip;
 
@@ -15,9 +16,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Read};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::error::{LimitKind, Result, SourceLocation, StrictError};
+use crate::error::{LimitKind, Result, StrictError};
 use crate::limits::ResourceLimits;
 use crate::normalize::RawNormalizer;
 use crate::ns::detect::{detect_conformance, ConformanceSignals};
@@ -109,6 +111,16 @@ pub struct Package {
     limits: ResourceLimits,
     normalizer: Option<Arc<dyn RawNormalizer>>,
     conformance: Conformance,
+    /// Whether a `RawNormalizer` has changed any part read so far (AUD-23 /
+    /// ADR-0016): set the moment opening or reading touches one, so it is
+    /// already meaningful right after `open_*` returns, not only once a
+    /// caller has read every part.
+    ///
+    /// `AtomicBool` rather than `Cell<bool>` because `read_part` takes `&self`
+    /// and `strict-ooxml-wml`'s `feature = "parallel"` path reads parts of the
+    /// same `Package` from two `rayon::join` threads at once, which requires
+    /// `Package: Sync`.
+    was_normalized: AtomicBool,
     main_document: PartId,
 }
 
@@ -116,6 +128,10 @@ impl fmt::Debug for Package {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Package")
             .field("conformance", &self.conformance)
+            .field(
+                "was_normalized",
+                &self.was_normalized.load(Ordering::Relaxed),
+            )
             .field("parts", &self.parts.len())
             .field("main_document", &self.main_document)
             .finish_non_exhaustive()
@@ -161,28 +177,39 @@ impl Package {
     fn open_archive(data: Arc<Vec<u8>>, options: &OpenOptions) -> Result<Self> {
         let zip = ZipArchive::new(data, &options.limits)?;
         let normalizer = options.normalization.as_deref();
+        let mut was_normalized = false;
 
         let content_types_id = PartId::new(CONTENT_TYPES_PART);
         if zip.entry(&content_types_id).is_none() {
             return Err(StrictError::MissingPart(content_types_id));
         }
-        let content_types_bytes = apply_normalizer(
+        let (content_types_bytes, touched) = apply_normalizer(
             normalizer,
             &content_types_id,
             read_part(&zip, &content_types_id, &options.limits)?,
         )?;
+        was_normalized |= touched;
         let content_types =
             ContentTypeIndex::parse(content_types_bytes, content_types_id, &options.limits)?;
 
+        // T0 signal (AUD-23 / ADR-0016): the relationship-type URI exactly as
+        // written, read from the **raw** bytes before any normalizer sees
+        // them. `.rels` parts are small and few, so parsing each one twice —
+        // raw for the signal below, (possibly) normalized for the graph the
+        // rest of the package resolves against — is cheap.
         let mut rels = RelationshipGraph::new();
+        let mut raw_relationship_types: Vec<String> = Vec::new();
         for entry in zip.entries() {
             if entry.id.as_str().ends_with(".rels") {
-                let bytes = apply_normalizer(
-                    normalizer,
-                    &entry.id,
-                    read_part(&zip, &entry.id, &options.limits)?,
-                )?;
+                let raw_bytes = read_part(&zip, &entry.id, &options.limits)?;
                 let source = source_part_for_rels(&entry.id);
+                raw_relationship_types.extend(
+                    parse_relationships(raw_bytes.clone(), &source, &options.limits)?
+                        .into_iter()
+                        .map(|rel| rel.raw_type),
+                );
+                let (bytes, touched) = apply_normalizer(normalizer, &entry.id, raw_bytes)?;
+                was_normalized |= touched;
                 rels.add(
                     source.clone(),
                     parse_relationships(bytes, &source, &options.limits)?,
@@ -192,15 +219,21 @@ impl Package {
 
         let main_document = locate_main_document(&rels, &zip)?;
 
-        let conformance = detect(
+        let (conformance, detection_touched) = detect(
             &zip,
             &content_types,
+            &raw_relationship_types,
             &rels,
             &main_document,
             &options.limits,
             normalizer,
         )?;
-        enforce_policy(conformance, options, &main_document)?;
+        was_normalized |= detection_touched;
+        policy::decide(
+            options.conformance,
+            conformance,
+            options.normalization.is_some(),
+        )?;
 
         let parts = build_parts(&zip, &content_types);
         let mut part_by_id = HashMap::with_capacity(parts.len());
@@ -217,6 +250,7 @@ impl Package {
             limits: options.limits,
             normalizer: options.normalization.clone(),
             conformance,
+            was_normalized: AtomicBool::new(was_normalized),
             main_document,
         })
     }
@@ -255,10 +289,32 @@ impl Package {
         self.rels.resolve(from, rel_id)
     }
 
-    /// Returns the detected conformance of the package.
+    /// Returns the package's T0 (pre-normalization) conformance.
+    ///
+    /// Detected from raw signals — root namespaces read without projecting
+    /// through the normalizer's registry, relationship types read from the
+    /// `.rels` bytes before any normalizer touches them — so this never
+    /// changes based on whether a normalizer happened to be installed
+    /// (AUD-23 / ADR-0016). Use [`Package::was_normalized`] to find out
+    /// whether the parts actually read so far came out Strict anyway.
     #[must_use]
     pub fn conformance(&self) -> Conformance {
         self.conformance
+    }
+
+    /// Returns whether a configured `RawNormalizer` has changed any part of
+    /// this package read so far.
+    ///
+    /// `false` for a package opened with no normalizer, or with one that
+    /// never had anything to rewrite. Already meaningful immediately after
+    /// `open_*` returns: opening always reads `[Content_Types].xml`, every
+    /// `.rels` part and the handful of parts conformance detection looks at,
+    /// so a Transitional package normalized on the way in is already
+    /// reflected here before a caller reads anything else (AUD-23 /
+    /// ADR-0016).
+    #[must_use]
+    pub fn was_normalized(&self) -> bool {
+        self.was_normalized.load(Ordering::Relaxed)
     }
 
     /// Returns the main document part id.
@@ -284,32 +340,34 @@ impl Package {
     /// Returns a [`StrictError`] for a missing part, a corrupt stream or a
     /// resource-limit violation.
     pub fn read_part(&self, id: &PartId) -> Result<Vec<u8>> {
-        apply_normalizer(
+        let (bytes, touched) = apply_normalizer(
             self.normalizer.as_deref(),
             id,
             read_part(&self.zip, id, &self.limits)?,
-        )
+        )?;
+        if touched {
+            self.was_normalized.store(true, Ordering::Relaxed);
+        }
+        Ok(bytes)
     }
 }
 
 /// Applies an optional raw normalizer to a part's bytes.
+///
+/// Returns the bytes to use (unchanged if there was no normalizer or it left
+/// the part alone) and whether the normalizer actually changed them —
+/// callers fold that into [`Package::was_normalized`].
 fn apply_normalizer(
     normalizer: Option<&dyn RawNormalizer>,
     part: &PartId,
     bytes: Vec<u8>,
-) -> Result<Vec<u8>> {
+) -> Result<(Vec<u8>, bool)> {
     match normalizer {
-        None => Ok(bytes),
-        Some(normalizer) => {
-            let replacement: Option<Vec<u8>> = match normalizer.normalize_part(part, &bytes)? {
-                Cow::Borrowed(_) => None,
-                Cow::Owned(owned) => Some(owned),
-            };
-            match replacement {
-                Some(owned) => Ok(owned),
-                None => Ok(bytes),
-            }
-        }
+        None => Ok((bytes, false)),
+        Some(normalizer) => match normalizer.normalize_part(part, &bytes)? {
+            Cow::Borrowed(_) => Ok((bytes, false)),
+            Cow::Owned(owned) => Ok((owned, true)),
+        },
     }
 }
 
@@ -359,20 +417,43 @@ fn locate_main_document(rels: &RelationshipGraph, zip: &ZipArchive) -> Result<Pa
     Ok(target)
 }
 
-/// Gathers conformance signals and detects the package conformance.
+/// Gathers T0 conformance signals and detects the package conformance.
+///
+/// Returns the detected [`Conformance`] and whether `normalizer`, if any,
+/// changed any of the parts this function reads — folded into
+/// [`Package::was_normalized`] by the caller.
+///
+/// `rels` (the graph built from *normalized* bytes) is used only to find
+/// *which part* is `styles.xml`/`numbering.xml`/etc.: normalization rewrites
+/// a relationship's `Type`, never its `Target`, so the resolved [`PartId`] is
+/// the same either way. The namespace signal itself always comes from
+/// [`raw_root_namespace`], which never projects through the normalizer's
+/// registry (AUD-23 / ADR-0016 — this is the fix for the regression where a
+/// normalizer installed for a *different* package made every package detect
+/// as `Strict`).
 fn detect(
     zip: &ZipArchive,
     content_types: &ContentTypeIndex,
+    raw_relationship_types: &[String],
     rels: &RelationshipGraph,
     main_document: &PartId,
     limits: &ResourceLimits,
     normalizer: Option<&dyn RawNormalizer>,
-) -> Result<Conformance> {
+) -> Result<(Conformance, bool)> {
     use rels::RelType;
     let mut namespaces: Vec<String> = Vec::new();
-    if let Some(ns) = root_namespace(zip, main_document, limits, normalizer)? {
-        namespaces.push(ns);
-    }
+    let mut touched = false;
+
+    let mut probe = |id: &PartId| -> Result<()> {
+        let (ns, this_touched) = raw_root_namespace(zip, id, limits, normalizer)?;
+        if let Some(ns) = ns {
+            namespaces.push(ns);
+        }
+        touched |= this_touched;
+        Ok(())
+    };
+
+    probe(main_document)?;
     let root = PartId::new("/");
     for rel in rels.relationships(&root) {
         let part = match rel.rel_type {
@@ -384,9 +465,7 @@ fn detect(
             _ => None,
         };
         if let Some(part) = part {
-            if let Some(ns) = root_namespace(zip, part, limits, normalizer)? {
-                namespaces.push(ns);
-            }
+            probe(part)?;
         }
     }
     // Also inspect the main part's own related sub-parts.
@@ -396,20 +475,17 @@ fn detect(
             RelType::Styles | RelType::Numbering | RelType::Settings
         ) {
             if let Some(part) = &rel.resolved {
-                if let Some(ns) = root_namespace(zip, part, limits, normalizer)? {
-                    namespaces.push(ns);
-                }
+                probe(part)?;
             }
         }
     }
 
-    let relationship_types: Vec<&str> = rels.iter().map(|rel| rel.raw_type.as_str()).collect();
     let signals = ConformanceSignals {
         namespaces: namespaces.iter().map(String::as_str).collect(),
-        relationship_types,
+        relationship_types: raw_relationship_types.iter().map(String::as_str).collect(),
         content_types: Some(content_types),
     };
-    detect_conformance(&signals)
+    Ok((detect_conformance(&signals)?, touched))
 }
 
 /// How many bytes of a part to stream when looking for its root namespace.
@@ -423,45 +499,48 @@ enum RootNamespace {
     Incomplete,
 }
 
-/// Returns the namespace URI a part's root element has **after** any
-/// configured normalization, if any.
+/// Returns a part's root-element namespace **exactly as written** (T0, never
+/// projected through the normalizer's registry), and whether `normalizer`
+/// would change the part's bytes at all.
 ///
-/// Only a bounded prefix of the part is decompressed; the whole part is read
-/// solely as a fallback when the prefix is inconclusive (rework R7).
+/// Without a normalizer this streams a bounded prefix and falls back to the
+/// whole part only when the prefix is inconclusive (rework R7) — a 64 KiB
+/// prefix cut lands mid-tag by construction, but `scan_root_namespace` only
+/// needs to see the root's own start tag, which is always within it in
+/// practice.
 ///
-/// A 64 KiB prefix cut lands mid-tag by construction and is not valid XML, so
-/// it is never handed to a rewriter. What the caller needs from a prefix is
-/// only "which namespace will this part be", and the registry answers that
-/// exactly: with a normalizer installed a Transitional URI maps to its Strict
-/// twin, and without one nothing is mapped. Either way the answer is a single
-/// consistent family, which is what keeps detection from seeing Strict and
-/// Transitional in the same pass.
-fn root_namespace(
+/// With a normalizer, the whole part is read unconditionally: the second
+/// return value asks the normalizer whether it would rewrite this part at
+/// all, and a normalizer parses and rewrites whole, well-formed XML, which a
+/// mid-tag prefix is not. The namespace scan runs on those same raw bytes —
+/// before whatever the normalizer would do to them — so the signal stays T0
+/// either way.
+fn raw_root_namespace(
     zip: &ZipArchive,
     id: &PartId,
     limits: &ResourceLimits,
     normalizer: Option<&dyn RawNormalizer>,
-) -> Result<Option<String>> {
+) -> Result<(Option<String>, bool)> {
     if zip.entry(id).is_none() {
-        return Ok(None);
+        return Ok((None, false));
     }
-    let project = |uri: String| {
-        if normalizer.is_none() {
-            return uri;
-        }
-        match crate::ns::registry::NamespaceRegistry::global().lookup(&uri) {
-            Some(entry) => entry.strict.map_or_else(|| uri.clone(), str::to_owned),
-            None => uri,
-        }
-    };
+    if let Some(normalizer) = normalizer {
+        let bytes = read_part(zip, id, limits)?;
+        let touched = matches!(normalizer.normalize_part(id, &bytes)?, Cow::Owned(_));
+        let ns = match scan_root_namespace(bytes, id, limits)? {
+            RootNamespace::Found(uri) => uri,
+            RootNamespace::Incomplete => None,
+        };
+        return Ok((ns, touched));
+    }
     let prefix = read_prefix(zip, id, limits, ROOT_NS_PREFIX_BYTES)?;
     match scan_root_namespace(prefix, id, limits) {
-        Ok(RootNamespace::Found(uri)) => Ok(uri.map(project)),
+        Ok(RootNamespace::Found(uri)) => Ok((uri, false)),
         Ok(RootNamespace::Incomplete) | Err(_) => {
-            let bytes = apply_normalizer(normalizer, id, read_part(zip, id, limits)?)?;
+            let bytes = read_part(zip, id, limits)?;
             match scan_root_namespace(bytes, id, limits)? {
-                RootNamespace::Found(uri) => Ok(uri.map(project)),
-                RootNamespace::Incomplete => Ok(None),
+                RootNamespace::Found(uri) => Ok((uri, false)),
+                RootNamespace::Incomplete => Ok((None, false)),
             }
         }
     }
@@ -506,39 +585,6 @@ fn read_prefix(
         buffer.extend_from_slice(&chunk[..read]);
     }
     Ok(buffer)
-}
-
-/// Applies the conformance policy to a detected conformance.
-fn enforce_policy(
-    conformance: Conformance,
-    options: &OpenOptions,
-    main_document: &PartId,
-) -> Result<()> {
-    match conformance {
-        // `Mixed` is T0 observing a package that has *not* been normalized
-        // yet, so under a normalizing policy it is not a contradiction, it is
-        // the expected starting state: a Transitional document whose parts
-        // have been rewritten to different degrees. Normalization resolves it
-        // by mapping every registered URI to one family. Rejecting it here
-        // would make the normalizing policy unable to open a single real
-        // document, which is what it exists for.
-        Conformance::Mixed if options.normalization.is_some() => Ok(()),
-        Conformance::Mixed => Err(StrictError::MixedConformance {
-            detail: "both Strict and Transitional signals were detected".to_owned(),
-        }),
-        Conformance::Transitional => match options.conformance {
-            ConformancePolicy::StrictOnly => Err(StrictError::TransitionalNotSupported {
-                location: SourceLocation::new(main_document.clone(), 1, 1, 0),
-            }),
-            ConformancePolicy::Normalize if options.normalization.is_none() => {
-                Err(StrictError::Unsupported(
-                    "Normalize policy requires a RawNormalizer (implemented in Stage 6)".to_owned(),
-                ))
-            }
-            ConformancePolicy::Normalize | ConformancePolicy::Permissive => Ok(()),
-        },
-        Conformance::Strict | Conformance::Unknown => Ok(()),
-    }
 }
 
 /// Reads a part fully, mapping stream errors to package errors.

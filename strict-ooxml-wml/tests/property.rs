@@ -50,7 +50,6 @@ proptest! {
         let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
         if let Ok(package) = Package::open_reader(Cursor::new(data), &options) {
             let parse_options = ParseOptions {
-                conformance: ConformancePolicy::Permissive,
                 limits: strict_ooxml_core::limits::ResourceLimits::default(),
             };
             let _ = parse_document(&package, &parse_options);
