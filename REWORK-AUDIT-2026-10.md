@@ -69,6 +69,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-65 | ✅ выполнена | `e1e4a53` | `ZipWriter::add_part` сравнивает имена ASCII case-insensitive; тест `a.xml`/`A.xml` → `DuplicatePart` |
 | AUD-63 | ✅ выполнена | `3817e9c` | `W.reltype-transitional` для Other Transitional URI; passthrough после `read_part` → `W7.non-strict-part` если ещё Transitional; тесты comments/webSettings/glossary + chart |
 | AUD-66 | ✅ выполнена | `6c0c794` | тест писателя: `\u{1}` в тексте run, `w:alias`, имени стиля → `roxmltree` парсит выход, loss `W.invalid-xml-char` |
+| AUD-67 | ✅ выполнена | `ad1790b` | `tests/word_oracle.rs` на всём `core/tests/strict/*.docx` (Normalize входа); fixed-point; модель modulo `w:sdt` flatten + W7; OPC rel types/content types/ns; `settings.xml.rels` для `attachedTemplate` (дыра AUD-61) |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
