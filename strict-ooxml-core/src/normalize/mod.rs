@@ -21,8 +21,8 @@ use crate::part::PartId;
 
 pub use report::{LossRecord, NormalizationReport, Severity, TransformRecord};
 pub use transitional::{
-    DirectionPolicy, InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
-    VmlFallback,
+    DirectionPolicy, ExpansionLimit, InvariantMode, McePolicy, NormalizerOptions,
+    TransitionalNormalizer, VmlFallback,
 };
 
 /// A raw-layer transformation applied to each part before namespace resolution.

@@ -139,18 +139,26 @@ pub struct NormalizerOptions {
     pub direction: DirectionPolicy,
     /// VML `w:pict` / `w:object` policy (AUD-34).
     pub vml: VmlFallback,
-    /// A cap on the bytes one part may expand to while being rewritten.
-    ///
-    /// Rewriting can grow a part slightly; without a cap a crafted input
-    /// could push a part past the point where the rest of the pipeline can
-    /// hold it. Zero means "no extra allowance".
-    pub max_expansion_bytes: usize,
+    /// Cap on how far one part may grow while being rewritten (AUD-35).
+    pub max_expansion: ExpansionLimit,
+}
+
+/// How far a rewritten part may grow relative to its input (AUD-35).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpansionLimit {
+    /// Allow up to `n × input` bytes (at least `input + 1024`). Default `n = 4`.
+    Factor(u32),
+    /// Allow exactly `input + b` bytes.
+    Bytes(usize),
+}
+
+impl Default for ExpansionLimit {
+    fn default() -> Self {
+        Self::Factor(4)
+    }
 }
 
 impl NormalizerOptions {
-    /// The default expansion allowance, as a multiple of the input.
-    const DEFAULT_EXPANSION: usize = 4;
-
     /// Returns options with an explicit markup-compatibility policy.
     #[must_use]
     pub fn with_mce(mce: McePolicy) -> Self {
@@ -175,12 +183,11 @@ impl NormalizerOptions {
     }
 
     fn expansion_limit(&self, input: usize) -> usize {
-        if self.max_expansion_bytes == 0 {
-            input
-                .saturating_mul(Self::DEFAULT_EXPANSION)
-                .max(input + 1024)
-        } else {
-            input.saturating_add(self.max_expansion_bytes)
+        match self.max_expansion {
+            ExpansionLimit::Factor(n) => input
+                .saturating_mul(usize::try_from(n).unwrap_or(usize::MAX))
+                .max(input.saturating_add(1024)),
+            ExpansionLimit::Bytes(extra) => input.saturating_add(extra),
         }
     }
 }
@@ -279,7 +286,7 @@ impl TransitionalNormalizer {
     /// # Errors
     ///
     /// Returns an error when the part is not well-formed XML, when rewriting
-    /// would exceed [`NormalizerOptions::max_expansion_bytes`], or when
+    /// would exceed [`NormalizerOptions::max_expansion`], or when
     /// [`InvariantMode::Strict`] is set and an invariant is violated.
     pub fn normalize<'a>(&self, part: &PartId, bytes: &'a [u8]) -> Result<Cow<'a, [u8]>> {
         // Cheap pre-check: a part with no Transitional signal at all is
@@ -2441,8 +2448,8 @@ mod tests {
 
     use super::{
         map_rel_or_content_type, part_needs_normalization, repair_legacy_package_uri,
-        DirectionPolicy, InvariantMode, McePolicy, NormalizerOptions, TransitionalNormalizer,
-        VmlFallback,
+        DirectionPolicy, ExpansionLimit, InvariantMode, McePolicy, NormalizerOptions,
+        TransitionalNormalizer, VmlFallback,
     };
     use crate::error::SourceLocation;
     use crate::normalize::report::{NormalizationReport, Severity};
@@ -2732,7 +2739,7 @@ mod tests {
     /// exists for exactly this.
     fn shape_fixture_options() -> NormalizerOptions {
         NormalizerOptions {
-            max_expansion_bytes: 32 * 1024,
+            max_expansion: ExpansionLimit::Bytes(32 * 1024),
             ..NormalizerOptions::default()
         }
     }
@@ -3958,6 +3965,27 @@ mod tests {
             .find(|record| record.id == "T2.reltype")
             .expect("T2.reltype");
         assert_eq!(reltype.count, 2, "two relationship types, counted once");
+    }
+
+    /// AUD-35: both expansion-limit branches, including `input = usize::MAX`.
+    #[test]
+    fn expansion_limit_factor_and_bytes_saturate() {
+        let factor = NormalizerOptions {
+            max_expansion: ExpansionLimit::Factor(4),
+            ..NormalizerOptions::default()
+        };
+        // Small inputs use the `input + 1024` floor; large ones use `n × input`.
+        assert_eq!(factor.expansion_limit(100), 1124);
+        assert_eq!(factor.expansion_limit(0), 1024);
+        assert_eq!(factor.expansion_limit(10_000), 40_000);
+        assert_eq!(factor.expansion_limit(usize::MAX), usize::MAX);
+
+        let bytes = NormalizerOptions {
+            max_expansion: ExpansionLimit::Bytes(50),
+            ..NormalizerOptions::default()
+        };
+        assert_eq!(bytes.expansion_limit(100), 150);
+        assert_eq!(bytes.expansion_limit(usize::MAX), usize::MAX);
     }
 
     /// AUD-34: `VmlFallback::Report` / `Drop` remove VML without converting.

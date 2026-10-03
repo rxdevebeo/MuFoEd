@@ -42,8 +42,8 @@ pub use strict_ooxml_core::limits::ResourceLimits;
 /// of a construct; this one grades what removing it cost.
 pub use strict_ooxml_core::normalize::Severity as LossSeverity;
 pub use strict_ooxml_core::normalize::{
-    DirectionPolicy, InvariantMode, LossRecord, McePolicy, NormalizationReport, NormalizerOptions,
-    TransitionalNormalizer, VmlFallback,
+    DirectionPolicy, ExpansionLimit, InvariantMode, LossRecord, McePolicy, NormalizationReport,
+    NormalizerOptions, TransitionalNormalizer, VmlFallback,
 };
 pub use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions};
 #[cfg(feature = "convert")]
