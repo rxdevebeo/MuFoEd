@@ -795,7 +795,10 @@ by `bounded_decompress` / `get_page_content_with_limit` (AUD-13). Object streams
 inflated while `lopdf::Document::load_mem` builds the object graph are not: that
 path is inside the dependency. The outer fence is `PdfLimits::max_input_bytes`
 (256 MiB, checked before load). The residual risk is accepted; the long-run
-guard is the fuzz target `fuzz_pdf` (AUD-92).
+guard is the fuzz target `fuzz_pdf` (AUD-92). AUD-88 closed stack/loop holes in
+the *rasterizer* via vendored hayro; a plain `/Kids` cycle is covered by
+`hostile::raster::page_tree_kids_cycle_is_handled`. Object-stream expansion
+during lopdf load remains this waiver's subject.
 """
 risk = """
 A crafted PDF whose object streams expand far beyond the compressed input could

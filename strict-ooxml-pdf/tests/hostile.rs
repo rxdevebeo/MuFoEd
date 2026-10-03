@@ -417,3 +417,173 @@ mod budget {
         );
     }
 }
+
+/// AUD-88: vendored `hayro` must not stack-overflow or hang on hostile PDFs.
+#[cfg(feature = "raster")]
+mod raster {
+    use strict_ooxml_pdf::raster::{RasterOptions, Rasterizer};
+    use strict_ooxml_pdf::{PdfDocument, PdfLimits};
+    use strict_ooxml_testkit::harness::{bounded, Outcome};
+
+    fn rasterize_ok(bytes: Vec<u8>) -> Outcome<Result<(), String>> {
+        bounded(move || {
+            let rasterizer =
+                Rasterizer::new(&bytes, PdfLimits::default()).map_err(|error| error.to_string())?;
+            let options = RasterOptions {
+                scale: 1.0,
+                ..RasterOptions::default()
+            };
+            let _ = rasterizer
+                .page_png(1, &options)
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        })
+    }
+
+    /// Self-referencing tiling pattern (`PrintCraft` / fuzz): must not overflow.
+    #[test]
+    fn self_referencing_tiling_pattern_terminates() {
+        let pattern_body = "/Pattern cs /P1 scn 0 0 10 10 re f";
+        let pdf = format!(
+            "%PDF-1.7\n\
+             1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R \
+             /Resources << /Pattern << /P1 5 0 R >> >> >> endobj\n\
+             4 0 obj << /Length 30 >> stream\n\
+             /Pattern cs /P1 scn 0 0 40 40 re f\n\
+             endstream endobj\n\
+             5 0 obj << /Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 \
+             /BBox [0 0 10 10] /XStep 10 /YStep 10 /Length {} >> stream\n\
+             {pattern_body}\n\
+             endstream endobj\n\
+             trailer << /Root 1 0 R >>\n\
+             %%EOF\n",
+            pattern_body.len()
+        );
+        match rasterize_ok(pdf.into_bytes()) {
+            Outcome::Returned(Ok(())) => {}
+            other => panic!("self-referencing tiling pattern must terminate: {other:?}"),
+        }
+    }
+
+    /// Self-referencing Type 3 glyph: must not overflow.
+    #[test]
+    fn self_referencing_type3_glyph_terminates() {
+        let proc_body = "1 0 d0 BT /F1 1 Tf (A) Tj ET 0 0 1 1 re f";
+        let pdf = format!(
+            "%PDF-1.7\n\
+             1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R \
+             /Resources << /Font << /F1 5 0 R >> >> >> endobj\n\
+             4 0 obj << /Length 31 >> stream\n\
+             BT /F1 20 Tf 10 10 Td (A) Tj ET\n\
+             endstream endobj\n\
+             5 0 obj << /Type /Font /Subtype /Type3 /FontBBox [0 0 1 1] \
+             /FontMatrix [1 0 0 1 0 0] /FirstChar 65 /LastChar 65 /Widths [1] \
+             /Encoding << /Differences [65 /a] >> /CharProcs << /a 6 0 R >> >> endobj\n\
+             6 0 obj << /Length {} >> stream\n\
+             {proc_body}\n\
+             endstream endobj\n\
+             trailer << /Root 1 0 R >>\n\
+             %%EOF\n",
+            proc_body.len()
+        );
+        match rasterize_ok(pdf.into_bytes()) {
+            Outcome::Returned(Ok(())) => {}
+            other => panic!("self-referencing Type 3 glyph must terminate: {other:?}"),
+        }
+    }
+
+    /// Inline image with absurd `/W`: must not hang.
+    #[test]
+    fn absurd_image_dimensions_are_skipped() {
+        let content =
+            "q 20 0 0 20 5 5 cm BI /W 4294967295 /H 2 /BPC 8 /CS /G ID \0\u{ff}\u{ff}\0 EI Q \
+             1 0 0 rg 0 0 4 4 re f";
+        let pdf = format!(
+            "%PDF-1.7\n\
+             1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R >> endobj\n\
+             4 0 obj << /Length {} >> stream\n\
+             {content}\n\
+             endstream endobj\n\
+             trailer << /Root 1 0 R >>\n\
+             %%EOF\n",
+            content.len()
+        );
+        match rasterize_ok(pdf.into_bytes()) {
+            Outcome::Returned(Ok(())) => {}
+            other => panic!("absurd image dimensions must not hang: {other:?}"),
+        }
+    }
+
+    /// CID `/W` / `/W2` spanning all of `u32`: must finish quickly.
+    #[test]
+    fn huge_cid_width_ranges_terminate() {
+        let pdf = b"%PDF-1.7\n\
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 100 40] /Contents 4 0 R \
+/Resources << /Font << /F1 5 0 R >> >> >> endobj\n\
+4 0 obj << /Length 35 >> stream\n\
+BT /F1 12 Tf 10 10 Td <0041> Tj ET\n\
+endstream endobj\n\
+5 0 obj << /Type /Font /Subtype /Type0 /BaseFont /Helvetica /Encoding /Identity-H \
+/DescendantFonts [6 0 R] >> endobj\n\
+6 0 obj << /Type /Font /Subtype /CIDFontType2 /BaseFont /Helvetica \
+/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> \
+/FontDescriptor 7 0 R /W [0 4294967295 500] /W2 [0 4294967295 -1000 250 880] >> endobj\n\
+7 0 obj << /Type /FontDescriptor /FontName /Helvetica /Flags 32 \
+/FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 800 /Descent -200 \
+/CapHeight 700 /StemV 80 >> endobj\n\
+trailer << /Root 1 0 R >>\n\
+%%EOF\n";
+        match rasterize_ok(pdf.to_vec()) {
+            Outcome::Returned(Ok(())) => {}
+            other => panic!("huge CID width ranges must terminate: {other:?}"),
+        }
+    }
+
+    /// `/Kids` cycle: our lopdf path must not abort; hayro-syntax guard covers the
+    /// rasterizer. Object-stream bombs remain under waiver `PDF-OBJSTM-BOMB`.
+    #[test]
+    fn page_tree_kids_cycle_is_handled() {
+        let cyclic = || {
+            b"%PDF-1.7\n\
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+3 0 obj << /Type /Pages /Parent 2 0 R /Kids [4 0 R] /Count 1 >> endobj\n\
+4 0 obj << /Type /Pages /Parent 3 0 R /Kids [3 0 R] /Count 1 >> endobj\n\
+trailer << /Root 1 0 R >>\n\
+%%EOF\n"
+                .to_vec()
+        };
+        let reader = bounded({
+            let bytes = cyclic();
+            move || {
+                match PdfDocument::open(&bytes, PdfLimits::default()) {
+                    Ok(_) => Ok(()),
+                    Err(error) => Err(error.to_string()),
+                }
+            }
+        });
+        assert!(
+            matches!(reader, Outcome::Returned(_)),
+            "Kids cycle must not hang/abort the reader: {reader:?}"
+        );
+        let raster = bounded({
+            let bytes = cyclic();
+            move || match Rasterizer::new(&bytes, PdfLimits::default()) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(error.to_string()),
+            }
+        });
+        assert!(
+            matches!(raster, Outcome::Returned(_)),
+            "Kids cycle must not hang/abort the rasterizer: {raster:?}"
+        );
+    }
+}

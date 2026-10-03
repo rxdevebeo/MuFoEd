@@ -95,3 +95,9 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
+
+# AUD-88: hayro 0.7.x plus PrintCraft stack/loop guards. See `vendor/README.md`.
+[patch.crates-io]
+hayro = { path = "vendor/hayro" }
+hayro-interpret = { path = "vendor/hayro-interpret" }
+hayro-syntax = { path = "vendor/hayro-syntax" }

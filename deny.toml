@@ -22,9 +22,10 @@ unused-allowed-license = "allow"
 #
 # - BSD-3-Clause, Unicode-3.0: added with the graphics and font stack.
 # - Zlib, ISC: `foldhash` and `hashbrown` arrive with the PDF rasterizer
-#   (hayro, feature `raster`, ADR-0011), and `ring`/`untrusted`/`rustls-webpki`
-#   with the TLS stack of the OCR client (`ureq`, feature `ocr-ollama`). Both are
-#   permissive and OSI-approved.
+#   (hayro, feature `raster`, ADR-0011; AUD-88 vendors hayro/hayro-interpret/
+#   hayro-syntax under `vendor/` via `[patch.crates-io]` — same licences), and
+#   `ring`/`untrusted`/`rustls-webpki` with the TLS stack of the OCR client
+#   (`ureq`, feature `ocr-ollama`). Both are permissive and OSI-approved.
 # - CDLA-Permissive-2.0: `webpki-roots`, a root store for the same TLS stack.
 #   It is a data licence, not a code one; the code it ships is ISC/MIT.
 # - MPL-2.0: added 2026-10-01 for TEST DATA ONLY, and `cargo deny` does not and
