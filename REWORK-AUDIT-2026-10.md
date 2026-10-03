@@ -86,6 +86,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-84 | ✅ выполнена | `02eeee4` | `BI…ID…EI` снимается до `Content::decode`; замена `N MuFoEdInline`; `place_inline` под CTM; тесты garbage-samples + media в `.docx` |
 | AUD-85 | ✅ выполнена | `ab38c62` | gutter-детектор в `columns.rs`; порядок left→right; Unsupported для 3+ / uneven / floating image; тесты `tests/columns.rs` |
 | AUD-86 | ✅ выполнена | `e156117` | G-2 аудит `units.rs`; `rgb` через `try_from`/saturating; тесты FFFFFF/000000/мусор |
+| AUD-87 | ✅ выполнена | `11fb1d5` | lib `strict_ooxml_view`; `tests/catalog.rs` на всём `tests/strict/` без паник |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
