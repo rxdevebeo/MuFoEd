@@ -6,7 +6,9 @@ documents (ISO/IEC 29500-1:2008), with controlled normalization of Transitional
 
 Design documents live in the repository root:
 
-- `TZ-STRICT-OOXML-RUST.md` — full technical specification.
+- `TZ-STRICT-OOXML-RUST.md` — full technical specification (v2.1).
+- `REWORK-AUDIT-2026-10.md` — audit close-out plan (AUD-00…AUD-94); current
+  execution status and accepted deviations (ADR-0015…0019).
 - `base_target.md` — the original (1.0) specification.
 - `STAGE-1-TASK.md`, `STAGE-1-REWORK.md` — Stage-1 task and rework.
 - `STAGE-2-TASK.md`, `STAGE-2-REWORK.md` — Stage-2 task and rework.
@@ -38,12 +40,14 @@ Design documents live in the repository root:
 ## CLI
 
 ```text
-strict-ooxml inspect <file.docx>
-strict-ooxml check   <file.docx>                       # exit 0 / 1 / 2
-strict-ooxml report  <file.docx> [--json|--text] [--out <path>]
-strict-ooxml render  <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96]
-strict-ooxml to-pdf  <file.docx> --out <file.pdf>       # Stage 8B
-strict-ooxml write   <file.docx> --out <file.docx>      # Stage 8A
+strict-ooxml inspect   <file.docx>
+strict-ooxml check     <file.docx> [--transitional]      # exit 0 / 1 / 2
+strict-ooxml report    <file.docx> [--json|--text] [--out <path>] [--transitional]
+strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96]
+strict-ooxml normalize <file.docx>                       # Loss Report for Transitional
+strict-ooxml to-pdf    <file.docx> --out <file.pdf>      # Stage 8B
+strict-ooxml from-pdf  <file.pdf>  --out <file.docx>     # Stage 8C+
+strict-ooxml write     <file.docx> --out <file.docx>     # Stage 8A
 ```
 
 `check` exits `0` when no `unsupported`/`error` blocker is found, `1` for a

@@ -3,15 +3,16 @@
 ## на разработку библиотеки чтения, нормализации и отображения документов WordprocessingML Strict (ISO/IEC 29500-1:2008) на Rust
 
 **Шифр:** TZ-STRICT-OOXML-RUST  
-**Версия:** 2.0 (расширение редакции 1.0, см. `base_target.md`)  
+**Версия:** 2.1 (правки по `REWORK-AUDIT-2026-10.md` / ADR-0015…0019; база — 2.0, см. `base_target.md`)  
 **Статус:** Черновик к утверждению  
-**Дата:** 2026-09-28  
+**Дата:** 2026-10-04  
 
 > Настоящая редакция полностью сохраняет положения версии 1.0 и дополняет их:
 > детальной архитектурой, спецификацией публичного API и модели данных,
 > требованиями по безопасности и ресурсным лимитам, моделью ошибок,
 > расширенной системой отчётности и **новой подсистемой нормализации
-> Transitional → Strict (раздел 10)**.
+> Transitional → Strict (раздел 10)**. Изменения 2.1 помечены «(2.1, AUD-NN)»
+> и согласованы с ADR-0015…0019.
 
 ---
 
@@ -143,15 +144,17 @@ SpreadsheetML и PresentationML в данное ТЗ не входят. VML и O
 - CLI-утилита для проверки, инспекции, нормализации и рендеринга.
 
 ### 3.2. Не входит в scope
-- Редактирование документов.
-- Сохранение в Strict (сериализация результата нормализации на диск — вне scope MVP;
-  нормализация выполняется в памяти).
+- Полноценный WYSIWYG-редактор и совместная работа в реальном времени.
 - Полная поддержка всех механизмов Transitional.
-- Нативная поддержка VML.
+- Нативная поддержка VML (конвертация VML → DrawingML — в scope нормализатора).
 - SpreadsheetML и PresentationML.
 - Побитовая совместимость с Microsoft Word.
 - Поддержка макросов, ActiveX, OLE.
-- Совместная работа в реальном времени.
+
+> **(2.1, AUD-90 / ADR-0019).** Этапы 8+ расширили scope: сериализация модели в
+> Strict (feature `write`, CLI `write`) и явная мутация через
+> `StrictDocument::document_mut()` входят в продукт. См. `STAGE-8-TASK.md`.
+> Чтение и нормализация остаются основным сценарием.
 
 ### 3.3. Матрица покрытия по этапам
 
@@ -183,22 +186,38 @@ SpreadsheetML и PresentationML в данное ТЗ не входят. VML и O
 | `Transitional` | Ключевые пространства имён принадлежат `schemas.openxmlformats.org/...` | Отклонение (Этапы 1–5) либо нормализация (Этап 6) |
 | `Mixed` | Обнаружены оба семейства в пределах одного документа | Ошибка `MixedConformance` |
 
-Определение выполняется по:
-1. пространству имён корневого элемента главной части документа;
+Определение выполняется по **сырым (T0) сигналам** (ADR-0016):
+1. пространству имён корневого элемента главной части документа (без проекции
+   через реестр нормализатора);
 2. пространствам имён частей `styles.xml`, `numbering.xml`, `settings.xml`;
-3. типам relationships главной части;
-4. содержимому `[Content_Types].xml`.
+3. типам relationships главной части (по сырым байтам `.rels`).
+
+> **(2.1, AUD-26 / ADR-0019).** П.4 прежней редакции («содержимое
+> `[Content_Types].xml` как сигнал конформности») **снят**. MIME главной части
+> проверяется отдельно: допустимы `wordprocessingml.document` /
+> `.template` / `.document.macroEnabled` (и template.macroEnabled); иное →
+> `UnexpectedContentType` (StrictOnly) или запись `T2.content-type` (Normalize).
+> Семейство пакета content types не определяет.
 
 **Приоритет:** явное определение по namespace является основным; несовпадающие сигналы
-приводят к `MixedConformance`, а не к молчаливому выбору.
+приводят к `MixedConformance`, а не к молчаливому выбору. Отсутствие любого
+сигнала → `Unknown` (не «молча Strict»).
 
 ### 4.2. Политика чтения
-- Режим по умолчанию (Этапы 1–5): `StrictOnly`. Transitional-файл → ошибка
-  `TransitionalNotSupported` с локацией первого несоответствия.
-- Режим Этапа 6: `Normalize`. Transitional-файл читается и нормализуется к Strict-модели,
-  результат помечается `normalized: true`, все потери попадают в Loss Report.
-- Режим `Permissive` (опционально): нормализация + продолжение при частично неподдержанных
-  механизмах с фиксацией в отчёте.
+Единственная матрица `opc::policy::decide(policy, detected, has_normalizer)`
+(ADR-0016 / AUD-23):
+
+| policy \\ detected | Strict | Transitional | Mixed | Unknown |
+|---|---|---|---|---|
+| `StrictOnly` | ok | `TransitionalNotSupported` | `MixedConformance` | `UndeterminedConformance` |
+| `Normalize`, есть нормализатор | ok | ok | ok | ok |
+| `Normalize`, нет нормализатора | ok | `Unsupported` | `Unsupported` | `Unsupported` |
+| `Permissive`, есть нормализатор | ok | ok | ok | ok |
+| `Permissive`, нет нормализатора | ok | `Unsupported` | `Unsupported` | ok |
+
+> **(2.1, AUD-23).** `Package::conformance()` — T0-детекция, не меняется после
+> `open_*`. `Package::was_normalized()` сообщает, менял ли установленный
+> нормализатор хотя бы одну часть. Режим по умолчанию — `StrictOnly`.
 
 ---
 
@@ -251,12 +270,20 @@ strict-ooxml-core
 
 | Feature | Крейт | Назначение |
 |---|---|---|
-| `default` | meta | `svg`, `report` |
+| `default` | meta | `report`, `svg` **(2.1, AUD-90)** |
 | `svg` | meta | включает `strict-ooxml-render-svg` |
 | `report` | meta | включает `strict-ooxml-report` |
-| `round-trip-normalize` | meta | включает нормализацию Transitional (Этап 6) |
+| `write` | meta | включает `strict-ooxml-write` (Этап 8A; opt-in) |
+| `pdf` | meta | включает `strict-ooxml-render-pdf` (Этап 8B; opt-in) |
+| `convert` | meta | включает `strict-ooxml-pdf` + `strict-ooxml-convert` (Этап 8C+; opt-in) |
 | `parallel` | core, wml | параллельный парсинг частей (rayon) |
-| `wasm` | meta | подготовка к WASM (без std-файловых API) |
+
+> **(2.1, AUD-90 / ADR-0019).** Feature `round-trip-normalize` **не вводится**:
+> нормализатор живёт в `strict-ooxml-core` всегда и включается политикой
+> `ConformancePolicy::Normalize` + установкой `RawNormalizer` в `OpenOptions`.
+> CLI и прочие бинарники, которым нужны `write`/`pdf`/`convert`, перечисляют
+> features явно в своём `Cargo.toml`. CI-шаг `check (default features)`
+> проверяет тонкий default.
 
 ---
 
@@ -299,9 +326,8 @@ let doc = StrictDocument::open_reader(Cursor::new(bytes), OpenOptions::default()
 pub struct OpenOptions {
     pub conformance: ConformancePolicy,
     pub limits: ResourceLimits,
-    pub resolve_theme: bool,
-    pub load_media: bool,
-    pub normalization: NormalizationOptions,
+    /// Optional `RawNormalizer` (shared as `Arc`); `None` = no normalizer.
+    pub normalization: Option<Arc<dyn RawNormalizer>>,
 }
 
 pub enum ConformancePolicy {
@@ -310,14 +336,26 @@ pub enum ConformancePolicy {
     Permissive,
 }
 
-pub struct NormalizationOptions {
-    pub enabled: bool,
-    pub direction_policy: DirectionPolicy, // MapToStartEnd | Keep
-    pub vml_fallback: VmlFallback,         // Report | RasterizeIfPossible | Drop
-    pub mce: McePolicy,                    // ProcessChoice | PreferFallback | Report
-    pub strictness: NormalizationStrictness, // Strict | Lenient
+/// Options for `TransitionalNormalizer` (not nested inside `OpenOptions`).
+pub struct NormalizerOptions {
+    pub direction: DirectionPolicy,   // MapToStartEnd | Keep  (2.1, AUD-33)
+    pub vml: VmlFallback,             // Convert | Report | Drop  (2.1, AUD-34)
+    pub mce: McePolicy,               // ProcessChoice | PreferFallback | Report
+    pub max_expansion: ExpansionLimit, // Factor(n) | Bytes(extra)  (2.1, AUD-35)
+    pub invariants: InvariantMode,
+}
+
+pub enum ExpansionLimit {
+    Factor(u32), // default Factor(4): up to n × input (at least input + 1024)
+    Bytes(usize),
 }
 ```
+
+> **(2.1, AUD-90 / ADR-0019).** Поля `resolve_theme` / `load_media` **не
+> вводятся**: тема разрешается всегда при разборе; медиа подгружаются лениво
+> через `RenderOptions::MediaMode`. Прежнее имя `VmlFallback::RasterizeIfPossible`
+> заменено на `Convert` — путь конвертирует VML в DrawingML, а не растрирует
+> (AUD-34).
 
 ### 6.4. Основные публичные типы
 
@@ -386,12 +424,20 @@ pub enum Inline {
 ```
 
 ### 7.3. Требования к DOM
-- Все узлы хранят `SourceLocation` (part id + offset/строка) для отчётности.
+- Структурные узлы (`Run`, `Paragraph`, `Table`, …) хранят `SourceLocation`
+  (part id + offset/строка) для отчётности.
 - Строки хранятся в общих пулах (`Arc<str>`/арена) для экономии памяти.
-- Модель **неизменяема** после построения (immutable), что упрощает `Sync`.
+- Модель, построенная парсером, **неизменяема для парсера**; мутация — только
+  через явный API (`StrictDocument::document_mut`, Этап 8+). Это сохраняет
+  `Sync` для снимка и не запрещает запись. **(2.1, AUD-90 / ADR-0019)**
 - Отсутствие `unsafe` в WML-модели (кроме, при необходимости, документированных узких мест).
 - Неизвестные/неподдержанные элементы сохраняются как `Opaque`-узлы для отчётности,
   а не отбрасываются молча.
+
+> **(2.1, AUD-90 / ADR-0019).** `SourceLocation` **не** требуется на листовых
+> узлах `TextNode`, `Symbol`, `FieldChar`, `Bookmark`, `GridCol`,
+> `FootnoteRef`: локации на уровне `Run` / `Paragraph` / `Table` достаточно
+> для Feature Report и Loss Report.
 
 ### 7.4. SourceLocation
 
@@ -499,15 +545,19 @@ pub struct QName<'a> {
 | DrawingML compatibility | `.../drawingml/2006/compatibility` | `.../drawingml/compatibility` | Нет |
 | Extended properties | `.../officeDocument/2006/extended-properties` | `.../officeDocument/extendedProperties` | Да (метаданные) |
 | Custom properties | `.../officeDocument/2006/custom-properties` | `.../officeDocument/customProperties` | Опц. |
-| Core properties | `.../package/2006/metadata/core-properties` | `.../package/metadata/coreProperties` | Да (метаданные) |
-| Package relationships | `.../package/2006/relationships` | `.../package/relationships` | Да |
+| Core properties | `.../package/2006/metadata/core-properties` | **то же** (family-neutral) | Да (метаданные) |
+| Package relationships | `.../package/2006/relationships` | **то же** (family-neutral) | Да |
+| Package content types | `.../package/2006/content-types` | **то же** (family-neutral) | Да |
 | Math | `.../officeDocument/2006/math` | `.../officeDocument/math` | Опц. |
 | VML | `urn:schemas-microsoft-com:vml` | — (отсутствует) | Нет |
 | MCE | `.../markup-compatibility/2006` | без изменений | Да |
 
-> Примечание: полный формальный перечень берётся из нормативных схем ISO/IEC 29500
-> и сверяется инструментом диффа XSD (см. 10.11). Таблица выше — рабочий базис;
-> значения с неполной уверенностью помечаются в реестре флагом `Verified`.
+> **(2.1, AUD-20 / ADR-0015).** OPC (ISO/IEC 29500-2 / ECMA-376 Part 2) **не
+> имеет** Strict-варианта пространств имён: `.rels`, `[Content_Types].xml` и
+> core-properties используют единственное написание
+> `schemas.openxmlformats.org/package/2006/...` в обеих семьях. Прежние строки
+> таблицы с purl-формами для OPC **ошибочны** и сняты. Полный формальный
+> перечень — из нормативных схем; сверяется OPC-гейтом (`opc_gate.py`, AUD-21).
 
 ### 9.4. Определение conformance
 
@@ -843,6 +893,7 @@ pub struct NormalizationReport {
 ```rust
 pub struct ResourceLimits {
     pub max_zip_entries: usize,          // 4096
+    pub max_compressed_input: u64,       // 512 MiB
     pub max_total_uncompressed: u64,     // 512 MiB
     pub max_single_uncompressed: u64,    // 128 MiB
     pub max_compression_ratio: u32,      // 1000 (вторичная эвристика; см. ниже)
@@ -851,11 +902,22 @@ pub struct ResourceLimits {
     pub max_text_len: usize,             // 64 MiB на часть
     pub max_rel_depth: u32,              // 32
     pub max_parts: usize,                // 4096
+    // (2.1, AUD-05 / AUD-06 / AUD-51 / AUD-72)
+    pub max_block_nesting: u32,          // 12 (таблицы / блочные контейнеры)
+    pub max_text_box_nesting: u32,       // 5  (текстовые блоки; деградация)
+    pub max_math_nodes: u32,             // 4096 на одну m:oMath
+    pub max_math_depth: u32,             // 64 на одну m:oMath
+    pub max_support_features: usize,     // 10_000 ключей SupportModel
+    pub max_render_items: u64,           // 2_000_000 paint-элементов на документ
+    pub max_pages: u32,                  // 10_000
 }
 ```
 
 Все лимиты переопределяемы через `OpenOptions`. При превышении — соответствующая
-ошибка (`LimitExceeded { kind, limit, actual }`), без паники.
+ошибка (`LimitExceeded { kind, limit, actual }`), без паники. Превышение
+`max_math_*` в парсере **не** отказывает документ: формула деградирует в
+`Unsupported` (AUD-06). `max_text_box_nesting` в парсере — деградация содержимого
+блока (решение владельца 2026-10-03).
 
 > `max_compression_ratio` — **вторичная** эвристика против zip-bomb; основной
 > барьер — абсолютные `max_single_uncompressed`/`max_total_uncompressed`. Дефолт
@@ -881,8 +943,12 @@ pub struct ResourceLimits {
 | «Мёртвые» ссылки rel | отчёт + (для External) без загрузки |
 
 ### 12.3. Fuzzing
-- Таргеты: ZIP/OPC, XML-парсер, namespaces, WML-парсер, нормализация.
-- Условие приёмки: 24 часа непрерывного фаззинга без паник/UB/утечек.
+- Таргеты: ZIP/OPC, XML-парсер, namespaces, WML-парсер, нормализация,
+  полный цикл docx (normalize→report→svg→write), PDF, convert
+  **(2.1, AUD-92)**.
+- Условие приёмки **релиза (этап 7)**: 24 часа непрерывного фаззинга без
+  паник/UB/утечек. Для плана `REWORK-AUDIT-2026-10` — 1 ч на таргет (CI
+  `fuzz-nightly`); см. `docs/fuzz-protocol.md`.
 
 ---
 
@@ -899,12 +965,24 @@ pub enum StrictError {
     UnboundPrefix { location: SourceLocation, prefix: String },
     MixedConformance { detail: String },
     TransitionalNotSupported { location: SourceLocation },
+    UndeterminedConformance { detail: String }, // (2.1, AUD-23)
+    UnexpectedContentType { part: PartId, content_type: String }, // (2.1, AUD-26)
     NormalizationInvariantViolation { location: SourceLocation, detail: String },
     AttributeCollision { qname: String, location: SourceLocation },
     InvalidEnumValue { qname: String, value: String, location: SourceLocation },
     MissingPart(PartId),
     UnresolvedRelationship(RelId),
     Render(String),
+    // …
+}
+
+pub enum LimitKind {
+    // … ZipEntries, XmlDepth, …,
+    BlockNesting,    // (2.1, AUD-05)
+    TextBoxNesting, // (2.1, AUD-05)
+    ZipWriteField,   // (2.1, AUD-11)
+    MathNodes,       // (2.1, AUD-06)
+    MathDepth,       // (2.1, AUD-06)
 }
 ```
 
