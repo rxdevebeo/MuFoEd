@@ -587,6 +587,128 @@ fn row_level_sdt_round_trips() {
     );
 }
 
+fn paragraph_style(block: &Block) -> Option<&str> {
+    match block {
+        Block::Paragraph(p) => p
+            .props
+            .style
+            .as_ref()
+            .map(strict_ooxml_wml::model::StyleId::as_str),
+        _ => None,
+    }
+}
+
+fn paragraph_text(paragraph: &strict_ooxml_wml::model::block::Paragraph) -> String {
+    paragraph
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(
+                run.content
+                    .iter()
+                    .filter_map(|c| match c {
+                        strict_ooxml_wml::model::inline::RunContent::Text(t) => {
+                            Some(t.text.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+/// AUD-60: a footnote of several paragraphs and a table survives round-trip
+/// without collapsing into a single `w:p`.
+#[test]
+fn multi_paragraph_footnote_round_trips() {
+    use strict_ooxml_wml::model::notes::NoteKind;
+
+    let body = "\
+<w:p><w:r><w:t>see</w:t></w:r><w:r><w:footnoteReference w:id=\"1\"/></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" \
+w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>";
+    let footnotes = "\
+<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:footnoteRef/></w:r></w:p></w:footnote>\
+<w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p/></w:footnote>\
+<w:footnote w:id=\"1\">\
+<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr>\
+<w:r><w:footnoteRef/></w:r><w:r><w:t>one</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"IntenseQuote\"/></w:pPr><w:r><w:t>two</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"BodyText\"/></w:pPr><w:r><w:t>three</w:t></w:r></w:p>\
+<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w=\"1440\"/></w:tblGrid>\
+<w:tr><w:tc><w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>\
+</w:footnote>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .rel("rIdFootnotes", "footnotes", "footnotes.xml")
+        .content_type(
+            "/word/footnotes.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+        )
+        .part_xml("word/footnotes.xml", "w:footnotes", footnotes)
+        .build();
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let note = document.footnotes.get(1).expect("normal footnote id=1");
+    assert_eq!(note.kind, NoteKind::Normal);
+    assert_eq!(note.blocks.len(), 4);
+    assert_eq!(paragraph_style(&note.blocks[0]), Some("FootnoteText"));
+    assert_eq!(paragraph_style(&note.blocks[1]), Some("IntenseQuote"));
+    assert_eq!(paragraph_style(&note.blocks[2]), Some("BodyText"));
+    assert!(matches!(&note.blocks[3], Block::Table(_)));
+
+    let written = write(&document, &package);
+    let reopened = open(&written.bytes).expect("reopen");
+    let footnotes_xml = String::from_utf8(
+        reopened
+            .read_part(&strict_ooxml_core::part::PartId::new("/word/footnotes.xml"))
+            .expect("footnotes part"),
+    )
+    .expect("utf-8");
+    let note_slice = footnotes_xml
+        .split("<w:footnote ")
+        .find(|chunk| chunk.contains("w:id=\"1\""))
+        .expect("written footnote id=1");
+    assert!(
+        note_slice.matches("<w:p>").count() + note_slice.matches("<w:p ").count() >= 3,
+        "{note_slice}"
+    );
+    assert_eq!(
+        note_slice.matches("<w:tbl>").count() + note_slice.matches("<w:tbl ").count(),
+        1,
+        "{note_slice}"
+    );
+    assert!(
+        note_slice.contains("</w:p><w:tbl>"),
+        "table must be a sibling of paragraphs: {note_slice}"
+    );
+    for style in ["FootnoteText", "IntenseQuote", "BodyText"] {
+        assert!(
+            note_slice.contains(&format!("w:val=\"{style}\"")),
+            "{note_slice}"
+        );
+    }
+
+    let reparsed = parse(&reopened).expect("reparse");
+    let again = reparsed.footnotes.get(1).expect("reparsed footnote");
+    assert_eq!(again.blocks.len(), 4);
+    for (left, right) in note.blocks.iter().zip(again.blocks.iter()) {
+        match (left, right) {
+            (Block::Paragraph(a), Block::Paragraph(b)) => {
+                assert_eq!(paragraph_style(left), paragraph_style(right));
+                assert_eq!(paragraph_text(a), paragraph_text(b));
+            }
+            (Block::Table(_), Block::Table(_)) => {}
+            other => panic!("block kind changed: {other:?}"),
+        }
+    }
+    let rewritten = write(&reparsed, &reopened);
+    assert_eq!(written.bytes, rewritten.bytes, "{}", written.report);
+}
+
 /// The `document.xml.rels` ids the document uses are the ones that exist.
 #[test]
 fn document_relationship_ids_exist() {

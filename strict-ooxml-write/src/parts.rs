@@ -6,9 +6,10 @@
 //! that had no `numbering.xml` does not acquire one — that is what keeps a
 //! round trip from growing parts it did not have (SC-3).
 
+use strict_ooxml_wml::model::block::{Block, Paragraph};
 use strict_ooxml_wml::model::document::HeaderFooter;
 use strict_ooxml_wml::model::ids::Ilvl;
-use strict_ooxml_wml::model::inline::{Inline, RunContent};
+use strict_ooxml_wml::model::inline::{Inline, Run, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, NumberingTable};
 use strict_ooxml_wml::model::settings::{MathProperties, Settings};
@@ -895,21 +896,47 @@ pub fn notes_part(
 ///
 /// Word's separator notes put a run holding `w:footnoteRef`/`w:endnoteRef` at
 /// the start of their first paragraph, and the parser records it as
-/// [`RunContent::NoteRef`]. The writer used to emit that run itself *as well*,
-/// which is invisible on the first write and grows the note by one run on every
-/// later one — a round trip that never settles. Emitting it only when the model
-/// does not already carry it keeps a note Word wrote byte-identical and still
-/// gives a hand-built note the marker it needs.
+/// [`RunContent::NoteRef`]. Emitting it only when the model does not already
+/// carry it keeps a note Word wrote byte-identical and still gives a hand-built
+/// note the marker it needs (AUD-60).
 fn leading_paragraph_has_reference(note: &Note) -> bool {
-    let Some(block) = note.blocks.first() else {
+    let Some(Block::Paragraph(paragraph)) = note.blocks.first() else {
         return false;
     };
-    let strict_ooxml_wml::model::block::Block::Paragraph(paragraph) = block else {
-        return false;
-    };
+    paragraph_has_reference(paragraph)
+}
+
+fn paragraph_has_reference(paragraph: &Paragraph) -> bool {
     paragraph.inlines.iter().any(
         |inline| matches!(inline, Inline::Run(run) if run.content.contains(&RunContent::NoteRef)),
     )
+}
+
+/// Ensures the first run of `paragraph` carries [`RunContent::NoteRef`].
+///
+/// Returns a clone only when the marker must be inserted; otherwise borrows.
+fn paragraph_with_note_ref(paragraph: &Paragraph) -> Paragraph {
+    if paragraph_has_reference(paragraph) {
+        return paragraph.clone();
+    }
+    let mut out = paragraph.clone();
+    match out.inlines.first_mut() {
+        Some(Inline::Run(run)) => {
+            run.content.insert(0, RunContent::NoteRef);
+        }
+        _ => {
+            out.inlines.insert(
+                0,
+                Inline::Run(Run {
+                    props: Default::default(),
+                    content: vec![RunContent::NoteRef],
+                    revision: None,
+                    location: strict_ooxml_core::error::SourceLocation::unknown(),
+                }),
+            );
+        }
+    }
+    out
 }
 
 fn note_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, note: &Note, is_footnote: bool) {
@@ -918,35 +945,41 @@ fn note_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, note: &Note, is_footnote
     } else {
         "w:endnote"
     };
-    let reference = if is_footnote {
-        "w:footnoteRef"
-    } else {
-        "w:endnoteRef"
-    };
     xml.start(element);
     xml.attr_w("type", note.kind.as_str());
     xml.attr_w("id", note.id);
-    xml.start("w:p");
-    // Word's own separator notes carry a run holding the reference element and
-    // nothing else; reproducing that keeps the note area identical. The model
-    // usually already has that run, so this is a fallback, not an addition.
-    if !leading_paragraph_has_reference(note) {
-        xml.start("w:r");
-        xml.empty(reference);
-        xml.end();
+
+    // AUD-60: each block is its own child of the note. The reference marker
+    // lives in the first run of the first paragraph; if the note starts with a
+    // table (or is empty), a paragraph holding only the marker is inserted.
+    let needs_ref = !leading_paragraph_has_reference(note);
+    let first_is_paragraph = matches!(note.blocks.first(), Some(Block::Paragraph(_)));
+    if needs_ref && !first_is_paragraph {
+        let marker = Paragraph {
+            props: Default::default(),
+            inlines: vec![Inline::Run(Run {
+                props: Default::default(),
+                content: vec![RunContent::NoteRef],
+                revision: None,
+                location: strict_ooxml_core::error::SourceLocation::unknown(),
+            })],
+            rsids: Default::default(),
+            revision: None,
+            para_id: None,
+            text_id: None,
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        };
+        crate::body::paragraph_element(ctx, xml, &marker);
     }
-    for block in &note.blocks {
-        // The first paragraph already exists, so a leading paragraph is merged
-        // into it by writing only its inlines.
-        if let strict_ooxml_wml::model::block::Block::Paragraph(paragraph) = block {
-            for inline in &paragraph.inlines {
-                crate::body::inline_item(ctx, xml, inline);
+    for (index, block) in note.blocks.iter().enumerate() {
+        match block {
+            Block::Paragraph(paragraph) if index == 0 && needs_ref => {
+                let with_ref = paragraph_with_note_ref(paragraph);
+                crate::body::paragraph_element(ctx, xml, &with_ref);
             }
-            continue;
+            other => crate::body::block_item(ctx, xml, other),
         }
-        crate::body::block_item(ctx, xml, block);
     }
-    xml.end();
     xml.end();
 }
 
