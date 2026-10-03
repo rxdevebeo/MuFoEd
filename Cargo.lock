@@ -2294,6 +2294,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "png",
+ "proptest",
  "resvg",
  "roxmltree 0.20.0",
  "serde",

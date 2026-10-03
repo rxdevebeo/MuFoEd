@@ -72,6 +72,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-67 | ✅ выполнена | `ad1790b` | `tests/word_oracle.rs` на всём `core/tests/strict/*.docx` (Normalize входа); fixed-point; модель modulo `w:sdt` flatten + W7; OPC rel types/content types/ns; `settings.xml.rels` для `attachedTemplate` (дыра AUD-61) |
 | AUD-70 | ✅ выполнена | `585afef` | колонтитул с PAGE/NUMPAGES/SECTIONPAGES/SECTION раскладывается на каждой странице (`FieldEnv`); кэш только без этих полей; `pgNumType` start+fmt; тесты 3-стр. футера |
 | AUD-71 | ✅ выполнена | `57c8200` | defaultTabStop≤0 → 720 + warning; group scale clamp; fmt_num |v|>1e9; sanitize non-finite items; proptest; corpus без NaN/inf |
+| AUD-72 | ✅ выполнена | `64dcc80` | `max_render_items`/`max_pages` в ResourceLimits; счётчик на документ (тело+колонтитулы+рамки+якоря); hostile 1000×2000 |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
