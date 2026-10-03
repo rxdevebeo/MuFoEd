@@ -6,6 +6,8 @@
 //!
 //! Entry point: [`parse_document`].
 
+mod depth;
+
 pub mod dispatch;
 pub mod document;
 pub mod drawing;
@@ -606,8 +608,12 @@ pub(crate) struct PartParser<'a> {
     pub(crate) interner: Interner,
     pub(crate) support: SupportModel,
     pub(crate) media: MediaIndex,
-    pub(crate) max_depth: u32,
-    pub(crate) depth: u32,
+    /// The XML recursion guard; see [`depth::Depth`].
+    ///
+    /// A type of its own rather than two fields, because its `enter`/`leave` are
+    /// private to `parse::depth` and every parser file goes through
+    /// [`PartParser::nested`](Self::nested) instead (AUD-07).
+    recursion: depth::Depth,
     /// Deepest block-container nesting seen so far, and the bound it is held to.
     ///
     /// Kept apart from [`depth`](Self::depth) on purpose: `depth` counts XML
@@ -657,7 +663,6 @@ impl<'a> PartParser<'a> {
         bytes: Vec<u8>,
         limits: &'a ResourceLimits,
     ) -> Result<Self> {
-        let max_depth = limits.max_xml_depth;
         let reader = XmlReader::from_vec(bytes, part.clone(), limits)?;
         Ok(Self {
             reader,
@@ -666,8 +671,7 @@ impl<'a> PartParser<'a> {
             interner: Interner::new(),
             support: SupportModel::new(),
             media: MediaIndex::new(),
-            max_depth,
-            depth: 0,
+            recursion: depth::Depth::new(limits.max_xml_depth),
             block_depth: 0,
             max_block_nesting: limits.max_block_nesting,
             text_box_depth: 0,
@@ -890,7 +894,7 @@ impl<'a> PartParser<'a> {
     /// what the parser thinks it is holding.
     #[cfg(test)]
     pub(crate) fn debug_depth(&self) -> u32 {
-        self.depth
+        self.recursion.current()
     }
     /// Parses `w:start` into the model's range, recording a clamp.
     ///
@@ -943,28 +947,13 @@ impl<'a> PartParser<'a> {
     /// `leave` runs on every path out of `f`, including the `?` ones, and there
     /// is no way to reach the recursion without going through it.
     pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
-        self.enter()?;
+        // Two steps rather than `self.recursion.nested(|_| f(self))`: the
+        // counter and the parser are both fields of `self`, so a closure taking
+        // `*self` while `self.recursion` is borrowed does not compile.
+        self.recursion.enter()?;
         let out = f(self);
-        self.leave();
+        self.recursion.leave();
         out
-    }
-
-    /// Enters the recursion guard; private to [`nested`](Self::nested).
-    fn enter(&mut self) -> Result<()> {
-        self.depth = self.depth.saturating_add(1);
-        if self.depth > self.max_depth {
-            return Err(StrictError::LimitExceeded {
-                kind: strict_ooxml_core::error::LimitKind::XmlDepth,
-                limit: u64::from(self.max_depth),
-                actual: u64::from(self.depth),
-            });
-        }
-        Ok(())
-    }
-
-    /// Leaves the recursion guard; private to [`nested`](Self::nested).
-    fn leave(&mut self) {
-        self.depth = self.depth.saturating_sub(1);
     }
 
     /// Resolves a relationship declared by the current part to a target part.
@@ -1303,4 +1292,143 @@ mod tests {
     }
 
     const MAIN: &str = "/word/document.xml";
+
+    /// One paragraph holding one formula of every construct `math.rs` parses.
+    ///
+    /// The corpus does not exercise all of them in one part, and the property
+    /// above only sees the parsers a corpus document happens to reach. This is
+    /// the fixture that makes the guard's accounting visible over `math.rs`'s own
+    /// twenty-one functions.
+    fn every_formula() -> String {
+        let fraction = "<m:f><m:num><m:r><m:t>a</m:t></m:r></m:num>\
+                        <m:den><m:r><m:t>b</m:t></m:r></m:den></m:f>";
+        let radical = "<m:rad><m:deg/><m:e><m:r><m:t>x</m:t></m:r></m:e></m:rad>";
+        let scripts = "<m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup>\
+                       <m:sSub><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub></m:sSub>\
+                       <m:sSubSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub>\
+                       <m:sup><m:r><m:t>j</m:t></m:r></m:sup></m:sSubSup>\
+                       <m:sPre><m:sub><m:r><m:t>n</m:t></m:r></m:sub><m:sup><m:r><m:t>1</m:t></m:r></m:sup>\
+                       <m:e><m:r><m:t>F</m:t></m:r></m:e></m:sPre>";
+        let nary = "<m:nary><m:naryPr><m:chr m:val=\"∑\"/></m:naryPr>\
+                    <m:sub><m:r><m:t>i</m:t></m:r></m:sub><m:sup><m:r><m:t>n</m:t></m:r></m:sup>\
+                    <m:e><m:r><m:t>a</m:t></m:r></m:e></m:nary>";
+        let delimited = "<m:d><m:dPr><m:begChr m:val=\"[\"/><m:endChr m:val=\"]\"/></m:dPr>\
+                        <m:e><m:r><m:t>x</m:t></m:r></m:e><m:e><m:r><m:t>y</m:t></m:r></m:e></m:d>";
+        let functions = "<m:func><m:funcPr/><m:fName><m:r><m:t>sin</m:t></m:r></m:fName>\
+                        <m:e><m:r><m:t>x</m:t></m:r></m:e></m:func>";
+        let limits = "<m:limLow><m:e><m:r><m:t>x</m:t></m:r></m:e><m:lim><m:r><m:t>0</m:t></m:r></m:lim></m:limLow>\
+                      <m:limUpp><m:e><m:r><m:t>n</m:t></m:r></m:e><m:lim><m:r><m:t>∞</m:t></m:r></m:lim></m:limUpp>";
+        let matrix = "<m:m><m:mPr><m:mcs><m:mc><m:mcPr><m:mcJc m:val=\"center\"/></m:mcPr></m:mc></m:mcs></m:mPr>\
+                      <m:mr><m:e><m:r><m:t>1</m:t></m:r></m:e></m:mr></m:m>";
+        let array = "<m:eqArr><m:e><m:r><m:t>1</m:t></m:r></m:e><m:e><m:r><m:t>2</m:t></m:r></m:e></m:eqArr>";
+        let decorations = "<m:acc><m:accPr><m:chr m:val=\"^\"/></m:accPr><m:e><m:r><m:t>v</m:t></m:r></m:e></m:acc>\
+                          <m:bar><m:barPr><m:pos m:val=\"top\"/></m:barPr><m:e><m:r><m:t>x</m:t></m:r></m:e></m:bar>\
+                          <m:groupChr><m:groupChrPr><m:chr m:val=\"⏞\"/></m:groupChrPr><m:e><m:r><m:t>z</m:t></m:r></m:e></m:groupChr>\
+                          <m:box><m:e><m:r><m:t>b</m:t></m:r></m:e></m:box>\
+                          <m:borderBox><m:e><m:r><m:t>a</m:t></m:r></m:e></m:borderBox>\
+                          <m:phant><m:phantPr><m:show m:val=\"0\"/></m:phantPr><m:e><m:r><m:t>p</m:t></m:r></m:e></m:phant>";
+        let argument = "<m:argPr/><m:r><m:t>a</m:t></m:r>";
+        let body = [
+            fraction,
+            radical,
+            scripts,
+            nary,
+            delimited,
+            functions,
+            limits,
+            matrix,
+            array,
+            decorations,
+        ]
+        .join("");
+        let _ = argument;
+        format!("<w:p><m:oMath>{body}</m:oMath></w:p>")
+    }
+
+    /// Wraps `body` in a package with the namespaces a formula needs.
+    fn formula_package(body: &str) -> Vec<u8> {
+        let document = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+             <w:document xmlns:w=\"{W_NS}\" xmlns:m=\"{M_NS}\"><w:body>{body}</w:body></w:document>"
+        );
+        let mut zip = strict_ooxml_core::opc::zip::write::ZipWriter::new();
+        zip.add_part(
+            &PartId::new("/[Content_Types].xml"),
+            CONTENT_TYPES.as_bytes().to_vec(),
+        )
+        .expect("content types");
+        zip.add_part(
+            &PartId::new("/_rels/.rels"),
+            concat!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+                "<Relationship Id=\"rId1\" ",
+                "Type=\"http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument\" ",
+                "Target=\"word/document.xml\"/></Relationships>"
+            )
+            .as_bytes()
+            .to_vec(),
+        )
+        .expect("root rels");
+        zip.add_part(&PartId::new("/word/document.xml"), document.into_bytes())
+            .expect("document");
+        zip.finish().expect("zip")
+    }
+
+    const W_NS: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const M_NS: &str = crate::MATH_STRICT_NS;
+    const CONTENT_TYPES: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+        <Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
+        <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
+        <Default Extension=\"xml\" ContentType=\"application/xml\"/>\
+        <Override PartName=\"/word/document.xml\" \
+        ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\
+        </Types>";
+
+    #[test]
+    fn every_formula_construct_leaves_the_guard_at_zero() {
+        let bytes = formula_package(&every_formula());
+        let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+        let package = Package::open_reader(std::io::Cursor::new(bytes), &options).expect("open");
+        let main = PartId::new(MAIN);
+        let limits = ResourceLimits::default();
+        for round in 0..10 {
+            let bytes = package.read_part(&main).expect("part");
+            let mut parser =
+                PartParser::new(&package, main.clone(), bytes, &limits).expect("reader");
+            parser.parse_document_root().expect("the formulas parse");
+            assert_eq!(
+                parser.debug_depth(),
+                0,
+                "round {round}: a formula construct left the guard open"
+            );
+        }
+    }
+
+    #[test]
+    fn a_document_cut_short_inside_a_formula_leaves_the_guard_at_zero() {
+        // The same fixture with the last formula truncated. The parse must be an
+        // error and the counter must come back to zero: this is the path where a
+        // `?` used to leave the guard open.
+        let full = every_formula();
+        let cut = &full[..full.len() / 2];
+        let bytes = formula_package(cut);
+        let options = OpenOptions::default().conformance(ConformancePolicy::Permissive);
+        let Ok(package) = Package::open_reader(std::io::Cursor::new(bytes), &options) else {
+            return;
+        };
+        let main = PartId::new(MAIN);
+        let limits = ResourceLimits::default();
+        for round in 0..10 {
+            let bytes = package.read_part(&main).expect("part");
+            let mut parser =
+                PartParser::new(&package, main.clone(), bytes, &limits).expect("reader");
+            let _ = parser.parse_document_root();
+            assert_eq!(
+                parser.debug_depth(),
+                0,
+                "round {round}: a truncated formula left the guard open"
+            );
+        }
+    }
 }

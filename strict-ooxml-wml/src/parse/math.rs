@@ -120,71 +120,71 @@ pub(crate) fn parse_omath(parser: &mut PartParser<'_>) -> Result<MathExpression>
 /// Parses `m:oMathPara` (its start element has been consumed).
 pub(crate) fn parse_omath_para(parser: &mut PartParser<'_>) -> Result<MathParagraph> {
     let location = parser.location();
-    parser.enter()?;
-    let mut properties = None;
-    let mut expressions = Vec::new();
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "oMathParaPr" => properties = Some(parse_omath_para_pr(parser)?),
-                    "oMath" => expressions.push(parse_omath(parser)?),
-                    other => {
-                        parser.record(
-                            &format!("m:{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:oMathPara".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        let mut properties = None;
+        let mut expressions = Vec::new();
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "oMathParaPr" => properties = Some(parse_omath_para_pr(parser)?),
+                        "oMath" => expressions.push(parse_omath(parser)?),
+                        other => {
+                            parser.record(
+                                &format!("m:{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:oMathPara".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:oMathPara")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:oMathPara")),
         }
-    }
-    parser.leave();
 
-    // The schema allows one or more `m:oMath` children; several of them are
-    // flattened into one display formula. A producer that omits it entirely
-    // still yields an (empty) formula, recorded as `Partial`.
-    let expression = if expressions.len() == 1 {
-        expressions.remove(0)
-    } else {
-        if expressions.is_empty() {
-            parser.record(
-                "m:oMathPara",
-                SupportStatus::Partial,
-                Some("display formula without m:oMath".to_owned()),
-                Some(location.clone()),
-            );
-        }
-        let nodes = expressions
-            .into_iter()
-            .flat_map(|expression| expression.nodes)
-            .collect();
-        MathExpression {
-            nodes,
-            location: location.clone(),
-        }
-    };
-    parser.record(
-        "m:oMathPara",
-        SupportStatus::Supported,
-        None,
-        Some(location.clone()),
-    );
-    Ok(MathParagraph {
-        properties,
-        expression,
-        location,
+        // The schema allows one or more `m:oMath` children; several of them are
+        // flattened into one display formula. A producer that omits it entirely
+        // still yields an (empty) formula, recorded as `Partial`.
+        let expression = if expressions.len() == 1 {
+            expressions.remove(0)
+        } else {
+            if expressions.is_empty() {
+                parser.record(
+                    "m:oMathPara",
+                    SupportStatus::Partial,
+                    Some("display formula without m:oMath".to_owned()),
+                    Some(location.clone()),
+                );
+            }
+            let nodes = expressions
+                .into_iter()
+                .flat_map(|expression| expression.nodes)
+                .collect();
+            MathExpression {
+                nodes,
+                location: location.clone(),
+            }
+        };
+        parser.record(
+            "m:oMathPara",
+            SupportStatus::Supported,
+            None,
+            Some(location.clone()),
+        );
+        Ok(MathParagraph {
+            properties,
+            expression,
+            location,
+        })
     })
 }
 
@@ -220,37 +220,37 @@ fn parse_omath_elements(
     parser: &mut PartParser<'_>,
     scope: &mut MathScope,
 ) -> Result<Vec<MathNode>> {
-    parser.enter()?;
-    let mut nodes = Vec::new();
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs } => {
-                if scope.is_exhausted() {
-                    // The formula is already over a budget: skip what is left of
-                    // it, one element at a time, until its end tag. Skipping is
-                    // the point - the alternative is walking a subtree that has
-                    // already been found too large.
-                    parser.skip_element()?;
-                    continue;
+    parser.nested(|parser| {
+        let mut nodes = Vec::new();
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if scope.is_exhausted() {
+                        // The formula is already over a budget: skip what is left of
+                        // it, one element at a time, until its end tag. Skipping is
+                        // the point - the alternative is walking a subtree that has
+                        // already been found too large.
+                        parser.skip_element()?;
+                        continue;
+                    }
+                    if !is_math(&name) {
+                        // `w:r` / `w:br` may appear inside `m:r`; anything else
+                        // foreign is reported and skipped.
+                        parser.record_foreign(&name);
+                        parser.skip_element()?;
+                        continue;
+                    }
+                    if let Some(node) = parse_math_node(parser, &name, &attrs, scope)? {
+                        nodes.push(node);
+                    }
                 }
-                if !is_math(&name) {
-                    // `w:r` / `w:br` may appear inside `m:r`; anything else
-                    // foreign is reported and skipped.
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                if let Some(node) = parse_math_node(parser, &name, &attrs, scope)? {
-                    nodes.push(node);
-                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of math content")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of math content")),
         }
-    }
-    parser.leave();
-    Ok(nodes)
+        Ok(nodes)
+    })
 }
 
 /// Parses one math element into a [`MathNode`].
@@ -353,64 +353,64 @@ fn parse_math_node(
 /// Parses `m:r` (its start element has been consumed).
 fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
     let location = parser.location();
-    parser.enter()?;
-    let mut properties = MathRunProperties::default();
-    let mut run_properties: Option<Box<crate::model::props::RunProperties>> = None;
-    let mut text = String::new();
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    // `w:rPr` is a legitimate child of `m:r`
-                    // (ISO/IEC 29500-1 §22.1.2.79) and carries the character
-                    // formatting Word applies to a math run. It used to fall
-                    // through to `record_foreign` and be reported
-                    // unsupported, which a real document trips on most of its
-                    // formula runs.
-                    if name.local() == "rPr" && crate::parse::is_wml(&name) {
-                        // `parse_run_properties` consumes the element and its
-                        // end tag, so the shared `skip_element` below must
-                        // not run for it — doing so ate the *next* sibling,
-                        // and the damage only showed up as a truncated
-                        // document several constructs later.
-                        run_properties = Some(Box::new(parser.parse_run_properties()?));
+    parser.nested(|parser| {
+        let mut properties = MathRunProperties::default();
+        let mut run_properties: Option<Box<crate::model::props::RunProperties>> = None;
+        let mut text = String::new();
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        // `w:rPr` is a legitimate child of `m:r`
+                        // (ISO/IEC 29500-1 §22.1.2.79) and carries the character
+                        // formatting Word applies to a math run. It used to fall
+                        // through to `record_foreign` and be reported
+                        // unsupported, which a real document trips on most of its
+                        // formula runs.
+                        if name.local() == "rPr" && crate::parse::is_wml(&name) {
+                            // `parse_run_properties` consumes the element and its
+                            // end tag, so the shared `skip_element` below must
+                            // not run for it — doing so ate the *next* sibling,
+                            // and the damage only showed up as a truncated
+                            // document several constructs later.
+                            run_properties = Some(Box::new(parser.parse_run_properties()?));
+                            continue;
+                        }
+                        // `w:br` inside a math run is a line break: represent it
+                        // as a newline so the renderer honours it.
+                        if name.local() == "br" && crate::parse::is_wml(&name) {
+                            text.push('\n');
+                        } else {
+                            parser.record_foreign(&name);
+                        }
+                        parser.skip_element()?;
                         continue;
                     }
-                    // `w:br` inside a math run is a line break: represent it
-                    // as a newline so the renderer honours it.
-                    if name.local() == "br" && crate::parse::is_wml(&name) {
-                        text.push('\n');
-                    } else {
-                        parser.record_foreign(&name);
-                    }
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "rPr" => properties = parse_math_run_properties(parser)?,
-                    "t" => text.push_str(&parser.parse_math_text()?),
-                    other => {
-                        parser.record(
-                            &format!("m:{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:r".to_owned()),
-                            Some(parser.location()),
-                        );
-                        parser.skip_element()?;
+                    match name.local() {
+                        "rPr" => properties = parse_math_run_properties(parser)?,
+                        "t" => text.push_str(&parser.parse_math_text()?),
+                        other => {
+                            parser.record(
+                                &format!("m:{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:r".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:r")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:r")),
         }
-    }
-    parser.leave();
-    Ok(MathRun {
-        properties,
-        run_properties,
-        text,
-        location,
+        Ok(MathRun {
+            properties,
+            run_properties,
+            text,
+            location,
+        })
     })
 }
 
@@ -600,52 +600,52 @@ fn parse_argument(
     optional: bool,
 ) -> Result<Option<MathArgument>> {
     let location = parser.location();
-    parser.enter()?;
-    // Entering is *not* an early return here: the argument's start element has
-    // already been consumed by the caller, so bailing out now would leave the
-    // reader inside it and the caller's loop would read this element's end tag as
-    // its own. The loop below skips forward to the argument's end instead, which
-    // keeps every reader position where the shape of the markup says it is.
-    if scope.enter(parser.max_math_depth) {
-        scope.exhaust("max_math_depth");
-    }
-    let mut properties = ArgumentProperties::default();
-    let mut nodes = Vec::new();
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs } => {
-                if scope.is_exhausted() {
-                    parser.skip_element()?;
-                    continue;
-                }
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                if name.local() == "argPr" {
-                    properties = parse_arg_properties(parser)?;
-                    continue;
-                }
-                if let Some(node) = parse_math_node(parser, &name, &attrs, scope)? {
-                    nodes.push(node);
-                }
-            }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of a math argument")),
+    parser.nested(|parser| {
+        // Entering is *not* an early return here: the argument's start element has
+        // already been consumed by the caller, so bailing out now would leave the
+        // reader inside it and the caller's loop would read this element's end tag as
+        // its own. The loop below skips forward to the argument's end instead, which
+        // keeps every reader position where the shape of the markup says it is.
+        if scope.enter(parser.max_math_depth) {
+            scope.exhaust("max_math_depth");
         }
-    }
-    parser.leave();
-    scope.leave();
-    if optional && nodes.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(MathArgument {
-        properties,
-        nodes,
-        location,
-    }))
+        let mut properties = ArgumentProperties::default();
+        let mut nodes = Vec::new();
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if scope.is_exhausted() {
+                        parser.skip_element()?;
+                        continue;
+                    }
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
+                        parser.skip_element()?;
+                        continue;
+                    }
+                    if name.local() == "argPr" {
+                        properties = parse_arg_properties(parser)?;
+                        continue;
+                    }
+                    if let Some(node) = parse_math_node(parser, &name, &attrs, scope)? {
+                        nodes.push(node);
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of a math argument")),
+            }
+        }
+        scope.leave();
+        if optional && nodes.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(MathArgument {
+            properties,
+            nodes,
+            location,
+        }))
+    })
 }
 
 /// Parses one required `m:e` argument; an empty `m:e` is kept.
@@ -743,48 +743,48 @@ fn parse_fraction(
     let mut control = None;
     let mut numerator = empty_argument(&location);
     let mut denominator = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "fPr" => parse_fraction_properties(
-                        parser,
-                        &mut bar_type,
-                        &mut small_fraction,
-                        &mut control,
-                    )?,
-                    "num" => numerator = required_argument(parser, scope)?,
-                    "den" => denominator = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:f/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:f".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "fPr" => parse_fraction_properties(
+                            parser,
+                            &mut bar_type,
+                            &mut small_fraction,
+                            &mut control,
+                        )?,
+                        "num" => numerator = required_argument(parser, scope)?,
+                        "den" => denominator = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:f/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:f".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:f")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:f")),
         }
-    }
-    parser.leave();
-    Ok(Fraction {
-        bar_type: bar_type.map(Arc::from),
-        small_fraction,
-        control,
-        numerator,
-        denominator,
-        location,
+        Ok(Fraction {
+            bar_type: bar_type.map(Arc::from),
+            small_fraction,
+            control,
+            numerator,
+            denominator,
+            location,
+        })
     })
 }
 
@@ -854,42 +854,44 @@ fn parse_radical(
     let mut control = None;
     let mut degree = empty_argument(&location);
     let mut radicand = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "radPr" => parse_radical_properties(parser, &mut hide_degree, &mut control)?,
-                    "deg" => degree = required_argument(parser, scope)?,
-                    "e" => radicand = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:rad/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:rad".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "radPr" => {
+                            parse_radical_properties(parser, &mut hide_degree, &mut control)?;
+                        }
+                        "deg" => degree = required_argument(parser, scope)?,
+                        "e" => radicand = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:rad/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:rad".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:rad")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:rad")),
         }
-    }
-    parser.leave();
-    Ok(Radical {
-        hide_degree,
-        control,
-        degree,
-        radicand,
-        location,
+        Ok(Radical {
+            hide_degree,
+            control,
+            degree,
+            radicand,
+            location,
+        })
     })
 }
 
@@ -934,43 +936,45 @@ fn parse_script(
 )> {
     let mut control = None;
     let mut arguments = Vec::new();
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                let local = name.local();
-                if local == property {
-                    parse_properties(parser, property, |parser| {
-                        parse_control_only(parser, &mut control)
-                    })?;
-                } else if with_base && local == "e" {
-                    arguments.push(required_argument(parser, scope)?);
-                } else if local == first || local == second {
-                    if let Some(argument) = optional_argument(parser, scope)? {
-                        arguments.push(argument);
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
+                        parser.skip_element()?;
+                        continue;
                     }
-                } else {
-                    parser.record(
-                        &format!("m:{local}"),
-                        SupportStatus::Partial,
-                        Some(format!("unexpected child of m:{property}")),
-                        Some(parser.location()),
-                    );
-                    parser.skip_element()?;
+                    let local = name.local();
+                    if local == property {
+                        parse_properties(parser, property, |parser| {
+                            parse_control_only(parser, &mut control)
+                        })?;
+                    } else if with_base && local == "e" {
+                        arguments.push(required_argument(parser, scope)?);
+                    } else if local == first || local == second {
+                        if let Some(argument) = optional_argument(parser, scope)? {
+                            arguments.push(argument);
+                        }
+                    } else {
+                        parser.record(
+                            &format!("m:{local}"),
+                            SupportStatus::Partial,
+                            Some(format!("unexpected child of m:{property}")),
+                            Some(parser.location()),
+                        );
+                        parser.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => {
+                    return Err(parser.invalid(format!("unexpected end of m:{property}")))
                 }
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid(format!("unexpected end of m:{property}"))),
         }
-    }
-    parser.leave();
-    Ok((control, arguments))
+        Ok((control, arguments))
+    })
 }
 
 /// Parses the children of a property element that only carries `m:ctrlPr`.
@@ -1094,43 +1098,43 @@ fn parse_pre_script(
     let mut subscript = empty_argument(&location);
     let mut superscript = empty_argument(&location);
     let mut base = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "sPrePr" => parse_control_only(parser, &mut control)?,
-                    "sub" => subscript = required_argument(parser, scope)?,
-                    "sup" => superscript = required_argument(parser, scope)?,
-                    "e" => base = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:sPre/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:sPre".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "sPrePr" => parse_control_only(parser, &mut control)?,
+                        "sub" => subscript = required_argument(parser, scope)?,
+                        "sup" => superscript = required_argument(parser, scope)?,
+                        "e" => base = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:sPre/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:sPre".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:sPre")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:sPre")),
         }
-    }
-    parser.leave();
-    Ok(PreScript {
-        control,
-        subscript,
-        superscript,
-        base,
-        location,
+        Ok(PreScript {
+            control,
+            subscript,
+            superscript,
+            base,
+            location,
+        })
     })
 }
 
@@ -1149,56 +1153,56 @@ fn parse_nary(
     let mut subscript = empty_argument(&location);
     let mut superscript = empty_argument(&location);
     let mut operand = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "naryPr" => parse_nary_properties(
-                        parser,
-                        &mut chr,
-                        &mut limit_location,
-                        &mut grow,
-                        &mut no_lower_limit,
-                        &mut no_upper_limit,
-                        &mut control,
-                    )?,
-                    "sub" => subscript = required_argument(parser, scope)?,
-                    "sup" => superscript = required_argument(parser, scope)?,
-                    "e" => operand = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:nary/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:nary".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "naryPr" => parse_nary_properties(
+                            parser,
+                            &mut chr,
+                            &mut limit_location,
+                            &mut grow,
+                            &mut no_lower_limit,
+                            &mut no_upper_limit,
+                            &mut control,
+                        )?,
+                        "sub" => subscript = required_argument(parser, scope)?,
+                        "sup" => superscript = required_argument(parser, scope)?,
+                        "e" => operand = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:nary/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:nary".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:nary")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:nary")),
         }
-    }
-    parser.leave();
-    Ok(NaryOperator {
-        chr,
-        limit_location,
-        grow,
-        hide_sub: no_lower_limit,
-        hide_sup: no_upper_limit,
-        control,
-        subscript,
-        superscript,
-        operand,
-        location,
+        Ok(NaryOperator {
+            chr,
+            limit_location,
+            grow,
+            hide_sub: no_lower_limit,
+            hide_sup: no_upper_limit,
+            control,
+            subscript,
+            superscript,
+            operand,
+            location,
+        })
     })
 }
 
@@ -1267,56 +1271,56 @@ fn parse_delimiter(
     let mut shape = None;
     let mut control = None;
     let mut arguments = Vec::new();
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "dPr" => parse_delimiter_properties(
-                        parser,
-                        &mut begin,
-                        &mut separator,
-                        &mut end,
-                        &mut grow,
-                        &mut shape,
-                        &mut control,
-                    )?,
-                    "e" => {
-                        if let Some(argument) = parse_argument(parser, scope, false)? {
-                            arguments.push(argument);
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
+                        parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "dPr" => parse_delimiter_properties(
+                            parser,
+                            &mut begin,
+                            &mut separator,
+                            &mut end,
+                            &mut grow,
+                            &mut shape,
+                            &mut control,
+                        )?,
+                        "e" => {
+                            if let Some(argument) = parse_argument(parser, scope, false)? {
+                                arguments.push(argument);
+                            }
+                        }
+                        other => {
+                            parser.record(
+                                &format!("m:d/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:d".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
                         }
                     }
-                    other => {
-                        parser.record(
-                            &format!("m:d/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:d".to_owned()),
-                            Some(parser.location()),
-                        );
-                        parser.skip_element()?;
-                    }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:d")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:d")),
         }
-    }
-    parser.leave();
-    Ok(Delimiter {
-        begin,
-        separator,
-        end,
-        grow,
-        shape: shape.map(Arc::from),
-        control,
-        arguments,
-        location,
+        Ok(Delimiter {
+            begin,
+            separator,
+            end,
+            grow,
+            shape: shape.map(Arc::from),
+            control,
+            arguments,
+            location,
+        })
     })
 }
 
@@ -1411,45 +1415,45 @@ fn parse_function(
     let mut control = None;
     let mut name = empty_argument(&location);
     let mut argument = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name: element, .. } => {
-                if !is_math(&element) {
-                    parser.record_foreign(&element);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match element.local() {
-                    "funcPr" => parse_control_only(parser, &mut control)?,
-                    "fName" => {
-                        // `m:fName` is itself a `CT_OMathArg`.
-                        let value = parse_argument(parser, scope, false)?;
-                        name = value.unwrap_or_else(|| empty_argument(&location));
-                    }
-                    "e" => argument = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:func/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:func".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name: element, .. } => {
+                    if !is_math(&element) {
+                        parser.record_foreign(&element);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match element.local() {
+                        "funcPr" => parse_control_only(parser, &mut control)?,
+                        "fName" => {
+                            // `m:fName` is itself a `CT_OMathArg`.
+                            let value = parse_argument(parser, scope, false)?;
+                            name = value.unwrap_or_else(|| empty_argument(&location));
+                        }
+                        "e" => argument = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:func/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:func".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:func")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:func")),
         }
-    }
-    parser.leave();
-    Ok(Function {
-        control,
-        name,
-        argument,
-        location,
+        Ok(Function {
+            control,
+            name,
+            argument,
+            location,
+        })
     })
 }
 
@@ -1464,46 +1468,46 @@ fn parse_limit(
     let mut control = None;
     let mut base = empty_argument(&location);
     let mut limit = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    local if local == property => {
-                        parse_properties(parser, property, |parser| {
-                            parse_control_only(parser, &mut control)
-                        })?;
-                    }
-                    "e" => base = required_argument(parser, scope)?,
-                    "lim" => limit = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:{property}/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of a math limit".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        local if local == property => {
+                            parse_properties(parser, property, |parser| {
+                                parse_control_only(parser, &mut control)
+                            })?;
+                        }
+                        "e" => base = required_argument(parser, scope)?,
+                        "lim" => limit = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:{property}/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of a math limit".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of a math limit")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of a math limit")),
         }
-    }
-    parser.leave();
-    Ok(MathLimit {
-        above,
-        control,
-        base,
-        limit,
-        location,
+        Ok(MathLimit {
+            above,
+            control,
+            base,
+            limit,
+            location,
+        })
     })
 }
 
@@ -1523,61 +1527,61 @@ fn parse_matrix(
     let mut columns = Vec::new();
     let mut control = None;
     let mut rows: Vec<Vec<MathArgument>> = Vec::new();
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "mPr" => parse_matrix_properties(
-                        parser,
-                        &mut base_justification,
-                        &mut hide_placeholders,
-                        &mut column_group_rule,
-                        &mut column_spacing,
-                        &mut column_group_spacing,
-                        &mut row_spacing_rule,
-                        &mut row_spacing,
-                        &mut columns,
-                        &mut control,
-                    )?,
-                    "mr" => {
-                        let cells = argument_list(parser, scope, "m:mr")?;
-                        rows.push(cells);
-                    }
-                    other => {
-                        parser.record(
-                            &format!("m:m/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:m".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "mPr" => parse_matrix_properties(
+                            parser,
+                            &mut base_justification,
+                            &mut hide_placeholders,
+                            &mut column_group_rule,
+                            &mut column_spacing,
+                            &mut column_group_spacing,
+                            &mut row_spacing_rule,
+                            &mut row_spacing,
+                            &mut columns,
+                            &mut control,
+                        )?,
+                        "mr" => {
+                            let cells = argument_list(parser, scope, "m:mr")?;
+                            rows.push(cells);
+                        }
+                        other => {
+                            parser.record(
+                                &format!("m:m/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:m".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:m")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:m")),
         }
-    }
-    parser.leave();
-    Ok(Matrix {
-        base_justification,
-        hide_placeholders,
-        column_group_rule: column_group_rule.map(Arc::from),
-        column_spacing,
-        column_group_spacing,
-        row_spacing_rule: row_spacing_rule.map(Arc::from),
-        row_spacing,
-        columns,
-        control,
-        rows,
-        location,
+        Ok(Matrix {
+            base_justification,
+            hide_placeholders,
+            column_group_rule: column_group_rule.map(Arc::from),
+            column_spacing,
+            column_group_spacing,
+            row_spacing_rule: row_spacing_rule.map(Arc::from),
+            row_spacing,
+            columns,
+            control,
+            rows,
+            location,
+        })
     })
 }
 
@@ -1662,24 +1666,26 @@ fn parse_matrix_columns(
 fn parse_matrix_column(parser: &mut PartParser<'_>) -> Result<MatrixColumn> {
     let mut justification = None;
     let mut count = None;
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => match name.local() {
-                "mcPr" => parse_matrix_column_properties(parser, &mut justification, &mut count)?,
-                _ => {
-                    parser.skip_element()?;
-                }
-            },
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:mc")),
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => match name.local() {
+                    "mcPr" => {
+                        parse_matrix_column_properties(parser, &mut justification, &mut count)?;
+                    }
+                    _ => {
+                        parser.skip_element()?;
+                    }
+                },
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:mc")),
+            }
         }
-    }
-    parser.leave();
-    Ok(MatrixColumn {
-        justification,
-        count,
+        Ok(MatrixColumn {
+            justification,
+            count,
+        })
     })
 }
 
@@ -1730,52 +1736,52 @@ fn parse_eq_array(
     let mut row_spacing = None;
     let mut control = None;
     let mut rows = Vec::new();
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "eqArrPr" => parse_eq_array_properties(
-                        parser,
-                        &mut base_justification,
-                        &mut max_distance,
-                        &mut object_distance,
-                        &mut row_spacing_rule,
-                        &mut row_spacing,
-                        &mut control,
-                    )?,
-                    "e" => rows.push(required_argument(parser, scope)?),
-                    other => {
-                        parser.record(
-                            &format!("m:eqArr/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:eqArr".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "eqArrPr" => parse_eq_array_properties(
+                            parser,
+                            &mut base_justification,
+                            &mut max_distance,
+                            &mut object_distance,
+                            &mut row_spacing_rule,
+                            &mut row_spacing,
+                            &mut control,
+                        )?,
+                        "e" => rows.push(required_argument(parser, scope)?),
+                        other => {
+                            parser.record(
+                                &format!("m:eqArr/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:eqArr".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:eqArr")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:eqArr")),
         }
-    }
-    parser.leave();
-    Ok(EquationArray {
-        base_justification,
-        max_distance,
-        object_distance,
-        row_spacing_rule: row_spacing_rule.map(Arc::from),
-        row_spacing,
-        control,
-        rows,
-        location,
+        Ok(EquationArray {
+            base_justification,
+            max_distance,
+            object_distance,
+            row_spacing_rule: row_spacing_rule.map(Arc::from),
+            row_spacing,
+            control,
+            rows,
+            location,
+        })
     })
 }
 
@@ -1831,40 +1837,40 @@ fn parse_accent(
     let mut chr = None;
     let mut control = None;
     let mut base = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "accPr" => parse_accent_properties(parser, &mut chr, &mut control)?,
-                    "e" => base = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:acc/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:acc".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "accPr" => parse_accent_properties(parser, &mut chr, &mut control)?,
+                        "e" => base = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:acc/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:acc".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:acc")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:acc")),
         }
-    }
-    parser.leave();
-    Ok(Accent {
-        chr,
-        control,
-        base,
-        location,
+        Ok(Accent {
+            chr,
+            control,
+            base,
+            location,
+        })
     })
 }
 
@@ -1902,42 +1908,47 @@ fn parse_bar(
     let mut position = None;
     let mut control = None;
     let mut base = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "barPr" => {
-                        parse_position_properties(parser, "m:barPr", &mut position, &mut control)?;
-                    }
-                    "e" => base = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:bar/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:bar".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "barPr" => {
+                            parse_position_properties(
+                                parser,
+                                "m:barPr",
+                                &mut position,
+                                &mut control,
+                            )?;
+                        }
+                        "e" => base = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:bar/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:bar".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:bar")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:bar")),
         }
-    }
-    parser.leave();
-    Ok(Bar {
-        position,
-        control,
-        base,
-        location,
+        Ok(Bar {
+            position,
+            control,
+            base,
+            location,
+        })
     })
 }
 
@@ -1984,48 +1995,48 @@ fn parse_group_chr(
     let mut vertical_justification = None;
     let mut control = None;
     let mut base = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "groupChrPr" => parse_group_chr_properties(
-                        parser,
-                        &mut chr,
-                        &mut position,
-                        &mut vertical_justification,
-                        &mut control,
-                    )?,
-                    "e" => base = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:groupChr/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:groupChr".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "groupChrPr" => parse_group_chr_properties(
+                            parser,
+                            &mut chr,
+                            &mut position,
+                            &mut vertical_justification,
+                            &mut control,
+                        )?,
+                        "e" => base = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:groupChr/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:groupChr".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:groupChr")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:groupChr")),
         }
-    }
-    parser.leave();
-    Ok(GroupCharacter {
-        chr,
-        position,
-        vertical_justification,
-        control,
-        base,
-        location,
+        Ok(GroupCharacter {
+            chr,
+            position,
+            vertical_justification,
+            control,
+            base,
+            location,
+        })
     })
 }
 
@@ -2084,43 +2095,48 @@ fn parse_box(
     let mut spacing = None;
     let mut control = None;
     let mut argument = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "boxPr" => {
-                        parse_box_properties(parser, &mut alignment, &mut spacing, &mut control)?;
-                    }
-                    "e" => argument = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:box/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:box".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "boxPr" => {
+                            parse_box_properties(
+                                parser,
+                                &mut alignment,
+                                &mut spacing,
+                                &mut control,
+                            )?;
+                        }
+                        "e" => argument = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:box/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:box".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:box")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:box")),
         }
-    }
-    parser.leave();
-    Ok(Boxed {
-        alignment,
-        spacing,
-        control,
-        argument,
-        location,
+        Ok(Boxed {
+            alignment,
+            spacing,
+            control,
+            argument,
+            location,
+        })
     })
 }
 
@@ -2182,54 +2198,54 @@ fn parse_border_box(
     let mut lines = None;
     let mut control = None;
     let mut arguments = Vec::new();
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "borderBoxPr" => parse_border_box_properties(
-                        parser,
-                        &mut alignment,
-                        &mut spacing,
-                        &mut shadow,
-                        &mut lines,
-                        &mut control,
-                    )?,
-                    "e" => {
-                        let argument = parse_argument(parser, scope, false)?
-                            .unwrap_or_else(|| empty_argument(&location));
-                        arguments.push(argument);
-                    }
-                    other => {
-                        parser.record(
-                            &format!("m:borderBox/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:borderBox".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "borderBoxPr" => parse_border_box_properties(
+                            parser,
+                            &mut alignment,
+                            &mut spacing,
+                            &mut shadow,
+                            &mut lines,
+                            &mut control,
+                        )?,
+                        "e" => {
+                            let argument = parse_argument(parser, scope, false)?
+                                .unwrap_or_else(|| empty_argument(&location));
+                            arguments.push(argument);
+                        }
+                        other => {
+                            parser.record(
+                                &format!("m:borderBox/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:borderBox".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:borderBox")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:borderBox")),
         }
-    }
-    parser.leave();
-    Ok(BorderBox {
-        alignment,
-        spacing,
-        shadow,
-        lines,
-        control,
-        arguments,
-        location,
+        Ok(BorderBox {
+            alignment,
+            spacing,
+            shadow,
+            lines,
+            control,
+            arguments,
+            location,
+        })
     })
 }
 
@@ -2303,56 +2319,56 @@ fn parse_phantom(
     let mut rtl = false;
     let mut control = None;
     let mut argument = empty_argument(&location);
-    parser.enter()?;
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, attrs: _ } => {
-                if !is_math(&name) {
-                    parser.record_foreign(&name);
-                    parser.skip_element()?;
-                    continue;
-                }
-                match name.local() {
-                    "phantPr" => parse_phantom_properties(
-                        parser,
-                        &mut show,
-                        &mut transparent,
-                        &mut zero_width,
-                        &mut zero_ascent,
-                        &mut zero_descent,
-                        &mut show_all,
-                        &mut rtl,
-                        &mut control,
-                    )?,
-                    "e" => argument = required_argument(parser, scope)?,
-                    other => {
-                        parser.record(
-                            &format!("m:phant/{other}"),
-                            SupportStatus::Partial,
-                            Some("unexpected child of m:phant".to_owned()),
-                            Some(parser.location()),
-                        );
+    parser.nested(|parser| {
+        loop {
+            match parser.next_event()? {
+                XmlEvent::StartElement { name, attrs: _ } => {
+                    if !is_math(&name) {
+                        parser.record_foreign(&name);
                         parser.skip_element()?;
+                        continue;
+                    }
+                    match name.local() {
+                        "phantPr" => parse_phantom_properties(
+                            parser,
+                            &mut show,
+                            &mut transparent,
+                            &mut zero_width,
+                            &mut zero_ascent,
+                            &mut zero_descent,
+                            &mut show_all,
+                            &mut rtl,
+                            &mut control,
+                        )?,
+                        "e" => argument = required_argument(parser, scope)?,
+                        other => {
+                            parser.record(
+                                &format!("m:phant/{other}"),
+                                SupportStatus::Partial,
+                                Some("unexpected child of m:phant".to_owned()),
+                                Some(parser.location()),
+                            );
+                            parser.skip_element()?;
+                        }
                     }
                 }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:phant")),
             }
-            XmlEvent::EndElement { .. } => break,
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid("unexpected end of m:phant")),
         }
-    }
-    parser.leave();
-    Ok(Phantom {
-        show,
-        transparent,
-        zero_width,
-        zero_ascent,
-        zero_descent,
-        show_all,
-        rtl,
-        control,
-        argument,
-        location,
+        Ok(Phantom {
+            show,
+            transparent,
+            zero_width,
+            zero_ascent,
+            zero_descent,
+            show_all,
+            rtl,
+            control,
+            argument,
+            location,
+        })
     })
 }
 
