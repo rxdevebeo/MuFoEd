@@ -81,7 +81,7 @@ impl From<Conformance> for ConformanceName {
     }
 }
 
-/// The `conformance` block: declared target, detected markup and whether Stage-6
+/// The `conformance` block: declared target, detected markup and whether
 /// normalization was applied.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConformanceBlock {
@@ -89,7 +89,7 @@ pub struct ConformanceBlock {
     pub declared: ConformanceName,
     /// Conformance detected in the package.
     pub detected: ConformanceName,
-    /// Whether Stage-6 normalization ran (always `false` until Stage 6).
+    /// Whether a normalizer changed any part of the package (`was_normalized`).
     pub normalized: bool,
 }
 
@@ -273,7 +273,7 @@ pub struct Summary {
     pub error: u32,
 }
 
-/// One applied normalization transform (Stage 6; empty in Stage 3).
+/// One applied normalization transform.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedTransform {
     /// Transform identifier, for example `T1.namespace`.
@@ -284,7 +284,7 @@ pub struct AppliedTransform {
     pub locations: Vec<Location>,
 }
 
-/// One loss recorded during normalization (Stage 6; empty in Stage 3).
+/// One loss recorded during normalization.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Loss {
     /// Transform identifier that dropped or degraded content.
@@ -299,7 +299,7 @@ pub struct Loss {
     pub locations: Vec<Location>,
 }
 
-/// The `normalization` block (`TZ` §11.1). Empty until Stage 6.
+/// The `normalization` block (`TZ` §11.1). Empty when no normalizer ran.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NormalizationBlock {
     /// Applied transforms.

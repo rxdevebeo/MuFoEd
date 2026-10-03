@@ -283,11 +283,13 @@ fn run_report(args: &[String]) -> ExitCode {
     let mut file: Option<&str> = None;
     let mut text = false;
     let mut out: Option<&str> = None;
+    let mut transitional = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--json" => text = false,
             "--text" => text = true,
+            "--transitional" => transitional = true,
             "--out" => {
                 index += 1;
                 let Some(path) = args.get(index) else {
@@ -315,8 +317,8 @@ fn run_report(args: &[String]) -> ExitCode {
         return ExitCode::from(EXIT_ERROR);
     };
 
-    let options = OpenOptions::default();
-    match StrictDocument::open_path(file, &options) {
+    let (options, normalizer) = open_options(transitional);
+    let code = match StrictDocument::open_path(file, &options) {
         Ok(document) => {
             let rendered = if text {
                 document.report_text()
@@ -335,16 +337,16 @@ fn run_report(args: &[String]) -> ExitCode {
             }
         }
         Err(error @ StrictError::TransitionalNotSupported { .. }) => {
-            eprintln!(
-                "error: report for Transitional documents requires Stage-6 normalization: {error}"
-            );
+            eprintln!("error: {error}");
+            eprintln!("hint: pass --transitional to normalize it to Strict on the way in");
             ExitCode::from(EXIT_ERROR)
         }
         Err(error) => {
             eprintln!("error: {error}");
             ExitCode::from(EXIT_ERROR)
         }
-    }
+    };
+    print_loss(normalizer.as_deref(), code)
 }
 
 fn compression_name(part: &strict_ooxml_core::part::Part) -> &'static str {

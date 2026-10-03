@@ -4,14 +4,20 @@
 //! (then by location) and derives `summary`, `overall_status` and `severity`,
 //! which are checked by the invariant/oracle tests (`STAGE-3-TASK.md` §5, §8.2).
 
+use strict_ooxml_core::normalize::{
+    NormalizationReport as CoreNormalizationReport, Severity as CoreSeverity,
+};
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_wml::model::support::{FeatureUse, SupportModel, SupportStatus};
 
 use crate::model::{
-    ConformanceBlock, ConformanceName, Feature, FeatureStatus, Location, NormalizationBlock,
-    SupportReport, Tool, SCHEMA_VERSION, STANDARD,
+    AppliedTransform, ConformanceBlock, ConformanceName, Feature, FeatureStatus, Location, Loss,
+    NormalizationBlock, Severity, SupportReport, Tool, SCHEMA_VERSION, STANDARD,
 };
 use crate::severity;
+
+/// How many locations to keep on an applied transform or loss entry (AUD-31).
+const MAX_LOCATIONS: usize = 16;
 
 /// Inputs to [`build`].
 ///
@@ -26,7 +32,7 @@ pub struct ReportInput<'a> {
     pub declared: Conformance,
     /// Conformance detected in the package.
     pub detected: Conformance,
-    /// Whether Stage-6 normalization ran (always `false` in Stage 3).
+    /// Whether a normalizer changed any part of the package.
     pub normalized: bool,
     /// The support model to convert.
     pub support: &'a SupportModel,
@@ -37,6 +43,8 @@ pub struct ReportInput<'a> {
     /// too. `None` leaves such a feature without a location (and therefore
     /// schema-invalid), which the oracle tests use as a negative control.
     pub fallback_location: Option<Location>,
+    /// Populated Loss Report from Stage-6 normalization (AUD-31).
+    pub normalization: NormalizationBlock,
 }
 
 impl<'a> ReportInput<'a> {
@@ -52,6 +60,7 @@ impl<'a> ReportInput<'a> {
             normalized: false,
             support,
             fallback_location: None,
+            normalization: NormalizationBlock::default(),
         }
     }
 
@@ -82,6 +91,20 @@ impl<'a> ReportInput<'a> {
         self.fallback_location = location;
         self
     }
+
+    /// Sets the normalization block directly.
+    #[must_use]
+    pub fn normalization(mut self, block: NormalizationBlock) -> Self {
+        self.normalization = block;
+        self
+    }
+
+    /// Fills the normalization block from a core [`NormalizationReport`] (AUD-31).
+    #[must_use]
+    pub fn normalization_report(mut self, report: &CoreNormalizationReport) -> Self {
+        self.normalization = normalization_block_from(report);
+        self
+    }
 }
 
 /// Builds a [`SupportReport`] from a [`ReportInput`].
@@ -93,6 +116,27 @@ pub fn build(input: ReportInput<'_>) -> SupportReport {
         .iter()
         .map(|use_| feature_from(use_, fallback))
         .collect();
+    // Error-severity losses surface as `normalization.<feature_id>` features
+    // so `overall_status` and the §11.3 "error has a location" rule see them.
+    for loss in &input.normalization.losses {
+        if loss.severity != Severity::Error {
+            continue;
+        }
+        let mut locations = loss.locations.clone();
+        if locations.is_empty() {
+            if let Some(fallback) = fallback {
+                locations.push(fallback.clone());
+            }
+        }
+        features.push(Feature {
+            feature_id: format!("normalization.{}", loss.feature_id),
+            status: FeatureStatus::Error,
+            severity: Severity::Error,
+            message: Some(loss.reason.clone()),
+            locations,
+            count: 1,
+        });
+    }
     features.sort_by(|left, right| {
         left.feature_id
             .cmp(&right.feature_id)
@@ -115,7 +159,53 @@ pub fn build(input: ReportInput<'_>) -> SupportReport {
         overall_status,
         summary,
         features,
-        normalization: NormalizationBlock::default(),
+        normalization: input.normalization,
+    }
+}
+
+/// Converts a core [`NormalizationReport`] into the Feature Report block.
+#[must_use]
+pub fn normalization_block_from(report: &CoreNormalizationReport) -> NormalizationBlock {
+    let applied: Vec<AppliedTransform> = report
+        .applied()
+        .into_iter()
+        .filter(|record| record.count > 0)
+        .map(|record| AppliedTransform {
+            transform_id: record.id.to_owned(),
+            count: record.count,
+            // TransformRecord does not store locations today (AUD-31).
+            locations: Vec::new(),
+        })
+        .collect();
+    let losses: Vec<Loss> = report
+        .losses()
+        .into_iter()
+        .map(|loss| Loss {
+            transform_id: loss.transform_id.to_owned(),
+            feature_id: loss.feature_id,
+            reason: loss.reason,
+            severity: map_loss_severity(loss.severity),
+            locations: loss
+                .locations
+                .iter()
+                .take(MAX_LOCATIONS)
+                .map(Location::from)
+                .collect(),
+        })
+        .collect();
+    let invariants_ok = report.fatal.is_none() && report.verify_no_silent_loss().is_ok();
+    NormalizationBlock {
+        applied,
+        losses,
+        invariants_ok,
+    }
+}
+
+fn map_loss_severity(severity: CoreSeverity) -> Severity {
+    match severity {
+        CoreSeverity::Info | CoreSeverity::Ignorable => Severity::Info,
+        CoreSeverity::Lossy => Severity::Warning,
+        CoreSeverity::Error => Severity::Error,
     }
 }
 

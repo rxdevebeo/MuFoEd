@@ -290,6 +290,22 @@ fn report_transitional_returns_two() {
     let _ = std::fs::remove_file(&path);
     assert_eq!(code, 2, "stderr: {stderr}");
     assert!(stderr.contains("Transitional"), "stderr: {stderr}");
+    assert!(stderr.contains("pass --transitional"), "stderr: {stderr}");
+}
+
+/// AUD-31: `report --transitional` fills the Loss Report into the Feature Report.
+#[test]
+fn report_transitional_with_flag_includes_normalization_block() {
+    let path = write_temp("report-transitional-flag.docx", &transitional_docx());
+    let (code, stdout, stderr) = run(&["report", path.to_str().unwrap(), "--transitional"]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 0, "stdout: {stdout}\nstderr: {stderr}");
+    assert!(stdout.contains("\"normalized\": true"), "{stdout}");
+    assert!(
+        stdout.contains("\"detected\": \"transitional\""),
+        "{stdout}"
+    );
+    assert!(stdout.contains("\"applied\""), "{stdout}");
 }
 
 #[test]

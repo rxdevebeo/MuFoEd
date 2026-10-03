@@ -374,6 +374,19 @@ impl Package {
         self.was_normalized.load(Ordering::Relaxed)
     }
 
+    /// The [`NormalizationReport`](crate::normalize::NormalizationReport) from
+    /// the installed normalizer, if any (AUD-31).
+    ///
+    /// `None` when no normalizer is installed or the normalizer keeps no
+    /// report (`NoopNormalizer`). The caller that knows package-level
+    /// detection should set `conformance_detected` on the returned value.
+    #[must_use]
+    pub fn normalization_report(&self) -> Option<crate::normalize::NormalizationReport> {
+        self.normalizer
+            .as_ref()
+            .and_then(|normalizer| normalizer.report())
+    }
+
     /// Returns the main document part id.
     ///
     /// # Errors

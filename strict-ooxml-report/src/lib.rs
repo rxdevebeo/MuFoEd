@@ -41,7 +41,7 @@ pub mod schema;
 pub mod severity;
 pub mod text;
 
-pub use build::{build, ReportInput};
+pub use build::{build, normalization_block_from, ReportInput};
 pub use model::{
     AppliedTransform, ConformanceBlock, ConformanceName, Feature, FeatureStatus, Location, Loss,
     NormalizationBlock, OverallStatus, Severity, Summary, SupportReport, Tool, SCHEMA_VERSION,

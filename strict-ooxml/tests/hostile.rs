@@ -1061,6 +1061,7 @@ mod opc {
     //! outside `_rels/`.
 
     use super::*;
+    use strict_ooxml_core::opc::Package;
 
     /// AUD-24: OPC part names are compared ASCII case-insensitively
     /// (ECMA-376 Part 2 §10.1.2.1), so a ZIP that lists both

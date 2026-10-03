@@ -180,11 +180,13 @@ impl StrictDocument {
         self.document.support_debug()
     }
 
-    /// Builds the Stage-3 Feature Report for this document.
+    /// Builds the Feature Report for this document.
     ///
     /// Available with the `report` feature (enabled by default). The report
-    /// records the actual detected conformance and a `Strict` declared target;
-    /// normalization is always `false` until Stage 6.
+    /// records a `Strict` declared target, the package's detected conformance,
+    /// and `normalized` from [`Package::was_normalized`]. When a normalizer
+    /// was installed, the `normalization` block carries the Loss Report
+    /// (AUD-31).
     ///
     /// The report is a **problem/attention view** (ADR-0005): `features` lists
     /// the mechanisms the parser recorded (normally those needing attention),
@@ -211,10 +213,18 @@ impl StrictDocument {
             .main_document_part()
             .map_or("/word/document.xml", |part| part.as_str());
         let fallback = Location::new(format!("{main}:1:1"));
-        let input = ReportInput::new(&self.file, self.support())
+        let mut input = ReportInput::new(&self.file, self.support())
             .tool(Tool::new("strict-ooxml", env!("CARGO_PKG_VERSION")))
-            .conformance(Conformance::Strict, self.package.conformance(), false)
+            .conformance(
+                Conformance::Strict,
+                self.package.conformance(),
+                self.package.was_normalized(),
+            )
             .fallback_location(Some(fallback));
+        if let Some(mut report) = self.package.normalization_report() {
+            report.conformance_detected = Some(self.package.conformance());
+            input = input.normalization_report(&report);
+        }
         build(input)
     }
 

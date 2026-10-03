@@ -181,6 +181,19 @@ impl TransitionalNormalizer {
         }
     }
 
+    /// Merges every per-part report in [`PartId`] order (ADR-0017).
+    fn merge_reports(&self) -> NormalizationReport {
+        let parts = self
+            .parts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut merged = NormalizationReport::new();
+        for part_report in parts.values() {
+            merged.merge_part(part_report);
+        }
+        merged
+    }
+
     /// The merged report across every part touched so far, in [`PartId`] order.
     ///
     /// Re-reading a part replaces its contribution rather than adding to it
@@ -193,15 +206,7 @@ impl TransitionalNormalizer {
     /// nothing inside that scope can panic. A poisoned lock would mean a
     /// previous thread panicked mid-insert, which is already a bug.
     pub fn report(&self) -> NormalizationReport {
-        let parts = self
-            .parts
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut merged = NormalizationReport::new();
-        for part_report in parts.values() {
-            merged.merge_part(part_report);
-        }
-        merged
+        self.merge_reports()
     }
 
     /// Stores (replaces) the per-part rewrite report. Called once at the end
@@ -2092,6 +2097,10 @@ fn xml_error(part: &PartId, detail: String) -> StrictError {
 impl crate::normalize::RawNormalizer for TransitionalNormalizer {
     fn normalize_part<'a>(&self, part: &PartId, bytes: &'a [u8]) -> Result<Cow<'a, [u8]>> {
         self.normalize(part, bytes)
+    }
+
+    fn report(&self) -> Option<NormalizationReport> {
+        Some(self.merge_reports())
     }
 
     fn note_unexpected_main_content_type(&self, part: &PartId, content_type: &str) {

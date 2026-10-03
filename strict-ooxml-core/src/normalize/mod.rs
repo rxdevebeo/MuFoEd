@@ -43,6 +43,14 @@ pub trait RawNormalizer: Send + Sync {
     fn note_unexpected_main_content_type(&self, part: &PartId, content_type: &str) {
         let _ = (part, content_type);
     }
+
+    /// The accumulated [`NormalizationReport`], if this normalizer keeps one.
+    ///
+    /// Default `None` so a bare [`NoopNormalizer`] stays silent. AUD-31 /
+    /// ADR-0017: [`TransitionalNormalizer`] returns the per-part merge.
+    fn report(&self) -> Option<NormalizationReport> {
+        None
+    }
 }
 
 /// A [`RawNormalizer`] that leaves parts unchanged.
