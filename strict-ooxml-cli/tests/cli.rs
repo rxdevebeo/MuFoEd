@@ -415,4 +415,9 @@ fn normalize_manual_docx_counts_reltypes_once() {
         stdout.contains("T2.reltype x8"),
         "expected T2.reltype x8 (not x16): {stdout}"
     );
+    // AUD-32: prefixes in invariant messages must not be sliced (`prefix :`).
+    assert!(
+        !stdout.contains("prefix :"),
+        "truncated xmlns prefix in report: {stdout}"
+    );
 }

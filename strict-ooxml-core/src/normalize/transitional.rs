@@ -987,35 +987,42 @@ fn check_invariants(
 /// The `xml:` namespace, which XML binds and no document declares.
 const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
 
-/// Every `xmlns[:prefix]="uri"` in `output`, as `(prefix, uri)`.
+/// Every `xmlns` / `xmlns:prefix` binding on a start or empty element in
+/// `output`, as `(prefix, uri)`. Default namespace → empty prefix.
+///
+/// Parsed with `quick_xml` (AUD-32) so a textual `xmlns` in element content
+/// cannot produce a false positive, single-quoted attributes are seen, and
+/// the prefix is not sliced off one character short of the `=` (the old
+/// text search measured `equals` on the tail after `:` and then sliced the
+/// untrimmed `rest`, yielding `:v` for `vt`).
 fn namespace_declarations(output: &[u8]) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    let text = String::from_utf8_lossy(output);
-    let mut rest = text.as_ref();
-    while let Some(at) = rest.find("xmlns") {
-        rest = &rest[at + 5..];
-        let (prefix, tail) = match rest.strip_prefix(':') {
-            Some(tail) => match tail.find('=') {
-                Some(equals) => (
-                    rest[..equals].trim_end_matches('"').to_owned(),
-                    &tail[equals + 1..],
-                ),
-                None => continue,
-            },
-            None => (String::new(), rest),
-        };
-        let Some(quoted) = tail.strip_prefix('"') else {
-            continue;
-        };
-        let Some(end) = quoted.find('"') else {
-            continue;
-        };
-        out.push((prefix, quoted[..end].to_owned()));
-        rest = &quoted[end + 1..];
+    let mut reader = Reader::from_reader(output);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(start) | Event::Empty(start)) => {
+                for attribute in start.attributes().flatten() {
+                    let key = attribute.key.as_ref();
+                    let prefix = if key == b"xmlns" {
+                        String::new()
+                    } else if let Some(rest) = key.strip_prefix(b"xmlns:") {
+                        String::from_utf8_lossy(rest).into_owned()
+                    } else {
+                        continue;
+                    };
+                    let uri = String::from_utf8_lossy(&attribute.value).into_owned();
+                    out.push((prefix, uri));
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
     }
     out
 }
-/// will need.
+
+/// Declares the `DrawingML` prefixes a converted VML picture will need.
 ///
 /// On the **root**, once, and only for a part that has a `w:pict` to convert.
 /// Declaring them anywhere else is not an option — the root is the only element
@@ -3747,6 +3754,20 @@ mod tests {
             .find(|record| record.id == "T2.reltype")
             .expect("T2.reltype");
         assert_eq!(reltype.count, 2, "two relationship types, counted once");
+    }
+
+    /// AUD-32: declarations come from the tokenizer, not a text search.
+    #[test]
+    fn namespace_declarations_ignore_text_and_keep_full_prefixes() {
+        let xml = br#"<a xmlns:vt="u1" xmlns:dc='u2'>xmlns:x="u3"</a>"#;
+        let found = super::namespace_declarations(xml);
+        assert_eq!(
+            found,
+            vec![
+                ("vt".to_owned(), "u1".to_owned()),
+                ("dc".to_owned(), "u2".to_owned()),
+            ]
+        );
     }
 
     /// AUD-30 / ADR-0017: merge order follows `PartId`, not discovery order.
