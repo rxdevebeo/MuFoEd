@@ -477,11 +477,49 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
     if !recovered.is_empty() {
         recover::declare_style(&mut document);
     }
+    // AUD-83: PDF text layers can carry C0 controls that XML 1.0 cannot. Strip
+    // them from every `w:t` before the writer sees the model, and name the loss
+    // here so a conversion report does not depend on the writer being asked.
+    sanitize_xml_text(&mut document, &mut report);
     Ok(Converted {
         document,
         report,
         media,
     })
+}
+
+/// Removes characters XML 1.0 cannot carry from every text node (AUD-83).
+fn sanitize_xml_text(document: &mut Document, report: &mut ConversionReport) {
+    use strict_ooxml_core::xml::escape::is_xml_char;
+    use strict_ooxml_wml::model::block::Block;
+    use strict_ooxml_wml::model::inline::{Inline, RunContent};
+
+    let mut removed = 0usize;
+    for block in &mut document.body.blocks {
+        let Block::Paragraph(paragraph) = block else {
+            continue;
+        };
+        for inline in &mut paragraph.inlines {
+            let Inline::Run(run) = inline else {
+                continue;
+            };
+            for content in &mut run.content {
+                let RunContent::Text(node) = content else {
+                    continue;
+                };
+                let before = node.text.chars().count();
+                node.text = node.text.chars().filter(|&ch| is_xml_char(ch)).collect();
+                removed += before - node.text.chars().count();
+            }
+        }
+    }
+    if removed > 0 {
+        report.record(
+            "convert.invalid-xml-char",
+            Severity::Lost,
+            format!("{removed} character(s) that XML 1.0 cannot carry were removed from the text"),
+        );
+    }
 }
 
 /// Points to twips, rounded to the nearest twentieth of a point.
