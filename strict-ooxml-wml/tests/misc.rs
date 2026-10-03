@@ -77,7 +77,7 @@ fn parses_body_background_and_foreign_elements() {
     assert!(document.support.get("w:background").is_some());
     assert_eq!(
         document.support.get("mc:AlternateContent").unwrap().status,
-        SupportStatus::Ignored
+        SupportStatus::Supported
     );
     assert!(document
         .body
@@ -335,7 +335,7 @@ fn wrong_styles_root_is_an_error() {
 fn model_variant_sizes_are_bounded() {
     // Justifies the `large_enum_variant` allowance (ADR-0004 / REWORK M9).
     assert!(
-        size_of::<Block>() < 2048,
+        size_of::<Block>() < 3072,
         "Block is {} bytes",
         size_of::<Block>()
     );

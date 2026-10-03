@@ -75,7 +75,11 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
         .last()
         .map(|section| &section.properties);
     let geometry = geometry_for(section, ctx.options.scale);
-    let mut paginator = Paginator::new(ctx, geometry, total_pages);
+    let page_start = section
+        .and_then(|properties| properties.page_number.as_ref())
+        .and_then(|page_number| page_number.start)
+        .unwrap_or(1);
+    let mut paginator = Paginator::new(ctx, geometry, total_pages, page_start);
     layout_blocks(
         ctx,
         &ctx.document.body.blocks,
@@ -282,6 +286,8 @@ struct Paginator<'a> {
     ctx: &'a LayoutContext<'a>,
     geometry: Geometry,
     total_pages: usize,
+    /// First page number from `w:pgNumType/@w:start` (AUD-46).
+    page_start: u32,
     has_fields: bool,
     pages: Vec<PlacedPage>,
     current: Vec<Item>,
@@ -305,7 +311,12 @@ struct Paginator<'a> {
 }
 
 impl<'a> Paginator<'a> {
-    fn new(ctx: &'a LayoutContext<'a>, geometry: Geometry, total_pages: usize) -> Self {
+    fn new(
+        ctx: &'a LayoutContext<'a>,
+        geometry: Geometry,
+        total_pages: usize,
+        page_start: u32,
+    ) -> Self {
         let mut note_cache = HashMap::new();
         for id in ctx.note_numbers.footnotes_in_order() {
             let marker = ctx
@@ -336,6 +347,7 @@ impl<'a> Paginator<'a> {
             ctx,
             geometry,
             total_pages,
+            page_start: page_start.max(1),
             has_fields: false,
             pages: Vec::new(),
             current: Vec::new(),
@@ -598,7 +610,12 @@ impl<'a> Paginator<'a> {
                 continue;
             };
             let value = match marker.kind {
-                FieldKind::Page => page_number,
+                FieldKind::Page => {
+                    // AUD-46: `w:pgNumType/@w:start` offsets PAGE (fmt is AUD-70).
+                    usize::try_from(self.page_start.saturating_sub(1))
+                        .unwrap_or(0)
+                        .saturating_add(page_number)
+                }
                 FieldKind::NumPages | FieldKind::SectionPages => self.total_pages,
             };
             // `try_from`, not `as`: the page count comes from a document whose

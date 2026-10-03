@@ -197,7 +197,8 @@ fn layout_row(
         // converter's table detection turns on the last bit of a column
         // position. "Not a panic" is the fix; "a different number" would be a
         // second change nobody asked for.
-        let x: f64 = table_x + sum_slice(widths.get(..column));
+        let spacing = cell_spacing_px(ctx, table, row);
+        let x: f64 = table_x + sum_slice(widths.get(..column)) + spacing * column as f64;
         let end = column.saturating_add(span).min(widths.len());
         let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
         let cell_content_width = (width - margins.0 - margins.1).max(1.0);
@@ -423,7 +424,13 @@ fn table_x(
         .indent
         .map_or(0.0, |value| twips_to_px(value.value(), ctx.options.scale));
     let mut x = content_left + indent;
-    match table.props.alignment {
+    // Prefer the first row's `w:jc` when set (AUD-46), else the table's.
+    let alignment = table
+        .rows
+        .first()
+        .and_then(|row| row.props.alignment)
+        .or(table.props.alignment);
+    match alignment {
         Some(strict_ooxml_wml::model::values::Justification::Center) => {
             x = content_left + (content_width - total_width).max(0.0) / 2.0;
         }
@@ -433,6 +440,29 @@ fn table_x(
         _ => {}
     }
     x
+}
+
+/// Cell gap from `w:tblCellSpacing` on the table or row (AUD-46), in px.
+fn cell_spacing_px(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    row: &strict_ooxml_wml::model::TableRow,
+) -> f64 {
+    let width = row
+        .props
+        .cell_spacing
+        .as_ref()
+        .or(table.props.cell_spacing.as_ref());
+    let Some(width) = width else {
+        return 0.0;
+    };
+    let Some(value) = width.value else {
+        return 0.0;
+    };
+    match width.kind {
+        strict_ooxml_wml::model::values::WidthKind::Dxa => twips_to_px(value, ctx.options.scale),
+        _ => 0.0,
+    }
 }
 
 /// Effective cell margins `(left, right, top, bottom)` in px.

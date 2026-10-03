@@ -647,6 +647,26 @@ the entry that points at it.
 opened = "2026-10-01"
 
 [[waivers]]
+id = "TBL-STYLE-PR"
+subject = "WML table styles"
+binds = "process:tbl-style-pr"
+summary = """
+`w:tblStylePr` (conditional formatting of table styles) is recorded as
+`partial` and not modelled (AUD-46). Round-trip does not restore banded cell
+overrides from the style table.
+"""
+risk = """
+Tables that rely on firstRow/lastRow/band1Horz style overrides keep only the
+base `w:tblPr`/`w:tcPr` from the style; banding may look flat compared to Word.
+"""
+exit = """
+Model `tblStylePr` variants on `Style` and apply them in the render cascade;
+then close this waiver.
+"""
+opened = "2026-10-03"
+review = "2027-01-03"
+
+[[waivers]]
 id = "VERTJC"
 subject = "5C formulas"
 binds = "process:m-vert-jc"

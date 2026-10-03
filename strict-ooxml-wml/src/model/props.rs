@@ -80,6 +80,8 @@ pub struct ParagraphProperties {
     pub word_wrap: TriState,
     /// Snap to grid (`w:snapToGrid`).
     pub snap_to_grid: TriState,
+    /// Text frame (`w:framePr`), AUD-46. Render stays in-flow with a `partial` record.
+    pub frame: Option<FrameProperties>,
     /// Source location of `w:pPr`.
     pub location: Option<SourceLocation>,
 }
@@ -93,8 +95,12 @@ pub struct RunProperties {
     pub fonts: Option<Fonts>,
     /// Bold (`w:b`).
     pub bold: TriState,
+    /// Complex-script bold (`w:bCs`), AUD-46.
+    pub bold_cs: TriState,
     /// Italic (`w:i`).
     pub italic: TriState,
+    /// Complex-script italic (`w:iCs`), AUD-46.
+    pub italic_cs: TriState,
     /// Underline style (`w:u`).
     pub underline: Option<Underline>,
     /// Underline colour (`w:u/@w:color`).
@@ -178,6 +184,10 @@ pub struct TableProperties {
     pub indent: Option<Twips>,
     /// Visual right-to-left table (`w:bidiVisual`).
     pub bidi_visual: bool,
+    /// Floating-table positioning (`w:tblpPr`), AUD-46. Render stays in-flow.
+    pub positioning: Option<TablePositioning>,
+    /// Spacing between cells (`w:tblCellSpacing`), AUD-46.
+    pub cell_spacing: Option<Width>,
     /// Source location of `w:tblPr`.
     pub location: Option<SourceLocation>,
 }
@@ -201,6 +211,10 @@ pub struct RowProperties {
     pub width_before: Option<Width>,
     /// Preferred width after (`w:wAfter`).
     pub width_after: Option<Width>,
+    /// Row alignment (`w:jc`), AUD-46.
+    pub alignment: Option<Justification>,
+    /// Spacing between cells (`w:tblCellSpacing` / `w:tblPrEx`), AUD-46.
+    pub cell_spacing: Option<Width>,
     /// Revision id (`w:rsid`).
     pub rsid: Option<Arc<str>>,
     /// Source location of `w:trPr`.
@@ -314,6 +328,79 @@ pub struct LineNumbering {
     pub distance: Option<Twips>,
 }
 
+/// Page numbering (`w:pgNumType`), AUD-46.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PageNumberType {
+    /// Number format (`w:fmt`), for example `decimal`, `lowerRoman`.
+    pub format: Option<Arc<str>>,
+    /// Starting page number (`w:start`).
+    pub start: Option<u32>,
+    /// Chapter style id (`w:chapStyle`).
+    pub chapter_style: Option<u8>,
+    /// Chapter separator (`w:chapSep`).
+    pub chapter_separator: Option<Arc<str>>,
+}
+
+/// Floating table position (`w:tblpPr`), AUD-46.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TablePositioning {
+    /// Distance from text on the left (`w:leftFromText`).
+    pub left_from_text: Option<Twips>,
+    /// Distance from text on the right (`w:rightFromText`).
+    pub right_from_text: Option<Twips>,
+    /// Distance from text above (`w:topFromText`).
+    pub top_from_text: Option<Twips>,
+    /// Distance from text below (`w:bottomFromText`).
+    pub bottom_from_text: Option<Twips>,
+    /// Vertical anchor (`w:vertAnchor`).
+    pub vert_anchor: Option<Arc<str>>,
+    /// Horizontal anchor (`w:horzAnchor`).
+    pub horz_anchor: Option<Arc<str>>,
+    /// Absolute X alignment (`w:tblpXSpec`).
+    pub x_align: Option<Arc<str>>,
+    /// Absolute X in twips (`w:tblpX`).
+    pub x: Option<i32>,
+    /// Absolute Y alignment (`w:tblpYSpec`).
+    pub y_align: Option<Arc<str>>,
+    /// Absolute Y in twips (`w:tblpY`).
+    pub y: Option<i32>,
+}
+
+/// Paragraph text frame (`w:framePr`), AUD-46.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct FrameProperties {
+    /// Drop-cap kind (`w:dropCap`).
+    pub drop_cap: Option<Arc<str>>,
+    /// Lines for a drop cap (`w:lines`).
+    pub lines: Option<u8>,
+    /// Frame width in twips (`w:w`).
+    pub width: Option<Twips>,
+    /// Frame height in twips (`w:h`).
+    pub height: Option<Twips>,
+    /// Vertical padding (`w:vSpace`).
+    pub v_space: Option<Twips>,
+    /// Horizontal padding (`w:hSpace`).
+    pub h_space: Option<Twips>,
+    /// Wrap mode (`w:wrap`).
+    pub wrap: Option<Arc<str>>,
+    /// Horizontal anchor (`w:hAnchor`).
+    pub h_anchor: Option<Arc<str>>,
+    /// Vertical anchor (`w:vAnchor`).
+    pub v_anchor: Option<Arc<str>>,
+    /// Absolute X (`w:x`).
+    pub x: Option<i32>,
+    /// X alignment (`w:xAlign`).
+    pub x_align: Option<Arc<str>>,
+    /// Absolute Y (`w:y`).
+    pub y: Option<i32>,
+    /// Y alignment (`w:yAlign`).
+    pub y_align: Option<Arc<str>>,
+    /// Height rule (`w:hRule`).
+    pub height_rule: Option<Arc<str>>,
+    /// Lock against dragging (`w:anchorLock`).
+    pub anchor_lock: bool,
+}
+
 /// Which header/footer a reference points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum HeaderFooterKind {
@@ -368,6 +455,8 @@ pub struct SectionProperties {
     pub text_direction: Option<TextDirection>,
     /// Line numbering.
     pub line_numbering: Option<LineNumbering>,
+    /// Page numbering (`w:pgNumType`), AUD-46.
+    pub page_number: Option<PageNumberType>,
     /// Footnote properties (`w:footnotePr`).
     pub footnote_properties: NoteProperties,
     /// Endnote properties (`w:endnotePr`).

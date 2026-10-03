@@ -170,7 +170,11 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
             // `w:semiHidden`. Arming this on `hidden` put the element two slots
             // before `w:uiPriority` - which is how the new order test found it
             // on its first run.
-            "semiHidden" if style.hidden => xml.empty("w:semiHidden"),
+            "semiHidden" if style.semi_hidden => xml.empty("w:semiHidden"),
+            "hidden" if style.hidden => xml.empty("w:hidden"),
+            "qFormat" if style.q_format => xml.empty("w:qFormat"),
+            "locked" if style.locked => xml.empty("w:locked"),
+            "unhideWhenUsed" if style.unhide_when_used => xml.empty("w:unhideWhenUsed"),
             "pPr" => paragraph_properties(ctx, xml, &style.paragraph, None),
             "rPr" => run_properties(xml, &style.run),
             "tblPr" if style.style_type == StyleType::Table => {
@@ -1065,7 +1069,11 @@ mod tests {
             next: None,
             link: None,
             is_default: false,
+            semi_hidden: false,
             hidden: false,
+            q_format: false,
+            locked: false,
+            unhide_when_used: false,
             ui_priority: Some(9),
             table: Default::default(),
             paragraph: Default::default(),
@@ -1101,7 +1109,11 @@ mod tests {
                 next: None,
                 link: None,
                 is_default: false,
+                semi_hidden: false,
                 hidden: false,
+                q_format: false,
+                locked: false,
+                unhide_when_used: false,
                 ui_priority: None,
                 table: Default::default(),
                 paragraph: Default::default(),

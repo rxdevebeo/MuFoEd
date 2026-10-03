@@ -637,7 +637,11 @@ pub(crate) fn declare_style(document: &mut Document) {
         next: None,
         link: None,
         is_default: false,
+        semi_hidden: false,
         hidden: false,
+        q_format: false,
+        locked: false,
+        unhide_when_used: false,
         ui_priority: None,
         table: TableProperties {
             look: Some(TableLook::default()),

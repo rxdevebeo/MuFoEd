@@ -483,6 +483,64 @@ fn directional_round_trips_and_custom_xml_is_reported() {
     assert!(matches!(reparsed.body.blocks[1], Block::Paragraph(_)));
 }
 
+/// AUD-46: modelled `*Pr` extensions round-trip.
+#[test]
+fn aud46_property_extensions_round_trip() {
+    use strict_ooxml_wml::model::values::{Justification, TriState, Twips};
+    let body = "\
+<w:p><w:pPr><w:framePr w:w=\"200\" w:h=\"100\" w:wrap=\"around\"/></w:pPr>\
+<w:r><w:rPr><w:bCs/><w:iCs w:val=\"0\"/></w:rPr><w:t>x</w:t></w:r></w:p>\
+<w:tbl><w:tblPr>\
+<w:tblpPr w:leftFromText=\"40\" w:horzAnchor=\"page\" w:tblpX=\"100\"/>\
+<w:tblCellSpacing w:w=\"20\" w:type=\"dxa\"/>\
+</w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"500\"/><w:gridCol w:w=\"500\"/></w:tblGrid>\
+<w:tr><w:trPr><w:jc w:val=\"center\"/></w:trPr>\
+<w:tc><w:p/></w:tc><w:tc><w:p/></w:tc></w:tr></w:tbl>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>\
+<w:pgNumType w:fmt=\"lowerRoman\" w:start=\"3\"/></w:sectPr>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes).expect("open");
+    let document = parse(&package).expect("parse");
+    let written = write(&document, &package);
+    let reopened = open(&written.bytes).expect("reopen");
+    let reparsed = parse(&reopened).expect("reparse");
+
+    let paragraph = reparsed.body.blocks[0].as_paragraph().unwrap();
+    assert_eq!(
+        paragraph.props.frame.as_ref().and_then(|frame| frame.width),
+        Some(Twips(200))
+    );
+    let run = paragraph.inlines[0].as_run().unwrap();
+    assert_eq!(run.props.bold_cs, TriState::On);
+    assert_eq!(run.props.italic_cs, TriState::Off);
+
+    let table = reparsed.body.blocks[1].as_table().unwrap();
+    assert!(table.props.positioning.is_some());
+    assert_eq!(
+        table
+            .props
+            .cell_spacing
+            .as_ref()
+            .and_then(|width| width.value),
+        Some(20)
+    );
+    assert_eq!(table.rows[0].props.alignment, Some(Justification::Center));
+    assert_eq!(
+        reparsed
+            .sections
+            .last()
+            .unwrap()
+            .properties
+            .page_number
+            .as_ref()
+            .and_then(|page| page.start),
+        Some(3)
+    );
+}
+
 /// AUD-41: row-level `w:sdt` round-trips (parse → write → parse → write is a fixed point).
 #[test]
 fn row_level_sdt_round_trips() {

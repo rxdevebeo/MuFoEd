@@ -18,9 +18,9 @@
 use strict_ooxml_wml::model::ids::Ilvl;
 use strict_ooxml_wml::model::notes::NoteProperties;
 use strict_ooxml_wml::model::props::{
-    CellProperties, Columns, DocGrid, HeaderFooterKind, HeaderFooterRef, PageBorder, PageBorders,
-    PageMargins, PageSize, ParagraphProperties, RowProperties, RunProperties, SectionProperties,
-    TableProperties,
+    CellProperties, Columns, DocGrid, FrameProperties, HeaderFooterKind, HeaderFooterRef,
+    PageBorder, PageBorders, PageMargins, PageNumberType, PageSize, ParagraphProperties,
+    RowProperties, RunProperties, SectionProperties, TablePositioning, TableProperties,
 };
 use strict_ooxml_wml::model::values::{
     Border, Borders, CellMargins, Color, Fonts, HighlightOrColor, Indentation, Shading, Spacing,
@@ -94,6 +94,11 @@ fn paragraph_child(
         "keepNext" => toggle(xml, "w:keepNext", props.keep_next),
         "keepLines" => toggle(xml, "w:keepLines", props.keep_lines),
         "pageBreakBefore" => toggle(xml, "w:pageBreakBefore", props.page_break_before),
+        "framePr" => {
+            if let Some(frame) = &props.frame {
+                frame_pr(xml, frame);
+            }
+        }
         "widowControl" => match props.widow_control {
             TriState::On => xml.empty_attr_w("w:widowControl", "val", "true"),
             TriState::Off => xml.empty_attr_w("w:widowControl", "val", "false"),
@@ -251,6 +256,7 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && props.contextual_spacing == TriState::Absent
         && props.word_wrap == TriState::Absent
         && props.snap_to_grid == TriState::Absent
+        && props.frame.is_none()
 }
 
 fn spacing_element(xml: &mut XmlWriter, spacing: &Spacing) {
@@ -324,7 +330,9 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
         fonts_element(xml, fonts);
     }
     toggle(xml, "w:b", props.bold);
+    toggle(xml, "w:bCs", props.bold_cs);
     toggle(xml, "w:i", props.italic);
+    toggle(xml, "w:iCs", props.italic_cs);
     toggle(xml, "w:caps", props.caps);
     toggle(xml, "w:smallCaps", props.small_caps);
     toggle(xml, "w:strike", props.strike);
@@ -407,7 +415,9 @@ fn is_empty_run(props: &RunProperties) -> bool {
     props.style.is_none()
         && props.fonts.is_none()
         && props.bold == TriState::Absent
+        && props.bold_cs == TriState::Absent
         && props.italic == TriState::Absent
+        && props.italic_cs == TriState::Absent
         && props.underline.is_none()
         && props.strike == TriState::Absent
         && props.double_strike == TriState::Absent
@@ -686,6 +696,8 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         && props.look.is_none()
         && props.indent.is_none()
         && !props.bidi_visual
+        && props.positioning.is_none()
+        && props.cell_spacing.is_none()
         && borders_empty(&props.borders)
         && props.cell_margins.top.is_none()
         && props.cell_margins.start.is_none()
@@ -709,6 +721,11 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
                 xml.empty_attr_w("w:tblStyle", "val", style.as_str());
             }
         }
+        "tblpPr" => {
+            if let Some(positioning) = &props.positioning {
+                tblp_pr(xml, positioning);
+            }
+        }
         "bidiVisual" if props.bidi_visual => xml.empty("w:bidiVisual"),
         "tblW" => {
             if let Some(width) = &props.width {
@@ -718,6 +735,11 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
         "jc" => {
             if let Some(alignment) = &props.alignment {
                 xml.empty_attr_w("w:jc", "val", alignment.as_str());
+            }
+        }
+        "tblCellSpacing" => {
+            if let Some(spacing) = &props.cell_spacing {
+                width_element(xml, "w:tblCellSpacing", spacing);
             }
         }
         "tblInd" => {
@@ -771,6 +793,8 @@ pub fn row_properties(xml: &mut XmlWriter, props: &RowProperties) {
         && props.grid_after.is_none()
         && props.width_before.is_none()
         && props.width_after.is_none()
+        && props.alignment.is_none()
+        && props.cell_spacing.is_none()
         && props.cell_margins.top.is_none()
         && props.cell_margins.start.is_none()
         && props.cell_margins.bottom.is_none()
@@ -820,6 +844,16 @@ fn row_child(xml: &mut XmlWriter, props: &RowProperties, name: &str) {
             }
         }
         "tblHeader" if props.header => xml.empty("w:tblHeader"),
+        "tblCellSpacing" => {
+            if let Some(spacing) = &props.cell_spacing {
+                width_element(xml, "w:tblCellSpacing", spacing);
+            }
+        }
+        "jc" => {
+            if let Some(alignment) = &props.alignment {
+                xml.empty_attr_w("w:jc", "val", alignment.as_str());
+            }
+        }
         _ => {}
     }
 }
@@ -979,6 +1013,11 @@ fn section_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, section: &SectionProper
                 xml.end();
             }
         }
+        "pgNumType" => {
+            if let Some(page_number) = &section.page_number {
+                pg_num_type(xml, page_number);
+            }
+        }
         "cols" => {
             if let Some(columns) = &section.columns {
                 columns_element(xml, columns);
@@ -1060,6 +1099,71 @@ fn page_size(xml: &mut XmlWriter, size: &PageSize) {
     xml.attr_w_opt("h", size.height.map(|v| v.0));
     if let Some(orientation) = &size.orientation {
         xml.attr_w("orient", orientation.as_str());
+    }
+    xml.end();
+}
+
+fn pg_num_type(xml: &mut XmlWriter, page_number: &PageNumberType) {
+    if page_number.format.is_none()
+        && page_number.start.is_none()
+        && page_number.chapter_style.is_none()
+        && page_number.chapter_separator.is_none()
+    {
+        return;
+    }
+    xml.start("w:pgNumType");
+    xml.attr_w_opt("fmt", page_number.format.as_deref());
+    xml.attr_w_opt("start", page_number.start);
+    xml.attr_w_opt("chapStyle", page_number.chapter_style);
+    xml.attr_w_opt("chapSep", page_number.chapter_separator.as_deref());
+    xml.end();
+}
+
+fn tblp_pr(xml: &mut XmlWriter, positioning: &TablePositioning) {
+    xml.start("w:tblpPr");
+    xml.attr_w_opt(
+        "leftFromText",
+        positioning.left_from_text.map(|value| value.0),
+    );
+    xml.attr_w_opt(
+        "rightFromText",
+        positioning.right_from_text.map(|value| value.0),
+    );
+    xml.attr_w_opt(
+        "topFromText",
+        positioning.top_from_text.map(|value| value.0),
+    );
+    xml.attr_w_opt(
+        "bottomFromText",
+        positioning.bottom_from_text.map(|value| value.0),
+    );
+    xml.attr_w_opt("vertAnchor", positioning.vert_anchor.as_deref());
+    xml.attr_w_opt("horzAnchor", positioning.horz_anchor.as_deref());
+    xml.attr_w_opt("tblpXSpec", positioning.x_align.as_deref());
+    xml.attr_w_opt("tblpX", positioning.x);
+    xml.attr_w_opt("tblpYSpec", positioning.y_align.as_deref());
+    xml.attr_w_opt("tblpY", positioning.y);
+    xml.end();
+}
+
+fn frame_pr(xml: &mut XmlWriter, frame: &FrameProperties) {
+    xml.start("w:framePr");
+    xml.attr_w_opt("dropCap", frame.drop_cap.as_deref());
+    xml.attr_w_opt("lines", frame.lines);
+    xml.attr_w_opt("w", frame.width.map(|value| value.0));
+    xml.attr_w_opt("h", frame.height.map(|value| value.0));
+    xml.attr_w_opt("vSpace", frame.v_space.map(|value| value.0));
+    xml.attr_w_opt("hSpace", frame.h_space.map(|value| value.0));
+    xml.attr_w_opt("wrap", frame.wrap.as_deref());
+    xml.attr_w_opt("hAnchor", frame.h_anchor.as_deref());
+    xml.attr_w_opt("vAnchor", frame.v_anchor.as_deref());
+    xml.attr_w_opt("x", frame.x);
+    xml.attr_w_opt("xAlign", frame.x_align.as_deref());
+    xml.attr_w_opt("y", frame.y);
+    xml.attr_w_opt("yAlign", frame.y_align.as_deref());
+    xml.attr_w_opt("hRule", frame.height_rule.as_deref());
+    if frame.anchor_lock {
+        xml.attr_w("anchorLock", "true");
     }
     xml.end();
 }

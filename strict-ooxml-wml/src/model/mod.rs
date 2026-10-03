@@ -49,10 +49,10 @@ pub use math::{
 pub use notes::{Note, NoteKind, NoteProperties, NoteTable};
 pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 pub use props::{
-    BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind,
-    HeaderFooterRef, Language, LineNumbering, NumPr, PageBorder, PageBorders, PageMargins,
-    PageSize, ParagraphProperties, RowProperties, RunProperties, Section, SectionProperties,
-    TableProperties,
+    BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, FrameProperties,
+    HeaderFooterKind, HeaderFooterRef, Language, LineNumbering, NumPr, PageBorder, PageBorders,
+    PageMargins, PageNumberType, PageSize, ParagraphProperties, RowProperties, RunProperties,
+    Section, SectionProperties, TablePositioning, TableProperties,
 };
 pub use revision::{Revision, RevisionKind};
 pub use settings::{DocumentZoom, Settings, Zoom};

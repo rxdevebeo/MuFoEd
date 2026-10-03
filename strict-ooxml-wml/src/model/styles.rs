@@ -26,8 +26,16 @@ pub struct Style {
     pub link: Option<StyleId>,
     /// Whether this is a default style (`w:default`).
     pub is_default: bool,
-    /// Whether the style is hidden (`w:semiHidden`/`w:hidden`).
+    /// Semi-hidden in the UI (`w:semiHidden`), AUD-46.
+    pub semi_hidden: bool,
+    /// Fully hidden (`w:hidden`), AUD-46.
     pub hidden: bool,
+    /// Show in the recommended list (`w:qFormat`), AUD-46.
+    pub q_format: bool,
+    /// Locked against editing (`w:locked`), AUD-46.
+    pub locked: bool,
+    /// Unhide when used (`w:unhideWhenUsed`), AUD-46.
+    pub unhide_when_used: bool,
     /// UI priority (`w:uiPriority`).
     pub ui_priority: Option<i32>,
     /// Table style conditional formatting (reserved).

@@ -108,6 +108,19 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "trPr" => props = parser.parse_row_properties()?,
+                            "tblPrEx" => {
+                                // AUD-46: exception properties may carry cell spacing.
+                                let ex = parser.parse_table_properties()?;
+                                if props.cell_spacing.is_none() {
+                                    props.cell_spacing = ex.cell_spacing;
+                                }
+                                parser.record(
+                                    "w:tblPrEx",
+                                    SupportStatus::Partial,
+                                    Some("row exception properties partially modelled".to_owned()),
+                                    Some(parser.location()),
+                                );
+                            }
                             "tc" => cells.push(parser.parse_table_cell(&attrs)?),
                             "sdt" => {
                                 // AUD-41: cell-level content control.

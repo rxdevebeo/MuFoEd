@@ -9,7 +9,7 @@ use crate::model::styles::{DocDefaults, Style, StyleTable};
 use crate::model::support::SupportStatus;
 use crate::model::values::StyleType;
 
-use super::{is_wml, val_attr, wml_attr, PartParser};
+use super::{feature_id_for, is_wml, val_attr, wml_attr, PartParser};
 
 impl PartParser<'_> {
     /// Parses a `styles.xml` part.
@@ -43,7 +43,16 @@ impl PartParser<'_> {
                                 );
                                 parser.skip_element()?;
                             }
-                            _ => parser.skip_element()?,
+                            _ => {
+                                let feature = feature_id_for(&name);
+                                parser.record(
+                                    &feature,
+                                    SupportStatus::Unsupported,
+                                    Some("property not modelled".to_owned()),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -81,7 +90,16 @@ impl PartParser<'_> {
                                     defaults.paragraph = paragraph;
                                 }
                             }
-                            _ => parser.skip_element()?,
+                            _ => {
+                                let feature = feature_id_for(&name);
+                                parser.record(
+                                    &feature,
+                                    SupportStatus::Unsupported,
+                                    Some("property not modelled".to_owned()),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -148,6 +166,7 @@ impl PartParser<'_> {
     }
 
     /// Parses one `w:style` element.
+    #[allow(clippy::too_many_lines)]
     fn parse_style(&mut self, attrs: &[strict_ooxml_core::xml::Attr]) -> Result<Option<Style>> {
         let location = self.location();
         self.nested(|parser| {
@@ -160,7 +179,11 @@ impl PartParser<'_> {
             let mut next = None;
             let mut link = None;
             let mut ui_priority = None;
+            let mut semi_hidden = false;
             let mut hidden = false;
+            let mut q_format = false;
+            let mut locked = false;
+            let mut unhide_when_used = false;
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
             let mut table_props = TableProperties::default();
@@ -198,14 +221,51 @@ impl PartParser<'_> {
                                     val_attr(&attrs).and_then(|value| value.trim().parse().ok());
                                 parser.skip_element()?;
                             }
-                            "semiHidden" | "hidden" => {
+                            "semiHidden" => {
+                                semi_hidden = true;
+                                parser.skip_element()?;
+                            }
+                            "hidden" => {
                                 hidden = true;
+                                parser.skip_element()?;
+                            }
+                            "qFormat" => {
+                                q_format = true;
+                                parser.skip_element()?;
+                            }
+                            "locked" => {
+                                locked = true;
+                                parser.skip_element()?;
+                            }
+                            "unhideWhenUsed" => {
+                                unhide_when_used = true;
                                 parser.skip_element()?;
                             }
                             "pPr" => paragraph = parser.parse_paragraph_properties()?.0,
                             "rPr" => run = parser.parse_run_properties()?,
                             "tblPr" => table_props = parser.parse_table_properties()?,
-                            _ => parser.skip_element()?,
+                            "tblStylePr" => {
+                                parser.record(
+                                    "w:tblStylePr",
+                                    SupportStatus::Partial,
+                                    Some(
+                                        "table style conditional formatting not modelled"
+                                            .to_owned(),
+                                    ),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
+                            _ => {
+                                let feature = feature_id_for(&element);
+                                parser.record(
+                                    &feature,
+                                    SupportStatus::Unsupported,
+                                    Some("property not modelled".to_owned()),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -231,7 +291,11 @@ impl PartParser<'_> {
                 next,
                 link,
                 is_default,
+                semi_hidden,
                 hidden,
+                q_format,
+                locked,
+                unhide_when_used,
                 ui_priority,
                 paragraph,
                 run,

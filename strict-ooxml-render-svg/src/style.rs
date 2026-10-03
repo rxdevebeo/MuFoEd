@@ -292,6 +292,19 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme:
     if let Some(size) = props.size {
         computed.size_pt = f64::from(size.value()) / 2.0;
     }
+    // AUD-46: complex-script toggles/size apply when the run is RTL or names a CS font.
+    let complex = props.rtl.is_on()
+        || props
+            .fonts
+            .as_ref()
+            .is_some_and(|fonts| fonts.complex_script.is_some());
+    if complex {
+        apply_toggle_xor(&mut computed.bold, props.bold_cs);
+        apply_toggle_xor(&mut computed.italic, props.italic_cs);
+        if let Some(size) = props.size_cs {
+            computed.size_pt = f64::from(size.value()) / 2.0;
+        }
+    }
     if let Some(vert) = props.vert_align {
         computed.vert_align = vert;
     }
@@ -308,6 +321,10 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
         computed.family = family.to_string();
     } else if let Some(family) = theme_font(fonts.h_ansi_theme.as_deref(), theme) {
         computed.family = family;
+    }
+    if let Some(family) = fonts.complex_script.as_ref() {
+        // Prefer the CS face when one is named (AUD-46).
+        computed.family = family.to_string();
     }
 }
 
@@ -517,7 +534,11 @@ mod tests {
             next: None,
             link: None,
             is_default: false,
+            semi_hidden: false,
             hidden: false,
+            q_format: false,
+            locked: false,
+            unhide_when_used: false,
             ui_priority: None,
             table: Default::default(),
             paragraph: ParagraphProperties::default(),
@@ -533,6 +554,9 @@ mod tests {
         child.id = strict_ooxml_wml::model::StyleId::new("Child");
         child.based_on = Some(strict_ooxml_wml::model::StyleId::new("Base"));
         child.based_on_chain = vec![strict_ooxml_wml::model::StyleId::new("Base")];
+        // XOR toggles (AUD-44): only set what this style adds; keep bold Absent
+        // so Base's `w:b` is not flipped off by a cloned On.
+        child.run.bold = TriState::Absent;
         child.run.italic = TriState::On;
         child.run.size = None;
         document.styles.insert(base);
