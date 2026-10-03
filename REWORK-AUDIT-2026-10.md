@@ -83,6 +83,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-81 | ✅ выполнена | `51fc3f5` | PNG 16/1–4/palette → 8-bit RGB/grey; JPEG ColorSpace из SOF; Adobe YCCK `/Decode`; gen-jpeg + hayro ±2 |
 | AUD-82 | ✅ выполнена | `7824a97` | CID≠GID: пара (глиф,символ) → свой CID; `/CIDToGIDMap` поток; ToUnicode по CID; тест «a b\u{A0}c» |
 | AUD-83 | ✅ выполнена | `f8e6791` | sanitize `w:t` через `is_xml_char`; запись `convert.invalid-xml-char`; hostile PDF с U+0001 |
+| AUD-84 | ✅ выполнена | `02eeee4` | `BI…ID…EI` снимается до `Content::decode`; замена `N MuFoEdInline`; `place_inline` под CTM; тесты garbage-samples + media в `.docx` |
 | AUD-37 … AUD-94 | ⏳ не начаты | — | — |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
