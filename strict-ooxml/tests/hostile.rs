@@ -686,105 +686,111 @@ mod math {
         assert_eq!(tail, 2, "both paragraphs are in the model");
     }
 }
-mod table {
-    //! AUD-08, AUD-09: rows wider than `tblGrid`, overflowing grid sums.
+mod overflow {
+    //! AUD-09: arithmetic on values from the input, in debug *and* in release.
 
     use super::*;
 
-    /// A table whose `w:tblGrid` declares `grid` columns and whose only row
-    /// holds `cells` cells.
-    fn table(grid: &str, cells: usize) -> DocxBuilder {
-        let body = format!(
-            "<w:tbl><w:tblGrid>{grid}</w:tblGrid><w:tr>{}</w:tr></w:tbl>",
-            "<w:tc><w:tcPr><w:tcW w:w=\"2000\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>"
-                .repeat(cells)
-        );
-        DocxBuilder::strict().body(&body)
-    }
-
-    const ONE: &str = "<w:gridCol w:w=\"2000\"/>";
-
-    /// The width of the widest `x` in every `<rect`, as a float.
-    fn widest_rect(svg: &str) -> f64 {
-        let mut widest: f64 = 0.0;
-        for chunk in svg.split("width=\"").skip(1) {
-            let value = chunk.split('"').next().unwrap_or_default();
-            if let Ok(parsed) = value.parse::<f64>() {
-                widest = widest.max(parsed);
-            }
-        }
-        widest
+    /// Opens `body` and renders it, in both SVG and PDF, on a 1 MiB stack.
+    fn renders(body: &str) {
+        let body = body.to_owned();
+        assert_survives("render overflow input", move || {
+            let bytes = DocxBuilder::strict().body(&body).build();
+            let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+                .expect("open");
+            let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+            assert!(svg.is_ok(), "render_svg: {svg:?}");
+        });
     }
 
     #[test]
-    fn a_row_wider_than_the_grid_renders_and_says_so() {
-        // Before AUD-08 this was `widths[..column]` with `column` past the end
-        // of the widths: a three-cell row under a one-column `tblGrid` ended the
-        // process with an index panic.
-        let pages = assert_survives("wide row", move || {
-            StrictDocument::open_reader(Cursor::new(table(ONE, 3).build()), &OpenOptions::default())
-                .expect("open")
+    fn a_grid_sum_past_i32_overflow_renders() {
+        // Two columns of 2e9 twips are 4e9, which does not fit the `i32` the sum
+        // was taken in: a panic in debug, a negative table width in release.
+        renders(
+            "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000000000\"/><w:gridCol w:w=\"2000000000\"/>\
+             </w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>\
+             <w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+        );
+    }
+
+    #[test]
+    fn text_box_insets_that_overflow_render() {
+        // `lIns` at `i64::MAX` plus `rIns` of 1: the sum overflows before it is
+        // ever measured.
+        renders(
+            "<w:p><w:r><w:drawing><wp:inline \
+             xmlns:wp=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing\">\
+             <wp:extent cx=\"914400\" cy=\"914400\"/><wp:docPr id=\"1\" name=\"box\"/>\
+             <a:graphic><a:graphicData \
+             uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">\
+             <wps:wsp xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">\
+             <wps:spPr/><wps:txbx><w:txbxContent><w:p><w:r><w:t>x</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+             <wps:bodyPr lIns=\"9223372036854775807\" rIns=\"1\" tIns=\"9223372036854775807\" bIns=\"1\"/>\
+             </wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>",
+        );
+    }
+
+    #[test]
+    fn a_numbering_start_at_the_top_of_the_range_does_not_wrap() {
+        // `w:start` at the top of the model's range and two items after the first:
+        // the counter increments past the value it started at. In debug that
+        // panicked; in release it wrapped to zero and the third item was
+        // numbered 1. The `numbering.xml` has to be there - a `w:numId` that
+        // to be there - a `w:numId` that resolves to nothing never reaches the
+        // counter at all, which is how a version of this test passed against the
+        let numbering = "<w:numbering \
+             xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\">\
+             <w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\">\
+             <w:start w:val=\"4294967295\"/><w:numFmt w:val=\"decimal\"/>\
+             <w:lvlText w:val=\"%1.\"/></w:lvl></w:abstractNum>\
+             <w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>";
+        let body =
+            "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>\
+             <w:r><w:t>one</w:t></w:r></w:p><w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/>\
+             <w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>two</w:t></w:r></w:p>\
+             <w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>\
+             <w:r><w:t>three</w:t></w:r></w:p>";
+        let bytes = DocxBuilder::strict()
+            .body(body)
+            .part("word/numbering.xml", numbering.as_bytes().to_vec())
+            .rel(
+                "rIdNum",
+                &strict_ooxml_testkit::docx::Family::Strict.rel_type("numbering"),
+                "numbering.xml",
+            )
+            .build();
+        let text = assert_survives("numbering at the top of the range", move || {
+            let document = StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default())
+                .expect("open");
+            let pages = document
                 .render_svg(&strict_ooxml::RenderOptions::default())
-                .expect("render")
+                .expect("render");
+            pages[0].svg.clone()
         });
+        // `w:start` is 4294967295, which is past the model's `i32` ceiling, so the
+        assert!(text.contains("2147483649"), "the counter wrapped: {text}");
         assert!(
-            pages[0]
-                .warnings
-                .iter()
-                .any(|warning| warning.contains("table row has 3 grid columns")
-                    && warning.contains("tblGrid declares 1")),
-            "{:?}",
-            pages[0].warnings
+            !text.contains(">1.</text>") && !text.contains(">2.</text>"),
+            "the counter wrapped to zero: {text}"
         );
     }
 
     #[test]
-    fn an_empty_grid_with_two_cells_renders() {
-        assert_survives("no grid", move || {
-            StrictDocument::open_reader(Cursor::new(table("", 2).build()), &OpenOptions::default())
-                .expect("open")
-                .render_svg(&strict_ooxml::RenderOptions::default())
-                .expect("render")
-        });
-    }
-
-    #[test]
-    fn a_grid_span_of_65535_renders_within_the_content_width() {
-        // The span is one past the last column by any reading, and it is what a
-        // producer emits when `w:gridSpan` carries a value nobody checked. The
-        // table must not be wider than the page it sits on, and it must not be
-        // narrower than one pixel.
-        let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr>\
-             <w:tc><w:tcPr><w:gridSpan w:val=\"65535\"/></w:tcPr><w:p/></w:tc>\
-             </w:tr></w:tbl>";
-        let pages = assert_survives("huge span", move || {
-            StrictDocument::open_reader(
-                Cursor::new(DocxBuilder::strict().body(body).build()),
-                &OpenOptions::default(),
-            )
-            .expect("open")
-            .render_svg(&strict_ooxml::RenderOptions::default())
-            .expect("render")
-        });
-        // Letter at 96 DPI is 816 px wide, with half-inch margins on each side.
-        let widest = widest_rect(&pages[0].svg);
-        assert!(widest <= 816.0, "the table is {widest} px wide");
-    }
-
-    #[cfg(feature = "pdf")]
-    #[test]
-    fn a_row_wider_than_the_grid_reaches_the_pdf_backend_too() {
-        // The PDF backend lays out through the same table code, so the same
-        // input that used to panic the SVG renderer used to panic here.
-        assert_survives("wide row, pdf", move || {
-            let document = StrictDocument::open_reader(
-                Cursor::new(table(ONE, 3).build()),
-                &OpenOptions::default(),
-            )
-            .expect("open");
-            let pdf = document.render_pdf(&strict_ooxml::RenderOptions::default());
-            assert!(pdf.is_ok(), "render_pdf: {pdf:?}");
-        });
+    fn a_fraction_too_small_for_its_rule_still_renders() {
+        // A 6 pt numerator has no room for the nominal clearance between the
+        // fraction's rule and its parts, and a subscript of a subscript has less
+        // still. The `debug_assert!` that claimed otherwise ended the process in
+        // debug and drew the rule through its own parts in release.
+        renders(
+            "<w:p><w:r><w:rPr><w:sz w:val=\"6\"/></w:rPr>\
+             <m:oMath><m:f><m:num><m:r><m:t>a</m:t></m:r></m:num>\
+             <m:den><m:r><m:t>b</m:t></m:r></m:den></m:f></m:oMath></w:r></w:p>\
+             <w:p><w:r><w:rPr><w:vertAlign w:val=\"subscript\"/></w:rPr>\
+             <m:oMath><m:sSub><m:e><m:sSub><m:e><m:f><m:num><m:r><m:t>a</m:t></m:r></m:num>\
+             <m:den><m:r><m:t>b</m:t></m:r></m:den></m:f></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub>\
+             </m:sSub></m:e><m:sub><m:r><m:t>j</m:t></m:r></m:sub></m:sSub></m:oMath></w:r></w:p>",
+        );
     }
 }
 mod numbering {

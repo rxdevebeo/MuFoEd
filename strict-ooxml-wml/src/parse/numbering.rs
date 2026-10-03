@@ -129,7 +129,8 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "start" => {
-                                level.start = val_attr(&attrs).and_then(parse_u32);
+                                level.start =
+                                    val_attr(&attrs).map(|value| parser.clamped_start(value));
                                 parser.skip_element()?;
                             }
                             "numFmt" => {

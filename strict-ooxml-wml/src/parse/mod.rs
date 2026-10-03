@@ -895,6 +895,43 @@ impl<'a> PartParser<'a> {
     pub(crate) fn debug_depth(&self) -> u32 {
         self.depth
     }
+    /// Parses `w:start` into the model's range, recording a clamp.
+    ///
+    /// `w:start` is `ST_DecimalNumber`: the schema allows a negative value and the
+    /// model stores a `u32`, because the renderer's counter is one. A producer that
+    /// wrote `-1`, or one that wrote a decimal fraction, gets the nearest number the
+    /// model can hold, and the report says so - the alternative was a silent
+    /// substitution, or a `u32` counter that wraps to zero mid-document (AUD-09).
+    pub(crate) fn clamped_start(&mut self, raw: &str) -> u32 {
+        /// The model's counter is a `u32` that the renderer increments per item, so
+        /// a value it cannot hold is a value that would wrap mid-document.
+        const CEILING: i64 = i32::MAX as i64;
+
+        let Some(parsed) = raw.trim().parse::<i64>().ok() else {
+            self.record(
+                "w:start",
+                SupportStatus::Partial,
+                Some(format!(
+                    "w:start is {raw:?}, which is not an integer; the level starts at 0"
+                )),
+                Some(self.location()),
+            );
+            return 0;
+        };
+        let clamped = parsed.clamp(0, CEILING);
+        if clamped != parsed {
+            self.record(
+                "w:start",
+                SupportStatus::Partial,
+                Some(format!(
+                    "w:start {parsed} is outside 0..={CEILING}; it was clamped to {clamped}"
+                )),
+                Some(self.location()),
+            );
+        }
+        u32::try_from(clamped).unwrap_or(0)
+    }
+
     /// Runs `f` inside one level of the XML recursion guard.
     ///
     /// The guard is a pair and the second half was the bug: `enter()` without a

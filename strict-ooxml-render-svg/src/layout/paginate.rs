@@ -601,7 +601,11 @@ impl<'a> Paginator<'a> {
                 FieldKind::Page => page_number,
                 FieldKind::NumPages | FieldKind::SectionPages => self.total_pages,
             };
-            let text = marker.format.format(value.min(u32::MAX as usize) as u32);
+            // `try_from`, not `as`: the page count comes from a document whose
+            // number of pages is itself a limit, and G-2 says an integer cast of a
+            // value from the input is a checked conversion (AUD-09).
+            let value = u32::try_from(value).unwrap_or(u32::MAX);
+            let text = marker.format.format(value);
             item.width = self.ctx.measure(&text, &item.run);
             item.text = text;
             self.has_fields = true;

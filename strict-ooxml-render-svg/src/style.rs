@@ -342,9 +342,13 @@ fn resolve_theme_color(reference: &ThemeColorRef, theme: Option<&Theme>) -> Opti
         .and_then(|value| u8::from_str_radix(value, 16).ok());
     let apply = |channel: u8| -> u8 {
         if let Some(shade) = shade {
-            (u16::from(channel) * u16::from(shade) / 255) as u8
+            // Both products are of `u8`s divided by 255, so they land in 0..=255 and
+            // the `u8` is exact; the fallback says what would happen if it were
+            // not, rather than truncating (AUD-09).
+            u8::try_from(u16::from(channel) * u16::from(shade) / 255).unwrap_or(u8::MAX)
         } else if let Some(tint) = tint {
-            (255 - (255 - u16::from(channel)) * (255 - u16::from(tint)) / 255) as u8
+            u8::try_from(255 - (255 - u16::from(channel)) * (255 - u16::from(tint)) / 255)
+                .unwrap_or(0)
         } else {
             channel
         }

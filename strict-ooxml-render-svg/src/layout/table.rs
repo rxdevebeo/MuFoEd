@@ -364,13 +364,22 @@ fn table_total_width(ctx: &LayoutContext<'_>, table: &Table, content_width: f64)
             value: Some(value),
         }) => content_width * f64::from(value) / 5000.0,
         _ => {
-            let grid: i32 = table
+            // `i64`, not `i32`, and saturating: `w:gridCol/@w:w` is a twip count a
+            // producer never checked, and a thousand of them overflow an `i32`
+            // in a debug build - a panic, and a silently wrapped number in
+            // release, which is worse than either (AUD-09). Saturating gives the
+            // same answer in both profiles: wider than any page.
+            let grid: i64 = table
                 .grid
                 .iter()
-                .map(|col| col.width.map_or(0, Twips::value))
-                .sum();
+                .map(|col| i64::from(col.width.map_or(0, Twips::value)))
+                .fold(0i64, i64::saturating_add);
             if grid > 0 {
-                twips_to_px(grid, scale)
+                // The clamp to `i32` is the conversion G-2 asks for, and it is
+                // lossless where it matters: `table_total_width` clamps the
+                // result to the content box anyway, and a table a billion
+                // twips wide is the content box wide.
+                twips_to_px(i32::try_from(grid).unwrap_or(i32::MAX), scale)
             } else {
                 content_width
             }

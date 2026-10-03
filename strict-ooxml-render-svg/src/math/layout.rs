@@ -801,6 +801,11 @@ fn fraction_part_placements(
     shrink: f64,
 ) -> (f64, f64) {
     let rule_room = (FRACTION_RULE_CLEARANCE + AXIS) * em * shrink + rule / 2.0;
+    // The clearance never goes below `MIN_FRACTION_PART_GAP_PX`: a 6 pt
+    // numerator has no room for the nominal clearance, and a subscript of a
+    // subscript has less still. This was a `debug_assert!`, which said the two
+    // numbers cannot happen - and they can (AUD-09).
+    let rule_room = rule_room.max(MIN_FRACTION_PART_GAP_PX + rule / 2.0);
     (
         -(rule_room + numerator.size.depth),
         rule_room + denominator.size.height,
@@ -1743,6 +1748,43 @@ mod tests {
         fraction_part_placements, translate, Item, MathBox, Size, MAX_ITEMS,
         MIN_FRACTION_PART_GAP_PX,
     };
+    #[test]
+    fn the_rule_always_clears_both_parts_however_small_they_are() {
+        // The `debug_assert!` this replaces claimed the clearance could never go
+        // below `MIN_FRACTION_PART_GAP_PX`. It can: a 6 pt numerator has no room
+        // for the nominal clearance, and a subscript of a subscript has less
+        // still. In debug that ended the process; in release the rule drew
+        // through its own parts and nothing said so (AUD-09). The rule is now a
+        // floor rather than a claim.
+        let tiny = part(2.0, 2.0, 0.0);
+        for shrink in [0.05f64, 0.2, 0.5, 1.0] {
+            let (numerator_dy, denominator_dy) =
+                fraction_part_placements(&tiny, &tiny, 8.0, 1.0, shrink);
+            assert!(
+                -(numerator_dy + tiny.size.depth) >= MIN_FRACTION_PART_GAP_PX,
+                "shrink {shrink}: the rule does not clear the numerator"
+            );
+            assert!(
+                denominator_dy - tiny.size.height >= MIN_FRACTION_PART_GAP_PX,
+                "shrink {shrink}: the rule does not clear the denominator"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fraction_with_room_keeps_the_nominal_clearance() {
+        // The floor is a floor, not a replacement: a fraction with room to spare
+        // still gets the nominal clearance, or every formula would gain a fixed
+        // gap and the pinned WPS references would stop matching.
+        let big = part(20.0, 20.0, 4.0);
+        let (numerator_dy, denominator_dy) = fraction_part_placements(&big, &big, 24.0, 1.5, 1.0);
+        let clearance = -(numerator_dy + big.size.depth);
+        assert!(
+            clearance > MIN_FRACTION_PART_GAP_PX,
+            "a big fraction lost its clearance: {clearance}"
+        );
+        assert!((denominator_dy - big.size.height - clearance).abs() < 1e-9);
+    }
     use crate::layout::{LineItem, RectItem};
 
     /// A part box of the given extents, in px.

@@ -59,6 +59,8 @@ impl FontMetrics {
 /// Returns `true` for CJK ideographs and full-width forms (advance 1 em).
 #[must_use]
 pub fn is_wide_character(ch: char) -> bool {
+    // `char as u32` is the definition of a code point, not a narrowing of a
+    // number this crate computed from input (AUD-09''s G-2 audit).
     matches!(ch as u32,
         0x1100..=0x115F
         | 0x2E80..=0x303E

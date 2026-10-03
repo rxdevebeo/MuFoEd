@@ -110,7 +110,11 @@ impl<'a> Engine<'a> {
             }
         }
         if !is_bullet {
-            counters[level_index] = Some(counters[level_index].map_or(start, |value| value + 1));
+            // A list that starts at `u32::MAX` increments past it; in debug that is
+            // a panic and in release it wraps to zero and the numbering restarts
+            // in the middle of the document (AUD-09).
+            counters[level_index] =
+                Some(counters[level_index].map_or(start, |value| value.saturating_add(1)));
         }
 
         let text = render_text(level, counters, abstract_num, override_)?;

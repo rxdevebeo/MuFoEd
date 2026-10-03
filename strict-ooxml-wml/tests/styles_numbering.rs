@@ -143,3 +143,90 @@ fn records_based_on_cycle() {
         SupportStatus::Partial
     );
 }
+
+/// A `numbering.xml` whose first level starts at `start`.
+fn numbering_starting_at(start: &str) -> Vec<u8> {
+    format!(
+        "<w:numbering xmlns:w=\"{W_NS}\">\
+<w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\">\
+<w:start w:val=\"{start}\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.\"/>\
+</w:lvl></w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>\
+</w:numbering>"
+    )
+    .into_bytes()
+}
+
+/// The model and the `w:start` messages of a list that starts at `start`.
+fn parse_start(start: &str) -> (strict_ooxml_wml::model::Document, Vec<String>) {
+    let mut parts = document_parts("<w:p/>", &[]);
+    parts.push((
+        "word/numbering.xml".to_owned(),
+        numbering_starting_at(start),
+    ));
+    parts.push((
+        "word/_rels/document.xml.rels".to_owned(),
+        rels(&[(
+            "rIdNum",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/numbering",
+            "numbering.xml",
+        )]),
+    ));
+    let document = parse_parts(&parts).expect("parse");
+    let messages = document
+        .support()
+        .iter()
+        .filter(|entry| entry.feature_id.as_ref() == "w:start")
+        .map(|entry| entry.message.clone().unwrap_or_default())
+        .collect();
+    (document, messages)
+}
+
+/// The `w:start` the model ended up with.
+fn start_of(document: &strict_ooxml_wml::model::Document) -> u32 {
+    document
+        .numbering
+        .abstracts()
+        .next()
+        .and_then(|abstract_num| abstract_num.levels.first())
+        .and_then(|level| level.start)
+        .expect("a level with a start")
+}
+
+#[test]
+fn a_start_inside_the_range_is_kept_as_written() {
+    let (document, messages) = parse_start("7");
+    assert_eq!(start_of(&document), 7);
+    assert!(messages.is_empty(), "{messages:?}");
+}
+
+#[test]
+fn a_start_past_the_models_range_is_clamped_and_reported() {
+    // `w:start` is `ST_DecimalNumber`, so a producer may write a negative value
+    // or one past what the renderer's counter holds. Either way the model takes
+    // the nearest value it can and the report says which - the alternative was a
+    // silent substitution, or a counter that wraps to zero mid-document.
+    let (document, messages) = parse_start("4294967295");
+    assert_eq!(
+        start_of(&document),
+        u32::try_from(i64::from(i32::MAX)).unwrap_or(0)
+    );
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(
+        messages[0].contains("clamped"),
+        "the message says the value was clamped: {messages:?}"
+    );
+
+    let (document, messages) = parse_start("-5");
+    assert_eq!(start_of(&document), 0);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].contains("clamped"), "{messages:?}");
+}
+
+#[test]
+fn a_start_that_is_not_a_number_is_reported_and_the_level_starts_at_zero() {
+    let (document, messages) = parse_start("1.5");
+    assert_eq!(start_of(&document), 0);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].contains("not an integer"), "{messages:?}");
+}

@@ -151,6 +151,9 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
         let b1 = chunk.get(1).copied().map_or(0, u32::from);
         let b2 = chunk.get(2).copied().map_or(0, u32::from);
         let triple = (b0 << 16) | (b1 << 8) | b2;
+        // `& 0x3F` is six bits, so every index below is 0..=63 into a 64-character
+        // alphabet: the `usize` is the index type, not a conversion of a number
+        // this crate computed from input arithmetic (AUD-09's G-2 audit).
         out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
         out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
         if chunk.len() > 1 {

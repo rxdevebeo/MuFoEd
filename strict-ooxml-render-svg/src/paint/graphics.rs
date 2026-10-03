@@ -317,7 +317,13 @@ fn text_box_items(
     );
     let left = x + emu_to_px(left_inset, scale);
     let top = y + emu_to_px(top_inset, scale);
-    let inner_width = (w - emu_to_px(left_inset + right_inset, scale)).max(1.0);
+    // The insets are EMU from the input and `a:bodyPr/@lIns` is a signed 64-bit
+    // attribute nobody range-checks, so the sum of two of them overflows in a
+    // debug build and wraps in release. Saturating, and the inner width is
+    // clamped to at least one pixel: a text box whose insets exceed its own
+    // extent has no interior, and "no interior" has to be drawn as something
+    // rather than as a negative width (AUD-09).
+    let inner_width = (w - emu_to_px(left_inset.saturating_add(right_inset), scale)).max(1.0);
     let mut items = Vec::new();
     let mut content_y = 0.0;
     // A text box is one container, so its content is one level deeper than
@@ -337,7 +343,7 @@ fn text_box_items(
         ctx.block_depth() + 1,
         None,
     );
-    let available = (h - emu_to_px(top_inset + bottom_inset, scale)).max(0.0);
+    let available = (h - emu_to_px(top_inset.saturating_add(bottom_inset), scale)).max(0.0);
     let shift = match body.anchor.unwrap_or(TextAnchor::Top) {
         TextAnchor::Top => 0.0,
         TextAnchor::Center => ((available - content_y) / 2.0).max(0.0),

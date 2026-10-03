@@ -103,7 +103,9 @@ fn letters(number: u32) -> String {
     let mut remaining = number;
     let mut out = Vec::new();
     while remaining > 0 {
-        let rem = ((remaining - 1) % 26) as u8;
+        // `(x % 26)` is 0..=25 by construction, so the `u8` is the value's
+        // own bound rather than a narrowing of a wider one (AUD-09).
+        let rem = u8::try_from((remaining - 1) % 26).unwrap_or(0);
         out.push(b'A' + rem);
         remaining = (remaining - 1) / 26;
     }

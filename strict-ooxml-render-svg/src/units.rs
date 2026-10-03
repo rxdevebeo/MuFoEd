@@ -73,6 +73,9 @@ pub fn to_i64_saturating(value: f64) -> i64 {
     if value.is_nan() {
         return 0;
     }
+    // The two constants are this function's own bounds, and the final `as i64`
+    // is the point: after the clamp the value is in range, which is the one thing
+    // `as` does not promise on its own (AUD-09).
     value.clamp(i64::MIN as f64, i64::MAX as f64) as i64
 }
 
