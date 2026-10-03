@@ -280,9 +280,13 @@ impl StrictDocument {
     /// Returns a [`StrictError`] if `index` is out of range or rendering fails.
     #[cfg(feature = "svg")]
     pub fn render_page_svg(&self, index: usize) -> Result<String> {
+        // AUD-52: `usize::MAX + 1` must not wrap; reject with a clear render error.
+        let page = index
+            .checked_add(1)
+            .ok_or_else(|| StrictError::Render("page index out of range".to_owned()))?;
         let selection = PageSelection::Range {
-            start: index + 1,
-            end: index + 1,
+            start: page,
+            end: page,
         };
         self.render_svg(&RenderOptions::default().pages(selection))?
             .into_iter()
