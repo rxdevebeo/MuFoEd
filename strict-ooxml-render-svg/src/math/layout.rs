@@ -708,19 +708,27 @@ fn layout_nodes(frame: &Frame<'_, '_>, nodes: &[MathNode]) -> MathBox {
 fn layout_argument(frame: &Frame<'_, '_>, argument: &MathArgument) -> MathBox {
     let mut boxed = layout_nodes(frame, &argument.nodes);
     if let Some(control) = argument.properties.control.as_deref() {
-        apply_control(&mut boxed, control);
+        apply_control(frame, &mut boxed, control);
     }
     boxed
 }
 
 /// Applies `m:ctrlPr/w:rPr` colours to the ink of a construct.
-fn apply_control(boxed: &mut MathBox, control: &RunProperties) {
-    let Some(color) = control
-        .color
-        .as_ref()
-        .map(|color| format!("#{}", color.as_str()))
-    else {
+///
+/// AUD-77: colours go through [`crate::style::parse_color`]; `auto` and other
+/// invalid values fall back to the default ink and record a page warning.
+fn apply_control(frame: &Frame<'_, '_>, boxed: &mut MathBox, control: &RunProperties) {
+    let Some(raw) = control.color.as_ref() else {
         return;
+    };
+    let color = if let Some(color) = crate::style::parse_color(raw) {
+        color
+    } else {
+        frame.ctx.warn(format!(
+            "render.math-ctrlpr-color: invalid w:color '{}', using default",
+            raw.as_str()
+        ));
+        "#000000".to_owned()
     };
     for item in &mut boxed.items {
         match item {
@@ -768,7 +776,7 @@ fn layout_run(frame: &Frame<'_, '_>, run: &MathRun) -> MathBox {
     let style = effective_style(&run.properties);
     let mut boxed = frame.text(0.0, 0.0, &run.text, frame.math_run(style));
     if let Some(control) = run.properties.control.as_deref() {
-        apply_control(&mut boxed, control);
+        apply_control(frame, &mut boxed, control);
     }
     boxed
 }
@@ -824,8 +832,8 @@ fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
     let mut numerator = layout_argument(frame, &fraction.numerator);
     let mut denominator = layout_argument(frame, &fraction.denominator);
     if let Some(control) = fraction.control.as_deref() {
-        apply_control(&mut numerator, control);
-        apply_control(&mut denominator, control);
+        apply_control(frame, &mut numerator, control);
+        apply_control(frame, &mut denominator, control);
     }
     // ISO/IEC 29500-1 §22.1.2.36: `m:type` selects between a stacked fraction
     // (`bar`/`noBar`/`skew`) and the *linear* one (`lin`), whose parts stay on
@@ -920,7 +928,7 @@ fn layout_linear_fraction(
 fn layout_radical(frame: &Frame<'_, '_>, radical: &Radical) -> MathBox {
     let mut radicand = layout_argument(frame, &radical.radicand);
     if let Some(control) = radical.control.as_deref() {
-        apply_control(&mut radicand, control);
+        apply_control(frame, &mut radicand, control);
     }
     let degree_frame = frame.script();
     let degree = if radical.hide_degree {
@@ -968,12 +976,12 @@ fn layout_radical(frame: &Frame<'_, '_>, radical: &Radical) -> MathBox {
 fn layout_superscript(frame: &Frame<'_, '_>, script: &Superscript) -> MathBox {
     let mut base = layout_argument(frame, &script.base);
     if let Some(control) = script.control.as_deref() {
-        apply_control(&mut base, control);
+        apply_control(frame, &mut base, control);
     }
     let script_frame = frame.script();
     let mut superscript = layout_argument(&script_frame, &script.superscript);
     if let Some(control) = script.control.as_deref() {
-        apply_control(&mut superscript, control);
+        apply_control(frame, &mut superscript, control);
     }
     let base_width = base.size.width;
     let script_x = base_width + SCRIPT_GAP * frame.em();
@@ -987,12 +995,12 @@ fn layout_superscript(frame: &Frame<'_, '_>, script: &Superscript) -> MathBox {
 fn layout_subscript(frame: &Frame<'_, '_>, script: &Subscript) -> MathBox {
     let mut base = layout_argument(frame, &script.base);
     if let Some(control) = script.control.as_deref() {
-        apply_control(&mut base, control);
+        apply_control(frame, &mut base, control);
     }
     let script_frame = frame.script();
     let mut subscript = layout_argument(&script_frame, &script.subscript);
     if let Some(control) = script.control.as_deref() {
-        apply_control(&mut subscript, control);
+        apply_control(frame, &mut subscript, control);
     }
     let script_x = base.size.width + SCRIPT_GAP * frame.em();
     let mut out = MathBox::empty();
@@ -1008,9 +1016,9 @@ fn layout_sub_superscript(frame: &Frame<'_, '_>, script: &SubSuperscript) -> Mat
     let mut subscript = layout_argument(&script_frame, &script.subscript);
     let mut superscript = layout_argument(&script_frame, &script.superscript);
     if let Some(control) = script.control.as_deref() {
-        apply_control(&mut base, control);
-        apply_control(&mut subscript, control);
-        apply_control(&mut superscript, control);
+        apply_control(frame, &mut base, control);
+        apply_control(frame, &mut subscript, control);
+        apply_control(frame, &mut superscript, control);
     }
     let (subscript, superscript) = separate_scripts(frame, subscript, superscript);
     let script_x = base.size.width + SCRIPT_GAP * frame.em();
@@ -1028,9 +1036,9 @@ fn layout_pre_script(frame: &Frame<'_, '_>, script: &PreScript) -> MathBox {
     let mut subscript = layout_argument(&script_frame, &script.subscript);
     let mut superscript = layout_argument(&script_frame, &script.superscript);
     if let Some(control) = script.control.as_deref() {
-        apply_control(&mut base, control);
-        apply_control(&mut subscript, control);
-        apply_control(&mut superscript, control);
+        apply_control(frame, &mut base, control);
+        apply_control(frame, &mut subscript, control);
+        apply_control(frame, &mut superscript, control);
     }
     let (subscript, superscript) = separate_scripts(frame, subscript, superscript);
     let script_width = subscript.size.width.max(superscript.size.width);
@@ -1066,7 +1074,7 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     let character = nary.chr.unwrap_or('\u{222B}');
     let mut operand = layout_argument(frame, &nary.operand);
     if let Some(control) = nary.control.as_deref() {
-        apply_control(&mut operand, control);
+        apply_control(frame, &mut operand, control);
     }
     let script_frame = frame.script();
     let lower = if nary.hide_sub {
@@ -1095,7 +1103,7 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
         limit_extent,
     );
     if let Some(control) = nary.control.as_deref() {
-        apply_control(&mut operator, control);
+        apply_control(frame, &mut operator, control);
     }
 
     let mut head = MathBox::empty();
@@ -1218,7 +1226,7 @@ fn layout_delimiter(frame: &Frame<'_, '_>, delimiter: &Delimiter) -> MathBox {
         content.append(layout_argument(frame, argument));
     }
     if let Some(control) = delimiter.control.as_deref() {
-        apply_control(&mut content, control);
+        apply_control(frame, &mut content, control);
     }
 
     // `m:grow` (the default) stretches the delimiters over the content; with
@@ -1291,8 +1299,8 @@ fn layout_function(frame: &Frame<'_, '_>, function: &Function) -> MathBox {
     let mut name = layout_argument(frame, &function.name);
     let mut argument = layout_argument(frame, &function.argument);
     if let Some(control) = function.control.as_deref() {
-        apply_control(&mut name, control);
-        apply_control(&mut argument, control);
+        apply_control(frame, &mut name, control);
+        apply_control(frame, &mut argument, control);
     }
     let mut out = MathBox::empty();
     out.append(name);
@@ -1306,8 +1314,8 @@ fn layout_limit(frame: &Frame<'_, '_>, limit: &MathLimit) -> MathBox {
     let script_frame = frame.script();
     let mut script = layout_argument(&script_frame, &limit.limit);
     if let Some(control) = limit.control.as_deref() {
-        apply_control(&mut base, control);
-        apply_control(&mut script, control);
+        apply_control(frame, &mut base, control);
+        apply_control(frame, &mut script, control);
     }
     let gap = LIMIT_GAP * frame.em();
     let mut out = MathBox::empty();
@@ -1517,7 +1525,7 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
     );
     let mut out = grid.place();
     if let Some(control) = matrix.control.as_deref() {
-        apply_control(&mut out, control);
+        apply_control(frame, &mut out, control);
     }
     out
 }
@@ -1542,7 +1550,7 @@ fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBo
     let mut out = grid.place();
 
     if let Some(control) = array.control.as_deref() {
-        apply_control(&mut out, control);
+        apply_control(frame, &mut out, control);
     }
     out
 }
@@ -1552,7 +1560,7 @@ fn layout_accent(frame: &Frame<'_, '_>, accent: &Accent) -> MathBox {
     let character = accent.chr.unwrap_or('\u{0302}');
     let mut base = layout_argument(frame, &accent.base);
     if let Some(control) = accent.control.as_deref() {
-        apply_control(&mut base, control);
+        apply_control(frame, &mut base, control);
     }
     let run = frame.math_run(MathStyle::Plain);
     let text = character.to_string();
@@ -1571,7 +1579,7 @@ fn layout_accent(frame: &Frame<'_, '_>, accent: &Accent) -> MathBox {
 fn layout_bar(frame: &Frame<'_, '_>, bar: &Bar) -> MathBox {
     let mut base = layout_argument(frame, &bar.base);
     if let Some(control) = bar.control.as_deref() {
-        apply_control(&mut base, control);
+        apply_control(frame, &mut base, control);
     }
     let gap = BAR_GAP * frame.em();
     let width = base.size.width;
@@ -1600,7 +1608,7 @@ fn layout_group_character(frame: &Frame<'_, '_>, group: &GroupCharacter) -> Math
     let position = group.position.unwrap_or(MathPosition::Top);
     let mut base = layout_argument(frame, &group.base);
     if let Some(control) = group.control.as_deref() {
-        apply_control(&mut base, control);
+        apply_control(frame, &mut base, control);
     }
     let character = group.chr.unwrap_or('\u{23DF}');
     let run = frame.math_run(MathStyle::Plain);
@@ -1645,7 +1653,7 @@ fn layout_group_character(frame: &Frame<'_, '_>, group: &GroupCharacter) -> Math
 fn layout_box(frame: &Frame<'_, '_>, boxed: &Boxed) -> MathBox {
     let mut inner = layout_argument(frame, &boxed.argument);
     if let Some(control) = boxed.control.as_deref() {
-        apply_control(&mut inner, control);
+        apply_control(frame, &mut inner, control);
     }
     let pad = BOX_PAD * frame.em() + boxed.spacing.map_or(0.0, |p| frame.points(p));
     boxed_rectangle(frame, inner, pad)
@@ -1663,7 +1671,7 @@ fn layout_border_box(frame: &Frame<'_, '_>, border: &BorderBox) -> MathBox {
         }
     }
     if let Some(control) = border.control.as_deref() {
-        apply_control(&mut inner, control);
+        apply_control(frame, &mut inner, control);
     }
     let pad = BOX_PAD * frame.em() + border.spacing.map_or(0.0, |p| frame.points(p));
     let mut out = boxed_rectangle(frame, inner, pad);
@@ -1724,7 +1732,7 @@ fn boxed_rectangle(frame: &Frame<'_, '_>, inner: MathBox, pad: f64) -> MathBox {
 fn layout_phantom(frame: &Frame<'_, '_>, phantom: &Phantom) -> MathBox {
     let mut inner = layout_argument(frame, &phantom.argument);
     if let Some(control) = phantom.control.as_deref() {
-        apply_control(&mut inner, control);
+        apply_control(frame, &mut inner, control);
     }
     let mut size = inner.size;
     if phantom.zero_width {

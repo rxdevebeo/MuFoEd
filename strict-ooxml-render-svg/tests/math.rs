@@ -429,6 +429,40 @@ fn the_stage5c_fixture_renders_two_pages() {
     }
 }
 
+#[test]
+fn ctrl_pr_invalid_color_uses_default_fill() {
+    // AUD-77: auto / garbage → default fill; no `#auto` / `#zz` in the SVG.
+    for val in ["auto", "zz"] {
+        let pages = render_with(
+            &format!(
+                "<w:p><m:oMath><m:f><m:fPr><m:ctrlPr><w:rPr>\
+<w:color w:val=\"{val}\"/></w:rPr></m:ctrlPr></m:fPr>\
+<m:num><m:r><m:t>a</m:t></m:r></m:num>\
+<m:den><m:r><m:t>b</m:t></m:r></m:den></m:f></m:oMath></w:p>"
+            ),
+            &RenderOptions::default(),
+        );
+        assert_eq!(pages.len(), 1, "{val}");
+        let svg = &pages[0].svg;
+        assert!(
+            svg.contains("fill=\"#000000\""),
+            "default fill missing for {val}: {svg}"
+        );
+        assert!(
+            !svg.contains(&format!("fill=\"#{val}\"")),
+            "raw invalid colour leaked for {val}: {svg}"
+        );
+        assert!(
+            pages[0]
+                .warnings
+                .iter()
+                .any(|w| w.contains("render.math-ctrlpr-color")),
+            "expected colour warning for {val}: {:?}",
+            pages[0].warnings
+        );
+    }
+}
+
 /// Returns the `(x, y)` of the `<text>` element holding `marker`.
 fn position(svg: &str, marker: &str) -> Option<(f64, f64)> {
     let index = svg.find(marker)?;
