@@ -248,6 +248,7 @@ pub fn place_pages(
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
+        warnings: std::cell::RefCell::new(Vec::new()),
     };
     Ok(layout::paginate::layout_document(&context)?.pages)
 }
@@ -284,8 +285,10 @@ pub fn render_with_media(
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
+        warnings: std::cell::RefCell::new(Vec::new()),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
+    let layout_warnings = laid_out.warnings.clone();
 
     let mut pages = Vec::new();
     for (index, page) in laid_out.pages.iter().enumerate() {
@@ -297,7 +300,10 @@ pub fn render_with_media(
             width_px: page.width_px,
             height_px: page.height_px,
             svg: paint::render_page(page, options.background),
-            warnings: paint::invalid_char_warning(page).into_iter().collect(),
+            warnings: paint::invalid_char_warning(page)
+                .into_iter()
+                .chain(layout_warnings.iter().cloned())
+                .collect(),
         });
     }
     Ok(pages)

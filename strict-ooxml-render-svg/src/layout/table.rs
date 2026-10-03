@@ -83,35 +83,8 @@ pub(crate) fn layout_table(
 
     let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
-        let mut column = 0usize;
-        let mut cells = Vec::with_capacity(row.cells.len());
-        let mut max_content: f64 = 0.0;
-        for cell in &row.cells {
-            let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
-            let span = span.min(widths.len().saturating_sub(column).max(1));
-            let x: f64 = table_x + widths[..column].iter().sum::<f64>();
-            let width: f64 = widths[column..(column + span).min(widths.len())]
-                .iter()
-                .sum();
-            let margins = effective_margins(ctx, table, row, cell);
-            let content_width = (width - margins.0 - margins.1).max(1.0);
-            let (items, content_height) =
-                layout_cell_content(ctx, &cell.blocks, x + margins.0, content_width, depth + 1);
-            let height = content_height + margins.2 + margins.3;
-            max_content = max_content.max(height);
-            cells.push(RawCell {
-                col: column,
-                span,
-                x,
-                width,
-                properties: cell.props.clone(),
-                items,
-                margin_top: margins.2,
-                vmerge: VState::from_merge(cell.props.vertical_merge),
-            });
-            column += span;
-        }
-        let mut height = max_content;
+        let raw = layout_row(ctx, table, row, &widths, table_x, depth);
+        let mut height = raw.height;
         if let Some(declared) = &row.props.height {
             height = height.max(
                 declared
@@ -125,7 +98,7 @@ pub(crate) fn layout_table(
         rows.push(RawRow {
             header: row.props.header,
             height,
-            cells,
+            cells: raw.cells,
         });
     }
 
@@ -168,6 +141,92 @@ pub(crate) fn layout_table(
     flows
 }
 
+/// Sums a slice of widths, or nothing at all when the range is out of bounds.
+///
+/// `<f64 as Sum>::sum` is a method call on the slice, so an absent range sums to
+/// `0.0` and the arithmetic the rest of the layout does is unchanged - see the
+/// comment at the call site.
+fn sum_slice(range: Option<&[f64]>) -> f64 {
+    range.map_or(0.0, |slice| slice.iter().sum())
+}
+
+/// One laid-out row: its cells and the height its content asked for.
+struct LaidOutRow {
+    cells: Vec<RawCell>,
+    height: f64,
+}
+
+/// Lays out one row's cells against `widths`.
+fn layout_row(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    row: &strict_ooxml_wml::model::TableRow,
+    widths: &[f64],
+    table_x: f64,
+    depth: u32,
+) -> LaidOutRow {
+    let row_columns: usize = row
+        .cells
+        .iter()
+        .map(|cell| usize::from(cell.props.grid_span.unwrap_or(1)).max(1))
+        .sum();
+    if row_columns > table.grid.len() {
+        // Malformed but renderable: the row claims more columns than the grid
+        // declares. The extra columns are laid out rather than dropped, and the
+        // page says so - a row silently narrower than it was authored is the
+        // kind of loss a screenshot cannot show.
+        ctx.warn(format!(
+            "table row has {row_columns} grid columns, tblGrid declares {}",
+            table.grid.len()
+        ));
+    }
+    let mut column = 0usize;
+    let mut cells = Vec::with_capacity(row.cells.len());
+    let mut max_content: f64 = 0.0;
+    for cell in &row.cells {
+        let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+        let span = span.min(widths.len().saturating_sub(column).max(1));
+        let margins = effective_margins(ctx, table, row, cell);
+        // `get(..)` rather than a slice: `column` is the sum of the spans before
+        // `w:gridSpan` of 65535 puts it far past the end, which is where the
+        // old index range used to end the process (AUD-08).
+        //
+        // The slice the range denotes is summed, not the elements: `&[f64]`'s
+        // `Sum` is pairwise and an iterator's is a linear fold, and the
+        // converter's table detection turns on the last bit of a column
+        // position. "Not a panic" is the fix; "a different number" would be a
+        // second change nobody asked for.
+        let x: f64 = table_x + sum_slice(widths.get(..column));
+        let end = column.saturating_add(span).min(widths.len());
+        let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
+        let cell_content_width = (width - margins.0 - margins.1).max(1.0);
+        let (items, content_height) = layout_cell_content(
+            ctx,
+            &cell.blocks,
+            x + margins.0,
+            cell_content_width,
+            depth + 1,
+        );
+        let height = content_height + margins.2 + margins.3;
+        max_content = max_content.max(height);
+        cells.push(RawCell {
+            col: column,
+            span,
+            x,
+            width,
+            properties: cell.props.clone(),
+            items,
+            margin_top: margins.2,
+            vmerge: VState::from_merge(cell.props.vertical_merge),
+        });
+        column += span;
+    }
+    LaidOutRow {
+        cells,
+        height: max_content,
+    }
+}
+
 /// Returns the total height of the merged region starting at `row`/`cell`.
 fn merged_height(rows: &[RawRow], row: usize, cell: &RawCell) -> f64 {
     let mut total = rows[row].height;
@@ -187,12 +246,17 @@ fn merged_height(rows: &[RawRow], row: usize, cell: &RawCell) -> f64 {
     total
 }
 
-/// Number of grid columns: explicit grid, else the widest row's span.
+/// Number of grid columns.
+///
+/// The explicit grid, or the widest row's spans, or whichever is larger.
+///
+/// Not the explicit grid alone: a row whose `w:gridSpan` values add up to more
+/// columns than `w:tblGrid` declares is malformed markup, and the layout used to
+/// take the grid's word for it and then index past the end of the widths it had
+/// built from that same word. The row is the wider of the two claims, so the row
+/// wins, and the disagreement is reported (AUD-08).
 fn column_count(table: &Table) -> usize {
-    if !table.grid.is_empty() {
-        return table.grid.len();
-    }
-    table
+    let widest_row = table
         .rows
         .iter()
         .map(|row| {
@@ -202,30 +266,89 @@ fn column_count(table: &Table) -> usize {
                 .sum::<usize>()
         })
         .max()
-        .unwrap_or(0)
+        .unwrap_or(0);
+    table.grid.len().max(widest_row)
 }
 
 /// Computes column widths in px.
+///
+/// `column_count` may exceed the declared grid (see [`column_count`]), and the
+/// columns beyond it have no declared width to scale. They are given the width
+/// the declared columns leave over, split evenly; if the declared columns already
+/// fill the table, each of them takes the average of the declared ones instead,
+/// so a table whose grid is narrower than its rows still ends up the width of the
+/// content box rather than a row of zero-width cells hanging off the end.
 fn column_widths(
     ctx: &LayoutContext<'_>,
     table: &Table,
     column_count: usize,
     content_width: f64,
 ) -> Vec<f64> {
+    if column_count == 0 {
+        return Vec::new();
+    }
     let scale = ctx.options.scale;
     let total = table_total_width(ctx, table, content_width);
     let grid: Vec<f64> = table
         .grid
         .iter()
+        .take(column_count)
         .map(|col| twips_to_px(col.width.map_or(0, Twips::value), scale))
         .collect();
+    split_widths(total, &grid, column_count)
+}
+
+/// Divides `total` between `column_count` columns, given the widths `grid`
+/// declares for the first `grid.len()` of them.
+///
+/// Separate from [`column_widths`] because this is arithmetic and the rest is
+/// units: the arithmetic is where the AUD-08 defect lived and it is worth
+/// testing without building a document, a font provider and a layout context
+/// around it.
+fn split_widths(total: f64, grid: &[f64], column_count: usize) -> Vec<f64> {
+    if column_count == 0 {
+        return Vec::new();
+    }
     let grid_sum: f64 = grid.iter().sum();
     if grid.len() == column_count && grid_sum > 0.0 {
         let factor = total / grid_sum;
-        return grid.into_iter().map(|width| width * factor).collect();
+        return grid.iter().map(|width| width * factor).collect();
     }
-    let equal = total / column_count as f64;
-    vec![equal; column_count]
+    let declared = grid.len();
+    if declared == column_count {
+        let equal = total / column_count as f64;
+        return vec![equal; column_count];
+    }
+    // Columns the grid does not declare. They take the width the declared
+    // columns leave over; if the declared columns already fill the table, each
+    // undeclared one takes their average instead, so a table whose grid is
+    // narrower than its rows still ends up the width of the content box rather
+    // than a row of zero-width cells hanging off the end.
+    let missing = column_count.saturating_sub(declared);
+    if missing == 0 {
+        return vec![total / column_count as f64; column_count];
+    }
+    let leftover = (total - grid_sum).max(0.0);
+    let fallback = if declared == 0 {
+        total / column_count as f64
+    } else {
+        grid_sum / declared as f64
+    };
+    let each = if leftover > 0.0 {
+        leftover / missing as f64
+    } else {
+        fallback
+    };
+    let mut widths: Vec<f64> = if grid_sum > 0.0 {
+        // The declared columns keep their share of what the grid asked for; only
+        // the leftover is handed out.
+        let factor = (total / grid_sum).min(1.0);
+        grid.iter().map(|width| width * factor).collect()
+    } else {
+        Vec::new()
+    };
+    widths.resize(column_count, each);
+    widths
 }
 
 /// Total table width in px (clamped to the content box).
@@ -553,4 +676,76 @@ fn shading_fill(cell: &CellProperties) -> Option<String> {
         .as_ref()
         .and_then(|shading| shading.fill.as_ref())
         .and_then(parse_color)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_widths;
+
+    /// The sum of `widths`, for "did it fill the box" assertions.
+    fn total(widths: &[f64]) -> f64 {
+        widths.iter().sum()
+    }
+
+    #[test]
+    fn a_grid_that_fills_the_table_is_scaled_to_it() {
+        let widths = split_widths(300.0, &[100.0, 200.0], 2);
+        assert_eq!(widths, vec![100.0, 200.0]);
+    }
+
+    #[test]
+    fn a_narrower_grid_is_scaled_up() {
+        let widths = split_widths(300.0, &[100.0, 100.0], 2);
+        assert!((total(&widths) - 300.0).abs() < 1e-9, "{widths:?}");
+    }
+
+    #[test]
+    fn columns_the_grid_does_not_declare_take_the_leftover() {
+        // One declared column of 100, two undeclared, out of 300.
+        let widths = split_widths(300.0, &[100.0], 3);
+        assert_eq!(widths.len(), 3, "{widths:?}");
+        assert!((total(&widths) - 300.0).abs() < 1e-9, "{widths:?}");
+        assert!(
+            (widths.first().copied().unwrap_or_default() - 100.0).abs() < 1e-9,
+            "{widths:?}"
+        );
+        assert!(
+            (widths.get(1).copied().unwrap_or_default() - 100.0).abs() < 1e-9,
+            "{widths:?}"
+        );
+    }
+
+    #[test]
+    fn a_grid_that_already_fills_the_table_gives_the_extra_columns_the_average() {
+        // Declared: 100 + 200 = 300, the whole table, so there is no leftover to
+        // hand out and each undeclared column takes the declared average. The
+        // row is then wider than the box - which is the rule AUD-08 states, and
+        // the alternative (zero-width cells) would draw a row the author can see
+        // in Word and nobody can see here.
+        let widths = split_widths(300.0, &[100.0, 200.0], 5);
+        assert_eq!(widths, vec![100.0, 200.0, 150.0, 150.0, 150.0]);
+        assert!(total(&widths) > 300.0, "{widths:?}");
+    }
+
+    #[test]
+    fn no_grid_at_all_splits_the_table_evenly() {
+        let widths = split_widths(300.0, &[], 4);
+        assert_eq!(widths, vec![75.0; 4]);
+    }
+
+    #[test]
+    fn an_absurd_column_count_still_returns_that_many_columns() {
+        // The AUD-08 input: a one-column grid and a `w:gridSpan` of 65535. The
+        // arithmetic must not allocate what the span says and then fail.
+        let widths = split_widths(300.0, &[100.0], 65_535);
+        assert_eq!(widths.len(), 65_535);
+        assert!(widths
+            .iter()
+            .all(|width| width.is_finite() && *width >= 0.0));
+    }
+
+    #[test]
+    fn zero_columns_is_no_columns() {
+        assert!(split_widths(300.0, &[100.0], 0).is_empty());
+    }
 }

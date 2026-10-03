@@ -674,6 +674,7 @@ impl<'a> Paginator<'a> {
         Layout {
             pages: self.pages,
             anchors: self.anchors,
+            warnings: self.ctx.take_warnings(),
         }
     }
 }

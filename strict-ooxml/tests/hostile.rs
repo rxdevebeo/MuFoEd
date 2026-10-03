@@ -688,8 +688,105 @@ mod math {
 }
 mod table {
     //! AUD-08, AUD-09: rows wider than `tblGrid`, overflowing grid sums.
-}
 
+    use super::*;
+
+    /// A table whose `w:tblGrid` declares `grid` columns and whose only row
+    /// holds `cells` cells.
+    fn table(grid: &str, cells: usize) -> DocxBuilder {
+        let body = format!(
+            "<w:tbl><w:tblGrid>{grid}</w:tblGrid><w:tr>{}</w:tr></w:tbl>",
+            "<w:tc><w:tcPr><w:tcW w:w=\"2000\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>"
+                .repeat(cells)
+        );
+        DocxBuilder::strict().body(&body)
+    }
+
+    const ONE: &str = "<w:gridCol w:w=\"2000\"/>";
+
+    /// The width of the widest `x` in every `<rect`, as a float.
+    fn widest_rect(svg: &str) -> f64 {
+        let mut widest: f64 = 0.0;
+        for chunk in svg.split("width=\"").skip(1) {
+            let value = chunk.split('"').next().unwrap_or_default();
+            if let Ok(parsed) = value.parse::<f64>() {
+                widest = widest.max(parsed);
+            }
+        }
+        widest
+    }
+
+    #[test]
+    fn a_row_wider_than_the_grid_renders_and_says_so() {
+        // Before AUD-08 this was `widths[..column]` with `column` past the end
+        // of the widths: a three-cell row under a one-column `tblGrid` ended the
+        // process with an index panic.
+        let pages = assert_survives("wide row", move || {
+            StrictDocument::open_reader(Cursor::new(table(ONE, 3).build()), &OpenOptions::default())
+                .expect("open")
+                .render_svg(&strict_ooxml::RenderOptions::default())
+                .expect("render")
+        });
+        assert!(
+            pages[0]
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("table row has 3 grid columns")
+                    && warning.contains("tblGrid declares 1")),
+            "{:?}",
+            pages[0].warnings
+        );
+    }
+
+    #[test]
+    fn an_empty_grid_with_two_cells_renders() {
+        assert_survives("no grid", move || {
+            StrictDocument::open_reader(Cursor::new(table("", 2).build()), &OpenOptions::default())
+                .expect("open")
+                .render_svg(&strict_ooxml::RenderOptions::default())
+                .expect("render")
+        });
+    }
+
+    #[test]
+    fn a_grid_span_of_65535_renders_within_the_content_width() {
+        // The span is one past the last column by any reading, and it is what a
+        // producer emits when `w:gridSpan` carries a value nobody checked. The
+        // table must not be wider than the page it sits on, and it must not be
+        // narrower than one pixel.
+        let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr>\
+             <w:tc><w:tcPr><w:gridSpan w:val=\"65535\"/></w:tcPr><w:p/></w:tc>\
+             </w:tr></w:tbl>";
+        let pages = assert_survives("huge span", move || {
+            StrictDocument::open_reader(
+                Cursor::new(DocxBuilder::strict().body(body).build()),
+                &OpenOptions::default(),
+            )
+            .expect("open")
+            .render_svg(&strict_ooxml::RenderOptions::default())
+            .expect("render")
+        });
+        // Letter at 96 DPI is 816 px wide, with half-inch margins on each side.
+        let widest = widest_rect(&pages[0].svg);
+        assert!(widest <= 816.0, "the table is {widest} px wide");
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn a_row_wider_than_the_grid_reaches_the_pdf_backend_too() {
+        // The PDF backend lays out through the same table code, so the same
+        // input that used to panic the SVG renderer used to panic here.
+        assert_survives("wide row, pdf", move || {
+            let document = StrictDocument::open_reader(
+                Cursor::new(table(ONE, 3).build()),
+                &OpenOptions::default(),
+            )
+            .expect("open");
+            let pdf = document.render_pdf(&strict_ooxml::RenderOptions::default());
+            assert!(pdf.is_ok(), "render_pdf: {pdf:?}");
+        });
+    }
+}
 mod numbering {
     //! AUD-09, AUD-47: counters at `u32::MAX`, `numStyleLink` cycles.
 }

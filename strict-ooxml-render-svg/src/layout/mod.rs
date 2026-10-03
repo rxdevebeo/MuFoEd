@@ -385,9 +385,29 @@ pub(crate) struct LayoutContext<'a> {
     /// the recursion and read where the parameter is not in scope, is better than
     /// a second, drifting copy of it in each painter.
     pub(crate) block_depth: std::cell::Cell<u32>,
+    /// Warnings the layout wants the page to carry.
+    ///
+    /// Laid out rather than returned: the pipeline is thirty functions deep and
+    /// only `layout_table` and `layout_paragraph` have anything to say, and both
+    /// return a value the callers already use. A channel is the alternative to
+    /// threading a `Vec<String>` through every one of them.
+    pub(crate) warnings: std::cell::RefCell<Vec<String>>,
 }
 
 impl LayoutContext<'_> {
+    /// Records a warning for every page of this document.
+    pub(crate) fn warn(&self, message: String) {
+        let mut warnings = self.warnings.borrow_mut();
+        if !warnings.contains(&message) {
+            warnings.push(message);
+        }
+    }
+
+    /// The warnings recorded so far, in the order they first appeared.
+    pub(crate) fn take_warnings(&self) -> Vec<String> {
+        self.warnings.take()
+    }
+
     /// Records how deep the block recursion is for callers reached from paint.
     pub(crate) fn set_block_depth(&self, depth: u32) {
         self.block_depth.set(depth);
@@ -422,4 +442,6 @@ pub(crate) struct Layout {
     pub pages: Vec<PlacedPage>,
     /// Floating (anchored) objects with the page they belong to.
     pub anchors: Vec<floating::PendingAnchor>,
+    /// What the layout had to say about the document, for `Page::warnings`.
+    pub warnings: Vec<String>,
 }
