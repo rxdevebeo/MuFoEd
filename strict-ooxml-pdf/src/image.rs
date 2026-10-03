@@ -11,6 +11,7 @@
 //! image representation instead of two.
 
 use std::cell::{Cell, RefCell};
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -229,6 +230,10 @@ pub(crate) struct ImageCache {
     /// document of 10 000 large photographs.
     bytes: Cell<usize>,
     limit: usize,
+    /// The ids being decoded right now; an id that reappears is a `/SMask` cycle.
+    in_progress: RefCell<BTreeSet<lopdf::ObjectId>>,
+    /// Whether a cycle was refused, for the page's report.
+    cycle: Cell<bool>,
 }
 
 struct CachedImage {
@@ -242,6 +247,8 @@ impl ImageCache {
             entries: RefCell::new(HashMap::new()),
             bytes: Cell::new(0),
             limit,
+            in_progress: RefCell::new(BTreeSet::new()),
+            cycle: Cell::new(false),
         }
     }
 
@@ -261,9 +268,18 @@ impl ImageCache {
         if let Some(hit) = self.entries.borrow().get(&id) {
             return hit.result.clone();
         }
+        // An image whose `/SMask` points at itself, or a cycle A -> B -> A,
+        // made this recurse until the stack ended. The set of ids currently being
+        // decoded is what says so: an id already in it is a cycle, and the mask it
+        // names is simply absent (AUD-12).
+        if !self.in_progress.borrow_mut().insert(id) {
+            self.cycle.set(true);
+            return Err(Reject::Incomplete("SMask"));
+        }
         let result = decode_inner(id, document, limits, &|mask_id| {
-            self.decode(mask_id, document, limits).ok()
+            self.decode_mask(mask_id, document, limits).ok()
         });
+        self.in_progress.borrow_mut().remove(&id);
         let bytes = match &result {
             Ok((encoded, _, _)) => payload_bytes(encoded),
             Err(_) => 0,
@@ -279,6 +295,38 @@ impl ImageCache {
             );
         }
         result
+    }
+
+    /// Decodes a soft mask, and only ever a soft mask.
+    ///
+    /// ISO 32000-1 8.9.2.4: an `/SMask` is a grayscale image and an image has
+    /// one alpha channel, of which its `/SMask` *is* that channel. A mask with a
+    /// mask of its own is not a thing, so a mask is decoded with `mask_of` that
+    /// never fires - which also makes the A -> B -> A cycle unreachable from the
+    /// mask side at all, leaving the set in [`decode`](Self::decode) as the second
+    /// line of defence rather than the only one.
+    fn decode_mask(
+        &self,
+        id: lopdf::ObjectId,
+        document: &lopdf::Document,
+        limits: &PdfLimits,
+    ) -> Result<(Encoded, u32, u32), Reject> {
+        // A mask that names a mask is a cycle, whether it names itself or the
+        // picture two steps back. ISO 32000-1 8.9.2.4 gives an image one alpha
+        // channel and its `/SMask` *is* that channel, so a mask has nothing to
+        // point at; a document that writes one anyway is asking for a loop, and
+        // the answer is a mask with no mask of its own and a line in the report.
+        if let Ok(Ok(stream)) = document.get_object(id).map(lopdf::Object::as_stream) {
+            if stream.dict.get(b"SMask").is_ok() {
+                self.cycle.set(true);
+            }
+        }
+        decode_inner(id, document, limits, &|_mask_id| None)
+    }
+
+    /// Whether any decode of this cache hit a `/SMask` cycle.
+    pub(crate) fn saw_mask_cycle(&self) -> bool {
+        self.cycle.get()
     }
 
     /// How many bytes of decoded pictures are held.

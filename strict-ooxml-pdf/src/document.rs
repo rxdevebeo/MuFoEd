@@ -200,6 +200,18 @@ impl PdfDocument {
         for ignored in &content.ignored {
             report.record_ignored(ignored.id, &ignored.detail);
         }
+        for (id, detail) in resources.notes() {
+            report.record_ignored(id, detail);
+        }
+        if self.images.saw_mask_cycle() {
+            // A picture whose `/SMask` points at itself, or a cycle of them. The
+            // picture still draws; it draws without the transparency that cycle
+            // claimed (AUD-12).
+            report.record_ignored(
+                "pdf.image.smask-cycle",
+                "a soft mask names itself or another mask that names it; the mask was not read",
+            );
+        }
         report.set_unmapped(content.unmapped_glyphs);
         report.set_estimated_widths(content.estimated_widths);
         for item in &content.items {
@@ -476,6 +488,9 @@ struct PageResources<'a> {
     limits: PdfLimits,
     /// The resources a form falls back on, when the form declares none itself.
     parent: Option<&'a PageResources<'a>>,
+    /// What reading this page's fonts cost; carried out of the loader so the
+    /// report can be written once the page's content has been interpreted.
+    notes: Vec<(String, String)>,
 }
 
 impl<'a> PageResources<'a> {
@@ -510,6 +525,7 @@ impl<'a> PageResources<'a> {
         let mut fonts = BTreeMap::new();
         let mut images = BTreeMap::new();
         let mut forms = BTreeMap::new();
+        let mut notes: Vec<(String, String)> = Vec::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
             .and_then(|value| resolve.get(value))
@@ -523,6 +539,7 @@ impl<'a> PageResources<'a> {
                 forms,
                 limits,
                 parent,
+                notes,
             };
         };
 
@@ -544,6 +561,12 @@ impl<'a> PageResources<'a> {
                 };
                 match PdfFont::build(&name, dictionary, document, &limits) {
                     Ok(font) => {
+                        // What reading the font cost is carried on the font and
+                        // collected here: the page's report is assembled after
+                        // the resources are, and this is the route that does not
+                        // thread a `&mut` through a graph a form borrows from its
+                        // page (AUD-12).
+                        notes.extend(font.notes.iter().cloned());
                         fonts.insert(name, font);
                     }
                     Err(error) => {
@@ -592,7 +615,13 @@ impl<'a> PageResources<'a> {
             forms,
             limits,
             parent,
+            notes,
         }
+    }
+
+    /// What reading this page's fonts cost, as `(report id, detail)`.
+    fn notes(&self) -> &[(String, String)] {
+        &self.notes
     }
 }
 

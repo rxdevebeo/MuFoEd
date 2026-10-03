@@ -156,6 +156,14 @@ pub struct PdfFont {
     pub ascent: Option<f64>,
     /// `/Descent` in 1000-unit text space, when the font states one.
     pub descent: Option<f64>,
+    /// What reading this font cost: `(report id, detail)`, one entry per thing.
+    ///
+    /// Carried on the font rather than pushed into a report the font builder has
+    /// no borrow of. The page's report is assembled after the resources are, and
+    /// this is the only route from a font's dictionary to it that does not thread
+    /// a `&mut` through the resource graph - where a form's resources borrow the
+    /// page's, and the borrow would not end.
+    pub notes: Vec<(String, String)>,
 }
 
 impl PdfFont {
@@ -195,6 +203,7 @@ impl PdfFont {
             base_font: String::new(),
             ascent: None,
             descent: None,
+            notes: Vec::new(),
         };
 
         if two_byte {
@@ -235,7 +244,13 @@ impl PdfFont {
                     font.default_width_stated = false;
                 }
             }
-            read_cid_widths(descendant, resolve, &mut font.widths);
+            read_cid_widths(
+                descendant,
+                resolve,
+                &mut font.widths,
+                limits,
+                &mut font.notes,
+            );
             font.base_font =
                 string_of(descendant.get(b"BaseFont").ok(), resolve).unwrap_or_default();
             font.embedded = descendant.get(b"FontDescriptor").is_ok();
@@ -264,7 +279,7 @@ impl PdfFont {
 
         if let Ok(to_unicode) = dictionary.get(b"ToUnicode") {
             if let Some(bytes) = stream_bytes(to_unicode, resolve) {
-                read_to_unicode(&bytes, &mut font.to_unicode, limits)?;
+                read_to_unicode(&bytes, &mut font.to_unicode, limits, &mut font.notes)?;
             }
         }
         if font.to_unicode.len() > limits.max_font_glyphs {
@@ -453,6 +468,8 @@ fn read_cid_widths(
     dictionary: &lopdf::Dictionary,
     resolve: Resolver<'_>,
     out: &mut BTreeMap<u32, f64>,
+    limits: &PdfLimits,
+    notes: &mut Vec<(String, String)>,
 ) {
     let Ok(w) = dictionary.get(b"W") else {
         return;
@@ -485,7 +502,36 @@ fn read_cid_widths(
                 let Some(width) = number_of(item, resolve) else {
                     break;
                 };
-                for code in to_code(first)..=to_code(second) {
+                let first = to_code(first);
+                let second = to_code(second);
+                if second < first {
+                    // `c_first` above `c_last` is a malformed group, not a range
+                    // that runs backwards: a wrapping range would fill the whole
+                    // glyph space from one number.
+                    notes.push((
+                        "pdf.font.widths-reversed".to_owned(),
+                        format!("a /W group runs from {first} down to {second}"),
+                    ));
+                    index += 3;
+                    continue;
+                }
+                // The run is bounded by the glyph budget, and a group that does
+                // not fit is cut rather than abandoned: `/W [0 4294967295 500]`
+                // is four billion insertions otherwise, and the first
+                // `max_font_glyphs` of them are as correct as the rest of the
+                // font (AUD-12).
+                let wanted = second.saturating_sub(first).saturating_add(1) as usize;
+                let wanted = wanted.min(limits.max_font_glyphs.saturating_sub(out.len()).max(1));
+                if (second - first) as usize + 1 > wanted {
+                    notes.push((
+                        "pdf.font.widths-truncated".to_owned(),
+                        format!(
+                            "a /W group of {} glyphs was cut to {wanted} by the glyph budget",
+                            (second - first) as usize + 1
+                        ),
+                    ));
+                }
+                for code in first..=first.saturating_add((wanted as u32).saturating_sub(1)) {
                     out.insert(code, width);
                 }
                 index += 3;
@@ -501,13 +547,22 @@ fn read_cid_widths(
 /// Only these three sections matter; everything else in a CMap is layout. An
 /// unparseable CMap yields an empty map, which makes the reader fall back to the
 /// encoding instead of failing — a document with a broken CMap is still readable.
-fn read_to_unicode(bytes: &[u8], out: &mut BTreeMap<u32, char>, limits: &PdfLimits) -> Result<()> {
+fn read_to_unicode(
+    bytes: &[u8],
+    out: &mut BTreeMap<u32, char>,
+    limits: &PdfLimits,
+    notes: &mut Vec<(String, String)>,
+) -> Result<()> {
     let text = String::from_utf8_lossy(bytes);
     // The scan walks absolute offsets rather than reslicing the buffer: a
     // relative `find` plus a relative advance silently skips a section, and the
     // symptom is a font whose first few characters are right and whose rest are
     // missing — which reads as a bad font rather than a bad scan.
     let mut cursor = 0usize;
+    // One note per font, however many tokens are bad: a CMap that writes its
+    // destinations as text rather than hex has thousands of them, and the report
+    // is for a caller to read.
+    let mut reported_invalid = false;
     while let Some(found) = text[cursor..].find("begin") {
         let tag_start = cursor + found + "begin".len();
         let (tag, section_start) = if text[tag_start..].starts_with("bfchar") {
@@ -527,6 +582,14 @@ fn read_to_unicode(bytes: &[u8], out: &mut BTreeMap<u32, char>, limits: &PdfLimi
         if tag == "bfchar" {
             for (code, ch) in hex_pairs(body) {
                 let (Some(code), Some(ch)) = (code, ch) else {
+                    if !reported_invalid {
+                        reported_invalid = true;
+                        notes.push((
+                            "pdf.font.tounicode-invalid".to_owned(),
+                            "a bfchar destination is not ASCII hex, so it names no character"
+                                .to_owned(),
+                        ));
+                    }
                     continue;
                 };
                 if out.len() >= limits.max_font_glyphs {
@@ -535,7 +598,7 @@ fn read_to_unicode(bytes: &[u8], out: &mut BTreeMap<u32, char>, limits: &PdfLimi
                 out.insert(code, ch);
             }
         } else {
-            read_bfrange(body, out, limits)?;
+            read_bfrange(body, out, limits, notes)?;
         }
         cursor = section_start + offset;
     }
@@ -544,7 +607,12 @@ fn read_to_unicode(bytes: &[u8], out: &mut BTreeMap<u32, char>, limits: &PdfLimi
 
 /// Reads `beginbfrange` entries, which are `<lo> <hi> <dst>` or
 /// `<lo> <hi> [<d1> <d2> …]`.
-fn read_bfrange(body: &str, out: &mut BTreeMap<u32, char>, limits: &PdfLimits) -> Result<()> {
+fn read_bfrange(
+    body: &str,
+    out: &mut BTreeMap<u32, char>,
+    limits: &PdfLimits,
+    notes: &mut Vec<(String, String)>,
+) -> Result<()> {
     for entry in body.split('\n') {
         let trimmed = entry.trim();
         if trimmed.is_empty() {
@@ -580,15 +648,42 @@ fn read_bfrange(body: &str, out: &mut BTreeMap<u32, char>, limits: &PdfLimits) -
         // A `bfrange` destination is a *character* the range increments, so the
         // run is `first`, `first + 1`, ...; a `bfrange` whose span is absurd is a
         // malformed CMap, and the budget is what stops it allocating.
+        //
+        // `<0000> <FFFFFFFF> <0041>` is the input: four billion characters
+        // ending in a code point that is not a character at all. The run is cut
+        // at the glyph budget and the cut is reported, which leaves a font whose
+        // first `max_font_glyphs` codes are right - a document whose text is
+        // readable at the start and unreadable after would be worse (AUD-12).
         let destination = char::from_u32(first).unwrap_or('\u{fffd}');
-        let span = high.saturating_sub(low).min(u32::from(u16::MAX));
-        for offset in 0..=span {
+        let span = high.saturating_sub(low);
+        if high < low {
+            notes.push((
+                "pdf.font.bfrange-reversed".to_owned(),
+                format!("a bfrange runs from {low} up to {high}"),
+            ));
+            continue;
+        }
+        let wanted = (span as usize)
+            .saturating_add(1)
+            .min(limits.max_font_glyphs.saturating_sub(out.len()).max(1));
+        if span as usize + 1 > wanted {
+            notes.push((
+                "pdf.font.widths-truncated".to_owned(),
+                format!(
+                    "a bfrange of {} codes was cut to {wanted} by the glyph budget",
+                    span as usize + 1
+                ),
+            ));
+        }
+        // `0..wanted`, not `0..wanted - 1`: the run is `wanted` codes long and the
+        // last one is the point of the budget.
+        for offset in 0..u32::try_from(wanted).unwrap_or(0) {
             if out.len() >= limits.max_font_glyphs {
                 return Err(limits.exceeded(LimitKind::FontGlyphs, out.len() as u64 + 1));
             }
             let ch =
                 char::from_u32(u32::from(destination).wrapping_add(offset)).unwrap_or('\u{fffd}');
-            out.insert(low + offset, ch);
+            out.insert(low.saturating_add(offset), ch);
         }
     }
     Ok(())
@@ -604,10 +699,11 @@ fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<char>)> {
     let tokens = hex_tokens(body);
     let mut out = Vec::with_capacity(tokens.len() / 2);
     for pair in tokens.as_chunks::<2>().0 {
-        out.push((
-            parse_hex(&pair[0]),
-            utf16_value(&pair[1]).or_else(|| char::from_u32(parse_hex(&pair[1]).unwrap_or(0))),
-        ));
+        // No fallback to `char::from_u32(parse_hex(..))`: a token that is
+        // neither UTF-16 nor hex names no character, and substituting U+0000
+        // for it turns a producer's mistake into a glyph this reader claims to
+        // have read. `None` is the answer, and the caller reports it (AUD-12).
+        out.push((parse_hex(&pair[0]), utf16_value(&pair[1])));
     }
     out
 }
@@ -637,13 +733,31 @@ fn parse_hex(token: &str) -> Option<u32> {
 }
 
 /// Decodes a UTF-16BE hex token to one character.
+///
+/// The token is validated as ASCII hex *before* any slice of it is taken, and
+/// the slices are taken over `as_bytes()`. Reading `&str[index * 4..index * 4 +
+/// 4]` panics the moment the token is not ASCII - and a CMap is the one place in
+/// a PDF a producer may legitimately write bytes that are not: `<00e9>` in Latin
+/// -1 and `<ЖЖЖЖ>` written by a producer that put its own text in the token
+/// instead of hex (AUD-12). A token that is not hex has no meaning to this
+/// reader, and the caller records `pdf.font.tounicode-invalid` rather than the
+/// process ending where a font is read.
 fn utf16_value(token: &str) -> Option<char> {
-    let token = token.trim();
-    if token.len() < 4 {
-        return u32::from_str_radix(token, 16).ok().and_then(char::from_u32);
+    let bytes = token.trim().as_bytes();
+    if !bytes.iter().all(u8::is_ascii_hexdigit) {
+        return None;
     }
-    let units: Vec<u16> = (0..token.len() / 4)
-        .filter_map(|index| u16::from_str_radix(&token[index * 4..index * 4 + 4], 16).ok())
+    if bytes.len() < 4 {
+        return u32::from_str_radix(token.trim(), 16)
+            .ok()
+            .and_then(char::from_u32);
+    }
+    let units: Vec<u16> = bytes
+        .chunks_exact(4)
+        .filter_map(|unit| {
+            let text = std::str::from_utf8(unit).ok()?;
+            u16::from_str_radix(text, 16).ok()
+        })
         .collect();
     String::from_utf16(&units).ok()?.chars().next()
 }
@@ -909,7 +1023,8 @@ pub fn decode_text_string(bytes: &[u8], format: lopdf::StringFormat) -> String {
 /// when the CMap records more codes than `limits.max_font_glyphs`.
 pub fn parse_to_unicode(bytes: &[u8], limits: &PdfLimits) -> Result<BTreeMap<u32, char>> {
     let mut out = BTreeMap::new();
-    read_to_unicode(bytes, &mut out, limits)?;
+    let mut notes = Vec::new();
+    read_to_unicode(bytes, &mut out, limits, &mut notes)?;
     Ok(out)
 }
 
@@ -955,7 +1070,7 @@ endbfchar
 endbfrange
 endcmap";
         let mut out = std::collections::BTreeMap::new();
-        read_to_unicode(cmap, &mut out, &limits()).expect("parsed");
+        read_to_unicode(cmap, &mut out, &limits(), &mut Vec::new()).expect("parsed");
         assert_eq!(out.get(&0x0003), Some(&' '));
         assert_eq!(out.get(&0x0004), Some(&'A'));
         assert_eq!(out.get(&0x0010), Some(&'a'));
@@ -967,7 +1082,8 @@ endcmap";
     #[test]
     fn a_malformed_cmap_yields_nothing_rather_than_failing() {
         let mut out = std::collections::BTreeMap::new();
-        read_to_unicode(b"not a cmap at all", &mut out, &limits()).expect("no failure");
+        read_to_unicode(b"not a cmap at all", &mut out, &limits(), &mut Vec::new())
+            .expect("no failure");
         assert!(out.is_empty());
     }
 
@@ -979,7 +1095,7 @@ endcmap";
             ..PdfLimits::default()
         };
         let cmap = b"1 beginbfchar <0001> <0041> <0002> <0042> endbfchar";
-        let error = read_to_unicode(cmap, &mut out, &tight).expect_err("budget");
+        let error = read_to_unicode(cmap, &mut out, &tight, &mut Vec::new()).expect_err("budget");
         assert!(error.to_string().contains("font_glyphs"), "{error}");
     }
 
@@ -1016,6 +1132,7 @@ endcmap";
             base_font: "Helvetica".to_owned(),
             ascent: None,
             descent: None,
+            notes: Vec::new(),
         };
         assert!(font.width(65).is_estimated());
         assert!((font.width(65).value() - 500.0).abs() < 1e-9);
@@ -1042,6 +1159,7 @@ endcmap";
             base_font: "Helvetica".to_owned(),
             ascent: None,
             descent: None,
+            notes: Vec::new(),
         };
         assert!(
             !font.encoding_stated,
