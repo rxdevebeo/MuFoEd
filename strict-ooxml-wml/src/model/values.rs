@@ -818,9 +818,13 @@ impl WidthKind {
 /// and no value is rejected by the pattern.
 #[must_use]
 pub fn percent_from_fiftieths(fiftieths: i32) -> String {
-    let whole = fiftieths / 50;
-    let rest = (fiftieths % 50).abs();
-    let sign = if fiftieths < 0 { "-" } else { "" };
+    // AUD-45: work on abs via i64 so `i32::MIN` is representable and the sign
+    // is applied once (previously `whole` stayed negative → `"--2%"`).
+    let negative = fiftieths < 0;
+    let abs = i64::from(fiftieths).unsigned_abs();
+    let whole = abs / 50;
+    let rest = abs % 50;
+    let sign = if negative { "-" } else { "" };
     if rest == 0 {
         return format!("{sign}{whole}%");
     }
@@ -882,4 +886,18 @@ pub struct TableLook {
     pub no_h_band: bool,
     /// Do not apply banding to columns.
     pub no_v_band: bool,
+}
+
+#[cfg(test)]
+mod percent_tests {
+    use super::percent_from_fiftieths;
+
+    #[test]
+    fn negative_percents_carry_one_sign() {
+        assert_eq!(percent_from_fiftieths(-100), "-2%");
+        assert_eq!(percent_from_fiftieths(-75), "-1.50%");
+        assert_eq!(percent_from_fiftieths(-25), "-0.50%");
+        assert_eq!(percent_from_fiftieths(i32::MIN), "-42949672.96%");
+        assert_eq!(percent_from_fiftieths(100), "2%");
+    }
 }

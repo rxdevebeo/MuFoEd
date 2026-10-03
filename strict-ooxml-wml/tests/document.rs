@@ -255,6 +255,36 @@ fn cell_level_sdt_unwraps_into_table_cells() {
     );
 }
 
+/// AUD-45: `w:sym` hex decode (PUA window only, case-insensitive).
+#[test]
+fn sym_decodes_pua_window_and_rejects_controls() {
+    let document = parse_body(
+        "<w:p><w:r>\
+         <w:sym w:font=\"Symbol\" w:char=\"F0FC\"/>\
+         <w:sym w:font=\"Symbol\" w:char=\"f0fc\"/>\
+         <w:sym w:font=\"Symbol\" w:char=\"FF20\"/>\
+         <w:sym w:font=\"Symbol\" w:char=\"0001\"/>\
+         </w:r></w:p>",
+    );
+    let Inline::Run(run) = &first_paragraph(&document).inlines[0] else {
+        panic!("expected run");
+    };
+    let chars: Vec<char> = run
+        .content
+        .iter()
+        .filter_map(|c| match c {
+            RunContent::Symbol(sym) => Some(sym.character),
+            _ => None,
+        })
+        .collect();
+    // F0FC / f0fc → U+00FC; FF20 stays U+FF20 (outside F000..=F0FF).
+    assert_eq!(chars, vec!['\u{00FC}', '\u{00FC}', '\u{FF20}']);
+    assert_eq!(
+        document.support.get("w:sym").unwrap().status,
+        SupportStatus::Unsupported
+    );
+}
+
 /// AUD-42: text inside transparent wrappers reaches the model.
 #[test]
 fn transparent_wrappers_keep_their_content() {

@@ -549,18 +549,26 @@ impl PartParser<'_> {
                                 parser.skip_element()?;
                             }
                             RunKind::Symbol => {
+                                // AUD-45: decode hex case-insensitively; only the
+                                // Private Use Area window `F000..=F0FF` is remapped.
                                 if let (Some(font), Some(code)) =
                                     (wml_attr(&attrs, "font"), wml_attr(&attrs, "char"))
                                 {
-                                    if let Some(character) =
-                                        u32::from_str_radix(code.trim_start_matches('F'), 16)
-                                            .ok()
-                                            .and_then(char::from_u32)
-                                    {
-                                        content.push(RunContent::Symbol(Symbol {
-                                            font: parser.intern(font),
-                                            character,
-                                        }));
+                                    match decode_sym_char(code) {
+                                        Some(character) => {
+                                            content.push(RunContent::Symbol(Symbol {
+                                                font: parser.intern(font),
+                                                character,
+                                            }));
+                                        }
+                                        None => {
+                                            parser.record(
+                                                "w:sym",
+                                                SupportStatus::Unsupported,
+                                                Some(format!("invalid symbol code '{code}'")),
+                                                Some(parser.location()),
+                                            );
+                                        }
                                     }
                                 }
                                 parser.skip_element()?;
@@ -977,4 +985,20 @@ fn rsids_from_attrs(attrs: &[Attr]) -> Rsids {
 /// Parses a boolean attribute value.
 fn parse_on_off_value(value: &str) -> bool {
     matches!(value, "true" | "on" | "1")
+}
+
+/// Decodes `w:sym/@w:char` (AUD-45).
+///
+/// Hex is case-insensitive. Codes in `0xF000..=0xF0FF` map into the low byte
+/// (Private Use Area window Word uses for Symbol fonts); other codes stay as-is.
+/// The result must be a valid XML 1.0 character.
+fn decode_sym_char(code: &str) -> Option<char> {
+    let value = u32::from_str_radix(code, 16).ok()?;
+    let codepoint = if (0xF000..=0xF0FF).contains(&value) {
+        value - 0xF000
+    } else {
+        value
+    };
+    let character = char::from_u32(codepoint)?;
+    strict_ooxml_core::xml::escape::is_xml_char(character).then_some(character)
 }
