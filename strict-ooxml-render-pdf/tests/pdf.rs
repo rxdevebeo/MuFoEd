@@ -417,3 +417,138 @@ fn every_producer_path_uses_only_the_supported_commands() {
          change has removed the geometry this test exists to watch"
     );
 }
+
+/// AUD-80: a picture in a header on a three-page document is drawn on every
+/// page, and the image XObject is written once.
+///
+/// Before the fix the XObject lived only on page 1's `/Resources`: pages 2 and 3
+/// still said `/Im… Do` but had no entry answering to that name, so a reader saw
+/// one placed image instead of three and the picture vanished from later pages.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn a_header_image_is_on_every_page_as_one_xobject() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    let mut png = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut png, 2, 2);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().expect("header");
+        writer
+            .write_image_data(&[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255])
+            .expect("data");
+    }
+    let picture = concat!(
+        "<w:drawing><wp:inline>",
+        "<wp:extent cx=\"914400\" cy=\"914400\"/>",
+        "<wp:docPr id=\"1\" name=\"hdr\"/>",
+        "<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">",
+        "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"hdr\"/><pic:cNvPicPr/>",
+        "</pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rIdImg\"/></pic:blipFill>",
+        "<pic:spPr><a:xfrm><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm></pic:spPr>",
+        "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>"
+    );
+    let body = concat!(
+        "<w:p><w:r><w:t>One</w:t></w:r></w:p>",
+        "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>",
+        "<w:p><w:r><w:t>Two</w:t></w:r></w:p>",
+        "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>",
+        "<w:p><w:r><w:t>Three</w:t></w:r></w:p>",
+        "<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdHdr\"/>",
+        "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>",
+        "<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" ",
+        "w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>"
+    );
+    let header = format!("<w:p><w:r>{picture}</w:r></w:p>");
+    let bytes = DocxBuilder::strict()
+        .body(body)
+        .rel("rIdHdr", "header", "header1.xml")
+        .content_type(
+            "/word/header1.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+        )
+        .content_type("/word/media/header.png", "image/png")
+        .part_xml("word/header1.xml", "w:hdr", &header)
+        .part(
+            "word/_rels/header1.xml.rels",
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rIdImg" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="media/header.png"/>
+</Relationships>"#
+                .to_vec(),
+        )
+        .part("word/media/header.png", png)
+        .build();
+
+    let (pdf, svg, _report) = to_pdf(&bytes);
+    assert_eq!(svg.len(), 3, "fixture must be three pages");
+
+    let document = lopdf::Document::load_mem(&pdf).expect("the PDF parses");
+    let mut page_image_refs: Vec<lopdf::ObjectId> = Vec::new();
+    let mut drawn = 0usize;
+    for id in document.page_iter() {
+        let content = String::from_utf8_lossy(&document.get_page_content(id)).into_owned();
+        let resources = document
+            .get_dictionary(id)
+            .and_then(|dictionary| dictionary.get(b"Resources"))
+            .and_then(lopdf::Object::as_dict)
+            .and_then(|objects| objects.get(b"XObject"))
+            .and_then(lopdf::Object::as_dict)
+            .unwrap_or_else(|error| panic!("page {id:?} has no /XObject: {error}"));
+        let mut page_refs = Vec::new();
+        for (name, value) in resources {
+            let name = String::from_utf8_lossy(name).into_owned();
+            assert!(
+                content.contains(&format!("/{name}"))
+                    && content.split_whitespace().any(|token| token == "Do"),
+                "page {id:?}: resource /{name} is listed but never drawn; content={content:?}"
+            );
+            drawn += 1;
+            let reference = value
+                .as_reference()
+                .unwrap_or_else(|error| panic!("XObject entry is not a reference: {error}"));
+            page_refs.push(reference);
+        }
+        assert_eq!(
+            page_refs.len(),
+            1,
+            "each page should name exactly the header picture: {page_refs:?}"
+        );
+        page_image_refs.push(page_refs[0]);
+    }
+    assert_eq!(
+        drawn, 3,
+        "content streams should draw the header on every page"
+    );
+    assert_eq!(page_image_refs.len(), 3);
+    assert!(
+        page_image_refs.iter().all(|id| *id == page_image_refs[0]),
+        "every page must point at the same XObject: {page_image_refs:?}"
+    );
+
+    let colour_images = document
+        .objects
+        .iter()
+        .filter(|(_, object)| {
+            object.as_stream().ok().is_some_and(|stream| {
+                stream
+                    .dict
+                    .get(b"Subtype")
+                    .ok()
+                    .and_then(|value| value.as_name().ok())
+                    == Some(&b"Image"[..])
+                    && stream
+                        .dict
+                        .get(b"ColorSpace")
+                        .ok()
+                        .and_then(|value| value.as_name().ok())
+                        == Some(&b"DeviceRGB"[..])
+            })
+        })
+        .count();
+    assert_eq!(
+        colour_images, 1,
+        "the header picture must be one XObject, not one per page"
+    );
+}

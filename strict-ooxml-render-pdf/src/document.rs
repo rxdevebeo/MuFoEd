@@ -112,14 +112,20 @@ pub fn render_with_source(
     }
 
     // Pass two: the file, with ids handed out in a fixed order.
+    //
+    // An image XObject is written once per `PartId` (AUD-80). Every page that
+    // draws it still lists the same object under `/Resources /XObject`: skipping
+    // that entry leaves the content stream's `/Im… Do` unresolved on every page
+    // after the first, so a header picture vanishes from page 2 onward.
     let mut builder = PdfBuilder::new();
-    let mut image_refs: BTreeMap<PartId, Ref> = BTreeMap::new();
+    let mut image_refs: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
     let mut page_objects: Vec<PageObjects> = Vec::with_capacity(pages.len());
     for (_, images) in &streams {
         let content_id = builder.allocate();
         let mut image_ids: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
         for part in images.keys() {
-            if image_refs.contains_key(part) {
+            if let Some(&(id, mask)) = image_refs.get(part) {
+                image_ids.insert(part.clone(), (id, mask));
                 continue;
             }
             let Some(bytes) = read_media(media, part)? else {
@@ -145,7 +151,7 @@ pub fn render_with_source(
             } else {
                 None
             };
-            image_refs.insert(part.clone(), id);
+            image_refs.insert(part.clone(), (id, mask));
             image_ids.insert(part.clone(), (id, mask));
             builder.pending_images.push((id, mask, encoded));
         }
