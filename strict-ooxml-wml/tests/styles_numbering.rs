@@ -230,3 +230,180 @@ fn a_start_that_is_not_a_number_is_reported_and_the_level_starts_at_zero() {
     assert_eq!(messages.len(), 1, "{messages:?}");
     assert!(messages[0].contains("not an integer"), "{messages:?}");
 }
+
+/// Package whose list instance redirects through a numbering style (`numStyleLink`).
+fn numbering_style_link_parts(cycle: bool) -> Vec<(String, Vec<u8>)> {
+    let styles = if cycle {
+        format!(
+            "<w:styles xmlns:w=\"{W_NS}\">\
+<w:style w:type=\"numbering\" w:styleId=\"A\">\
+<w:pPr><w:numPr><w:numId w:val=\"1\"/></w:numPr></w:pPr></w:style>\
+<w:style w:type=\"numbering\" w:styleId=\"B\">\
+<w:pPr><w:numPr><w:numId w:val=\"2\"/></w:numPr></w:pPr></w:style>\
+</w:styles>"
+        )
+    } else {
+        format!(
+            "<w:styles xmlns:w=\"{W_NS}\">\
+<w:style w:type=\"numbering\" w:styleId=\"List\">\
+<w:pPr><w:numPr><w:numId w:val=\"1\"/></w:numPr></w:pPr></w:style>\
+</w:styles>"
+        )
+    };
+    let numbering = if cycle {
+        format!(
+            "<w:numbering xmlns:w=\"{W_NS}\">\
+<w:abstractNum w:abstractNumId=\"0\"><w:numStyleLink w:val=\"A\"/></w:abstractNum>\
+<w:abstractNum w:abstractNumId=\"1\"><w:numStyleLink w:val=\"B\"/></w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"1\"/></w:num>\
+<w:num w:numId=\"2\"><w:abstractNumId w:val=\"0\"/></w:num>\
+</w:numbering>"
+        )
+    } else {
+        format!(
+            "<w:numbering xmlns:w=\"{W_NS}\">\
+<w:abstractNum w:abstractNumId=\"0\"><w:styleLink w:val=\"List\"/>\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/>\
+<w:lvlText w:val=\"%1.\"/></w:lvl>\
+<w:lvl w:ilvl=\"1\"><w:start w:val=\"1\"/><w:numFmt w:val=\"lowerLetter\"/>\
+<w:lvlText w:val=\"%2)\"/></w:lvl>\
+</w:abstractNum>\
+<w:abstractNum w:abstractNumId=\"1\"><w:numStyleLink w:val=\"List\"/></w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>\
+<w:num w:numId=\"2\"><w:abstractNumId w:val=\"1\"/></w:num>\
+</w:numbering>"
+        )
+    };
+    let rels = rels(&[
+        ("rIdStyles", STYLES, "styles.xml"),
+        ("rIdNumbering", NUMBERING, "numbering.xml"),
+    ]);
+    document_parts(
+        "<w:p><w:pPr><w:numPr><w:numId w:val=\"2\"/><w:ilvl w:val=\"0\"/></w:numPr></w:pPr></w:p>",
+        &[
+            ("word/styles.xml", styles.into_bytes()),
+            ("word/numbering.xml", numbering.into_bytes()),
+            ("word/_rels/document.xml.rels", rels),
+        ],
+    )
+}
+
+#[test]
+fn num_style_link_resolves_to_linked_levels() {
+    let document = parse_parts(&numbering_style_link_parts(false)).expect("parse");
+    let abstract_num = document
+        .numbering
+        .resolved_abstract(NumId(2))
+        .expect("resolved via numStyleLink");
+    assert_eq!(abstract_num.id.0, 0);
+    assert_eq!(abstract_num.levels.len(), 2);
+    assert_eq!(abstract_num.levels[0].format.as_deref(), Some("decimal"));
+    assert_eq!(
+        abstract_num.levels[1].format.as_deref(),
+        Some("lowerLetter")
+    );
+}
+
+#[test]
+fn num_style_link_cycle_is_reported_without_hanging() {
+    let document = parse_parts(&numbering_style_link_parts(true)).expect("parse");
+    let feature = document
+        .support
+        .get("w:numStyleLink")
+        .expect("cycle recorded");
+    assert_eq!(feature.status, SupportStatus::Partial);
+    assert_eq!(feature.message.as_deref(), Some("cycle"));
+    // The redirect was not applied, so numId 2 still points at abstract 0 (empty).
+    let abstract_num = document
+        .numbering
+        .resolved_abstract(NumId(2))
+        .expect("direct abstract");
+    assert_eq!(abstract_num.id.0, 0);
+    assert!(abstract_num.levels.is_empty());
+}
+
+#[test]
+fn ilvl_above_eight_is_clamped_and_reported() {
+    let numbering = format!(
+        "<w:numbering xmlns:w=\"{W_NS}\">\
+<w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"12\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/>\
+<w:lvlText w:val=\"%1.\"/></w:lvl>\
+</w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>\
+</w:numbering>"
+    );
+    let rels = rels(&[("rIdNumbering", NUMBERING, "numbering.xml")]);
+    let parts = document_parts(
+        "<w:p><w:pPr><w:numPr><w:numId w:val=\"1\"/><w:ilvl w:val=\"12\"/></w:numPr></w:pPr></w:p>",
+        &[
+            ("word/numbering.xml", numbering.into_bytes()),
+            ("word/_rels/document.xml.rels", rels),
+        ],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    let level = document
+        .numbering
+        .resolved_abstract(NumId(1))
+        .and_then(|abstract_num| abstract_num.levels.first())
+        .expect("level");
+    assert_eq!(level.ilvl.0, 8);
+    let paragraph_ilvl = document.body.blocks[0]
+        .as_paragraph()
+        .expect("paragraph")
+        .props
+        .numbering
+        .expect("numPr")
+        .ilvl
+        .expect("ilvl");
+    assert_eq!(paragraph_ilvl.0, 8);
+    let feature = document.support.get("w:ilvl").expect("ilvl recorded");
+    assert_eq!(feature.status, SupportStatus::Partial);
+    assert!(
+        feature
+            .message
+            .as_deref()
+            .is_some_and(|message| message.contains("clamped")),
+        "{:?}",
+        feature.message
+    );
+}
+
+#[test]
+fn duplicate_abstract_and_num_ids_keep_the_first() {
+    let numbering = format!(
+        "<w:numbering xmlns:w=\"{W_NS}\">\
+<w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"first\"/></w:lvl>\
+</w:abstractNum>\
+<w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"second\"/></w:lvl>\
+</w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"99\"/></w:num>\
+</w:numbering>"
+    );
+    let rels = rels(&[("rIdNumbering", NUMBERING, "numbering.xml")]);
+    let parts = document_parts(
+        "<w:p/>",
+        &[
+            ("word/numbering.xml", numbering.into_bytes()),
+            ("word/_rels/document.xml.rels", rels),
+        ],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    let abstract_num = document
+        .numbering
+        .resolved_abstract(NumId(1))
+        .expect("first abstract");
+    assert_eq!(abstract_num.levels[0].format.as_deref(), Some("decimal"));
+    assert_eq!(abstract_num.levels[0].text.as_deref(), Some("first"));
+    assert_eq!(
+        document.support.get("w:abstractNumId").unwrap().status,
+        SupportStatus::Partial
+    );
+    assert_eq!(
+        document.support.get("w:numId").unwrap().status,
+        SupportStatus::Partial
+    );
+}

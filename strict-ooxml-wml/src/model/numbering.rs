@@ -105,6 +105,9 @@ pub struct NumberingTable {
     nums: Vec<Num>,
     by_abstract: HashMap<AbstractNumId, usize>,
     by_num: HashMap<NumId, usize>,
+    /// Successful `numStyleLink` redirects: source abstract → terminal abstract
+    /// that actually carries the levels (filled during resolve).
+    link_targets: HashMap<AbstractNumId, AbstractNumId>,
 }
 
 impl NumberingTable {
@@ -114,26 +117,33 @@ impl NumberingTable {
         Self::default()
     }
 
-    /// Inserts an abstract definition.
-    pub fn insert_abstract(&mut self, abstract_num: AbstractNum) {
-        if let Some(&index) = self.by_abstract.get(&abstract_num.id) {
-            self.abstracts[index] = abstract_num;
-            return;
+    /// Inserts an abstract definition. The first definition for an id wins
+    /// (Word behaviour); returns `false` when a duplicate was skipped.
+    pub fn insert_abstract(&mut self, abstract_num: AbstractNum) -> bool {
+        if self.by_abstract.contains_key(&abstract_num.id) {
+            return false;
         }
         let index = self.abstracts.len();
         self.by_abstract.insert(abstract_num.id, index);
         self.abstracts.push(abstract_num);
+        true
     }
 
-    /// Inserts a numbering instance.
-    pub fn insert_num(&mut self, num: Num) {
-        if let Some(&index) = self.by_num.get(&num.num_id) {
-            self.nums[index] = num;
-            return;
+    /// Inserts a numbering instance. The first definition for an id wins;
+    /// returns `false` when a duplicate was skipped.
+    pub fn insert_num(&mut self, num: Num) -> bool {
+        if self.by_num.contains_key(&num.num_id) {
+            return false;
         }
         let index = self.nums.len();
         self.by_num.insert(num.num_id, index);
         self.nums.push(num);
+        true
+    }
+
+    /// Records a successful `numStyleLink` redirect (resolve phase).
+    pub fn set_link_target(&mut self, from: AbstractNumId, to: AbstractNumId) {
+        self.link_targets.insert(from, to);
     }
 
     /// Returns an abstract definition by id.
@@ -150,11 +160,18 @@ impl NumberingTable {
         self.by_num.get(&id).and_then(|&i| self.nums.get(i))
     }
 
-    /// Resolves a numbering instance to its abstract definition.
+    /// Resolves a numbering instance to its abstract definition, following any
+    /// `numStyleLink` redirect recorded during resolve.
     #[must_use]
     pub fn resolved_abstract(&self, id: NumId) -> Option<&AbstractNum> {
         let num = self.num(id)?;
-        self.abstract_num(num.abstract_num_id)
+        let start = num.abstract_num_id;
+        if let Some(&target) = self.link_targets.get(&start) {
+            return self
+                .abstract_num(target)
+                .or_else(|| self.abstract_num(start));
+        }
+        self.abstract_num(start)
     }
 
     /// Iterates over numbering instances.

@@ -3,7 +3,7 @@
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::ids::{AbstractNumId, Ilvl, NumId, StyleId};
+use crate::model::ids::{AbstractNumId, NumId, StyleId};
 use crate::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
 use crate::model::support::SupportStatus;
 use crate::model::values::Justification;
@@ -33,12 +33,34 @@ impl PartParser<'_> {
                         match name.local() {
                             "abstractNum" => {
                                 if let Some(abstract_num) = parser.parse_abstract_num(&attrs)? {
-                                    table.insert_abstract(abstract_num);
+                                    let id = abstract_num.id.0;
+                                    let location = abstract_num.location.clone();
+                                    if !table.insert_abstract(abstract_num) {
+                                        parser.record(
+                                            "w:abstractNumId",
+                                            SupportStatus::Partial,
+                                            Some(format!(
+                                                "duplicate abstractNumId {id}; keeping the first"
+                                            )),
+                                            Some(location),
+                                        );
+                                    }
                                 }
                             }
                             "num" => {
                                 if let Some(num) = parser.parse_num(&attrs)? {
-                                    table.insert_num(num);
+                                    let id = num.num_id.0;
+                                    let location = num.location.clone();
+                                    if !table.insert_num(num) {
+                                        parser.record(
+                                            "w:numId",
+                                            SupportStatus::Partial,
+                                            Some(format!(
+                                                "duplicate numId {id}; keeping the first"
+                                            )),
+                                            Some(location),
+                                        );
+                                    }
                                 }
                             }
                             _ => parser.skip_element()?,
@@ -112,11 +134,7 @@ impl PartParser<'_> {
 
     /// Parses a `w:lvl` element.
     fn parse_level(&mut self, attrs: &[Attr]) -> Result<Level> {
-        let ilvl = wml_attr(attrs, "ilvl")
-            .and_then(parse_u32)
-            .map_or(Ilvl(0), |value| {
-                Ilvl(u8::try_from(value.min(8)).unwrap_or(8))
-            });
+        let ilvl = self.clamped_ilvl(wml_attr(attrs, "ilvl").and_then(parse_u32));
         self.nested(|parser| {
             let mut level = Level::new(ilvl);
             loop {
@@ -244,11 +262,7 @@ impl PartParser<'_> {
 
     /// Parses `w:lvlOverride`.
     fn parse_level_override(&mut self, attrs: &[Attr]) -> Result<LevelOverride> {
-        let ilvl = wml_attr(attrs, "ilvl")
-            .and_then(parse_u32)
-            .map_or(Ilvl(0), |value| {
-                Ilvl(u8::try_from(value.min(8)).unwrap_or(8))
-            });
+        let ilvl = self.clamped_ilvl(wml_attr(attrs, "ilvl").and_then(parse_u32));
         self.nested(|parser| {
             let mut over = LevelOverride {
                 ilvl,

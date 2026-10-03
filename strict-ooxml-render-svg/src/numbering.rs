@@ -86,7 +86,7 @@ impl<'a> Engine<'a> {
     fn marker(&mut self, num_id: u32, ilvl: u8) -> Option<NumberingMarker> {
         let table = self.table;
         let num = table.num(NumId(num_id))?;
-        let abstract_num = table.abstract_num(num.abstract_num_id)?;
+        let abstract_num = table.resolved_abstract(NumId(num_id))?;
         let override_ = num.overrides.iter().find(|over| over.ilvl.0 == ilvl);
         let level = effective_level(abstract_num, override_, ilvl)?;
 
@@ -289,20 +289,29 @@ mod tests {
 
     #[test]
     fn start_override_and_bullet() {
-        let mut table = table(vec![
-            level(0, "decimal", "%1."),
-            level(1, "bullet", "\u{2022}"),
-        ]);
-        // Override the first level's start.
-        if let Some(num) = table.num(NumId(1)).cloned() {
-            let mut num = num;
-            num.overrides.push(LevelOverride {
+        let mut table = NumberingTable::new();
+        table.insert_abstract(AbstractNum {
+            id: AbstractNumId(0),
+            multi_level_type: None,
+            num_style_link: None,
+            style_link: None,
+            levels: vec![
+                level(0, "decimal", "%1."),
+                level(1, "bullet", "\u{2022}"),
+            ],
+            location: location(),
+        });
+        // Override the first level's start (first-wins insert; build the num once).
+        table.insert_num(Num {
+            num_id: NumId(1),
+            abstract_num_id: AbstractNumId(0),
+            overrides: vec![LevelOverride {
                 ilvl: Ilvl(0),
                 start_override: Some(5),
                 level: None,
-            });
-            table.insert_num(num);
-        }
+            }],
+            location: location(),
+        });
         let mut engine = Engine::new(&table, None);
         assert_eq!(engine.marker(1, 0).unwrap().text, "5.");
         assert_eq!(engine.marker(1, 0).unwrap().text, "6.");

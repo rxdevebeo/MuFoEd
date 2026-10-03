@@ -9,7 +9,7 @@ use std::sync::Arc;
 use strict_ooxml_core::error::{Result, SourceLocation};
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::ids::{Ilvl, NumId, StyleId};
+use crate::model::ids::{NumId, StyleId};
 use crate::model::props::{
     BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, HeaderFooterKind,
     HeaderFooterRef, Language, LineNumbering, NumPr, PageBorder, PageBorders, PageMargins,
@@ -168,7 +168,7 @@ impl PartParser<'_> {
                                 "ilvl" => {
                                     num_pr.ilvl = parser
                                         .val_u32(&attrs, "w:ilvl")
-                                        .map(|value| Ilvl(u8::try_from(value.min(8)).unwrap_or(8)));
+                                        .map(|value| parser.clamped_ilvl(Some(value)));
                                 }
                                 _ => {}
                             }

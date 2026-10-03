@@ -1020,6 +1020,32 @@ impl<'a> PartParser<'a> {
         u32::try_from(clamped).unwrap_or(0)
     }
 
+    /// Parses `w:ilvl` into `0..=8`, recording a clamp when the value is higher.
+    ///
+    /// The schema accepts any `ST_DecimalNumber`, but only nine levels exist.
+    /// A silent clamp would make `ilvl="12"` indistinguishable from a real level 8
+    /// (AUD-47).
+    pub(crate) fn clamped_ilvl(&mut self, raw: Option<u32>) -> crate::model::ids::Ilvl {
+        use crate::model::ids::Ilvl;
+        let Some(value) = raw else {
+            return Ilvl(0);
+        };
+        if value > u32::from(Ilvl::MAX) {
+            self.record(
+                "w:ilvl",
+                SupportStatus::Partial,
+                Some(format!(
+                    "w:ilvl {value} exceeds {}; it was clamped to {}",
+                    Ilvl::MAX,
+                    Ilvl::MAX
+                )),
+                Some(self.location()),
+            );
+            return Ilvl(Ilvl::MAX);
+        }
+        Ilvl(u8::try_from(value).unwrap_or(Ilvl::MAX))
+    }
+
     /// Resolves a relationship declared by the current part to a target part.
     pub(crate) fn resolve_relationship_target(&self, rel_id: &str) -> Option<PartId> {
         self.package
