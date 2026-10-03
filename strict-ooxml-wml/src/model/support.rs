@@ -91,17 +91,38 @@ impl FeatureUse {
     }
 }
 
+/// Feature id that absorbs records past [`SupportModel::max_features`] (AUD-51).
+pub const SUPPORT_OVERFLOW_ID: &str = "support.overflow";
+
 /// Aggregated support information for a document.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SupportModel {
     by_feature: BTreeMap<Arc<str>, FeatureUse>,
+    /// Cap on distinct feature keys (from `ResourceLimits::max_support_features`).
+    max_features: usize,
+}
+
+impl Default for SupportModel {
+    fn default() -> Self {
+        Self::with_limit(10_000)
+    }
 }
 
 impl SupportModel {
-    /// Creates an empty support model.
+    /// Creates an empty support model with the default feature-key budget.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates an empty support model that admits at most `max_features`
+    /// distinct keys before collapsing into [`SUPPORT_OVERFLOW_ID`] (AUD-51).
+    #[must_use]
+    pub fn with_limit(max_features: usize) -> Self {
+        Self {
+            by_feature: BTreeMap::new(),
+            max_features,
+        }
     }
 
     /// Records one use of a mechanism.
@@ -110,6 +131,9 @@ impl SupportModel {
     /// severe of the two, its count is incremented, and the message of the first
     /// occurrence is kept. The location (if any) is added to the bounded,
     /// de-duplicated location list (ADR-0005).
+    ///
+    /// When the distinct-key budget is exhausted, the record is folded into
+    /// [`SUPPORT_OVERFLOW_ID`] instead of growing the map (AUD-51).
     pub fn record(
         &mut self,
         feature_id: impl Into<Arc<str>>,
@@ -118,10 +142,18 @@ impl SupportModel {
         location: Option<SourceLocation>,
     ) {
         let feature_id = feature_id.into();
+        let key = if self.by_feature.contains_key(&feature_id)
+            || feature_id.as_ref() == SUPPORT_OVERFLOW_ID
+            || self.by_feature.len() < self.max_features
+        {
+            feature_id
+        } else {
+            Arc::from(SUPPORT_OVERFLOW_ID)
+        };
         let entry = self
             .by_feature
-            .entry(feature_id.clone())
-            .or_insert_with(|| FeatureUse::new(feature_id));
+            .entry(key.clone())
+            .or_insert_with(|| FeatureUse::new(key));
         entry.count = entry.count.saturating_add(1);
         if status > entry.status {
             entry.status = status;
@@ -137,10 +169,18 @@ impl SupportModel {
     /// Merges another support model into this one, aggregating counts.
     pub fn merge(&mut self, other: SupportModel) {
         for (feature_id, use_) in other.by_feature {
+            let key = if self.by_feature.contains_key(&feature_id)
+                || feature_id.as_ref() == SUPPORT_OVERFLOW_ID
+                || self.by_feature.len() < self.max_features
+            {
+                feature_id
+            } else {
+                Arc::from(SUPPORT_OVERFLOW_ID)
+            };
             let entry = self
                 .by_feature
-                .entry(feature_id.clone())
-                .or_insert_with(|| FeatureUse::new(feature_id));
+                .entry(key.clone())
+                .or_insert_with(|| FeatureUse::new(key));
             entry.count = entry.count.saturating_add(use_.count);
             if use_.status > entry.status {
                 entry.status = use_.status;
@@ -218,5 +258,26 @@ impl SupportModel {
             );
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};
+
+    #[test]
+    fn overflow_collapses_past_the_budget() {
+        let mut model = SupportModel::with_limit(3);
+        for index in 0..10 {
+            model.record(
+                format!("w:zzz{index}"),
+                SupportStatus::Unsupported,
+                None,
+                None,
+            );
+        }
+        assert!(model.len() <= 4); // 3 + support.overflow
+        assert!(model.get(SUPPORT_OVERFLOW_ID).is_some());
+        assert!(model.get(SUPPORT_OVERFLOW_ID).unwrap().count >= 7);
     }
 }

@@ -100,6 +100,12 @@ pub struct ResourceLimits {
     pub max_math_nodes: u32,
     /// Maximum nesting depth inside one `m:oMath`. Default: 64.
     pub max_math_depth: u32,
+    /// Maximum distinct feature keys in the WML support model. Default: `10_000`.
+    ///
+    /// AUD-51: beyond this, further unknown mechanisms collapse into one
+    /// `support.overflow` entry with a counter, so a hostile document cannot
+    /// grow the report without bound.
+    pub max_support_features: usize,
 }
 
 impl Default for ResourceLimits {
@@ -119,6 +125,7 @@ impl Default for ResourceLimits {
             max_text_box_nesting: 5,
             max_math_nodes: 4096,
             max_math_depth: 64,
+            max_support_features: 10_000,
         }
     }
 }
@@ -144,6 +151,7 @@ mod tests {
         assert_eq!(limits.max_text_box_nesting, 5);
         assert_eq!(limits.max_math_nodes, 4096);
         assert_eq!(limits.max_math_depth, 64);
+        assert_eq!(limits.max_support_features, 10_000);
     }
 
     #[test]

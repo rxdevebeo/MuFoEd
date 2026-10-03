@@ -345,3 +345,39 @@ fn model_variant_sizes_are_bounded() {
         size_of::<Inline>()
     );
 }
+
+/// AUD-51: feature-key budget and namespace-key (not document prefix).
+#[test]
+fn support_model_caps_distinct_features_and_ignores_spoofed_prefix() {
+    // Many unique unknown children → collapse into support.overflow.
+    let mut body = String::from("<w:p><w:r><w:t>x</w:t></w:r>");
+    for index in 0..200 {
+        body.push_str(&format!("<w:zzz{index}/>"));
+    }
+    body.push_str("</w:p>");
+    let limits = ResourceLimits {
+        max_support_features: 50,
+        ..ResourceLimits::default()
+    };
+    let document = parse_with_limits(&document_parts(&body, &[]), limits).expect("parse");
+    assert!(
+        document.support.len() <= 51,
+        "len={}",
+        document.support.len()
+    );
+    assert!(document
+        .support
+        .get(strict_ooxml_wml::model::SUPPORT_OVERFLOW_ID)
+        .is_some());
+
+    // A `w:` prefix rebound to a foreign URI must not produce a `w:` feature key.
+    let body = "<w:p><w:r><w:t>x</w:t></w:r>\
+        <w:mystery xmlns:w=\"http://evil.example/ns\"/>\
+        </w:p>";
+    let document = parse_parts(&document_parts(body, &[])).expect("parse");
+    assert!(document.support.get("w:mystery").is_none());
+    assert!(document
+        .support
+        .iter()
+        .any(|f| f.feature_id.as_ref() == "ext:http://evil.example/ns:mystery"));
+}

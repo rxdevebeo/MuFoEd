@@ -55,7 +55,7 @@ pub use props::{
 };
 pub use settings::{DocumentZoom, Settings, Zoom};
 pub use styles::{Style, StyleTable};
-pub use support::{FeatureUse, SupportModel, SupportStatus};
+pub use support::{FeatureUse, SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};
 pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts};
 pub use values::{
     Border, BorderStyle, Borders, BreakKind, CellMargins, Color, DocGridType, EighthsPoint, Emu,

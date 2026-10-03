@@ -730,7 +730,7 @@ impl<'a> PartParser<'a> {
             package,
             part,
             interner: Interner::new(),
-            support: SupportModel::new(),
+            support: SupportModel::with_limit(limits.max_support_features),
             media: MediaIndex::new(),
             recursion: depth::Depth::new(limits.max_xml_depth),
             block_depth: 0,
@@ -1081,10 +1081,47 @@ pub(crate) fn is_math(name: &QName) -> bool {
 }
 
 /// Builds a stable feature identifier from a qualified name.
+/// Builds a support feature id as `{namespace-key}:{local}` (AUD-51).
+///
+/// The key comes from the resolved namespace URI, never from the document's
+/// prefix — a `w:` bound to a foreign URI becomes `ext:…`, not `w:…`.
 pub(crate) fn feature_id_for(name: &QName) -> String {
-    match &name.prefix {
-        Some(prefix) => format!("{prefix}:{}", name.local()),
-        None => name.local().to_owned(),
+    let key = namespace_feature_key(name.ns.as_ref().map(strict_ooxml_core::xml::qname::NsUri::as_str));
+    format!("{key}:{}", name.local())
+}
+
+/// Short registry key for a namespace URI, or `ext:<uri>` when unknown.
+fn namespace_feature_key(uri: Option<&str>) -> String {
+    match uri {
+        None => "ext".to_owned(),
+        Some(uri) => match uri {
+            crate::WML_STRICT_NS
+            | "http://schemas.openxmlformats.org/wordprocessingml/2006/main" => "w".to_owned(),
+            crate::RELS_STRICT_NS
+            | "http://schemas.openxmlformats.org/officeDocument/2006/relationships" => {
+                "r".to_owned()
+            }
+            crate::DRAWINGML_STRICT_NS
+            | "http://schemas.openxmlformats.org/drawingml/2006/main" => "a".to_owned(),
+            crate::WORDPROCESSING_DRAWING_STRICT_NS
+            | "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" => {
+                "wp".to_owned()
+            }
+            crate::PICTURE_STRICT_NS
+            | "http://schemas.openxmlformats.org/drawingml/2006/picture" => "pic".to_owned(),
+            crate::MATH_STRICT_NS
+            | "http://schemas.openxmlformats.org/officeDocument/2006/math" => "m".to_owned(),
+            crate::WORD_PROCESSING_SHAPE_STRICT_NS
+            | "http://schemas.microsoft.com/office/word/2010/wordprocessingShape" => {
+                "wps".to_owned()
+            }
+            crate::WORD_PROCESSING_GROUP_STRICT_NS
+            | "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" => {
+                "wpg".to_owned()
+            }
+            "http://schemas.openxmlformats.org/markup-compatibility/2006" => "mc".to_owned(),
+            other => format!("ext:{other}"),
+        },
     }
 }
 
