@@ -437,42 +437,15 @@ fn decode_inner(
         Some(b"JBIG2Decode") => {
             decode_jbig2_bytes(&stream.content, dictionary, document, resolve, limits)?
         }
-        None | Some(b"FlateDecode") => {
-            // The filter is carried; a stream that will not inflate is a broken
-            // file, and saying "this filter is not carried" for it is a wrong
-            // reason for a real loss — the kind of message that sends somebody to
-            // look for a codec instead of at the file. It is also not a *missing
-            // dictionary*, which is what the same message used to say.
-            // Bounded inflate (AUD-13): a flate bomb is refused before the
-            // allocation, not after `samples.len()` is already the bomb's size.
-            let samples = crate::document::bounded_decompress(stream, limits.max_image_bytes)
-                .map_err(|reject| match (&reject, first) {
-                    (Reject::TooLarge, _) => Reject::TooLarge,
-                    (_, Some(_)) => Reject::Broken("flate samples could not be inflated"),
-                    (_, None) => Reject::Broken("samples are not a decodable stream"),
-                })?;
-            let samples = if expand_one_bit {
-                expand_gray1_to_eight(&samples, width, height, limits)?
-            } else {
-                let expected = (width as usize)
-                    .saturating_mul(height as usize)
-                    .saturating_mul(components as usize);
-                if samples.len() < expected {
-                    return Err(Reject::Broken("samples are truncated"));
-                }
-                if samples.len() > limits.max_image_bytes {
-                    return Err(Reject::TooLarge);
-                }
-                samples
-            };
-            Encoded::Raw {
-                width,
-                height,
-                samples: Arc::new(samples),
-                components,
-                alpha: None,
-            }
-        }
+        None | Some(b"FlateDecode") => decode_flate_or_raw(
+            stream,
+            first.is_some(),
+            expand_one_bit,
+            width,
+            height,
+            components,
+            limits,
+        )?,
         Some(other) => {
             // The filter name comes from the file, so the reason has to own it.
             let leaked: &'static str =
@@ -557,7 +530,55 @@ fn components_for(
     }
 }
 
+/// Inflate (or take raw) samples for a Flate/unfiltered image XObject.
+fn decode_flate_or_raw(
+    stream: &lopdf::Stream,
+    filtered: bool,
+    expand_one_bit: bool,
+    width: u32,
+    height: u32,
+    components: u8,
+    limits: &PdfLimits,
+) -> Result<Encoded, Reject> {
+    // The filter is carried; a stream that will not inflate is a broken file,
+    // and saying "this filter is not carried" for it is a wrong reason for a
+    // real loss. Bounded inflate (AUD-13): refuse before the allocation.
+    let samples = crate::document::bounded_decompress(stream, limits.max_image_bytes).map_err(
+        |reject| match (&reject, filtered) {
+            (Reject::TooLarge, _) => Reject::TooLarge,
+            (_, true) => Reject::Broken("flate samples could not be inflated"),
+            (_, false) => Reject::Broken("samples are not a decodable stream"),
+        },
+    )?;
+    let samples = if expand_one_bit {
+        expand_gray1_to_eight(&samples, width, height, limits)?
+    } else {
+        let expected = (width as usize)
+            .saturating_mul(height as usize)
+            .saturating_mul(components as usize);
+        if samples.len() < expected {
+            return Err(Reject::Broken("samples are truncated"));
+        }
+        if samples.len() > limits.max_image_bytes {
+            return Err(Reject::TooLarge);
+        }
+        samples
+    };
+    Ok(Encoded::Raw {
+        width,
+        height,
+        samples: Arc::new(samples),
+        components,
+        alpha: None,
+    })
+}
+
 /// Owned `/DecodeParms` fields for `/CCITTFaxDecode` (ISO 32000-1 Table 11).
+///
+/// The bools are the PDF dictionary flags themselves (`EndOfBlock`,
+/// `EndOfLine`, `EncodedByteAlign`, `BlackIs1`) — collapsing them into enums
+/// would invent a state machine the file does not have.
+#[allow(clippy::struct_excessive_bools)]
 struct CcittParms {
     k: i32,
     columns: Option<u32>,
@@ -656,6 +677,53 @@ pub(crate) fn expand_gray1_to_eight(
     Ok(out)
 }
 
+/// Collects 8-bit gray pixels from a CCITT decode.
+struct CcittLuma8 {
+    output: Vec<u8>,
+    decoded_rows: u32,
+}
+
+impl hayro_ccitt::Decoder for CcittLuma8 {
+    fn push_pixels(&mut self, white: bool, count: u32) {
+        let byte = if white { 0xFF } else { 0x00 };
+        self.output
+            .extend(std::iter::repeat_n(byte, count as usize));
+    }
+
+    fn next_line(&mut self) {
+        self.decoded_rows += 1;
+    }
+}
+
+/// Collects 8-bit gray pixels from a JBIG2 decode.
+///
+/// JBIG2: black = 1; PDF DeviceGray: 0 = black, 1 = white — invert on emit.
+struct Jbig2Luma8 {
+    output: Vec<u8>,
+}
+
+impl hayro_jbig2::Decoder for Jbig2Luma8 {
+    fn push_pixel(&mut self, black: bool) {
+        self.output.push(if black { 0x00 } else { 0xFF });
+    }
+
+    fn push_pixel_chunk(&mut self, black: bool, chunk_count: u32) {
+        let byte = if black { 0x00 } else { 0xFF };
+        self.output
+            .extend(std::iter::repeat_n(byte, chunk_count as usize * 8));
+    }
+
+    fn next_line(&mut self) {}
+}
+
+fn ccitt_encoding(k: i32) -> hayro_ccitt::EncodingMode {
+    match k {
+        ..=-1 => hayro_ccitt::EncodingMode::Group4,
+        0 => hayro_ccitt::EncodingMode::Group3_1D,
+        _ => hayro_ccitt::EncodingMode::Group3_2D { k: k as u32 },
+    }
+}
+
 /// `/CCITTFaxDecode` → 8-bit gray ([`Encoded::Raw`]).
 fn decode_ccitt_bytes(
     data: &[u8],
@@ -676,34 +744,11 @@ fn decode_ccitt_bytes(
         end_of_block: parms.end_of_block,
         end_of_line: parms.end_of_line,
         rows_are_byte_aligned: parms.rows_are_byte_aligned,
-        encoding: if parms.k < 0 {
-            hayro_ccitt::EncodingMode::Group4
-        } else if parms.k == 0 {
-            hayro_ccitt::EncodingMode::Group3_1D
-        } else {
-            hayro_ccitt::EncodingMode::Group3_2D { k: parms.k as u32 }
-        },
+        encoding: ccitt_encoding(parms.k),
         invert_black: parms.invert_black,
     };
 
-    struct Luma8Decoder {
-        output: Vec<u8>,
-        decoded_rows: u32,
-    }
-
-    impl hayro_ccitt::Decoder for Luma8Decoder {
-        fn push_pixels(&mut self, white: bool, count: u32) {
-            let byte = if white { 0xFF } else { 0x00 };
-            self.output
-                .extend(std::iter::repeat_n(byte, count as usize));
-        }
-
-        fn next_line(&mut self) {
-            self.decoded_rows += 1;
-        }
-    }
-
-    let mut decoder = Luma8Decoder {
+    let mut decoder = CcittLuma8 {
         output: Vec::with_capacity(need),
         decoded_rows: 0,
     };
@@ -759,26 +804,7 @@ fn decode_jbig2_bytes(
         return Err(Reject::TooLarge);
     }
 
-    struct Luma8Decoder {
-        output: Vec<u8>,
-    }
-
-    impl hayro_jbig2::Decoder for Luma8Decoder {
-        fn push_pixel(&mut self, black: bool) {
-            // JBIG2: black = 1; PDF DeviceGray: 0 = black, 1 = white.
-            self.output.push(if black { 0x00 } else { 0xFF });
-        }
-
-        fn push_pixel_chunk(&mut self, black: bool, chunk_count: u32) {
-            let byte = if black { 0x00 } else { 0xFF };
-            self.output
-                .extend(std::iter::repeat_n(byte, chunk_count as usize * 8));
-        }
-
-        fn next_line(&mut self) {}
-    }
-
-    let mut decoder = Luma8Decoder {
+    let mut decoder = Jbig2Luma8 {
         output: Vec::with_capacity(need),
     };
     image

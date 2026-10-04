@@ -344,59 +344,26 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
             }),
             missing: None,
         },
-        Some(b"JPX" | b"JPXDecode") => {
-            // Inline JPX uses the same decoder as XObject `/JPXDecode`. Limits
-            // are the defaults: an inline image large enough to matter has
-            // already paid for the content-stream budget.
-            match crate::image::decode_jpx_bytes(data, &limits) {
-                Ok(encoded) => InlineImage {
-                    encoded: Some(encoded),
-                    missing: None,
-                },
-                Err(reject) => InlineImage {
-                    encoded: None,
-                    missing: Some(reject.to_string()),
-                },
-            }
-        }
-        None | Some(b"Fl" | b"FlateDecode") => {
-            let samples = if matches!(filter, Some(b"Fl" | b"FlateDecode")) {
-                match miniz_oxide::inflate::decompress_to_vec_zlib(data) {
-                    Ok(raw) => raw,
-                    Err(_) => {
-                        return InlineImage {
-                            encoded: None,
-                            missing: Some("inline image FlateDecode failed".into()),
-                        };
-                    }
-                }
-            } else {
-                data.to_vec()
-            };
-            let samples = if expand_one_bit {
-                match crate::image::expand_gray1_to_eight(&samples, width, height, &limits) {
-                    Ok(expanded) => expanded,
-                    Err(reject) => {
-                        return InlineImage {
-                            encoded: None,
-                            missing: Some(reject.to_string()),
-                        };
-                    }
-                }
-            } else {
-                samples
-            };
-            InlineImage {
-                encoded: Some(Encoded::Raw {
-                    width,
-                    height,
-                    samples: Arc::new(samples),
-                    components,
-                    alpha: None,
-                }),
+        Some(b"JPX" | b"JPXDecode") => match crate::image::decode_jpx_bytes(data, &limits) {
+            // Same decoder as XObject `/JPXDecode`; default limits — a large
+            // inline image has already paid for the content-stream budget.
+            Ok(encoded) => InlineImage {
+                encoded: Some(encoded),
                 missing: None,
-            }
-        }
+            },
+            Err(reject) => InlineImage {
+                encoded: None,
+                missing: Some(reject.to_string()),
+            },
+        },
+        None | Some(b"Fl" | b"FlateDecode") => decode_inline_samples(
+            data,
+            filter.is_some(),
+            expand_one_bit,
+            width,
+            height,
+            components,
+        ),
         Some(other) => InlineImage {
             encoded: None,
             missing: Some(format!(
@@ -404,6 +371,57 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
                 String::from_utf8_lossy(other)
             )),
         },
+    }
+}
+
+fn decode_inline_samples(
+    data: &[u8],
+    flate: bool,
+    expand_one_bit: bool,
+    width: u32,
+    height: u32,
+    components: u8,
+) -> InlineImage {
+    let samples = if flate {
+        match miniz_oxide::inflate::decompress_to_vec_zlib(data) {
+            Ok(raw) => raw,
+            Err(_) => {
+                return InlineImage {
+                    encoded: None,
+                    missing: Some("inline image FlateDecode failed".into()),
+                };
+            }
+        }
+    } else {
+        data.to_vec()
+    };
+    let samples = if expand_one_bit {
+        match crate::image::expand_gray1_to_eight(
+            &samples,
+            width,
+            height,
+            &crate::PdfLimits::default(),
+        ) {
+            Ok(expanded) => expanded,
+            Err(reject) => {
+                return InlineImage {
+                    encoded: None,
+                    missing: Some(reject.to_string()),
+                };
+            }
+        }
+    } else {
+        samples
+    };
+    InlineImage {
+        encoded: Some(Encoded::Raw {
+            width,
+            height,
+            samples: Arc::new(samples),
+            components,
+            alpha: None,
+        }),
+        missing: None,
     }
 }
 

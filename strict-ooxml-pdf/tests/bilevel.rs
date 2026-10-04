@@ -1,7 +1,7 @@
-//! Bi-level image filters that the CC0 corpus actually uses: 1-bit Flate
-//! DeviceGray, `/CCITTFaxDecode`, and `/JBIG2Decode`. Before these were carried,
-//! every such XObject was reported as `bits per component` — wrong reason for a
-//! real, decodable scan.
+//! Bi-level image filters that the `CC0` corpus actually uses: 1-bit Flate
+//! `DeviceGray`, `/CCITTFaxDecode`, and `/JBIG2Decode`. Before these were
+//! carried, every such `XObject` was reported as `bits per component` — wrong
+//! reason for a real, decodable scan.
 
 use strict_ooxml_pdf::content::Item;
 use strict_ooxml_pdf::{PdfDocument, PdfLimits};
@@ -148,7 +148,7 @@ fn stroke_style_operators_are_carried_not_reported() {
         .expect("stroked path");
     assert_eq!(vector.line_cap, strict_ooxml_pdf::LineCap::Round);
     assert_eq!(vector.line_join, strict_ooxml_pdf::LineJoin::Bevel);
-    assert_eq!(vector.miter_limit, 8.0);
+    assert!((vector.miter_limit - 8.0).abs() < f64::EPSILON);
     assert!(
         !document
             .report()
