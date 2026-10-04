@@ -42,6 +42,10 @@ pub struct PolicyOverride {
     pub max_content_centroid_px: Option<f64>,
     /// Replacement extent bound.
     pub max_extent_px: Option<f64>,
+    /// Replacement row-ink correlation floor.
+    pub min_row_correlation: Option<f64>,
+    /// Replacement column-ink correlation floor.
+    pub min_column_correlation: Option<f64>,
 }
 
 /// One class's bounds for the PDF backend, where they differ from its own.
@@ -169,6 +173,8 @@ impl GatePolicy {
                 max_centroid_px: entry.max_centroid_px,
                 max_content_centroid_px: entry.max_content_centroid_px,
                 max_extent_px: entry.max_extent_px,
+                min_row_correlation: entry.min_row_correlation,
+                min_column_correlation: entry.min_column_correlation,
             })
             .collect();
         let policy = Self {
@@ -271,8 +277,12 @@ impl GatePolicy {
             max_content_centroid_px: override_entry
                 .max_content_centroid_px
                 .unwrap_or(class.max_content_centroid_px),
-            min_row_correlation: class.min_row_correlation,
-            min_column_correlation: class.min_column_correlation,
+            min_row_correlation: override_entry
+                .min_row_correlation
+                .unwrap_or(class.min_row_correlation),
+            min_column_correlation: override_entry
+                .min_column_correlation
+                .unwrap_or(class.min_column_correlation),
             max_extent_px: override_entry.max_extent_px.unwrap_or(class.max_extent_px),
         }
     }
@@ -421,6 +431,10 @@ struct RawOverride {
     max_content_centroid_px: Option<f64>,
     #[serde(default)]
     max_extent_px: Option<f64>,
+    #[serde(default)]
+    min_row_correlation: Option<f64>,
+    #[serde(default)]
+    min_column_correlation: Option<f64>,
 }
 
 /// A per-class PDF bound set, in the same optional-one-field-per-bound shape as

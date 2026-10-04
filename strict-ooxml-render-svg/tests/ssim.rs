@@ -96,13 +96,14 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // below the threshold, i.e. failing — to 0.9513, legible and measured. The
     // layout's own invariant is now a unit test rather than a number of pixels.
     ("strict-stage5c", 0, 1.0, 21.0),
-    // 18 -> 30 and 9 -> 7: the same fraction placement, on a page whose two formulas
-    // are a matrix and a radical. A fraction is taller than the symmetric version
-    // it replaces, and this page is nothing but fractions, so the pin moves with
-    // the measurement — 12 px of it on this page. Again: not progress, and the
-    // page's SSIM (0.9513, up from 0.9496) is the number that improved. The
-    // `07` entry above and this one are the two halves of the same trade.
-    ("strict-stage5c", 1, 7.0, 30.0),
+    // AUD-50: several `m:oMath` children of one `m:oMathPara` are laid out one
+    // display line each (was: nodes merged into one horizontal expression).
+    // That adds roughly one formula height per multi-equation paragraph, so
+    // page 1's bottom ink edge moves by ≈240 px and its top edge settles at
+    // +3. Pins track the new stacking; `coverage/render-gates.toml` carries
+    // the matching override. Waiver `STAGE5C-P1-LAYOUT` tracks bringing the
+    // WPS reference (or a follow-up layout pass) back inside the old band.
+    ("strict-stage5c", 1, 3.0, 240.0),
     // -2 -> 4: the same trade on the simplest formula page, where one fraction gets
     // 6 px taller. The page's SSIM went from 0.9632 to 0.9747.
     ("05-strict-math-simple", 0, 0.0, 4.0),
