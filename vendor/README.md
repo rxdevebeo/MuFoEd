@@ -12,6 +12,6 @@ Remove the vendored copy once upstream releases the fix.
 |---|---|---|---|---|
 | hayro-interpret | 0.7.0 | Apache-2.0 OR MIT | `MAX_PAINT_NESTING` (tiling + Type 3); `MAX_CID` on `/W`/`/W2`; `ImageXObject::new` rejects width×height over 2^28 | `hostile::raster::{self_referencing_*, huge_cid_*, absurd_image_*}` |
 | hayro | 0.7.1 | Apache-2.0 OR MIT | `MAX_IMAGE_PIXELS` skip in `draw_image` (ImageData and Device paths) | `hostile::raster::absurd_image_dimensions_are_skipped` |
-| hayro-syntax | 0.7.2 | Apache-2.0 OR MIT | page-tree cycle guard in `resolve_pages`; JBIG2 rejects width×height over 2^28 before buffer alloc (hayro#1259) | `hostile::raster::{page_tree_kids_cycle_is_handled, absurd_jbig2_dimensions_are_skipped}` |
+| hayro-syntax | 0.7.2 | Apache-2.0 OR MIT | page-tree cycle guard; JBIG2 pixel budget (hayro#1259); `MAX_OBJECT_NESTING` on Dict/Array skip/read (AUD-96) | `hostile::raster::{page_tree_kids_cycle_is_handled, absurd_jbig2_*, deep_literal_dict_nesting_is_refused}` |
 
 Wired via `[patch.crates-io]` in the workspace `Cargo.toml`.

@@ -69,8 +69,9 @@
 / `CENSUS-LOCAL` / `FUZZ` (24 h). Новые находки корпуса
 (`AUD-17`/`AUD-37`/`AUD-38`/`AUD-68`/`AUD-69`) — ✅ закрыты 2026-10-04;
 корпус в `docx/`, см. `REWORK-AUDIT-2026-10.md` / `docs/corpus-incoming.md`.
-Зависимости (`AUD-95`…`AUD-99`, прежде всего hayro): Ф10 того же плана;
-фикстуры `docx-incoming/dep-*`, индекс — `docs/corpus-incoming.md` §«Зависимости».
+Зависимости: **AUD-95…98** ✅ (Ф10); **AUD-99** ⏳ (снятие `vendor/hayro*`
+ждёт апстрим LaurenzV/hayro с JBIG2 budget + nest cap). Карантин
+`docx-incoming/dep-*` — `docs/corpus-incoming.md` §«Зависимости».
 Корпус CC0 (`AUD-100`…`AUD-103`): ✅ Ф11 закрыта 2026-10-04;
 `testdata/CC0/`, сводка `.scratch/cc0-findings.md`, детали —
 `REWORK-AUDIT-2026-10.md`.

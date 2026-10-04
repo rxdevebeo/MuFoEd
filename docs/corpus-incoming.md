@@ -47,18 +47,18 @@ cargo +1.92.0 run -p strict-ooxml-testkit --example write_dep_incoming
 
 | Файл | Что провоцирует | Задача |
 |---|---|---|
-| `dep-hayro-jbig2-absurd.pdf` | JBIG2 / ImageXObject с `Width×Height` за бюджетом (hayro#1259) | **AUD-95** |
-| `dep-hayro-inline-absurd.pdf` | Inline image `/W 4294967295` | **AUD-95** |
-| `dep-hayro-deep-dict.pdf` | Глубокая литеральная вложенность `<<` в trailer (stack abort) | **AUD-96** |
-| `dep-hayro-tiling-self.pdf` | Самоссылающийся tiling-паттерн | **AUD-96** |
-| `dep-hayro-kids-cycle.pdf` | Цикл `/Kids` в дереве страниц | **AUD-96** |
-| `dep-hayro-cid-huge-w.pdf` | CID `/W [0 4294967295 …]` | **AUD-97** |
-| `dep-quickxml-many-attrs.docx` | O(N²)/лимит атрибутов (RUSTSEC-2026-0194) | **AUD-98** |
-| `dep-quickxml-xmlns-bomb.docx` | Много `xmlns:` на одном теге (RUSTSEC-2026-0195) | **AUD-98** |
-| `dep-quickxml-deep-ns.docx` | Глубокая вложенность + `xmlns` на уровень (#977/#980) | **AUD-98** |
-| `dep-quickxml-doctype.docx` | `DOCTYPE` + внешняя entity (XXE) | **AUD-98** |
-| `dep-quickxml-custom-entity.docx` | Непредопределённая entity | **AUD-98** |
-| `dep-quickxml-dup-attr.docx` | Дубликат имени атрибута | **AUD-98** |
+| `dep-hayro-jbig2-absurd.pdf` | JBIG2 / ImageXObject с `Width×Height` за бюджетом (hayro#1259) | **AUD-95** ✅ |
+| `dep-hayro-inline-absurd.pdf` | Inline image `/W 4294967295` | **AUD-95** ✅ |
+| `dep-hayro-deep-dict.pdf` | Глубокая литеральная вложенность `<<` в trailer (stack abort) | **AUD-96** ✅ |
+| `dep-hayro-tiling-self.pdf` | Самоссылающийся tiling-паттерн | **AUD-96** ✅ |
+| `dep-hayro-kids-cycle.pdf` | Цикл `/Kids` в дереве страниц | **AUD-96** ✅ |
+| `dep-hayro-cid-huge-w.pdf` | CID `/W [0 4294967295 …]` | **AUD-97** ✅ |
+| `dep-quickxml-many-attrs.docx` | O(N²)/лимит атрибутов (RUSTSEC-2026-0194) | **AUD-98** ✅ |
+| `dep-quickxml-xmlns-bomb.docx` | Много `xmlns:` на одном теге (RUSTSEC-2026-0195) | **AUD-98** ✅ |
+| `dep-quickxml-deep-ns.docx` | Глубокая вложенность + `xmlns` на уровень (#977/#980) | **AUD-98** ✅ |
+| `dep-quickxml-doctype.docx` | `DOCTYPE` + внешняя entity (XXE) | **AUD-98** ✅ |
+| `dep-quickxml-custom-entity.docx` | Непредопределённая entity | **AUD-98** ✅ |
+| `dep-quickxml-dup-attr.docx` | Дубликат имени атрибута | **AUD-98** ✅ |
 
 Приёмка каждой AUD: `hostile` зелёный на том же случае (G-6: бинарник не
 коммитится; файлы здесь — локальный оракул для ручного прогона и апстрим-PR),

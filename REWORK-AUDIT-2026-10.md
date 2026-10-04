@@ -2,8 +2,8 @@
 
 **Дата:** 2026-10-02 · **Основание:** аудит реализованной части проекта (ядро, WML, report,
 render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:** Ф9 закрыта
-(AUD-90…94); корпус AUD-17/37/38/68/69 и **Ф11 CC0** (AUD-100…103) закрыты;
-открыта **Ф10 зависимости** (AUD-95…99); см. статус-таблицу и
+(AUD-90…94); корпус AUD-17/37/38/68/69, **Ф11 CC0** (AUD-100…103) и **Ф10 AUD-95…98**
+закрыты; открыт **AUD-99** (снятие vendor hayro — ждёт апстрим); см. статус-таблицу и
 `docs/ci-baseline-2026-10.md` §After
 
 > **Как читать.** Документ закрывает **все** найденные дефекты. Порядок фаз — обязательный:
@@ -39,7 +39,8 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-68 | ✅ выполнена | — | блочный/строчный/вложенный `w:sdt` пишется через `write_sdt_around`; 12 документов → `docx/` |
 | AUD-69 | ✅ выполнена | — | исходный префикс элемента + End по стеку; 3 Contoso/Sample* → `docx/` |
 | AUD-88 | ✅ выполнена | `a9ceac1` | vendor hayro 0.7.x + PrintCraft/MuFoEd guards; `hostile::raster` ×5; ADR-0011 amendment |
-| AUD-95…99 | ⏳ открыты (2026-10-04) | — | Ф10: зависимости hayro/quick-xml; карантин `docx-incoming/dep-*` (`docs/corpus-incoming.md` §«Зависимости») |
+| AUD-95…98 | ✅ выполнены (2026-10-04) | `510e387`, … | Ф10: JBIG2 budget, nest cap, CID, quick-xml 0.41 pin; карантин `dep-*` |
+| AUD-99 | ⏳ открыта (блокер апстрим) | — | снятие `vendor/hayro*` после релиза LaurenzV/hayro с эквивалентом патчей |
 | AUD-100…103 | ✅ выполнены (2026-10-04) | — | Ф11: `present_locals` / passthrough media reuse / `equalWidth` always written; `corpus_scan` 4/4 OK |
 | AUD-14 | ✅ выполнена | `4bfc85e` | До `png::Decoder` читается IHDR вручную; `width×height×channels×bytes_per_sample` через `checked_mul` ≤ `RenderOptions::limits.max_single_uncompressed`; превышение — `pdf.image.too-large`, картинка не встраивается. `encode_with_limit` из `document.rs`. Тесты: юнит на IHDR-бомбу, `tests/hostile.rs` через `render_with_source` |
 | AUD-15 | ✅ выполнена | `a95507d` | `PdfOptions::{max_table_lines=4000, max_table_cells=10_000}`; сверх линий — `convert.table.budget`, таблицы не ищутся; сверх ячеек — та же запись, текст абзацами. `union_crossings` — сортировка вертикалей + скользящее окно (O(n log n)). Тесты: hostile 20k линий; `tests/tables.rs` без смены ожиданий |
@@ -103,11 +104,11 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-93 | ✅ выполнена | `59be16d` | README/CORE-QUEUE/waivers/fuzz-protocol; Stage-8 статус |
 | AUD-94 | ✅ выполнена | `8250959` | локальный гейт §0.4 (кроме pre-existing `strict-stage5c` SSIM); F9 закрыта; blocker'ы — AUD-17/37/38/68/69 + stage5c |
 | AUD-17, AUD-37, AUD-38, AUD-68, AUD-69 | ✅ выполнены | — | см. строки выше; корпус перенесён из `docx-incoming/` |
-| AUD-95 | ⏳ открыта (2026-10-04) | — | hayro JBIG2 / absurd image OOM (hayro#1259); фикстуры `dep-hayro-jbig2-*`, `dep-hayro-inline-*` |
-| AUD-96 | ⏳ открыта (2026-10-04) | — | hayro deep nesting / Kids cycle / tiling self; `dep-hayro-deep-dict`, `dep-hayro-kids-cycle`, `dep-hayro-tiling-self` |
-| AUD-97 | ⏳ открыта (2026-10-04) | — | hayro CID `/W` и path-line panics; `dep-hayro-cid-huge-w`; апстрим #717 |
-| AUD-98 | ⏳ открыта (2026-10-04) | — | quick-xml dep regression на пакетах `dep-quickxml-*` в `docx-incoming/` |
-| AUD-99 | ⏳ открыта (2026-10-04) | — | апстрим-PR / снятие vendor hayro после принятия патчей |
+| AUD-95 | ✅ выполнена (2026-10-04) | `510e387` | JBIG2/`pixel_budget_ok` + ImageXObject/inline guards; hostile; блокер PR: #1259 open, патч в vendor |
+| AUD-96 | ✅ выполнена (2026-10-04) | — | `MAX_OBJECT_NESTING=256` на Dict/Array; kids/tiling уже AUD-88; hostile `deep_literal_*` |
+| AUD-97 | ✅ выполнена (2026-10-04) | — | CID `MAX_CID` зелёный; path #717 отложен — нет минимального repro (см. задачу) |
+| AUD-98 | ✅ выполнена (2026-10-04) | `510e387` | xml unit regress; **min `quick-xml` = 0.41.0** (workspace pin) |
+| AUD-99 | ⏳ открыта (блокер апстрим) | — | vendor остаётся, пока нет релиза hayro с JBIG2 budget + nest cap + guards |
 | AUD-100 | ✅ выполнена (2026-10-04) | — | T4: `present_locals` — не эмитить rename, если target уже на теге; unit + `046` OK |
 | AUD-101 | ✅ выполнена (2026-10-04) | — | media reuse только для имён passthrough; иначе `allocate_media`; `030` OK |
 | AUD-102 | ✅ выполнена (2026-10-04) | — | тот же media-баг + `RelAllocator::new` → `rId1`; `065` OK |
@@ -406,7 +407,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 Ф7  Рендер SVG                AUD-70…78   поля, табуляция, секции, бюджет, MathML
 Ф8  PDF, конвертер, вьюер     AUD-80…88   корректность writer/reader/convert/view
 Ф9  Процесс, ТЗ, документы    AUD-90…94   ADR, ТЗ, fuzz, CI, финальная приёмка
-Ф10 Зависимости (hayro/xml)   AUD-95…99   апстрим-дыры; карантин `docx-incoming/dep-*`
+Ф10 Зависимости (hayro/xml)   AUD-95…98 ✅; AUD-99 ⏳   vendor nest/JBIG2; unvendor ждёт апстрим
 Ф11 Корпус CC0                AUD-100…103 нормализатор charset; writer fixed-point (rels/WMF/doc)
 ```
 
@@ -1974,14 +1975,14 @@ release (контрольные «красный квадрат» и обычн�
 
 ---
 
-## Ф10. Зависимости: открытые дыры `hayro` / `quick-xml` (2026-10-04)
+## Ф10. Зависимости: `hayro` / `quick-xml` (2026-10-04) — AUD-95…98 ✅; AUD-99 ⏳
 
 Источник: разбор открытых issues и RustSec по runtime-зависимостям; локальный
 карантин — `strict-ooxml-core/tests/docx-incoming/dep-*` (см. `docs/corpus-incoming.md`
 §«Зависимости»; пересоздание — `write_dep_incoming`). Порядок: **сначала hayro**
 (роняет процесс на `raster`), затем XML-регрессии, затем снятие вендора.
 
-### AUD-95. hayro: JBIG2 / absurd image → OOM (hayro#1259) — приоритет 1
+### AUD-95. hayro: JBIG2 / absurd image → OOM (hayro#1259) — приоритет 1 — ✅
 
 **Проблема.** Апстрим `hayro-syntax::filter::jbig2::decode` аллоцирует буфер по
 `width×height` из заголовка JBIG2 **до** наших `ImageXObject` / `draw_image`
@@ -2002,12 +2003,17 @@ absurd_image_dimensions_are_skipped}` через `harness::bounded` → `Returne
 без OOM/паники. Юнит `pixel_budget_ok` в `vendor/hayro-syntax/.../jbig2.rs`.
 Ручной прогон: `Rasterizer::new` + `page_png` на файлах карантина.
 
-**Приёмка.** Тесты; `vendor/README.md` строка про JBIG2; апстрим-PR открыт или
-записан блокер «нет ответа / отклонён» в задаче.
+**Статус 2026-10-04.** Патч `pixel_budget_ok` в `vendor/hayro-syntax/.../jbig2.rs`;
+hostile `absurd_jbig2_*` / `absurd_image_*` зелёные; `vendor/README.md` обновлён.
+**Блокер апстрим-PR:** LaurenzV/hayro#1259 всё ещё OPEN; параллельно
+lilith/hayro#1301 (resource limits). Локальный патч остаётся до принятия
+эквивалента; отдельный PR не слали — ждём ответ по #1259 / #1301.
+
+**Приёмка.** ✅ тесты; README; блокер апстрим записан.
 
 ---
 
-### AUD-96. hayro: глубокая вложенность, Kids-цикл, tiling self — приоритет 2
+### AUD-96. hayro: глубокая вложенность, Kids-цикл, tiling self — приоритет 2 — ✅
 
 **Проблема.**
 - Литеральная вложенность `<<` в trailer / object graph без лимита → stack abort
@@ -2031,11 +2037,17 @@ absurd_image_dimensions_are_skipped}` через `harness::bounded` → `Returne
 kids-cycle → `Returned(Ok|Err)` (не abort), tiling-self → `Returned(Ok)`.
 Прогон под `bounded` (1 MiB stack, 10 s).
 
-**Приёмка.** Тесты; патч в vendor; апстрим-PR или блокер в задаче.
+**Статус 2026-10-04.** `Reader::enter_nest` / `MAX_OBJECT_NESTING=256` на
+`Dict::{skip,parse}` и `Array::skip`; unit `absurd_literal_nesting_is_refused`;
+hostile `deep_literal_dict_nesting_is_refused`, `page_tree_kids_cycle_*`,
+`self_referencing_tiling_*` — OK. **Блокер апстрим-PR:** тот же, что AUD-95
+(нет релиза с nest cap); патч в vendor.
+
+**Приёмка.** ✅ тесты; патч; блокер апстрим.
 
 ---
 
-### AUD-97. hayro: CID `/W` и path-line panic (hayro#717) — приоритет 3
+### AUD-97. hayro: CID `/W` и path-line panic (hayro#717) — приоритет 3 — ✅
 
 **Проблема.** Огромные диапазоны `/W`/`/W2` зацикливали апстрим (AUD-88: `MAX_CID`).
 Отдельно открыт panic `Max. number of lines per path exceeded` в vello/tile при
@@ -2052,12 +2064,16 @@ kids-cycle → `Returned(Ok|Err)` (не abort), tiling-self → `Returned(Ok)`.
 **Тесты.** Существующий CID hostile; новый hostile на path-bomb, когда появится
 минимальный вход (до того — waiver-строка в задаче с ссылкой на #717).
 
-**Приёмка.** CID зелёный; path-panic либо закрыт тестом, либо явно отложен с
-ссылкой на апстрим issue.
+**Статус 2026-10-04.** CID: `huge_cid_width_ranges_terminate` зелёный (`MAX_CID`).
+**Path #717 отложен:** минимального PDF-repro в карантине нет; апстрим
+[LaurenzV/hayro#717](https://github.com/LaurenzV/hayro/issues/717) OPEN.
+Когда появится минимизированный вход — отдельная задача / дописка к AUD-97.
+
+**Приёмка.** ✅ CID; path явно отложен со ссылкой на #717.
 
 ---
 
-### AUD-98. quick-xml: карантинные `.docx` и контракт обёртки
+### AUD-98. quick-xml: карантинные `.docx` и контракт обёртки — ✅
 
 **Проблема.** RUSTSEC-2026-0194/0195 закрыты в `quick-xml 0.41.0`; #977/#980 —
 про `NsReader`, который мы не используем. Риск регрессии при апгрейде или при
@@ -2074,12 +2090,17 @@ dup attr); опционально integration в `strict-ooxml/tests/hostile.rs`
 байты из `docx-incoming/dep-quickxml-*.docx` если каталог есть
 (`std::fs::metadata` → ignore иначе), иначе тот же вход через `DocxBuilder`.
 
-**Приёмка.** Тесты зелёные на 0.41.x; в задаче записана минимальная версия
-`quick-xml`, ниже которой возвращаться нельзя.
+**Статус 2026-10-04.** Юниты в `strict-ooxml-core/src/xml/mod.rs` (many attrs,
+xmlns bomb, depth+xmlns, doctype, dup attr) зелёные. Карантин
+`dep-quickxml-*.docx` — локальный оракул (`write_dep_incoming`).
+**Минимальная версия `quick-xml`: 0.41.0** (workspace `Cargo.toml`; ниже —
+RUSTSEC-2026-0194/0195). Не откатывать.
+
+**Приёмка.** ✅ тесты; min version записана.
 
 ---
 
-### AUD-99. Снятие vendor hayro после принятия патчей апстримом
+### AUD-99. Снятие vendor hayro после принятия патчей апстримом — ⏳
 
 **Проблема.** `vendor/hayro*` — временный долг (AUD-88 + AUD-95…97). Пока апстрим
 не принял эквивалент, `[patch.crates-io]` остаётся.

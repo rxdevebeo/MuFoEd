@@ -158,29 +158,35 @@ impl Debug for Dict<'_> {
 
 impl Skippable for Dict<'_> {
     fn skip(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
-        r.forward_tag(b"<<")?;
+        // PrintCraft / MuFoEd patch: refuse absurd literal nesting (AUD-96).
+        r.enter_nest()?;
+        let result = (|| {
+            r.forward_tag(b"<<")?;
 
-        loop {
-            r.skip_white_spaces_and_comments();
-
-            if let Some(()) = r.forward_tag(b">>") {
-                break Some(());
-            } else {
-                let Some(_) = r.skip::<Name<'_>>(is_content_stream) else {
-                    // In case there is garbage in-between, be lenient and just try to skip it.
-                    r.skip::<Object<'_>>(is_content_stream)?;
-                    continue;
-                };
-
+            loop {
                 r.skip_white_spaces_and_comments();
 
-                if is_content_stream {
-                    r.skip::<Object<'_>>(is_content_stream)?;
+                if let Some(()) = r.forward_tag(b">>") {
+                    break Some(());
                 } else {
-                    r.skip::<MaybeRef<Object<'_>>>(is_content_stream)?;
+                    let Some(_) = r.skip::<Name<'_>>(is_content_stream) else {
+                        // In case there is garbage in-between, be lenient and just try to skip it.
+                        r.skip::<Object<'_>>(is_content_stream)?;
+                        continue;
+                    };
+
+                    r.skip_white_spaces_and_comments();
+
+                    if is_content_stream {
+                        r.skip::<Object<'_>>(is_content_stream)?;
+                    } else {
+                        r.skip::<MaybeRef<Object<'_>>>(is_content_stream)?;
+                    }
                 }
             }
-        }
+        })();
+        r.leave_nest();
+        result
     }
 }
 
@@ -276,54 +282,60 @@ fn parse_dict_with<'a, F>(
 where
     F: FnMut(Name<'a>, usize, &Reader<'a>) -> Option<()>,
 {
-    let dict_data = r.tail()?;
-    let start_offset = r.offset();
+    // PrintCraft / MuFoEd patch: same nest budget as `Dict::skip` (AUD-96).
+    r.enter_nest()?;
+    let result = (|| {
+        let dict_data = r.tail()?;
+        let start_offset = r.offset();
 
-    // Inline image dictionaries don't start with '<<'.
-    if let Some(start_tag) = start_tag {
-        r.forward_tag(start_tag)?;
-    }
+        // Inline image dictionaries don't start with '<<'.
+        if let Some(start_tag) = start_tag {
+            r.forward_tag(start_tag)?;
+        }
 
-    loop {
-        r.skip_white_spaces_and_comments();
-
-        // Normal dictionaries end with '>>', inline image dictionaries end with BD.
-        if let Some(()) = r.peek_tag(end_tag) {
-            r.forward_tag(end_tag)?;
-            let end_offset = r.offset() - start_offset;
-
-            break Some(&dict_data[..end_offset]);
-        } else {
-            let Some(name) = r.read_without_context::<Name<'_>>() else {
-                if start_tag.is_some() {
-                    // In case there is garbage in-between, be lenient and just try to skip it.
-                    // But only do this if we are parsing a proper dictionary as opposed to an
-                    // inline dictionary.
-                    r.read::<Object<'_>>(ctx)?;
-                    continue;
-                } else {
-                    return None;
-                }
-            };
+        loop {
             r.skip_white_spaces_and_comments();
 
-            let offset = r.offset() - start_offset;
-            // Do note that we are including objects in our dictionary even if they
-            // are the null object, meaning that a call to `contains_key` will return `true`
-            // even if the object is the null object. The PDF reference in theory requires
-            // us to treat them as non-existing. Previously, we included a check to determine
-            // whether the object is `null` before inserting it, but that caused problems
-            // in some test cases where encryption + object streams are involved (as we would
-            // attempt to read an object stream before having resolved the encryption dictionary).
-            on_entry(name, offset, r)?;
+            // Normal dictionaries end with '>>', inline image dictionaries end with BD.
+            if let Some(()) = r.peek_tag(end_tag) {
+                r.forward_tag(end_tag)?;
+                let end_offset = r.offset() - start_offset;
 
-            if ctx.in_content_stream() {
-                r.skip::<Object<'_>>(ctx.in_content_stream())?;
+                break Some(&dict_data[..end_offset]);
             } else {
-                r.skip::<MaybeRef<Object<'_>>>(ctx.in_content_stream())?;
+                let Some(name) = r.read_without_context::<Name<'_>>() else {
+                    if start_tag.is_some() {
+                        // In case there is garbage in-between, be lenient and just try to skip it.
+                        // But only do this if we are parsing a proper dictionary as opposed to an
+                        // inline dictionary.
+                        r.read::<Object<'_>>(ctx)?;
+                        continue;
+                    } else {
+                        return None;
+                    }
+                };
+                r.skip_white_spaces_and_comments();
+
+                let offset = r.offset() - start_offset;
+                // Do note that we are including objects in our dictionary even if they
+                // are the null object, meaning that a call to `contains_key` will return `true`
+                // even if the object is the null object. The PDF reference in theory requires
+                // us to treat them as non-existing. Previously, we included a check to determine
+                // whether the object is `null` before inserting it, but that caused problems
+                // in some test cases where encryption + object streams are involved (as we would
+                // attempt to read an object stream before having resolved the encryption dictionary).
+                on_entry(name, offset, r)?;
+
+                if ctx.in_content_stream() {
+                    r.skip::<Object<'_>>(ctx.in_content_stream())?;
+                } else {
+                    r.skip::<MaybeRef<Object<'_>>>(ctx.in_content_stream())?;
+                }
             }
         }
-    }
+    })();
+    r.leave_nest();
+    result
 }
 
 object!(Dict<'a>, Dict);
@@ -1149,5 +1161,21 @@ mod tests {
 
         assert_eq!(dict.get_ref("GS2"), Some(ObjRef::new(14, 0)));
         assert_eq!(dict.get_ref("GS3"), Some(ObjRef::new(15, 0)));
+    }
+
+    /// AUD-96: thousands of nested `<<` must fail cleanly, not abort.
+    #[test]
+    fn absurd_literal_nesting_is_refused() {
+        use crate::byte_reader::MAX_OBJECT_NESTING;
+        let nest = usize::from(MAX_OBJECT_NESTING) + 8;
+        let mut data = Vec::new();
+        for _ in 0..nest {
+            data.extend_from_slice(b"<< /X ");
+        }
+        data.extend_from_slice(b"null");
+        for _ in 0..nest {
+            data.extend_from_slice(b" >>");
+        }
+        assert!(dict_impl(&data).is_none());
     }
 }

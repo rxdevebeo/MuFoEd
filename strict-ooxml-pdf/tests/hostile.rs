@@ -574,6 +574,41 @@ trailer << /Root 1 0 R >>\n\
         }
     }
 
+    /// Deep literal `<<` nesting in the trailer (AUD-96 / `dep-hayro-deep-dict`).
+    /// Vendored hayro-syntax must return `Err`/`None`, not abort the process.
+    #[test]
+    fn deep_literal_dict_nesting_is_refused() {
+        let nest = 2_000usize;
+        let mut pdf = String::from(
+            "%PDF-1.7\n\
+             1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R >> endobj\n\
+             4 0 obj << /Length 0 >> stream\n\
+             endstream endobj\n\
+             trailer << /Root 1 0 R /Info ",
+        );
+        for _ in 0..nest {
+            pdf.push_str("<< /X ");
+        }
+        pdf.push_str("null");
+        for _ in 0..nest {
+            pdf.push_str(" >>");
+        }
+        pdf.push_str(" >>\n%%EOF\n");
+        let bytes = pdf.into_bytes();
+        let outcome = bounded(
+            move || match Rasterizer::new(&bytes, PdfLimits::default()) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(error.to_string()),
+            },
+        );
+        assert!(
+            matches!(outcome, Outcome::Returned(_)),
+            "deep dict nesting must not abort: {outcome:?}"
+        );
+    }
+
     /// `/Kids` cycle: our lopdf path must not abort; hayro-syntax guard covers the
     /// rasterizer. Object-stream bombs remain under waiver `PDF-OBJSTM-BOMB`.
     #[test]

@@ -70,19 +70,25 @@ object!(Array<'a>, Array);
 
 impl Skippable for Array<'_> {
     fn skip(r: &mut Reader<'_>, is_content_stream: bool) -> Option<()> {
-        r.forward_tag(b"[")?;
+        // PrintCraft / MuFoEd patch: refuse absurd literal nesting (AUD-96).
+        r.enter_nest()?;
+        let result = (|| {
+            r.forward_tag(b"[")?;
 
-        loop {
-            r.skip_white_spaces_and_comments();
+            loop {
+                r.skip_white_spaces_and_comments();
 
-            if let Some(()) = r.forward_tag(b"]") {
-                return Some(());
-            } else if is_content_stream {
-                r.skip::<Object<'_>>(true)?;
-            } else {
-                r.skip::<MaybeRef<Object<'_>>>(false)?;
+                if let Some(()) = r.forward_tag(b"]") {
+                    return Some(());
+                } else if is_content_stream {
+                    r.skip::<Object<'_>>(true)?;
+                } else {
+                    r.skip::<MaybeRef<Object<'_>>>(false)?;
+                }
             }
-        }
+        })();
+        r.leave_nest();
+        result
     }
 }
 

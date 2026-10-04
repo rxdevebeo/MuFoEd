@@ -2,6 +2,12 @@
 
 use core::ops::Range;
 
+/// PrintCraft / MuFoEd patch: max Dict/Array nesting for skip/read.
+///
+/// A crafted trailer like `<< /X << /X … >> … >>` (thousands deep) otherwise
+/// recurses through `Object::skip` → `Dict::skip` until the stack aborts.
+pub(crate) const MAX_OBJECT_NESTING: u16 = 256;
+
 /// A reader for reading bytes and PDF objects.
 #[derive(Clone, Debug)]
 pub struct Reader<'a> {
@@ -9,19 +15,45 @@ pub struct Reader<'a> {
     pub data: &'a [u8],
     /// The current byte-offset.
     pub offset: usize,
+    /// PrintCraft / MuFoEd patch: current Dict/Array nest depth.
+    nest: u16,
 }
 
 impl<'a> Reader<'a> {
     /// Create a new reader.
     #[inline]
     pub fn new(data: &'a [u8]) -> Self {
-        Self { data, offset: 0 }
+        Self {
+            data,
+            offset: 0,
+            nest: 0,
+        }
     }
 
     /// Create a new reader at the given offset.
     #[inline]
     pub fn new_with(data: &'a [u8], offset: usize) -> Self {
-        Self { data, offset }
+        Self {
+            data,
+            offset,
+            nest: 0,
+        }
+    }
+
+    /// Enter one Dict/Array level; `None` if the nest budget is exhausted.
+    #[inline]
+    pub(crate) fn enter_nest(&mut self) -> Option<()> {
+        if self.nest >= MAX_OBJECT_NESTING {
+            return None;
+        }
+        self.nest = self.nest.saturating_add(1);
+        Some(())
+    }
+
+    /// Leave one Dict/Array level after a matching `enter_nest`.
+    #[inline]
+    pub(crate) fn leave_nest(&mut self) {
+        self.nest = self.nest.saturating_sub(1);
     }
 
     /// Returns `true` if the reader has reached the end of the data.
