@@ -858,4 +858,128 @@ mod tests {
         let detail = detail(read_error(b"<a><![CDATA[unterminated"));
         assert!(detail.contains("CDATA"), "{detail}");
     }
+
+    // --- Dependency-regression coverage (quick-xml RUSTSEC-2026-0194 / #970 / #977 / #980) ---
+    //
+    // We use `Reader` (not `NsReader`) and own the namespace stack + limits, so the
+    // NsReader-specific advisories do not apply directly. These tests lock the
+    // wrapper contracts that keep us safe if those paths ever change.
+
+    #[test]
+    fn enforces_attribute_limit() {
+        // Nine attributes with a budget of eight → LimitExceeded, not a panic.
+        let mut xml = String::from("<a");
+        for i in 0..9 {
+            xml.push_str(&format!(" a{i}=\"{i}\""));
+        }
+        xml.push_str("/>");
+        let limits = ResourceLimits {
+            max_xml_attributes_per_elem: 8,
+            ..ResourceLimits::default()
+        };
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        assert!(matches!(
+            reader.next_event(),
+            Err(StrictError::LimitExceeded {
+                kind: crate::error::LimitKind::XmlAttributesPerElement,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn many_distinct_attributes_finish_quickly() {
+        // RUSTSEC-2026-0194: pre-0.41 `attributes()` was O(N²) on distinct names.
+        // We are on 0.41.0 and also cap N; this pins both layers.
+        let n = 512u32;
+        let mut xml = String::from("<a");
+        for i in 0..n {
+            xml.push_str(&format!(" a{i}=\"{i}\""));
+        }
+        xml.push_str("/>");
+        let limits = ResourceLimits {
+            max_xml_attributes_per_elem: n,
+            ..ResourceLimits::default()
+        };
+        let started = std::time::Instant::now();
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        match reader.next_event().expect("start") {
+            XmlEvent::StartElement { attrs, .. } => assert_eq!(attrs.len(), n as usize),
+            other => panic!("unexpected {other:?}"),
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "attribute scan took {:?}; quadratic duplicate-check may have regressed",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn many_xmlns_declarations_count_toward_the_attribute_limit() {
+        // Sibling of RUSTSEC-2026-0195: NsReader allocated unboundedly for xmlns.
+        // Our wrapper treats xmlns as attributes, so the same budget applies.
+        let mut xml = String::from("<a");
+        for i in 0..20 {
+            xml.push_str(&format!(" xmlns:p{i}=\"urn:{i}\""));
+        }
+        xml.push_str("/>");
+        let limits = ResourceLimits {
+            max_xml_attributes_per_elem: 16,
+            ..ResourceLimits::default()
+        };
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        assert!(matches!(
+            reader.next_event(),
+            Err(StrictError::LimitExceeded {
+                kind: crate::error::LimitKind::XmlAttributesPerElement,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn duplicate_attribute_names_are_rejected() {
+        let mut reader =
+            XmlReader::new(br#"<a x="1" x="2"/>"#, part(), &ResourceLimits::default()).unwrap();
+        assert!(matches!(
+            reader.next_event(),
+            Err(StrictError::InvalidXml { .. })
+        ));
+    }
+
+    #[test]
+    fn deep_nesting_with_per_level_xmlns_hits_our_depth_limit() {
+        // quick-xml #977/#980 target NsReader depth/quadratic resolve. We never
+        // use NsReader; depth is ours. A document that nests past the budget
+        // must be LimitExceeded, not a panic or corrupted scope.
+        let depth = 40u32;
+        let mut xml = String::new();
+        for i in 0..depth {
+            xml.push_str(&format!("<e{i} xmlns:p{i}=\"urn:{i}\">"));
+        }
+        for i in (0..depth).rev() {
+            xml.push_str(&format!("</e{i}>"));
+        }
+        let limits = ResourceLimits {
+            max_xml_depth: 32,
+            ..ResourceLimits::default()
+        };
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        let mut saw_limit = false;
+        loop {
+            match reader.next_event() {
+                Ok(XmlEvent::Eof) => break,
+                Ok(_) => {}
+                Err(StrictError::LimitExceeded {
+                    kind: crate::error::LimitKind::XmlDepth,
+                    ..
+                }) => {
+                    saw_limit = true;
+                    break;
+                }
+                Err(other) => panic!("unexpected {other:?}"),
+            }
+        }
+        assert!(saw_limit, "expected XmlDepth LimitExceeded");
+    }
 }

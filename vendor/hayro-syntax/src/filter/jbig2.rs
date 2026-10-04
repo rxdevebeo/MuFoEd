@@ -23,6 +23,14 @@ pub(crate) fn decode(
 
     let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref()).ok()?;
 
+    // PrintCraft / MuFoEd patch: LaurenzV/hayro#1259 — a crafted JBIG2 header can
+    // claim absurd width×height so `vec![0; row_bytes * height]` (or the luma8
+    // decode buffer) OOMs the process before ImageXObject / draw_image guards run.
+    // Same ceiling as hayro::MAX_IMAGE_PIXELS / ImageXObject::new.
+    if !pixel_budget_ok(image.width(), image.height()) {
+        return None;
+    }
+
     // Whenever possible (if we don't have an indexed color space), we convert
     // the data as 8-bit instead of 1-bit, so that it can be easier converted
     // into an RGBA8 image.
@@ -93,4 +101,28 @@ pub(crate) fn decode(
             height: image.height(),
         }),
     })
+}
+
+/// Same ceiling as `hayro::MAX_IMAGE_PIXELS` (2^28 ≈ 268 MP).
+fn pixel_budget_ok(width: u32, height: u32) -> bool {
+    const MAX_IMAGE_PIXELS: u64 = 1 << 28;
+    u64::from(width).saturating_mul(u64::from(height)) <= MAX_IMAGE_PIXELS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pixel_budget_ok;
+
+    #[test]
+    fn pixel_budget_accepts_realistic_page_images() {
+        assert!(pixel_budget_ok(4000, 6000));
+        assert!(pixel_budget_ok(1 << 14, 1 << 14)); // 268_435_456 exactly
+    }
+
+    #[test]
+    fn pixel_budget_rejects_hayro_1259_scale_claims() {
+        // Upstream issue: allocation of ~66 GB from a crafted JBIG2 header.
+        assert!(!pixel_budget_ok(u32::MAX, 2));
+        assert!(!pixel_budget_ok(1 << 15, 1 << 15));
+    }
 }

@@ -496,6 +496,33 @@ mod raster {
         }
     }
 
+    /// JBIG2 image XObject with absurd dictionary size (hayro#1259 family).
+    ///
+    /// Dictionary `/Width`×`/Height` is rejected in `ImageXObject::new` before
+    /// decode; the vendored `jbig2::pixel_budget_ok` covers the bitstream-claimed
+    /// size that upstream OOMs on. Either way the rasterizer must return.
+    #[test]
+    fn absurd_jbig2_dimensions_are_skipped() {
+        let pdf = b"%PDF-1.7\n\
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 40 40] /Contents 4 0 R \
+/Resources << /XObject << /Im0 5 0 R >> >> >> endobj\n\
+4 0 obj << /Length 28 >> stream\n\
+q 20 0 0 20 5 5 cm /Im0 Do Q\n\
+endstream endobj\n\
+5 0 obj << /Type /XObject /Subtype /Image /Width 4294967295 /Height 2 \
+/ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /JBIG2Decode /Length 4 >> stream\n\
+XXXX\n\
+endstream endobj\n\
+trailer << /Root 1 0 R >>\n\
+%%EOF\n";
+        match rasterize_ok(pdf.to_vec()) {
+            Outcome::Returned(Ok(())) => {}
+            other => panic!("absurd JBIG2 dimensions must not hang/OOM: {other:?}"),
+        }
+    }
+
     /// Inline image with absurd `/W`: must not hang.
     #[test]
     fn absurd_image_dimensions_are_skipped() {
