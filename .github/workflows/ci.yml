@@ -40,6 +40,12 @@ jobs:
         run: cargo check --workspace --all-targets
       - name: Test
         run: cargo test --workspace --all-features
+      - name: Editing feature matrix
+        run: |
+          cargo test -p strict-ooxml-edit --locked --no-default-features
+          cargo test -p strict-ooxml-edit --locked --no-default-features --features save
+          cargo test -p strict-ooxml-edit --locked --no-default-features --features visual
+          cargo test -p strict-ooxml --locked --no-default-features --features edit --test editing
       # The debug half of the hostile set ran in the step above. Release is run
       # as well because overflow checks, `debug_assert!` and stack frame sizes
       # all differ there, and a hostile input that is an error in one profile and

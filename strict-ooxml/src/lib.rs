@@ -28,6 +28,12 @@ use strict_ooxml_core::error::Result;
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_wml::model::support::SupportModel;
+#[cfg(feature = "edit")]
+mod editing;
+#[cfg(feature = "edit")]
+pub use editing::DocumentEditor;
+#[cfg(feature = "edit")]
+pub use strict_ooxml_edit as edit;
 
 #[cfg(feature = "convert")]
 pub use strict_ooxml_convert::{
@@ -76,6 +82,7 @@ pub struct StrictDocument {
     package: Package,
     document: Document,
     file: String,
+    support_dirty: bool,
 }
 
 impl StrictDocument {
@@ -94,6 +101,7 @@ impl StrictDocument {
             package,
             document,
             file: "<package>".to_owned(),
+            support_dirty: false,
         })
     }
 
@@ -157,7 +165,13 @@ impl StrictDocument {
     /// and merges additively, so a feature an edit removed still appears in a
     /// report built from it. Recomputing it is part of the same phase.
     pub fn document_mut(&mut self) -> &mut Document {
+        self.support_dirty = true;
         &mut self.document
+    }
+    /// Whether support metadata describes an earlier model revision.
+    #[must_use]
+    pub fn support_is_stale(&self) -> bool {
+        self.support_dirty
     }
 
     /// Returns the opened OPC package.
@@ -213,7 +227,19 @@ impl StrictDocument {
             .main_document_part()
             .map_or("/word/document.xml", |part| part.as_str());
         let fallback = Location::new(format!("{main}:1:1"));
-        let mut input = ReportInput::new(&self.file, self.support())
+        let mut support = self.support().clone();
+        if self.support_dirty {
+            support.record(
+                "edit.support-stale",
+                model::SupportStatus::Partial,
+                Some(
+                    "Document changed; refresh support through the checked editing save pipeline"
+                        .to_owned(),
+                ),
+                None,
+            );
+        }
+        let mut input = ReportInput::new(&self.file, &support)
             .tool(Tool::new("strict-ooxml", env!("CARGO_PKG_VERSION")))
             .conformance(
                 Conformance::Strict,

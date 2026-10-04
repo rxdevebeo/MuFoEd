@@ -38,4 +38,5 @@ pub mod normalize;
 pub mod ns;
 pub mod opc;
 pub mod part;
+pub mod pipeline;
 pub mod xml;

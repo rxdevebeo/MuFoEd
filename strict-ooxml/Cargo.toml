@@ -31,6 +31,8 @@ pdf = ["dep:strict-ooxml-render-pdf"]
 convert = ["dep:strict-ooxml-pdf", "dep:strict-ooxml-convert"]
 # Parallel parsing of independent parts.
 parallel = ["strict-ooxml-wml/parallel"]
+# Transactional editing with source-aware save and shared visual geometry.
+edit = ["dep:strict-ooxml-edit", "write", "svg"]
 
 [dependencies]
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
@@ -41,6 +43,7 @@ strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write", option
 strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pdf", optional = true }
 strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true }
 strict-ooxml-convert = { version = "0.1.0", path = "../strict-ooxml-convert", optional = true }
+strict-ooxml-edit = { version = "0.1.0", path = "../strict-ooxml-edit", optional = true }
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
@@ -61,3 +64,7 @@ required-features = ["write"]
 
 [lints]
 workspace = true
+
+[[test]]
+name = "editing"
+required-features = ["edit"]

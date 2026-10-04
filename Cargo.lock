@@ -2204,6 +2204,7 @@ dependencies = [
  "roxmltree 0.20.0",
  "strict-ooxml-convert",
  "strict-ooxml-core",
+ "strict-ooxml-edit",
  "strict-ooxml-pdf",
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
@@ -2250,6 +2251,19 @@ dependencies = [
  "rayon",
  "thiserror",
  "zip",
+]
+
+[[package]]
+name = "strict-ooxml-edit"
+version = "0.1.0"
+dependencies = [
+ "png",
+ "strict-ooxml-core",
+ "strict-ooxml-render-svg",
+ "strict-ooxml-testkit",
+ "strict-ooxml-wml",
+ "strict-ooxml-write",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2615,6 +2629,12 @@ name = "unicode-script"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "383ad40bb927465ec0ce7720e033cb4ca06912855fc35db31b5755d0de75b1ee"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "unicode-vo"

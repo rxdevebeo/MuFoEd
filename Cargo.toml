@@ -12,6 +12,7 @@ resolver = "2"
 members = [
     "strict-ooxml-core",
     "strict-ooxml-wml",
+    "strict-ooxml-edit",
     "strict-ooxml-report",
     "strict-ooxml-fidelity",
     "strict-ooxml-render-svg",

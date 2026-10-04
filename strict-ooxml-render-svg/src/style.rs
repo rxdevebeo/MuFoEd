@@ -328,6 +328,14 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
     }
 }
 
+/// The mapped face used to measure a placed run's text.
+///
+/// Kept public so interaction adapters share renderer font mapping.
+#[must_use]
+pub fn chosen_family(run: &ComputedRun, _text: &str) -> String {
+    crate::font::map_family(&run.family).to_owned()
+}
+
 /// Resolves a `w:*Theme` font reference through `theme`.
 fn theme_font(reference: Option<&str>, theme: Option<&Theme>) -> Option<String> {
     let reference = reference?;

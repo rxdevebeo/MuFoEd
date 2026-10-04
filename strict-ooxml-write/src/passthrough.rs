@@ -499,12 +499,28 @@ const OPC_SCAFFOLD: &[&str] = &["/[Content_Types].xml", "/_rels/.rels"];
 /// what is one decision, and a report that long stops being read; the directory
 /// is what a person can act on, and it is what the census's `unaccounted` signal
 /// matches on, so the two cannot drift apart.
-pub(crate) fn report_what_was_dropped(ctx: &mut Ctx<'_>, source: &dyn Source, written: &[String]) {
+pub(crate) fn report_what_was_dropped(
+    ctx: &mut Ctx<'_>,
+    source: &dyn Source,
+    written: &[String],
+    copied_media: &[(String, PartId)],
+) {
     let produced: BTreeSet<&str> = written.iter().map(String::as_str).collect();
+    // Media allocation may change a part's spelling. Count only copies whose
+    // destination was actually written; an unused/unreadable source is still a loss.
+    let renamed: BTreeSet<&str> = copied_media
+        .iter()
+        .filter(|(destination, _)| produced.contains(destination.as_str()))
+        .map(|(_, original)| original.as_str())
+        .collect();
     let mut by_directory: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for part in source.parts() {
         let name = part.as_str();
-        if produced.contains(name) || OPC_SCAFFOLD.contains(&name) || !name.starts_with('/') {
+        if produced.contains(name)
+            || renamed.contains(name)
+            || OPC_SCAFFOLD.contains(&name)
+            || !name.starts_with('/')
+        {
             continue;
         }
         // A `.rels` beside a part that IS in the output was replaced by this

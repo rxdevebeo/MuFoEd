@@ -963,7 +963,7 @@ pub fn write_package(
     // and several of them are conditional — `word/numbering.xml` is written only
     // when the model carries a numbering table, and a plan that assumed it was
     // produced would call that document's numbering a non-loss.
-    passthrough::report_what_was_dropped(&mut ctx, source, &zip.part_names());
+    passthrough::report_what_was_dropped(&mut ctx, source, &zip.part_names(), &media_parts);
     let bytes = zip.finish()?;
     // AUD-61: every r:* in every written part must resolve through that part's
     // .rels to an existing part or External. A target named in a W7.* loss was
