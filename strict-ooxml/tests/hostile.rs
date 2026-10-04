@@ -1139,7 +1139,10 @@ mod opc {
                 ),
                 "normalized part must declare wps: {text}"
             );
-            assert!(text.contains("<wps:wsp"), "expected converted shape: {text}");
+            assert!(
+                text.contains("<wps:wsp"),
+                "expected converted shape: {text}"
+            );
             let written = strict_ooxml::write_package(
                 opened.document(),
                 Some(opened.package()),

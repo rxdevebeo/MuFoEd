@@ -895,12 +895,11 @@ impl TransitionalNormalizer {
                 None => String::new(),
             }
         };
-        let prefix =
-            if context.uri_for(original_prefix.as_bytes()) == Some(element_uri.as_str()) {
-                original_prefix
-            } else {
-                context.prefix_for(&element_uri)
-            };
+        let prefix = if context.uri_for(original_prefix.as_bytes()) == Some(element_uri.as_str()) {
+            original_prefix
+        } else {
+            context.prefix_for(&element_uri)
+        };
         let qualified = PartContext::qualified_name(&prefix, &new_local);
         buffer.set_name(qualified.as_bytes());
         // The element joins the open-element stack here rather than in the event
@@ -2814,7 +2813,9 @@ mod tests {
         );
         // AUD-37: a prefix the conversion introduces must be declared on the root.
         assert!(
-            text.contains("xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""),
+            text.contains(
+                "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
+            ),
             "wps must be bound on the root: {text}"
         );
         // Exactly one `w:txbxContent`: the conversion writes its own and a second

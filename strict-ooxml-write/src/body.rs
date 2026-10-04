@@ -645,7 +645,10 @@ mod tests {
         assert!(text.contains("<w:sdtContent>"), "{text}");
         assert!(text.contains("<w:t>inside</w:t>"), "{text}");
         assert!(
-            !report.losses().iter().any(|loss| loss.feature_id == "w:sdt"),
+            !report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "w:sdt"),
             "w:sdt must not be reported unsupported: {report:?}"
         );
     }
