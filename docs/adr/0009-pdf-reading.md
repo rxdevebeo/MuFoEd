@@ -92,7 +92,9 @@ quarter of the budget spent here is a quarter the consumer never gets.
   that produced it.
 - Reading is honest about what it does not know: unmapped glyphs, estimated
   widths, unsupported image filters and layouts (`Reject::{UnsupportedFilter,
-  UnsupportedLayout, Incomplete, TooLarge}`) all have names and reach the report.
+  UnsupportedLayout, Incomplete, Broken, TooLarge}`) all have names and reach the
+  report. `/JPXDecode` is carried (`hayro-jpeg2000` → 8-bit `Encoded::Raw`); a
+  damaged JPX stream is `Broken`, not `UnsupportedFilter`.
 - No third-party PDF corpus is committed yet (`Q-9`): the geometry tests run
   against PDFs this workspace wrote. That is a real gap — a producer's quirks
   (hex strings, inline dictionaries, a `cm` covering the page) were only found by

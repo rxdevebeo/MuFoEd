@@ -319,12 +319,16 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
             };
         }
     };
-    let bits = dict.bits.unwrap_or(8);
-    if bits != 8 {
-        return InlineImage {
-            encoded: None,
-            missing: Some("inline image bits per component is not 8".into()),
-        };
+    let is_jpx = matches!(dict.filter.as_deref(), Some(b"JPX" | b"JPXDecode"));
+    // JPX carries bit depth in the codestream; other filters still need 8-bit.
+    if !is_jpx {
+        let bits = dict.bits.unwrap_or(8);
+        if bits != 8 {
+            return InlineImage {
+                encoded: None,
+                missing: Some("inline image bits per component is not 8".into()),
+            };
+        }
     }
     let components = dict.components.unwrap_or(3);
     match dict.filter.as_deref() {
@@ -337,6 +341,21 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
             }),
             missing: None,
         },
+        Some(b"JPX" | b"JPXDecode") => {
+            // Inline JPX uses the same decoder as XObject `/JPXDecode`. Limits
+            // are the defaults: an inline image large enough to matter has
+            // already paid for the content-stream budget.
+            match crate::image::decode_jpx_bytes(data, &crate::PdfLimits::default()) {
+                Ok(encoded) => InlineImage {
+                    encoded: Some(encoded),
+                    missing: None,
+                },
+                Err(reject) => InlineImage {
+                    encoded: None,
+                    missing: Some(reject.to_string()),
+                },
+            }
+        }
         None | Some(b"Fl" | b"FlateDecode") => {
             let samples = if matches!(dict.filter.as_deref(), Some(b"Fl" | b"FlateDecode")) {
                 match miniz_oxide::inflate::decompress_to_vec_zlib(data) {

@@ -1,8 +1,9 @@
 //! Image XObjects: what can be carried out of a PDF, and what cannot.
 //!
-//! A PDF stores an image as *compressed samples plus a colour space*, and the two
-//! filters that matter are `/DCTDecode` (JPEG, which is the codec itself) and
-//! `/FlateDecode` (raw samples). Everything else — JPEG 2000, CCITT fax, JBIG2 —
+//! A PDF stores an image as *compressed samples plus a colour space*. The filters
+//! this crate carries are `/DCTDecode` (JPEG bytes untouched), `/FlateDecode`
+//! (inflated 8-bit samples), and `/JPXDecode` (JPEG 2000 → 8-bit
+//! [`Encoded::Raw`] via `hayro-jpeg2000`). Everything else — CCITT fax, JBIG2 —
 //! is a codec this crate does not carry, and a document using one is reported
 //! rather than approximated.
 //!
@@ -397,14 +398,19 @@ fn decode_inner(
     {
         return Err(Reject::UnsupportedLayout("image mask"));
     }
-    let bits = number(dictionary, b"BitsPerComponent").unwrap_or(8.0) as u32;
-    if bits != 8 {
-        return Err(Reject::UnsupportedLayout("bits per component"));
-    }
 
     let filters = filter_names(dictionary, resolve);
     let components = components_for(dictionary, &filters, resolve);
     let first = filters.first().map(Vec::as_slice);
+    // `/JPXDecode` carries bit depth inside the codestream (ISO 32000-1 §7.4.9);
+    // the dictionary's `/BitsPerComponent` is optional and often absent or wrong.
+    // Refuse non-8-bit layouts only for the filters that emit raw samples here.
+    if !matches!(first, Some(b"JPXDecode")) {
+        let bits = number(dictionary, b"BitsPerComponent").unwrap_or(8.0) as u32;
+        if bits != 8 {
+            return Err(Reject::UnsupportedLayout("bits per component"));
+        }
+    }
 
     let mut encoded = match first {
         Some(b"DCTDecode") => {
@@ -418,6 +424,7 @@ fn decode_inner(
                 alpha: None,
             }
         }
+        Some(b"JPXDecode") => decode_jpx_bytes(&stream.content, limits)?,
         None | Some(b"FlateDecode") => {
             // The filter is carried; a stream that will not inflate is a broken
             // file, and saying "this filter is not carried" for it is a wrong
@@ -533,6 +540,83 @@ fn components_for(
     }
 }
 
+/// `/JPXDecode` → 8-bit interleaved samples ([`Encoded::Raw`]).
+///
+/// Budget is checked from the codestream's own width/height/channels *before*
+/// `decode`, so an absurd JPEG 2000 header cannot force a huge allocation past
+/// `max_image_bytes`. A broken codestream is [`Reject::Broken`], not
+/// [`Reject::UnsupportedFilter`] — the filter *is* carried.
+///
+/// Public to the crate so inline images (`BI`…`EI` with `/F /JPX`) share one
+/// path with XObject streams.
+pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encoded, Reject> {
+    let settings = hayro_jpeg2000::DecodeSettings {
+        resolve_palette_indices: false,
+        strict: false,
+        target_resolution: None,
+    };
+    let image = hayro_jpeg2000::Image::new(data, &settings)
+        .map_err(|_| Reject::Broken("JPEG 2000 stream could not be decoded"))?;
+    let width = image.width();
+    let height = image.height();
+    if width == 0 || height == 0 {
+        return Err(Reject::Broken("JPEG 2000 stream has empty dimensions"));
+    }
+    let color_components = image.color_space().num_channels();
+    if !matches!(color_components, 1 | 3 | 4) {
+        return Err(Reject::UnsupportedLayout("JPX colour space"));
+    }
+    let has_alpha = image.has_alpha();
+    let channels = u64::from(color_components) + u64::from(has_alpha);
+    let need = u64::from(width)
+        .saturating_mul(u64::from(height))
+        .saturating_mul(channels);
+    if need > limits.max_image_bytes as u64 {
+        return Err(Reject::TooLarge);
+    }
+    let mut ctx = hayro_jpeg2000::DecoderContext::default();
+    let decoded = image
+        .decode(&mut ctx)
+        .map_err(|_| Reject::Broken("JPEG 2000 stream could not be decoded"))?;
+    let bitmap = decoded.data_u8();
+    let (samples, alpha) = if has_alpha {
+        let total = usize::from(color_components) + 1;
+        let pixels = (width as usize).saturating_mul(height as usize);
+        let expected = pixels.saturating_mul(total);
+        if bitmap.len() < expected {
+            return Err(Reject::Broken("JPEG 2000 samples are truncated"));
+        }
+        let mut color = Vec::with_capacity(pixels.saturating_mul(usize::from(color_components)));
+        let mut mask = Vec::with_capacity(pixels);
+        for sample in bitmap.chunks_exact(total) {
+            let (a, rgb) = sample
+                .split_last()
+                .ok_or(Reject::Broken("JPEG 2000 samples are truncated"))?;
+            mask.push(*a);
+            color.extend_from_slice(rgb);
+        }
+        (color, Some(Arc::new(mask)))
+    } else {
+        let expected = (width as usize)
+            .saturating_mul(height as usize)
+            .saturating_mul(usize::from(color_components));
+        if bitmap.len() < expected {
+            return Err(Reject::Broken("JPEG 2000 samples are truncated"));
+        }
+        (bitmap, None)
+    };
+    if samples.len() > limits.max_image_bytes {
+        return Err(Reject::TooLarge);
+    }
+    Ok(Encoded::Raw {
+        width,
+        height,
+        samples: Arc::new(samples),
+        components: color_components,
+        alpha,
+    })
+}
+
 /// A JPEG's dimensions, read from its SOF marker.
 ///
 /// The compressed data is never touched, so a truncated JPEG still yields a size
@@ -567,7 +651,36 @@ fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::Encoded;
+    use super::{decode_jpx_bytes, Encoded, Reject};
+    use crate::PdfLimits;
+
+    /// Lossless 2×2 RGB JP2 (Pillow/OpenJPEG), pixels:
+    /// (255,0,0) (0,255,0) / (0,0,255) (255,255,255).
+    const JPX_RGB_2X2: &[u8] = &[
+        0, 0, 0, 12, 106, 80, 32, 32, 13, 10, 135, 10, 0, 0, 0, 20, 102, 116, 121, 112, 106, 112,
+        50, 32, 0, 0, 0, 0, 106, 112, 50, 32, 0, 0, 0, 45, 106, 112, 50, 104, 0, 0, 0, 22, 105, 104,
+        100, 114, 0, 0, 0, 2, 0, 0, 0, 2, 0, 3, 7, 7, 0, 0, 0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0,
+        0, 0, 0, 16, 0, 0, 0, 153, 106, 112, 50, 99, 255, 79, 255, 81, 0, 47, 0, 0, 0, 0, 0, 2, 0, 0,
+        0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 7, 1, 1,
+        7, 1, 1, 7, 1, 1, 255, 82, 0, 12, 0, 0, 0, 1, 0, 1, 4, 4, 0, 1, 255, 92, 0, 7, 64, 64, 72,
+        72, 80, 255, 100, 0, 37, 0, 1, 67, 114, 101, 97, 116, 101, 100, 32, 98, 121, 32, 79, 112,
+        101, 110, 74, 80, 69, 71, 32, 118, 101, 114, 115, 105, 111, 110, 32, 50, 46, 53, 46, 52, 255,
+        144, 0, 10, 0, 0, 0, 0, 0, 30, 0, 1, 255, 147, 128, 128, 128, 147, 243, 2, 0, 223, 207, 192,
+        4, 0, 167, 224, 2, 0, 255, 217,
+    ];
+
+    /// Lossless 3×1 gray JP2: samples 0, 128, 255.
+    const JPX_GRAY_3X1: &[u8] = &[
+        0, 0, 0, 12, 106, 80, 32, 32, 13, 10, 135, 10, 0, 0, 0, 20, 102, 116, 121, 112, 106, 112,
+        50, 32, 0, 0, 0, 0, 106, 112, 50, 32, 0, 0, 0, 45, 106, 112, 50, 104, 0, 0, 0, 22, 105, 104,
+        100, 114, 0, 0, 0, 1, 0, 0, 0, 3, 0, 1, 7, 7, 0, 0, 0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0,
+        0, 0, 0, 17, 0, 0, 0, 135, 106, 112, 50, 99, 255, 79, 255, 81, 0, 41, 0, 0, 0, 0, 0, 3, 0, 0,
+        0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 7, 1, 1,
+        255, 82, 0, 12, 0, 0, 0, 1, 0, 0, 4, 4, 0, 1, 255, 92, 0, 4, 64, 64, 255, 100, 0, 37, 0, 1,
+        67, 114, 101, 97, 116, 101, 100, 32, 98, 121, 32, 79, 112, 101, 110, 74, 80, 69, 71, 32, 118,
+        101, 114, 115, 105, 111, 110, 32, 50, 46, 53, 46, 52, 255, 144, 0, 10, 0, 0, 0, 0, 0, 21, 0,
+        1, 255, 147, 223, 128, 32, 7, 36, 97, 19, 255, 217,
+    ];
 
     /// A JPEG header followed by nothing: enough for the size reader.
     fn jpeg() -> Vec<u8> {
@@ -623,5 +736,52 @@ mod tests {
             alpha: Some(std::sync::Arc::new(vec![255, 0])),
         };
         assert_eq!(image.alpha_channel(), Some(vec![255, 0]));
+    }
+
+    #[test]
+    fn jpx_rgb_decodes_to_exact_lossless_samples() {
+        let encoded = decode_jpx_bytes(JPX_RGB_2X2, &PdfLimits::default()).expect("jpx rgb");
+        assert_eq!(encoded.pixel_size(), (2, 2));
+        let (samples, components) = encoded.raw_samples().expect("raw");
+        assert_eq!(components, 3);
+        assert_eq!(
+            samples,
+            &[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]
+        );
+        assert!(encoded.alpha_channel().is_none());
+        let png = encoded.to_png().expect("png");
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
+    fn jpx_gray_decodes_to_exact_lossless_samples() {
+        let encoded = decode_jpx_bytes(JPX_GRAY_3X1, &PdfLimits::default()).expect("jpx gray");
+        assert_eq!(encoded.pixel_size(), (3, 1));
+        assert_eq!(encoded.raw_samples(), Some((&[0_u8, 128, 255][..], 1)));
+    }
+
+    #[test]
+    fn a_broken_jpx_stream_is_broken_not_unsupported() {
+        let err = decode_jpx_bytes(b"not a jpeg2000 stream", &PdfLimits::default())
+            .expect_err("garbage");
+        assert!(
+            matches!(err, Reject::Broken(_)),
+            "expected Broken, got {err}"
+        );
+        assert!(
+            !matches!(err, Reject::UnsupportedFilter(_)),
+            "JPX is carried; must not look like a missing codec: {err}"
+        );
+    }
+
+    #[test]
+    fn jpx_respects_the_image_byte_budget_before_decode() {
+        // 2×2×3 = 12 bytes of samples; an 11-byte ceiling must refuse.
+        let limits = PdfLimits {
+            max_image_bytes: 11,
+            ..PdfLimits::default()
+        };
+        let err = decode_jpx_bytes(JPX_RGB_2X2, &limits).expect_err("budget");
+        assert_eq!(err, Reject::TooLarge);
     }
 }

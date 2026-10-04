@@ -23,6 +23,10 @@ png = "0.18"
 # Windows-1252 and MacRoman, which are what `/WinAnsiEncoding` and
 # `/MacRomanEncoding` are; hand-written 256-entry tables would be worse.
 encoding_rs.workspace = true
+# `/JPXDecode` (JPEG 2000). Pure Rust, MIT/Apache-2.0; no `image` crate.
+# `simd` (fearless_simd) matches the hayro stack (ADR-0011) and is what makes
+# multi-page JPX scans finish in seconds rather than minutes on CC0_PDF.
+hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std", "simd"] }
 
 [features]
 default = []
