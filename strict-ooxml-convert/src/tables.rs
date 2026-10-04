@@ -1139,6 +1139,9 @@ mod tests {
             fill: None,
             stroke: Some(Rgb(0.0, 0.0, 0.0)),
             line_width: 0.5,
+            line_cap: strict_ooxml_pdf::LineCap::Butt,
+            line_join: strict_ooxml_pdf::LineJoin::Miter,
+            miter_limit: 10.0,
             even_odd: false,
             ctm: Matrix::IDENTITY,
         })
@@ -1159,6 +1162,9 @@ mod tests {
             fill: Some(Rgb(0.85, 0.88, 0.95)),
             stroke: None,
             line_width: 1.0,
+            line_cap: strict_ooxml_pdf::LineCap::Butt,
+            line_join: strict_ooxml_pdf::LineJoin::Miter,
+            miter_limit: 10.0,
             even_odd: false,
             ctm: Matrix::IDENTITY,
         })

@@ -319,19 +319,29 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
             };
         }
     };
-    let is_jpx = matches!(dict.filter.as_deref(), Some(b"JPX" | b"JPXDecode"));
-    // JPX carries bit depth in the codestream; other filters still need 8-bit.
-    if !is_jpx {
-        let bits = dict.bits.unwrap_or(8);
-        if bits != 8 {
-            return InlineImage {
-                encoded: None,
-                missing: Some("inline image bits per component is not 8".into()),
-            };
-        }
-    }
+    let filter = dict.filter.as_deref();
+    let codec_carries_depth = matches!(
+        filter,
+        Some(
+            b"JPX"
+                | b"JPXDecode"
+                | b"CCITTFax"
+                | b"CCITTFaxDecode"
+                | b"JBIG2"
+                | b"JBIG2Decode"
+        )
+    );
+    let bits = dict.bits.unwrap_or(8);
     let components = dict.components.unwrap_or(3);
-    match dict.filter.as_deref() {
+    let expand_one_bit = !codec_carries_depth && bits == 1 && components == 1;
+    if !codec_carries_depth && !expand_one_bit && bits != 8 {
+        return InlineImage {
+            encoded: None,
+            missing: Some("inline image bits per component is not 8".into()),
+        };
+    }
+    let limits = crate::PdfLimits::default();
+    match filter {
         Some(b"DCT" | b"DCTDecode") => InlineImage {
             encoded: Some(Encoded::Jpeg {
                 width,
@@ -345,7 +355,7 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
             // Inline JPX uses the same decoder as XObject `/JPXDecode`. Limits
             // are the defaults: an inline image large enough to matter has
             // already paid for the content-stream budget.
-            match crate::image::decode_jpx_bytes(data, &crate::PdfLimits::default()) {
+            match crate::image::decode_jpx_bytes(data, &limits) {
                 Ok(encoded) => InlineImage {
                     encoded: Some(encoded),
                     missing: None,
@@ -357,7 +367,7 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
             }
         }
         None | Some(b"Fl" | b"FlateDecode") => {
-            let samples = if matches!(dict.filter.as_deref(), Some(b"Fl" | b"FlateDecode")) {
+            let samples = if matches!(filter, Some(b"Fl" | b"FlateDecode")) {
                 match miniz_oxide::inflate::decompress_to_vec_zlib(data) {
                     Ok(raw) => raw,
                     Err(_) => {
@@ -369,6 +379,19 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
                 }
             } else {
                 data.to_vec()
+            };
+            let samples = if expand_one_bit {
+                match crate::image::expand_gray1_to_eight(&samples, width, height, &limits) {
+                    Ok(expanded) => expanded,
+                    Err(reject) => {
+                        return InlineImage {
+                            encoded: None,
+                            missing: Some(reject.to_string()),
+                        };
+                    }
+                }
+            } else {
+                samples
             };
             InlineImage {
                 encoded: Some(Encoded::Raw {

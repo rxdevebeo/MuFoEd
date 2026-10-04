@@ -233,6 +233,50 @@ pub struct SubPath {
     pub closed: bool,
 }
 
+/// PDF line cap style (`J` operator, ISO 32000-1 §8.4.3.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LineCap {
+    /// Butt cap.
+    Butt = 0,
+    /// Round cap.
+    Round = 1,
+    /// Projecting square cap.
+    Square = 2,
+}
+
+impl LineCap {
+    fn from_pdf(value: f64) -> Self {
+        match value as i32 {
+            1 => Self::Round,
+            2 => Self::Square,
+            _ => Self::Butt,
+        }
+    }
+}
+
+/// PDF line join style (`j` operator, ISO 32000-1 §8.4.3.4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LineJoin {
+    /// Miter join.
+    Miter = 0,
+    /// Round join.
+    Round = 1,
+    /// Bevel join.
+    Bevel = 2,
+}
+
+impl LineJoin {
+    fn from_pdf(value: f64) -> Self {
+        match value as i32 {
+            1 => Self::Round,
+            2 => Self::Bevel,
+            _ => Self::Miter,
+        }
+    }
+}
+
 /// A filled or stroked path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Vector {
@@ -244,6 +288,12 @@ pub struct Vector {
     pub stroke: Option<Rgb>,
     /// Line width in points.
     pub line_width: f64,
+    /// Line cap style from `J`.
+    pub line_cap: LineCap,
+    /// Line join style from `j`.
+    pub line_join: LineJoin,
+    /// Miter limit from `M` (PDF default 10).
+    pub miter_limit: f64,
     /// Whether the fill uses the even-odd rule.
     pub even_odd: bool,
     /// The transform the path was built in, so a consumer can place it.
@@ -446,6 +496,9 @@ struct State {
     stroke: Rgb,
     fill: Rgb,
     line_width: f64,
+    line_cap: LineCap,
+    line_join: LineJoin,
+    miter_limit: f64,
     font_name: Option<String>,
     font_size: f64,
     char_spacing: f64,
@@ -463,6 +516,9 @@ impl Default for State {
             stroke: Rgb(0.0, 0.0, 0.0),
             fill: Rgb(0.0, 0.0, 0.0),
             line_width: 1.0,
+            line_cap: LineCap::Butt,
+            line_join: LineJoin::Miter,
+            miter_limit: 10.0,
             font_name: None,
             font_size: 0.0,
             char_spacing: 0.0,
@@ -881,6 +937,24 @@ fn interpret_from(
                     current.line_width = width;
                 }
             }
+            "J" => {
+                if let Some(value) = number_at(args, 0) {
+                    current.line_cap = LineCap::from_pdf(value);
+                }
+            }
+            "j" => {
+                if let Some(value) = number_at(args, 0) {
+                    current.line_join = LineJoin::from_pdf(value);
+                }
+            }
+            "M" => {
+                if let Some(value) = number_at(args, 0) {
+                    // Spec default is 10; values below 1 are meaningless for a
+                    // miter ratio, so clamp rather than store a trap for a
+                    // consumer that divides by it.
+                    current.miter_limit = value.max(1.0);
+                }
+            }
             "d" => {
                 // The dash pattern is carried for a report but not applied: a
                 // PDF dash is in user space and the consumer decides.
@@ -1235,6 +1309,9 @@ fn paint(
         fill: fill.then_some(state.fill),
         stroke: stroke.then_some(state.stroke),
         line_width: state.line_width * scale,
+        line_cap: state.line_cap,
+        line_join: state.line_join,
+        miter_limit: state.miter_limit,
         even_odd,
         ctm: state.ctm,
     }));

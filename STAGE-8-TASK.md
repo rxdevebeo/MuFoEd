@@ -242,8 +242,8 @@ placeholder с записью в отчёт; шрифт без глифа — с
 | C2 | Контент-потоки: токенизация, разбор потоков с `FlateDecode`/`LZWDecode`/`ASCIIHex`/`ASCII85`/`RunLength` (остальное — потеря в отчёте) |
 | C3 | Текст: `BT`/`ET`, `Tf`, `Td`/`TD`/`Tm`/`T*`, `Tj`/`TJ`/`'`/`"`, `Tc`/`Tw`/`Tz`/`TL`/`Ts`, `cm`, `q`/`Q` → глифы с позицией, шириной, кеглем, цветом, режимом отрисовки |
 | C4 | Кодировки: `/Encoding` (base + `/Differences`), `StandardEncoding`, `WinAnsiEncoding`, `MacRomanEncoding`, **`ToUnicode` CMap** (`bfchar`/`bfrange`), `Type0`/`Identity-H`/`CIDFontType2`, ширины `/Widths`, `/W` |
-| C5 | Изображения: `XObject` `/Image`; `DCTDecode` → JPEG байты прозрачно; `FlateDecode` (`DeviceRGB`/`DeviceGray`) → PNG без потерь; `JPXDecode` → 8-bit `Encoded::Raw` (`hayro-jpeg2000`); `SMask` → альфа; `CCITTFax`/`JBIG2` → потеря в отчёте + плейсхолдер |
-| C6 | Вектор: пути (`m l c v y re h`), заливки/обводки, CTM, `cm`; кривые Безье **флэтятся** в полилинии с документированной точностью |
+| C5 | Изображения: `XObject` `/Image`; `DCTDecode` → JPEG байты прозрачно; `FlateDecode` (`DeviceRGB`/`DeviceGray` 8-bit, плюс 1-bit DeviceGray → expand в 8-bit); `JPXDecode` / `CCITTFaxDecode` / `JBIG2Decode` → 8-bit `Encoded::Raw` (`hayro-jpeg2000` / `hayro-ccitt` / `hayro-jbig2`); `SMask` → альфа; image mask / 16-bit / palette → потеря в отчёте + плейсхолдер |
+| C6 | Вектор: пути (`m l c v y re h`), заливки/обводки, CTM, `cm`, стиль обводки `w`/`J`/`j`/`M`; кривые Безье **флэтятся** в полилинии с документированной точностью |
 | C7 | Страница без текстового слоя → `ImageOnly` (вход для 8D) |
 | C8 | Шифрование: не поддерживаем (RC4/AES) — `Err`, без паники |
 | C9 | Лимиты: страницы, потоки, глифы на страницу, изображение, суммарный разбор |

@@ -286,7 +286,10 @@ corpus_report -- testdata/pdf` (обход **рекурсивный**; с `--fea
 все они честные пробелы возможностей, а не неудачных поисков: тогда ещё
 `JPXDecode` (с 2026-10-04 несётся через `hayro-jpeg2000`), `ASCII85Decode` для
 картинок (а заказ перечисляет ASCII85 в C2), два image mask и два битых потока.
-Ни одного «not in the page's resources» не осталось.
+Ни одного «not in the page's resources» не осталось. Позже по корпусу CC0
+добавлены как carried (тот же паттерн, что JPX): `CCITTFaxDecode`,
+`JBIG2Decode`, 1-bit DeviceGray → 8-bit, и операторы обводки `J`/`j`/`M`.
+Image mask / ASCII85-на-картинке по-прежнему пробел.
 
 Сделано: `Form` (контент, `/Matrix`, свои ресурсы) на трейте `Resources` с
 `is_form`/`form` по умолчанию, рекурсивный `interpret_from` с **наследованием

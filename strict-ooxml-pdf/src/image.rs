@@ -2,10 +2,11 @@
 //!
 //! A PDF stores an image as *compressed samples plus a colour space*. The filters
 //! this crate carries are `/DCTDecode` (JPEG bytes untouched), `/FlateDecode`
-//! (inflated 8-bit samples), and `/JPXDecode` (JPEG 2000 → 8-bit
-//! [`Encoded::Raw`] via `hayro-jpeg2000`). Everything else — CCITT fax, JBIG2 —
-//! is a codec this crate does not carry, and a document using one is reported
-//! rather than approximated.
+//! (inflated samples; 8-bit as-is, 1-bit DeviceGray expanded to 8-bit),
+//! `/JPXDecode` (JPEG 2000 → 8-bit [`Encoded::Raw`] via `hayro-jpeg2000`),
+//! `/CCITTFaxDecode` (`hayro-ccitt` → 8-bit gray), and `/JBIG2Decode`
+//! (`hayro-jbig2` → 8-bit gray). Unknown filters and layouts that are not
+//! pictures (image masks, 16-bit, palettes) are reported rather than approximated.
 //!
 //! What comes out is deliberately the same [`Encoded`] shape the PDF writer of
 //! stage 8B takes, so a PDF → WML converter and a PDF → PDF rewrite share one
@@ -140,8 +141,9 @@ impl Encoded {
 pub enum Reject {
     /// The filter is a codec this crate does not carry.
     UnsupportedFilter(&'static str),
-    /// The samples are 16-bit, a palette, an image mask, or otherwise not laid
-    /// out as 8-bit components, and converting them is a decision not made here.
+    /// The samples are a palette, an image mask, 16-bit, or otherwise not laid
+    /// out as components this reader will expand, and converting them is a
+    /// decision not made here. (1-bit DeviceGray is expanded to 8-bit.)
     UnsupportedLayout(&'static str),
     /// The dictionary is missing what an image needs.
     Incomplete(&'static str),
@@ -402,14 +404,18 @@ fn decode_inner(
     let filters = filter_names(dictionary, resolve);
     let components = components_for(dictionary, &filters, resolve);
     let first = filters.first().map(Vec::as_slice);
-    // `/JPXDecode` carries bit depth inside the codestream (ISO 32000-1 §7.4.9);
-    // the dictionary's `/BitsPerComponent` is optional and often absent or wrong.
-    // Refuse non-8-bit layouts only for the filters that emit raw samples here.
-    if !matches!(first, Some(b"JPXDecode")) {
-        let bits = number(dictionary, b"BitsPerComponent").unwrap_or(8.0) as u32;
-        if bits != 8 {
-            return Err(Reject::UnsupportedLayout("bits per component"));
-        }
+    let bits = number(dictionary, b"BitsPerComponent").unwrap_or(8.0) as u32;
+    // Codecs that carry bit depth in the bitstream (or always emit bi-level)
+    // must not be refused for a dictionary `/BitsPerComponent` of 1 — that is
+    // how every CCITT/JBIG2 scan in the wild is written, and an early reject
+    // used to report them as "bits per component" instead of decoding them.
+    let codec_carries_depth = matches!(
+        first,
+        Some(b"JPXDecode" | b"CCITTFaxDecode" | b"JBIG2Decode")
+    );
+    let expand_one_bit = !codec_carries_depth && bits == 1 && components == 1;
+    if !codec_carries_depth && !expand_one_bit && bits != 8 {
+        return Err(Reject::UnsupportedLayout("bits per component"));
     }
 
     let mut encoded = match first {
@@ -425,6 +431,12 @@ fn decode_inner(
             }
         }
         Some(b"JPXDecode") => decode_jpx_bytes(&stream.content, limits)?,
+        Some(b"CCITTFaxDecode") => {
+            decode_ccitt_bytes(&stream.content, dictionary, width, height, resolve, limits)?
+        }
+        Some(b"JBIG2Decode") => {
+            decode_jbig2_bytes(&stream.content, dictionary, document, resolve, limits)?
+        }
         None | Some(b"FlateDecode") => {
             // The filter is carried; a stream that will not inflate is a broken
             // file, and saying "this filter is not carried" for it is a wrong
@@ -439,15 +451,20 @@ fn decode_inner(
                     (_, Some(_)) => Reject::Broken("flate samples could not be inflated"),
                     (_, None) => Reject::Broken("samples are not a decodable stream"),
                 })?;
-            let expected = (width as usize)
-                .saturating_mul(height as usize)
-                .saturating_mul(components as usize);
-            if samples.len() < expected {
-                return Err(Reject::Broken("samples are truncated"));
-            }
-            if samples.len() > limits.max_image_bytes {
-                return Err(Reject::TooLarge);
-            }
+            let samples = if expand_one_bit {
+                expand_gray1_to_eight(&samples, width, height, limits)?
+            } else {
+                let expected = (width as usize)
+                    .saturating_mul(height as usize)
+                    .saturating_mul(components as usize);
+                if samples.len() < expected {
+                    return Err(Reject::Broken("samples are truncated"));
+                }
+                if samples.len() > limits.max_image_bytes {
+                    return Err(Reject::TooLarge);
+                }
+                samples
+            };
             Encoded::Raw {
                 width,
                 height,
@@ -537,6 +554,269 @@ fn components_for(
         Some(b"DeviceGray" | b"CalGray" | b"G") => 1,
         Some(b"DeviceCMYK" | b"CMYK") => 4,
         _ => 3,
+    }
+}
+
+/// Owned `/DecodeParms` fields for `/CCITTFaxDecode` (ISO 32000-1 Table 11).
+struct CcittParms {
+    k: i32,
+    columns: Option<u32>,
+    rows: Option<u32>,
+    end_of_block: bool,
+    end_of_line: bool,
+    rows_are_byte_aligned: bool,
+    invert_black: bool,
+}
+
+impl Default for CcittParms {
+    fn default() -> Self {
+        Self {
+            k: 0,
+            columns: None,
+            rows: None,
+            end_of_block: true,
+            end_of_line: false,
+            rows_are_byte_aligned: false,
+            invert_black: false,
+        }
+    }
+}
+
+fn ccitt_parms(dictionary: &lopdf::Dictionary, resolve: Resolver<'_>) -> CcittParms {
+    let Ok(parms_obj) = dictionary.get(b"DecodeParms") else {
+        return CcittParms::default();
+    };
+    let Some(resolved) = resolve.get(parms_obj) else {
+        return CcittParms::default();
+    };
+    let dict = match resolved {
+        Object::Dictionary(dict) => dict,
+        Object::Array(items) => match items
+            .first()
+            .and_then(|item| resolve.get(item))
+            .and_then(|value| value.as_dict().ok())
+        {
+            Some(dict) => dict,
+            None => return CcittParms::default(),
+        },
+        _ => return CcittParms::default(),
+    };
+    CcittParms {
+        k: number(dict, b"K").unwrap_or(0.0) as i32,
+        columns: number(dict, b"Columns").map(|value| value as u32),
+        rows: number(dict, b"Rows").map(|value| value as u32),
+        end_of_block: dict
+            .get(b"EndOfBlock")
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(true),
+        end_of_line: dict
+            .get(b"EndOfLine")
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(false),
+        rows_are_byte_aligned: dict
+            .get(b"EncodedByteAlign")
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(false),
+        invert_black: dict
+            .get(b"BlackIs1")
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(false),
+    }
+}
+
+/// Packed 1-bit DeviceGray → 8-bit luma (`0`/`255`), MSB first, rows byte-aligned.
+pub(crate) fn expand_gray1_to_eight(
+    packed: &[u8],
+    width: u32,
+    height: u32,
+    limits: &PdfLimits,
+) -> Result<Vec<u8>, Reject> {
+    let row_bytes = (width as usize).div_ceil(8);
+    let needed = row_bytes.saturating_mul(height as usize);
+    if packed.len() < needed {
+        return Err(Reject::Broken("samples are truncated"));
+    }
+    let out_len = (width as usize).saturating_mul(height as usize);
+    if out_len > limits.max_image_bytes {
+        return Err(Reject::TooLarge);
+    }
+    let mut out = Vec::with_capacity(out_len);
+    for row in 0..height as usize {
+        let row_start = row * row_bytes;
+        for x in 0..width as usize {
+            let byte = packed[row_start + x / 8];
+            let bit = (byte >> (7 - (x % 8))) & 1;
+            out.push(if bit == 0 { 0 } else { 255 });
+        }
+    }
+    Ok(out)
+}
+
+/// `/CCITTFaxDecode` → 8-bit gray ([`Encoded::Raw`]).
+fn decode_ccitt_bytes(
+    data: &[u8],
+    dictionary: &lopdf::Dictionary,
+    width: u32,
+    height: u32,
+    resolve: Resolver<'_>,
+    limits: &PdfLimits,
+) -> Result<Encoded, Reject> {
+    let need = (width as usize).saturating_mul(height as usize);
+    if need > limits.max_image_bytes {
+        return Err(Reject::TooLarge);
+    }
+    let parms = ccitt_parms(dictionary, resolve);
+    let settings = hayro_ccitt::DecodeSettings {
+        columns: parms.columns.unwrap_or(width),
+        rows: parms.rows.unwrap_or(height),
+        end_of_block: parms.end_of_block,
+        end_of_line: parms.end_of_line,
+        rows_are_byte_aligned: parms.rows_are_byte_aligned,
+        encoding: if parms.k < 0 {
+            hayro_ccitt::EncodingMode::Group4
+        } else if parms.k == 0 {
+            hayro_ccitt::EncodingMode::Group3_1D
+        } else {
+            hayro_ccitt::EncodingMode::Group3_2D {
+                k: parms.k as u32,
+            }
+        },
+        invert_black: parms.invert_black,
+    };
+
+    struct Luma8Decoder {
+        output: Vec<u8>,
+        decoded_rows: u32,
+    }
+
+    impl hayro_ccitt::Decoder for Luma8Decoder {
+        fn push_pixels(&mut self, white: bool, count: u32) {
+            let byte = if white { 0xFF } else { 0x00 };
+            self.output
+                .extend(std::iter::repeat_n(byte, count as usize));
+        }
+
+        fn next_line(&mut self) {
+            self.decoded_rows += 1;
+        }
+    }
+
+    let mut decoder = Luma8Decoder {
+        output: Vec::with_capacity(need),
+        decoded_rows: 0,
+    };
+    let mut context = hayro_ccitt::DecoderContext::new(settings);
+    let result = hayro_ccitt::decode(data, &mut decoder, &mut context);
+    // Hayro is lenient: a truncated stream may still yield rows. Zero rows is
+    // the only case that means "this is not a CCITT image we can read".
+    if result.is_err() && decoder.decoded_rows == 0 {
+        return Err(Reject::Broken("CCITT fax stream could not be decoded"));
+    }
+    if decoder.output.len() > limits.max_image_bytes {
+        return Err(Reject::TooLarge);
+    }
+    // Prefer dictionary Width×Height when the fax columns differ (common when
+    // `/Columns` is omitted and the fax default 1728 was not what we used).
+    let samples = if decoder.output.len() >= need {
+        decoder.output.truncate(need);
+        decoder.output
+    } else if !decoder.output.is_empty() {
+        // Pad a truncated decode rather than refuse a mostly-readable scan.
+        decoder.output.resize(need, 0xFF);
+        decoder.output
+    } else {
+        return Err(Reject::Broken("CCITT fax stream could not be decoded"));
+    };
+    Ok(Encoded::Raw {
+        width,
+        height,
+        samples: Arc::new(samples),
+        components: 1,
+        alpha: None,
+    })
+}
+
+/// `/JBIG2Decode` → 8-bit gray ([`Encoded::Raw`]).
+fn decode_jbig2_bytes(
+    data: &[u8],
+    dictionary: &lopdf::Dictionary,
+    document: &lopdf::Document,
+    resolve: Resolver<'_>,
+    limits: &PdfLimits,
+) -> Result<Encoded, Reject> {
+    let globals = jbig2_globals(dictionary, document, resolve, limits)?;
+    let image = hayro_jbig2::Image::new_embedded(data, globals.as_deref())
+        .map_err(|_| Reject::Broken("JBIG2 stream could not be decoded"))?;
+    let width = image.width();
+    let height = image.height();
+    if width == 0 || height == 0 {
+        return Err(Reject::Broken("JBIG2 stream has empty dimensions"));
+    }
+    let need = (width as usize).saturating_mul(height as usize);
+    if need > limits.max_image_bytes {
+        return Err(Reject::TooLarge);
+    }
+
+    struct Luma8Decoder {
+        output: Vec<u8>,
+    }
+
+    impl hayro_jbig2::Decoder for Luma8Decoder {
+        fn push_pixel(&mut self, black: bool) {
+            // JBIG2: black = 1; PDF DeviceGray: 0 = black, 1 = white.
+            self.output.push(if black { 0x00 } else { 0xFF });
+        }
+
+        fn push_pixel_chunk(&mut self, black: bool, chunk_count: u32) {
+            let byte = if black { 0x00 } else { 0xFF };
+            self.output
+                .extend(std::iter::repeat_n(byte, chunk_count as usize * 8));
+        }
+
+        fn next_line(&mut self) {}
+    }
+
+    let mut decoder = Luma8Decoder {
+        output: Vec::with_capacity(need),
+    };
+    image
+        .decode(&mut decoder)
+        .map_err(|_| Reject::Broken("JBIG2 stream could not be decoded"))?;
+    if decoder.output.len() > limits.max_image_bytes {
+        return Err(Reject::TooLarge);
+    }
+    Ok(Encoded::Raw {
+        width,
+        height,
+        samples: Arc::new(decoder.output),
+        components: 1,
+        alpha: None,
+    })
+}
+
+fn jbig2_globals(
+    dictionary: &lopdf::Dictionary,
+    _document: &lopdf::Document,
+    resolve: Resolver<'_>,
+    limits: &PdfLimits,
+) -> Result<Option<Vec<u8>>, Reject> {
+    let Ok(value) = dictionary.get(b"JBIG2Globals") else {
+        return Ok(None);
+    };
+    let Some(object) = resolve.get(value) else {
+        return Err(Reject::Broken("JBIG2Globals stream is missing"));
+    };
+    let Ok(stream) = object.as_stream() else {
+        return Err(Reject::Broken("JBIG2Globals is not a stream"));
+    };
+    match crate::document::bounded_decompress(stream, limits.max_image_bytes) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(Reject::TooLarge) => Err(Reject::TooLarge),
+        Err(_) => Err(Reject::Broken("JBIG2Globals stream could not be inflated")),
     }
 }
 
@@ -783,5 +1063,20 @@ mod tests {
         };
         let err = decode_jpx_bytes(JPX_RGB_2X2, &limits).expect_err("budget");
         assert_eq!(err, Reject::TooLarge);
+    }
+
+    #[test]
+    fn one_bit_gray_expands_msb_first_to_luma8() {
+        // 8×2: WWWWBBBB / BBBBWWWW
+        let packed = [0b1111_0000_u8, 0b0000_1111];
+        let samples =
+            super::expand_gray1_to_eight(&packed, 8, 2, &PdfLimits::default()).expect("expand");
+        assert_eq!(
+            samples,
+            [
+                255, 255, 255, 255, 0, 0, 0, 0, //
+                0, 0, 0, 0, 255, 255, 255, 255
+            ]
+        );
     }
 }
