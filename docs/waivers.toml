@@ -27,7 +27,7 @@
 # — which is exactly why the two registers are separate and both checked.
 
 [meta]
-revision = "2026-10-03"
+revision = "2026-10-04"
 policy = "GATE-STRATEGY.md §2"
 source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md, docs/transitional-to-strict-audit.md"
 
@@ -403,17 +403,23 @@ opened = "2026-09-29"
 id = "FUZZ"
 subject = "fuzzing"
 binds = "process:fuzz-hosting"
-summary = "No dedicated 24 h fuzz host; CI runs four bounded 1 h sessions nightly."
+summary = """
+No dedicated 24 h fuzz host (TZ §12.3 / Stage-7 release gate). CI runs eight
+bounded 1 h sessions nightly and 60 s smokes on every PR (AUD-92): fuzz_zip,
+fuzz_xml, fuzz_relpath, fuzz_wml, fuzz_normalize, fuzz_docx_full, fuzz_pdf,
+fuzz_convert. See `docs/fuzz-protocol.md`.
+"""
 risk = """
-Hidden panics in the ZIP/XML/relative-path/Word parsers beyond what 1 h per
-target finds. The fuzz targets and protocol are in place and run on every
-nightly build, so this is a depth gap, not an absence of coverage.
+Hidden panics beyond what 1 h per target finds. The targets and protocol are
+in place and run on every nightly build, so this is a depth gap for the 24 h
+bar, not an absence of coverage.
 """
 exit = """
-Either provision a Linux host for long runs, or accept the nightly sessions
-explicitly with the depth written down.
+Attach a 24 h session record for all eight targets on a Linux host (Stage-7),
+or accept the nightly 1 h depth explicitly in the release notes.
 """
 opened = "2026-09-29"
+review = "2027-01-03"
 
 [[waivers]]
 id = "CENSUS-LOCAL"
@@ -807,9 +813,10 @@ is read. The input-size ceiling bounds how large the compressed file may be; it
 does not bound the expansion ratio of object streams.
 """
 exit = """
-Land `fuzz_pdf` (AUD-92) and keep a corpus of object-stream bombs under it; or
-switch the loader to a path that applies `LoadOptions::max_decompressed_size`
-(or an equivalent) and close this waiver.
+`fuzz_pdf` landed (AUD-92) and runs in CI `fuzz-smoke` / `fuzz-nightly`. Keep
+a seed corpus of object-stream bombs under it; or switch the loader to a path
+that applies `LoadOptions::max_decompressed_size` (or an equivalent) and close
+this waiver.
 """
 opened = "2026-10-03"
 review = "2027-01-03"

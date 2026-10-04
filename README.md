@@ -65,15 +65,14 @@ what the writer could not express, and exits `1` when something was lost
 PDF support is specified in `STAGE-8-TASK.md` and delivered in phases:
 
 - **8A — done.** `strict-ooxml-write` + `strict-ooxml write`: DOM → Strict XML →
-  OPC, deterministic, with a loss report. Not yet done: unmodelled parts (charts,
-  diagrams) are dropped rather than passed through — see the `8A-CHART` waiver
-  in `docs/waivers.toml`.
+  OPC, deterministic, with a loss report. Unmodelled chart/SmartArt parts are
+  passed through (W7); see ADR-0007 and the historical `8A-CHART` waiver record.
 - **8B — done.** `strict-ooxml-render-pdf` + `strict-ooxml to-pdf`: PDF over the
-  same placement as the SVG backend, with real embedded text. Not yet done: the
-  pixel-level fidelity gate (it shares a gate that is mid-rework elsewhere).
-- **8C–8D — specified, not implemented.** PDF reading (`strict-ooxml-pdf`, built
-  on `lopdf`), the PDF → WML converter in `semantic` and `visual` modes, and the
-  optional ollama-backed OCR/figure classifier.
+  same placement as the SVG backend, with real embedded text. Pixel gate:
+  `cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels`.
+- **8C — done.** `strict-ooxml-pdf` (`lopdf`) + `strict-ooxml-convert` +
+  `strict-ooxml from-pdf` (`semantic` / `visual`). Optional OCR/classifier is
+  behind crate features (`strict-ooxml-ocr`).
 
 ## Build and test
 
@@ -148,13 +147,18 @@ documents. Its `unaccounted` signal fails on a part that was dropped **and not
 named in the report**, which is the loss class no schema can see: a missing part
 validates perfectly and draws nothing.
 
-Fuzzing (requires `cargo-fuzz` and a nightly toolchain):
+Fuzzing (requires `cargo-fuzz`, a nightly toolchain, and Linux — see
+`docs/fuzz-protocol.md`; AUD-92):
 
 ```text
-cargo +nightly fuzz run fuzz_zip
-cargo +nightly fuzz run fuzz_xml
-cargo +nightly fuzz run fuzz_relpath
-cargo +nightly fuzz run fuzz_wml
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_zip
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_xml
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_relpath
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_wml
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_normalize
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_docx_full
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_pdf
+cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert
 ```
 
 ## License
