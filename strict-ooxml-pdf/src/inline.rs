@@ -322,14 +322,7 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
     let filter = dict.filter.as_deref();
     let codec_carries_depth = matches!(
         filter,
-        Some(
-            b"JPX"
-                | b"JPXDecode"
-                | b"CCITTFax"
-                | b"CCITTFaxDecode"
-                | b"JBIG2"
-                | b"JBIG2Decode"
-        )
+        Some(b"JPX" | b"JPXDecode" | b"CCITTFax" | b"CCITTFaxDecode" | b"JBIG2" | b"JBIG2Decode")
     );
     let bits = dict.bits.unwrap_or(8);
     let components = dict.components.unwrap_or(3);
