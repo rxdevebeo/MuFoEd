@@ -93,6 +93,7 @@ impl PartNameAllocator {
     }
 
     /// Whether `name` is already reserved.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn contains(&self, name: &str) -> bool {
         self.reserved.contains(&PartId::new(name))
@@ -435,7 +436,12 @@ pub(crate) struct RelAllocator {
 impl RelAllocator {
     /// Empty allocator starting at `rId1`.
     pub(crate) fn new() -> Self {
-        Self::default()
+        // Not `Default`: `RelBuilder::default` leaves `next = 0` and would emit
+        // `rId0` (AUD-102).
+        Self {
+            builder: RelBuilder::new(),
+            by_target: BTreeMap::new(),
+        }
     }
 
     /// Ensures a relationship for `target` and returns its id.
@@ -657,8 +663,14 @@ pub fn write_package(
     // passthrough so a chart thumbnail at `word/media/image1.png` does not
     // collide with the body's first picture.
     let mut names = PartNameAllocator::new();
+    // AUD-101/102: reuse only names that passthrough actually owns. `allocate_media`
+    // also inserts into `names`, so treating any reserved name as reusable made
+    // later source parts collide with earlier allocations (duplicate Targets,
+    // then gen2 collapses the extras — not a fixed point).
+    let mut passthrough_names = BTreeSet::new();
     for part in pass.parts() {
         names.reserve(part.name.as_str());
+        passthrough_names.insert(PartId::new(part.name.as_str()));
     }
     let mut media_map: BTreeMap<String, String> = BTreeMap::new();
     let mut media_targets: BTreeMap<String, String> = BTreeMap::new();
@@ -673,7 +685,7 @@ pub fn write_package(
         let extension = media_extension(item.kind);
         // If passthrough already reserved the source spelling (chart thumbnail),
         // reuse that part instead of writing a second copy under a new name.
-        let reused = names.contains(&source_key);
+        let reused = passthrough_names.contains(&PartId::new(source_key.as_str()));
         let (absolute, relative) = if reused {
             let relative = source_key
                 .strip_prefix("/word/")
@@ -1359,7 +1371,28 @@ pub fn media_content_type(kind: MediaKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::PartNameAllocator;
+    use super::{PartNameAllocator, RelAllocator, RelBuilder};
+
+    #[test]
+    fn rel_allocator_starts_at_rid1() {
+        let mut alloc = RelAllocator::new();
+        let id = alloc.ensure(
+            &strict_ooxml_core::opc::rels::RelType::Image,
+            "media/image1.png".to_owned(),
+            false,
+        );
+        assert_eq!(id, "rId1");
+        // And `RelBuilder::new` agrees — Default would have started at 0.
+        let mut builder = RelBuilder::new();
+        assert_eq!(
+            builder.add(
+                &strict_ooxml_core::opc::rels::RelType::Image,
+                "media/x.png".to_owned(),
+                false
+            ),
+            "rId1"
+        );
+    }
 
     #[test]
     fn allocator_skips_reserved_media_names() {

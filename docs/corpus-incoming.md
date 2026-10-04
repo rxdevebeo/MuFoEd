@@ -64,3 +64,21 @@ cargo +1.92.0 run -p strict-ooxml-testkit --example write_dep_incoming
 коммитится; файлы здесь — локальный оракул для ручного прогона и апстрим-PR),
 патч в `vendor/` или подтверждение, что апстрим уже закрыл дыру, запись в
 `vendor/README.md`.
+
+## Корпус CC0 (`testdata/CC0/`, 2026-10-04)
+
+100 Transitional `.docx` (CC0, ~37 MiB, gitignored). Не в `docx-incoming/`:
+это отдельный локальный оракул. Прогон — `corpus_scan`; сводка —
+`.scratch/cc0-findings.md`. Четыре ранее красных оракула (AUD-100…103)
+**4/4 OK** 2026-10-04; полный каталог — повторный `corpus_scan`.
+
+| Файл | Симптом | Задача |
+|---|---|---|
+| `046_20260814_20260814_1519_docx.docx` | `fontTable.xml`: duplicate `w:characterSet` после T4 | **AUD-100** ✅ |
+| `030_20240916_20240916_1838_docx.docx` | writer fixed-point: −~50 image rels | **AUD-101** ✅ |
+| `065_4chan-clubpenguin_GX-SWC-GSAT_Guide_v01.docx` | writer fixed-point: теряется `image1.wmf` | **AUD-102** ✅ |
+| `020_20-de-thi-cuoi-hoc-ki-1-lop-5_20_e_thi_cuoi_hoc_ki_1_lop_5.docx` | writer fixed-point: `document.xml` +~1200 B | **AUD-103** ✅ |
+
+```text
+cargo +1.92.0 run -p strict-ooxml --features write,svg --example corpus_scan --release -- testdata/CC0
+```

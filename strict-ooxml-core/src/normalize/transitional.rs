@@ -963,11 +963,22 @@ fn copy_attributes(
     context: &mut PartContext,
     report: &mut NormalizationReport,
 ) {
+    // Locals already on the producer tag — used so a T3 rename does not emit a
+    // second copy of a name that is already present (AUD-100: `w:charset` with
+    // both `w:val` and `w:characterSet`).
+    let present_locals: std::collections::BTreeSet<String> = start
+        .attributes()
+        .flatten()
+        .map(|attribute| {
+            let key = String::from_utf8_lossy(attribute.key.as_ref());
+            key.rsplit(':').next().unwrap_or(&key).to_owned()
+        })
+        .collect();
     for attribute in start.attributes().flatten() {
         if drop_w_val && attribute.key.as_ref().ends_with(b":val") {
             continue;
         }
-        match rewrite_attribute(&attribute, context, report) {
+        match rewrite_attribute(&attribute, context, report, &present_locals) {
             RewrittenAttribute::Keep(key, value) => {
                 // `value` is already in its final escaped form: a stage that
                 // rewrote it escaped it, and a stage that did not left the
@@ -1649,10 +1660,12 @@ enum RewrittenAttribute {
 }
 
 /// Applies T1, T2, T3 and T4 to one attribute.
+#[allow(clippy::too_many_lines)] // T1–T6 attribute path; AUD-100 adds a short guard.
 fn rewrite_attribute(
     attribute: &Attribute<'_>,
     context: &mut PartContext,
     report: &mut NormalizationReport,
+    present_locals: &std::collections::BTreeSet<String>,
 ) -> RewrittenAttribute {
     let version = context.xml_version;
     let location = context.location();
@@ -1747,6 +1760,20 @@ fn rewrite_attribute(
         .flatten();
     let new_local =
         apply_direction_rename(context, report, &location, local.as_str(), renamed, true);
+    // AUD-100: LibreOffice emits `<w:charset w:val="00" w:characterSet="windows-1252"/>`.
+    // Renaming `val` → `characterSet` without this check produces a duplicated
+    // attribute and a part our own reader refuses.
+    if new_local != local && present_locals.contains(new_local) {
+        report.record_mapping(
+            "T4.attribute-rename",
+            &format!("{}/@{}", context.pending_element, local),
+            &format!(
+                "{}/@{} (already present; transitional spelling dropped)",
+                context.pending_element, new_local
+            ),
+        );
+        return RewrittenAttribute::Drop;
+    }
 
     // ---- T6: MCE bookkeeping that has nothing left to name --------------
     // `mc:Ignorable="w14 w15"` on a part whose `w14` and `w15` nodes are all gone
@@ -3821,6 +3848,31 @@ mod tests {
             !text.contains(r#"w:val="CC""#),
             "and not the old name: {text}"
         );
+    }
+
+    /// AUD-100: LibreOffice writes both spellings; renaming `val` must not
+    /// duplicate `characterSet`.
+    #[allow(clippy::doc_markdown)]
+    #[test]
+    fn a_charset_that_already_has_character_set_keeps_one_copy() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+ <w:font w:name="Arial"><w:charset w:val="00" w:characterSet="windows-1252"/></w:font>
+</w:fonts>"#;
+        let output = normalizer
+            .normalize(&PartId::new("/word/fontTable.xml"), source.as_bytes())
+            .unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert_eq!(
+            text.matches("characterSet=").count(),
+            1,
+            "exactly one characterSet: {text}"
+        );
+        assert!(
+            text.contains(r#"w:characterSet="windows-1252""#),
+            "prefer the already-Strict value: {text}"
+        );
+        assert!(!text.contains("w:val="), "transitional val dropped: {text}");
     }
 
     /// A block with no understood choice and **no** `mc:Fallback` resolves to

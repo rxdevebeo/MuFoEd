@@ -55,5 +55,9 @@ required-features = ["report"]
 name = "render_svg"
 required-features = ["svg"]
 
+[[example]]
+name = "corpus_scan"
+required-features = ["write"]
+
 [lints]
 workspace = true

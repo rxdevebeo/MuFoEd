@@ -1244,9 +1244,13 @@ fn columns_element(xml: &mut XmlWriter, columns: &Columns) {
     xml.start("w:cols");
     xml.attr_w_opt("num", columns.count);
     xml.attr_w_opt("space", columns.space.map(|v| v.0));
-    if columns.equal_width {
-        xml.attr_w("equalWidth", "true");
-    }
+    // AUD-103: `equalWidth="0"` parses as false; omitting the attribute on write
+    // made the next parse treat it as the default (true) and emit `"true"` —
+    // ~20 bytes × N sectPr ≈ the +1 KiB fixed-point drift on `020_…lop_5`.
+    xml.attr_w(
+        "equalWidth",
+        if columns.equal_width { "true" } else { "false" },
+    );
     if columns.separator {
         xml.attr_w("sep", "true");
     }
@@ -1434,5 +1438,23 @@ mod tests {
         let table = xml.finish().expect("balanced");
         assert!(table.contains("<w:start "), "{table}");
         assert!(!table.contains("<w:left "), "{table}");
+    }
+
+    /// AUD-103: false must be written; omitting it re-defaults to true on re-parse.
+    #[test]
+    fn unequal_columns_write_equal_width_false() {
+        let section = strict_ooxml_wml::model::props::SectionProperties {
+            columns: Some(strict_ooxml_wml::model::props::Columns {
+                equal_width: false,
+                ..strict_ooxml_wml::model::props::Columns::default()
+            }),
+            ..strict_ooxml_wml::model::props::SectionProperties::default()
+        };
+        let mut xml = XmlWriter::new();
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        section_properties(&mut ctx, &mut xml, &section);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains(r#"w:equalWidth="false""#), "{text}");
     }
 }

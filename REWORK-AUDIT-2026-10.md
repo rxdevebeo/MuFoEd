@@ -2,8 +2,9 @@
 
 **Дата:** 2026-10-02 · **Основание:** аудит реализованной части проекта (ядро, WML, report,
 render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:** Ф9 закрыта
-(AUD-90…94); корпус AUD-17/37/38/68/69 закрыт; открыта **Ф10 зависимости**
-(AUD-95…99, прежде всего hayro); см. статус-таблицу и `docs/ci-baseline-2026-10.md` §After
+(AUD-90…94); корпус AUD-17/37/38/68/69 и **Ф11 CC0** (AUD-100…103) закрыты;
+открыта **Ф10 зависимости** (AUD-95…99); см. статус-таблицу и
+`docs/ci-baseline-2026-10.md` §After
 
 > **Как читать.** Документ закрывает **все** найденные дефекты. Порядок фаз — обязательный:
 > каждая фаза опирается на инфраструктуру и инварианты предыдущей. Внутри фазы задачи можно
@@ -39,6 +40,7 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-69 | ✅ выполнена | — | исходный префикс элемента + End по стеку; 3 Contoso/Sample* → `docx/` |
 | AUD-88 | ✅ выполнена | `a9ceac1` | vendor hayro 0.7.x + PrintCraft/MuFoEd guards; `hostile::raster` ×5; ADR-0011 amendment |
 | AUD-95…99 | ⏳ открыты (2026-10-04) | — | Ф10: зависимости hayro/quick-xml; карантин `docx-incoming/dep-*` (`docs/corpus-incoming.md` §«Зависимости») |
+| AUD-100…103 | ✅ выполнены (2026-10-04) | — | Ф11: `present_locals` / passthrough media reuse / `equalWidth` always written; `corpus_scan` 4/4 OK |
 | AUD-14 | ✅ выполнена | `4bfc85e` | До `png::Decoder` читается IHDR вручную; `width×height×channels×bytes_per_sample` через `checked_mul` ≤ `RenderOptions::limits.max_single_uncompressed`; превышение — `pdf.image.too-large`, картинка не встраивается. `encode_with_limit` из `document.rs`. Тесты: юнит на IHDR-бомбу, `tests/hostile.rs` через `render_with_source` |
 | AUD-15 | ✅ выполнена | `a95507d` | `PdfOptions::{max_table_lines=4000, max_table_cells=10_000}`; сверх линий — `convert.table.budget`, таблицы не ищутся; сверх ячеек — та же запись, текст абзацами. `union_crossings` — сортировка вертикалей + скользящее окно (O(n log n)). Тесты: hostile 20k линий; `tests/tables.rs` без смены ожиданий |
 | AUD-16 | ✅ выполнена | `fbe73cf` | Строка/заголовок через `Read::take(8 KiB)`, ≤100 заголовков, тело ≤1 MiB (`413`), иначе `431`; `set_read/write_timeout(10s)`; всегда `Connection: close`; сокет после `accept` снова blocking. Тесты: 100 KiB → 431, 101 заголовок → 431, Content-Length → 413, idle ≤11 с + следующий запрос |
@@ -106,6 +108,10 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-97 | ⏳ открыта (2026-10-04) | — | hayro CID `/W` и path-line panics; `dep-hayro-cid-huge-w`; апстрим #717 |
 | AUD-98 | ⏳ открыта (2026-10-04) | — | quick-xml dep regression на пакетах `dep-quickxml-*` в `docx-incoming/` |
 | AUD-99 | ⏳ открыта (2026-10-04) | — | апстрим-PR / снятие vendor hayro после принятия патчей |
+| AUD-100 | ✅ выполнена (2026-10-04) | — | T4: `present_locals` — не эмитить rename, если target уже на теге; unit + `046` OK |
+| AUD-101 | ✅ выполнена (2026-10-04) | — | media reuse только для имён passthrough; иначе `allocate_media`; `030` OK |
+| AUD-102 | ✅ выполнена (2026-10-04) | — | тот же media-баг + `RelAllocator::new` → `rId1`; `065` OK |
+| AUD-103 | ✅ выполнена (2026-10-04) | — | всегда писать `w:equalWidth` true/false; unit + `020` OK |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
 - Census-гейт был сломан до начала Ф1: `report()` печатал список сообщений из переменной `out_messages`, которой в нём нет (`NameError` на ветке, которая срабатывает всегда). Исправлено в `f3f3456`; до правки §0.4 нельзя было выполнить в принципе.
@@ -201,6 +207,131 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 `Event::End` эмитит qualified name со стека открытых элементов.
 **Приёмка.** ✅ unit; 3 документа в `docx/`.
 
+### Находки на корпусе CC0 (2026-10-04)
+
+Локальный корпус `testdata/CC0/` (100 Transitional `.docx`, ~37 MiB, CC0; в
+`.gitignore`). Прогон:
+
+```text
+cargo +1.92.0 run -p strict-ooxml --features write,svg --example corpus_scan --release -- testdata/CC0
+cargo +1.92.0 run -p strict-ooxml --features write,svg --example corpus_scan --release -- testdata/CC0 --render
+```
+
+**96 OK / 4 FAIL**, паник нет; `--render` (SVG page 1) новых FAIL не добавил.
+Сводка — `.scratch/cc0-findings.md`. Задачи ниже; минимальные фикстуры — через
+`DocxBuilder` (G-6), файлы CC0 остаются локальным оракулом.
+
+#### AUD-100 (Ф4). `w:charset`: `w:val` + уже есть `w:characterSet` → duplicate attribute
+
+**Проблема.** `046_20260814_20260814_1519_docx.docx`: LibreOffice пишет
+
+```xml
+<w:charset w:val="00" w:characterSet="windows-1252"/>
+```
+
+T4 `attribute("charset", "val", "characterSet", "CT_Charset")` переименовывает
+`w:val` → `w:characterSet`, не проверяя, что целевой атрибут уже на теге →
+`duplicated attribute` на `/word/fontTable.xml` → `parse_document` / `write`
+отказывают. В части **3** таких charset. Контраст: для `tblLook` уже есть
+`already.contains` (AUD-стиль), для charset — нет.
+
+**Решение.** При переименовании атрибута T4: если `characterSet` (или иное
+целевое имя) уже присутствует на старте — **не** эмитить вторую копию; `w:val`
+удалить (или оставить только уже-Strict значение; при конфликте значений —
+предпочесть `characterSet`, записать `Partial`/`T4.*` в отчёт нормализации).
+Покрыть unit'ом с обоими атрибутами на одном `w:charset` (в `styles` или
+`fontTable` через `DocxBuilder`).
+
+**Тесты.** Unit: вход с `w:val`+`w:characterSet` → выход разбирается
+`XmlReader`/`roxmltree`, ровно один `characterSet`. Hostile/normalize_roundtrip
+или `corpus_scan` на `046_…` → больше не `parse` FAIL. `cargo test -p
+strict-ooxml-core` на таблице T4 charset.
+
+**Диагностика / fix.** `rewrite_attributes` собирает `present_locals` со
+стартового тега; при T4-rename, если целевое имя уже есть — `Drop` transitional
+`val` и `T4.attribute-rename` mapping «already present». Unit
+`a_charset_that_already_has_character_set_keeps_one_copy` падает без guard.
+`corpus_scan` на `046_…` — OK (2026-10-04).
+
+**Приёмка.** ✅ тесты; `046` OK в `corpus_scan`; fail-before-fix на unit.
+
+#### AUD-101 (Ф6). Писатель: между gen1 и gen2 пропадают десятки image-rels
+
+**Проблема.** `030_20240916_20240916_1838_docx.docx`: `the_written_form_is_a_fixed_point`
+— `document.xml.rels` 157→107 связей (~50 `media/image*.png`), пакет
+12 922 513→12 922 301 байт, `document.xml` тоже чуть сжимается.
+
+**Решение.** Диагностика: какие `rId` есть в gen1, отсутствуют в gen2, и есть ли
+на них ссылки в модели/частях после первого write. Типичные кандидаты —
+медиа только из колонтитулов/сносок/недостижимых rels, или аллокатор имён
+(AUD-61/62) отбрасывает «лишние». Чинить так, чтобы второй write не менял
+набор связей, на которые ещё ссылается документ; неиспользуемые — либо
+стабильно отбрасывать **уже в gen1**, либо сохранять (выбрать одно правило и
+записать здесь после диагностики). Если причина в passthrough media —
+зафиксировать в `WriteReport`, не молча.
+
+**Тесты.** Минимальный пакет (DocxBuilder): N картинок в body + header, write×2
+→ одинаковые `document.xml.rels` (множество Id/Target). Регрессия: `030` на
+`corpus_scan` без `fixed_point`. Существующий `normalize_roundtrip::
+the_written_form_is_a_fixed_point` не ослаблять.
+
+**Диагностика / fix.** `allocate_media` резервирует имена в `PartNameAllocator`,
+поэтому `names.contains(source)` на следующем media-элементе ложно считал
+чужой allocation «passthrough reuse» → несколько `rId` с одним Target → gen2
+схлопывал дубликаты. Fix: отдельный `passthrough_names` — reuse только если
+имя реально из passthrough. `corpus_scan` на `030_…` — OK (2026-10-04).
+
+**Приёмка.** ✅ диагностика; тесты/регрессия; `030` OK в `corpus_scan`.
+
+#### AUD-102 (Ф6). Писатель: теряется WMF (`image1.wmf`)
+
+**Проблема.** `065_4chan-clubpenguin_GX-SWC-GSAT_Guide_v01.docx`: между gen1 и
+gen2 из `document.xml.rels` исчезает
+
+```
+rId24 Type=…/image Target="media/image1.wmf"
+```
+
+(24→23 rels). PNG/JPEG в том же документе удерживаются.
+
+**Решение.** Либо (а) модель/писатель несут WMF как opaque media (как прочие
+не-декодируемые картинки) с названной потерей только при отсутствии байтов,
+либо (б) явно дропают WMF **в gen1** с `WriteReport` / `W7.*` / support loss и
+не оставляют dangling `r:embed` на второй проход. Молчаливое исчезновение на
+gen2 запрещено (G-3). Предпочтение: (а), если байты части ещё в пакете.
+
+**Тесты.** DocxBuilder: `word/media/image1.wmf` + drawing `r:embed` → write×2,
+тот же Target в `.rels`, часть на месте (или loss названа уже в gen1 и rel
+согласован). `065` без `fixed_point` в `corpus_scan`.
+
+**Диагностика / fix.** Тот же ложный media-reuse (AUD-101); дополнительно
+`RelAllocator::default` стартовал с `rId0` — переведён на `RelBuilder::new()`
+(`rId1`). Unit `rel_allocator_starts_at_rid1`. `corpus_scan` на `065_…` — OK.
+
+**Приёмка.** ✅ тесты; `065` OK в `corpus_scan`.
+
+#### AUD-103 (Ф6). Писатель: `document.xml` растёт на ~1 KiB при тех же счётчиках
+
+**Проблема.** `020_20-de-thi-cuoi-hoc-ki-1-lop-5_20_e_thi_cuoi_hoc_ki_1_lop_5.docx`:
+пакет 122 559→122 825; `document.xml` +1200 байт. Счётчики `<w:p>` / `<w:r>` /
+`<w:drawing>` / `wps:` / `xml:space` совпадают — дрейф содержимого, не структуры.
+
+**Решение.** Сначала диагностика: побайтовый/структурный diff gen1 vs gen2
+`document.xml` (кандидаты — объявления ns, переписанные меры, пустые `rPr`,
+порядок атрибутов, DrawingML, MCE). Причина записывается в эту задачу. Если
+дефект писателя — чинить до fixed-point; если неизбежная нормализация на
+втором разборе — сдвинуть работу в первый write так, чтобы gen2 == gen1.
+
+**Тесты.** Минимальный фрагмент, воспроизводящий +N байт, в unit /
+`normalize_roundtrip`; `020` без `fixed_point` в `corpus_scan`.
+
+**Диагностика / fix.** `w:cols/@w:equalWidth="0"` парсится как `false`; на
+write атрибут опускался → re-parse default `true` → emit `"true"` (~20 B × N
+`sectPr` ≈ +1 KiB). Fix: всегда писать `equalWidth` true/false. Unit
+`unequal_columns_write_equal_width_false`. `corpus_scan` на `020_…` — OK.
+
+**Приёмка.** ✅ причина; тесты; `020` OK в `corpus_scan`.
+
 ---
 
 ## 0. Общие правила
@@ -276,6 +407,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 Ф8  PDF, конвертер, вьюер     AUD-80…88   корректность writer/reader/convert/view
 Ф9  Процесс, ТЗ, документы    AUD-90…94   ADR, ТЗ, fuzz, CI, финальная приёмка
 Ф10 Зависимости (hayro/xml)   AUD-95…99   апстрим-дыры; карантин `docx-incoming/dep-*`
+Ф11 Корпус CC0                AUD-100…103 нормализатор charset; writer fixed-point (rels/WMF/doc)
 ```
 
 Почему так: Ф1–Ф2 устраняют то, что роняет процесс, и без этого фаззинг (Ф9) бесполезен;
@@ -1961,6 +2093,23 @@ image/CID/page-tree guards: удалить `vendor/hayro*`, снять patch, п
 
 **Приёмка.** Нет `vendor/hayro*`; `cargo deny` / гейт зелёные; hostile raster
 зелёный на crates.io hayro.
+
+---
+
+## Ф11. Корпус CC0 (AUD-100…103) — ✅ закрыта 2026-10-04
+
+Полные формулировки — в разделе «Находки на корпусе CC0 (2026-10-04)» выше
+(рядом с AUD-17/37/…). Краткий порядок:
+
+| ID | Фаза по смыслу | Суть | Оракул | Статус |
+|---|---|---|---|---|
+| **AUD-100** | Ф4 normalize | `w:charset` dual attrs → duplicate | `046_…1519` | ✅ |
+| **AUD-101** | Ф6 write | −~50 image rels на gen2 | `030_…1838` | ✅ |
+| **AUD-102** | Ф6 write | пропадает WMF | `065_…GSAT` | ✅ |
+| **AUD-103** | Ф6 write | `document.xml` +~1 KiB drift | `020_…lop_5` | ✅ |
+
+Инструмент: `strict-ooxml/examples/corpus_scan.rs`. Прогон четырёх оракулов
+2026-10-04: **4 OK / 0 FAIL**.
 
 ---
 
