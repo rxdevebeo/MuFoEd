@@ -530,6 +530,8 @@ fn sniff_declared_encoding(head: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use super::{XmlEvent, XmlReader};
     use crate::error::StrictError;
     use crate::limits::ResourceLimits;
@@ -870,7 +872,7 @@ mod tests {
         // Nine attributes with a budget of eight → LimitExceeded, not a panic.
         let mut xml = String::from("<a");
         for i in 0..9 {
-            xml.push_str(&format!(" a{i}=\"{i}\""));
+            let _ = write!(xml, " a{i}=\"{i}\"");
         }
         xml.push_str("/>");
         let limits = ResourceLimits {
@@ -894,7 +896,7 @@ mod tests {
         let n = 512u32;
         let mut xml = String::from("<a");
         for i in 0..n {
-            xml.push_str(&format!(" a{i}=\"{i}\""));
+            let _ = write!(xml, " a{i}=\"{i}\"");
         }
         xml.push_str("/>");
         let limits = ResourceLimits {
@@ -920,7 +922,7 @@ mod tests {
         // Our wrapper treats xmlns as attributes, so the same budget applies.
         let mut xml = String::from("<a");
         for i in 0..20 {
-            xml.push_str(&format!(" xmlns:p{i}=\"urn:{i}\""));
+            let _ = write!(xml, " xmlns:p{i}=\"urn:{i}\"");
         }
         xml.push_str("/>");
         let limits = ResourceLimits {
@@ -955,10 +957,10 @@ mod tests {
         let depth = 40u32;
         let mut xml = String::new();
         for i in 0..depth {
-            xml.push_str(&format!("<e{i} xmlns:p{i}=\"urn:{i}\">"));
+            let _ = write!(xml, "<e{i} xmlns:p{i}=\"urn:{i}\">");
         }
         for i in (0..depth).rev() {
-            xml.push_str(&format!("</e{i}>"));
+            let _ = write!(xml, "</e{i}>");
         }
         let limits = ResourceLimits {
             max_xml_depth: 32,

@@ -1102,7 +1102,7 @@ mod opc {
     /// AUD-37: VML text box → `wps:wsp` must declare `xmlns:wps` so the written
     /// package opens again (`Spanner visibility graph.docx`).
     ///
-    /// The fixture omits `xmlns:wps` on purpose (DocxBuilder would add it); `v`
+    /// The fixture omits `xmlns:wps` on purpose (`DocxBuilder` would add it); `v`
     /// is declared on the root so classification can see the shape.
     #[cfg(feature = "write")]
     #[test]

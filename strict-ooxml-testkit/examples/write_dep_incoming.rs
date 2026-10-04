@@ -10,7 +10,12 @@
 //! Plan tasks: AUD-95…AUD-99 in `REWORK-AUDIT-2026-10.md`; index in
 //! `docs/corpus-incoming.md` §«Зависимости».
 
-#![allow(missing_docs)]
+#![allow(
+    missing_docs,
+    clippy::format_push_string,
+    clippy::needless_raw_string_hashes,
+    clippy::too_many_lines
+)]
 
 use std::fs;
 use std::path::PathBuf;

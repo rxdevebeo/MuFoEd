@@ -496,7 +496,7 @@ mod raster {
         }
     }
 
-    /// JBIG2 image XObject with absurd dictionary size (hayro#1259 family).
+    /// JBIG2 image `XObject` with absurd dictionary size (hayro#1259 family).
     ///
     /// Dictionary `/Width`×`/Height` is rejected in `ImageXObject::new` before
     /// decode; the vendored `jbig2::pixel_budget_ok` covers the bitstream-claimed

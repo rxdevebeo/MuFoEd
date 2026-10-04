@@ -514,12 +514,12 @@ fn write_sdt_around(
 /// Writes an `w:sdt` wrapper (AUD-68). Block content wins when both are set.
 pub fn sdt_container(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtContainer) {
     write_sdt_around(xml, &sdt.properties(), |xml| {
-        if !sdt.blocks.is_empty() {
-            blocks(ctx, xml, &sdt.blocks);
-        } else {
+        if sdt.blocks.is_empty() {
             for child in &sdt.inlines {
                 inline_item(ctx, xml, child);
             }
+        } else {
+            blocks(ctx, xml, &sdt.blocks);
         }
     });
 }

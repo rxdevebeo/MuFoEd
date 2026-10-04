@@ -706,7 +706,7 @@ impl TransitionalNormalizer {
                     Rewritten::Drop => Ok(()),
                 }
             }
-            Event::End(_end) => {
+            Event::End(end) => {
                 if context.skip_depth > 0 {
                     context.skip_depth -= 1;
                     return Ok(());
@@ -717,7 +717,7 @@ impl TransitionalNormalizer {
                 // break T3 renames that are not self-closing.
                 let output_name = context
                     .pop_element()
-                    .unwrap_or_else(|| String::from_utf8_lossy(_end.name().as_ref()).into_owned());
+                    .unwrap_or_else(|| String::from_utf8_lossy(end.name().as_ref()).into_owned());
                 let rewritten = BytesEnd::new(output_name);
                 write_end(writer, &rewritten)
                     .map_err(|error| xml_error(&context.part, error.to_string()))
