@@ -99,10 +99,14 @@ const EMU_PER_POINT: f64 = 914_400.0 / 72.0;
 /// binding for the same prefix, which is a hard XML error. So the caller checks
 /// what the prefix is already bound to and rewrites the existing declaration
 /// rather than adding one.
-pub const REQUIRED_NAMESPACES: [(&str, &str, &str); 3] = [
+///
+/// `wps` is included because a VML text box / freeform becomes `wps:wsp`
+/// (AUD-37). The URI is vendor and identical in both families.
+pub const REQUIRED_NAMESPACES: [(&str, &str, &str); 4] = [
     ("a", NS_A, NS_TRANSITIONAL_A),
     ("wp", NS_WP, NS_TRANSITIONAL_WP),
     ("pic", NS_PIC, NS_TRANSITIONAL_PIC),
+    ("wps", URI_SHAPE, URI_SHAPE),
 ];
 
 /// A shape that is not a picture: where it is, how big, and what it is called.

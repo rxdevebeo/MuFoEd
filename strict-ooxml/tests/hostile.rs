@@ -1059,11 +1059,97 @@ mod writer {
     }
 }
 mod opc {
-    //! AUD-20, AUD-22, AUD-24, AUD-25: relationship types, part names, `.rels`
-    //! outside `_rels/`.
+    //! AUD-17, AUD-20, AUD-22, AUD-24, AUD-25: ZIP integrity, relationship types,
+    //! part names, `.rels` outside `_rels/`.
 
     use super::*;
     use strict_ooxml_core::opc::Package;
+
+    /// AUD-17: a central-directory local-header offset that does not land on a
+    /// local signature is `InvalidZip`, not a hang or a panic (`rec.docx`).
+    #[test]
+    fn a_bad_local_header_offset_is_invalid_zip() {
+        assert_survives("bad local header offset", || {
+            let error = open(
+                DocxBuilder::strict()
+                    .body("<w:p/>")
+                    .bad_local_header_offset()
+                    .build(),
+                &OpenOptions::default(),
+            );
+            assert!(
+                matches!(error, strict_ooxml::StrictError::InvalidZip(_)),
+                "{error:?}"
+            );
+        });
+    }
+
+    /// AUD-17: a CRC that does not match the stored bytes is `InvalidZip`.
+    #[test]
+    fn a_bad_crc_is_invalid_zip() {
+        assert_survives("bad crc", || {
+            let error = open(
+                DocxBuilder::strict().body("<w:p/>").bad_crc().build(),
+                &OpenOptions::default(),
+            );
+            assert!(
+                matches!(error, strict_ooxml::StrictError::InvalidZip(_)),
+                "{error:?}"
+            );
+        });
+    }
+
+    /// AUD-37: VML text box → `wps:wsp` must declare `xmlns:wps` so the written
+    /// package opens again (`Spanner visibility graph.docx`).
+    ///
+    /// The fixture omits `xmlns:wps` on purpose (DocxBuilder would add it); `v`
+    /// is declared on the root so classification can see the shape.
+    #[cfg(feature = "write")]
+    #[test]
+    fn a_converted_vml_text_box_declares_wps_and_round_trips() {
+        assert_survives("vml textbox declares wps", || {
+            let document = br##"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:body><w:p><w:r><w:pict><v:shape id="tb" type="#_x0000_t202" style="width:200pt;height:60pt">
+<v:textbox><w:txbxContent><w:p><w:r><w:t>inside</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:shape></w:pict></w:r></w:p></w:body></w:document>"##;
+            let bytes = DocxBuilder::transitional()
+                .document_bytes(document.to_vec())
+                .build();
+            let options = OpenOptions::default()
+                .conformance(strict_ooxml::ConformancePolicy::Normalize)
+                .normalization(strict_ooxml::TransitionalNormalizer::with_options(
+                    strict_ooxml::NormalizerOptions {
+                        max_expansion: strict_ooxml::ExpansionLimit::Bytes(32 * 1024),
+                        ..strict_ooxml::NormalizerOptions::default()
+                    },
+                ));
+            let opened =
+                StrictDocument::open_reader(Cursor::new(bytes), &options).expect("open+normalize");
+            let document_xml = opened
+                .package()
+                .read_part(&strict_ooxml_core::part::PartId::new("/word/document.xml"))
+                .expect("document");
+            let text = String::from_utf8(document_xml).expect("utf-8");
+            assert!(
+                text.contains(
+                    "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
+                ),
+                "normalized part must declare wps: {text}"
+            );
+            assert!(text.contains("<wps:wsp"), "expected converted shape: {text}");
+            let written = strict_ooxml::write_package(
+                opened.document(),
+                Some(opened.package()),
+                &strict_ooxml::WriteOptions::default(),
+            )
+            .expect("write");
+            StrictDocument::open_reader(Cursor::new(written.bytes), &OpenOptions::default())
+                .expect("re-open written package");
+        });
+    }
 
     /// AUD-24: OPC part names are compared ASCII case-insensitively
     /// (ECMA-376 Part 2 §10.1.2.1), so a ZIP that lists both

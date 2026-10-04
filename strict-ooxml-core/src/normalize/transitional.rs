@@ -698,20 +698,29 @@ impl TransitionalNormalizer {
                         written
                     }
                     // A self-closing tag has no subtree: the decision is the
-                    // whole removal.
-                    Rewritten::Drop => {
-                        context.pop_element();
-                        Ok(())
-                    }
+                    // whole removal. `rewrite_start` returns `Drop` *before*
+                    // pushing, so there is nothing to pop — popping here used
+                    // to remove the parent, and after AUD-69 (End tags taken
+                    // from the stack) that wrote `</w:settings>` for a dropped
+                    // child of `w:compat` and left the real end unmatched.
+                    Rewritten::Drop => Ok(()),
                 }
             }
-            Event::End(end) => {
+            Event::End(_end) => {
                 if context.skip_depth > 0 {
                     context.skip_depth -= 1;
                     return Ok(());
                 }
-                context.pop_element();
-                write_end(writer, &end).map_err(|error| xml_error(&context.part, error.to_string()))
+                // AUD-69: End must match the rewritten Start name. Passing the
+                // producer's End through left `</xs:schema>` after `<xsd:schema>`
+                // when `prefix_for` collapsed sibling aliases, and would also
+                // break T3 renames that are not self-closing.
+                let output_name = context
+                    .pop_element()
+                    .unwrap_or_else(|| String::from_utf8_lossy(_end.name().as_ref()).into_owned());
+                let rewritten = BytesEnd::new(output_name);
+                write_end(writer, &rewritten)
+                    .map_err(|error| xml_error(&context.part, error.to_string()))
             }
             other => write_passthrough(writer, &other)
                 .map_err(|error| xml_error(&context.part, error.to_string())),
@@ -869,8 +878,29 @@ impl TransitionalNormalizer {
         // The prefix is looked up under the *rewritten* namespace. Using the
         // original here is what made every element pick up a freshly minted
         // `n0` prefix while its declaration still named `w`.
+        //
+        // AUD-69: when the producer already bound a prefix to this URI on the
+        // element (or an ancestor), keep that prefix. `prefix_for` returns the
+        // *first* binding for the URI, so a sibling that declares only `xmlns:xs`
+        // after an earlier sibling declared `xmlns:xsd` for the same URI was
+        // renamed to `xsd:…` without a live `xmlns:xsd` — and the End tag still
+        // said `xs:`. Preferring the original prefix keeps both ends and the
+        // declaration in agreement.
         let new_local = new_local.to_string();
-        let prefix = context.prefix_for(&element_uri);
+        let original_prefix = {
+            let name = start.name();
+            let raw = String::from_utf8_lossy(name.as_ref());
+            match raw.split_once(':') {
+                Some((prefix, _)) => prefix.to_owned(),
+                None => String::new(),
+            }
+        };
+        let prefix =
+            if context.uri_for(original_prefix.as_bytes()) == Some(element_uri.as_str()) {
+                original_prefix
+            } else {
+                context.prefix_for(&element_uri)
+            };
         let qualified = PartContext::qualified_name(&prefix, &new_local);
         buffer.set_name(qualified.as_bytes());
         // The element joins the open-element stack here rather than in the event
@@ -881,10 +911,10 @@ impl TransitionalNormalizer {
         // was the wrong string and the four direction-neutral renames stayed
         // unreachable while the table said they were populated.
         //
-        // The **Strict** name is what is recorded, because that is what the table
-        // is keyed on: `CT_TcBorders` and friends are containers the rename never
-        // touches, and a key spelled either way would be a second way to be wrong.
-        context.push_element(&new_local);
+        // The **Strict** local name is what `parent_local` needs (T3 keys), and
+        // the rewritten qualified name is what the matching `End` must emit
+        // (AUD-69).
+        context.push_element(&new_local, &qualified);
         Rewritten::Keep(buffer.into_owned())
     }
 }
@@ -1336,6 +1366,10 @@ pub(crate) struct PartContext {
     skip_depth: usize,
     /// The open WML elements, outermost first, as the output tree stands.
     ///
+    /// Each entry is `(strict_local, output_qname)`: T3/`parent_local` needs the
+    /// Strict local name; the matching `End` event must emit `output_qname`
+    /// (AUD-69), not the producer's original end tag.
+    ///
     /// T3 needs the **parent**, not the element: Strict renamed the edges of
     /// `CT_TblBorders`, `CT_TcBorders`, `CT_TblCellMar` and `CT_TcMar` to
     /// `start`/`end` and left `CT_PBdr`, `CT_PageBorders` and `CT_PageMar`
@@ -1346,7 +1380,7 @@ pub(crate) struct PartContext {
     /// T4 needs the element, which is the last entry. An element is pushed only
     /// once the pipeline has decided to keep it, so a dropped subtree leaves the
     /// stack exactly as it found it and the matching `End` has nothing to pop.
-    open_elements: Vec<String>,
+    open_elements: Vec<(String, String)>,
     /// The parent of the element currently being rewritten, set by
     /// `rewrite_start` because that element is not on the stack yet.
     pending_parent: String,
@@ -1436,8 +1470,9 @@ impl PartContext {
     }
 
     /// Records an element the pipeline has decided to keep.
-    fn push_element(&mut self, local: &str) {
-        self.open_elements.push(local.to_owned());
+    fn push_element(&mut self, local: &str, output_name: &str) {
+        self.open_elements
+            .push((local.to_owned(), output_name.to_owned()));
     }
 
     /// The next `wp:docPr/@id` for a converted VML picture.
@@ -1475,14 +1510,17 @@ impl PartContext {
             .collect()
     }
 
-    /// Forgets the innermost open element.
-    fn pop_element(&mut self) {
-        if let Some(name) = self.open_elements.pop() {
+    /// Forgets the innermost open element and returns its rewritten qualified name.
+    fn pop_element(&mut self) -> Option<String> {
+        if let Some((name, output)) = self.open_elements.pop() {
             if name == "pPr" {
                 self.ppr_bidi = false;
             } else if name == "tblPr" {
                 self.tblpr_bidi_visual = false;
             }
+            Some(output)
+        } else {
+            None
         }
     }
 
@@ -1495,7 +1533,7 @@ impl PartContext {
     /// `w:tblPr`, found no entry, and every one of the four direction-neutral
     //  renames was unreachable while the table said it was populated.
     fn parent_local(&self) -> Option<&str> {
-        self.open_elements.last().map(String::as_str)
+        self.open_elements.last().map(|(local, _)| local.as_str())
     }
 
     fn location(&self) -> SourceLocation {
@@ -2760,7 +2798,7 @@ mod tests {
  xmlns:v="urn:schemas-microsoft-com:vml">
 <w:body><w:p><w:r><w:pict><v:shape id="tb" type="#_x0000_t202" style="width:200pt;height:60pt">
 <v:textbox><w:txbxContent><w:p><w:r><w:t>inside the box</w:t></w:r></w:p></w:txbxContent></v:textbox>
-</v:shape></w:pict></w:r></w:p></w:body></w:document>"#;
+</v:shape></w:pict></w:r></w:p></w:body></w:document>"##;
         let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
         let text = String::from_utf8(output.into_owned()).unwrap();
         assert!(!text.contains("v:shape"), "and no VML: {text}");
@@ -2774,6 +2812,11 @@ mod tests {
             text.contains("<wps:bodyPr"),
             "bodyPr is required after the optional txbx: {text}"
         );
+        // AUD-37: a prefix the conversion introduces must be declared on the root.
+        assert!(
+            text.contains("xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""),
+            "wps must be bound on the root: {text}"
+        );
         // Exactly one `w:txbxContent`: the conversion writes its own and a second
         // wrapper would nest them, which is valid XML and a text box whose every
         // paragraph is one level too deep.
@@ -2784,6 +2827,63 @@ mod tests {
         );
         let report = normalizer.report();
         assert_eq!(report.lossy_count(), 0, "nothing was lost: {report}");
+    }
+
+    /// Dropping an empty child must not steal the parent's stack slot: after
+    /// AUD-69 the End tag is taken from that stack, so a spurious pop rewrote
+    /// `</w:compat>` as `</w:settings>` (COOKIE POLICY.docx).
+    #[test]
+    fn dropping_an_empty_child_does_not_close_the_parent() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:compat><w:useSingleBorderforContiguousCells w:val="true"/><w:compatSetting w:name="x" w:uri="u" w:val="1"/></w:compat>
+</w:settings>"#;
+        let output = normalizer
+            .normalize(&PartId::new("/word/settings.xml"), source.as_bytes())
+            .unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(
+            text.contains("</w:compat>"),
+            "compat must close with its own End: {text}"
+        );
+        assert_eq!(
+            text.matches("</w:settings>").count(),
+            1,
+            "settings End once: {text}"
+        );
+    }
+
+    /// AUD-69: sibling elements that each declare the same URI under different
+    /// prefixes (or re-declare one prefix) must keep a live binding — neighbours
+    /// are not ancestors, and `prefix_for` must not rename the later sibling onto
+    /// a prefix whose declaration has gone out of scope.
+    #[test]
+    fn sibling_namespace_declarations_stay_on_each_sibling() {
+        let normalizer = TransitionalNormalizer::new();
+        let xsd = "http://www.w3.org/2001/XMLSchema";
+        let source = format!(
+            r#"<root>
+<xsd:schema xmlns:xsd="{xsd}" xmlns:xs="{xsd}"><xsd:element name="a"/></xsd:schema>
+<xs:schema xmlns:xs="{xsd}"><xs:element name="b"/></xs:schema>
+</root>"#
+        );
+        let output = normalizer
+            .normalize(&PartId::new("/customXml/item1.xml"), source.as_bytes())
+            .unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        // The second sibling keeps its own prefix and a matching End tag.
+        assert!(
+            text.contains(&format!(r#"<xs:schema xmlns:xs="{xsd}""#)),
+            "second sibling must keep a live xs binding: {text}"
+        );
+        assert!(
+            text.contains("</xs:schema>"),
+            "End tag must match the rewritten Start: {text}"
+        );
+        assert!(
+            text.contains(r#"name="b""#),
+            "second schema content kept: {text}"
+        );
     }
 
     /// A shape carrying **both** a `v:imagedata` and a `v:textbox` is an OLE

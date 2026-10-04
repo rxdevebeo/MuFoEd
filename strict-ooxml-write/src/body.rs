@@ -52,8 +52,10 @@ pub fn block_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, block: &Block) {
         Block::Paragraph(paragraph) => paragraph_element(ctx, xml, paragraph),
         Block::Table(table) => table_element(ctx, xml, table),
         Block::SdtBlock(sdt) => {
-            ctx.report_unsupported("w:sdt", "block-level content control", &sdt.location);
-            blocks(ctx, xml, &sdt.blocks);
+            // AUD-68: keep the control; unwrapping made children body blocks.
+            write_sdt_around(xml, &sdt.properties(), |xml| {
+                blocks(ctx, xml, &sdt.blocks);
+            });
         }
         Block::AltChunk(info) => {
             ctx.report_unsupported("w:altChunk", "alternative format chunk", &info.location);
@@ -191,10 +193,12 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
         }
         Inline::Tab => xml.empty("w:tab"),
         Inline::SdtInline(sdt) => {
-            ctx.report_unsupported("w:sdt", "inline content control", &sdt.location);
-            for child in &sdt.inlines {
-                inline_item(ctx, xml, child);
-            }
+            // AUD-68: keep the control; unwrapping dropped tag/alias/id.
+            write_sdt_around(xml, &sdt.properties(), |xml| {
+                for child in &sdt.inlines {
+                    inline_item(ctx, xml, child);
+                }
+            });
         }
         Inline::BookmarkStart(bookmark) => {
             xml.start("w:bookmarkStart");
@@ -507,10 +511,17 @@ fn write_sdt_around(
     xml.end();
 }
 
-/// Writes an `w:sdt` wrapper. Kept for callers that build content controls.
+/// Writes an `w:sdt` wrapper (AUD-68). Block content wins when both are set.
 pub fn sdt_container(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtContainer) {
-    ctx.report_unsupported("w:sdt", "content control", &sdt.location);
-    blocks(ctx, xml, &sdt.blocks);
+    write_sdt_around(xml, &sdt.properties(), |xml| {
+        if !sdt.blocks.is_empty() {
+            blocks(ctx, xml, &sdt.blocks);
+        } else {
+            for child in &sdt.inlines {
+                inline_item(ctx, xml, child);
+            }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -605,5 +616,37 @@ mod tests {
         });
         let text = render(&[paragraph]);
         assert!(text.contains("w:after=\"200\""), "{text}");
+    }
+
+    /// AUD-68: block and inline content controls are written as `w:sdt`, not unwrapped.
+    #[test]
+    fn a_block_sdt_is_written_with_its_properties() {
+        use strict_ooxml_wml::model::block::SdtContainer;
+
+        let sdt = SdtContainer {
+            tag: Some("t".into()),
+            alias: Some("Alias".into()),
+            id: Some("42".into()),
+            placeholder: None,
+            showing_placeholder: false,
+            blocks: vec![Block::Paragraph(text_paragraph("inside", Space::Default))],
+            inlines: Vec::new(),
+            location: location(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        crate::body::block_item(&mut ctx, &mut xml, &Block::SdtBlock(sdt));
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("<w:sdt>"), "{text}");
+        assert!(text.contains(r#"<w:tag w:val="t"/>"#), "{text}");
+        assert!(text.contains(r#"<w:alias w:val="Alias"/>"#), "{text}");
+        assert!(text.contains(r#"<w:id w:val="42"/>"#), "{text}");
+        assert!(text.contains("<w:sdtContent>"), "{text}");
+        assert!(text.contains("<w:t>inside</w:t>"), "{text}");
+        assert!(
+            !report.losses().iter().any(|loss| loss.feature_id == "w:sdt"),
+            "w:sdt must not be reported unsupported: {report:?}"
+        );
     }
 }

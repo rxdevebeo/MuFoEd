@@ -51,8 +51,8 @@ CI run URL after the F9 push is recorded below once Actions finishes.
 
 ### Blockers remaining after F9
 
-1. **AUD-17, AUD-37, AUD-38, AUD-68, AUD-69** — corpus findings; fixtures wait in
-   `docx-incoming/` (`docs/corpus-incoming.md`). Block full plan §0.1 close-out.
+1. ~~**AUD-17, AUD-37, AUD-38, AUD-68, AUD-69**~~ — закрыты 2026-10-04; корпус в `docx/`,
+   `rec.docx` удалён (`docs/corpus-incoming.md`).
 2. **`strict-stage5c` page 1** — SVG/PDF pixel gates fail on `master` already
    (bottom ink +240 px, `corr_y ≈ 0.24`). Reproduced at `7bad7e8` before F9;
    not introduced by AUD-90…94. Needs a layout fix outside F9.

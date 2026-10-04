@@ -1069,6 +1069,13 @@ pub fn font_families(styles: &StyleTable) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut push = |family: Option<&std::sync::Arc<str>>| {
         if let Some(family) = family {
+            // Empty slots (`w:cs=""`, `w:eastAsia=""`) are not font names: the
+            // writer would emit `<w:font w:name=""/>`, the parser drops it, and
+            // the next write appends `""` again — not a fixed point
+            // (`doc-with-toc.docx`).
+            if family.is_empty() {
+                return;
+            }
             let family = family.to_string();
             if !out.contains(&family) {
                 out.push(family);
@@ -1167,5 +1174,39 @@ mod tests {
             });
         }
         assert_eq!(font_families(&table), vec!["Arial", "Times"]);
+    }
+
+    #[test]
+    fn font_families_skip_empty_style_slots() {
+        let mut table = StyleTable::new();
+        table.insert(Style {
+            id: StyleId::new("Normal"),
+            style_type: StyleType::Paragraph,
+            name: None,
+            based_on: None,
+            next: None,
+            link: None,
+            is_default: true,
+            semi_hidden: false,
+            hidden: false,
+            q_format: false,
+            locked: false,
+            unhide_when_used: false,
+            ui_priority: None,
+            table: Default::default(),
+            paragraph: Default::default(),
+            run: RunProperties {
+                fonts: Some(strict_ooxml_wml::model::values::Fonts {
+                    ascii: Some("Liberation Sans".into()),
+                    complex_script: Some("".into()),
+                    east_asia: Some("".into()),
+                    ..strict_ooxml_wml::model::values::Fonts::default()
+                }),
+                ..RunProperties::default()
+            },
+            based_on_chain: Vec::new(),
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        });
+        assert_eq!(font_families(&table), vec!["Liberation Sans"]);
     }
 }

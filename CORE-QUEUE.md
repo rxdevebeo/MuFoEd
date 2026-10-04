@@ -67,8 +67,10 @@
 Открытыми для **этого** документа остаются пункты §4 (покрытие 10 дыр),
 `VERTJC`/`CHARTS*`/`A-*`/`DJVU-*`, и waiver'ы `PDF-OBJSTM-BOMB` / `TBL-STYLE-PR`
 / `CENSUS-LOCAL` / `FUZZ` (24 h). Новые находки корпуса
-(`AUD-17`/`AUD-37`/`AUD-38`/`AUD-68`/`AUD-69`) — в `REWORK-AUDIT-2026-10.md`,
-раздел «на новом корпусе»; документы ждут в `docx-incoming/`.
+(`AUD-17`/`AUD-37`/`AUD-38`/`AUD-68`/`AUD-69`) — ✅ закрыты 2026-10-04;
+корпус в `docx/`, см. `REWORK-AUDIT-2026-10.md` / `docs/corpus-incoming.md`.
+Зависимости (`AUD-95`…`AUD-99`, прежде всего hayro): Ф10 того же плана;
+фикстуры `docx-incoming/dep-*`, индекс — `docs/corpus-incoming.md` §«Зависимости».
 
 ## 0.1 Очередь нормалайзера: что закрыто 2026-10-02
 

@@ -2,42 +2,65 @@
 
 **Поступление:** 2026-10-03, 64 документа. **Решение владельца:** вынести их из `docx/` в
 `docx-incoming/` (в `.gitignore`), пока их дефекты не закрыты; гейт §0.4 работает на принятом
-корпусе (`docx/`, 36 документов). Задачи — в `REWORK-AUDIT-2026-10.md`, раздел «Находки на
-новом корпусе».
+корпусе (`docx/`).
 
-## Как разбирали
+## Закрыто 2026-10-04 (AUD-17 / AUD-37 / AUD-38 / AUD-68 / AUD-69)
+
+18 документов из таблицы ниже разобраны задачами:
+
+| Задача | Документы | Куда |
+|---|---|---|
+| **AUD-68** | 12 (`1. First-Steps…` … `ProjectionSolver Design`, `doc-with-toc`) | → `tests/docx/` |
+| **AUD-69** | 3 (`Contoso_Guest_WiFi…`, `SampleEmploymentAgreement`, `SampleOfferLetter`) | → `tests/docx/` |
+| **AUD-37** | 1 (`Spanner visibility graph`) | → `tests/docx/` |
+| **AUD-38** | 1 (`Programming-Basics-CSharp-…-Nakov-v2019`) | → `tests/docx/` |
+| **AUD-17** | 1 (`rec.docx`) | удалён; случай в `strict-ooxml/tests/hostile.rs` (`opc`) |
+
+Чистые 46 были возвращены ранее (2026-10-03). Корпусный гейт §0.4 теперь на полном наборе
+в `docx/` (без битого `rec.docx`).
+
+## История разбора (2026-10-03)
 
 Прогон на коммите `83fa60c` в отдельном worktree со всеми 100 документами:
 
 - `cargo test --workspace --all-features` — красный **только** `strict-ooxml-write --test
-  normalize_roundtrip`; все остальные корпусные тесты (wml, render-svg, report, core, write
-  `schema_order`/`passthrough`/`strict_conformance`, pdf) зелёные;
-- XSD-гейт — PASS; census — PASS (122 документа, 20 названных потерь, ни одной неназванной).
-
-`normalize_roundtrip` останавливается на первом плохом документе, поэтому затем он прогнан на
-каждом новом документе по отдельности (тот же бинарь, в папке корпуса — один документ).
-
-## Итог: 46 чистых, 18 с дефектами
+  normalize_roundtrip`;
+- XSD-гейт — PASS; census — PASS.
 
 | Документы | Тесты `normalize_roundtrip` | Причина | Задача |
 |---|---|---|---|
-| `1. First-Steps-in-Programming`, `2. Simple-Calculation`, `3. Simple-Conditions`, `4. Complex-Conditions`, `5. Loops`, `6. Nested-Loops`, `7. More-Complex-Loops`, `8. Become-a-Software-Engineer`, `doc-with-toc`, `Design for Rectilinear Edge Routing`, `OverlapRemoval Design`, `ProjectionSolver Design` (12) | `nothing_that_reaches_the_page_disappears`; у части также `the_written_form_is_a_fixed_point` | писатель разворачивает блочный `w:sdt`: дети становятся блоками `w:body`. Прирост блоков у каждого документа **в точности** равен «дети − 1» по всем его блочным `w:sdt` (+1 … +138) | **AUD-68** |
-| `Contoso_Guest_WiFi_Connection_Guide`, `SampleEmploymentAgreement`, `SampleOfferLetter` (3) | `every_written_part_is_well_formed_xml` | в записанном `customXml/itemN.xml` нет `xmlns:xsd` на втором и следующих `xsd:schema` (в исходнике объявлен на каждом из соседних) | **AUD-69** |
-| `Spanner visibility graph` (1) | 6 из 9 | нормализатор вставляет `wps:` в `document.xml`, не объявляя префикс; записанный документ наш же парсер не читает | **AUD-37** |
-| `Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019` (1) | `the_written_form_is_a_fixed_point` | запись не стабилизируется (16 512 273 → 16 507 911 байт), `w:sdt` в документе нет — причина не установлена | **AUD-38** |
-| `rec.docx` (1) | все 9 (не открывается) | не документ: архив 433 байта, одна запись с неверным CRC, смещения центрального каталога не сходятся. Отказ открыть — правильное поведение | **AUD-17** |
+| 12 файлов с блочным `w:sdt` | `nothing_that_reaches_the_page_disappears` / fixed-point | писатель разворачивал `w:sdt` | **AUD-68** ✅ |
+| 3 Contoso/Sample* | `every_written_part_is_well_formed_xml` | `xmlns` на соседних `customXml` | **AUD-69** ✅ |
+| `Spanner visibility graph` | 6 из 9 | `wps:` без объявления | **AUD-37** ✅ |
+| `Programming-Basics-…` | fixed-point | `a:srcRect` внутри `a:blip` | **AUD-38** ✅ |
+| `rec.docx` | не открывается | битый ZIP | **AUD-17** ✅ |
 
-**Чистые (46):** все остальные файлы папки. На них зелёны все 9 тестов `normalize_roundtrip`
-по отдельности и весь остальной набор в общем прогоне.
+## Зависимости (поступление 2026-10-04)
 
-## Порядок возврата в `docx/`
+Синтетические фикстуры, провоцирующие известные дыры апстрим-зависимостей
+(`quick-xml`, `hayro`). **Не** часть гейта §0.4 и **не** кандидаты в `docx/`:
+это локальный карантин для AUD-95…AUD-99. Пересоздать:
 
-1. ✅ **Чистые 46 возвращены в `docx/` 2026-10-03** после коммитов Д-1/Д-2/Д-3. В `docx/`
-   теперь 82 документа; полный гейт §0.4 на них зелёный (`normalize_roundtrip` включительно,
-   census 98/104 без потерь, XSD-гейт PASS). В `docx-incoming/` осталось 18 — ровно таблица выше.
-2. **Документы с дефектами — каждый задачей, которая его закрывает:** приёмка задачи включает
-   перенос её документов из таблицы в `docx/` и зелёный `normalize_roundtrip` на них. Это и есть
-   доказательство закрытия.
-3. `rec.docx` в `docx/` не возвращается: он уходит в `hostile` (AUD-17) и удаляется.
+```text
+cargo +1.92.0 run -p strict-ooxml-testkit --example write_dep_incoming
+```
 
-Когда `docx-incoming/` опустеет, этот документ закрывается отметкой «закрыт, дата».
+| Файл | Что провоцирует | Задача |
+|---|---|---|
+| `dep-hayro-jbig2-absurd.pdf` | JBIG2 / ImageXObject с `Width×Height` за бюджетом (hayro#1259) | **AUD-95** |
+| `dep-hayro-inline-absurd.pdf` | Inline image `/W 4294967295` | **AUD-95** |
+| `dep-hayro-deep-dict.pdf` | Глубокая литеральная вложенность `<<` в trailer (stack abort) | **AUD-96** |
+| `dep-hayro-tiling-self.pdf` | Самоссылающийся tiling-паттерн | **AUD-96** |
+| `dep-hayro-kids-cycle.pdf` | Цикл `/Kids` в дереве страниц | **AUD-96** |
+| `dep-hayro-cid-huge-w.pdf` | CID `/W [0 4294967295 …]` | **AUD-97** |
+| `dep-quickxml-many-attrs.docx` | O(N²)/лимит атрибутов (RUSTSEC-2026-0194) | **AUD-98** |
+| `dep-quickxml-xmlns-bomb.docx` | Много `xmlns:` на одном теге (RUSTSEC-2026-0195) | **AUD-98** |
+| `dep-quickxml-deep-ns.docx` | Глубокая вложенность + `xmlns` на уровень (#977/#980) | **AUD-98** |
+| `dep-quickxml-doctype.docx` | `DOCTYPE` + внешняя entity (XXE) | **AUD-98** |
+| `dep-quickxml-custom-entity.docx` | Непредопределённая entity | **AUD-98** |
+| `dep-quickxml-dup-attr.docx` | Дубликат имени атрибута | **AUD-98** |
+
+Приёмка каждой AUD: `hostile` зелёный на том же случае (G-6: бинарник не
+коммитится; файлы здесь — локальный оракул для ручного прогона и апстрим-PR),
+патч в `vendor/` или подтверждение, что апстрим уже закрыл дыру, запись в
+`vendor/README.md`.

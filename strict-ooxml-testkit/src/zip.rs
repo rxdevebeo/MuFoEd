@@ -24,6 +24,12 @@ struct Entry {
 pub struct ZipBuilder {
     entries: Vec<Entry>,
     method: Method,
+    /// When set, every entry's CRC in the local and central headers is wrong
+    /// (AUD-17).
+    bad_crc: bool,
+    /// When set, every central-directory local-header offset points past the
+    /// start of its local signature (AUD-17).
+    bad_local_offset: bool,
 }
 
 impl Default for ZipBuilder {
@@ -38,7 +44,24 @@ impl ZipBuilder {
         Self {
             entries: Vec::new(),
             method: Method::Stored,
+            bad_crc: false,
+            bad_local_offset: false,
         }
+    }
+
+    /// Forces a CRC mismatch on every entry (AUD-17).
+    #[must_use]
+    pub fn bad_crc(mut self) -> Self {
+        self.bad_crc = true;
+        self
+    }
+
+    /// Points every central-directory local-header offset at a byte that is not
+    /// a local-file signature (AUD-17).
+    #[must_use]
+    pub fn bad_local_header_offset(mut self) -> Self {
+        self.bad_local_offset = true;
+        self
     }
 
     /// Sets the method for entries added afterwards with [`entry`](Self::entry).
@@ -82,8 +105,20 @@ impl ZipBuilder {
         let mut out = Vec::new();
         let mut central = Vec::new();
         for entry in &self.entries {
-            let offset = fit_u32(out.len(), "local header offset");
-            let crc = crc32(&entry.data);
+            let real_offset = fit_u32(out.len(), "local header offset");
+            // Offset 1 lands inside the local signature bytes, so the reader
+            // sees a bad signature rather than a missing part.
+            let offset = if self.bad_local_offset {
+                1
+            } else {
+                real_offset
+            };
+            let real_crc = crc32(&entry.data);
+            let crc = if self.bad_crc {
+                real_crc ^ 0xFFFF_FFFF
+            } else {
+                real_crc
+            };
             let (method, payload) = match entry.method {
                 Method::Stored => (0u16, entry.data.clone()),
                 Method::Deflated => (8u16, miniz_oxide::deflate::compress_to_vec(&entry.data, 6)),

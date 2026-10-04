@@ -205,6 +205,10 @@ pub struct DocxBuilder {
     overrides: Vec<(String, String)>,
     parts: Vec<(String, Vec<u8>)>,
     method: Method,
+    /// AUD-17: emit wrong CRCs via [`ZipBuilder::bad_crc`].
+    bad_crc: bool,
+    /// AUD-17: emit bad central-directory local offsets.
+    bad_local_offset: bool,
 }
 
 const DOCUMENT_PART: &str = "word/document.xml";
@@ -243,7 +247,23 @@ impl DocxBuilder {
             )],
             parts: Vec::new(),
             method: Method::Stored,
+            bad_crc: false,
+            bad_local_offset: false,
         }
+    }
+
+    /// Forces a CRC mismatch on every ZIP entry (AUD-17).
+    #[must_use]
+    pub fn bad_crc(mut self) -> Self {
+        self.bad_crc = true;
+        self
+    }
+
+    /// Points every central-directory local-header offset past its signature (AUD-17).
+    #[must_use]
+    pub fn bad_local_header_offset(mut self) -> Self {
+        self.bad_local_offset = true;
+        self
     }
 
     /// The family this builder was created for.
@@ -408,6 +428,12 @@ impl DocxBuilder {
             .entry(DOCUMENT_RELS_PART, document_rels);
         for (name, bytes) in &self.parts {
             zip = zip.entry(name.clone(), bytes.clone());
+        }
+        if self.bad_crc {
+            zip = zip.bad_crc();
+        }
+        if self.bad_local_offset {
+            zip = zip.bad_local_header_offset();
         }
         zip.build()
     }

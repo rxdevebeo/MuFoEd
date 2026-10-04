@@ -570,10 +570,13 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
             &strict_ooxml_core::error::SourceLocation::unknown(),
         ),
     }
+    // AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`, not a
+    // child. The parser skips unknown children of `a:blip`, so a nested crop was
+    // written once and lost on the next read — fixed-point failed.
+    xml.end();
     if let Some(slice) = &picture.src_rect {
         source_rect(xml, slice);
     }
-    xml.end();
     xml.start("a:stretch");
     xml.empty("a:fillRect");
     xml.end();
@@ -1027,7 +1030,7 @@ mod tests {
     use strict_ooxml_core::error::SourceLocation;
     use strict_ooxml_core::normalize::report::NormalizationReport;
     use strict_ooxml_wml::model::drawing::{
-        BlipRef, Drawing, DrawingKind, Extent, Graphic, InlineDrawing, Picture,
+        BlipRef, Drawing, DrawingKind, Extent, Graphic, InlineDrawing, Picture, SrcRect,
     };
     use strict_ooxml_wml::model::values::Emu;
 
@@ -1108,5 +1111,66 @@ mod tests {
         let second = ctx.next_doc_pr_id();
         assert_ne!(first, second);
         assert!(!xml.has_open_elements());
+    }
+
+    /// AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`.
+    #[test]
+    fn source_rect_is_a_sibling_of_blip() {
+        let drawing = Drawing {
+            kind: DrawingKind::Inline(InlineDrawing {
+                extent: Some(Extent {
+                    cx: Emu(100),
+                    cy: Emu(100),
+                }),
+                effect_extent: None,
+                doc_pr: None,
+                graphic_uri: None,
+                graphic: Box::new(Graphic::Picture(Picture {
+                    name: None,
+                    descr: None,
+                    blip: Some(BlipRef {
+                        embed: Some(RelId::new("rId1")),
+                        link: None,
+                        resolved: Some(PartId::new("/word/media/image1.png")),
+                        location: SourceLocation::unknown(),
+                    }),
+                    extent: None,
+                    src_rect: Some(SrcRect {
+                        left: 1,
+                        top: 2,
+                        right: 3,
+                        bottom: 4,
+                    }),
+                    xfrm: None,
+                })),
+                location: SourceLocation::unknown(),
+            }),
+            location: SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut media = BTreeMap::new();
+        media.insert("/word/media/image1.png".to_owned(), "rId1".to_owned());
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "/word/media/image1.png".to_owned(),
+            "media/image1.png".to_owned(),
+        );
+        let mut ctx = Ctx::new(&mut report).with_relationships(
+            BTreeMap::new(),
+            media,
+            targets,
+            BTreeMap::new(),
+        );
+        let mut xml = XmlWriter::new();
+        drawing_element(&mut ctx, &mut xml, &drawing);
+        let text = xml.finish().expect("balanced");
+        assert!(
+            text.contains(r#"<a:blip r:embed="rId1"/><a:srcRect l="1" t="2" r="3" b="4"/>"#),
+            "srcRect must follow the closed blip: {text}"
+        );
+        assert!(
+            !text.contains("<a:blip r:embed=\"rId1\"><a:srcRect"),
+            "srcRect must not nest inside blip: {text}"
+        );
     }
 }

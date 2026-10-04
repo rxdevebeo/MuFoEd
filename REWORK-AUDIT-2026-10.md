@@ -2,8 +2,8 @@
 
 **Дата:** 2026-10-02 · **Основание:** аудит реализованной части проекта (ядро, WML, report,
 render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:** Ф9 закрыта
-(AUD-90…94); полный план — с открытыми blocker'ами (см. статус-таблицу и
-`docs/ci-baseline-2026-10.md` §After)
+(AUD-90…94); корпус AUD-17/37/38/68/69 закрыт; открыта **Ф10 зависимости**
+(AUD-95…99, прежде всего hayro); см. статус-таблицу и `docs/ci-baseline-2026-10.md` §After
 
 > **Как читать.** Документ закрывает **все** найденные дефекты. Порядок фаз — обязательный:
 > каждая фаза опирается на инфраструктуру и инварианты предыдущей. Внутри фазы задачи можно
@@ -32,8 +32,13 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-11 | ✅ выполнена | `a8873b7` | Новый `LimitKind::ZipWriteField`. `finish()` считает все поля через `u16_field`/`u32_field` (`try_from`), а `write_local`/`write_central`/`write_eocd` получают уже проверенные значения — `as u16`/`as u32` в файле больше нет (в приёмке «только константы»). Поля: длина имени, сжатый и несжатый размер, смещение локального заголовка, число записей, размер и смещение центрального каталога. ZIP64 по-прежнему не пишется. Тесты: 3 юнита (имя 70 000 байт → `Err`; ровно 65 535 → `Ok`; 65 536 частей → `Err`; детерминированный снапшот байт-в-байт и повторное чтение архива). Два падают без проверок |
 | AUD-12 | ✅ выполнена | `3f1b359` | `ToUnicode`: токен проверяется как ASCII hex до любого среза, срезы по `as_bytes()`/`chunks_exact(4)`; `hex_pairs` больше не подставляет U+0000 вместо нечитаемого токена — `None` плюс запись `pdf.font.tounicode-invalid` (один раз на шрифт). `/W` и `bfrange`: длина диапазона ограничена остатком бюджета `max_font_glyphs`, обрезание `/W` даёт `pdf.font.widths-truncated`, обрезание `bfrange` — `pdf.font.bfrange-truncated` (Д-3: это диапазон назначений `ToUnicode`, а не ширины, и отчёт с неверным именем механизма отправляет читателя в другой словарь), `second < first` — `pdf.font.widths-reversed` / `pdf.font.bfrange-reversed` и пропуск группы. `/SMask`: `ImageCache` держит `in_progress: RefCell<BTreeSet<ObjectId>>` (повторный вход — цикл, маски нет) и `decode_mask`, который декодирует маску с `mask_of = |_| None` и отмечает `pdf.image.smask-cycle`, если у маски есть свой `/SMask`. `PdfFont` несёт `notes: Vec<(String,String)>`, `PageResources` их собирает, страница пишет их в отчёт. Тесты: 9 в `hostile.rs` (4 умирают на pre-fix, два образа маски — аварийное завершение процесса) |
 | AUD-13 | ✅ выполнена | `2574704` | `PageBudget` на страницу (glyphs/operations/path_points) через вложенные формы; превышение — мягкая остановка и `pdf.page.budget`. Кэш форм и шрифтов по `ObjectId` на документ; `max_fonts` при вставке → stub без Unicode и `pdf.font.budget`. `bounded_decompress` (единственное место с `decompressed_content*`); `max_input_bytes` 256 MiB до `load`; waiver `PDF-OBJSTM-BOMB`. `max_raster_pixels` через `checked_mul`. Тесты: 4 в `hostile.rs::budget`, обновлён `resources.rs` |
-| AUD-17, AUD-37, AUD-38, AUD-68, AUD-69 | ⏳ не начаты (новые, 2026-10-03) | — | Находки на новом корпусе, раздел ниже; документы ждут в `docx-incoming/` (`docs/corpus-incoming.md`) |
+| AUD-17 | ✅ выполнена | — | битый ZIP → `hostile::opc` (`bad_crc` / `bad_local_header_offset`); `rec.docx` удалён |
+| AUD-37 | ✅ выполнена | — | `wps` в `REQUIRED_NAMESPACES`; `Spanner visibility graph.docx` → `docx/` |
+| AUD-38 | ✅ выполнена | — | `a:srcRect` — сосед `a:blip` (не ребёнок); `Programming-Basics-…` → `docx/` |
+| AUD-68 | ✅ выполнена | — | блочный/строчный/вложенный `w:sdt` пишется через `write_sdt_around`; 12 документов → `docx/` |
+| AUD-69 | ✅ выполнена | — | исходный префикс элемента + End по стеку; 3 Contoso/Sample* → `docx/` |
 | AUD-88 | ✅ выполнена | `a9ceac1` | vendor hayro 0.7.x + PrintCraft/MuFoEd guards; `hostile::raster` ×5; ADR-0011 amendment |
+| AUD-95…99 | ⏳ открыты (2026-10-04) | — | Ф10: зависимости hayro/quick-xml; карантин `docx-incoming/dep-*` (`docs/corpus-incoming.md` §«Зависимости») |
 | AUD-14 | ✅ выполнена | `4bfc85e` | До `png::Decoder` читается IHDR вручную; `width×height×channels×bytes_per_sample` через `checked_mul` ≤ `RenderOptions::limits.max_single_uncompressed`; превышение — `pdf.image.too-large`, картинка не встраивается. `encode_with_limit` из `document.rs`. Тесты: юнит на IHDR-бомбу, `tests/hostile.rs` через `render_with_source` |
 | AUD-15 | ✅ выполнена | `a95507d` | `PdfOptions::{max_table_lines=4000, max_table_cells=10_000}`; сверх линий — `convert.table.budget`, таблицы не ищутся; сверх ячеек — та же запись, текст абзацами. `union_crossings` — сортировка вертикалей + скользящее окно (O(n log n)). Тесты: hostile 20k линий; `tests/tables.rs` без смены ожиданий |
 | AUD-16 | ✅ выполнена | `fbe73cf` | Строка/заголовок через `Read::take(8 KiB)`, ≤100 заголовков, тело ≤1 MiB (`413`), иначе `431`; `set_read/write_timeout(10s)`; всегда `Connection: close`; сокет после `accept` снова blocking. Тесты: 100 KiB → 431, 101 заголовок → 431, Content-Length → 413, idle ≤11 с + следующий запрос |
@@ -95,7 +100,12 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 | AUD-92 | ✅ выполнена | `e8d30a9` | `fuzz_normalize`/`docx_full`/`pdf`/`convert` + dict + CI; фикс `Box::leak` в pdf geometry; 1h — WSL/`fuzz-nightly` |
 | AUD-93 | ✅ выполнена | `59be16d` | README/CORE-QUEUE/waivers/fuzz-protocol; Stage-8 статус |
 | AUD-94 | ✅ выполнена | `8250959` | локальный гейт §0.4 (кроме pre-existing `strict-stage5c` SSIM); F9 закрыта; blocker'ы — AUD-17/37/38/68/69 + stage5c |
-| AUD-17, AUD-37, AUD-38, AUD-68, AUD-69 | ⏳ открыты | — | находки на новом корпусе; `docx-incoming/` |
+| AUD-17, AUD-37, AUD-38, AUD-68, AUD-69 | ✅ выполнены | — | см. строки выше; корпус перенесён из `docx-incoming/` |
+| AUD-95 | ⏳ открыта (2026-10-04) | — | hayro JBIG2 / absurd image OOM (hayro#1259); фикстуры `dep-hayro-jbig2-*`, `dep-hayro-inline-*` |
+| AUD-96 | ⏳ открыта (2026-10-04) | — | hayro deep nesting / Kids cycle / tiling self; `dep-hayro-deep-dict`, `dep-hayro-kids-cycle`, `dep-hayro-tiling-self` |
+| AUD-97 | ⏳ открыта (2026-10-04) | — | hayro CID `/W` и path-line panics; `dep-hayro-cid-huge-w`; апстрим #717 |
+| AUD-98 | ⏳ открыта (2026-10-04) | — | quick-xml dep regression на пакетах `dep-quickxml-*` в `docx-incoming/` |
+| AUD-99 | ⏳ открыта (2026-10-04) | — | апстрим-PR / снятие vendor hayro после принятия патчей |
 - AUD-08 (Д-1): добавлена `fit_to_box` в `layout_table` — таблица сужается до ширины контента, если сумма колонок её превышает. План предписывал недостающим колонкам среднюю ширину и одновременно «не шире контента + 1 px»; при `gridSpan=65535` это несовместимо. Обычные таблицы не затронуты: `table_total_width` и раньше зажимал ширину таблицы шириной контента, сужение срабатывает только когда строка объявляет колонок больше, чем сетка. Исполнитель решил сам, без вопроса владельцу; при приёмке признано безвредным.
 - Census-гейт в §0.4 — только локально (waiver `CENSUS-LOCAL`, решение владельца 2026-10-03).
 - Census-гейт был сломан до начала Ф1: `report()` печатал список сообщений из переменной `out_messages`, которой в нём нет (`NameError` на ветке, которая срабатывает всегда). Исправлено в `f3f3456`; до правки §0.4 нельзя было выполнить в принципе.
@@ -150,82 +160,46 @@ render-svg, render-pdf, pdf, convert, write, CLI, view, CI) · **Статус:**
 находка `w:sdt` воспроизводится на `d9f58d6` (до начала плана, проверил исполнитель Д-1), а
 остальные конструкции в старом корпусе не встречались. Задачи встают в свои фазы:
 
-#### AUD-17 (Ф2). Битый архив `rec.docx` — в `hostile`, из корпуса — вон
+#### AUD-17 (Ф2). Битый архив `rec.docx` — в `hostile`, из корпуса — вон ✅
 
 **Проблема.** `rec.docx` — не документ: 433 байта, одна запись с неверным CRC, смещения
-центрального каталога не сходятся с локальными заголовками. Мы правильно отказываем
-(`invalid ZIP structure: bad local file header signature`), но корпусные тесты считают, что
-каждый файл корпуса открывается.
-**Решение.** Файл удаляется. Его случай воспроизводится в `strict-ooxml/tests/hostile.rs`
-(`mod opc`) через `ZipBuilder` (G-6: бинарник не коммитится): смещение локального заголовка в
-центральном каталоге указывает мимо сигнатуры; отдельно — неверный CRC.
-**Тесты.** Оба случая → `Err(InvalidZip)` за < 10 с, без паники.
-**Приёмка.** Тесты; `rec.docx` нет ни в `docx/`, ни в `docx-incoming/`.
+центрального каталога не сходятся с локальными заголовками.
+**Решение.** Файл удалён. Случай в `strict-ooxml/tests/hostile.rs` (`opc`) через
+`ZipBuilder`/`DocxBuilder::{bad_crc,bad_local_header_offset}`: смещение мимо сигнатуры;
+отдельно — неверный CRC → `Err(InvalidZip)`.
+**Приёмка.** ✅ тесты; `rec.docx` нет ни в `docx/`, ни в `docx-incoming/`.
 
-#### AUD-37 (Ф4). Нормализатор вставляет `wps:` без объявления
+#### AUD-37 (Ф4). Нормализатор вставляет `wps:` без объявления ✅
 
-**Проблема.** `Spanner visibility graph.docx` (Transitional): в исходном `document.xml` нет ни
-одного `wps:` и нет его объявления; после нормализации `wps:` в части есть, объявления нет —
-`unbound namespace prefix 'wps' at /word/document.xml:2:1881`. Наш же парсер не читает то, что
-выпустил наш же нормализатор.
-**Решение.** Любой префикс, который нормализатор вводит в часть, объявляется на корне этой части
-(Strict-URI по ADR-0007); объявление добавляется тем же кодом, который вводит элемент, а не
-отдельным проходом «собрать префиксы». Плюс общая страховка: после нормализации каждой части —
-проверка, что все использованные префиксы связаны (`XmlReader` уже это проверяет; вызвать его
-на выходе нормализатора в debug-проверке теста, не в библиотеке).
-**Тесты.** hostile: Transitional-пакет с той конструкцией из `Spanner…`, которая порождает
-`wps:` (установить по диффу нормализации; зафиксировать минимальный фрагмент в тесте) →
-`open` + `write_package` + повторный `open` = `Ok`. Корпус: `Spanner visibility graph.docx`
-переносится в `docx/`, `normalize_roundtrip` зелёный.
-**Приёмка.** Тесты; документ в `docx/`.
+**Проблема.** После VML→DrawingML в части появлялся `wps:` без `xmlns:wps`.
+**Решение.** `wps` добавлен в `vml::REQUIRED_NAMESPACES`; `declare_vml_picture_prefixes`
+объявляет его на корне вместе с `a`/`wp`/`pic`.
+**Приёмка.** ✅ unit + hostile round-trip; `Spanner visibility graph.docx` в `docx/`.
 
-#### AUD-38 (Ф4). `Programming-Basics…`: запись не стабилизируется
+#### AUD-38 (Ф4). `Programming-Basics…`: запись не стабилизируется ✅
 
-**Проблема.** `the_written_form_is_a_fixed_point`: второй проход нормализация → запись даёт
-другие байты (16 512 273 → 16 507 911); `w:sdt` в документе нет, число блоков совпадает.
-**Решение.** Сначала диагностика: дифф частей первого и второго выхода (по частям, `roxmltree`),
-причина записывается в эту задачу. Если причина в нормализаторе — чинится здесь; если в писателе
-— задача переносится в Ф6 с тем же ID и владелец уведомляется (правило «Как читать»).
-**Тесты.** Минимальный фрагмент, воспроизводящий нестабильность, в `normalize_roundtrip` или
-`hostile`; документ переносится в `docx/`.
-**Приёмка.** Причина записана; тест; документ в `docx/`.
+**Диагностика.** Менялся только `/word/document.xml`: писатель клал `a:srcRect` **внутрь**
+`a:blip`, парсер при входе в `blip` делает `skip_element` и терял 302 кропа → второй проход
+без `srcRect`.
+**Решение.** В `drawing.rs::picture_element` `source_rect` пишется после закрытия `a:blip`,
+до `a:stretch` (соседи в `pic:blipFill`).
+**Приёмка.** ✅ unit; документ в `docx/`.
 
-#### AUD-68 (Ф6). Писатель пишет `w:sdt`, а не разворачивает его
+#### AUD-68 (Ф6). Писатель пишет `w:sdt`, а не разворачивает его ✅
 
-**Проблема.** `strict-ooxml-write/src/body.rs:52` (блочный), `:160` (строчный), `:376`
-(вложенный): `report_unsupported("w:sdt", …)` и затем запись детей **вместо** контейнера.
-Элемент `w:sdt` писатель не пишет ни разу. Потеря названа (`verify_no_silent_loss` проходит), но
-настоящая: теряется контейнер с тегом, псевдонимом, id, заглушкой; дети становятся блоками
-`w:body`, и документ не проходит «разобрать → записать → разобрать». 12 документов корпуса.
-**Решение.** Писать `<w:sdt><w:sdtPr>…</w:sdtPr><w:sdtEndPr/>?<w:sdtContent>…</w:sdtContent></w:sdt>`
-на всех трёх уровнях. `w:sdtPr` — из полей `SdtContainer` (tag, alias, id, placeholder и что ещё
-несёт модель) в порядке `CT_SdtPr` (таблица порядка писателя, G21, проверяется XSD-гейтом).
-Дети `w:sdtPr`, которых модель не несёт, — запись `Partial` в `WriteReport` (G-3), а не молчание.
-`report_unsupported("w:sdt", …)` на этих путях удаляется. Зависимость: AUD-41 (sdt на уровне
-строк/ячеек в модели) — Ф5 раньше Ф6, порядок плана это уже обеспечивает; если AUD-41 к моменту
-работы не закрыт — строки/ячейки делаются в нём, блочный и строчный уровни — здесь.
-**Тесты.** writer юнит: блочный, строчный и вложенный `w:sdt` с tag/alias/id → запись → чтение
-даёт тот же `SdtContainer`; XSD-гейт зелёный; потеря `w:sdt` в отчёте исчезает (census и
-coverage-гейты пересчитываются, сдвиг записывается в коммит). Корпус: 12 документов из
-`docs/corpus-incoming.md` переносятся в `docx/`, `normalize_roundtrip` зелёный на всех.
-**Приёмка.** Тесты; `rg '"w:sdt"' strict-ooxml-write/src` не находит `report_unsupported`;
-12 документов в `docx/`. Учесть пересечение с AUD-63 (отчёт о потерях писателя, census TZ-15).
+**Проблема.** `report_unsupported("w:sdt")` + запись детей без контейнера.
+**Решение.** Блочный, строчный и `sdt_container` идут через `write_sdt_around` (как AUD-41
+для строк/ячеек таблицы).
+**Приёмка.** ✅ unit; `rg` без `report_unsupported` на `w:sdt`; 12 документов в `docx/`.
 
-#### AUD-69 (Ф6). `customXml`: теряется объявление пространства имён на соседних элементах
+#### AUD-69 (Ф6). `customXml`: теряется объявление пространства имён на соседних элементах ✅
 
-**Проблема.** `Contoso_Guest_WiFi_Connection_Guide`, `SampleEmploymentAgreement`,
-`SampleOfferLetter`: в `customXml/itemN.xml` `xmlns:xsd` объявлен **на каждом** из пяти соседних
-`xsd:schema`, а не на корне. В записанной части объявление есть только на первом — второй и
-дальше дают `unknown namespace prefix 'xsd' at 195:2`. Похоже на перезапись пространств имён,
-которая считает повторное объявление лишним без учёта области видимости.
-**Решение.** Найти код, который переписывает эту часть (нормализатор или `passthrough.rs`).
-Правило: объявление удаляется **только** если тот же префикс с тем же URI объявлен на предке в
-той же части; соседи друг другу не предки. Части, которые писатель не моделирует, вне замены
-URI переносятся байт-в-байт.
-**Тесты.** юнит перезаписи: два соседних элемента с одинаковым объявлением → оба объявления
-сохранены, результат разбирается; то же с вложенными (объявление на потомке, дублирующее
-предка, можно убрать). Корпус: 3 документа переносятся в `docx/`, `every_written_part_is_well_formed_xml` зелёный.
-**Приёмка.** Тесты; 3 документа в `docx/`.
+**Диагностика.** Не «удаление дубликата у соседей», а схлопывание алиасов: `prefix_for`
+брал первый префикс для URI (`xsd`), а сосед объявлял только `xmlns:xs`; End-тег не
+переписывался.
+**Решение.** В `rewrite_start` сохранять исходный префикс, если он уже связан с URI;
+`Event::End` эмитит qualified name со стека открытых элементов.
+**Приёмка.** ✅ unit; 3 документа в `docx/`.
 
 ---
 
@@ -301,6 +275,7 @@ python xtool/xsd-gate/opc_gate.py                                  # с AUD-21
 Ф7  Рендер SVG                AUD-70…78   поля, табуляция, секции, бюджет, MathML
 Ф8  PDF, конвертер, вьюер     AUD-80…88   корректность writer/reader/convert/view
 Ф9  Процесс, ТЗ, документы    AUD-90…94   ADR, ТЗ, fuzz, CI, финальная приёмка
+Ф10 Зависимости (hayro/xml)   AUD-95…99   апстрим-дыры; карантин `docx-incoming/dep-*`
 ```
 
 Почему так: Ф1–Ф2 устраняют то, что роняет процесс, и без этого фаззинг (Ф9) бесполезен;
@@ -1864,6 +1839,128 @@ release (контрольные «красный квадрат» и обычн�
 
 **Приёмка.** Тесты зелёные; шаг CI «Hostile inputs (release)» прогоняет `mod raster`;
 полный гейт §0.4 с `--all-features`; ADR-0011 дополнен решением о вендоринге.
+
+---
+
+## Ф10. Зависимости: открытые дыры `hayro` / `quick-xml` (2026-10-04)
+
+Источник: разбор открытых issues и RustSec по runtime-зависимостям; локальный
+карантин — `strict-ooxml-core/tests/docx-incoming/dep-*` (см. `docs/corpus-incoming.md`
+§«Зависимости»; пересоздание — `write_dep_incoming`). Порядок: **сначала hayro**
+(роняет процесс на `raster`), затем XML-регрессии, затем снятие вендора.
+
+### AUD-95. hayro: JBIG2 / absurd image → OOM (hayro#1259) — приоритет 1
+
+**Проблема.** Апстрим `hayro-syntax::filter::jbig2::decode` аллоцирует буфер по
+`width×height` из заголовка JBIG2 **до** наших `ImageXObject` / `draw_image`
+гвардов. Воспроизведено апстримом как `memory allocation of ~66 GB` (issue #1259).
+Словарь `/Width 4294967295` на Image XObject и inline `/W` — тот же класс.
+
+**Решение.**
+1. В `vendor/hayro-syntax` отклонять `width×height > 2^28` сразу после
+   `Image::new_embedded`, до `vec![0; …]` / luma decode (тот же потолок, что
+   `MAX_IMAGE_PIXELS`). Пометить `PrintCraft / MuFoEd patch:`.
+2. В `vendor/hayro` / `hayro-interpret` убедиться, что inline и XObject пути
+   по-прежнему режут абсурдный размер (AUD-88); при расхождении — тот же потолок.
+3. Сформулировать апстрим-PR на LaurenzV/hayro (тот же патч).
+4. Фикстуры карантина: `dep-hayro-jbig2-absurd.pdf`, `dep-hayro-inline-absurd.pdf`.
+
+**Тесты.** `strict-ooxml-pdf/tests/hostile.rs::raster::{absurd_jbig2_dimensions_are_skipped,
+absurd_image_dimensions_are_skipped}` через `harness::bounded` → `Returned` за < 10 с,
+без OOM/паники. Юнит `pixel_budget_ok` в `vendor/hayro-syntax/.../jbig2.rs`.
+Ручной прогон: `Rasterizer::new` + `page_png` на файлах карантина.
+
+**Приёмка.** Тесты; `vendor/README.md` строка про JBIG2; апстрим-PR открыт или
+записан блокер «нет ответа / отклонён» в задаче.
+
+---
+
+### AUD-96. hayro: глубокая вложенность, Kids-цикл, tiling self — приоритет 2
+
+**Проблема.**
+- Литеральная вложенность `<<` в trailer / object graph без лимита → stack abort
+  (exit 134), без `Result` (см. обход в pdq / обсуждение recursion cap в
+  `hayro-syntax` `Object::read` / `Dict::read`).
+- Цикл `/Kids` и самоссылающийся tiling: AUD-88 закрыл наши известные кейсы
+  вендорными гвардами; нужно закрепить карантинными PDF и проверить, что
+  compressed-stream nesting (невидимый byte-scan'у) либо режется
+  `MAX_NESTED_INTERPRETATION_DEPTH` / `MAX_PAINT_NESTING`, либо даёт чистый `Err`,
+  а не abort.
+
+**Решение.**
+1. В `vendor/hayro-syntax`: явный recursion cap на `Object`/`Dict`/`Array` read
+   (и skip-пути), ошибка вместо abort; цикл `/Kids` уже есть — не ослаблять.
+2. Подтвердить `MAX_PAINT_NESTING` на `dep-hayro-tiling-self.pdf`.
+3. Фикстуры: `dep-hayro-deep-dict.pdf`, `dep-hayro-kids-cycle.pdf`,
+   `dep-hayro-tiling-self.pdf`.
+4. Апстрим-PR на recursion cap.
+
+**Тесты.** `hostile::raster` + при необходимости новые кейсы: deep-dict и
+kids-cycle → `Returned(Ok|Err)` (не abort), tiling-self → `Returned(Ok)`.
+Прогон под `bounded` (1 MiB stack, 10 s).
+
+**Приёмка.** Тесты; патч в vendor; апстрим-PR или блокер в задаче.
+
+---
+
+### AUD-97. hayro: CID `/W` и path-line panic (hayro#717) — приоритет 3
+
+**Проблема.** Огромные диапазоны `/W`/`/W2` зацикливали апстрим (AUD-88: `MAX_CID`).
+Отдельно открыт panic `Max. number of lines per path exceeded` в vello/tile при
+враждебных path (#717) — наш `raster` наследует.
+
+**Решение.**
+1. Регрессия на `dep-hayro-cid-huge-w.pdf` остаётся зелёной (`huge_cid_width_ranges_terminate`).
+2. Для #717: либо патч в vendor (превратить assert в skip + warn / `Err` на
+   уровне interpret), либо лимит `PdfLimits`/`RasterOptions` на точки пути **до**
+   вызова vello; зафиксировать минимальный PDF в карантине, когда будет
+   минимизированный repro.
+3. Апстрим: следить за #717 / слать PR.
+
+**Тесты.** Существующий CID hostile; новый hostile на path-bomb, когда появится
+минимальный вход (до того — waiver-строка в задаче с ссылкой на #717).
+
+**Приёмка.** CID зелёный; path-panic либо закрыт тестом, либо явно отложен с
+ссылкой на апстрим issue.
+
+---
+
+### AUD-98. quick-xml: карантинные `.docx` и контракт обёртки
+
+**Проблема.** RUSTSEC-2026-0194/0195 закрыты в `quick-xml 0.41.0`; #977/#980 —
+про `NsReader`, который мы не используем. Риск регрессии при апгрейде или при
+ослаблении `ResourceLimits`.
+
+**Решение.** Карантин `dep-quickxml-*.docx` + уже добавленные юнит-тесты в
+`strict-ooxml-core/src/xml/mod.rs`. Публичный путь: `Package::open` /
+`XmlReader` на `word/document.xml` → `LimitExceeded` или `InvalidXml`, без
+паники и без многосекундного зависания. Не поднимать `max_xml_attributes_per_elem`
+без пересмотра этой задачи.
+
+**Тесты.** Юниты xml (many attrs, xmlns bomb, depth+xmlns, doctype, entity,
+dup attr); опционально integration в `strict-ooxml/tests/hostile.rs`, читающий
+байты из `docx-incoming/dep-quickxml-*.docx` если каталог есть
+(`std::fs::metadata` → ignore иначе), иначе тот же вход через `DocxBuilder`.
+
+**Приёмка.** Тесты зелёные на 0.41.x; в задаче записана минимальная версия
+`quick-xml`, ниже которой возвращаться нельзя.
+
+---
+
+### AUD-99. Снятие vendor hayro после принятия патчей апстримом
+
+**Проблема.** `vendor/hayro*` — временный долг (AUD-88 + AUD-95…97). Пока апстрим
+не принял эквивалент, `[patch.crates-io]` остаётся.
+
+**Решение.** Когда LaurenzV/hayro выпустит релиз с JBIG2 budget, recursion cap,
+image/CID/page-tree guards: удалить `vendor/hayro*`, снять patch, поднять
+версии в `strict-ooxml-pdf`, прогнать `hostile::raster` и полный гейт §0.4 с
+`--all-features`. Обновить `vendor/README.md` / `docs/ATTRIBUTION-vendor-hayro.md`.
+
+**Зависимость.** AUD-95, AUD-96; AUD-97 — по возможности.
+
+**Приёмка.** Нет `vendor/hayro*`; `cargo deny` / гейт зелёные; hostile raster
+зелёный на crates.io hayro.
 
 ---
 
