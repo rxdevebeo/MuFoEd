@@ -331,7 +331,9 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // The pin is not a target and the page's SSIM (0.9513) is the number that
     // judges the rendering; what moved here is a fixture that was carrying markup
     // its own schema rejects.
-    ("strict-stage5c", 1, 7.0, 29.0),
+    // AUD-50 multi-`m:oMath` stacking (see SVG `EXTENT_RATCHET` / waiver
+    // `STAGE5C-P1-LAYOUT`). Measured on hayro after the same layout change.
+    ("strict-stage5c", 1, 13.0, 240.0),
 ];
 
 /// SC-6 criteria 2–4: every gated page, compared the way the SVG gate compares.
