@@ -8,6 +8,11 @@ use strict_ooxml_wml::model::{
 
 mod structured;
 pub use structured::{Address, Container, Edit, Editor, Story};
+mod operations;
+pub use operations::{
+    IdentityChange, MoveReport, OperationError, OperationLimits, Operations, ReplacePolicy,
+    ReplaceReport, SearchHit, SearchQuery, SearchResult, SearchScope, TextQuery, TextSlice,
+};
 #[cfg(feature = "save")]
 mod save;
 #[cfg(feature = "save")]

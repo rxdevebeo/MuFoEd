@@ -65,3 +65,44 @@ fn facade_edit_preview_save_refresh_and_reopen() {
     }
     assert!(!document.support_is_stale());
 }
+#[test]
+fn facade_compound_operations_save_and_reopen() {
+    use strict_ooxml::edit::{
+        OperationLimits, Operations, ReplacePolicy, SearchQuery, SearchScope, TextQuery,
+    };
+    let bytes = DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>one one</w:t></w:r></w:p><w:p><w:r><w:t>tail</w:t></w:r></w:p>")
+        .build();
+    let mut document = StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let saved = {
+        let mut editor = document.edit(EditLimits::default()).unwrap();
+        let result = Operations::new(&mut editor, OperationLimits::default())
+            .replace_all(
+                0,
+                &SearchScope::All,
+                &TextQuery::new("one"),
+                "two",
+                ReplacePolicy::Strict,
+            )
+            .unwrap();
+        assert_eq!(result.replaced, 2);
+        Operations::new(&mut editor, OperationLimits::default())
+            .move_block(1, &Address::body(0), &Address::body(2))
+            .unwrap();
+        editor
+            .save(2, &WriteOptions::default(), SavePolicy::Lossless)
+            .unwrap()
+    };
+    let mut reopened =
+        StrictDocument::open_reader(saved.bytes.as_slice(), &OpenOptions::default()).unwrap();
+    let mut editor = reopened.edit(EditLimits::default()).unwrap();
+    let found = Operations::new(&mut editor, OperationLimits::default())
+        .search(
+            0,
+            &SearchScope::All,
+            &SearchQuery::Text(TextQuery::new("two")),
+        )
+        .unwrap();
+    assert_eq!(found.hits.len(), 2);
+    assert_eq!(found.hits[0].paragraph, Address::body(1));
+}

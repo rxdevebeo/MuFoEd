@@ -35,6 +35,21 @@ Features (both enabled by default):
 
 Without default features the core has no writer/renderer runtime dependency.
 The original EditSession/Command API remains available for plain body text.
+`Operations` composes the public kernel commands for literal/metadata search,
+atomic replace-all and block/row moves within a container. Search works across
+runs and inline wrappers; protected hits are rejected or explicitly skipped.
+Moves allocate fresh paragraph IDs and return their mapping. Scope, limits,
+tests and acceptance: [EDITING_OPERATIONS.md](../docs/EDITING_OPERATIONS.md).
+
+```rust
+use strict_ooxml_edit::{OperationLimits, Operations, ReplacePolicy, SearchScope, TextQuery};
+let revision = editor.revision();
+let changed = Operations::new(&mut editor, OperationLimits::default()).replace_all(
+    revision, &SearchScope::All, &TextQuery::new("old"), "new", ReplacePolicy::Strict,
+)?;
+editor.undo(changed.change.revision)?; // One undo for every replacement
+```
+
 The facade offers the opt-in edit feature:
 
 ```rust
