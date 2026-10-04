@@ -2,3 +2,5 @@ target
 corpus
 artifacts
 coverage
+aud92-1h-*.log
+aud92-nohup.out

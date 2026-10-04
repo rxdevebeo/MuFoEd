@@ -575,8 +575,10 @@ fn geometry_of(
     dictionary: &lopdf::Dictionary,
     inherited: &BTreeMap<Vec<u8>, Object>,
 ) -> Result<PageGeometry> {
-    let resolve = Box::leak(Box::new(resolver_stub()));
-    let _ = resolve;
+    // Every entry below is already a direct object by the time it arrives;
+    // there is nothing left to resolve through a `lopdf::Document` stub.
+    // (AUD-92: a former `Box::leak(resolver_stub())` here was unused and
+    // failed LeakSanitizer under `fuzz_pdf`.)
     let get = |key: &[u8]| -> Option<Object> {
         dictionary
             .get(key)
@@ -622,13 +624,6 @@ fn geometry_of(
         height,
         rotation: rotation_of(get(b"Rotate").as_ref()),
     })
-}
-
-fn resolver_stub() -> lopdf::Document {
-    // `geometry_of` resolves nothing: every entry it reads is already a direct
-    // object by the time it arrives. A stub keeps the signature honest rather
-    // than pretending there is a lookup.
-    lopdf::Document::with_version("1.7")
 }
 
 /// `/Rotate` normalised to a right angle, as the specification requires.

@@ -240,6 +240,19 @@ jobs:
       - name: Short fuzz session (wml)
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_wml -- -max_total_time=60
+      # AUD-92: new targets (normalize / full docx / pdf / convert).
+      - name: Short fuzz session (normalize)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_normalize -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10 -dict=dict/wml.dict
+      - name: Short fuzz session (docx_full)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_docx_full -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10 -dict=dict/wml.dict
+      - name: Short fuzz session (pdf)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_pdf -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
+      - name: Short fuzz session (convert)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
 
   fuzz-nightly:
     name: fuzz nightly
@@ -254,7 +267,11 @@ jobs:
       - name: Bounded nightly fuzz sessions
         working-directory: fuzz
         run: |
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_zip -- -max_total_time=3600
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_xml -- -max_total_time=3600
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_relpath -- -max_total_time=3600
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_wml -- -max_total_time=3600
+          for t in fuzz_zip fuzz_xml fuzz_relpath fuzz_wml fuzz_normalize fuzz_docx_full fuzz_pdf fuzz_convert; do
+            EXTRA=""
+            case "$t" in
+              fuzz_normalize|fuzz_docx_full|fuzz_xml|fuzz_wml) EXTRA="-dict=dict/wml.dict" ;;
+            esac
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$t" -- \
+              -max_total_time=3600 -rss_limit_mb=2048 -timeout=10 $EXTRA
+          done

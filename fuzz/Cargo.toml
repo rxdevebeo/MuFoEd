@@ -11,6 +11,9 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 strict-ooxml-core = { path = "../strict-ooxml-core" }
 strict-ooxml-wml = { path = "../strict-ooxml-wml" }
+strict-ooxml-pdf = { path = "../strict-ooxml-pdf" }
+strict-ooxml-convert = { path = "../strict-ooxml-convert" }
+strict-ooxml = { path = "../strict-ooxml", features = ["report", "svg", "write"] }
 
 [[bin]]
 name = "fuzz_zip"
@@ -33,6 +36,30 @@ doc = false
 [[bin]]
 name = "fuzz_wml"
 path = "fuzz_targets/fuzz_wml.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_normalize"
+path = "fuzz_targets/fuzz_normalize.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_docx_full"
+path = "fuzz_targets/fuzz_docx_full.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_pdf"
+path = "fuzz_targets/fuzz_pdf.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_convert"
+path = "fuzz_targets/fuzz_convert.rs"
 test = false
 doc = false
 
