@@ -47,9 +47,8 @@ fn main() {
             .build(),
     );
 
-    let mut xmlns_bomb = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document"#,
-    );
+    let mut xmlns_bomb =
+        String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document"#);
     for i in 0..40 {
         xmlns_bomb.push_str(&format!(r#" xmlns:p{i}="urn:dep:{i}""#));
     }
@@ -68,7 +67,9 @@ fn main() {
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"><w:body>"#,
     );
     for i in 0..depth {
-        deep.push_str(&format!(r#"<w:p xmlns:n{i}="urn:n{i}"><w:r><w:t>d{i}</w:t></w:r>"#));
+        deep.push_str(&format!(
+            r#"<w:p xmlns:n{i}="urn:n{i}"><w:r><w:t>d{i}</w:t></w:r>"#
+        ));
         // nest via customXml-like wrappers that stay well-formed WML-ish XML
         deep.push_str(&format!(r#"<w:customXml xmlns:n{i}="urn:n{i}">"#));
     }
