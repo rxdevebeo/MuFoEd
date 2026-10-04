@@ -62,4 +62,7 @@ CI run URL after the F9 push is recorded below once Actions finishes.
 
 ### CI after F9 push
 
-_Filled after `git push` — see the Actions run linked from the AUD-94 commit._
+Run <https://github.com/rxdevebeo/MuFoEd/actions/runs/37165495480>, tip
+`683ed3b` (AUD-94 + hash naming). Expected red on `test` / `coverage` for the
+pre-existing `strict-stage5c` page-1 layout failure (`STAGE5C-P1-LAYOUT`);
+`fuzz-smoke` should exercise all eight targets.
