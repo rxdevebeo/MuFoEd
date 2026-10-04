@@ -340,6 +340,29 @@ same two causes, measured through a second renderer now.
 """
 opened = "2026-10-01"
 
+[[waivers]]
+id = "STAGE5C-P1-LAYOUT"
+subject = "strict-stage5c page 1 layout drift (SVG + PDF gates)"
+binds = "process:stage5c-p1-layout"
+summary = """
+As of 2026-10-04 (reproduced on `7bad7e8` before F9 and on the F9 tip),
+`strict-stage5c` page 1 fails both pixel gates: bottom ink extent ≈ +240 px,
+`corr_y ≈ 0.24`, content centroid far outside the document override. F9
+(AUD-90…94) did not introduce it; CI `test`/`coverage` on `master` are red for
+the same reason. Tracked as an AUD-94 acceptance blocker, not an amber margin.
+"""
+risk = """
+Any change that touches pagination, math layout or formula spacing can hide
+behind this already-red gate. The extent ratchet and SSIM tests fail loudly, so
+the failure is visible; the risk is delaying other merges until it is fixed.
+"""
+exit = """
+Restore `strict-stage5c` page 1 inside its SVG/PDF override bounds and
+`EXTENT_RATCHET` pins; then delete this waiver.
+"""
+opened = "2026-10-04"
+review = "2026-11-04"
+
 # ---------------------------------------------------------------------------
 # Process gaps. No code binding, so the test only checks that a `process:`
 # target is spelled like one. These are reviewed by hand at acceptance.

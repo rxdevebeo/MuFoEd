@@ -31,6 +31,35 @@ The Node 20 deprecation warnings are gone: `actions/checkout@v5`, `actions/setup
   2026-10-03 to keep the gate local: the job is gone from CI and the gap is waiver
   `CENSUS-LOCAL` in `docs/waivers.toml`.
 
-## After
+## After (AUD-94 / F9, 2026-10-04)
 
-Filled in by AUD-94: the run on `master` after the whole plan is closed.
+Local gate on the F9 tip (`59be16d` + this commit), toolchain `1.92.0`:
+
+| Check | Result |
+|---|---|
+| `cargo +1.92.0 fmt --all -- --check` | PASS |
+| `cargo +1.92.0 clippy --workspace --all-targets --all-features -- -D warnings` | PASS |
+| `cargo +1.92.0 check --workspace --all-targets` (default features) | PASS |
+| `cargo +1.92.0 test --workspace --all-features` | **FAIL** — pre-existing `strict-stage5c` page 1 layout drift (SVG + PDF SSIM / extent ratchet); see blockers |
+| same with SSIM/`pdf_pixels` skipped | PASS |
+| `word_oracle` on `tests/strict/` | PASS |
+| `opc_gate.py` / `xsd_gate.py` | PASS (0 violations of ours) |
+| `census_gate.py` | local only (`CENSUS-LOCAL`) |
+| AUD-92 1 h × 8 targets | started on WSL; CI `fuzz-nightly` is the durable evidence path |
+
+CI run URL after the F9 push is recorded below once Actions finishes.
+
+### Blockers remaining after F9
+
+1. **AUD-17, AUD-37, AUD-38, AUD-68, AUD-69** — corpus findings; fixtures wait in
+   `docx-incoming/` (`docs/corpus-incoming.md`). Block full plan §0.1 close-out.
+2. **`strict-stage5c` page 1** — SVG/PDF pixel gates fail on `master` already
+   (bottom ink +240 px, `corr_y ≈ 0.24`). Reproduced at `7bad7e8` before F9;
+   not introduced by AUD-90…94. Needs a layout fix outside F9.
+3. **FUZZ 24 h** — Stage-7 release gate (`docs/fuzz-protocol.md` / waiver `FUZZ`).
+4. **Coverage §15** — not re-measured in this F9 close-out (CI coverage job also
+   red on the same `strict-stage5c` SSIM failure).
+
+### CI after F9 push
+
+_Filled after `git push` — see the Actions run linked from the AUD-94 commit._
