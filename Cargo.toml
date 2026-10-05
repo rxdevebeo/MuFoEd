@@ -20,6 +20,7 @@ members = [
     "strict-ooxml-pdf",
     "strict-ooxml-convert",
     "strict-ooxml-ocr",
+    "strict-ooxml-djvu",
     "strict-ooxml-write",
     "strict-ooxml",
     "strict-ooxml-cli",
@@ -108,3 +109,6 @@ must_use_candidate = "allow"
 hayro = { path = "vendor/hayro" }
 hayro-interpret = { path = "vendor/hayro-interpret" }
 hayro-syntax = { path = "vendor/hayro-syntax" }
+
+djvu-bzz = { path = "vendor/djvu-bzz" }
+djvu-jb2 = { path = "vendor/djvu-jb2" }

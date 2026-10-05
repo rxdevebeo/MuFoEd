@@ -188,3 +188,10 @@ cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert
 ## License
 
 MIT OR Apache-2.0.
+
+
+DjVu import is available through `strict-ooxml from-djvu` and `djvu-dump`.
+Native text layers are preferred; opt-in Ollama OCR recovers supported scans.
+See [DjVu import/OCR](docs/DJVU_IMPORT.md) for build features, limits and losses.
+“DjVu” is a descriptive format reference; this project is not affiliated with
+or endorsed by its trademark owners.

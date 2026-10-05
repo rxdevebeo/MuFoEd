@@ -90,6 +90,15 @@
 #![deny(rust_2018_idioms)]
 #![allow(clippy::doc_markdown)]
 
+#[cfg(feature = "djvu")]
+pub use strict_ooxml_convert::{convert_djvu, DjvuOptions};
+#[cfg(feature = "djvu")]
+pub use strict_ooxml_djvu::{
+    DjvuDocument, DjvuError, DjvuLimits, DjvuPage, TextLayer as DjvuTextLayer,
+};
+#[cfg(feature = "ocr-ollama")]
+pub use strict_ooxml_ocr::ollama::{OllamaConfig, OllamaVision};
+
 use std::io::Read;
 use std::path::Path;
 

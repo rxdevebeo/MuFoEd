@@ -13,6 +13,8 @@ categories = ["text-processing", "parser-implementations"]
 
 [features]
 default = []
+djvu = ["dep:strict-ooxml-djvu"]
+djvu-image = ["djvu", "strict-ooxml-djvu/djvu-image"]
 # Reading the text of a page that has none, by rasterizing it and asking a
 # `TextRecovery` (`STAGE-8-TASK.md` §6, O11). Off by default: a page image has
 # to come from somewhere, and that somewhere is a 75-crate software rasterizer.
@@ -26,6 +28,7 @@ raster = ["strict-ooxml-pdf/raster"]
 ocr-ollama = ["strict-ooxml-ocr/ocr-ollama"]
 
 [dependencies]
+strict-ooxml-djvu = { version = "0.1.0", path = "../strict-ooxml-djvu", optional = true }
 # Reading the PDF: pages, glyphs, images, paths.
 strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf" }
 # The model that comes out.
@@ -37,6 +40,9 @@ strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-ocr = { version = "0.1.0", path = "../strict-ooxml-ocr" }
 
 [dev-dependencies]
+djvu-bzz = "=0.40.2"
+djvu-jb2 = "=0.40.2"
+djvu-bitmap = "=0.40.2"
 # The whole chain, so the conversion is tested as a package a reader can open
 # rather than as a DOM in memory.
 strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write" }
@@ -55,3 +61,7 @@ workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
+
+[[example]]
+name = "djvu_corpus"
+required-features = ["djvu"]

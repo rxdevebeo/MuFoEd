@@ -351,6 +351,9 @@ jobs:
       - name: Short fuzz session (convert)
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
+      - name: DjVu reader and image fuzz smoke
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_djvu -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
 
   # One job per target: eight one-hour sessions in a row (8 h) never fit the 6 h
   # job limit, so the later targets and the coverage floors after them never ran.
@@ -362,7 +365,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_zip, fuzz_xml, fuzz_relpath, fuzz_wml, fuzz_normalize, fuzz_docx_full, fuzz_pdf, fuzz_convert]
+        target: [fuzz_zip, fuzz_xml, fuzz_relpath, fuzz_wml, fuzz_normalize, fuzz_docx_full, fuzz_pdf, fuzz_convert, fuzz_djvu]
     env:
       ASAN_OPTIONS: symbolize=1
       ASAN_SYMBOLIZER_PATH: /usr/bin/llvm-symbolizer

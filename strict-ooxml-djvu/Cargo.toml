@@ -1,0 +1,32 @@
+[package]
+name = "strict-ooxml-djvu"
+description = "Bounded DjVu reader with text zones and optional native page images"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+djvu-image = ["dep:djvu-jb2", "dep:djvu-iw44", "dep:png"]
+
+[dependencies]
+djvu-bzz = "=0.40.2"
+djvu-jb2 = { version = "=0.40.2", optional = true }
+djvu-iw44 = { version = "=0.40.2", optional = true }
+png = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+djvu-bitmap = "=0.40.2"
+djvu-pixmap = "=0.40.2"
+proptest.workspace = true
+
+[lints]
+workspace = true
+
+[[example]]
+name = "images"
+required-features = ["djvu-image"]

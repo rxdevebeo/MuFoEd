@@ -41,3 +41,15 @@ without the limits above. To fail closed, the vendored `hayro` exports a
 `raster` build against upstream `hayro` does not compile. Default-feature builds
 (no `raster`) do not depend on `hayro` and are unaffected. Remove the marker
 reference together with the vendored copy once upstream ships the fixes.
+
+### DjVu import budgets
+
+`djvu-bzz` and `djvu-jb2` 0.40.2 are vendored from MIT-licensed
+[matyushkin/djvu-rs](https://github.com/matyushkin/djvu-rs), independently of
+the PrintCraft patches above. Their original license notices are retained.
+The `bzz_decode_with_limits`, `decode_with_limits` and
+`decode_dict_with_limits` APIs enforce caller budgets before allocating blocks,
+canvases and record tables. Existing public APIs remain available.
+These patches are wired in both the root and separate fuzz workspaces;
+`strict-ooxml-djvu/tests/read.rs` and `tests/image.rs` exercise their guards.
+See `strict-ooxml-djvu/PROVENANCE.md` for derivation.
