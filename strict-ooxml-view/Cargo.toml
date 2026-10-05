@@ -21,7 +21,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg"] }
+strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "rtf"] }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 sha2 = "0.11"
 

@@ -2209,6 +2209,7 @@ dependencies = [
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
  "strict-ooxml-report",
+ "strict-ooxml-rtf",
  "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "strict-ooxml-write",
@@ -2218,6 +2219,7 @@ dependencies = [
 name = "strict-ooxml-cli"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "sha2",
  "strict-ooxml",
  "strict-ooxml-core",

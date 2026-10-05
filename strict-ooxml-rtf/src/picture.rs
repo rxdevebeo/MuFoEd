@@ -88,6 +88,8 @@ impl PictureBuilder {
         let (kind, extension, content_type) = match self.kind {
             Some(MediaKind::Png) => (MediaKind::Png, "png", "image/png"),
             Some(MediaKind::Jpeg) => (MediaKind::Jpeg, "jpg", "image/jpeg"),
+            Some(MediaKind::Wmf) => (MediaKind::Wmf, "wmf", "image/x-wmf"),
+            Some(MediaKind::Emf) => (MediaKind::Emf, "emf", "image/x-emf"),
             _ => {
                 return Err(RtfError::Malformed {
                     offset,
@@ -95,15 +97,7 @@ impl PictureBuilder {
                 })
             }
         };
-        let signature_ok = match kind {
-            MediaKind::Png => self.bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-            // JPEG streams may carry trailing application data after EOI.
-            // The importer preserves payload bytes; raster validity belongs
-            // to the image decoder, rather than this signature check.
-            MediaKind::Jpeg => self.bytes.starts_with(&[0xff, 0xd8, 0xff]),
-            _ => false,
-        };
-        if !signature_ok {
+        if !signature_matches(kind, &self.bytes) {
             return Err(RtfError::Malformed {
                 offset,
                 reason: "picture signature does not match declared format",
@@ -172,5 +166,32 @@ impl PictureBuilder {
             },
             self.bytes,
         ))
+    }
+}
+
+// Container signatures only; drawing records and raster validity belong to
+// the decoder. Preserve all payload bytes, including trailing JPEG data.
+fn signature_matches(kind: MediaKind, bytes: &[u8]) -> bool {
+    match kind {
+        MediaKind::Png => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        MediaKind::Jpeg => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+        MediaKind::Wmf => {
+            let offset = if bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a]) {
+                22
+            } else {
+                0
+            };
+            bytes.get(offset..).is_some_and(|b| {
+                b.len() >= 18
+                    && (b.starts_with(&[1, 0, 9, 0]) || b.starts_with(&[2, 0, 9, 0]))
+                    && matches!(b.get(4..6), Some([0, 1 | 3]))
+            })
+        }
+        MediaKind::Emf => {
+            bytes.len() >= 88
+                && bytes.starts_with(&[1, 0, 0, 0])
+                && bytes.get(40..44) == Some(b" EMF")
+        }
+        _ => false,
     }
 }

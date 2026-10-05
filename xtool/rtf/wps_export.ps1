@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$InputPath,
-    [Parameter(Mandatory=$true)][string]$OutputDirectory
+    [Parameter(Mandatory=$true)][string]$OutputDirectory,
+    [switch]$ExportPdf
 )
 $ErrorActionPreference = 'Stop'
 function Get-RtfExportSha256([string]$LiteralPath) {
@@ -63,6 +64,12 @@ try {
         sections=$rtfWpsDocument.Sections.Count; inline_shapes=$rtfWpsDocument.InlineShapes.Count;
         shapes=$rtfWpsDocument.Shapes.Count; footnotes=$rtfWpsDocument.Footnotes.Count; endnotes=$rtfWpsDocument.Endnotes.Count}
     $rtfWpsDocxPath = Join-Path $rtfWpsOutput 'reference.docx'
+    if ($ExportPdf) {
+        $rtfWpsPdfPath = Join-Path $rtfWpsOutput 'reference.pdf'
+        $rtfWpsDocument.ExportAsFixedFormat($rtfWpsPdfPath, 17)
+        $rtfExportResult.pdf_sha256 = Get-RtfExportSha256 $rtfWpsPdfPath
+        $rtfExportResult.oracle.pdf_export_format = 17
+    }
     $rtfWpsDocument.SaveAs2($rtfWpsDocxPath, 12, [Type]::Missing, [Type]::Missing, $false)
     $rtfWpsDocument.Close(0)
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($rtfWpsDocument)

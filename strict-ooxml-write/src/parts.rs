@@ -267,6 +267,9 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     // pStyle, isLgl, suff, lvlText, lvlPicBulletId, lvlJc, pPr, rPr.
     xml.start("w:lvl");
     ilvl_attr(ctx, xml, &level.ilvl, "w:lvl");
+    if level.tentative {
+        xml.attr_w("tentative", "true");
+    }
     if let Some(start) = level.start {
         xml.empty_attr_w("w:start", "val", start);
     }

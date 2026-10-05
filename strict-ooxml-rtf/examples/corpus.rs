@@ -11,41 +11,41 @@ use strict_ooxml_wml::{
     parse_document, ParseOptions,
 };
 
+fn inline_text(inlines: &[Inline]) -> String {
+    inlines
+        .iter()
+        .map(|i| match i {
+            Inline::Run(r) => r
+                .content
+                .iter()
+                .map(|c| match c {
+                    RunContent::Text(t) => t.text.clone(),
+                    RunContent::Tab => "\t".into(),
+                    RunContent::Break(k) => match k {
+                        BreakKind::Page => "\u{c}",
+                        BreakKind::Column => "\u{b}",
+                        BreakKind::TextWrapping => "\n",
+                    }
+                    .into(),
+                    RunContent::NoBreakHyphen => "\u{2011}".into(),
+                    RunContent::SoftHyphen => "\u{ad}".into(),
+                    RunContent::Symbol(s) => char::from_u32(0xf000 + u32::from(s.character))
+                        .expect("font PUA")
+                        .to_string(),
+                    _ => String::new(),
+                })
+                .collect::<String>(),
+            Inline::Field(f) => inline_text(&f.inlines),
+            Inline::Hyperlink(h) => inline_text(&h.inlines),
+            _ => String::new(),
+        })
+        .collect()
+}
 fn texts(blocks: &[Block]) -> Vec<String> {
     blocks
         .iter()
         .flat_map(|b| match b {
-            Block::Paragraph(p) => vec![p
-                .inlines
-                .iter()
-                .map(|i| match i {
-                    Inline::Run(r) => r
-                        .content
-                        .iter()
-                        .map(|c| match c {
-                            RunContent::Text(t) => t.text.clone(),
-                            RunContent::Tab => "\t".into(),
-                            RunContent::Break(k) => match k {
-                                BreakKind::Page => "\u{c}",
-                                BreakKind::Column => "\u{b}",
-                                BreakKind::TextWrapping => "\n",
-                            }
-                            .into(),
-                            RunContent::NoBreakHyphen => "\u{2011}".into(),
-                            RunContent::SoftHyphen => "\u{ad}".into(),
-                            // Font glyph identity in WPS's PUA text view,
-                            // not a Unicode interpretation of its appearance.
-                            RunContent::Symbol(s) => {
-                                char::from_u32(0xf000 + u32::from(s.character))
-                                    .expect("font byte in PUA")
-                                    .to_string()
-                            }
-                            _ => String::new(),
-                        })
-                        .collect::<String>(),
-                    _ => String::new(),
-                })
-                .collect::<String>()],
+            Block::Paragraph(p) => vec![inline_text(&p.inlines)],
             Block::Table(t) => t
                 .rows
                 .iter()

@@ -3,6 +3,7 @@
 
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::Document;
+mod lists;
 mod parser;
 mod picture;
 
@@ -157,6 +158,53 @@ pub struct RtfReport {
     pub text_scalars: usize,
     /// Maximum model nodes, or allocated node count in a report.
     pub nodes: usize,
+}
+impl RtfReport {
+    /// Adapts import diagnostics to the shared Convert stage. RTF locations
+    /// retain byte ranges and never invent package parts or page numbers.
+    #[must_use]
+    pub fn pipeline_summary(&self) -> strict_ooxml_core::pipeline::PipelineSummary {
+        use strict_ooxml_core::pipeline::{PipelineIssue, PipelineStage, PipelineSummary};
+        let mut summary = PipelineSummary::new();
+        let mut issues: Vec<_> = self
+            .issues
+            .iter()
+            .map(|i| PipelineIssue {
+                stage: PipelineStage::Convert,
+                id: format!("rtf.{}", i.feature),
+                severity: match i.severity {
+                    Severity::Info => "info",
+                    Severity::Loss => "lossy",
+                }
+                .into(),
+                part: None,
+                page: None,
+                location: Some(format!("rtf-bytes:{}..{}", i.span.start, i.span.end)),
+                count: 1,
+                detail: i.feature.clone(),
+            })
+            .collect();
+        let retained = self
+            .issues
+            .iter()
+            .filter(|i| i.severity == Severity::Loss)
+            .count();
+        let omitted = self.loss_count.saturating_sub(retained);
+        if omitted > 0 {
+            issues.push(PipelineIssue {
+                stage: PipelineStage::Convert,
+                id: "rtf.omitted-loss-details".into(),
+                severity: "lossy".into(),
+                part: None,
+                page: None,
+                location: None,
+                count: u32::try_from(omitted).unwrap_or(u32::MAX),
+                detail: format!("{omitted} import losses omitted by diagnostic cap"),
+            });
+        }
+        summary.extend_issues(issues);
+        summary
+    }
 }
 /// Successful import. Success does not imply complete fidelity: check the report.
 #[derive(Debug)]

@@ -24,7 +24,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use http::Response;
-use strict_ooxml_view::{discover, failed, render, Cache, DocumentView, Entry};
+use strict_ooxml_view::{discover, failed, render, render_rtf, Cache, DocumentView, Entry};
 
 /// Exit code: the viewer ran and stopped cleanly.
 const EXIT_OK: u8 = 0;
@@ -69,6 +69,12 @@ const KNOWN_CORPORA: &[KnownCorpus] = &[
         path: "testdata/CC0",
         transitional: true,
     },
+    KnownCorpus {
+        id: "cc0-rtf",
+        label: "CC0 RTF",
+        path: "testdata/CC0_RTF",
+        transitional: false,
+    },
 ];
 
 fn main() -> ExitCode {
@@ -103,6 +109,7 @@ fn main() -> ExitCode {
         corpora,
         caches: Mutex::new(BTreeMap::new()),
         scale: config.scale,
+        rtf_options: config.rtf_options,
     });
 
     let listener = match std::net::TcpListener::bind(("127.0.0.1", config.port)) {
@@ -149,6 +156,8 @@ struct State {
     corpora: Vec<Corpus>,
     /// Rendered pages, one cache per corpus so equal file names do not collide.
     caches: Mutex<BTreeMap<String, Cache>>,
+    /// Explicit RTF compatibility policies, ignored for DOCX entries.
+    rtf_options: strict_ooxml::RtfOptions,
     /// Output scale, in px per inch.
     ///
     /// This is a DPI, not a multiplier: the renderer converts twips by
@@ -173,7 +182,16 @@ impl State {
         let entry = corpus.entries.iter().find(|entry| entry.name == name)?;
         // A document that will not open is still a menu entry that has to say
         // so; showing nothing would look like a viewer bug.
-        let view = match render(entry, corpus.transitional, self.scale) {
+        let rendered = if entry
+            .path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rtf"))
+        {
+            render_rtf(entry, &self.rtf_options, self.scale)
+        } else {
+            render(entry, corpus.transitional, self.scale)
+        };
+        let view = match rendered {
             Ok(view) => view,
             Err(error) => failed(entry, &error.to_string()),
         };
@@ -414,6 +432,8 @@ fn query_value(query: &str, key: &str) -> Option<String> {
 struct Config {
     /// Directories given on the command line, in order.
     dirs: Vec<PathBuf>,
+    /// Explicit RTF compatibility policies.
+    rtf_options: strict_ooxml::RtfOptions,
     /// Port to bind.
     port: u16,
     /// Whether to normalize every corpus, including Strict.
@@ -427,6 +447,7 @@ impl Config {
     fn parse(args: &[String]) -> Option<Self> {
         let mut config = Self {
             dirs: Vec::new(),
+            rtf_options: strict_ooxml::RtfOptions::default(),
             port: 8181,
             transitional: false,
             scale: 96.0,
@@ -455,6 +476,21 @@ impl Config {
                         .filter(|scale: &f64| scale.is_finite() && *scale > 0.0)?;
                 }
                 "--transitional" => config.transitional = true,
+                "--wps-text" => {
+                    config.rtf_options.compatibility_profile =
+                        strict_ooxml::CompatibilityProfile::WpsText;
+                }
+                "--allow-unsigned-unicode" => {
+                    config.rtf_options.unicode_parameter_policy =
+                        strict_ooxml::UnicodeParameterPolicy::AllowUnsignedAndReport;
+                }
+                "--drop-nul" => {
+                    config.rtf_options.nul_policy = strict_ooxml::NulPolicy::DropAndReport;
+                }
+                "--reject-unsupported" => {
+                    config.rtf_options.unsupported_policy =
+                        strict_ooxml::UnsupportedPolicy::Reject;
+                }
                 "--help" | "-h" => {
                     print_usage();
                     std::process::exit(0);
@@ -567,8 +603,10 @@ fn unique_id(base: &str, used: &mut BTreeSet<String>) -> String {
 fn print_usage() {
     println!("usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional]");
     println!();
-    println!("  DIR...            directories of .docx files");
+    println!("  DIR...            directories of .docx/.rtf files");
     println!("                    (default: every known corpus that contains documents)");
+    println!("  --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported");
+    println!("                    explicit RTF compatibility policies");
     println!("  --port N          port to bind on 127.0.0.1 (default 8181)");
     println!("  --scale N         output DPI (default 96; 144 doubles the page size)");
     println!("  --transitional    normalize every corpus, including Strict");

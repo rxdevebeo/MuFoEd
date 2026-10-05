@@ -70,6 +70,58 @@ fn extracted_text(pdf: &[u8]) -> String {
     out
 }
 
+#[test]
+fn regular_postscript_family_names_embed_and_preserve_text() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    for (alias, canonical) in [
+        ("ArialMT", "Arial"),
+        ("TimesNewRomanPSMT", "Times New Roman"),
+    ] {
+        let body = |family: &str| {
+            use std::fmt::Write;
+            let mut out = String::new();
+            for (index, style) in ["", "<w:b/>", "<w:i/>", "<w:b/><w:i/>"].iter().enumerate() {
+                write!(out,
+                    "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{family}\" w:hAnsi=\"{family}\"/>{style}</w:rPr><w:t>Alias{index}</w:t></w:r></w:p>"
+                ).expect("write fixture");
+            }
+            out
+        };
+        let alias_docx = DocxBuilder::strict().body(&body(alias)).build();
+        let canonical_docx = DocxBuilder::strict().body(&body(canonical)).build();
+        let (pdf, _, report) = to_pdf(&alias_docx);
+        assert!(report.losses().is_empty(), "{alias}: {:?}", report.losses());
+        assert_eq!(
+            pdf,
+            to_pdf(&canonical_docx).0,
+            "{alias}: geometry or font differs"
+        );
+        let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
+        let text = reader
+            .extract_text(&[1])
+            .expect("ToUnicode text extraction");
+        for index in 0..4 {
+            assert!(text.contains(&format!("Alias{index}")), "{alias}: {text:?}");
+        }
+    }
+}
+
+#[test]
+fn non_bmp_math_font_text_is_extractable() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict().body(
+        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Cambria Math\" w:hAnsi=\"Cambria Math\"/></w:rPr><w:t>Math𝑥</w:t></w:r></w:p>"
+    ).build();
+    let (pdf, _, report) = to_pdf(&bytes);
+    assert!(report.losses().is_empty(), "{:?}", report.losses());
+    let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
+    let text = reader
+        .extract_text(&[1])
+        .expect("ToUnicode text extraction");
+    assert!(text.contains("Math𝑥"), "{text:?}");
+}
+
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
 /// encoding and a `ToUnicode` CMap: the two things that make the text
 /// selectable and searchable rather than glyph ids.
@@ -89,6 +141,12 @@ fn every_used_font_is_embedded() {
             };
             if dictionary.get(b"FontFile2").is_ok() || dictionary.get(b"FontFile3").is_ok() {
                 embedded += 1;
+                let bounds = dictionary
+                    .get(b"FontBBox")
+                    .and_then(lopdf::Object::as_array)
+                    .expect("embedded font requires FontBBox");
+                assert_eq!(bounds.len(), 4);
+                assert!(bounds.iter().all(|value| value.as_float().is_ok()));
             }
             let is_font = dictionary
                 .get(b"Type")
@@ -106,6 +164,20 @@ fn every_used_font_is_embedded() {
                 .ok()
                 .and_then(|value| value.as_name().ok())
                 .map(<[u8]>::to_vec);
+            if matches!(subtype.as_deref(), Some(b"CIDFontType0" | b"CIDFontType2")) {
+                let info = dictionary
+                    .get(b"CIDSystemInfo")
+                    .and_then(lopdf::Object::as_dict)
+                    .unwrap_or_else(|error| {
+                        panic!("{name}: CID font {} lacks CIDSystemInfo: {error}", id.0)
+                    });
+                assert_eq!(info.get(b"Registry").unwrap().as_str().unwrap(), b"Adobe");
+                assert_eq!(
+                    info.get(b"Ordering").unwrap().as_str().unwrap(),
+                    b"Identity"
+                );
+                assert_eq!(info.get(b"Supplement").unwrap().as_i64().unwrap(), 0);
+            }
             if dictionary.get(b"Encoding").is_ok() {
                 if subtype.as_deref() == Some(b"Type0") {
                     type0 += 1;

@@ -8,6 +8,6 @@
 mod catalog;
 
 pub use catalog::{
-    discover, failed, render, Cache, DocumentView, Entry, PipelineView, Rendered, StageStatus,
-    Summary, ViewIssue,
+    discover, failed, render, render_rtf, Cache, DocumentView, Entry, Rendered, Summary,
+    PipelineView, StageStatus, ViewIssue,
 };

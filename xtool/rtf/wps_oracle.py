@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--corpus", type=Path, default=Path("testdata/CC0_RTF"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument("--pdf", action="store_true", help="Capture PDF directly from original RTF before DOCX export")
     parser.add_argument("--only", nargs="*", help="explicit smoke inputs; all other inputs remain NotRun")
     args = parser.parse_args()
     if args.timeout <= 0:
@@ -55,6 +56,8 @@ def main():
         directory.mkdir(parents=True)
         command = ["powershell.exe", "-NoProfile", "-STA", "-File", str(Path(__file__).with_name("wps_export.ps1")),
                    "-InputPath", str((args.corpus / record["filename"]).resolve()), "-OutputDirectory", str(directory)]
+        if args.pdf:
+            command.append("-ExportPdf")
         start = time.monotonic()
         try:
             completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=args.timeout,
@@ -69,6 +72,8 @@ def main():
                     for filename, hash_key in (("reference.docx", "docx_sha256"), ("content.txt", "content_sha256")):
                         if hashlib.sha256((directory / filename).read_bytes()).hexdigest() != record[hash_key]:
                             raise ValueError(f"worker output hash mismatch: {filename}")
+                    if args.pdf and hashlib.sha256((directory / "reference.pdf").read_bytes()).hexdigest() != record["pdf_sha256"]:
+                        raise ValueError("worker PDF hash mismatch")
                     if completed.returncode != 0:
                         record.update(status="Fail", reason="nonzero worker exit with captured result")
             else:

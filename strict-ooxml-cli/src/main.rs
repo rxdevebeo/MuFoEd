@@ -48,6 +48,7 @@ use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_core::pipeline::{PipelineIssue, PipelineOutcome, PipelineStage, PipelineSummary};
+mod rtf;
 
 /// Exit code: no critical problem.
 const EXIT_OK: u8 = 0;
@@ -65,6 +66,7 @@ fn main() -> ExitCode {
         Some("render") => run_render(&args.collect::<Vec<_>>()),
         Some("to-pdf") => run_to_pdf(&args.collect::<Vec<_>>()),
         Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
+        Some("import-rtf") => rtf::run(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("--help" | "-h") | None => {
@@ -91,6 +93,7 @@ fn print_usage() {
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] [--report-out <json>] (--out is required)");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
+    eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
 }
 
 /// Opens a package, normalizing it when `--transitional` is present.

@@ -1,5 +1,7 @@
 # Импорт RTF в StrictLib
 
+Актуальная проверка расширенного импортёра: [ACCEPTANCE.md](rtf/ACCEPTANCE.md).
+
 Дата исходного плана: 4 октября 2026 года. Исторический проект этапов; текущая реализация и измерения на 5 октября: [IMPLEMENTATION_STATUS.md](rtf/IMPLEMENTATION_STATUS.md) и [COMPATIBILITY_RESOLUTION.md](rtf/COMPATIBILITY_RESOLUTION.md).
 
 ## 1. Цель и решение

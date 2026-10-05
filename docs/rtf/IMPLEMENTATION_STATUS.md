@@ -1,5 +1,9 @@
 # RTF importer: состояние реализации
 
+**Актуальная расширенная реализация и незакрытые gates:** [ACCEPTANCE.md](ACCEPTANCE.md).
+Ниже сохранены исторические измерения baseline. Старые количества тестов и
+списки отсутствующей функциональности не описывают последние изменения.
+
 2026-10-05. Worktree: `C:/Users/gamer/.codex/worktrees/rtf-import/StrictLib`, ветка `codex/rtf-import`, база `7a8e6d37d4d96543db00a9c4f2be51f879397c1f`. Изменения основного checkout не переносились. Baseline закоммичен как `6b6d6d2` (feat(rtf): add bounded import crate and independent corpus checks). Последующие исправления NUL/corpus text coverage включены в отдельный коммит завершения этапа.
 
 ## Что работает

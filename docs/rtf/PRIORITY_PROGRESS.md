@@ -1,5 +1,7 @@
 # RTF: первый приоритет после baseline (исторический snapshot)
 
+Актуальные расширения и проверки: [ACCEPTANCE.md](ACCEPTANCE.md).
+
 Все перечисленные ниже NUL/text failures теперь разобраны: [COMPATIBILITY_RESOLUTION.md](COMPATIBILITY_RESOLUTION.md).
 
 2026-10-05. Baseline commit: `6b6d6d2`, ветка `codex/rtf-import`.

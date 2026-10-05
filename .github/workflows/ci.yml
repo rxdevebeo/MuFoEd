@@ -38,6 +38,12 @@ jobs:
       # check, no features, is what makes the default build a promise again.
       - name: Check (default features)
         run: cargo check --workspace --all-targets
+      - name: RTF opt-in public API and CLI
+        run: |
+          cargo check -p strict-ooxml --no-default-features
+          cargo test -p strict-ooxml --no-default-features --features rtf --test rtf
+          cargo test -p strict-ooxml-rtf
+          cargo test -p strict-ooxml-cli --test rtf
       - name: Test
         run: cargo test --workspace --all-features
       - name: Editing feature matrix

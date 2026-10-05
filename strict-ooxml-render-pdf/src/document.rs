@@ -161,10 +161,8 @@ pub fn render_with_source(
             images: image_ids,
         });
     }
-    // A CID font needs seven objects: the program, its descriptor, the CID font,
-    // the ToUnicode CMap, the Identity-H CMap, the CIDToGIDMap stream and the
-    // Type0 wrapper.
-    let font_ids: Vec<FontIds> = fonts.iter().map(|_| builder.allocate_seven()).collect();
+    // A CID font needs six objects; Identity-H is a predefined encoding name.
+    let font_ids: Vec<FontIds> = fonts.iter().map(|_| builder.allocate_six()).collect();
 
     let mut pdf = Pdf::new();
     pdf.catalog(builder.catalog).pages(builder.pages);
@@ -230,8 +228,8 @@ struct PageObjects {
     images: BTreeMap<PartId, (Ref, Option<Ref>)>,
 }
 
-/// The object ids a CID font occupies (seven: Type0, program, descriptor, CID
-/// font, ToUnicode, Identity-H, and the `/CIDToGIDMap` stream).
+/// The object ids a CID font occupies (six: Type0, program, descriptor, CID
+/// font, ToUnicode, and the `/CIDToGIDMap` stream).
 #[derive(Clone, Copy, Debug)]
 struct FontIds {
     type0: Ref,
@@ -239,7 +237,6 @@ struct FontIds {
     descriptor: Ref,
     cid: Ref,
     to_unicode: Ref,
-    identity: Ref,
     cid_to_gid: Ref,
 }
 
@@ -271,15 +268,14 @@ impl PdfBuilder {
         id
     }
 
-    /// Hands out seven consecutive ids, in the order `write_font` consumes them.
-    fn allocate_seven(&mut self) -> FontIds {
+    /// Hands out six consecutive ids, in the order `write_font` consumes them.
+    fn allocate_six(&mut self) -> FontIds {
         FontIds {
             type0: self.allocate(),
             file: self.allocate(),
             descriptor: self.allocate(),
             cid: self.allocate(),
             to_unicode: self.allocate(),
-            identity: self.allocate(),
             cid_to_gid: self.allocate(),
         }
     }
@@ -896,7 +892,7 @@ fn write_image(pdf: &mut Pdf, id: Ref, mask: Option<Ref>, encoded: &Encoded) {
     }
 }
 
-/// Writes a CID font: the program, its descriptor, the two CMaps and the
+/// Writes a CID font: the program, its descriptor, the Unicode CMap and the
 /// `Type0` wrapper that ties them together.
 #[allow(clippy::too_many_lines)]
 fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
@@ -906,7 +902,6 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         descriptor: descriptor_id,
         cid: cid_id,
         to_unicode: to_unicode_id,
-        identity: identity_id,
         cid_to_gid: cid_to_gid_id,
     } = ids;
     // A PDF name, so the base font is a PostScript-style identifier with no
@@ -941,6 +936,13 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         let mut descriptor = pdf.font_descriptor(descriptor_id);
         descriptor.name(postscript_name);
         descriptor.family(Str(family.as_bytes()));
+        let [x_min, y_min, x_max, y_max] = font.bounds;
+        descriptor.bbox(Rect::new(
+            x_min as f32,
+            y_min as f32,
+            x_max as f32,
+            y_max as f32,
+        ));
         descriptor.flags(if font.key.italic {
             FontFlags::ITALIC
         } else {
@@ -968,13 +970,6 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
         }
     }
     {
-        let (data, compressed) = flate(&crate::font::identity_h_cmap());
-        let mut stream = pdf.stream(identity_id, &data);
-        if compressed {
-            stream.filter(Filter::FlateDecode);
-        }
-    }
-    {
         // AUD-82: CID ≠ GID when two characters share an outline.
         let (data, compressed) = flate(&crate::font::cid_to_gid_bytes(font));
         let mut stream = pdf.stream(cid_to_gid_id, &data);
@@ -990,6 +985,11 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
             pdf_writer::types::CidFontType::Type2
         });
         cid.base_font(postscript_name);
+        cid.system_info(pdf_writer::types::SystemInfo {
+            registry: Str(b"Adobe"),
+            ordering: Str(b"Identity"),
+            supplement: 0,
+        });
         cid.font_descriptor(descriptor_id);
         cid.default_width(0.0);
         // The `/W` array is written in runs of CIDs: consecutive CIDs with the
@@ -1018,7 +1018,10 @@ fn write_font(pdf: &mut Pdf, ids: FontIds, font: &EmbeddedFont) {
     {
         let mut type0 = pdf.type0_font(type0_id);
         type0.base_font(postscript_name);
-        type0.encoding_cmap(identity_id);
+        // The predefined encoding gives readers the two-byte CID code space.
+        // A bare CMap stream without its mandatory dictionary entries was
+        // interpreted as a single-byte encoding by independent extractors.
+        type0.encoding_predefined(Name(b"Identity-H"));
         type0.descendant_font(cid_id);
         type0.to_unicode(to_unicode_id);
     }

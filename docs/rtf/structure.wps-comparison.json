@@ -1,0 +1,894 @@
+{
+  "claim": "selected_structural_facts_not_full_fidelity",
+  "files": [
+    {
+      "actual": {
+        "body": [
+          "Title emphasized"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {}
+        ],
+        "styles": {
+          "Emphasis": {
+            "based_on": null,
+            "run": {
+              "i": true
+            },
+            "type": "character"
+          },
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "20"
+            },
+            "type": "paragraph"
+          },
+          "Title": {
+            "based_on": "Normal",
+            "run": {
+              "b": true,
+              "sz": "32"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "actual_sha256": "b9a2c941fa5b14293d6148fd795c5420272977ddd38e9a0bcc04154022347cc1",
+      "case": "styles",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties",
+        "notes"
+      ],
+      "input_hex": "7b5c727466317b5c7374796c6573686565747b5c73305c66733230204e6f726d616c3b7d7b5c73315c7362617365646f6e305c667333325c62205469746c653b7d7b5c2a5c6373325c6920456d7068617369733b7d7d5c706172645c7331205469746c65207b5c63733220656d70686173697a65647d7d",
+      "reference": {
+        "body": [
+          "Title emphasized"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {
+          "footnote": []
+        },
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "b": true,
+              "i": false,
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Emphasis": {
+            "based_on": null,
+            "run": {
+              "i": true,
+              "sz": "24",
+              "szCs": "24"
+            },
+            "type": "character"
+          },
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "20",
+              "szCs": "24"
+            },
+            "type": "paragraph"
+          },
+          "Title": {
+            "based_on": "Normal",
+            "run": {
+              "b": true,
+              "sz": "32",
+              "szCs": "24"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "ed2c77fb38d133ca31f9fa1cd518b4528e194552d0972d011b94713d88bc80f4",
+      "source_sha256": "3e44b075fbf1a5cb47599c74f75b5cae3150856963c7d8e16b30b417ce6867ae"
+    },
+    {
+      "actual": {
+        "body": [
+          "BodyX"
+        ],
+        "fields": [],
+        "headers": [
+          {
+            "kind": "headerReference",
+            "paragraphs": [
+              "Header"
+            ],
+            "type": "default"
+          },
+          {
+            "kind": "footerReference",
+            "paragraphs": [
+              "Footer"
+            ],
+            "type": "default"
+          }
+        ],
+        "note_references": [
+          {
+            "custom_mark": false,
+            "kind": "footnote",
+            "note": [
+              "Note",
+              ""
+            ],
+            "paragraph": 0,
+            "preceding_text": "Body"
+          },
+          {
+            "custom_mark": false,
+            "kind": "endnote",
+            "note": [
+              "End"
+            ],
+            "paragraph": 0,
+            "preceding_text": "BodyX"
+          }
+        ],
+        "notes": {
+          "endnote": [
+            [
+              "End"
+            ]
+          ],
+          "footnote": [
+            [
+              "Note",
+              ""
+            ]
+          ]
+        },
+        "numbering": [],
+        "paragraph_properties": [
+          {}
+        ],
+        "styles": {},
+        "tables": []
+      },
+      "actual_sha256": "6a9be3b8f395f506c4c2ae2205feac3ea49d6f4c2ff6e41738a29d1284817dbd",
+      "case": "regions",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties",
+        "note_references"
+      ],
+      "input_hex": "7b5c727466317b5c686561646572204865616465725c7061727d7b5c666f6f74657220466f6f7465727d426f64795c636866746e7b5c666f6f746e6f74655c636866746e204e6f74655c7061727d587b5c666f6f746e6f74655c66746e616c7420456e647d5c7061727d",
+      "reference": {
+        "body": [
+          "BodyX"
+        ],
+        "fields": [],
+        "headers": [
+          {
+            "kind": "headerReference",
+            "paragraphs": [
+              "Header"
+            ],
+            "type": "default"
+          },
+          {
+            "kind": "footerReference",
+            "paragraphs": [
+              "Footer"
+            ],
+            "type": "default"
+          }
+        ],
+        "note_references": [
+          {
+            "custom_mark": false,
+            "kind": "footnote",
+            "note": [
+              "Note",
+              ""
+            ],
+            "paragraph": 0,
+            "preceding_text": "Body"
+          },
+          {
+            "custom_mark": true,
+            "kind": "endnote",
+            "note": [
+              "End"
+            ],
+            "paragraph": 0,
+            "preceding_text": "Body"
+          }
+        ],
+        "notes": {
+          "endnote": [
+            [
+              "End"
+            ]
+          ],
+          "footnote": [
+            [
+              "Note",
+              ""
+            ]
+          ]
+        },
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "7aef95c801d15ca66638498d63f89ffe0e1a4942bee62efca6dec9a702693420",
+      "source_sha256": "34a00d21d008ec2068cf00e64df631aa6a1ddb88b27ea002bb2584cf1e9231e7"
+    },
+    {
+      "actual": {
+        "body": [
+          "ALinkZ"
+        ],
+        "fields": [
+          "HYPERLINK \"https://example.test\""
+        ],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {}
+        ],
+        "styles": {},
+        "tables": []
+      },
+      "actual_sha256": "3b84f584be4c6455037b98164cde6b9628ec8ddc76f741a9130ab13415b9f3e0",
+      "case": "field",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties"
+      ],
+      "input_hex": "7b5c7274663120417b5c6669656c647b5c2a5c666c64696e73742048595045524c494e4b202268747470733a2f2f6578616d706c652e74657374227d7b5c666c6472736c747b5c62204c696e6b7d7d7d5a7d",
+      "reference": {
+        "body": [
+          "ALinkZ"
+        ],
+        "fields": [
+          "HYPERLINK \"https://example.test\""
+        ],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "834731ff39ec87b6520aadd5edfade5e67a4a0d3e79a1e65453b17a49562ac4d",
+      "source_sha256": "d19b2583ef94975d0557b3e6017698d4f158c4d85612550f49d36bed6b51b29c"
+    },
+    {
+      "actual": {
+        "body": [
+          "AB",
+          "C",
+          "",
+          "D"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {},
+          {},
+          {},
+          {}
+        ],
+        "styles": {},
+        "tables": []
+      },
+      "actual_sha256": "19cabd6d1ebb8879509242a6236c5b442652fef34d538be24eedb2509c38fa19",
+      "case": "field_paragraphs",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties",
+        "fields"
+      ],
+      "input_hex": "7b5c7274663120417b5c6669656c647b5c2a5c666c64696e737420544f437d7b5c666c6472736c7420425c70617220435c7061727d7d5c70617220447d",
+      "reference": {
+        "body": [
+          "AB",
+          "C",
+          "",
+          "D"
+        ],
+        "fields": [
+          "TOC"
+        ],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "76b89e70d6762db570fa0e87be4effc80335b60e7d6bf5d5709eb70fc0a9f9d2",
+      "source_sha256": "49dcb8a04196b4b71f6ff91fcfea2cb90b68725e24d0435d0418dc8ec32c613a"
+    },
+    {
+      "actual": {
+        "body": [
+          "first",
+          "second"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [
+          {
+            "definition": {
+              "lvlText": "%1.",
+              "numFmt": "decimal",
+              "pPr": {
+                "ind": {
+                  "hanging": "360",
+                  "start": "720"
+                }
+              },
+              "start": "3",
+              "suff": "tab"
+            },
+            "level": "0",
+            "text": "first"
+          },
+          {
+            "definition": {
+              "lvlText": "%1.",
+              "numFmt": "decimal",
+              "pPr": {
+                "ind": {
+                  "hanging": "360",
+                  "start": "720"
+                }
+              },
+              "start": "3",
+              "suff": "tab"
+            },
+            "level": "0",
+            "text": "second"
+          }
+        ],
+        "paragraph_properties": [
+          {},
+          {}
+        ],
+        "styles": {},
+        "tables": []
+      },
+      "actual_sha256": "6a41cd512af1ac2a8d460718811e269eccfe4cf6f052932ed7d0c8c255ffa118",
+      "case": "numbering",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties",
+        "numbering"
+      ],
+      "input_hex": "7b5c727466317b5c2a5c6c6973747461626c657b5c6c6973747b5c6c6973746c6576656c5c6c6576656c6e6663305c6c6576656c73746172746174337b5c6c6576656c746578745c2730325c2730302e3b7d7b5c6c6576656c6e756d626572735c2730313b7d5c66692d3336305c6c693732307d5c6c69737469642d34327d7d7b5c2a5c6c6973746f766572726964657461626c657b5c6c6973746f766572726964655c6c69737469642d34325c6c6973746f76657272696465636f756e74305c6c73377d7d5c706172645c6c73375c696c766c302066697273745c706172207365636f6e645c7061727d",
+      "reference": {
+        "body": [
+          "first",
+          "second"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "4d72a4addb33fedd608e8fad286887ec373c1a8826ab2197c6962f61a1735650",
+      "source_sha256": "7b81f4a2e8e72084c30cf951e1b24176489e802eec9b689a8e17736192ddde7d"
+    },
+    {
+      "actual": {
+        "body": [
+          "A",
+          "B",
+          "C"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "spacing": {
+              "line": "360",
+              "lineRule": "auto"
+            }
+          },
+          {
+            "spacing": {
+              "line": "300",
+              "lineRule": "exact"
+            }
+          },
+          {
+            "spacing": {
+              "line": "300",
+              "lineRule": "atLeast"
+            }
+          }
+        ],
+        "styles": {},
+        "tables": []
+      },
+      "actual_sha256": "d0f072f0f622cacd88cc8d7d15a8b8a7e3541d762a1fc7b7f6707613862b8c77",
+      "case": "spacing",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties"
+      ],
+      "input_hex": "7b5c727466315c706172645c736c3336305c736c6d756c743120415c7061725c706172645c736c2d3330305c736c6d756c743020425c7061725c706172645c736c3330305c736c6d756c743020437d",
+      "reference": {
+        "body": [
+          "A",
+          "B",
+          "C"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0",
+              "line": "360",
+              "lineRule": "auto"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0",
+              "line": "300",
+              "lineRule": "exact"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "eb4a9a8382897ddfcb503ddc59c1557a9d1b5b13b5e4ca32e881d050e2b3852b",
+      "source_sha256": "850bf19ef83f7d23f52e0b0fccf44c3b84fb5b2377b52c38d40388e9940e0fea"
+    },
+    {
+      "actual": {
+        "body": [
+          "A\tB",
+          "C"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "tabs": [
+              {
+                "tab": {
+                  "leader": "dot",
+                  "pos": "1440",
+                  "val": "end"
+                }
+              }
+            ]
+          },
+          {}
+        ],
+        "styles": {},
+        "tables": []
+      },
+      "actual_sha256": "03b68e471498907a31d739c39942c78fdaff3dc4b74c5ccf02184efc5a742f34",
+      "case": "tabs",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties"
+      ],
+      "input_hex": "7b5c727466315c7471725c746c646f745c74783134343020415c74616220425c7061725c7061726420437d",
+      "reference": {
+        "body": [
+          "A\tB",
+          "C"
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            },
+            "tabs": [
+              {
+                "tab": {
+                  "leader": "dot",
+                  "pos": "1440",
+                  "val": "end"
+                }
+              }
+            ]
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          }
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": []
+      },
+      "reference_sha256": "5b07d2694879729c9742cbbc433d3ffd1c482f97d6f0f6fd3c35ca9bcc70de86",
+      "source_sha256": "fc7c693513b988862e6e5b5f2bdf51dcde8f7afa4ce586909c06bebe21d84ad6"
+    },
+    {
+      "actual": {
+        "body": [
+          "A",
+          "B",
+          "",
+          "C",
+          ""
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "styles": {},
+        "tables": [
+          [
+            [
+              {
+                "paragraphs": [
+                  "A"
+                ],
+                "vertical_merge": "restart",
+                "width_twips": "1000"
+              },
+              {
+                "paragraphs": [
+                  "B"
+                ],
+                "vertical_merge": null,
+                "width_twips": "1000"
+              }
+            ],
+            [
+              {
+                "paragraphs": [
+                  ""
+                ],
+                "vertical_merge": "continue",
+                "width_twips": "1000"
+              },
+              {
+                "paragraphs": [
+                  "C"
+                ],
+                "vertical_merge": null,
+                "width_twips": "1000"
+              }
+            ]
+          ]
+        ]
+      },
+      "actual_sha256": "66273a67cf2793382dd6d506a6191f169a315921abb3eab15bc2456f40cf25b0",
+      "case": "vertical_merge",
+      "different_fact_groups": [
+        "styles",
+        "paragraph_properties"
+      ],
+      "input_hex": "7b5c727466315c74726f77645c636c766d67665c63656c6c78313030305c63656c6c78323030305c696e74626c20415c63656c6c20425c63656c6c5c726f775c74726f77645c636c766d72675c63656c6c78313030305c63656c6c78323030305c696e74626c5c63656c6c20435c63656c6c5c726f777d",
+      "reference": {
+        "body": [
+          "A",
+          "B",
+          "",
+          "C",
+          ""
+        ],
+        "fields": [],
+        "headers": [],
+        "note_references": [],
+        "notes": {},
+        "numbering": [],
+        "paragraph_properties": [
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {
+            "rPr": {
+              "sz": "24",
+              "szCs": "24"
+            },
+            "spacing": {
+              "afterLines": "0",
+              "beforeLines": "0"
+            }
+          },
+          {}
+        ],
+        "styles": {
+          "Normal": {
+            "based_on": null,
+            "run": {
+              "sz": "21"
+            },
+            "type": "paragraph"
+          }
+        },
+        "tables": [
+          [
+            [
+              {
+                "paragraphs": [
+                  "A"
+                ],
+                "vertical_merge": "restart",
+                "width_twips": "1000"
+              },
+              {
+                "paragraphs": [
+                  "B"
+                ],
+                "vertical_merge": null,
+                "width_twips": "1000"
+              }
+            ],
+            [
+              {
+                "paragraphs": [
+                  ""
+                ],
+                "vertical_merge": "continue",
+                "width_twips": "1000"
+              },
+              {
+                "paragraphs": [
+                  "C"
+                ],
+                "vertical_merge": null,
+                "width_twips": "1000"
+              }
+            ]
+          ]
+        ]
+      },
+      "reference_sha256": "06fb44ed9a9abcf11afc0d817d508f8f7b574ae85bee692490c1e3a8c415ceef",
+      "source_sha256": "014119b98e8bcd2ec33d856893640f7b2e6cc8dce1b902e53f19517e7b791f5e"
+    }
+  ]
+}

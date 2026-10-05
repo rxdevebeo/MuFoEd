@@ -35,8 +35,11 @@ convert = ["dep:strict-ooxml-pdf", "dep:strict-ooxml-convert"]
 parallel = ["strict-ooxml-wml/parallel"]
 # Transactional editing with source-aware save and shared visual geometry.
 edit = ["dep:strict-ooxml-edit", "write", "svg"]
+# Import builds an owned Strict package so existing media/render/write paths work.
+rtf = ["dep:strict-ooxml-rtf", "write"]
 
 [dependencies]
+strict-ooxml-rtf = { version = "0.1.0", path = "../strict-ooxml-rtf", optional = true }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 strict-ooxml-report = { version = "0.1.0", path = "../strict-ooxml-report", optional = true }

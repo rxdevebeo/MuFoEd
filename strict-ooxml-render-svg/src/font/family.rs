@@ -14,8 +14,10 @@ pub fn map_family(family: &str) -> &'static str {
         // LibreOffice writes its own metric-compatible Liberation families;
         // the bundled Arimo/Tinos/Cousine are the same designs under the OFL
         // names (STAGE-5C-REWORK-1 D1).
-        "arial" | "helvetica" | "liberation sans" | "arimo" => "Arimo",
-        "times new roman" | "liberation serif" | "tinos" => "Tinos",
+        // Regular PostScript names used by Cocoa RTF producers (name ID 6).
+        // Font style still comes from the run's bold/italic properties.
+        "arial" | "arialmt" | "helvetica" | "liberation sans" | "arimo" => "Arimo",
+        "times new roman" | "timesnewromanpsmt" | "liberation serif" | "tinos" => "Tinos",
         "courier new" | "liberation mono" | "cousine" => "Cousine",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
         // is the bundled OFL face with the full OMML glyph repertoire.
@@ -92,5 +94,18 @@ mod tests {
         assert_eq!(map_family("Cousine"), "Cousine");
         assert_eq!(map_family("Caladea"), "Caladea");
         assert_eq!(map_family("Carlito"), "Carlito");
+    }
+
+    #[test]
+    fn maps_regular_postscript_names_to_the_same_bundled_faces() {
+        assert_eq!(map_family("ArialMT"), map_family("Arial"));
+        assert_eq!(map_family("  arialmt "), map_family("Arial"));
+        assert_eq!(
+            map_family("TimesNewRomanPSMT"),
+            map_family("Times New Roman")
+        );
+        // Styled PostScript names need their weight/slant resolved as well;
+        // a family-only alias must not silently discard those properties.
+        assert_eq!(map_family("Arial-BoldMT"), "Arial-BoldMT");
     }
 }
