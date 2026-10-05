@@ -36,7 +36,15 @@ fn text_at(svg: &str, needle: &str) -> (f64, f64) {
                 && node.text().is_some_and(|text| text.contains(needle))
         })
         .expect(needle);
-    let coord = |name: &str| node.attribute(name).unwrap().parse().unwrap();
+    let coord = |name: &str| {
+        node.attribute(name)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
     (coord("x"), coord("y"))
 }
 
@@ -123,7 +131,9 @@ fn f16_page_frame_inside_a_cell_uses_the_page_origin() {
 #[test]
 fn f16_same_frame_in_separate_cells_stacks() {
     let body = "\
-<w:tbl><w:tblPr><w:tblW w:w=\"3000\" w:type=\"dxa\"/></w:tblPr>\
+<w:tbl><w:tblPr><w:tblW w:w=\"3000\" w:type=\"dxa\"/>\
+<w:tblCellMar><w:left w:w=\"0\" w:type=\"dxa\"/><w:right w:w=\"0\" w:type=\"dxa\"/>\
+<w:top w:w=\"0\" w:type=\"dxa\"/><w:bottom w:w=\"0\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr>\
 <w:tblGrid><w:gridCol w:w=\"3000\"/></w:tblGrid>\
 <w:tr><w:tc><w:p><w:pPr>\
 <w:framePr w:w=\"2000\" w:h=\"4000\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5400\" w:y=\"6300\"/>\
@@ -186,5 +196,140 @@ fn f16_right_aligned_frame_ends_on_the_indented_edge() {
     assert!(
         (end - 260.0).abs() <= 0.25,
         "right edge {end} must be frame origin + width - right indent"
+    );
+}
+
+/// Shared page-anchored `framePr` on every cell still keeps table topology.
+///
+/// Page 56 of the thesis encodes the phylogeny as a fixed-layout table whose
+/// cells all repeat one frame origin. Escaping each cell as a stacked frame
+/// collapses every SNP onto that origin (Δx ≈ −62 px for `11719` vs `8994`).
+#[test]
+fn f16_shared_page_frame_table_keeps_column_offsets() {
+    let body = "\
+<w:tbl>\
+<w:tblPr><w:tblW w:w=\"3312\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/>\
+<w:tblCellMar><w:left w:w=\"10\" w:type=\"dxa\"/><w:right w:w=\"10\" w:type=\"dxa\"/>\
+<w:top w:w=\"0\" w:type=\"dxa\"/><w:bottom w:w=\"0\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"946\"/><w:gridCol w:w=\"2366\"/></w:tblGrid>\
+<w:tr><w:trPr><w:trHeight w:val=\"557\" w:hRule=\"exact\"/></w:trPr>\
+<w:tc><w:tcPr><w:tcW w:w=\"3312\" w:type=\"dxa\"/><w:gridSpan w:val=\"2\"/>\
+<w:tcBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>\
+<w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/></w:tcBorders></w:tcPr>\
+<w:p><w:pPr><w:framePr w:w=\"3312\" w:h=\"7046\" w:wrap=\"none\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5395\" w:y=\"6370\"/>\
+<w:ind w:left=\"40\"/><w:spacing w:after=\"0\" w:line=\"90\" w:lineRule=\"exact\"/></w:pPr>\
+<w:r><w:t>8994</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:trPr><w:trHeight w:val=\"538\" w:hRule=\"exact\"/></w:trPr>\
+<w:tc><w:tcPr><w:tcW w:w=\"946\" w:type=\"dxa\"/>\
+<w:tcBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/></w:tcBorders></w:tcPr>\
+<w:p><w:pPr><w:framePr w:w=\"3312\" w:h=\"7046\" w:wrap=\"none\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5395\" w:y=\"6370\"/>\
+<w:spacing w:after=\"0\" w:line=\"90\" w:lineRule=\"exact\"/></w:pPr></w:p></w:tc>\
+<w:tc><w:tcPr><w:tcW w:w=\"2366\" w:type=\"dxa\"/>\
+<w:tcBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>\
+<w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/></w:tcBorders></w:tcPr>\
+<w:p><w:pPr><w:framePr w:w=\"3312\" w:h=\"7046\" w:wrap=\"none\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5395\" w:y=\"6370\"/>\
+<w:ind w:left=\"20\"/><w:spacing w:after=\"0\" w:line=\"90\" w:lineRule=\"exact\"/></w:pPr>\
+<w:r><w:t>11719</w:t></w:r></w:p></w:tc></w:tr>\
+</w:tbl>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let (_package, parsed) = open_body(body);
+    let pages = strict_ooxml_render_svg::place_pages(&parsed, &RenderOptions::default(), None)
+        .expect("place");
+    let items: Vec<_> = pages.iter().flat_map(|page| &page.items).collect();
+    let x_of = |needle: &str| {
+        items
+            .iter()
+            .find_map(|item| {
+                let strict_ooxml_render_svg::Item::Text(text) = item else {
+                    return None;
+                };
+                text.text.contains(needle).then_some(text.x)
+            })
+            .unwrap_or_else(|| panic!("{needle}"))
+    };
+    let y_of = |needle: &str| {
+        items
+            .iter()
+            .find_map(|item| {
+                let strict_ooxml_render_svg::Item::Text(text) = item else {
+                    return None;
+                };
+                text.text.contains(needle).then_some(text.baseline)
+            })
+            .unwrap_or_else(|| panic!("{needle}"))
+    };
+    let left = x_of("8994");
+    let right = x_of("11719");
+    // 5395 twips + 10 twips cell margin + 40 twips indent = 363 px.
+    assert!(
+        (left - 363.0).abs() <= 0.25,
+        "8994 x {left} must sit in column 0 of the framed table"
+    );
+    // Column 1 starts 946 twips later; indent 20 twips + margin 10 twips → 424.733 px.
+    assert!(
+        (right - 424.733).abs() <= 0.25,
+        "11719 x {right} must keep the column offset, not stack on 8994 at {left}"
+    );
+    let first_y = y_of("8994");
+    let second_y = y_of("11719");
+    assert!(
+        first_y > 424.667 && first_y < 424.667 + 40.0,
+        "8994 baseline {first_y} must sit in the frame that starts at 424.667"
+    );
+    // Exact row 557 twips = 37.133 px.
+    assert!(
+        (second_y - first_y - 37.133).abs() <= 0.25,
+        "exact row height must separate the SNPs, got {first_y} then {second_y}"
+    );
+    let has_edge = items.iter().any(|item| {
+        let strict_ooxml_render_svg::Item::Line(line) = item else {
+            return false;
+        };
+        (line.x1 - 359.667).abs() <= 1.0 || (line.x2 - 359.667).abs() <= 1.0
+    });
+    assert!(
+        has_edge,
+        "cell left/top borders must paint tree edges at the frame origin"
+    );
+}
+
+/// Inverse: extracting per-cell frames from a uniform table would collapse columns.
+#[test]
+fn f16_inverse_escaped_cell_frames_are_not_the_table_origin() {
+    // Production path must keep 11719 right of 8994. This assertion is the
+    // inverse of stacking both labels at the shared frame x.
+    let (left, right) = {
+        let svg = {
+            // Reuse the same fixture through the public render path.
+            let body = "\
+<w:tbl>\
+<w:tblPr><w:tblW w:w=\"3312\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/>\
+<w:tblCellMar><w:left w:w=\"10\" w:type=\"dxa\"/><w:right w:w=\"10\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"946\"/><w:gridCol w:w=\"2366\"/></w:tblGrid>\
+<w:tr><w:tc><w:tcPr><w:gridSpan w:val=\"2\"/></w:tcPr>\
+<w:p><w:pPr><w:framePr w:w=\"3312\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5395\" w:y=\"6370\"/>\
+<w:ind w:left=\"40\"/></w:pPr><w:r><w:t>8994</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:pPr><w:framePr w:w=\"3312\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5395\" w:y=\"6370\"/></w:pPr></w:p></w:tc>\
+<w:tc><w:p><w:pPr><w:framePr w:w=\"3312\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:x=\"5395\" w:y=\"6370\"/>\
+<w:ind w:left=\"20\"/></w:pPr><w:r><w:t>11719</w:t></w:r></w:p></w:tc></w:tr>\
+</w:tbl>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+            let (_package, parsed) = open_body(body);
+            render(&parsed, &RenderOptions::default())
+                .expect("render")
+                .into_iter()
+                .next()
+                .expect("page")
+                .svg
+        };
+        (text_at(&svg, "8994").0, text_at(&svg, "11719").0)
+    };
+    assert!(
+        right - left > 50.0,
+        "inverse: collapsing onto one frame x would leave Δx≈0, got {left} and {right}"
     );
 }

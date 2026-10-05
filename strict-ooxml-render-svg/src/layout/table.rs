@@ -2,7 +2,7 @@
 //! (`STAGE-4-TASK.md` §5.5, `STAGE-5-TASK.md` §5.7–§5.8).
 
 use strict_ooxml_wml::model::drawing::AnchorDrawing;
-use strict_ooxml_wml::model::props::CellProperties;
+use strict_ooxml_wml::model::props::{CellProperties, FrameProperties};
 use strict_ooxml_wml::model::values::{
     Border, BorderStyle, CellMargins, Twips, VerticalMerge, Width, WidthKind,
 };
@@ -570,7 +570,7 @@ fn layout_cell_content(
 /// that has a `Result` reports `RenderError::LimitExceeded`, and the ones that
 /// do not (`layout_cell_content`, `layout_table`) are themselves under a caller
 /// that does.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn layout_blocks_inline(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
@@ -640,6 +640,10 @@ pub(crate) fn layout_blocks_inline(
                 *y += flow.space_after;
             }
             Block::Table(table) => {
+                if push_uniform_framed_table(ctx, table, depth, escape_frames, page_frames) {
+                    index += 1;
+                    continue;
+                }
                 for flow in layout_table(ctx, table, left, width, depth, escape_frames) {
                     match flow {
                         Flow::Block {
@@ -701,6 +705,112 @@ pub(crate) fn frame_group_end(blocks: &[Block], start: usize) -> usize {
         end += 1;
     }
     end
+}
+
+/// Shared page-anchored frame on every paragraph of a table, if the cells are
+/// one framed figure rather than mixed in-flow content.
+pub(crate) fn table_uniform_frame(table: &Table) -> Option<&FrameProperties> {
+    let mut found: Option<&FrameProperties> = None;
+    for row in &table.rows {
+        for cell in &row.cells {
+            if !blocks_uniform_frame(&cell.blocks, &mut found) {
+                return None;
+            }
+        }
+    }
+    found
+}
+
+fn blocks_uniform_frame<'a>(blocks: &'a [Block], found: &mut Option<&'a FrameProperties>) -> bool {
+    for block in blocks {
+        match block {
+            Block::Paragraph(para) => {
+                let Some(frame) = para.props.frame.as_ref() else {
+                    return false;
+                };
+                match *found {
+                    None => *found = Some(frame),
+                    Some(signature) if signature != frame => return false,
+                    Some(_) => {}
+                }
+            }
+            Block::SdtBlock(sdt) => {
+                if !blocks_uniform_frame(&sdt.blocks, found) {
+                    return false;
+                }
+            }
+            Block::Table(_) | Block::AltChunk(_) | Block::Opaque(_) => return false,
+        }
+    }
+    true
+}
+
+/// Lays a uniformly framed table out as one container at the frame origin.
+pub(crate) fn framed_table_items(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    origin_x: f64,
+    origin_y: f64,
+    frame_width: f64,
+    depth: u32,
+) -> Vec<Item> {
+    let flows = layout_table(ctx, table, origin_x, frame_width.max(1.0), depth, false);
+    let mut items = Vec::new();
+    let mut y = origin_y;
+    for flow in flows {
+        match flow {
+            Flow::TableRow(row) => {
+                for item in &row.items {
+                    items.push(offset_item(item, 0.0, y));
+                }
+                items.extend(row.page_frames);
+                y += row.height;
+            }
+            Flow::Block {
+                items: block_items,
+                height,
+            } => {
+                for item in &block_items {
+                    items.push(offset_item(item, 0.0, y));
+                }
+                y += height;
+            }
+            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
+        }
+    }
+    items
+}
+
+/// Page-absolute items for a uniformly framed nested table, if it is one figure.
+fn push_uniform_framed_table(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    depth: u32,
+    escape_frames: bool,
+    page_frames: &mut Vec<Item>,
+) -> bool {
+    if !escape_frames {
+        return false;
+    }
+    let Some(frame) = table_uniform_frame(table) else {
+        return false;
+    };
+    let (margin_x, margin_y, content_width) = ctx.frame_anchor.get();
+    let scale = ctx.options.scale;
+    let origin_x = frame_origin(frame.x, frame.h_anchor.as_deref(), margin_x, scale);
+    let origin_y = frame_origin(frame.y, frame.v_anchor.as_deref(), margin_y, scale);
+    let frame_width = frame.width.map_or(content_width.max(1.0), |width| {
+        crate::units::twips_to_px(width.value(), scale)
+    });
+    page_frames.extend(framed_table_items(
+        ctx,
+        table,
+        origin_x,
+        origin_y,
+        frame_width,
+        depth,
+    ));
+    true
 }
 
 /// Page origin of a frame. A missing anchor, and `page`, are the page edge.

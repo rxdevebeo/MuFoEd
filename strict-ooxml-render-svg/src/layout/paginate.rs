@@ -10,8 +10,8 @@ use crate::layout::exclusions::PageExclusion;
 use crate::layout::floating::{page_exclusion, PendingAnchor};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::table::{
-    frame_group_end, frame_origin, layout_blocks_inline, layout_frame_contents, layout_table,
-    offset_item,
+    frame_group_end, frame_origin, framed_table_items, layout_blocks_inline, layout_frame_contents,
+    layout_table, offset_item, table_uniform_frame,
 };
 use crate::layout::{
     geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
@@ -370,12 +370,17 @@ fn layout_blocks(
                     paginator.geometry.top,
                     paginator.geometry.content_width(),
                 ));
-                let flows = layout_table(ctx, table, left, width, depth, true);
-                paginator.set_table_headers(&flows);
-                for flow in flows {
-                    paginator.place(flow)?;
+                if let Some(frame) = table_uniform_frame(table) {
+                    place_framed_table(ctx, table, frame, paginator, depth)?;
+                    pending_after = 0.0;
+                } else {
+                    let flows = layout_table(ctx, table, left, width, depth, true);
+                    paginator.set_table_headers(&flows);
+                    for flow in flows {
+                        paginator.place(flow)?;
+                    }
+                    paginator.clear_table_headers();
                 }
-                paginator.clear_table_headers();
             }
             Block::SdtBlock(sdt) => {
                 layout_blocks(ctx, &sdt.blocks, width, paginator, depth + 1)?;
@@ -516,6 +521,39 @@ fn place_frame_group(
         });
     }
     for item in items {
+        paginator.push_item(item)?;
+    }
+    Ok(())
+}
+
+/// Places a table whose cells all share one page frame, keeping column topology.
+fn place_framed_table(
+    ctx: &LayoutContext<'_>,
+    table: &strict_ooxml_wml::model::Table,
+    frame: &strict_ooxml_wml::model::props::FrameProperties,
+    paginator: &mut Paginator<'_>,
+    depth: u32,
+) -> Result<()> {
+    let scale = ctx.options.scale;
+    let origin_x = frame_origin(
+        frame.x,
+        frame.h_anchor.as_deref(),
+        paginator.geometry.left,
+        scale,
+    );
+    let origin_y = frame_origin(
+        frame.y,
+        frame.v_anchor.as_deref(),
+        paginator.geometry.top,
+        scale,
+    );
+    let frame_width = frame
+        .width
+        .map_or(paginator.geometry.content_width(), |width| {
+            crate::units::twips_to_px(width.value(), scale)
+        });
+    paginator.started = true;
+    for item in framed_table_items(ctx, table, origin_x, origin_y, frame_width, depth) {
         paginator.push_item(item)?;
     }
     Ok(())
