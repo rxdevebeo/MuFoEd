@@ -31,7 +31,8 @@ pub struct Entry {
 /// Lists the `.docx` files directly inside `dir`, sorted by name.
 ///
 /// Not recursive: the viewer is pointed at a corpus, and a recursive walk
-/// would pick up temporary copies and nested build output.
+/// would pick up temporary copies and nested build output. Word lock files
+/// (`~$…`) are not documents and are left out of the menu.
 #[must_use]
 pub fn discover(dir: &Path) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else {
@@ -47,15 +48,17 @@ pub fn discover(dir: &Path) -> Vec<Entry> {
             if !is_docx || !path.is_file() {
                 return None;
             }
+            let name = path.file_name().map_or_else(
+                || "<unnamed>".to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            // Office creates `~$name.docx` beside an open document. It is a
+            // lock, not a second copy of the text.
+            if name.starts_with("~$") {
+                return None;
+            }
             let size = item.metadata().map_or(0, |meta| meta.len());
-            Some(Entry {
-                name: path.file_name().map_or_else(
-                    || "<unnamed>".to_owned(),
-                    |name| name.to_string_lossy().into_owned(),
-                ),
-                path,
-                size,
-            })
+            Some(Entry { name, path, size })
         })
         .collect();
     entries.sort_by(|left, right| left.name.cmp(&right.name));
@@ -472,6 +475,7 @@ mod tests {
         std::fs::write(dir.join("b.docx"), b"x").expect("write");
         std::fs::write(dir.join("a.docx"), b"x").expect("write");
         std::fs::write(dir.join("notes.txt"), b"x").expect("write");
+        std::fs::write(dir.join("~$a.docx"), b"x").expect("write");
         std::fs::create_dir_all(dir.join("nested")).expect("nested");
         std::fs::write(dir.join("nested/c.docx"), b"x").expect("write");
         let found = discover(&dir);
@@ -480,7 +484,7 @@ mod tests {
         assert_eq!(
             names,
             vec!["a.docx", "b.docx"],
-            "sorted, docx only, not recursive"
+            "sorted, docx only, not recursive, no Word lock files"
         );
     }
 

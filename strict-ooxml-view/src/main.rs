@@ -6,17 +6,19 @@
 //! place — which is why it serves vector pages instead of rasterizing them.
 //!
 //! ```text
-//! strict-ooxml-view [DIR] [--port N] [--transitional] [--scale N]
+//! strict-ooxml-view [DIR...] [--port N] [--transitional] [--scale N]
 //! ```
 //!
-//! With no directory it looks in the workspace's two corpora, so it can be run
-//! from a checkout without arguments.
+//! With no directory it serves every known corpus that contains documents, and
+//! the page can switch between them. Directories on the command line replace
+//! that list.
 
 mod http;
 mod ui;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -29,10 +31,44 @@ const EXIT_OK: u8 = 0;
 /// Exit code: the viewer could not start.
 const EXIT_ERROR: u8 = 2;
 
-/// Directories searched when none is given.
-const DEFAULT_DIRS: &[&str] = &[
-    "strict-ooxml-core/tests/strict",
-    "strict-ooxml-core/tests/docx",
+/// One directory the viewer offers in the corpus menu.
+struct KnownCorpus {
+    /// Stable id used in URLs.
+    id: &'static str,
+    /// Label shown in the menu.
+    label: &'static str,
+    /// Path relative to the workspace root.
+    path: &'static str,
+    /// Whether packages in this corpus are Transitional and must be normalized.
+    transitional: bool,
+}
+
+/// Corpora offered when the command line names none.
+const KNOWN_CORPORA: &[KnownCorpus] = &[
+    KnownCorpus {
+        id: "strict",
+        label: "Strict",
+        path: "strict-ooxml-core/tests/strict",
+        transitional: false,
+    },
+    KnownCorpus {
+        id: "docx",
+        label: "Docx",
+        path: "strict-ooxml-core/tests/docx",
+        transitional: true,
+    },
+    KnownCorpus {
+        id: "cc0-docx",
+        label: "CC0 DOCX",
+        path: "testdata/CC0_DOCX",
+        transitional: true,
+    },
+    KnownCorpus {
+        id: "cc0",
+        label: "CC0",
+        path: "testdata/CC0",
+        transitional: true,
+    },
 ];
 
 fn main() -> ExitCode {
@@ -41,21 +77,31 @@ fn main() -> ExitCode {
         return ExitCode::from(EXIT_ERROR);
     };
 
-    let Some(dir) = config.directory() else {
-        eprintln!("error: no document directory found");
-        eprintln!("hint: pass one explicitly, e.g. strict-ooxml-view path/to/corpus");
-        return ExitCode::from(EXIT_ERROR);
-    };
-    let entries = discover(&dir);
-    if entries.is_empty() {
-        eprintln!("error: no .docx files in {}", dir.display());
+    let corpora = load_corpora(&config);
+    if corpora.is_empty() {
+        eprintln!("error: no .docx files found");
+        eprintln!("hint: pass one or more directories, e.g. strict-ooxml-view testdata/CC0_DOCX");
         return ExitCode::from(EXIT_ERROR);
     }
 
+    println!("serving {} corpus(es)", corpora.len());
+    for corpus in &corpora {
+        let mode = if corpus.transitional {
+            "normalized"
+        } else {
+            "strict"
+        };
+        println!(
+            "  {} — {} document(s), {mode}, {}",
+            corpus.label,
+            corpus.entries.len(),
+            corpus.path
+        );
+    }
+
     let state = Arc::new(State {
-        entries: entries.clone(),
-        cache: Mutex::new(Cache::new()),
-        transitional: config.transitional,
+        corpora,
+        caches: Mutex::new(BTreeMap::new()),
         scale: config.scale,
     });
 
@@ -69,15 +115,7 @@ fn main() -> ExitCode {
     let port = listener
         .local_addr()
         .map_or(config.port, |addr| addr.port());
-    println!(
-        "serving {} document(s) from {}",
-        entries.len(),
-        dir.display()
-    );
     println!("open http://127.0.0.1:{port}/");
-    if config.transitional {
-        println!("(--transitional: Transitional packages are normalized to Strict)");
-    }
     let _ = std::io::Write::flush(&mut std::io::stdout());
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -91,14 +129,26 @@ fn main() -> ExitCode {
     ExitCode::from(EXIT_OK)
 }
 
+/// One corpus the page can switch to.
+struct Corpus {
+    /// Stable id used in URLs.
+    id: String,
+    /// Label shown in the menu.
+    label: String,
+    /// Directory, as printed at startup and returned by the API.
+    path: String,
+    /// Documents in menu order.
+    entries: Vec<Entry>,
+    /// Whether to normalize Transitional packages in this corpus.
+    transitional: bool,
+}
+
 /// Everything the routes need.
 struct State {
-    /// Discovered documents, in menu order.
-    entries: Vec<Entry>,
-    /// Rendered pages so far.
-    cache: Mutex<Cache>,
-    /// Whether to normalize Transitional input.
-    transitional: bool,
+    /// Corpora, in menu order.
+    corpora: Vec<Corpus>,
+    /// Rendered pages, one cache per corpus so equal file names do not collide.
+    caches: Mutex<BTreeMap<String, Cache>>,
     /// Output scale, in px per inch.
     ///
     /// This is a DPI, not a multiplier: the renderer converts twips by
@@ -109,21 +159,29 @@ struct State {
 }
 
 impl State {
-    /// Returns the view for `name`, rendering it on first request.
-    fn view(&self, name: &str) -> Option<DocumentView> {
-        if let Some(cached) = self.cache.lock().expect("viewer cache").get(name) {
-            return Some(cached.clone());
+    /// Returns the view for `name` in `corpus`, rendering it on first request.
+    fn view(&self, corpus: &Corpus, name: &str) -> Option<DocumentView> {
+        if let Some(cached) = self
+            .caches
+            .lock()
+            .expect("viewer cache")
+            .get(&corpus.id)
+            .and_then(|cache| cache.get(name).cloned())
+        {
+            return Some(cached);
         }
-        let entry = self.entries.iter().find(|entry| entry.name == name)?;
+        let entry = corpus.entries.iter().find(|entry| entry.name == name)?;
         // A document that will not open is still a menu entry that has to say
         // so; showing nothing would look like a viewer bug.
-        let view = match render(entry, self.transitional, self.scale) {
+        let view = match render(entry, corpus.transitional, self.scale) {
             Ok(view) => view,
             Err(error) => failed(entry, &error.to_string()),
         };
-        self.cache
+        self.caches
             .lock()
             .expect("viewer cache")
+            .entry(corpus.id.clone())
+            .or_default()
             .insert(view.clone());
         Some(view)
     }
@@ -133,8 +191,24 @@ impl State {
 fn route(state: &State, path: &str, query: &str) -> Response {
     match path {
         "/" | "/index.html" => Response::ok("text/html; charset=utf-8", ui::page().into_bytes()),
+        "/api/corpora" => Response::ok(
+            "application/json; charset=utf-8",
+            format!(
+                "[{}]",
+                state
+                    .corpora
+                    .iter()
+                    .map(corpus_json)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+            .into_bytes(),
+        ),
         "/api/documents" => {
-            let listing: Vec<String> = state
+            let Some(corpus) = selected_corpus(state, query) else {
+                return Response::not_found("corpus");
+            };
+            let listing: Vec<String> = corpus
                 .entries
                 .iter()
                 .map(|entry| menu_entry_json(&entry.name, entry.size))
@@ -145,11 +219,14 @@ fn route(state: &State, path: &str, query: &str) -> Response {
             )
         }
         "/api/document" => {
+            let Some(corpus) = selected_corpus(state, query) else {
+                return Response::not_found("corpus");
+            };
             let name = query_value(query, "name").unwrap_or_default();
             if name.is_empty() {
                 return Response::bad_request("`name` is required");
             }
-            let Some(view) = state.view(&name) else {
+            let Some(view) = state.view(corpus, &name) else {
                 return Response::not_found(&name);
             };
             Response::ok(
@@ -159,6 +236,27 @@ fn route(state: &State, path: &str, query: &str) -> Response {
         }
         other => Response::not_found(other),
     }
+}
+
+/// The corpus named by `corpus`, or the first one when the query omits it.
+fn selected_corpus<'a>(state: &'a State, query: &str) -> Option<&'a Corpus> {
+    let requested = query_value(query, "corpus").unwrap_or_default();
+    if requested.is_empty() {
+        return state.corpora.first();
+    }
+    state.corpora.iter().find(|corpus| corpus.id == requested)
+}
+
+/// One corpus as JSON.
+fn corpus_json(corpus: &Corpus) -> String {
+    format!(
+        "{{\"id\":{},\"label\":{},\"path\":{},\"count\":{},\"transitional\":{}}}",
+        json_string(&corpus.id),
+        json_string(&corpus.label),
+        json_string(&corpus.path),
+        corpus.entries.len(),
+        corpus.transitional
+    )
 }
 
 /// One menu entry as JSON.
@@ -314,11 +412,11 @@ fn query_value(query: &str, key: &str) -> Option<String> {
 
 /// Parsed command line.
 struct Config {
-    /// Directory given on the command line.
-    dir: Option<PathBuf>,
+    /// Directories given on the command line, in order.
+    dirs: Vec<PathBuf>,
     /// Port to bind.
     port: u16,
-    /// Whether to normalize Transitional input.
+    /// Whether to normalize every corpus, including Strict.
     transitional: bool,
     /// Render scale.
     scale: f64,
@@ -328,7 +426,7 @@ impl Config {
     /// Parses `args`, or returns `None` after printing what was wrong.
     fn parse(args: &[String]) -> Option<Self> {
         let mut config = Self {
-            dir: None,
+            dirs: Vec::new(),
             port: 8181,
             transitional: false,
             scale: 96.0,
@@ -366,37 +464,134 @@ impl Config {
                     print_usage();
                     return None;
                 }
-                other => config.dir = Some(PathBuf::from(other)),
+                other => config.dirs.push(PathBuf::from(other)),
             }
             index += 1;
         }
         Some(config)
     }
+}
 
-    /// The directory to serve, falling back to the workspace corpora.
-    fn directory(&self) -> Option<PathBuf> {
-        if let Some(dir) = &self.dir {
-            return Some(dir.clone());
-        }
-        DEFAULT_DIRS
+/// Corpora to serve: the directories on the command line, or every known
+/// corpus that contains a document.
+fn load_corpora(config: &Config) -> Vec<Corpus> {
+    let requested = if config.dirs.is_empty() {
+        KNOWN_CORPORA
             .iter()
-            .map(PathBuf::from)
-            .find(|dir| !discover(dir).is_empty())
+            .map(|known| PathBuf::from(known.path))
+            .collect()
+    } else {
+        config.dirs.clone()
+    };
+    let mut corpora = Vec::new();
+    let mut used = BTreeSet::new();
+    for dir in requested {
+        let entries = discover(&dir);
+        if entries.is_empty() {
+            continue;
+        }
+        let known = known_for(&dir);
+        let transitional = config.transitional || known.is_some_and(|item| item.transitional);
+        let base_id = known.map_or_else(|| slug(&dir_label(&dir)), |item| item.id.to_owned());
+        let label = known.map_or_else(|| dir_label(&dir), |item| item.label.to_owned());
+        corpora.push(Corpus {
+            id: unique_id(&base_id, &mut used),
+            label,
+            path: dir.display().to_string(),
+            entries,
+            transitional,
+        });
+    }
+    corpora
+}
+
+/// The known corpus `dir` points at, when it is one of [`KNOWN_CORPORA`].
+fn known_for(dir: &Path) -> Option<&'static KnownCorpus> {
+    KNOWN_CORPORA
+        .iter()
+        .find(|known| same_dir(Path::new(known.path), dir))
+}
+
+/// Whether `left` and `right` name the same directory.
+fn same_dir(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+/// The directory's own name, used when it is not a known corpus.
+fn dir_label(dir: &Path) -> String {
+    dir.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| dir.display().to_string())
+}
+
+/// A URL-safe id derived from a directory name.
+fn slug(name: &str) -> String {
+    let mut out = String::new();
+    for character in name.chars() {
+        if character.is_ascii_alphanumeric() {
+            out.push(character.to_ascii_lowercase());
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "corpus".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+/// `base`, or `base-2`, `base-3`, … when `base` is already taken.
+fn unique_id(base: &str, used: &mut BTreeSet<String>) -> String {
+    if used.insert(base.to_owned()) {
+        return base.to_owned();
+    }
+    let mut index = 2u32;
+    loop {
+        let candidate = format!("{base}-{index}");
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+        index += 1;
     }
 }
 
 fn print_usage() {
-    println!("usage: strict-ooxml-view [DIR] [--port N] [--scale N] [--transitional]");
+    println!("usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional]");
     println!();
-    println!("  DIR               directory of .docx files (default: the workspace corpora)");
+    println!("  DIR...            directories of .docx files");
+    println!("                    (default: every known corpus that contains documents)");
     println!("  --port N          port to bind on 127.0.0.1 (default 8181)");
     println!("  --scale N         output DPI (default 96; 144 doubles the page size)");
-    println!("  --transitional    normalize Transitional packages to Strict on the way in");
+    println!("  --transitional    normalize every corpus, including Strict");
+    println!();
+    println!("known corpora:");
+    for known in KNOWN_CORPORA {
+        let mode = if known.transitional {
+            "normalized"
+        } else {
+            "strict"
+        };
+        println!("  {:<12} {} ({mode})", known.label, known.path);
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{json_number, json_string, query_value, Config, DEFAULT_DIRS, EXIT_OK};
+    use super::{
+        corpus_json, json_number, json_string, known_for, query_value, slug, unique_id, Config,
+        Corpus, Entry, EXIT_OK, KNOWN_CORPORA,
+    };
+    use std::collections::BTreeSet;
+    use std::path::{Path, PathBuf};
     use strict_ooxml_view::{DocumentView, PipelineView};
 
     fn empty_pipeline() -> PipelineView {
@@ -414,13 +609,14 @@ mod tests {
         assert_eq!(config.port, 8181);
         assert!(!config.transitional);
         assert!((config.scale - 96.0).abs() < f64::EPSILON);
-        assert_eq!(config.dir, None);
+        assert!(config.dirs.is_empty());
     }
 
     #[test]
     fn options_are_parsed() {
         let args: Vec<String> = [
             "corpus",
+            "other",
             "--port",
             "9000",
             "--scale",
@@ -431,7 +627,10 @@ mod tests {
         .map(|value| (*value).to_owned())
         .collect();
         let config = Config::parse(&args).expect("parse");
-        assert_eq!(config.dir.as_deref(), Some(std::path::Path::new("corpus")));
+        assert_eq!(
+            config.dirs,
+            vec![PathBuf::from("corpus"), PathBuf::from("other")]
+        );
         assert_eq!(config.port, 9000);
         assert!((config.scale - 144.0).abs() < f64::EPSILON);
         assert!(config.transitional);
@@ -456,10 +655,53 @@ mod tests {
     }
 
     #[test]
-    fn the_fallback_corpora_are_the_workspace_test_directories() {
-        assert!(DEFAULT_DIRS
+    fn known_corpora_cover_the_workspace_and_cc0() {
+        let ids: Vec<&str> = KNOWN_CORPORA.iter().map(|known| known.id).collect();
+        assert!(ids.contains(&"strict"));
+        assert!(ids.contains(&"docx"));
+        assert!(ids.contains(&"cc0-docx"));
+        assert!(KNOWN_CORPORA
             .iter()
-            .all(|dir| dir.starts_with("strict-ooxml-core/tests/")));
+            .filter(|known| known.id != "cc0" && known.id != "cc0-docx")
+            .all(|known| known.path.starts_with("strict-ooxml-core/tests/")));
+    }
+
+    #[test]
+    fn a_known_transitional_corpus_is_recognized_by_its_path() {
+        let cc0 = known_for(Path::new("testdata/CC0_DOCX")).expect("cc0 docx");
+        assert_eq!(cc0.id, "cc0-docx");
+        assert!(cc0.transitional);
+        let strict = known_for(Path::new("strict-ooxml-core/tests/strict")).expect("strict");
+        assert!(!strict.transitional);
+        assert!(known_for(Path::new("somewhere/else")).is_none());
+    }
+
+    #[test]
+    fn slugs_and_duplicate_ids_stay_url_safe() {
+        assert_eq!(slug("CC0_DOCX"), "cc0-docx");
+        assert_eq!(slug("..."), "corpus");
+        let mut used = BTreeSet::new();
+        assert_eq!(unique_id("cc0-docx", &mut used), "cc0-docx");
+        assert_eq!(unique_id("cc0-docx", &mut used), "cc0-docx-2");
+    }
+
+    #[test]
+    fn a_corpus_listing_names_the_id_the_page_selects() {
+        let corpus = Corpus {
+            id: "cc0-docx".to_owned(),
+            label: "CC0 DOCX".to_owned(),
+            path: "testdata/CC0_DOCX".to_owned(),
+            entries: vec![Entry {
+                name: "a.docx".to_owned(),
+                path: PathBuf::from("testdata/CC0_DOCX/a.docx"),
+                size: 12,
+            }],
+            transitional: true,
+        };
+        let json = corpus_json(&corpus);
+        assert!(json.contains("\"id\":\"cc0-docx\""));
+        assert!(json.contains("\"count\":1"));
+        assert!(json.contains("\"transitional\":true"));
     }
 
     #[test]

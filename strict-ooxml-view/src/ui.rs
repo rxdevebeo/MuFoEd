@@ -22,6 +22,8 @@ pub(crate) fn index_html() -> &'static str {
 </head>
 <body>
 <header id="bar">
+  <label id="corpus-label" for="corpus">corpus</label>
+  <select id="corpus"></select>
   <button id="menu-button" type="button" aria-expanded="false" aria-controls="menu">&#9776; Documents</button>
   <div id="title">
     <strong id="doc-name">no document open</strong>
@@ -93,6 +95,16 @@ body {
   position: sticky;
   top: 0;
   z-index: 3;
+}
+#corpus-label { font-size: 12px; color: var(--muted); }
+#corpus {
+  font: inherit;
+  color: var(--text);
+  background: #262b34;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 16rem;
 }
 #menu-button {
   font: inherit;
@@ -268,7 +280,8 @@ body.gaps-off .page { box-shadow: none; border-bottom: 1px solid var(--line); }
 pub(crate) fn script() -> &'static str {
     "
 // Everything comes from the local server; nothing is fetched from a network.
-const LIST_URL = '/api/documents';
+const CORPORA_URL = '/api/corpora';
+const LIST_URL = '/api/documents?corpus=';
 const VIEW_URL = '/api/document?name=';
 
 const $ = (id) => document.getElementById(id);
@@ -282,9 +295,13 @@ const menuButton = $('menu-button');
 const filter = $('filter');
 const zoom = $('zoom');
 const zoomValue = $('zoom-value');
+const corpusSelect = $('corpus');
 
+let corpora = [];
+let corpusId = '';
 let documents = [];
 let current = null;
+let loadToken = 0;
 
 // Zoom is a fraction of the page's natural CSS size. The renderer emits
 // width/height in px at scale 1 and the SVG scales with its element, so
@@ -412,16 +429,26 @@ function renderView(view) {
   status.textContent = n + (n === 1 ? ' page' : ' pages') + ' · ' + view.name;
 }
 
+function corpusLabel() {
+  const found = corpora.find((item) => item.id === corpusId);
+  return found ? found.label : corpusId;
+}
+
 async function open(name) {
+  const openedIn = corpusId;
   current = name;
   for (const li of list.children) {
     li.setAttribute('aria-current', String(li.dataset.name === name));
   }
   status.textContent = 'rendering ' + name + '…';
   try {
-    const response = await fetch(VIEW_URL + encodeURIComponent(name));
+    const response = await fetch(
+      VIEW_URL + encodeURIComponent(name) + '&corpus=' + encodeURIComponent(openedIn)
+    );
+    if (openedIn !== corpusId || current !== name) return;
     renderView(await response.json());
   } catch (error) {
+    if (openedIn !== corpusId) return;
     showMessage(String(error), 'error');
   }
   closeMenu();
@@ -463,11 +490,56 @@ function closeMenu() {
   menuButton.setAttribute('aria-expanded', 'false');
 }
 
+function showChooser() {
+  showMessage(
+    documents.length
+      ? 'choose a document from the menu'
+      : 'no .docx files in this corpus',
+    'empty'
+  );
+  status.textContent = corpusLabel() + ' · ' + documents.length + ' document(s)';
+}
+
+function fillCorpora() {
+  corpusSelect.replaceChildren();
+  for (const corpus of corpora) {
+    const option = document.createElement('option');
+    option.value = corpus.id;
+    option.textContent = corpus.label + ' (' + corpus.count + ')';
+    corpusSelect.append(option);
+  }
+  if (corpora.length) {
+    corpusId = corpora[0].id;
+    corpusSelect.value = corpusId;
+  }
+}
+
+async function loadDocuments() {
+  const token = ++loadToken;
+  const id = corpusId;
+  const response = await fetch(LIST_URL + encodeURIComponent(id));
+  if (token !== loadToken) return;
+  documents = await response.json();
+  current = null;
+  docName.textContent = 'no document open';
+  docMeta.replaceChildren();
+  $('losses').hidden = true;
+  buildMenu(filter.value);
+  showChooser();
+  // A corpus with one document has nothing to choose between.
+  if (documents.length === 1) open(documents[0].name);
+}
+
 menuButton.addEventListener('click', () => {
   if (menu.hidden) openMenu(); else closeMenu();
 });
 filter.addEventListener('input', () => buildMenu(filter.value));
 zoom.addEventListener('input', applyZoom);
+corpusSelect.addEventListener('change', () => {
+  corpusId = corpusSelect.value;
+  filter.value = '';
+  loadDocuments().catch((error) => showMessage(String(error), 'error'));
+});
 $('gaps').addEventListener('change', (event) => {
   document.body.classList.toggle('gaps-off', !event.target.checked);
 });
@@ -478,26 +550,27 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('click', (event) => {
   if (menu.hidden) return;
   if (menu.contains(event.target) || menuButton.contains(event.target)) return;
+  if (corpusSelect.contains(event.target)) return;
   closeMenu();
 });
 
 (async function start() {
   try {
-    documents = await (await fetch(LIST_URL)).json();
+    corpora = await (await fetch(CORPORA_URL)).json();
   } catch (error) {
     showMessage('cannot reach the viewer server: ' + error, 'error');
     return;
   }
-  buildMenu('');
-  showMessage(
-    documents.length
-      ? 'choose a document from the menu'
-      : 'no .docx files in this directory',
-    'empty'
-  );
-  status.textContent = documents.length + ' document(s)';
-  // A corpus with one document has nothing to choose between.
-  if (documents.length === 1) open(documents[0].name);
+  fillCorpora();
+  if (!corpora.length) {
+    showMessage('no corpus is available', 'empty');
+    return;
+  }
+  try {
+    await loadDocuments();
+  } catch (error) {
+    showMessage('cannot reach the viewer server: ' + error, 'error');
+  }
 })();
 "
 }
@@ -528,7 +601,15 @@ mod tests {
     #[test]
     fn the_menu_and_the_page_column_exist() {
         let rendered = page();
-        for id in ["menu", "menu-list", "filter", "pages", "status", "zoom"] {
+        for id in [
+            "menu",
+            "menu-list",
+            "filter",
+            "pages",
+            "status",
+            "zoom",
+            "corpus",
+        ] {
             assert!(
                 rendered.contains(&format!("id=\"{id}\"")),
                 "the shell is missing #{id}"
@@ -554,7 +635,9 @@ mod tests {
         // A local viewer must not reach out to any other origin.
         assert!(!code.contains("http://"), "no plaintext origin");
         assert!(!code.contains("https://"), "no external origin");
-        assert!(code.contains("'/api/documents'"));
+        assert!(code.contains("'/api/documents?corpus='"));
+        assert!(code.contains("'/api/corpora'"));
+        assert!(code.contains("'&corpus='"));
     }
 
     #[test]

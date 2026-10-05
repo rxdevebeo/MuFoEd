@@ -1,7 +1,7 @@
 //! A minimal blocking HTTP/1.1 server for the viewer.
 //!
 //! Hand-rolled on `std::net::TcpListener` rather than pulled from a web
-//! framework: the server answers three routes on loopback, serves bytes that
+//! framework: the server answers the viewer's routes on loopback, serves bytes that
 //! are already in memory, and shares the process with the renderer. A
 //! framework would add a dependency tree to a workspace whose licences and
 //! advisories are checked by `cargo deny` (`deny.toml`), for a loopback tool.
