@@ -6,6 +6,7 @@ use strict_ooxml_wml::model::values::Emu;
 use strict_ooxml_core::error::Result;
 use strict_ooxml_wml::model::props::Section;
 
+use crate::layout::exclusions::PageExclusion;
 use crate::layout::{geometry_for, Geometry, Item, LayoutContext, PlacedPage};
 use crate::units::emu_to_px;
 
@@ -144,7 +145,7 @@ fn resolve_v(pos: Option<&Position>, geometry: &Geometry, host_y: f64, h: f64, s
 }
 
 /// Length of one axis. A positive `wp14` percent replaces the fallback extent.
-fn resolved_axis(
+pub(crate) fn resolved_axis(
     ctx: &LayoutContext<'_>,
     relative: Option<&RelativeSize>,
     horizontal: bool,
@@ -215,15 +216,6 @@ fn vertical_box(relative: Option<&str>, geometry: &Geometry, host_y: f64) -> (f6
     }
 }
 
-/// Returns `true` if the anchor reserves vertical flow space (`wrapTopAndBottom`).
-#[must_use]
-pub(crate) fn reserves_vertical_space(anchor: &AnchorDrawing) -> bool {
-    anchor
-        .wrap
-        .as_ref()
-        .is_some_and(|wrap| matches!(wrap.kind, WrapKind::TopAndBottom))
-}
-
 /// Which side of a square wrap may hold text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WrapSide {
@@ -237,7 +229,8 @@ pub(crate) enum WrapSide {
     Largest,
 }
 
-/// A square-wrap rectangle in the same coordinates as the paragraph lines.
+/// A wrap rectangle in the same coordinates as the paragraph lines.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct WrapExclusion {
     /// Left edge, already expanded by `distL`.
     pub left: f64,
@@ -251,72 +244,93 @@ pub(crate) struct WrapExclusion {
     pub side: WrapSide,
 }
 
-/// Square wrap box for line breaking, or `None` when the anchor does not exclude text.
-///
-/// Tight and through contours are not reported as a rectangle. Page-relative
-/// vertical anchors are skipped here: their page y is not known while the
-/// paragraph is still being broken into lines.
-pub(crate) fn square_exclusion(
+/// Resolved width/height for an anchor, matching paint placement (`sizeRel` wins).
+#[must_use]
+pub(crate) fn resolved_extent(
     ctx: &LayoutContext<'_>,
     anchor: &AnchorDrawing,
-    content_left: f64,
-    content_width: f64,
-) -> Option<WrapExclusion> {
+    geometry: &Geometry,
+) -> Option<(f64, f64)> {
+    let scale = ctx.options.scale;
+    let fallback_w = anchor
+        .extent
+        .map_or(0.0, |extent| emu_to_px(extent.cx.value(), scale));
+    let fallback_h = anchor
+        .extent
+        .map_or(0.0, |extent| emu_to_px(extent.cy.value(), scale));
+    let width = resolved_axis(ctx, anchor.size_rel_h.as_ref(), true, geometry, fallback_w);
+    let height = resolved_axis(ctx, anchor.size_rel_v.as_ref(), false, geometry, fallback_h);
+    if width <= 0.0 || height <= 0.0 {
+        None
+    } else {
+        Some((width, height))
+    }
+}
+
+/// Wrap exclusion in absolute page coordinates, or `None` when text is not excluded.
+///
+/// Tight/Through stay explicitly unsupported (rectangle is not claimed as a contour).
+pub(crate) fn page_exclusion(
+    ctx: &LayoutContext<'_>,
+    anchor: &AnchorDrawing,
+    geometry: &Geometry,
+    host_x: f64,
+    host_y: f64,
+) -> Option<PageExclusion> {
     let wrap = anchor.wrap.as_ref()?;
-    match wrap.kind {
-        WrapKind::Square => {}
+    let top_and_bottom = match wrap.kind {
+        WrapKind::Square => false,
+        WrapKind::TopAndBottom => true,
         WrapKind::Tight | WrapKind::Through => {
             ctx.warn(
-                "render.wrap: a tight or through contour is unsupported and does not exclude text"
+                "render.wrap: tight/through contour is Unsupported; rectangle is not applied as a contour"
                     .to_owned(),
             );
             return None;
         }
-        WrapKind::None | WrapKind::TopAndBottom => return None,
-    }
-    let extent = anchor.extent?;
+        WrapKind::None => return None,
+    };
+    let (width, height) = resolved_extent(ctx, anchor, geometry)?;
     let scale = ctx.options.scale;
-    let width = emu_to_px(extent.cx.value(), scale);
-    let height = emu_to_px(extent.cy.value(), scale);
-    if width <= 0.0 || height <= 0.0 {
-        return None;
-    }
-    let vertical = anchor
-        .position_v
-        .as_ref()
-        .and_then(|position| position.relative_from.as_deref());
-    if !matches!(vertical, None | Some("paragraph" | "line")) {
-        ctx.warn(
-            "render.wrap: a square wrap that is not paragraph-relative is not applied to line breaks"
-                .to_owned(),
-        );
-        return None;
-    }
-    let x = horizontal_origin(
+    let x = resolve_h(
         anchor.position_h.as_ref(),
-        content_left,
-        content_width,
+        geometry,
+        host_x,
+        width,
         scale,
     );
-    let y = anchor
-        .position_v
-        .as_ref()
-        .and_then(|position| position.offset)
-        .map_or(0.0, |offset| emu_to_px(offset.value(), scale));
+    let y = resolve_v(
+        anchor.position_v.as_ref(),
+        geometry,
+        host_y,
+        height,
+        scale,
+    );
     let dist = |anchor_dist: Option<u32>, wrap_dist: Option<u32>| {
         emu_to_px(i64::from(anchor_dist.or(wrap_dist).unwrap_or(0)), scale)
     };
-    let left = x - dist(anchor.dist_left, wrap.dist_left);
-    let right = x + width + dist(anchor.dist_right, wrap.dist_right);
+    let (left, right, side) = if top_and_bottom {
+        (
+            geometry.left,
+            geometry.left + geometry.content_width(),
+            WrapSide::Both,
+        )
+    } else {
+        let side = match wrap.wrap_text.as_deref() {
+            Some("left") => WrapSide::Left,
+            Some("right") => WrapSide::Right,
+            Some("largest") => WrapSide::Largest,
+            _ => WrapSide::Both,
+        };
+        (
+            x - dist(anchor.dist_left, wrap.dist_left),
+            x + width + dist(anchor.dist_right, wrap.dist_right),
+            side,
+        )
+    };
     let top = y - dist(anchor.dist_top, wrap.dist_top);
     let bottom = y + height + dist(anchor.dist_bottom, wrap.dist_bottom);
-    let side = match wrap.wrap_text.as_deref() {
-        Some("left") => WrapSide::Left,
-        Some("right") => WrapSide::Right,
-        Some("largest") => WrapSide::Largest,
-        _ => WrapSide::Both,
-    };
-    Some(WrapExclusion {
+    Some(PageExclusion {
         left,
         right,
         top,
@@ -325,18 +339,15 @@ pub(crate) fn square_exclusion(
     })
 }
 
-fn horizontal_origin(
-    position: Option<&Position>,
-    content_left: f64,
-    content_width: f64,
-    scale: f64,
-) -> f64 {
-    let offset = position
-        .and_then(|position| position.offset)
-        .map_or(0.0, |offset| emu_to_px(offset.value(), scale));
-    match position.and_then(|position| position.relative_from.as_deref()) {
-        Some("page") => offset,
-        Some("rightMargin" | "outsideMargin") => content_left + content_width + offset,
-        _ => content_left + offset,
-    }
+/// Paragraph-local wrap box for line breaking (Square / TopAndBottom).
+pub(crate) fn wrap_exclusion(
+    ctx: &LayoutContext<'_>,
+    anchor: &AnchorDrawing,
+    geometry: &Geometry,
+    host_x: f64,
+    host_y: f64,
+) -> Option<WrapExclusion> {
+    page_exclusion(ctx, anchor, geometry, host_x, host_y).map(|exclusion| {
+        exclusion.to_paragraph_local(host_y)
+    })
 }

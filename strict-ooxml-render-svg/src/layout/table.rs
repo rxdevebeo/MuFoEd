@@ -601,7 +601,7 @@ pub(crate) fn layout_blocks_inline(
         }
         match &blocks[index] {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width, None, note_marker);
+                let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
                 *y += flow.space_before;
                 for item in flow.flows {
                     match item {
@@ -733,7 +733,7 @@ pub(crate) fn layout_frame_contents(
         let Block::Paragraph(para) = block else {
             continue;
         };
-        let flow = layout_paragraph(ctx, para, 0.0, frame_width, None, None);
+        let flow = layout_paragraph(ctx, para, 0.0, frame_width, None, None, &[], None);
         local_y += pending_after.max(flow.space_before);
         for anchor in flow.anchors {
             anchors.push((origin_y + local_y, anchor));

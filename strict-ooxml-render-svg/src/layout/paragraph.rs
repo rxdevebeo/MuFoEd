@@ -10,8 +10,8 @@ use strict_ooxml_wml::model::{
     AnchorDrawing, Drawing, DrawingKind, Inline, Paragraph, Revision, Run, RunContent,
 };
 
-use crate::layout::floating::{square_exclusion, WrapExclusion, WrapSide};
-use crate::layout::{Flow, ImageItem, Item, LayoutContext, TextItem, TextLine};
+use crate::layout::floating::{wrap_exclusion, WrapExclusion, WrapSide};
+use crate::layout::{Flow, Geometry, ImageItem, Item, LayoutContext, TextItem, TextLine};
 use crate::paint::image::layout_inline_image;
 use crate::style::{apply_caps, compute_paragraph, compute_run, ComputedParagraph, ComputedRun};
 use crate::units::{pt_to_px, twips_to_px};
@@ -90,6 +90,12 @@ const MAX_MATH_LINE_GROWTH: f64 = 1.60;
 /// `note_marker` is the formatted number used to replace a `w:footnoteRef`/
 /// `w:endnoteRef` marker when laying out a note body; body paragraphs pass
 /// `None`.
+///
+/// `page_exclusions` are wrap rectangles already converted to paragraph-local
+/// coordinates (from earlier floating objects on the page). `host` supplies the
+/// page geometry and paragraph origin used to resolve the current paragraph's
+/// own anchors with the same extent rules as paint.
+#[allow(clippy::too_many_arguments)]
 #[must_use]
 pub(crate) fn layout_paragraph(
     ctx: &LayoutContext<'_>,
@@ -98,6 +104,8 @@ pub(crate) fn layout_paragraph(
     content_width: f64,
     grid_line_pitch: Option<f64>,
     note_marker: Option<&str>,
+    page_exclusions: &[WrapExclusion],
+    host: Option<(&Geometry, f64, f64)>,
 ) -> ParagraphFlow {
     let mut computed = compute_paragraph(ctx.document, para);
     // Numbering supplies the fields the paragraph did not set. An explicit 0
@@ -141,6 +149,8 @@ pub(crate) fn layout_paragraph(
         grid_line_pitch,
         note_marker,
         segments,
+        page_exclusions,
+        host,
     );
 
     // A paragraph whose only content is a display formula (`m:oMathPara`) is a
@@ -538,6 +548,8 @@ fn build_lines(
     grid_line_pitch: Option<f64>,
     note_marker: Option<&str>,
     segments: Vec<Seg>,
+    page_exclusions: &[WrapExclusion],
+    host: Option<(&Geometry, f64, f64)>,
 ) -> (Vec<Flow>, Vec<AnchorDrawing>) {
     let scale = ctx.options.scale;
     let indent_start = pt_to_px(computed.indent_start_pt, scale);
@@ -571,6 +583,14 @@ fn build_lines(
         )
     });
 
+    let mut exclusions = page_exclusions.to_vec();
+    exclusions.extend(anchor_exclusions(
+        ctx,
+        &segments,
+        host,
+        content_left,
+        content_width,
+    ));
     let mut sink = LineSink {
         ctx,
         computed,
@@ -583,7 +603,7 @@ fn build_lines(
         flows: Vec::new(),
         anchors: Vec::new(),
         math_block: false,
-        exclusions: square_exclusions(ctx, &segments, content_left, content_width),
+        exclusions,
         line_y: 0.0,
     };
     let mut current = LineBuilder::new();
@@ -877,22 +897,103 @@ impl LineSink<'_, '_> {
     }
 }
 
-/// Square-wrap boxes that change the free intervals of this paragraph.
-fn square_exclusions(
+/// Wrap boxes from anchors in this paragraph (Square / TopAndBottom).
+fn anchor_exclusions(
     ctx: &LayoutContext<'_>,
     segments: &[Seg],
+    host: Option<(&Geometry, f64, f64)>,
     content_left: f64,
     content_width: f64,
 ) -> Vec<WrapExclusion> {
+    let Some((geometry, host_x, host_y)) = host else {
+        // Without page geometry only paragraph-relative anchors can be placed; use
+        // a synthetic geometry so extent resolution still matches the content box.
+        let geometry = Geometry {
+            width: content_left + content_width,
+            height: content_width.max(1.0) * 2.0,
+            left: content_left,
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            grid_line_pitch: None,
+        };
+        return segments
+            .iter()
+            .filter_map(|segment| {
+                let Seg::Anchor(anchor) = segment else {
+                    return None;
+                };
+                wrap_exclusion(ctx, anchor, &geometry, content_left, 0.0)
+            })
+            .collect();
+    };
+    let _ = content_width;
     segments
         .iter()
         .filter_map(|segment| {
             let Seg::Anchor(anchor) = segment else {
                 return None;
             };
-            square_exclusion(ctx, anchor, content_left, content_width)
+            wrap_exclusion(ctx, anchor, geometry, host_x, host_y)
         })
         .collect()
+}
+
+/// Provisional height of the line currently being filled.
+fn provisional_line_height(sink: &LineSink<'_, '_>) -> f64 {
+    let (height, _) = resolve_line_metrics(sink.ctx, sink.computed, None, sink.grid_line_pitch);
+    height.max(1.0)
+}
+
+/// Lowest bottom edge of exclusions that fully block the current provisional line.
+fn blocked_line_bottom(sink: &LineSink<'_, '_>, line_height: f64) -> Option<f64> {
+    let line_top = sink.line_y;
+    let line_bottom = sink.line_y + line_height;
+    let mut bottom = None;
+    for exclusion in &sink.exclusions {
+        if line_bottom <= exclusion.top || line_top >= exclusion.bottom {
+            continue;
+        }
+        // A full-width band (TopAndBottom) or any exclusion that leaves no free
+        // span advances past its bottom rather than placing ink inside it.
+        bottom = Some(bottom.map_or(exclusion.bottom, |value: f64| value.max(exclusion.bottom)));
+    }
+    bottom
+}
+
+/// Skips vertical space covered by exclusions that leave no free interval.
+fn advance_past_blocked(
+    sink: &mut LineSink<'_, '_>,
+    current: &LineBuilder,
+    x: &mut f64,
+    normal_x: f64,
+) -> bool {
+    if !current.is_empty() {
+        return false;
+    }
+    let mut advanced = false;
+    for _ in 0..64 {
+        let line_height = provisional_line_height(sink);
+        let spans = free_spans(sink, normal_x, line_height);
+        if !spans.is_empty() {
+            break;
+        }
+        let Some(bottom) = blocked_line_bottom(sink, line_height) else {
+            break;
+        };
+        let skip = (bottom - sink.line_y).max(0.0);
+        if skip <= 0.0 {
+            break;
+        }
+        sink.flows.push(Flow::Block {
+            items: Vec::new(),
+            height: skip,
+        });
+        sink.line_y += skip;
+        *x = normal_x;
+        advanced = true;
+    }
+    advanced
 }
 
 /// Moves `x` onto a free interval wide enough for `width`.
@@ -906,8 +1007,12 @@ fn reserve(
     width: f64,
 ) -> bool {
     for _ in 0..24 {
-        let spans = free_spans(sink, normal_x);
+        let line_height = provisional_line_height(sink);
+        let spans = free_spans(sink, normal_x, line_height);
         if spans.is_empty() {
+            if advance_past_blocked(sink, current, x, normal_x) {
+                continue;
+            }
             if current.is_empty() {
                 return false;
             }
@@ -919,6 +1024,9 @@ fn reserve(
             .iter()
             .position(|(start, end)| *x < *end - 1e-6 && *end - start.max(*x) + 1e-9 >= 0.0)
         else {
+            if advance_past_blocked(sink, current, x, normal_x) {
+                continue;
+            }
             if current.is_empty() {
                 return false;
             }
@@ -937,6 +1045,9 @@ fn reserve(
             *x = *next;
             continue;
         }
+        if advance_past_blocked(sink, current, x, normal_x) {
+            continue;
+        }
         if current.is_empty() {
             return false;
         }
@@ -947,10 +1058,10 @@ fn reserve(
 }
 
 /// Free intervals of the current line, left to right.
-fn free_spans(sink: &LineSink<'_, '_>, left: f64) -> Vec<(f64, f64)> {
+fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64, f64)> {
     let mut spans = vec![(left, sink.right_edge)];
     for exclusion in &sink.exclusions {
-        if sink.line_y + 20.0 <= exclusion.top || sink.line_y >= exclusion.bottom {
+        if sink.line_y + line_height <= exclusion.top || sink.line_y >= exclusion.bottom {
             continue;
         }
         apply_side(&mut spans, exclusion);

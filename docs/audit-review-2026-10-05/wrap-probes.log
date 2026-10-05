@@ -1,0 +1,25 @@
+   Compiling strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.00s
+     Running tests\acceptance_wrap_probe.rs (target\debug\deps\acceptance_wrap_probe-acfb0f2cabb39ce3.exe)
+
+running 3 tests
+
+thread 'acceptance_top_bottom_reserves_object_height' (36844) panicked at strict-ooxml-render-svg\tests\acceptance_wrap_probe.rs:140:9:
+TopAndBottom text "Words " starts at (96,109.965), object=(192,96,169,169); expected baseline below object bottom
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test acceptance_top_bottom_reserves_object_height ... FAILED
+
+thread 'acceptance_square_wrap_covers_following_paragraph' (4228) panicked at strict-ooxml-render-svg\tests\acceptance_wrap_probe.rs:130:5:
+FOLLOWING starts inside image: text=(216,127.868), image=(192,96,169,169)
+test acceptance_square_wrap_covers_following_paragraph ... FAILED
+test f15_square_changes_line_intervals ... ok
+
+failures:
+
+failures:
+    acceptance_square_wrap_covers_following_paragraph
+    acceptance_top_bottom_reserves_object_height
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+error: test failed, to rerun pass `-p strict-ooxml-render-svg --test acceptance_wrap_probe`
