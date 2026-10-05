@@ -55,6 +55,7 @@ pub(crate) fn decorate_pages(
     pages: &mut [PlacedPage],
     sections: &[Section],
     total_pages: usize,
+    section_pages_hint: &[usize],
 ) -> Result<()> {
     if pages.is_empty() {
         return Ok(());
@@ -67,9 +68,13 @@ pub(crate) fn decorate_pages(
         let index = page.section_index.min(section_page_counts.len() - 1);
         section_page_counts[index] += 1;
     }
+    let mut section_page_seen = vec![0usize; sections.len().max(1)];
 
     for (index, page) in pages.iter_mut().enumerate() {
         let section_index = page.section_index.min(sections.len().saturating_sub(1));
+        let seen_slot = page.section_index.min(section_page_seen.len() - 1);
+        section_page_seen[seen_slot] += 1;
+        let section_page_ordinal = section_page_seen[seen_slot];
         let Some(section) = inherited_section(sections, section_index) else {
             continue;
         };
@@ -121,9 +126,10 @@ pub(crate) fn decorate_pages(
             page_number: display_page,
             page_count: total_pages.max(1),
             section_index: section_index + 1,
-            section_pages: section_page_counts
+            section_pages: section_pages_hint
                 .get(section_index)
                 .copied()
+                .or_else(|| section_page_counts.get(section_index).copied())
                 .unwrap_or(1)
                 .max(1),
             page_format,
@@ -131,8 +137,14 @@ pub(crate) fn decorate_pages(
         let mut decorated: Vec<Item> = Vec::with_capacity(page.items.len() + 16);
 
         if has_headers {
-            let header =
-                select_reference(Some(&section), true, page_ordinal, title_page, even_and_odd);
+            let header = select_reference(
+                Some(&section),
+                true,
+                page_ordinal,
+                section_page_ordinal,
+                title_page,
+                even_and_odd,
+            );
             if let Some(region) = header.and_then(|part| {
                 region_for(
                     ctx,
@@ -158,6 +170,7 @@ pub(crate) fn decorate_pages(
                 Some(&section),
                 false,
                 page_ordinal,
+                section_page_ordinal,
                 title_page,
                 even_and_odd,
             );
@@ -225,60 +238,147 @@ fn prior_refs(sections: &[Section], index: usize, headers: bool) -> Option<Vec<H
     None
 }
 
-/// How far the body must move in from the margin so it clears the header and
-/// the footer. Distances already inside the margin add nothing.
-pub(crate) fn body_reserve(
-    ctx: &LayoutContext<'_>,
-    section: &SectionProperties,
-    geometry: &Geometry,
-) -> (f64, f64) {
-    let scale = ctx.options.scale;
+/// Inputs for measuring the *active* header/footer of one page.
+pub(crate) struct PageRegionQuery<'a> {
+    /// Layout context (fonts, document parts, warnings).
+    pub ctx: &'a LayoutContext<'a>,
+    /// Document sections (for first/even/default inheritance).
+    pub sections: &'a [Section],
+    /// Zero-based section index of the page.
+    pub section_index: usize,
+    /// 1-based document page ordinal (odd/even).
+    pub page_ordinal: usize,
+    /// 1-based page ordinal within the section (`titlePg`).
+    pub section_page_ordinal: usize,
+    /// Assumed `NUMPAGES` for this pass.
+    pub total_pages: usize,
+    /// Assumed `SECTIONPAGES` for this pass.
+    pub section_pages: usize,
+    /// `w:pgNumType/@w:start`.
+    pub page_start: u32,
+    /// `w:pgNumType/@w:fmt`.
+    pub page_format: NumberFormat,
+    /// Section page margins *before* header/footer extras.
+    pub geometry: Geometry,
+}
+
+/// Extra body inset from the active header/footer of one page.
+pub(crate) struct PageRegionReserve {
+    /// Added to the top margin so the body clears the header.
+    pub extra_top: f64,
+    /// Added to the bottom margin so the body clears the footer.
+    pub extra_bottom: f64,
+    /// Measured active header height in px.
+    pub header_height: f64,
+    /// Measured active footer height in px.
+    pub footer_height: f64,
+}
+
+/// How far the body must move so it clears the *active* header and footer.
+///
+/// First/even/default (and inherited refs) are selected before measuring.
+/// PAGE/NUMPAGES/SECTIONPAGES use `query`'s FieldEnv. Negative source margins
+/// are left overlapping with a diagnostic instead of inventing a gap.
+pub(crate) fn page_body_reserve(query: &PageRegionQuery<'_>) -> PageRegionReserve {
+    let empty = PageRegionReserve {
+        extra_top: 0.0,
+        extra_bottom: 0.0,
+        header_height: 0.0,
+        footer_height: 0.0,
+    };
+    let Some(section) = inherited_section(query.sections, query.section_index) else {
+        return empty;
+    };
+    let scale = query.ctx.options.scale;
     let header_offset = twips_to_px(
-        section_margin(Some(section), true).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
+        section_margin(Some(&section), true).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
         scale,
     );
     let footer_offset = twips_to_px(
-        section_margin(Some(section), false).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
+        section_margin(Some(&section), false).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
         scale,
     );
-    let header_height = tallest_region(ctx, &section.headers, geometry);
-    let footer_height = tallest_region(ctx, &section.footers, geometry);
+    let negative_margins = query.geometry.top < 0.0
+        || query.geometry.bottom < 0.0
+        || header_offset < 0.0
+        || footer_offset < 0.0;
+    if negative_margins {
+        query.ctx.warn(
+            "render.negative-page-margin: source overlap left in place; body not auto-shifted"
+                .to_owned(),
+        );
+        return empty;
+    }
+    let even_and_odd = query.ctx.document.settings.even_and_odd_headers;
+    let display_page = usize::try_from(query.page_start.saturating_sub(1))
+        .unwrap_or(0)
+        .saturating_add(query.page_ordinal);
+    let env = FieldEnv {
+        page_number: display_page,
+        page_count: query.total_pages.max(1),
+        section_index: query.section_index + 1,
+        section_pages: query.section_pages.max(1),
+        page_format: query.page_format,
+    };
+    let header = select_reference(
+        Some(&section),
+        true,
+        query.page_ordinal,
+        query.section_page_ordinal,
+        section.title_page,
+        even_and_odd,
+    );
+    let footer = select_reference(
+        Some(&section),
+        false,
+        query.page_ordinal,
+        query.section_page_ordinal,
+        section.title_page,
+        even_and_odd,
+    );
+    let header_height = measure_part(query.ctx, header, &query.geometry, env);
+    let footer_height = measure_part(query.ctx, footer, &query.geometry, env);
     let extra_top = if header_height > 0.0 {
-        (header_offset + header_height - geometry.top).max(0.0)
+        (header_offset + header_height - query.geometry.top).max(0.0)
     } else {
         0.0
     };
     let extra_bottom = if footer_height > 0.0 {
-        (footer_offset + footer_height - geometry.bottom).max(0.0)
+        (footer_offset + footer_height - query.geometry.bottom).max(0.0)
     } else {
         0.0
     };
-    (extra_top, extra_bottom)
+    PageRegionReserve {
+        extra_top,
+        extra_bottom,
+        header_height,
+        footer_height,
+    }
 }
 
-fn tallest_region(
+fn measure_part(
     ctx: &LayoutContext<'_>,
-    references: &[HeaderFooterRef],
+    part: Option<&PartId>,
     geometry: &Geometry,
+    env: FieldEnv,
 ) -> f64 {
-    references
-        .iter()
-        .filter_map(|reference| reference.part.as_ref())
-        .filter_map(|part| ctx.document.header_footer(part))
-        .map(|part| {
-            let charged = ctx.render_items.get();
-            let height = layout_region(
-                ctx,
-                &part.blocks,
-                geometry.left,
-                geometry.content_width(),
-                None,
-            )
-            .height;
-            ctx.render_items.set(charged);
-            height
-        })
-        .fold(0.0, f64::max)
+    let Some(part) = part else {
+        return 0.0;
+    };
+    let Some(header_footer) = ctx.document.header_footer(part) else {
+        return 0.0;
+    };
+    let charged = ctx.render_items.get();
+    let height = layout_region(
+        ctx,
+        &header_footer.blocks,
+        geometry.left,
+        geometry.content_width(),
+        Some(env),
+    )
+    .height;
+    ctx.render_items.set(charged);
+    height
 }
 
 /// Returns the `w:header`/`w:footer` margin in twips, if declared.
@@ -296,7 +396,8 @@ fn section_margin(section: Option<&SectionProperties>, is_header: bool) -> Optio
 fn select_reference(
     section: Option<&SectionProperties>,
     is_header: bool,
-    page_number: usize,
+    page_ordinal: usize,
+    section_page_ordinal: usize,
     title_page: bool,
     even_and_odd: bool,
 ) -> Option<&PartId> {
@@ -312,10 +413,10 @@ fn select_reference(
             .find(|reference| reference.kind == kind)
             .and_then(|reference| reference.part.as_ref())
     };
-    if page_number == 1 && title_page {
+    if title_page && section_page_ordinal == 1 {
         return find(HeaderFooterKind::First);
     }
-    if even_and_odd && page_number.is_multiple_of(2) {
+    if even_and_odd && page_ordinal.is_multiple_of(2) {
         return find(HeaderFooterKind::Even);
     }
     find(HeaderFooterKind::Default)

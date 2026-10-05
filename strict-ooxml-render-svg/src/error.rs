@@ -20,6 +20,11 @@ pub enum RenderError {
     NoGeometry,
     /// An internal invariant failed.
     Internal(String),
+    /// Page/region geometry did not stabilize within the bounded reflow limit.
+    DidNotConverge {
+        /// Number of layout passes that were attempted.
+        passes: u64,
+    },
 }
 
 impl RenderError {
@@ -44,6 +49,10 @@ impl std::fmt::Display for RenderError {
             ),
             Self::NoGeometry => f.write_str("document has no page geometry"),
             Self::Internal(detail) => write!(f, "internal render error: {detail}"),
+            Self::DidNotConverge { passes } => write!(
+                f,
+                "layout did not converge in {passes} passes (page count / header-footer region geometry still changing)"
+            ),
         }
     }
 }
@@ -74,6 +83,9 @@ mod tests {
         assert!(RenderError::Internal("x".to_owned())
             .to_string()
             .contains("internal"));
+        assert!(RenderError::DidNotConverge { passes: 8 }
+            .to_string()
+            .contains("did not converge"));
         let _ = format!("{:?}", RenderError::NoGeometry);
     }
 }

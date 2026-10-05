@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use strict_ooxml_core::error::Result;
 
 use crate::error::RenderError;
-use crate::layout::floating::{reserves_vertical_space, PendingAnchor};
+use crate::layout::exclusions::PageExclusion;
+use crate::layout::floating::{page_exclusion, PendingAnchor};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::table::{
     frame_group_end, frame_origin, layout_blocks_inline, layout_frame_contents, layout_table,
@@ -16,6 +17,8 @@ use crate::layout::{
     geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
     TextLine,
 };
+use crate::style::compute_paragraph;
+use crate::units::pt_to_px;
 use strict_ooxml_wml::model::values::SectionType;
 use strict_ooxml_wml::model::Block;
 
@@ -27,6 +30,49 @@ const FOOTNOTE_BOTTOM_PAD: f64 = 4.0;
 const ENDNOTE_SEPARATOR_HEIGHT: f64 = 16.0;
 /// Vertical gap before the endnote separator line, in px.
 const ENDNOTE_SEPARATOR_GAP: f64 = 8.0;
+/// F13: PAGE/NUMPAGES/SECTIONPAGES and region geometry must stabilize in this many passes.
+const MAX_LAYOUT_PASSES: usize = 8;
+
+/// Totals assumed for FieldEnv on one layout pass.
+struct AssumedTotals {
+    pages: usize,
+    section_pages: Vec<usize>,
+}
+
+/// Observed page count + quantized active header/footer heights.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LayoutFingerprint {
+    pages: usize,
+    section_pages: Vec<usize>,
+    regions: Vec<(i64, i64)>,
+}
+
+impl LayoutFingerprint {
+    fn new(pages: &[PlacedPage], regions: &[(f64, f64)]) -> Self {
+        let count = pages
+            .iter()
+            .map(|page| page.section_index)
+            .max()
+            .map_or(1, |index| index + 1);
+        let mut section_pages = vec![0usize; count];
+        for page in pages {
+            let index = page.section_index.min(section_pages.len() - 1);
+            section_pages[index] += 1;
+        }
+        Self {
+            pages: pages.len(),
+            section_pages,
+            regions: regions
+                .iter()
+                .map(|(header, footer)| (quantize_px(*header), quantize_px(*footer)))
+                .collect(),
+        }
+    }
+}
+
+fn quantize_px(value: f64) -> i64 {
+    (value * 1000.0).round() as i64
+}
 
 /// Lays out the whole document into pages.
 pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
@@ -46,29 +92,31 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
             .into_strict()
         },
     )?;
-    // First pass: count pages. If no computed field is present, it is final.
-    let (layout, has_fields) = layout_once(ctx, 1)?;
-    let mut layout = if has_fields {
-        // Second pass onward: substitute the real page total (NUMPAGES) and re-run
-        // until the page count is stable (a bounded, deterministic iteration).
-        let mut total = layout.pages.len().max(1);
-        let mut layout = layout;
-        for _ in 0..8 {
-            let (next, _) = layout_once(ctx, total)?;
-            if next.pages.len() == total {
-                layout = next;
-                break;
-            }
-            total = next.pages.len().max(1);
-            layout = next;
-        }
-        layout
-    } else {
-        layout
+    let mut assumed = AssumedTotals {
+        pages: 1,
+        section_pages: Vec::new(),
     };
-    // AUD-71: placement guarantee for SVG and PDF — every coordinate is finite.
-    sanitize_finite_coords(&mut layout);
-    Ok(layout)
+    let mut previous: Option<LayoutFingerprint> = None;
+    for _ in 0..MAX_LAYOUT_PASSES {
+        let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
+        if previous.as_ref() == Some(&fingerprint) {
+            let mut layout = layout;
+            sanitize_finite_coords(&mut layout);
+            return Ok(layout);
+        }
+        if !has_fields && previous.is_none() {
+            let mut layout = layout;
+            sanitize_finite_coords(&mut layout);
+            return Ok(layout);
+        }
+        assumed.pages = fingerprint.pages.max(1);
+        assumed.section_pages.clone_from(&fingerprint.section_pages);
+        previous = Some(fingerprint);
+    }
+    Err(RenderError::DidNotConverge {
+        passes: u64::try_from(MAX_LAYOUT_PASSES).unwrap_or(8),
+    }
+    .into_strict())
 }
 
 /// Drops paint items with non-finite coordinates and records a warning (AUD-71).
@@ -125,8 +173,11 @@ fn item_coords_finite(item: &Item) -> bool {
     }
 }
 
-/// Lays out the document once, using `total_pages` for NUMPAGES/SECTIONPAGES.
-fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, bool)> {
+/// Lays out the document once, using `assumed` totals for NUMPAGES/SECTIONPAGES.
+fn layout_once(
+    ctx: &LayoutContext<'_>,
+    assumed: &AssumedTotals,
+) -> Result<(Layout, LayoutFingerprint, bool)> {
     ctx.render_items.set(0);
     ctx.reset_frame_cursors();
     let sections = &ctx.document.sections;
@@ -143,7 +194,7 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
             .and_then(|page_number| page_number.format.as_deref()),
         crate::notes::NumberFormat::Decimal,
     );
-    let mut paginator = Paginator::new(ctx, geometry, total_pages, page_start, page_format);
+    let mut paginator = Paginator::new(ctx, geometry, assumed, page_start, page_format);
     paginator.section_index = 0;
     for (index, (start, end)) in runs.iter().enumerate() {
         let props = sections.get(index).map(|section| &section.properties);
@@ -189,17 +240,18 @@ fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, b
     if !has_fields {
         has_fields = any_headers_footers_have_dynamic_fields(ctx, sections);
     }
-    let mut layout = paginator.finish()?;
-    let page_count = layout.pages.len().max(1);
+    let (mut layout, regions) = paginator.finish()?;
     crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, sections)?;
     crate::layout::pageborders::apply(ctx, &mut layout.pages, sections)?;
     crate::layout::headerfooter::decorate_pages(
         ctx,
         &mut layout.pages,
         sections,
-        total_pages.max(page_count),
+        assumed.pages.max(1),
+        &assumed.section_pages,
     )?;
-    Ok((layout, has_fields))
+    let fingerprint = LayoutFingerprint::new(&layout.pages, &regions);
+    Ok((layout, fingerprint, has_fields))
 }
 
 /// Top-level body ranges `[start, end)` belonging to each document section (AUD-74).
@@ -309,61 +361,8 @@ fn layout_blocks(
         let block = &blocks[index];
         match block {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width, grid, None);
-                // An empty paragraph that only carries `w:sectPr` is a boundary,
-                // not a line of text. Letting it overflow would insert a blank
-                // page before the section break that already starts the next page.
-                let boundary_marker = para.props.section.is_some() && para.inlines.is_empty();
-                if para.props.page_break_before.is_on() && !paginator.at_page_top() {
-                    paginator.keep_empty_page = true;
-                    paginator.page_break()?;
-                    pending_after = 0.0;
-                }
-                paginator.add_vspace(pending_after.max(flow.space_before));
-                if flow.keep_lines && !boundary_marker {
-                    let total: f64 = flow
-                        .flows
-                        .iter()
-                        .map(|item| match item {
-                            Flow::Line(line) => line.height,
-                            Flow::Image(image) => image.h,
-                            Flow::Block { height, .. } => *height,
-                            Flow::TableRow(row) => row.height,
-                            Flow::PageBreak => 0.0,
-                        })
-                        .sum();
-                    if !paginator.at_page_top()
-                        && paginator.cursor + total > paginator.body_height()
-                    {
-                        paginator.page_break()?;
-                    }
-                }
-                let page = paginator.pages.len();
-                let host_x = paginator.geometry.left;
-                let host_y = paginator.geometry.top + paginator.cursor;
-                for item in flow.flows {
-                    if boundary_marker {
-                        paginator.place_boundary_marker(item)?;
-                    } else {
-                        paginator.place(item)?;
-                    }
-                }
-                pending_after = flow.space_after;
-                for anchor in flow.anchors {
-                    if reserves_vertical_space(&anchor) {
-                        if let Some(extent) = anchor.extent {
-                            let height =
-                                crate::units::emu_to_px(extent.cy.value(), ctx.options.scale);
-                            paginator.add_vspace(height);
-                        }
-                    }
-                    paginator.anchors.push(PendingAnchor {
-                        page,
-                        host_x,
-                        host_y,
-                        anchor,
-                    });
-                }
+                pending_after =
+                    place_body_paragraph(ctx, para, left, width, grid, paginator, pending_after)?;
             }
             Block::Table(table) => {
                 ctx.frame_anchor.set((
@@ -386,6 +385,90 @@ fn layout_blocks(
         index += 1;
     }
     Ok(())
+}
+
+/// Lays out one body paragraph, registers wrap exclusions, returns `space_after`.
+fn place_body_paragraph(
+    ctx: &LayoutContext<'_>,
+    para: &strict_ooxml_wml::model::Paragraph,
+    left: f64,
+    width: f64,
+    grid: Option<f64>,
+    paginator: &mut Paginator<'_>,
+    pending_after: f64,
+) -> Result<f64> {
+    // An empty paragraph that only carries `w:sectPr` is a boundary, not a line
+    // of text. Letting it overflow would insert a blank page before the section
+    // break that already starts the next page.
+    let boundary_marker = para.props.section.is_some() && para.inlines.is_empty();
+    let mut pending_after = pending_after;
+    if para.props.page_break_before.is_on() && !paginator.at_page_top() {
+        paginator.keep_empty_page = true;
+        paginator.page_break()?;
+        pending_after = 0.0;
+    }
+    let space_before = pt_to_px(
+        compute_paragraph(ctx.document, para).space_before_pt,
+        ctx.options.scale,
+    );
+    let gap = pending_after.max(space_before);
+    let host_x = paginator.geometry.left;
+    let host_y_pred = paginator.geometry.top + paginator.cursor + gap;
+    let local_exclusions: Vec<_> = paginator
+        .wrap_exclusions
+        .iter()
+        .copied()
+        .map(|exclusion| exclusion.to_paragraph_local(host_y_pred))
+        .collect();
+    let flow = layout_paragraph(
+        ctx,
+        para,
+        left,
+        width,
+        grid,
+        None,
+        &local_exclusions,
+        Some((&paginator.geometry, host_x, host_y_pred)),
+    );
+    paginator.add_vspace(pending_after.max(flow.space_before));
+    if flow.keep_lines && !boundary_marker {
+        let total: f64 = flow
+            .flows
+            .iter()
+            .map(|item| match item {
+                Flow::Line(line) => line.height,
+                Flow::Image(image) => image.h,
+                Flow::Block { height, .. } => *height,
+                Flow::TableRow(row) => row.height,
+                Flow::PageBreak => 0.0,
+            })
+            .sum();
+        if !paginator.at_page_top() && paginator.cursor + total > paginator.body_height() {
+            paginator.page_break()?;
+        }
+    }
+    let page = paginator.pages.len();
+    let host_y = paginator.geometry.top + paginator.cursor;
+    for item in flow.flows {
+        if boundary_marker {
+            paginator.place_boundary_marker(item)?;
+        } else {
+            paginator.place(item)?;
+        }
+    }
+    for anchor in flow.anchors {
+        if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y)
+        {
+            paginator.wrap_exclusions.push(exclusion);
+        }
+        paginator.anchors.push(PendingAnchor {
+            page,
+            host_x,
+            host_y,
+            anchor,
+        });
+    }
+    Ok(flow.space_after)
 }
 
 /// Lays a frame group out once and paints every child from the frame origin.
@@ -503,10 +586,45 @@ fn append_note_blocks(
     for block in blocks {
         match block {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width, grid, Some(marker));
+                let space_before = pt_to_px(
+                    compute_paragraph(ctx.document, para).space_before_pt,
+                    ctx.options.scale,
+                );
+                let host_x = paginator.geometry.left;
+                let host_y_pred = paginator.geometry.top + paginator.cursor + space_before;
+                let local_exclusions: Vec<_> = paginator
+                    .wrap_exclusions
+                    .iter()
+                    .copied()
+                    .map(|exclusion| exclusion.to_paragraph_local(host_y_pred))
+                    .collect();
+                let flow = layout_paragraph(
+                    ctx,
+                    para,
+                    left,
+                    width,
+                    grid,
+                    Some(marker),
+                    &local_exclusions,
+                    Some((&paginator.geometry, host_x, host_y_pred)),
+                );
                 paginator.add_vspace(flow.space_before);
+                let host_y = paginator.geometry.top + paginator.cursor;
                 for item in flow.flows {
                     paginator.place(item)?;
+                }
+                for anchor in flow.anchors {
+                    if let Some(exclusion) =
+                        page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y)
+                    {
+                        paginator.wrap_exclusions.push(exclusion);
+                    }
+                    paginator.anchors.push(PendingAnchor {
+                        page: paginator.pages.len(),
+                        host_x,
+                        host_y,
+                        anchor,
+                    });
                 }
                 paginator.add_vspace(flow.space_after);
             }
@@ -533,7 +651,10 @@ fn append_note_blocks(
 struct Paginator<'a> {
     ctx: &'a LayoutContext<'a>,
     geometry: Geometry,
+    /// Section margins before the active header/footer extra.
+    base_geometry: Geometry,
     total_pages: usize,
+    assumed_section_pages: Vec<usize>,
     /// First page number from `w:pgNumType/@w:start` (AUD-46).
     page_start: u32,
     /// Number format from `w:pgNumType/@w:fmt` (AUD-70).
@@ -564,13 +685,19 @@ struct Paginator<'a> {
     table_headers: Vec<TableRowFlow>,
     /// Anchored (floating) objects recorded during pagination.
     anchors: Vec<PendingAnchor>,
+    /// Active Square/TopAndBottom exclusions on the current page (page coords).
+    wrap_exclusions: Vec<PageExclusion>,
+    /// Active header/footer heights used for the current page.
+    current_region: (f64, f64),
+    /// Per-page active header/footer heights (F13 fingerprint).
+    page_regions: Vec<(f64, f64)>,
 }
 
 impl<'a> Paginator<'a> {
     fn new(
         ctx: &'a LayoutContext<'a>,
         geometry: Geometry,
-        total_pages: usize,
+        assumed: &AssumedTotals,
         page_start: u32,
         page_format: crate::notes::NumberFormat,
     ) -> Self {
@@ -603,10 +730,12 @@ impl<'a> Paginator<'a> {
                 note_cache.insert(id, (items, y));
             }
         }
-        Self {
+        let mut paginator = Self {
             ctx,
             geometry,
-            total_pages,
+            base_geometry: geometry,
+            total_pages: assumed.pages.max(1),
+            assumed_section_pages: assumed.section_pages.clone(),
             page_start: page_start.max(1),
             page_format,
             has_fields: false,
@@ -624,7 +753,49 @@ impl<'a> Paginator<'a> {
             note_cache,
             table_headers: Vec::new(),
             anchors: Vec::new(),
-        }
+            wrap_exclusions: Vec::new(),
+            current_region: (0.0, 0.0),
+            page_regions: Vec::new(),
+        };
+        paginator.apply_page_regions();
+        paginator
+    }
+
+    /// Measures the active first/even/default header/footer and grows body insets.
+    fn apply_page_regions(&mut self) {
+        let page_ordinal = self.pages.len() + 1;
+        let section_page_ordinal = self
+            .pages
+            .iter()
+            .filter(|page| page.section_index == self.section_index)
+            .count()
+            + 1;
+        let section_pages = self
+            .assumed_section_pages
+            .get(self.section_index)
+            .copied()
+            .unwrap_or(self.total_pages)
+            .max(1);
+        let reserve = crate::layout::headerfooter::page_body_reserve(
+            &crate::layout::headerfooter::PageRegionQuery {
+                ctx: self.ctx,
+                sections: &self.ctx.document.sections,
+                section_index: self.section_index,
+                page_ordinal,
+                section_page_ordinal,
+                total_pages: self.total_pages.max(1),
+                section_pages,
+                page_start: self.page_start,
+                page_format: self.page_format,
+                geometry: self.base_geometry,
+            },
+        );
+        self.geometry = self.base_geometry;
+        self.geometry.top =
+            (self.base_geometry.top + reserve.extra_top).min(self.geometry.height * 0.75);
+        self.geometry.bottom = (self.base_geometry.bottom + reserve.extra_bottom)
+            .min(self.geometry.height - self.geometry.top);
+        self.current_region = (reserve.header_height, reserve.footer_height);
     }
 
     /// Applies a section break before laying out the next section's body (AUD-74).
@@ -647,8 +818,10 @@ impl<'a> Paginator<'a> {
                 // The break opened this page. An empty section (a blank PDF page)
                 // has nothing to paint, and `flush` would otherwise drop it.
                 self.keep_empty_page = true;
+                self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.apply_page_regions();
                 Ok(())
             }
             SectionType::OddPage => {
@@ -659,8 +832,10 @@ impl<'a> Paginator<'a> {
                     self.page_break()?;
                 }
                 self.keep_empty_page = true;
+                self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.apply_page_regions();
                 Ok(())
             }
             SectionType::EvenPage => {
@@ -671,8 +846,10 @@ impl<'a> Paginator<'a> {
                     self.page_break()?;
                 }
                 self.keep_empty_page = true;
+                self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.apply_page_regions();
                 Ok(())
             }
         }
@@ -681,6 +858,7 @@ impl<'a> Paginator<'a> {
     /// Applies a deferred continuous-section geometry when a new page starts.
     fn take_pending_geometry(&mut self) {
         if let Some((geometry, section_index)) = self.pending_geometry.take() {
+            self.base_geometry = geometry;
             self.geometry = geometry;
             self.section_index = section_index;
         }
@@ -756,6 +934,7 @@ impl<'a> Paginator<'a> {
         self.cursor = 0.0;
         self.started = true;
         self.current = Vec::new();
+        self.wrap_exclusions.clear();
         let carried = std::mem::take(&mut self.pending);
         self.continuation = !carried.is_empty();
         self.page_footnotes = carried;
@@ -765,6 +944,7 @@ impl<'a> Paginator<'a> {
             let height = self.note_height(id);
             self.notes_height += height;
         }
+        self.apply_page_regions();
         Ok(())
     }
 
@@ -792,6 +972,7 @@ impl<'a> Paginator<'a> {
             items: std::mem::take(&mut self.current),
             section_index: self.section_index,
         });
+        self.page_regions.push(self.current_region);
         Ok(())
     }
 
@@ -981,10 +1162,14 @@ impl<'a> Paginator<'a> {
             page_number: usize::try_from(self.page_start.saturating_sub(1))
                 .unwrap_or(0)
                 .saturating_add(page_ordinal),
-            page_count: self.total_pages,
-            // Single-section until AUD-74.
-            section_index: 1,
-            section_pages: self.total_pages,
+            page_count: self.total_pages.max(1),
+            section_index: self.section_index + 1,
+            section_pages: self
+                .assumed_section_pages
+                .get(self.section_index)
+                .copied()
+                .unwrap_or(self.total_pages)
+                .max(1),
             page_format: self.page_format,
         };
         for item in &mut line.items {
@@ -1051,7 +1236,7 @@ impl<'a> Paginator<'a> {
         Ok(())
     }
 
-    fn finish(mut self) -> Result<Layout> {
+    fn finish(mut self) -> Result<(Layout, Vec<(f64, f64)>)> {
         if self.started {
             self.flush()?;
         }
@@ -1062,11 +1247,45 @@ impl<'a> Paginator<'a> {
                 items: Vec::new(),
                 section_index: self.section_index,
             });
+            self.page_regions.push(self.current_region);
         }
-        Ok(Layout {
-            pages: self.pages,
-            anchors: self.anchors,
-            warnings: self.ctx.take_warnings(),
-        })
+        Ok((
+            Layout {
+                pages: self.pages,
+                anchors: self.anchors,
+                warnings: self.ctx.take_warnings(),
+            },
+            self.page_regions,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{quantize_px, LayoutFingerprint, MAX_LAYOUT_PASSES};
+    use crate::layout::PlacedPage;
+
+    #[test]
+    fn f13_convergence_bound_is_eight_passes() {
+        assert_eq!(MAX_LAYOUT_PASSES, 8);
+    }
+
+    #[test]
+    fn f13_fingerprint_includes_region_size_not_only_page_count() {
+        let page = PlacedPage {
+            width_px: 100.0,
+            height_px: 100.0,
+            items: Vec::new(),
+            section_index: 0,
+        };
+        let pages = [page.clone(), page];
+        let a = LayoutFingerprint::new(&pages, &[(10.0, 4.0), (10.0, 4.0)]);
+        let b = LayoutFingerprint::new(&pages, &[(10.0, 4.0), (10.0, 20.0)]);
+        assert_eq!(a.pages, b.pages);
+        assert_ne!(
+            a, b,
+            "inverse: matching page count with a taller footer must not look converged"
+        );
+        assert_eq!(quantize_px(1.2344), 1234);
     }
 }
