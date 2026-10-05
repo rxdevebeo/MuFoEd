@@ -79,7 +79,14 @@ fn text_items(svg: &str) -> Vec<(f64, f64, String)> {
         .descendants()
         .filter(|node| node.is_element() && node.tag_name().name() == "text")
         .filter_map(|node| {
-            let x = node.attribute("x")?.parse().ok()?;
+            // F07 emits a space-separated cluster `x` list; the first value is
+            // the fragment origin used for wrap / collision oracles.
+            let x = node
+                .attribute("x")?
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()?;
             let y = node.attribute("y")?.parse().ok()?;
             Some((x, y, node.text().unwrap_or("").to_owned()))
         })

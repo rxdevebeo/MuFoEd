@@ -73,6 +73,11 @@ serde_json = "1"
 # (STAGE-4-RENDER-FIDELITY S4F.1). `skrifa` is the maintained fontations
 # parser (ttf-parser is unmaintained; RUSTSEC-2026-0192).
 skrifa = "0.44"
+# Shared OpenType shaping for layout / SVG / PDF advances (F07 / R05).
+# Pinned for MSRV 1.92; do not float without a locked re-verify.
+rustybuzz = "0.20.1"
+# Face resource identity (F07): SHA-256 of the exact bundled face bytes.
+sha2 = "0.11"
 # Development dependencies.
 proptest = "1"
 # SVG rasterization for the SSIM harness (S4F.5).

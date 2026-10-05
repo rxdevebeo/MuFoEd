@@ -7,7 +7,7 @@
 /// breaking matches the producer. Unknown families resolve to Carlito, and that
 /// same name is what the SVG `@font-face` delivers.
 #[must_use]
-pub fn map_family(family: &str) -> &str {
+pub fn map_family(family: &str) -> &'static str {
     match family.trim().to_ascii_lowercase().as_str() {
         // Calibri is the wildcard below: it is the family Carlito metrics match.
         "cambria" | "caladea" => "Caladea",

@@ -98,6 +98,11 @@ fn font_faces(page: &PlacedPage) -> String {
         let weight = if bold { "bold" } else { "normal" };
         let style = if italic { "italic" } else { "normal" };
         let encoded = image::base64_encode(source.data);
+        let hash = source.resource_hash_hex();
+        let _ = writeln!(
+            css,
+            "/* resource_hash={hash} family={family} bold={bold} italic={italic} */"
+        );
         let _ = writeln!(
             css,
             "@font-face {{ font-family: \"{family}\"; src: url(\"data:{mime};base64,{encoded}\") format(\"{format}\"); font-weight: {weight}; font-style: {style}; }}"

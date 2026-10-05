@@ -4,6 +4,7 @@
 //! pagination → a list of [`PlacedPage`]s holding paint [`Item`]s. Painting
 //! (`crate::paint`) is the only place that knows SVG.
 
+pub(crate) mod exclusions;
 pub(crate) mod floating;
 pub(crate) mod headerfooter;
 pub(crate) mod pageborders;
@@ -371,7 +372,7 @@ pub(crate) fn geometry_for(
         .and_then(|grid| grid.line_pitch)
         .filter(|pitch| *pitch > 0)
         .map(|pitch| twips_to_px(pitch, scale));
-    let mut geometry = Geometry {
+    Geometry {
         width,
         height,
         left: value(margins.left, DEFAULT_MARGIN),
@@ -379,25 +380,7 @@ pub(crate) fn geometry_for(
         right: value(margins.right, DEFAULT_MARGIN),
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
-    };
-    reserve_header_footer(ctx, section, &mut geometry);
-    geometry
-}
-
-/// Grows the top and bottom margins so a header or footer that does not fit in
-/// the margin is not painted over the body (A15).
-fn reserve_header_footer(
-    ctx: Option<&LayoutContext<'_>>,
-    section: Option<&SectionProperties>,
-    geometry: &mut Geometry,
-) {
-    let (Some(ctx), Some(section)) = (ctx, section) else {
-        return;
-    };
-    let (extra_top, extra_bottom) =
-        crate::layout::headerfooter::body_reserve(ctx, section, geometry);
-    geometry.top = (geometry.top + extra_top).min(geometry.height * 0.75);
-    geometry.bottom = (geometry.bottom + extra_bottom).min(geometry.height - geometry.top);
+    }
 }
 
 /// Shared state for layout and media resolution.
@@ -539,15 +522,19 @@ impl LayoutContext<'_> {
     }
 
     /// Measures the advance width of `text` for a run in px.
+    ///
+    /// Uses the shared OpenType shaper (F07): kerning and ligatures affect the
+    /// width. Per-character `hmtx` sums are not the acceptance path.
     #[must_use]
     pub(crate) fn measure(&self, text: &str, run: &ComputedRun) -> f64 {
         let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
         let family = crate::style::chosen_family(run, text);
-        shown
-            .chars()
-            .map(|ch| self.font.advance_em(&family, ch, run.bold, run.italic) * size_px)
-            .sum()
+        let shaped = crate::font::shape_text(&shown, &family, run.bold, run.italic, self.font);
+        if shaped.status == crate::font::ShapeStatus::DegradedComplexScript {
+            self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
+        }
+        shaped.total_advance_em * size_px
     }
 }
 
