@@ -471,6 +471,108 @@ fn decode_style_pane(value: &str) -> Result<Vec<(&'static str, bool)>, &'static 
         .collect())
 }
 
+/// Maps a `w:documentProtection` attribute set onto the attributes Strict's
+/// `CT_DocProtect` has, dropping the ones it does not.
+///
+/// `@w:edit` is handled by the caller; everything else arrives here as
+/// whatever the source wrote. A Strict source already used Strict's own
+/// names (`enforcement`, `formatting`, `spinCount`, `hashValue`, `saltValue`,
+/// `algorithmName`) and those pass through unchanged. A Transitional source
+/// used the crypto group instead: `cryptSpinCount`, `hash` and `salt` rename
+/// 1:1 to their Strict counterparts, and `cryptAlgorithmSid` maps through
+/// [`hash_algorithm_name`] to `algorithmName` when the SID names one of the
+/// hash algorithms ECMA-376 lists - an unrecognised SID has no Strict
+/// spelling and is skipped rather than guessed. The rest of the crypto group
+/// (`cryptProviderType`, `cryptAlgorithmClass`, `cryptAlgorithmType`,
+/// `cryptProvider`, `algIdExt`, `algIdExtSource`, `cryptProviderTypeExt`,
+/// `cryptProviderTypeExtSource`) names a crypto provider `CT_DocProtect` has
+/// no attribute for at all in Strict, and writing any of them back would make
+/// the element invalid - they are dropped.
+fn strict_document_protection_attrs(
+    pairs: &[(std::sync::Arc<str>, std::sync::Arc<str>)],
+) -> Vec<(&'static str, std::sync::Arc<str>)> {
+    let mut enforcement = None;
+    let mut formatting = None;
+    let mut spin_count = None;
+    let mut hash_value = None;
+    let mut salt_value = None;
+    let mut algorithm_name = None;
+    let mut sid = None;
+    for (name, value) in pairs {
+        match name.as_ref() {
+            "enforcement" => enforcement = Some(value.clone()),
+            "formatting" => formatting = Some(value.clone()),
+            "spinCount" => spin_count = Some(value.clone()),
+            "cryptSpinCount" => {
+                spin_count.get_or_insert_with(|| value.clone());
+            }
+            "hashValue" => hash_value = Some(value.clone()),
+            "hash" => {
+                hash_value.get_or_insert_with(|| value.clone());
+            }
+            "saltValue" => salt_value = Some(value.clone()),
+            "salt" => {
+                salt_value.get_or_insert_with(|| value.clone());
+            }
+            "algorithmName" => algorithm_name = Some(value.clone()),
+            "cryptAlgorithmSid" => sid = Some(value.clone()),
+            // Transitional's remaining crypto-provider attributes have no
+            // Strict home at all (see above) and are dropped silently here;
+            // nothing in `CT_DocProtect` could ever be named for them.
+            _ => {}
+        }
+    }
+    if algorithm_name.is_none() {
+        if let Some(name) = sid
+            .as_deref()
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .and_then(hash_algorithm_name)
+        {
+            algorithm_name = Some(std::sync::Arc::from(name));
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(value) = enforcement {
+        out.push(("enforcement", value));
+    }
+    if let Some(value) = formatting {
+        out.push(("formatting", value));
+    }
+    if let Some(value) = spin_count {
+        out.push(("spinCount", value));
+    }
+    if let Some(value) = hash_value {
+        out.push(("hashValue", value));
+    }
+    if let Some(value) = salt_value {
+        out.push(("saltValue", value));
+    }
+    if let Some(value) = algorithm_name {
+        out.push(("algorithmName", value));
+    }
+    out
+}
+
+/// `w:cryptAlgorithmSid`'s hash-algorithm SIDs, mapped to the lexical value
+/// Strict's `w:algorithmName` takes for the same algorithm.
+///
+/// The common OOXML SID table names more algorithms than these seven, but
+/// these are the ones `w:documentProtection`'s hash actually uses in
+/// practice; an unlisted SID is not guessed at and the caller skips
+/// `algorithmName` entirely rather than writing a name that does not match.
+fn hash_algorithm_name(sid: u32) -> Option<&'static str> {
+    match sid {
+        1 => Some("MD2"),
+        2 => Some("MD4"),
+        3 => Some("MD5"),
+        4 => Some("SHA-1"),
+        12 => Some("SHA-256"),
+        13 => Some("SHA-384"),
+        14 => Some("SHA-512"),
+        _ => None,
+    }
+}
+
 fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, name: &str) {
     match name {
         "zoom" => {
@@ -521,16 +623,21 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         "documentProtection" => {
             // `@w:edit` is the mode and the corpus usually writes `@w:enforcement`
             // instead, so writing only `edit` produced NO element for ten corpus
-            // documents rather than a partial one. Every attribute is written as
-            // the model holds it, and an element with no attributes at all is not
-            // written - there is nothing to say.
+            // documents rather than a partial one. The remaining attributes go
+            // through [`strict_document_protection_attrs`], which keeps only the
+            // ones `CT_DocProtect` has in Strict and drops Transitional's crypto
+            // group - writing them back made the element invalid outright. An
+            // element with nothing left to say is not written, but `edit` or
+            // `enforcement` alone is still reason enough to keep it.
+            let strict_attrs =
+                strict_document_protection_attrs(&settings.document_protection_attributes);
             let has_edit = settings.document_protection.is_some();
-            if has_edit || !settings.document_protection_attributes.is_empty() {
+            if has_edit || !strict_attrs.is_empty() {
                 xml.start("w:documentProtection");
                 if let Some(edit) = &settings.document_protection {
                     xml.attr_w("edit", edit.as_ref());
                 }
-                for (attribute, value) in &settings.document_protection_attributes {
+                for (attribute, value) in &strict_attrs {
                     xml.attr_w(attribute, value.as_ref());
                 }
                 xml.end();
@@ -1200,9 +1307,10 @@ mod tests {
     use strict_ooxml_wml::model::ids::StyleId;
     use strict_ooxml_wml::model::props::RunProperties;
     use strict_ooxml_wml::model::styles::{Style, StyleTable};
+    use strict_ooxml_wml::model::settings::Settings;
     use strict_ooxml_wml::model::values::{StyleType, TriState};
 
-    use super::{font_families, styles_part, Ctx};
+    use super::{font_families, settings_part, strict_document_protection_attrs, styles_part, Ctx};
 
     #[test]
     fn a_style_keeps_its_type_and_relationships() {
@@ -1309,5 +1417,82 @@ mod tests {
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         });
         assert_eq!(font_families(&table), vec!["Liberation Sans"]);
+    }
+
+    /// Transitional's crypto-group attribute names rename onto Strict's
+    /// `CT_DocProtect` attributes; the SID maps through the hash-algorithm
+    /// table, and the names Strict has no attribute for at all are dropped.
+    #[test]
+    fn document_protection_maps_transitional_crypto_attrs() {
+        let pairs: Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> = vec![
+            ("enforcement".into(), "1".into()),
+            ("cryptProviderType".into(), "rsaFull".into()),
+            ("cryptAlgorithmClass".into(), "hash".into()),
+            ("cryptAlgorithmType".into(), "typeAny".into()),
+            ("cryptAlgorithmSid".into(), "4".into()),
+            ("cryptSpinCount".into(), "100000".into()),
+            ("hash".into(), "abcd".into()),
+            ("salt".into(), "ef01".into()),
+        ];
+        let attrs = strict_document_protection_attrs(&pairs);
+        let find = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.as_ref());
+        assert_eq!(find("enforcement"), Some("1"));
+        assert_eq!(find("spinCount"), Some("100000"));
+        assert_eq!(find("hashValue"), Some("abcd"));
+        assert_eq!(find("saltValue"), Some("ef01"));
+        assert_eq!(find("algorithmName"), Some("SHA-1"));
+        // Transitional-only names with no Strict equivalent must not survive.
+        assert!(find("cryptProviderType").is_none());
+        assert!(find("cryptAlgorithmClass").is_none());
+        assert!(find("cryptAlgorithmType").is_none());
+        assert!(find("cryptAlgorithmSid").is_none());
+        assert!(find("cryptSpinCount").is_none());
+        assert!(find("hash").is_none());
+        assert!(find("salt").is_none());
+    }
+
+    /// An unrecognised SID has no Strict spelling and is skipped rather than
+    /// guessed at.
+    #[test]
+    fn document_protection_skips_algorithm_name_for_unknown_sid() {
+        let pairs: Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> =
+            vec![("cryptAlgorithmSid".into(), "9999".into())];
+        let attrs = strict_document_protection_attrs(&pairs);
+        assert!(attrs.iter().all(|(name, _)| *name != "algorithmName"));
+    }
+
+    /// A Strict source's own attribute names pass through unchanged.
+    #[test]
+    fn document_protection_passes_through_strict_names() {
+        let pairs: Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> = vec![
+            ("formatting".into(), "1".into()),
+            ("spinCount".into(), "50".into()),
+            ("algorithmName".into(), "SHA-512".into()),
+        ];
+        let attrs = strict_document_protection_attrs(&pairs);
+        let find = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.as_ref());
+        assert_eq!(find("formatting"), Some("1"));
+        assert_eq!(find("spinCount"), Some("50"));
+        assert_eq!(find("algorithmName"), Some("SHA-512"));
+    }
+
+    /// `w:documentProtection` is kept (never silently dropped) when only
+    /// `enforcement` survived the mapping, and never carries a
+    /// Transitional-only attribute.
+    #[test]
+    fn settings_part_keeps_protection_with_only_enforcement() {
+        let settings = Settings {
+            document_protection_attributes: vec![
+                ("enforcement".into(), "1".into()),
+                ("cryptProviderType".into(), "rsaFull".into()),
+            ],
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings_part balances");
+        assert!(xml.contains("<w:documentProtection"), "{xml}");
+        assert!(xml.contains(r#"w:enforcement="1""#), "{xml}");
+        assert!(!xml.contains("cryptProviderType"), "{xml}");
     }
 }

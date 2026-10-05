@@ -67,24 +67,43 @@ pub fn paragraph_properties(
     props: &ParagraphProperties,
     mark_revision: Option<&strict_ooxml_wml::model::Revision>,
 ) {
-    if is_empty_paragraph(props) && mark_revision.is_none() {
+    if let Some(revision) = mark_revision {
+        // `CT_ParaRPr` puts `w:ins`/`w:del` in its revision-tracking group
+        // ahead of `EG_RPrBase`, which is where the earlier version wrote
+        // this - but only for a *standalone* tracked insertion/deletion of
+        // the mark itself, distinct from the `w:rPrChange` that records a
+        // *formatting* change to the mark's `w:rPr`. The cases this writer
+        // has seen the schema reject here were all the latter, so writing
+        // `w:ins`/`w:del` unconditionally produced invalid Strict. Rather
+        // than guess which one the model meant, the marker is omitted and
+        // the loss is recorded (ADR-0018 follow-up) - here, before the
+        // emptiness check below, so a paragraph whose only property is this
+        // marker still gets the report and reaches the same (empty) output
+        // on every write, rather than writing a pointless `<w:pPr/>` on the
+        // first pass and nothing at all once that pass is reparsed.
+        let tag = format!("w:{}", revision.kind.as_str());
+        ctx.report_unsupported(
+            &tag,
+            "a paragraph mark's tracked-change marker was not written: Strict's \
+             CT_ParaRPr expects w:rPrChange here in the cases this writer has seen \
+             fail, and writing w:ins/w:del unconditionally produced invalid Strict",
+            &props.location.clone().unwrap_or_default(),
+        );
+    }
+    // Nothing is written for `mark_revision` any more (see above), so whether
+    // `w:pPr` is worth writing at all depends on `props` alone now.
+    if is_empty_paragraph(props) {
         return;
     }
     xml.start("w:pPr");
     schema_order(xml, order::PPR, |name, xml| {
-        paragraph_child(ctx, xml, props, mark_revision, name);
+        paragraph_child(ctx, xml, props, name);
     });
     xml.end();
 }
 
 /// Writes the `w:pPr` child called `name`, when the model has it.
-fn paragraph_child(
-    ctx: &mut Ctx<'_>,
-    xml: &mut XmlWriter,
-    props: &ParagraphProperties,
-    mark_revision: Option<&strict_ooxml_wml::model::Revision>,
-    name: &str,
-) {
+fn paragraph_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &ParagraphProperties, name: &str) {
     match name {
         "pStyle" => {
             if let Some(style) = &props.style {
@@ -195,21 +214,15 @@ fn paragraph_child(
         "rPr" => {
             let run_props = props.run_props.as_ref();
             let has_props = run_props.is_some_and(|props| !is_empty_run(props));
-            if has_props || mark_revision.is_some() {
-                // `w:rPr` marks the paragraph mark. An empty `<w:rPr/>` is legal
-                // but pointless; we write the container only when it carries run
-                // props and/or a tracked-change marker (ADR-0018).
+            // `w:rPr` marks the paragraph mark. An empty `<w:rPr/>` is legal but
+            // pointless; we write the container only when it carries run props
+            // (ADR-0018). The tracked-change marker that used to be written here
+            // too is handled by the caller, before this container's emptiness is
+            // even decided - see [`paragraph_properties`].
+            if has_props {
                 xml.start("w:rPr");
                 if let Some(run_props) = run_props {
                     run_properties_children(xml, run_props);
-                }
-                if let Some(revision) = mark_revision {
-                    let tag = format!("w:{}", revision.kind.as_str());
-                    xml.start(&tag);
-                    xml.attr_w("id", revision.id);
-                    xml.attr_w_opt("author", revision.author.as_deref());
-                    xml.attr_w_opt("date", revision.date.as_deref());
-                    xml.end();
                 }
                 xml.end();
             }
@@ -462,12 +475,26 @@ fn fonts_element(xml: &mut XmlWriter, fonts: &Fonts) {
     xml.attr_w_opt("hAnsi", fonts.h_ansi.as_deref());
     xml.attr_w_opt("eastAsia", fonts.east_asia.as_deref());
     xml.attr_w_opt("cs", fonts.complex_script.as_deref());
-    xml.attr_w_opt("hint", fonts.hint.as_deref());
+    // `ST_Hint` is a two-member enumeration in Strict - `default` and
+    // `eastAsia` - not the three-member Transitional one that adds `cs`
+    // (ECMA-376 Part 1 §17.18.26 vs. the Part 4 Transitional addendum). A
+    // source document that named the complex-script hint is still carried in
+    // `w:cs`/`w:cstheme`; only the attribute that the Strict schema has no
+    // value for is dropped.
+    xml.attr_w_opt("hint", strict_font_hint(fonts.hint.as_deref()));
     xml.attr_w_opt("asciiTheme", fonts.ascii_theme.as_deref());
     xml.attr_w_opt("hAnsiTheme", fonts.h_ansi_theme.as_deref());
     xml.attr_w_opt("eastAsiaTheme", fonts.east_asia_theme.as_deref());
     xml.attr_w_opt("cstheme", fonts.cs_theme.as_deref());
     xml.end();
+}
+
+/// Filters `w:rFonts/@w:hint` down to the values `ST_Hint` allows in Strict.
+///
+/// `cs` (any case) is a Transitional-only member and is dropped rather than
+/// written; `default` and `eastAsia` pass through unchanged.
+fn strict_font_hint(hint: Option<&str>) -> Option<&str> {
+    hint.filter(|value| !value.eq_ignore_ascii_case("cs"))
 }
 
 fn color_element(xml: &mut XmlWriter, name: &str, color: &Color, theme: Option<&ThemeColorRef>) {
@@ -1327,13 +1354,15 @@ fn bool_str(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use strict_ooxml_core::normalize::report::NormalizationReport;
-    use strict_ooxml_wml::model::props::{PageMargins, ParagraphProperties};
+    use strict_ooxml_wml::model::props::{PageMargins, ParagraphProperties, RunProperties};
+    use strict_ooxml_wml::model::revision::{Revision, RevisionKind};
     use strict_ooxml_wml::model::values::{
-        Border, BorderStyle, Borders, Color, EighthsPoint, Justification, Spacing, Twips,
+        Border, BorderStyle, Borders, Color, EighthsPoint, Fonts, Justification, Spacing, Twips,
     };
 
     use super::{
-        borders_element, paragraph_properties, section_properties, tbl_width_value, EdgeNames,
+        borders_element, fonts_element, paragraph_properties, section_properties,
+        strict_font_hint, tbl_width_value, EdgeNames,
     };
     use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
@@ -1456,5 +1485,88 @@ mod tests {
         section_properties(&mut ctx, &mut xml, &section);
         let text = xml.finish().expect("balanced");
         assert!(text.contains(r#"w:equalWidth="false""#), "{text}");
+    }
+
+    /// `ST_Hint` has no `cs` member in Strict (only `default`/`eastAsia`).
+    #[test]
+    fn rfonts_hint_cs_is_not_written() {
+        assert_eq!(strict_font_hint(Some("cs")), None);
+        assert_eq!(strict_font_hint(Some("CS")), None);
+        assert_eq!(strict_font_hint(Some("eastAsia")), Some("eastAsia"));
+        assert_eq!(strict_font_hint(Some("default")), Some("default"));
+        assert_eq!(strict_font_hint(None), None);
+    }
+
+    #[test]
+    fn rfonts_drops_hint_cs_but_keeps_cs_font() {
+        let fonts = Fonts {
+            complex_script: Some("Arial".into()),
+            hint: Some("cs".into()),
+            ..Fonts::default()
+        };
+        let mut xml = XmlWriter::new();
+        fonts_element(&mut xml, &fonts);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains(r#"w:cs="Arial""#), "{text}");
+        assert!(!text.contains("w:hint"), "{text}");
+    }
+
+    #[test]
+    fn rfonts_keeps_hint_eastasia() {
+        let fonts = Fonts {
+            hint: Some("eastAsia".into()),
+            ..Fonts::default()
+        };
+        let mut xml = XmlWriter::new();
+        fonts_element(&mut xml, &fonts);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains(r#"w:hint="eastAsia""#), "{text}");
+    }
+
+    /// A standalone tracked-change marker on the paragraph mark has no legal
+    /// home in `CT_ParaRPr` in the cases this writer has seen fail, so it is
+    /// omitted rather than written as invalid `w:ins`/`w:del`, and the loss is
+    /// recorded instead of being silently dropped.
+    #[test]
+    fn paragraph_mark_revision_is_not_written_as_ins_or_del() {
+        let mut xml = XmlWriter::new();
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let revision = Revision::new(RevisionKind::Insert, 7);
+        paragraph_properties(
+            &mut ctx,
+            &mut xml,
+            &ParagraphProperties::default(),
+            Some(&revision),
+        );
+        let text = xml.finish().expect("balanced");
+        assert!(!text.contains("w:ins"), "{text}");
+        assert!(!text.contains("w:del"), "{text}");
+        assert!(
+            report.losses().iter().any(|loss| loss.feature_id == "w:ins"),
+            "{report:?}"
+        );
+    }
+
+    /// A paragraph mark that has both run props and a revision keeps the run
+    /// props but still omits the illegal revision marker.
+    #[test]
+    fn paragraph_mark_revision_with_run_props_keeps_props_only() {
+        let props = ParagraphProperties {
+            run_props: Some(RunProperties {
+                bold: strict_ooxml_wml::model::values::TriState::On,
+                ..RunProperties::default()
+            }),
+            ..ParagraphProperties::default()
+        };
+        let mut xml = XmlWriter::new();
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let revision = Revision::new(RevisionKind::Delete, 3);
+        paragraph_properties(&mut ctx, &mut xml, &props, Some(&revision));
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("<w:rPr>"), "{text}");
+        assert!(text.contains(r#"<w:b w:val="true"/>"#), "{text}");
+        assert!(!text.contains("w:del"), "{text}");
     }
 }

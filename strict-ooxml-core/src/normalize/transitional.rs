@@ -666,7 +666,7 @@ impl TransitionalNormalizer {
                 // `rewrite_start` itself, once it has agreed to keep it, so the
                 // stack is exactly the tree being written and a dropped subtree
                 // leaves nothing behind for the matching `End` to pop.
-                match Self::rewrite_start(&start, context, report) {
+                match Self::rewrite_start(&start, false, context, report) {
                     Rewritten::Keep(rewritten) => write_start(writer, &rewritten)
                         .map_err(|error| xml_error(&context.part, error.to_string())),
                     Rewritten::Drop => {
@@ -679,7 +679,7 @@ impl TransitionalNormalizer {
                 if context.skip_depth > 0 {
                     return Ok(());
                 }
-                match Self::rewrite_start(&start, context, report) {
+                match Self::rewrite_start(&start, true, context, report) {
                     // `rewrite_start` pushes onto the open-element stack, and for
                     // an `Event::Empty` there is no `Event::End` to pop it - a
                     // self-closing tag is one event, not two. Without this the
@@ -730,12 +730,43 @@ impl TransitionalNormalizer {
     /// Applies T1–T5 and T7 to a start/empty tag.
     fn rewrite_start(
         start: &BytesStart<'_>,
+        empty: bool,
         context: &mut PartContext,
         report: &mut NormalizationReport,
     ) -> Rewritten {
         let location = context.location();
         let (local, uri) = resolve(start, context);
         let qualified = qualify(&uri, &local);
+
+        // Empty `<w:docParts/>` is invalid Strict (`CT_DocParts` requires a
+        // `docPart` child). Drop only the self-closing form; a non-empty
+        // container keeps its children.
+        if empty && local == "docParts" && is_wml(&uri) {
+            report.record_loss(LossRecord {
+                transform_id: "T5.empty-docParts",
+                feature_id: qualified,
+                reason: "empty w:docParts has no docPart child and cannot be Strict".to_owned(),
+                severity: Severity::Lossy,
+                locations: vec![location.clone()],
+            });
+            report.count_reported_removal(1);
+            return Rewritten::Drop;
+        }
+        // Chart `c:ext` whose Office-2012 children were removed as ignorable
+        // extensions becomes a self-closing shell that Strict rejects. Drop the
+        // empty shell; do not invent replacement children.
+        if empty && local == "ext" && uri.contains("drawingml/chart") {
+            report.record_loss(LossRecord {
+                transform_id: "T5.empty-chart-ext",
+                feature_id: qualified,
+                reason: "empty c:ext has no extension child after ignorable content was removed"
+                    .to_owned(),
+                severity: Severity::Lossy,
+                locations: vec![location.clone()],
+            });
+            report.count_reported_removal(1);
+            return Rewritten::Drop;
+        }
 
         // ---- T7: legacy graphics -------------------------------------
         if VML_NAMESPACES.contains(&uri.as_str()) {
@@ -2183,6 +2214,56 @@ fn mapped_value(
             if let Some(mapped) = tables::decimal_or_percent(value) {
                 report.record_mapping("T4.percent", value, &mapped);
                 return Some(mapped);
+            }
+        }
+    }
+    // ---- T4: DrawingML percentages stored as thousandths --------------
+    // Charts and themeOverride pass through after normalize; Strict
+    // `ST_Percentage` wants a `%` form (`65%`), not bare thousandths (`65000`).
+    // Attribute URIs are usually empty (unprefixed `val`/`pos`), so the carrier
+    // is identified by the element local name, not the attribute namespace.
+    if tables::is_drawingml_percentage_attr(element, local) {
+        if let Some(mapped) = tables::drawingml_thousandths_percent(value) {
+            report.record_mapping("T4.dml-percent", value, &mapped);
+            return Some(mapped);
+        }
+    }
+    // ---- T4: math `ST_OnOff` rejects the Transitional `on`/`off` tokens ----
+    // Only on/off carriers. `m:lMargin`/`m:rMargin` also use `@m:val` but hold
+    // twips — mapping `"0"` to `"false"` corrupted every mathPr block.
+    if uri.contains("officeDocument/math")
+        && local == "val"
+        && matches!(
+            element,
+            "smallFrac"
+                | "dispDef"
+                | "wrapRight"
+                | "brkBin"
+                | "showBreak"
+                | "alnAt"
+                | "diff"
+                | "opEmu"
+                | "maxDist"
+                | "objDist"
+                | "hideTop"
+                | "hideBot"
+                | "hideLeft"
+                | "hideRight"
+                | "strikeH"
+                | "strikeV"
+                | "strikeBLTR"
+                | "strikeTLBR"
+        )
+    {
+        let mapped = match value {
+            "on" | "1" | "true" => Some("true"),
+            "off" | "0" | "false" => Some("false"),
+            _ => None,
+        };
+        if let Some(mapped) = mapped {
+            if mapped != value {
+                report.record_mapping("T4.math-onoff", value, mapped);
+                return Some(mapped.to_owned());
             }
         }
     }

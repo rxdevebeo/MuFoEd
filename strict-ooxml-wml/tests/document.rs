@@ -194,6 +194,31 @@ fn parses_block_and_inline_sdt() {
     assert!(matches!(inlines[0], Inline::SdtInline(_)));
 }
 
+/// `w:placeholder`'s own value is its nested `w:docPart/@w:val`
+/// (`CT_Placeholder`), not a sentinel for "placeholder present".
+#[test]
+fn sdt_placeholder_carries_its_doc_part_value() {
+    let body = "<w:sdt><w:sdtPr><w:placeholder><w:docPart w:val=\"DefaultPlaceholder\"/></w:placeholder>\
+                </w:sdtPr><w:sdtContent><w:p/></w:sdtContent></w:sdt>";
+    let document = parse_body(body);
+    let Block::SdtBlock(container) = &document.body.blocks[0] else {
+        panic!("expected sdt block");
+    };
+    assert_eq!(container.placeholder.as_deref(), Some("DefaultPlaceholder"));
+}
+
+/// A `w:placeholder` with no `w:docPart` carries no value to round-trip.
+#[test]
+fn sdt_placeholder_without_doc_part_is_none() {
+    let body =
+        "<w:sdt><w:sdtPr><w:placeholder/></w:sdtPr><w:sdtContent><w:p/></w:sdtContent></w:sdt>";
+    let document = parse_body(body);
+    let Block::SdtBlock(container) = &document.body.blocks[0] else {
+        panic!("expected sdt block");
+    };
+    assert_eq!(container.placeholder, None);
+}
+
 /// AUD-41: repeating-section `w:sdt` around three table rows unwraps into the model.
 #[test]
 fn row_level_sdt_unwraps_into_table_rows() {

@@ -88,15 +88,30 @@ fn parses_body_background_and_foreign_elements() {
 
 #[test]
 fn parses_sdt_with_placeholder_and_end_pr() {
-    let body = "<w:sdt><w:sdtPr><w:tag w:val=\"T\"/><w:showingPlcHdr/><w:placeholder/></w:sdtPr>\
+    let body = "<w:sdt><w:sdtPr><w:tag w:val=\"T\"/><w:showingPlcHdr/>\
+<w:placeholder><w:docPart w:val=\"DefaultPlaceholder\"/></w:placeholder></w:sdtPr>\
 <w:sdtEndPr/><w:sdtContent><w:p><w:r><w:t>x</w:t></w:r></w:p></w:sdtContent></w:sdt>";
     let document = parse_parts(&document_parts(body, &[])).expect("parse");
     let Block::SdtBlock(container) = &document.body.blocks[0] else {
         panic!("expected sdt");
     };
     assert!(container.showing_placeholder);
-    assert!(container.placeholder.is_some());
+    // `w:placeholder`'s own value is its nested `w:docPart/@w:val`
+    // (`CT_Placeholder`), not a sentinel for "placeholder present".
+    assert_eq!(container.placeholder.as_deref(), Some("DefaultPlaceholder"));
     assert_eq!(container.blocks.len(), 1);
+}
+
+/// A `w:placeholder` with no `w:docPart` has no value to carry.
+#[test]
+fn parses_sdt_placeholder_without_doc_part_as_none() {
+    let body = "<w:sdt><w:sdtPr><w:placeholder/></w:sdtPr>\
+<w:sdtContent><w:p/></w:sdtContent></w:sdt>";
+    let document = parse_parts(&document_parts(body, &[])).expect("parse");
+    let Block::SdtBlock(container) = &document.body.blocks[0] else {
+        panic!("expected sdt");
+    };
+    assert_eq!(container.placeholder, None);
 }
 
 #[test]

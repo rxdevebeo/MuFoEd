@@ -803,7 +803,9 @@ fn fill_element(xml: &mut XmlWriter, fill: &ShapeFill) {
             xml.start("a:gsLst");
             for stop in stops {
                 xml.start("a:gs");
-                xml.attr("pos", stop.position);
+                // `a:gs/@pos` is `ST_PositiveFixedPercentage`. Model values are
+                // thousandths; Strict wants a `%` form.
+                xml.attr("pos", thousandths_percent(stop.position));
                 shape_color(xml, &stop.color);
                 xml.end();
             }
@@ -858,14 +860,25 @@ fn shape_color(xml: &mut XmlWriter, color: &ShapeColor) {
 fn theme_modifiers(xml: &mut XmlWriter, theme: &strict_ooxml_wml::model::values::ThemeColorRef) {
     if let Some(tint) = &theme.tint {
         xml.start("a:tint");
-        xml.attr("val", tint.as_ref());
+        xml.attr("val", percentage_attr(tint.as_ref()));
         xml.end();
     }
     if let Some(shade) = &theme.shade {
         xml.start("a:shade");
-        xml.attr("val", shade.as_ref());
+        xml.attr("val", percentage_attr(shade.as_ref()));
         xml.end();
     }
+}
+
+/// Formats a DrawingML percentage attribute for Strict emission.
+fn percentage_attr(value: &str) -> String {
+    if value.ends_with('%') {
+        return value.to_owned();
+    }
+    if let Ok(number) = value.parse::<i32>() {
+        return thousandths_percent(number);
+    }
+    value.to_owned()
 }
 
 fn stroke_element(xml: &mut XmlWriter, stroke: &ShapeStroke) {

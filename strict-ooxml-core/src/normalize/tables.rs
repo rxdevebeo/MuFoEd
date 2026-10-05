@@ -501,6 +501,49 @@ pub fn decimal_or_percent(value: &str) -> Option<String> {
     text_scale_percent(value)
 }
 
+/// DrawingML `ST_Percentage` / `ST_PositiveFixedPercentage` as Transitional
+/// thousandths of a percent → Strict percentage with a `%` sign.
+///
+/// `65000` becomes `65%`, `10` becomes `0.010%`, `0` becomes `0%`. Values that
+/// already carry `%` are left alone.
+#[must_use]
+pub fn drawingml_thousandths_percent(value: &str) -> Option<String> {
+    if value.ends_with('%') {
+        return None;
+    }
+    let number: i64 = value.parse().ok()?;
+    if number == 0 {
+        return Some(String::from("0%"));
+    }
+    let sign = if number < 0 { "-" } else { "" };
+    let absolute = number.unsigned_abs();
+    let whole = absolute / 1000;
+    let fraction = absolute % 1000;
+    if fraction == 0 {
+        Some(format!("{sign}{whole}%"))
+    } else {
+        Some(format!("{sign}{whole}.{fraction:03}%"))
+    }
+}
+
+/// Whether `(element, attribute)` carries a DrawingML percentage stored as
+/// thousandths in Transitional packages.
+#[must_use]
+pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
+    match (element, attribute) {
+        (
+            "tint" | "shade" | "satMod" | "lumMod" | "lumOff" | "alpha" | "alphaMod"
+            | "alphaOff" | "hue" | "hueOff" | "hueMod" | "comp" | "inv" | "gray" | "gamma"
+            | "invGamma",
+            "val",
+        ) => true,
+        ("gs", "pos") => true,
+        ("fillToRect" | "fillRect" | "srcRect", "l" | "t" | "r" | "b") => true,
+        ("defRPr" | "rPr" | "endParaRPr", "baseline") => true,
+        _ => false,
+    }
+}
+
 /// Whether an element/parent pair carries a bare `ST_MeasurementOrPercent`.
 #[must_use]
 pub fn is_measure_carrier(element: &str, parent: &str) -> bool {
@@ -527,7 +570,10 @@ pub fn is_ignorable_extension(uri: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_value, removal_for, rename_attribute, rename_element, REMOVALS, RENAMES};
+    use super::{
+        drawingml_thousandths_percent, is_drawingml_percentage_attr, map_value, removal_for,
+        rename_attribute, rename_element, REMOVALS, RENAMES,
+    };
     use crate::normalize::report::Severity;
 
     /// The negative half of the T3 table, and the half that needs the gate.
@@ -691,5 +737,20 @@ mod tests {
                 entry.local
             );
         }
+    }
+
+    #[test]
+    fn drawingml_thousandths_percent_converts_bare_thousandths() {
+        assert_eq!(drawingml_thousandths_percent("0").as_deref(), Some("0%"));
+        assert_eq!(drawingml_thousandths_percent("65000").as_deref(), Some("65%"));
+        assert_eq!(
+            drawingml_thousandths_percent("1253").as_deref(),
+            Some("1.253%")
+        );
+        assert_eq!(drawingml_thousandths_percent("65%"), None);
+        assert!(is_drawingml_percentage_attr("lumMod", "val"));
+        assert!(is_drawingml_percentage_attr("gs", "pos"));
+        assert!(is_drawingml_percentage_attr("defRPr", "baseline"));
+        assert!(!is_drawingml_percentage_attr("defRPr", "sz"));
     }
 }

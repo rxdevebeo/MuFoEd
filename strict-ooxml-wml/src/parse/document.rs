@@ -978,16 +978,34 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         match name.local() {
-                            "tag" => tag = val_attr(&attrs).map(|value| parser.intern(value)),
-                            "alias" => alias = val_attr(&attrs).map(|value| parser.intern(value)),
-                            "id" => id = val_attr(&attrs).map(|value| parser.intern(value)),
-                            "showingPlcHdr" => showing = true,
-                            "placeholder" => {
-                                placeholder = Some(Arc::from("<placeholder>"));
+                            "tag" => {
+                                tag = val_attr(&attrs).map(|value| parser.intern(value));
+                                parser.skip_element()?;
                             }
-                            _ => {}
+                            "alias" => {
+                                alias = val_attr(&attrs).map(|value| parser.intern(value));
+                                parser.skip_element()?;
+                            }
+                            "id" => {
+                                id = val_attr(&attrs).map(|value| parser.intern(value));
+                                parser.skip_element()?;
+                            }
+                            "showingPlcHdr" => {
+                                showing = true;
+                                parser.skip_element()?;
+                            }
+                            "placeholder" => {
+                                // `w:placeholder`'s own content is `w:docPart/@w:val`
+                                // (`CT_Placeholder`); the element carries no value
+                                // itself, so writing a sentinel string back as the
+                                // placeholder could never round-trip to anything a
+                                // reader actually asked for. Absent a `w:docPart`
+                                // value, there is nothing to carry and the field
+                                // stays `None`.
+                                placeholder = parser.parse_sdt_placeholder()?;
+                            }
+                            _ => parser.skip_element()?,
                         }
-                        parser.skip_element()?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -995,6 +1013,29 @@ impl PartParser<'_> {
                 }
             }
             Ok((tag, alias, id, placeholder, showing))
+        })
+    }
+
+    /// Parses `w:sdtPr/w:placeholder`, returning `w:docPart/@w:val` when present.
+    fn parse_sdt_placeholder(&mut self) -> Result<Option<Arc<str>>> {
+        self.nested(|parser| {
+            let mut doc_part = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if name.local() == "docPart" {
+                            doc_part = val_attr(&attrs).map(|value| parser.intern(value));
+                        }
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of sdt placeholder"))
+                    }
+                }
+            }
+            Ok(doc_part)
         })
     }
 

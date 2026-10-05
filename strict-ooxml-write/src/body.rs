@@ -4,7 +4,7 @@ use strict_ooxml_wml::model::block::{
     Block, Paragraph, SdtContainer, SdtProperties, Table, TableCell, TableRow,
 };
 use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
-use strict_ooxml_wml::model::values::{BreakKind, Space};
+use strict_ooxml_wml::model::values::{BreakKind, Space, Twips, WidthKind};
 
 use crate::ctx::Ctx;
 use crate::props::{cell_properties, paragraph_properties, row_properties, table_properties};
@@ -404,14 +404,74 @@ fn text_node(xml: &mut XmlWriter, node: &TextNode, tag: &str) {
     xml.end();
 }
 
+/// Returns the grid this table's `w:tblGrid` should carry.
+///
+/// When the model already has one, its widths are carried through verbatim.
+/// Otherwise, if there are rows to size it from, the column count is the
+/// widest row's own total span - `CT_Row` lets a row claim fewer columns than
+/// the table has via `w:gridSpan`, so the narrowest row is not the table's
+/// width - and each column's width, when the first row's cells know one, is
+/// read from the matching cell. A table with no rows and no recorded grid
+/// returns an empty grid: there is nothing to size one from, and `w:tblGrid`
+/// is only required (`CT_Tbl`, `minOccurs="1"`) by a table that has content to
+/// put columns under.
+fn synthesize_grid(table: &Table) -> Vec<Option<Twips>> {
+    if !table.grid.is_empty() {
+        return table.grid.iter().map(|column| column.width).collect();
+    }
+    if table.rows.is_empty() {
+        return Vec::new();
+    }
+    let column_count = table
+        .rows
+        .iter()
+        .map(|row| {
+            row.cells
+                .iter()
+                .map(|cell| usize::from(cell.props.grid_span.unwrap_or(1)))
+                .sum::<usize>()
+        })
+        .max()
+        .unwrap_or(0);
+    if column_count == 0 {
+        return Vec::new();
+    }
+    let mut widths = vec![None; column_count];
+    if let Some(first_row) = table.rows.first() {
+        let mut index = 0;
+        for cell in &first_row.cells {
+            let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+            let width = cell
+                .props
+                .width
+                .as_ref()
+                .filter(|width| width.kind == WidthKind::Dxa)
+                .and_then(|width| width.value)
+                .map(Twips);
+            for slot in widths.iter_mut().skip(index).take(span) {
+                *slot = width;
+            }
+            index += span;
+        }
+    }
+    widths
+}
+
 /// Writes `w:tbl`.
 pub fn table_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &Table) {
     xml.start("w:tbl");
     table_properties(xml, &table.props);
-    if !table.grid.is_empty() {
+    // `CT_Tbl` makes `w:tblGrid` required (`minOccurs="1"`), so a table with
+    // rows but no recorded grid - a hand-built model, or a source whose grid
+    // this project did not keep - must still get one rather than omit a
+    // required element. [`synthesize_grid`] rebuilds the column count from the
+    // widest row's cells; a table with rows but zero columns is never left
+    // without `w:tblGrid` by this branch.
+    let grid = synthesize_grid(table);
+    if !grid.is_empty() {
         xml.start("w:tblGrid");
-        for column in &table.grid {
-            match column.width {
+        for column in &grid {
+            match column {
                 Some(width) => xml.empty_attr_w("w:gridCol", "w", width.0),
                 None => xml.empty("w:gridCol"),
             }
@@ -497,8 +557,12 @@ fn write_sdt_around(
     if let Some(id) = sdt.id.as_deref() {
         xml.empty_attr_w("w:id", "val", id);
     }
-    if sdt.placeholder.is_some() {
+    if let Some(doc_part) = sdt.placeholder.as_deref() {
+        // `CT_Placeholder` requires `w:docPart`, so an empty `<w:placeholder/>`
+        // is invalid Strict - it is only ever written with the value the model
+        // carries.
         xml.start("w:placeholder");
+        xml.empty_attr_w("w:docPart", "val", doc_part);
         xml.end();
     }
     if sdt.showing_placeholder {
@@ -529,12 +593,16 @@ mod tests {
     use strict_ooxml_core::error::SourceLocation;
     use strict_ooxml_core::normalize::report::NormalizationReport;
     use strict_ooxml_core::part::PartId;
-    use strict_ooxml_wml::model::block::{Block, Paragraph};
+    use strict_ooxml_wml::model::block::{
+        Block, GridCol, Paragraph, Table, TableCell, TableRow,
+    };
     use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
-    use strict_ooxml_wml::model::props::ParagraphProperties;
-    use strict_ooxml_wml::model::values::{Space, Spacing, Twips};
+    use strict_ooxml_wml::model::props::{
+        CellProperties, ParagraphProperties, RowProperties, TableProperties,
+    };
+    use strict_ooxml_wml::model::values::{Space, Spacing, Twips, Width, WidthKind};
 
-    use super::paragraph_element;
+    use super::{paragraph_element, synthesize_grid, table_element};
     use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
 
@@ -651,5 +719,139 @@ mod tests {
                 .any(|loss| loss.feature_id == "w:sdt"),
             "w:sdt must not be reported unsupported: {report:?}"
         );
+    }
+
+    /// AUD-68: a placeholder is written with its `w:docPart`, never bare.
+    #[test]
+    fn a_block_sdt_placeholder_carries_its_doc_part() {
+        use strict_ooxml_wml::model::block::SdtContainer;
+
+        let sdt = SdtContainer {
+            tag: None,
+            alias: None,
+            id: None,
+            placeholder: Some("DefaultPlaceholder".into()),
+            showing_placeholder: true,
+            blocks: Vec::new(),
+            inlines: Vec::new(),
+            location: location(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        crate::body::block_item(&mut ctx, &mut xml, &Block::SdtBlock(sdt));
+        let text = xml.finish().expect("balanced");
+        assert!(
+            text.contains(r#"<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>"#),
+            "{text}"
+        );
+        assert!(!text.contains("<w:placeholder/>"), "{text}");
+    }
+
+    fn cell_with_span(span: Option<u16>, width: Option<i32>) -> TableCell {
+        TableCell {
+            props: CellProperties {
+                grid_span: span,
+                width: width.map(|w| Width {
+                    kind: WidthKind::Dxa,
+                    value: Some(w),
+                }),
+                ..CellProperties::default()
+            },
+            blocks: Vec::new(),
+            sdt: None,
+            location: location(),
+        }
+    }
+
+    fn row(cells: Vec<TableCell>) -> TableRow {
+        TableRow {
+            props: RowProperties::default(),
+            cells,
+            sdt: None,
+            location: location(),
+        }
+    }
+
+    /// `CT_Tbl` requires `w:tblGrid`; a table whose model never recorded one
+    /// still gets one sized from the widest row's cells (`w:gridSpan`
+    /// defaulting to 1).
+    #[test]
+    fn a_table_without_a_grid_gets_one_synthesized_from_rows() {
+        let table = Table {
+            props: TableProperties::default(),
+            grid: Vec::new(),
+            rows: vec![
+                row(vec![cell_with_span(Some(2), None), cell_with_span(None, None)]),
+                row(vec![
+                    cell_with_span(None, None),
+                    cell_with_span(None, None),
+                    cell_with_span(None, None),
+                ]),
+            ],
+            location: location(),
+        };
+        // Row 0 spans 2 + 1 = 3 columns; row 1 spans 1 + 1 + 1 = 3 columns.
+        let grid = synthesize_grid(&table);
+        assert_eq!(grid.len(), 3, "{grid:?}");
+
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        table_element(&mut ctx, &mut xml, &table);
+        let text = xml.finish().expect("balanced");
+        assert_eq!(text.matches("<w:gridCol").count(), 3, "{text}");
+    }
+
+    /// The synthesized grid takes its widths from the first row when that
+    /// row's cells know one.
+    #[test]
+    fn a_synthesized_grid_takes_widths_from_the_first_row() {
+        let table = Table {
+            props: TableProperties::default(),
+            grid: Vec::new(),
+            rows: vec![row(vec![
+                cell_with_span(None, Some(1000)),
+                cell_with_span(None, Some(2000)),
+            ])],
+            location: location(),
+        };
+        let grid = synthesize_grid(&table);
+        assert_eq!(grid, vec![Some(Twips(1000)), Some(Twips(2000))]);
+    }
+
+    /// A table with rows but an existing (non-empty) grid is left untouched.
+    #[test]
+    fn an_existing_grid_is_not_resynthesized() {
+        let table = Table {
+            props: TableProperties::default(),
+            grid: vec![GridCol {
+                width: Some(Twips(720)),
+            }],
+            rows: vec![row(vec![
+                cell_with_span(Some(5), None),
+            ])],
+            location: location(),
+        };
+        assert_eq!(synthesize_grid(&table), vec![Some(Twips(720))]);
+    }
+
+    /// A table with no rows and no recorded grid has nothing to size one
+    /// from, so no `w:tblGrid` is written.
+    #[test]
+    fn a_table_with_no_rows_and_no_grid_writes_no_grid() {
+        let table = Table {
+            props: TableProperties::default(),
+            grid: Vec::new(),
+            rows: Vec::new(),
+            location: location(),
+        };
+        assert!(synthesize_grid(&table).is_empty());
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        table_element(&mut ctx, &mut xml, &table);
+        let text = xml.finish().expect("balanced");
+        assert!(!text.contains("w:tblGrid"), "{text}");
     }
 }

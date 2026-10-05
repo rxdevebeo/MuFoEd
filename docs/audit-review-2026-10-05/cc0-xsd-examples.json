@@ -1,0 +1,108 @@
+[
+  {
+    "filename": "001_wajiz.docx",
+    "schema": {
+      "rFonts": 9004
+    },
+    "examples": {
+      "rFonts": [
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}rFonts', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}hint': [facet 'enumeration'] The value 'cs' is not an element of the set {'default', 'eastAsia'}."
+        ],
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}rFonts', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}hint': [facet 'enumeration'] The value 'cs' is not an element of the set {'default', 'eastAsia'}."
+        ]
+      ]
+    }
+  },
+  {
+    "filename": "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+    "schema": {
+      "rFonts": 653,
+      "documentProtection": 7
+    },
+    "examples": {
+      "rFonts": [
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}rFonts', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}hint': [facet 'enumeration'] The value 'cs' is not an element of the set {'default', 'eastAsia'}."
+        ],
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}rFonts', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}hint': [facet 'enumeration'] The value 'cs' is not an element of the set {'default', 'eastAsia'}."
+        ]
+      ],
+      "documentProtection": [
+        [
+          "word/settings.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}documentProtection', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}cryptProviderType': The attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}cryptProviderType' is not allowed."
+        ],
+        [
+          "word/settings.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}documentProtection', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}cryptAlgorithmClass': The attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}cryptAlgorithmClass' is not allowed."
+        ]
+      ]
+    }
+  },
+  {
+    "filename": "025_iyothee_dass_thoughts_religion.docx",
+    "schema": {
+      "tr": 4
+    },
+    "examples": {
+      "tr": [
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}tr': This element is not expected. Expected is ( {http://purl.oclc.org/ooxml/wordprocessingml/main}tblGrid )."
+        ],
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}tr': This element is not expected. Expected is ( {http://purl.oclc.org/ooxml/wordprocessingml/main}tblGrid )."
+        ]
+      ]
+    }
+  },
+  {
+    "filename": "042_1_DS_Starting.docx",
+    "schema": {
+      "rFonts": 60
+    },
+    "examples": {
+      "rFonts": [
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}rFonts', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}hint': [facet 'enumeration'] The value 'cs' is not an element of the set {'default', 'eastAsia'}."
+        ],
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}rFonts', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}hint': [facet 'enumeration'] The value 'cs' is not an element of the set {'default', 'eastAsia'}."
+        ]
+      ]
+    }
+  },
+  {
+    "filename": "080_makkal_sattam_1.docx",
+    "schema": {},
+    "examples": {}
+  },
+  {
+    "filename": "085_Fu_Ben_2Yue_2Ri_Xiu_Gai_Zhong_Yang_She_Luvme_HairG.docx",
+    "schema": {
+      "ins": 3
+    },
+    "examples": {
+      "ins": [
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}ins': This element is not expected. Expected is ( {http://purl.oclc.org/ooxml/wordprocessingml/main}rPrChange )."
+        ],
+        [
+          "word/document.xml:2",
+          "Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}ins': This element is not expected. Expected is ( {http://purl.oclc.org/ooxml/wordprocessingml/main}rPrChange )."
+        ]
+      ]
+    }
+  }
+]
