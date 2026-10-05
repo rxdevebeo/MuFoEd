@@ -1,0 +1,135 @@
+//! Local corpus runner: import/write/reopen and compare explicit body text.
+#![allow(clippy::default_trait_access)]
+use serde_json::{json, Value};
+use std::{fs, path::PathBuf};
+use strict_ooxml_core::opc::{OpenOptions, Package};
+use strict_ooxml_rtf::{import, RtfOptions};
+use strict_ooxml_wml::{
+    model::{Block, BreakKind, Inline, RunContent},
+    parse_document, ParseOptions,
+};
+
+fn texts(blocks: &[Block]) -> Vec<String> {
+    blocks
+        .iter()
+        .flat_map(|b| match b {
+            Block::Paragraph(p) => vec![p
+                .inlines
+                .iter()
+                .map(|i| match i {
+                    Inline::Run(r) => r
+                        .content
+                        .iter()
+                        .map(|c| match c {
+                            RunContent::Text(t) => t.text.clone(),
+                            RunContent::Tab => "\t".into(),
+                            RunContent::Break(k) => match k {
+                                BreakKind::Page => "\u{c}",
+                                BreakKind::Column => "\u{b}",
+                                BreakKind::TextWrapping => "\n",
+                            }
+                            .into(),
+                            RunContent::NoBreakHyphen => "\u{2011}".into(),
+                            RunContent::SoftHyphen => "\u{ad}".into(),
+                            _ => String::new(),
+                        })
+                        .collect::<String>(),
+                    _ => String::new(),
+                })
+                .collect::<String>()],
+            Block::Table(t) => t
+                .rows
+                .iter()
+                .flat_map(|r| r.cells.iter().flat_map(|c| texts(&c.blocks)))
+                .collect(),
+            _ => vec![],
+        })
+        .collect()
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len() != 3 {
+        return Err(
+            "usage: corpus INPUT_DIRECTORY WPS_REFERENCE_DIRECTORY NEW_OUTPUT_DIRECTORY".into(),
+        );
+    }
+    let input = PathBuf::from(&args[0]);
+    let references = PathBuf::from(&args[1]);
+    let output = PathBuf::from(&args[2]);
+    fs::create_dir(&output)?;
+    let manifest: Value = serde_json::from_slice(&fs::read(input.join("manifest.json"))?)?;
+    let mut rows = vec![];
+    for item in manifest.as_array().ok_or("manifest array")? {
+        let name = item["filename"].as_str().ok_or("filename")?;
+        let bytes = fs::read(input.join(name))?;
+        let stem = name.split('_').next().ok_or("file id")?;
+        let row = match import(&bytes, &RtfOptions::default()) {
+            Err(error) => json!({"filename":name,"status":"ImportError","error":error.to_string()}),
+            Ok(imported) => {
+                let body = texts(&imported.document.body.blocks);
+                let facts: Value = serde_json::from_slice(&fs::read(
+                    references.join("files").join(stem).join("facts.json"),
+                )?)?;
+                let region = facts["regions"]
+                    .as_array()
+                    .ok_or("regions")?
+                    .iter()
+                    .find(|r| r["kind"] == "document")
+                    .ok_or("document region")?;
+                let expected: Vec<String> = region["paragraphs"]
+                    .as_array()
+                    .ok_or("paragraphs")?
+                    .iter()
+                    .map(|p| p["text"].as_str().unwrap_or("").to_string())
+                    .collect();
+                let issues: Vec<_>=imported.report.issues.iter().map(|i|json!({"feature":i.feature,"severity":format!("{:?}",i.severity),"start":i.span.start,"end":i.span.end})).collect();
+                let mut bag = strict_ooxml_write::package::MediaBag::new();
+                for (part, bytes) in &imported.media {
+                    bag.insert(part.clone(), bytes.clone());
+                }
+                let written = strict_ooxml_write::write_package(
+                    &imported.document,
+                    Some(&bag),
+                    &Default::default(),
+                );
+                let (writer_error, roundtrip, writer_loss_count, media_match) = match written {
+                    Err(e) => (Some(e.to_string()), false, None, false),
+                    Ok(w) => {
+                        fs::write(output.join(format!("{stem}.docx")), &w.bytes)?;
+                        let p = Package::open_reader(&w.bytes[..], &OpenOptions::default())?;
+                        let d = parse_document(&p, &ParseOptions::default())?;
+                        let original: Vec<_> =
+                            imported.media.iter().map(|(_, b)| b.clone()).collect();
+                        let actual: Vec<_> = d
+                            .media
+                            .iter()
+                            .map(|item| p.read_part(&item.part))
+                            .collect::<Result<_, _>>()?;
+                        let media_match = original.len() == actual.len()
+                            && original.iter().all(|b| actual.iter().any(|v| v == b));
+                        (
+                            None,
+                            texts(&d.body.blocks) == body,
+                            Some(w.report.losses().len()),
+                            media_match,
+                        )
+                    }
+                };
+                fs::write(
+                    output.join(format!("{stem}.text.json")),
+                    serde_json::to_vec_pretty(&body)?,
+                )?;
+                json!({"filename":name,"status":"Imported","loss_count":imported.report.loss_count,"details_truncated":imported.report.details_truncated,"issues":issues,"paragraphs":body.len(),"expected_paragraphs":expected.len(),"exact_body_match":body==expected,"first_mismatch":body.iter().zip(&expected).position(|(a,b)|a!=b),"writer_error":writer_error,"roundtrip_text_match":roundtrip,"writer_loss_count":writer_loss_count,"media_parts":imported.media.len(),"roundtrip_media_bytes_match":media_match})
+            }
+        };
+        eprintln!("{name}: {}", row["status"]);
+        rows.push(row);
+    }
+    fs::write(
+        output.join("results.json"),
+        serde_json::to_vec_pretty(
+            &json!({"claim":"development_measurement_not_acceptance","files":rows}),
+        )?,
+    )?;
+    Ok(())
+}

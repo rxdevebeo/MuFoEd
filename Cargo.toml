@@ -19,6 +19,7 @@ members = [
     "strict-ooxml-render-pdf",
     "strict-ooxml-pdf",
     "strict-ooxml-convert",
+    "strict-ooxml-rtf",
     "strict-ooxml-ocr",
     "strict-ooxml-write",
     "strict-ooxml",

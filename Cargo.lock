@@ -2353,6 +2353,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "strict-ooxml-rtf"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "serde_json",
+ "strict-ooxml-core",
+ "strict-ooxml-wml",
+ "strict-ooxml-write",
+ "thiserror",
+]
+
+[[package]]
 name = "strict-ooxml-testkit"
 version = "0.1.0"
 dependencies = [

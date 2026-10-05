@@ -167,4 +167,22 @@ R05/R06 не делегируются параллельно без явного
 
 Следующий шаг — R01: автоматизировать integrity/census, выявить реальные сложные классы всех 100 файлов, определить доступный независимый oracle и выпустить поддержку/expectations matrix. Только затем уточнять объём R03–R06 и сроки. Предыдущая оценка 5–10 дней для ограниченного MVP и ещё 2–4 недели для расширения остаётся ориентиром, а не обязательством по этому корпусу.
 
-Исходники RTF-импортёра пока не создавались. Проверка hashes корпуса выполнена; parsing, fidelity, XSD, renderer и performance gates по RTF не запускались.
+Создан `strict-ooxml-rtf` с bounded parser, текстовым/базовым formatting mapping, простыми таблицами и PNG/JPEG. Полное покрытие и приёмка остаются открытыми; измеренное состояние и ограничения — [IMPLEMENTATION_STATUS.md](rtf/IMPLEMENTATION_STATUS.md).
+
+## 11. Выполнение R01 — 2026-10-04
+
+Работа ведётся в отдельном worktree `codex/rtf-import`. Созданы `xtool/rtf/{census,snapshot,oracle,validate}.py`, независимые fixtures и [корпусный отчёт](rtf/CORPUS.md). Все 100 входов совпали с manifest и прошли bounded lexical scan; 33 NUL trailers записаны отдельно. Снимок результатов и полный список входов — `docs/rtf/census.summary.json`; pending expectations сохраняют null outcomes и Blocked oracle verdicts.
+
+GREEN fixtures, assertion failure на изолированной binary-skip mutation и побайтное совпадение двух corpus census подтверждают работоспособность R01-инструмента. Receipt/logs: `target/rtf-import/R01/validation-final/`. Это не проверка импортёра.
+
+Первоначальный LibreOffice oracle probe создал 100 Blocked записей. После уточнения пользователя WPS Writer `12.1.0.28485` экспортировал 100/100 RTF в отдельном скрытом процессе на файл; независимый ZIP/XML adapter извлёк facts для 100/100. Raw references: `target/rtf-import/R01/wps-corpus/`; устойчивый индекс: [wps.reference-index.json](rtf/wps.reference-index.json). Capture/errors/timeouts: 100/0/0. Зафиксированы 338 доступных font file hashes; actual font resolution и visual references ещё не доказаны.
+
+R01 остаётся открытой в части reviewed support-profile expectations и подробных structure comparators. Блокер отсутствия независимого приложения снят. R02 может использовать известные fixtures и WPS references; R03–R07 не получают acceptance по успешному capture. Итог harness: 20 tests GREEN, assertion RED на binary-skip mutation, deterministic census; последние source hashes/логи — `target/rtf-import/R01/validation-wps/`.
+
+Для будущей сборки использовать установленный `cargo +1.92.0`: default cargo в проверенной среде 1.91.1 ниже workspace MSRV 1.92. Глобальный toolchain не менять.
+
+## 12. Реализация — 2026-10-05
+
+API и runtime реализованы в отдельном crate/worktree; narrow workspace/lock changes обеспечивают сборку. 27 behavioral tests + 1 doctest и clippy проходят. Начальные 8 fixtures имеют assertion RED на компилируемом stub и GREEN после реализации. Выполнены повторные полные corpus прогоны, DOCX roundtrip и media byte checks; последний результат 95 Imported / 5 ImportError, 83 exact body text matches с WPS facts v2.
+
+Исправлена независимая ошибка facts extractor: табуляторы свойств абзаца не являются видимым текстом. Raw WPS references сохранены без изменений, новые text digests — [wps.reference-index-v2.json](rtf/wps.reference-index-v2.json). Expectations остаются pending и не заморожены из поведения importer. Details/stage status: [IMPLEMENTATION_STATUS.md](rtf/IMPLEMENTATION_STATUS.md).
