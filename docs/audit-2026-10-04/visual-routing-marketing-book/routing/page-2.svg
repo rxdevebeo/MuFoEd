@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
+  <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
+  <text x="144" y="109.965" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">RectilinearEdgeRouter.cs</text>
+  <text x="144" y="130.554" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="144" y="151.143" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">RectilinearInteractiveEditor.cs</text>
+  <text x="144" y="171.732" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="108" y="200.322" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Internal </text>
+  <text x="158.137" y="200.322" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">implementation</text>
+  <text x="108" y="220.911" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="120" y="241.5" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Obstacle </text>
+  <text x="175.272" y="241.5" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">management</text>
+  <text x="120" y="262.089" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="144" y="282.678" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Obstacle.cs</text>
+  <text x="144" y="303.268" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="144" y="323.857" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">ObstacleTree.cs</text>
+  <text x="144" y="344.446" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="132" y="365.035" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Preprocessing </text>
+  <text x="218.804" y="365.035" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">overlapping </text>
+  <text x="292.667" y="365.035" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">obstacles</text>
+  <text x="132" y="385.624" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="144" y="406.214" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Clump.cs</text>
+  <text x="144" y="426.803" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="144" y="447.392" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">OverlapConvexHull.cs</text>
+  <text x="144" y="467.981" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="120" y="488.57" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityGraph </text>
+  <text x="210.263" y="488.57" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">creation</text>
+  <text x="120" y="509.16" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="529.749" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">ScanSegment.cs</text>
+  <text x="144" y="550.338" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="570.927" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">ScanSegmentTree.cs</text>
+  <text x="144" y="591.516" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="612.105" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">NeighborSides.cs</text>
+  <text x="144" y="632.695" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="653.284" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityVertexRectilinear.cs</text>
+  <text x="144" y="673.873" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="694.462" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityGraphGenerator.cs</text>
+  <text x="144" y="715.051" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="735.641" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">FullVisibilityGraphGenerator.cs</text>
+  <text x="144" y="756.23" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="776.819" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">LookaheadScan.cs</text>
+  <text x="144" y="797.408" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="817.997" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">SegmentIntersector.cs</text>
+  <text x="144" y="838.587" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="859.176" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">EnumeratorWrapper.cs</text>
+  <text x="144" y="879.765" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">9</text>
+  <text x="144" y="900.354" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">ScanSegmentVector.cs</text>
+  <text x="144" y="920.943" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="120" y="941.533" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Scanline </text>
+  <text x="172.723" y="941.533" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">execution</text>
+</svg>

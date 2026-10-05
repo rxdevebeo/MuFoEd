@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
+  <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
+  <text x="120" y="109.965" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="144" y="130.554" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">RectilinearScanLine.cs</text>
+  <text x="144" y="151.143" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="144" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">BasicObstacleSide.cs</text>
+  <text x="144" y="192.322" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="156" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">LowObstacleSide.cs</text>
+  <text x="156" y="233.5" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="156" y="254.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">HighObstacleSide.cs</text>
+  <text x="156" y="274.678" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="120" y="295.268" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Event </text>
+  <text x="157.018" y="295.268" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">handling</text>
+  <text x="120" y="315.857" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="144" y="336.446" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">EventQueue.cs</text>
+  <text x="144" y="357.035" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="144" y="377.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">AxisCoordinateEvent.cs</text>
+  <text x="144" y="398.214" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="144" y="418.803" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">BasicVertexEvent.cs</text>
+  <text x="144" y="439.392" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">10</text>
+  <text x="156" y="459.981" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">OpenVertexEvent.cs</text>
+  <text x="156" y="480.57" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="156" y="501.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">CloseVertexEvent.cs</text>
+  <text x="156" y="521.749" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="156" y="542.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">LowBendVertexEvent.cs</text>
+  <text x="156" y="562.927" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="156" y="583.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">HighBendVertexEvent.cs</text>
+  <text x="156" y="604.105" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="144" y="624.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">BasicReflectionEvent.cs</text>
+  <text x="144" y="645.284" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="156" y="665.873" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">LowReflectionEvent.cs</text>
+  <text x="156" y="686.462" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="156" y="707.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">HighReflectionEvent.cs</text>
+  <text x="156" y="727.641" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="120" y="748.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Groups</text>
+  <text x="120" y="768.819" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="144" y="789.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">GroupBoundaryCrossing.cs</text>
+  <text x="144" y="809.997" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="144" y="830.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">GroupBoundaryCrossingMap.cs</text>
+  <text x="144" y="851.176" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="144" y="871.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">PointAndCrossings.cs</text>
+  <text x="144" y="892.354" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">11</text>
+  <text x="144" y="912.943" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">PointAndCrossingsList.cs</text>
+  <text x="144" y="933.533" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">12</text>
+</svg>

@@ -1,0 +1,354 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="642.2" height="922.667" viewBox="0 0 642.2 922.667">
+  <rect x="0" y="0" width="642.2" height="922.667" fill="#ffffff"/>
+  <text x="56.733" y="47.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#808080" xml:space="preserve">38</text>
+  <text x="70.6" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve"> </text>
+  <text x="73.933" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve"> </text>
+  <text x="77.267" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve"> </text>
+  <text x="80.6" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve"> </text>
+  <text x="83.933" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve"> </text>
+  <text x="87.267" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve">Programming </text>
+  <text x="167.4" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve">Basics </text>
+  <text x="209.4" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve">with </text>
+  <text x="238.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#808080" xml:space="preserve">C#</text>
+  <text x="87.869" y="48.9" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">if</text>
+  <text x="103.872" y="48.9" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="111.873" y="48.9" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="119.874" y="48.9" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="151.88" y="48.9" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">.comboBoxCurrency.SelectedItem.ToString() </text>
+  <text x="487.934" y="48.9" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">== </text>
+  <text x="511.938" y="48.9" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">"EUR"</text>
+  <text x="551.945" y="48.9" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">)</text>
+  <text x="87.869" y="64.004" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">{</text>
+  <text x="103.872" y="79.109" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">convertedAmount </text>
+  <text x="231.893" y="79.109" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="247.895" y="79.109" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">originalAmount </text>
+  <text x="367.915" y="79.109" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="383.917" y="79.109" font-family="Cousine" font-size="13.333" fill="#f5871f" xml:space="preserve">1.95583</text>
+  <text x="439.927" y="79.109" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">m;</text>
+  <text x="87.869" y="94.213" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">}</text>
+  <text x="87.869" y="109.317" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">else</text>
+  <text x="119.874" y="109.317" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve"> </text>
+  <text x="127.876" y="109.317" font-family="Cousine" font-size="13.333" fill="#8e908c" xml:space="preserve">if</text>
+  <text x="143.878" y="109.317" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve"> </text>
+  <text x="151.88" y="109.317" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve">(</text>
+  <text x="159.881" y="109.317" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="191.886" y="109.317" font-family="Cousine" font-size="13.333" fill="#f5871f" xml:space="preserve">.comboBoxCurrency.SelectedItem.ToString(</text>
+  <text x="511.938" y="109.317" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve">) </text>
+  <text x="527.941" y="109.317" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">== </text>
+  <text x="71.867" y="124.421" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">"USD"</text>
+  <text x="111.873" y="124.421" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">)</text>
+  <text x="87.869" y="139.525" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">{</text>
+  <text x="103.872" y="154.629" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">convertedAmount </text>
+  <text x="231.893" y="154.629" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="247.895" y="154.629" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">originalAmount </text>
+  <text x="367.915" y="154.629" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="383.917" y="154.629" font-family="Cousine" font-size="13.333" fill="#f5871f" xml:space="preserve">1.80810</text>
+  <text x="439.927" y="154.629" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">m;</text>
+  <text x="87.869" y="169.734" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">}</text>
+  <text x="87.869" y="184.838" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">else</text>
+  <text x="119.874" y="184.838" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve"> </text>
+  <text x="127.876" y="184.838" font-family="Cousine" font-size="13.333" fill="#8e908c" xml:space="preserve">if</text>
+  <text x="143.878" y="184.838" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve"> </text>
+  <text x="151.88" y="184.838" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve">(</text>
+  <text x="159.881" y="184.838" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="191.886" y="184.838" font-family="Cousine" font-size="13.333" fill="#f5871f" xml:space="preserve">.comboBoxCurrency.SelectedItem.ToString(</text>
+  <text x="511.938" y="184.838" font-family="Cousine" font-size="13.333" fill="#4271ae" xml:space="preserve">) </text>
+  <text x="527.941" y="184.838" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">== </text>
+  <text x="71.867" y="199.942" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">"GBP"</text>
+  <text x="111.873" y="199.942" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">)</text>
+  <text x="87.869" y="215.046" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">{</text>
+  <text x="103.872" y="230.15" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">convertedAmount </text>
+  <text x="231.893" y="230.15" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="247.895" y="230.15" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">originalAmount </text>
+  <text x="367.915" y="230.15" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="383.917" y="230.15" font-family="Cousine" font-size="13.333" fill="#f5871f" xml:space="preserve">2.54990</text>
+  <text x="439.927" y="230.15" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">m;</text>
+  <text x="87.869" y="245.254" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">}</text>
+  <text x="87.869" y="260.359" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="119.874" y="260.359" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">.labelResult.Text </text>
+  <text x="263.898" y="260.359" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="279.901" y="260.359" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">originalAmount </text>
+  <text x="399.92" y="260.359" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="415.923" y="260.359" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">" </text>
+  <text x="431.925" y="260.359" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">lv. </text>
+  <text x="463.93" y="260.359" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">= </text>
+  <text x="479.933" y="260.359" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">"</text>
+  <text x="487.934" y="260.359" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="495.936" y="260.359" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">+</text>
+  <text x="87.869" y="275.463" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">Math.Round(convertedAmount, </text>
+  <text x="311.906" y="275.463" font-family="Cousine" font-size="13.333" fill="#f5871f" xml:space="preserve">2</text>
+  <text x="319.907" y="275.463" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">) </text>
+  <text x="335.91" y="275.463" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="351.912" y="275.463" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">" </text>
+  <text x="367.915" y="275.463" font-family="Cousine" font-size="13.333" fill="#718c00" xml:space="preserve">"</text>
+  <text x="375.916" y="275.463" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="383.917" y="275.463" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">+</text>
+  <text x="103.872" y="290.567" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="135.877" y="290.567" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">.comboBoxCurrency.SelectedItem;</text>
+  <text x="71.867" y="305.671" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">}</text>
+  <text x="56.733" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">The </text>
+  <text x="87.608" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">above </text>
+  <text x="131.812" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">code </text>
+  <text x="168.015" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">takes </text>
+  <text x="206.89" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="232.437" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">amount</text>
+  <text x="280.429" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve"> </text>
+  <text x="286.429" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">for </text>
+  <text x="311.086" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">converting </text>
+  <text x="385.508" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="411.055" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">field </text>
+  <text x="446.375" y="330.599" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">numericUpDownAmount</text>
+  <text x="598.4" y="330.599" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve"> </text>
+  <text x="56.733" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">and </text>
+  <text x="86.412" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="112.535" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">selected </text>
+  <text x="170.635" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">currency</text>
+  <text x="226.596" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve"> </text>
+  <text x="233.173" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">for </text>
+  <text x="258.405" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="284.529" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">result </text>
+  <text x="326.652" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">from </text>
+  <text x="364.331" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="390.454" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">field </text>
+  <text x="426.351" y="348.998" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">comboBoxCurrency</text>
+  <text x="554.372" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">. </text>
+  <text x="564.948" y="348.998" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">Then </text>
+  <text x="56.733" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">with </text>
+  <text x="92.683" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">a </text>
+  <text x="107.29" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">conditional </text>
+  <text x="186.779" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">statement</text>
+  <text x="248.091" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">, </text>
+  <text x="259.596" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">according </text>
+  <text x="330.179" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">to </text>
+  <text x="350.129" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="377.181" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">selected </text>
+  <text x="436.209" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">currency, </text>
+  <text x="503.675" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="530.726" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">amount </text>
+  <text x="586.223" y="367.396" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">is </text>
+  <text x="56.733" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">divided </text>
+  <text x="111.263" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">by </text>
+  <text x="133.8" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="159.884" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">exchange </text>
+  <text x="226.827" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">rate </text>
+  <text x="257.341" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">(</text>
+  <text x="262.669" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">which </text>
+  <text x="308.308" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">is </text>
+  <text x="325.517" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">fixed </text>
+  <text x="364.929" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">in </text>
+  <text x="383.911" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="409.995" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">source </text>
+  <text x="458.29" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">code). </text>
+  <text x="504.359" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">Finally, </text>
+  <text x="560.232" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">a </text>
+  <text x="573.871" y="385.795" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">text </text>
+  <text x="56.733" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">message </text>
+  <text x="117.938" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">with </text>
+  <text x="153.385" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="179.934" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">result</text>
+  <text x="215.481" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve"> </text>
+  <text x="222.483" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">(</text>
+  <text x="227.811" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">rounded </text>
+  <text x="287.243" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">to </text>
+  <text x="306.69" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="333.239" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">second </text>
+  <text x="384.67" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">digit </text>
+  <text x="421.008" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">after </text>
+  <text x="457.314" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="483.863" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">decimal </text>
+  <text x="541.506" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">point</text>
+  <text x="574.396" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">) </text>
+  <text x="586.726" y="404.193" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">is </text>
+  <text x="56.733" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">generated </text>
+  <text x="122.913" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">and </text>
+  <text x="150.015" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">recorded </text>
+  <text x="209.976" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">in </text>
+  <text x="226.421" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">the </text>
+  <text x="249.968" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">green </text>
+  <text x="289.499" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">box </text>
+  <text x="317.499" y="422.592" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">labelResult</text>
+  <text x="405.513" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">. </text>
+  <text x="413.513" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">Try </text>
+  <text x="440.615" y="422.592" font-family="Tinos" font-size="16" fill="#000000" xml:space="preserve">it!</text>
+  <text x="56.733" y="464.119" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">What’s </text>
+  <text x="137.405" y="464.119" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Next?</text>
+  <text x="56.733" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="82.583" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">“</text>
+  <text x="89.517" y="488.33" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="173.767" y="488.33" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Basics</text>
+  <text x="214.033" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">” </text>
+  <text x="225.217" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">series </text>
+  <text x="264.267" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">consists </text>
+  <text x="316.65" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="331.967" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">publications </text>
+  <text x="405.15" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="424.867" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">beginners </text>
+  <text x="483.917" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="498.567" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">programming </text>
+  <text x="578.017" y="488.33" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">that </text>
+  <text x="56.733" y="501.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">covers </text>
+  <text x="97.8" y="501.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="118.867" y="501.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">following </text>
+  <text x="175.8" y="501.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">topics:</text>
+  <text x="80.733" y="521.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">1.</text>
+  <text x="104.733" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">First </text>
+  <text x="135.533" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Steps </text>
+  <text x="171.533" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="185.267" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="265.4" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="275.667" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">commands, </text>
+  <text x="345.4" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">programs, </text>
+  <text x="405.933" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">C#, </text>
+  <text x="427.933" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Visual </text>
+  <text x="467" y="521.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Studio,</text>
+  <text x="80.733" y="541.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">2.</text>
+  <text x="104.733" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Simple </text>
+  <text x="148.467" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Calculations </text>
+  <text x="222.333" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="232.6" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">variables, </text>
+  <text x="291.533" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">calculations, </text>
+  <text x="367.533" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="414.6" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">input </text>
+  <text x="446.067" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="456.067" y="541.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">output</text>
+  <text x="80.733" y="561.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">3.</text>
+  <text x="104.733" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Simple </text>
+  <text x="148.467" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Conditions </text>
+  <text x="211.933" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="222.2" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">conditional </text>
+  <text x="287.8" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">statements, </text>
+  <text x="359.4" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="380.467" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">“if-else” </text>
+  <text x="436.2" y="561.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">construction</text>
+  <text x="80.733" y="581.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">4.</text>
+  <text x="104.733" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">More </text>
+  <text x="137.133" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Complex </text>
+  <text x="190.467" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Conditions</text>
+  <text x="250.6" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="253.933" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="264.2" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">nested </text>
+  <text x="305.267" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">if-else, </text>
+  <text x="350.867" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">logical </text>
+  <text x="392.067" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">“and”, </text>
+  <text x="433" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">“or”, </text>
+  <text x="465" y="581.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">“not”</text>
+  <text x="80.733" y="601.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">5.</text>
+  <text x="104.733" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Repetitions </text>
+  <text x="172.6" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">(Loops)</text>
+  <text x="216.333" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="219.667" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="229.933" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">simple </text>
+  <text x="272.067" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">for-loops </text>
+  <text x="327.933" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">(repeat </text>
+  <text x="371.133" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="401.267" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">1 </text>
+  <text x="411.267" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="425.667" y="601.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">n)</text>
+  <text x="80.733" y="621.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">6.</text>
+  <text x="104.733" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nested </text>
+  <text x="147.4" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Loops</text>
+  <text x="182.333" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="185.667" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="195.933" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">nested </text>
+  <text x="237" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">loops </text>
+  <text x="270.733" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="294.067" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">problem </text>
+  <text x="343.533" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">solving, </text>
+  <text x="391.4" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">drawing </text>
+  <text x="440.867" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">2D </text>
+  <text x="459.133" y="621.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">figures</text>
+  <text x="80.733" y="641.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7.</text>
+  <text x="104.733" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">More </text>
+  <text x="137.133" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Complex </text>
+  <text x="190.467" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Loops</text>
+  <text x="225.4" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="228.733" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="239" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">loops </text>
+  <text x="272.733" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="302.2" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="312.2" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">step, </text>
+  <text x="343.667" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">infinite </text>
+  <text x="387" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">loops </text>
+  <text x="420.733" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="450.2" y="641.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">breaks</text>
+  <text x="80.733" y="661.663" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8.</text>
+  <text x="104.733" y="661.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">How </text>
+  <text x="134.333" y="661.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="148.733" y="661.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Become </text>
+  <text x="198.333" y="661.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="208.333" y="661.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Software </text>
+  <text x="264.467" y="661.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Engineer?</text>
+  <text x="56.733" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="81.667" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">next </text>
+  <text x="109.4" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">topics </text>
+  <text x="147.533" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="168.6" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">coming. </text>
+  <text x="217.4" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Be </text>
+  <text x="235.667" y="681.663" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">patient!</text>
+  <text x="56.733" y="722.383" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Sign-Up </text>
+  <text x="146.768" y="722.383" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">to </text>
+  <text x="172.761" y="722.383" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Study </text>
+  <text x="238.796" y="722.383" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">in </text>
+  <text x="264.811" y="722.383" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">SoftUni</text>
+  <text x="56.733" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="83.262" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">easiest </text>
+  <text x="129.658" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">way </text>
+  <text x="159.253" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="175.249" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">become </text>
+  <text x="224.844" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="236.44" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">software </text>
+  <text x="292.569" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">engineer </text>
+  <text x="345.631" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="360.96" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="376.956" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">go </text>
+  <text x="395.218" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">through </text>
+  <text x="442.28" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="464.942" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">“</text>
+  <text x="471.876" y="746.594" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Software </text>
+  <text x="532.004" y="746.594" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">University</text>
+  <text x="592.538" y="746.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">” </text>
+  <text x="56.733" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">training </text>
+  <text x="103" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">program </text>
+  <text x="153.133" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">at </text>
+  <text x="167.533" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">SoftUni. </text>
+  <text x="217" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Signup </text>
+  <text x="259" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">now </text>
+  <text x="287" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="305.8" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="326.867" y="759.928" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">free </text>
+  <text x="353.667" y="759.928" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="437" y="759.928" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="480.867" y="759.928" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">training </text>
+  <text x="529.533" y="759.928" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">course</text>
+  <text x="568.867" y="759.928" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">:</text>
+  <text x="179.787" y="800.261" font-family="Lato Light" font-size="28" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://softuni.org/apply</text>
+  <text x="56.733" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Join </text>
+  <text x="85.641" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="106.949" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">SoftUni </text>
+  <text x="152.923" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">community </text>
+  <text x="220.631" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="244.205" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">study </text>
+  <text x="278.846" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">programming </text>
+  <text x="357.621" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="376.662" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">free </text>
+  <text x="402.369" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="416.344" y="833.261" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">our </text>
+  <text x="437.651" y="833.261" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">interactive </text>
+  <text x="505.092" y="833.261" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">training </text>
+  <text x="554" y="833.261" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">platform</text>
+  <text x="56.733" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="63.8" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Get </text>
+  <text x="86.467" y="846.594" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">live </text>
+  <text x="111.933" y="846.594" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">support</text>
+  <text x="155.933" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="159.267" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="182.6" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">mentoring </text>
+  <text x="243.133" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="273.267" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">our </text>
+  <text x="294.333" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">trainers. </text>
+  <text x="345" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Become </text>
+  <text x="394.6" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="404.6" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">software </text>
+  <text x="459.133" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">developer </text>
+  <text x="517.267" y="846.594" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">now!</text>
+</svg>

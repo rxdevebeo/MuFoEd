@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
+  <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
+  <text x="120" y="109.965" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">39</text>
+  <text x="120" y="130.554" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Investigating </text>
+  <text x="199.471" y="130.554" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">failures</text>
+  <text x="120" y="151.143" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">39</text>
+  <text x="120" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Debugging </text>
+  <text x="186.831" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">failures </text>
+  <text x="234.232" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">1: </text>
+  <text x="248.906" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Port </text>
+  <text x="277.559" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">visibility </text>
+  <text x="329.322" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">splicing </text>
+  <text x="376.989" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">(TransientVisibilityEdge </text>
+  <text x="519.975" y="171.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">creation)</text>
+  <text x="120" y="192.322" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">40</text>
+  <text x="120" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Debugging </text>
+  <text x="186.831" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">failures </text>
+  <text x="234.232" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">2: </text>
+  <text x="248.906" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Path </text>
+  <text x="279.443" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">crosses </text>
+  <text x="326.314" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">an </text>
+  <text x="344.361" y="212.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Obstacle</text>
+  <text x="120" y="233.5" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">40</text>
+  <text x="108" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Other </text>
+  <text x="146.056" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">test </text>
+  <text x="172.231" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">notes</text>
+  <text x="108" y="282.678" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">41</text>
+  <text x="96" y="319.268" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Merging </text>
+  <text x="149.145" y="319.268" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="178.93" y="319.268" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Progression</text>
+  <text x="96" y="339.857" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">41</text>
+  <text x="96" y="376.446" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Unimplemented </text>
+  <text x="196.518" y="376.446" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">areas</text>
+  <text x="96" y="397.035" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">41</text>
+  <text x="108" y="425.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Out </text>
+  <text x="133.645" y="425.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">of </text>
+  <text x="149.171" y="425.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Scope</text>
+  <text x="108" y="446.214" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">41</text>
+  <text x="120" y="466.803" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Waypoints </text>
+  <text x="187.189" y="466.803" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">With </text>
+  <text x="219.537" y="466.803" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Dimension</text>
+  <text x="120" y="487.392" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">41</text>
+  <text x="108" y="515.981" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Potential </text>
+  <text x="165.213" y="515.981" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Improvements</text>
+  <text x="108" y="536.57" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">42</text>
+  <text x="120" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Additional </text>
+  <text x="184.689" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Nudging </text>
+  <text x="237.763" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">pass </text>
+  <text x="267.283" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">to </text>
+  <text x="283.245" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">utilize </text>
+  <text x="322.368" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">between-ConvexHull </text>
+  <text x="449.986" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">space </text>
+  <text x="487.268" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">after </text>
+  <text x="519.409" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">staircase </text>
+  <text x="575.139" y="557.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">removal</text>
+  <text x="120" y="577.749" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">42</text>
+  <text x="120" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Splicing </text>
+  <text x="168.669" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">out </text>
+  <text x="192.338" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">from </text>
+  <text x="224.693" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">overlapped </text>
+  <text x="295.585" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">obstacles </text>
+  <text x="354.617" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">to </text>
+  <text x="370.579" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">free </text>
+  <text x="398.079" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">space </text>
+  <text x="435.362" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">outside </text>
+  <text x="483.136" y="598.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">clump</text>
+  <text x="120" y="618.927" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">42</text>
+  <text x="120" y="639.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bend </text>
+  <text x="154.003" y="639.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">reduction </text>
+  <text x="215.061" y="639.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">in </text>
+  <text x="229.449" y="639.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Sparse </text>
+  <text x="272.382" y="639.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityGraph</text>
+  <text x="120" y="660.105" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">42</text>
+  <text x="120" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Eliminate </text>
+  <text x="179.232" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Shallow </text>
+  <text x="228.969" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bends </text>
+  <text x="268.708" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">in </text>
+  <text x="283.095" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Obstacle </text>
+  <text x="338.367" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Sides</text>
+  <text x="120" y="701.284" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="120" y="721.873" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Performance</text>
+  <text x="120" y="742.462" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="132" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Direct </text>
+  <text x="171.23" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">visibility </text>
+  <text x="222.993" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">intersection </text>
+  <text x="297.659" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">for </text>
+  <text x="318.298" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Waypoints</text>
+  <text x="132" y="783.641" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="132" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Combine </text>
+  <text x="188.661" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">all </text>
+  <text x="205.734" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Shortest-Path </text>
+  <text x="290.913" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Sources </text>
+  <text x="340.757" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">into </text>
+  <text x="367.791" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">a </text>
+  <text x="378.132" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">single </text>
+  <text x="415.823" y="804.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">pass</text>
+  <text x="132" y="824.819" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="132" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Make </text>
+  <text x="168.846" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">a </text>
+  <text x="179.187" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Lookup </text>
+  <text x="226.216" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Table </text>
+  <text x="262.074" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">for </text>
+  <text x="282.713" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Direction-converting </text>
+  <text x="408.805" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">CompassVector </text>
+  <text x="505.176" y="845.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">methods</text>
+  <text x="132" y="865.997" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="132" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Cache </text>
+  <text x="171.367" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">the </text>
+  <text x="194.598" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">First </text>
+  <text x="223.781" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Splice </text>
+  <text x="261.773" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Intersection </text>
+  <text x="336.768" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">in </text>
+  <text x="351.155" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">ObstaclePortEntrance </text>
+  <text x="484.888" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="510.641" y="886.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">FreePoint</text>
+  <text x="132" y="907.176" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="132" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Reduce </text>
+  <text x="179.488" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">GC </text>
+  <text x="199.876" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">impact </text>
+  <text x="244.12" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">of </text>
+  <text x="259.646" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Port </text>
+  <text x="288.299" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Splicing </text>
+  <text x="336.968" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="362.721" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Shortest </text>
+  <text x="416.188" y="927.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Paths</text>
+  <text x="132" y="948.354" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">44</text>
+</svg>

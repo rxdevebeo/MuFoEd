@@ -1,0 +1,5 @@
+normalization: conformance=unknown
+  T1.namespace x1: http://schemas.openxmlformats.org/wordprocessingml/2006/main -> http://purl.oclc.org/ooxml/wordprocessingml/main
+  T2.reltype x1: http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument -> http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument
+  T4.pageMargin x1: gutter -> 0
+  T4.value x1: right -> end

@@ -1,0 +1,285 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="1122.533" height="793.733" viewBox="0 0 1122.533 793.733">
+  <rect x="0" y="0" width="1122.533" height="793.733" fill="#ffffff"/>
+  <text x="0" y="11.2" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="7" y="11.2" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="14" y="11.2" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">6</text>
+  <text x="6.667" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">rCRS </text>
+  <text x="34.696" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">sequence </text>
+  <text x="79.061" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">BOOS7-1: </text>
+  <text x="130.382" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">np </text>
+  <text x="144.548" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16A45-16240 </text>
+  <text x="210.34" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">BOOS7-1: </text>
+  <text x="261.661" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">np </text>
+  <text x="275.828" y="18.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16212-16402</text>
+  <text x="6.667" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="52.315" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">clone </text>
+  <text x="79.691" y="24.32" font-family="Georgia" font-size="5.333" fill="#000000" xml:space="preserve">1 </text>
+  <text x="83.691" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="129.34" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="154.204" y="24.32" font-family="Georgia" font-size="5.333" fill="#000000" xml:space="preserve">2 </text>
+  <text x="158.204" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="203.853" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="228.716" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">3 </text>
+  <text x="237.216" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="282.865" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="307.729" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">4 </text>
+  <text x="316.229" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1; </text>
+  <text x="361.877" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="386.741" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">S </text>
+  <text x="395.877" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="441.526" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="466.39" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B </text>
+  <text x="476.782" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1; </text>
+  <text x="522.431" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="547.295" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">7 </text>
+  <text x="555.795" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="601.443" y="24.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="626.307" y="24.32" font-family="Georgia" font-size="5.333" fill="#000000" xml:space="preserve">8</text>
+  <text x="17.333" y="32.133" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16C </text>
+  <text x="39.059" y="32.133" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">50</text>
+  <text x="6.667" y="40.467" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T </text>
+  <text x="16.423" y="40.467" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GGGT </text>
+  <text x="50.733" y="40.467" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACCACCCAAG'</text>
+  <text x="6.667" y="51.733" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">iiSio </text>
+  <text x="32.342" y="51.733" font-family="Georgia" font-size="6" font-weight="bold" fill="#000000" xml:space="preserve">16</text>
+  <text x="38.582" y="51.733" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="41.889" y="51.733" font-family="Georgia" font-size="6" font-weight="bold" fill="#000000" xml:space="preserve">70</text>
+  <text x="48.129" y="51.733" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="49.462" y="51.733" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">ieJao </text>
+  <text x="77.119" y="51.733" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">letao </text>
+  <text x="89.705" y="51.733" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ie|oo </text>
+  <text x="102.025" y="51.733" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">TeTTo </text>
+  <text x="138.342" y="51.733" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ie</text>
+  <text x="142.502" y="51.733" font-family="Georgia" font-size="6" font-weight="bold" fill="#000000" xml:space="preserve">|20</text>
+  <text x="150.542" y="51.733" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="151.875" y="51.733" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Tap</text>
+  <text x="6.667" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">\AGT </text>
+  <text x="35.941" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ATTGACT </text>
+  <text x="91.656" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">CACCCAT </text>
+  <text x="148.018" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">CAACAACCGCT </text>
+  <text x="236.493" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ATGT </text>
+  <text x="269.541" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ATT </text>
+  <text x="294.405" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T </text>
+  <text x="304.161" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">CGT </text>
+  <text x="329.661" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACAT </text>
+  <text x="363.346" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T </text>
+  <text x="373.102" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACT </text>
+  <text x="398.602" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GCCAGCCACCAT </text>
+  <text x="494.636" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GAAT </text>
+  <text x="528.946" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ATT </text>
+  <text x="553.81" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GT </text>
+  <text x="571.751" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACGG</text>
+  <text x="603.864" y="63.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">'</text>
+  <text x="38.667" y="74.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16 </text>
+  <text x="52.833" y="74.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">40</text>
+  <text x="6.667" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T </text>
+  <text x="16.423" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACCAT </text>
+  <text x="57.667" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">AAAT </text>
+  <text x="91.977" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACTTGACCACCT </text>
+  <text x="186.113" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GT </text>
+  <text x="204.054" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">AGT </text>
+  <text x="230.179" y="85.867" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">Ai</text>
+  <text x="6.667" y="94.8" font-family="Arimo" font-size="6" fill="#000000" xml:space="preserve">iTso </text>
+  <text x="19.669" y="94.8" font-family="Arimo" font-size="6" fill="#000000" xml:space="preserve">TeTeo </text>
+  <text x="38.676" y="94.8" font-family="Arimo" font-size="6" fill="#000000" xml:space="preserve">isj </text>
+  <text x="46.009" y="94.8" font-family="Constantia" font-size="13.333" fill="#000000" xml:space="preserve">70 </text>
+  <text x="62.676" y="94.8" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.CGT </text>
+  <text x="91.009" y="94.8" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GT </text>
+  <text x="108.95" y="94.8" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">AGT </text>
+  <text x="135.076" y="94.8" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACAT </text>
+  <text x="168.76" y="94.8" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">AAAAACCCAA'</text>
+  <text x="1045.267" y="103.133" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16170</text>
+  <text x="1087.533" y="103.133" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16180</text>
+  <text x="6.667" y="111.467" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">AAAAACCCAAT </text>
+  <text x="96.393" y="111.467" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">CCACATC</text>
+  <text x="545.4" y="117.4" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">i6|90 </text>
+  <text x="557.72" y="117.4" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ieioo </text>
+  <text x="570.04" y="117.4" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ie£io</text>
+  <text x="417.178" y="127.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">vCCCCCT </text>
+  <text x="470.398" y="127.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">CCCCAT </text>
+  <text x="518.575" y="127.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">GCT </text>
+  <text x="544.075" y="127.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T </text>
+  <text x="553.831" y="127.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACAAGCAAGT </text>
+  <text x="635.998" y="127.533" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">ACAGCAATC.</text>
+  <text x="429.133" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">teijO</text>
+  <text x="471.067" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16^40</text>
+  <text x="513.6" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">1B250</text>
+  <text x="556.2" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16200</text>
+  <text x="598.4" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16270</text>
+  <text x="640.667" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">1626016^90</text>
+  <text x="725.8" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16300</text>
+  <text x="768" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16310</text>
+  <text x="810.6" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16320</text>
+  <text x="852.8" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16: </text>
+  <text x="870.115" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">30</text>
+  <text x="895.4" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16340</text>
+  <text x="937.933" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16350</text>
+  <text x="980.2" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">1636Q16370</text>
+  <text x="1065.267" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16380</text>
+  <text x="1107.533" y="136.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">1</text>
+  <text x="6.667" y="144.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">rCRS </text>
+  <text x="42.387" y="144.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">sequence </text>
+  <text x="94.443" y="144.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">TiMCTATiAeAeATCMiT^MeTiCMA^CA^iiTdAiKAiTAc^TAeCMiAMeiTACMAeiiTTAA^TAdATAiTAeATAM^iATTTAddiiTAaTA^AeATTAiASTiAAATiCiTTiTiSTiMiAT^TiAiCidiCTiA^kTAS </text>
+  <text x="1037.366" y="144.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B00S7-1: </text>
+  <text x="1091.342" y="144.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">np </text>
+  <text x="6.667" y="152.2" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16045-16240 </text>
+  <text x="6.667" y="158.387" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B00S7-1: </text>
+  <text x="52.952" y="158.387" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">np </text>
+  <text x="67.118" y="158.387" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">16212-16402</text>
+  <text x="6.667" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="52.315" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="77.179" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">1</text>
+  <text x="241.2" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="275.133" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="312.933" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="315.767" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="372.133" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="377.8" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">,</text>
+  <text x="639.6" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="652.4" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C, </text>
+  <text x="690.533" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="693.367" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="724.4" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="758.333" y="164.12" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="6.667" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="52.315" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="77.179" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">2</text>
+  <text x="147.467" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="639.6" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="678" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C. </text>
+  <text x="691.226" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="779.8" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="785.467" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="802.4" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="808.067" y="169.853" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="6.667" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="52.315" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="77.179" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">3</text>
+  <text x="240.933" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="300.4" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="306.067" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="372.133" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="673.533" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="690.533" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C. </text>
+  <text x="703.759" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="715.8" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T </text>
+  <text x="725.556" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="731.223" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="758.333" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="849.6" y="175.587" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="6.667" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">BOC57-1: </text>
+  <text x="56.726" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="81.59" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">4</text>
+  <text x="240.933" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="274.8" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="346.8" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="639.6" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="652.4" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C. </text>
+  <text x="724.4" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="758.333" y="181.32" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="6.667" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="52.315" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="77.179" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">5</text>
+  <text x="300.4" y="187.053" font-family="Tinos" font-size="5.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="303.658" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="533.733" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C, </text>
+  <text x="546.959" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="678" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C. </text>
+  <text x="754.533" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="802.4" y="187.053" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="6.667" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">60057-1; </text>
+  <text x="50.423" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="75.286" y="192.787" font-family="Georgia" font-size="5.333" fill="#000000" xml:space="preserve">6</text>
+  <text x="236.4" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="270.333" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="338.2" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">_ </text>
+  <text x="346.7" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="448.6" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="639.6" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C </text>
+  <text x="649.993" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="720.6" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="754.533" y="192.787" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="6.667" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1: </text>
+  <text x="52.315" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="77.179" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">7</text>
+  <text x="240.933" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="275.133" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="312.933" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="315.767" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="346.8" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="529.2" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="652.4" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="678" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C. </text>
+  <text x="754.533" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="802.4" y="198.52" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="6.667" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B0057-1; </text>
+  <text x="52.315" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">done </text>
+  <text x="77.179" y="204.253" font-family="Georgia" font-size="5.333" fill="#000000" xml:space="preserve">8</text>
+  <text x="400.933" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">..... </text>
+  <text x="417.933" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="491.133" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="493.967" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">...</text>
+  <text x="642.2" y="204.253" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="0" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">B</text>
+  <text x="9.338" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">-</text>
+  <text x="14" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="17.5" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">C</text>
+  <text x="26.838" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">l</text>
+  <text x="30.728" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">o</text>
+  <text x="37.728" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">n</text>
+  <text x="44.728" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">e</text>
+  <text x="50.941" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="54.441" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">s</text>
+  <text x="59.89" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">e</text>
+  <text x="66.104" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">q</text>
+  <text x="73.104" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">u</text>
+  <text x="80.104" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">e</text>
+  <text x="86.317" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">n</text>
+  <text x="93.317" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">c</text>
+  <text x="99.531" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">e</text>
+  <text x="105.745" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">s</text>
+  <text x="111.193" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="114.693" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">f</text>
+  <text x="119.355" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">o</text>
+  <text x="126.355" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">r</text>
+  <text x="131.018" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="134.518" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">B</text>
+  <text x="143.855" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">o</text>
+  <text x="150.855" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">l</text>
+  <text x="154.745" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">s</text>
+  <text x="160.193" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">h</text>
+  <text x="167.193" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">o</text>
+  <text x="174.193" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">y</text>
+  <text x="181.193" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="184.693" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">O</text>
+  <text x="194.804" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">l</text>
+  <text x="198.693" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">e</text>
+  <text x="204.907" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">n</text>
+  <text x="211.907" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">i</text>
+  <text x="215.797" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="219.297" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">O</text>
+  <text x="229.407" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">s</text>
+  <text x="234.855" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">t</text>
+  <text x="238.745" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">r</text>
+  <text x="243.407" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">o</text>
+  <text x="250.407" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">v</text>
+  <text x="257.407" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="260.907" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">i</text>
+  <text x="264.797" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">n</text>
+  <text x="271.797" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">d</text>
+  <text x="278.797" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">i</text>
+  <text x="282.687" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">v</text>
+  <text x="289.687" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">i</text>
+  <text x="293.576" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">d</text>
+  <text x="300.576" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">u</text>
+  <text x="307.576" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">a</text>
+  <text x="313.79" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">l</text>
+  <text x="317.68" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="321.18" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">B</text>
+  <text x="330.518" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="337.518" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="344.518" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">5</text>
+  <text x="351.518" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">7</text>
+  <text x="358.518" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">-</text>
+  <text x="363.18" y="216.6" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+</svg>

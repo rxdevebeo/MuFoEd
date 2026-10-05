@@ -1,0 +1,429 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="672.067" height="960.133" viewBox="0 0 672.067 960.133">
+  <rect x="0" y="0" width="672.067" height="960.133" fill="#ffffff"/>
+  <image x="56.733" y="53.132" width="321.333" height="20.026" preserveAspectRatio="none" xlink:href="data:image/png;base64,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"><title>https://csharp-book.softuni.org/assets/chapter-8-1-images/05.Date-after-5-days-06.png</title></image>
+  <text x="56.733" y="116.081" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Testing </text>
+  <text x="111.405" y="116.081" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">in </text>
+  <text x="128.749" y="116.081" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="154.077" y="116.081" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Judge </text>
+  <text x="198.976" y="116.081" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">System</text>
+  <text x="56.733" y="138.77" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Test </text>
+  <text x="83.022" y="138.77" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">your </text>
+  <text x="110.796" y="138.77" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">solution </text>
+  <text x="157.098" y="138.77" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">here:</text>
+  <text x="183.745" y="138.77" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="187.078" y="138.77" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://judge.softuni.org/Contests/Practice/Index/516#4</text>
+  <text x="482.599" y="138.77" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="172.927" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Problem: </text>
+  <text x="133.207" y="172.927" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Sums </text>
+  <text x="179.727" y="172.927" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">of </text>
+  <text x="199.222" y="172.927" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">3 </text>
+  <text x="212.722" y="172.927" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Numbers</text>
+  <text x="56.733" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="81.823" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">next </text>
+  <text x="109.14" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">sample </text>
+  <text x="151.268" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">exam </text>
+  <text x="184.503" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">problem </text>
+  <text x="233.297" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="246.552" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">about </text>
+  <text x="280.535" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">checking </text>
+  <text x="333.021" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">multiple </text>
+  <text x="381.822" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">cases </text>
+  <text x="414.315" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="429.047" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">find </text>
+  <text x="454.886" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">out </text>
+  <text x="476.284" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">if </text>
+  <text x="488.79" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="519.069" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">given </text>
+  <text x="553.052" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3 </text>
+  <text x="564.08" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="614.359" y="197.467" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">we </text>
+  <text x="56.733" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">can </text>
+  <text x="78.569" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">find </text>
+  <text x="103.38" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">two </text>
+  <text x="126.714" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="141.154" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">them </text>
+  <text x="171.147" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="207.065" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">sum </text>
+  <text x="232.625" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">up </text>
+  <text x="249.292" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="262.996" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="282.619" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">third </text>
+  <text x="311.134" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="325.574" y="212.799" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">them.</text>
+  <text x="56.733" y="243.841" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Video: </text>
+  <text x="106.061" y="243.841" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Sum </text>
+  <text x="141.186" y="243.841" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">of </text>
+  <text x="158.515" y="243.841" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">3 </text>
+  <text x="170.515" y="243.841" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Numbers</text>
+  <text x="56.733" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Watch </text>
+  <text x="96.285" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="117.334" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">following</text>
+  <text x="169.183" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="173.944" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">video </text>
+  <text x="208.326" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">lesson </text>
+  <text x="246.42" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="261.551" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">learn </text>
+  <text x="292.958" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">how </text>
+  <text x="320.681" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="335.812" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">solve</text>
+  <text x="363.956" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="368.717" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="389.766" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">"Sum </text>
+  <text x="424.422" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="440.289" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3 </text>
+  <text x="451.716" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Numbers" </text>
+  <text x="510.799" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">problem</text>
+  <text x="555.232" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="559.993" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">step </text>
+  <text x="586.231" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">by </text>
+  <text x="604.324" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">step</text>
+  <text x="625.802" y="266.529" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">: </text>
+  <text x="56.733" y="281.862" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://youtu.be/7NwKXOtbWXc</text>
+  <text x="237.085" y="281.862" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="312.903" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Problem </text>
+  <text x="119.382" y="312.903" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Description</text>
+  <text x="56.733" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">There </text>
+  <text x="92.144" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">are</text>
+  <text x="108.42" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="112.744" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3 </text>
+  <text x="123.735" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integers</text>
+  <text x="165.942" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="170.266" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">given. </text>
+  <text x="207.545" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Write </text>
+  <text x="242.221" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="252.462" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">program </text>
+  <text x="301.956" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">that </text>
+  <text x="326.273" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">checks </text>
+  <text x="366.873" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">if</text>
+  <text x="375.017" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="379.341" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="399.954" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">sum </text>
+  <text x="426.504" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="441.935" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">two </text>
+  <text x="466.259" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="481.69" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="502.302" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="552.544" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="565.761" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">equal </text>
+  <text x="598.959" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="613.654" y="335.592" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="56.733" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">third </text>
+  <text x="85.985" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">one</text>
+  <text x="105.236" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="112.638" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">For </text>
+  <text x="135.23" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">example, </text>
+  <text x="187.795" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">if </text>
+  <text x="200.008" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="220.366" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="270.353" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">are</text>
+  <text x="286.629" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="290.698" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3</text>
+  <text x="297.365" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">,</text>
+  <text x="300.698" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="304.767" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5</text>
+  <text x="311.434" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="315.503" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and</text>
+  <text x="334.754" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="338.824" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2</text>
+  <text x="345.49" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="352.893" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="373.251" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">sum </text>
+  <text x="399.546" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="414.722" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">two </text>
+  <text x="438.791" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="453.967" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="474.325" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="524.312" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="537.274" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">equal </text>
+  <text x="570.217" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="584.657" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="605.015" y="350.924" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">third </text>
+  <text x="56.733" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">one:</text>
+  <text x="79.689" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="83.022" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2 </text>
+  <text x="93.022" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="103.875" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3 </text>
+  <text x="113.875" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="124.728" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5</text>
+  <text x="131.395" y="366.256" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="397.298" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Input</text>
+  <text x="56.733" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="80.796" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="124.858" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">reads</text>
+  <text x="152.99" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="156.323" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">three </text>
+  <text x="186.304" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integers</text>
+  <text x="228.511" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="235.177" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">one </text>
+  <text x="257.762" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">per </text>
+  <text x="278.12" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line. </text>
+  <text x="304.78" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="328.843" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="378.094" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="397.703" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="411.408" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="431.03" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">range </text>
+  <text x="463.973" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">[</text>
+  <text x="468.413" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1 </text>
+  <text x="478.413" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">… </text>
+  <text x="495.08" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1000</text>
+  <text x="521.746" y="419.987" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">].</text>
+  <text x="56.733" y="451.028" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Output</text>
+  <text x="75.6" y="473.717" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Print </text>
+  <text x="126.15" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="141.554" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="171.034" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line </text>
+  <text x="200.513" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">on </text>
+  <text x="223.332" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="249.107" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="299.323" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">containing </text>
+  <text x="365.091" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="390.866" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">solution </text>
+  <text x="443.321" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="463.914" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="489.689" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">problem </text>
+  <text x="543.608" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="563.465" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="589.24" y="473.717" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">format </text>
+  <text x="90.733" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">"</text>
+  <text x="96.176" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="105.427" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="116.28" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">b </text>
+  <text x="126.28" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="137.133" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">c</text>
+  <text x="143.051" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">", </text>
+  <text x="155.16" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">where</text>
+  <text x="187.732" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="191.065" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a</text>
+  <text x="196.983" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">,</text>
+  <text x="200.317" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="203.65" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">b</text>
+  <text x="210.317" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="213.65" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and</text>
+  <text x="232.901" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="236.235" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">c</text>
+  <text x="242.153" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="245.486" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="265.095" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">among </text>
+  <text x="304.718" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="324.34" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">three </text>
+  <text x="354.321" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">input </text>
+  <text x="385.063" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="434.314" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and</text>
+  <text x="453.565" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="456.899" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="466.15" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">≤ </text>
+  <text x="476.801" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">b</text>
+  <text x="483.468" y="489.049" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="75.6" y="511.048" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">If </text>
+  <text x="102.947" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="122.569" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">problem </text>
+  <text x="170.336" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">has </text>
+  <text x="191.443" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">no </text>
+  <text x="208.11" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">solution, </text>
+  <text x="257.745" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">print </text>
+  <text x="286.261" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">"</text>
+  <text x="291.703" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">No</text>
+  <text x="307.999" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">" </text>
+  <text x="316.775" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">on </text>
+  <text x="333.442" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="353.064" y="511.048" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console.</text>
+  <text x="56.733" y="542.089" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Sample </text>
+  <text x="111.405" y="542.089" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Input </text>
+  <text x="153.655" y="542.089" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">and </text>
+  <text x="183.452" y="542.089" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Output</text>
+  <rect x="56.733" y="546.23" width="53.933" height="27.332" fill="#eeeeee"/>
+  <text x="69.261" y="564.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="56.733" y1="546.23" x2="110.667" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="573.562" x2="110.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="546.23" x2="56.733" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="110.667" y1="546.23" x2="110.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="110.667" y="546.23" width="81.933" height="27.332" fill="#eeeeee"/>
+  <text x="132.014" y="564.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="110.667" y1="546.23" x2="192.6" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="110.667" y1="573.562" x2="192.6" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="110.667" y1="546.23" x2="110.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="192.6" y1="546.23" x2="192.6" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="192.6" y="546.23" width="18.733" height="27.332" fill="#ffffff"/>
+  <line x1="192.6" y1="546.23" x2="192.6" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="211.333" y1="546.23" x2="211.333" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="211.333" y="546.23" width="55.8" height="27.332" fill="#eeeeee"/>
+  <text x="225.194" y="564.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="211.333" y1="546.23" x2="267.133" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="211.333" y1="573.562" x2="267.133" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="211.333" y1="546.23" x2="211.333" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="267.133" y1="546.23" x2="267.133" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="267.133" y="546.23" width="82.067" height="27.332" fill="#eeeeee"/>
+  <text x="289.181" y="564.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="267.133" y1="546.23" x2="349.2" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="267.133" y1="573.562" x2="349.2" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="267.133" y1="546.23" x2="267.133" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="349.2" y1="546.23" x2="349.2" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="349.2" y="546.23" width="18.867" height="27.332" fill="#ffffff"/>
+  <line x1="349.2" y1="546.23" x2="349.2" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="368.067" y1="546.23" x2="368.067" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="368.067" y="546.23" width="56.733" height="27.332" fill="#eeeeee"/>
+  <text x="382.394" y="559.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="368.067" y1="546.23" x2="424.8" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="368.067" y1="573.562" x2="424.8" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="368.067" y1="546.23" x2="368.067" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="424.8" y1="546.23" x2="424.8" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="424.8" y="546.23" width="66.133" height="27.332" fill="#eeeeee"/>
+  <text x="438.881" y="559.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="424.8" y1="546.23" x2="490.933" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="424.8" y1="573.562" x2="490.933" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="424.8" y1="546.23" x2="424.8" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="490.933" y1="546.23" x2="490.933" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="490.933" y="546.23" width="18.867" height="27.332" fill="#ffffff"/>
+  <line x1="490.933" y1="546.23" x2="490.933" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="509.8" y1="546.23" x2="509.8" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="509.8" y="546.23" width="56.733" height="27.332" fill="#eeeeee"/>
+  <text x="524.094" y="559.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="509.8" y1="546.23" x2="566.533" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="509.8" y1="573.562" x2="566.533" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="509.8" y1="546.23" x2="509.8" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="566.533" y1="546.23" x2="566.533" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="566.533" y="546.23" width="66.133" height="27.332" fill="#eeeeee"/>
+  <text x="581.081" y="559.112" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="566.533" y1="546.23" x2="632.667" y2="546.23" stroke="#dddddd" stroke-width="1"/>
+  <line x1="566.533" y1="573.562" x2="632.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="566.533" y1="546.23" x2="566.533" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="632.667" y1="546.23" x2="632.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <rect x="56.733" y="573.562" width="53.933" height="57.996" fill="#ffffff"/>
+  <text x="80.233" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3</text>
+  <text x="80.233" y="606.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5</text>
+  <text x="80.233" y="622.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2</text>
+  <line x1="56.733" y1="573.562" x2="110.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="631.558" x2="110.667" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="573.562" x2="56.733" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="110.667" y1="573.562" x2="110.667" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="110.667" y="573.562" width="81.933" height="57.996" fill="#ffffff"/>
+  <text x="125.447" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2 </text>
+  <text x="135.447" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="146.3" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3 </text>
+  <text x="156.3" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="167.153" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5</text>
+  <line x1="110.667" y1="573.562" x2="192.6" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="110.667" y1="631.558" x2="192.6" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="110.667" y1="573.562" x2="110.667" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="192.6" y1="573.562" x2="192.6" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="192.6" y="573.562" width="18.733" height="57.996" fill="#ffffff"/>
+  <line x1="192.6" y1="573.562" x2="192.6" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="211.333" y1="573.562" x2="211.333" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="211.333" y="573.562" width="55.8" height="57.996" fill="#ffffff"/>
+  <text x="235.933" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2</text>
+  <text x="235.933" y="606.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2</text>
+  <text x="235.933" y="622.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">4</text>
+  <line x1="211.333" y1="573.562" x2="267.133" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="211.333" y1="631.558" x2="267.133" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="211.333" y1="573.562" x2="211.333" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="267.133" y1="573.562" x2="267.133" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="267.133" y="573.562" width="82.067" height="57.996" fill="#ffffff"/>
+  <text x="283.514" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2 </text>
+  <text x="293.514" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="304.367" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2 </text>
+  <text x="314.367" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="325.22" y="591.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">4</text>
+  <line x1="267.133" y1="573.562" x2="349.2" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="267.133" y1="631.558" x2="349.2" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="267.133" y1="573.562" x2="267.133" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="349.2" y1="573.562" x2="349.2" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="349.2" y="573.562" width="18.867" height="57.996" fill="#ffffff"/>
+  <line x1="349.2" y1="573.562" x2="349.2" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="368.067" y1="573.562" x2="368.067" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="368.067" y="573.562" width="56.733" height="57.996" fill="#ffffff"/>
+  <text x="393.1" y="586.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1</text>
+  <text x="393.1" y="601.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1</text>
+  <text x="393.1" y="617.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5</text>
+  <line x1="368.067" y1="573.562" x2="424.8" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="368.067" y1="631.558" x2="424.8" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="368.067" y1="573.562" x2="368.067" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="424.8" y1="573.562" x2="424.8" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="424.8" y="573.562" width="66.133" height="57.996" fill="#ffffff"/>
+  <text x="449.719" y="586.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">No</text>
+  <line x1="424.8" y1="573.562" x2="490.933" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="424.8" y1="631.558" x2="490.933" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="424.8" y1="573.562" x2="424.8" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="490.933" y1="573.562" x2="490.933" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="490.933" y="573.562" width="18.867" height="57.996" fill="#ffffff"/>
+  <line x1="490.933" y1="573.562" x2="490.933" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="509.8" y1="573.562" x2="509.8" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="509.8" y="573.562" width="56.733" height="57.996" fill="#ffffff"/>
+  <text x="534.833" y="586.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2</text>
+  <text x="534.833" y="601.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">6</text>
+  <text x="534.833" y="617.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3</text>
+  <line x1="509.8" y1="573.562" x2="566.533" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="509.8" y1="631.558" x2="566.533" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="509.8" y1="573.562" x2="509.8" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="566.533" y1="573.562" x2="566.533" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <rect x="566.533" y="573.562" width="66.133" height="57.996" fill="#ffffff"/>
+  <text x="591.452" y="586.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">No</text>
+  <line x1="566.533" y1="573.562" x2="632.667" y2="573.562" stroke="#dddddd" stroke-width="1"/>
+  <line x1="566.533" y1="631.558" x2="632.667" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="566.533" y1="573.562" x2="566.533" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <line x1="632.667" y1="573.562" x2="632.667" y2="631.558" stroke="#dddddd" stroke-width="1"/>
+  <text x="56.733" y="684.214" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Reading </text>
+  <text x="117.632" y="684.214" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="142.96" y="684.214" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Input </text>
+  <text x="185.21" y="684.214" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Data</text>
+  <text x="56.733" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">We </text>
+  <text x="78.569" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">take </text>
+  <text x="104.11" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="123.732" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">input </text>
+  <text x="154.474" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="183.726" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="203.348" y="706.903" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console.</text>
+  <image x="56.733" y="732.352" width="318" height="58.238" preserveAspectRatio="none" xlink:href="data:image/png;base64,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"><title>https://csharp-book.softuni.org/assets/chapter-8-1-images/06.Sums-3-numbers-01.png</title></image>
+  <text x="56.733" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Composing </text>
+  <text x="138.085" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">a </text>
+  <text x="150.085" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Template</text>
+  <text x="214.96" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve"> </text>
+  <text x="218.96" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">for </text>
+  <text x="243.39" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="268.718" y="833.514" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Solution</text>
+  <text x="56.733" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">We </text>
+  <text x="78.569" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">can </text>
+  <text x="100.405" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">check </text>
+  <text x="134.826" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">if </text>
+  <text x="146.304" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the</text>
+  <text x="162.593" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="165.926" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">sum</text>
+  <text x="188.153" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="191.486" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="205.926" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="215.177" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">pair </text>
+  <text x="239.24" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="253.68" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="302.931" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="315.158" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">equal </text>
+  <text x="347.365" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="361.069" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="380.692" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">third </text>
+  <text x="409.207" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">number. </text>
+  <text x="456.603" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">We </text>
+  <text x="478.439" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">have </text>
+  <text x="506.942" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3</text>
+  <text x="513.608" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="516.942" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">possible </text>
+  <text x="563.979" y="856.203" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">cases:</text>
+  <text x="75.933" y="878.202" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="91.267" y="878.202" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="100.518" y="878.202" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="111.371" y="878.202" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">b </text>
+  <text x="121.371" y="878.202" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="132.224" y="878.202" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">c</text>
+  <text x="75.933" y="897.534" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="91.267" y="897.534" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="100.518" y="897.534" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="111.371" y="897.534" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">c </text>
+  <text x="120.622" y="897.534" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="131.475" y="897.534" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">b</text>
+  <text x="75.933" y="916.866" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="91.267" y="916.866" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">b </text>
+  <text x="101.267" y="916.866" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">+ </text>
+  <text x="112.12" y="916.866" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">c </text>
+  <text x="121.371" y="916.866" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="132.224" y="916.866" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a</text>
+</svg>

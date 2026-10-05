@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
+  <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
+  <text x="274.622" y="113.773" font-family="Carlito" font-size="18.667" fill="#000000" xml:space="preserve">Design </text>
+  <text x="329.792" y="113.773" font-family="Carlito" font-size="18.667" fill="#000000" xml:space="preserve">for </text>
+  <text x="356.061" y="113.773" font-family="Carlito" font-size="18.667" fill="#000000" xml:space="preserve">Rectilinear </text>
+  <text x="441.245" y="113.773" font-family="Carlito" font-size="18.667" fill="#000000" xml:space="preserve">Edge </text>
+  <text x="482.462" y="113.773" font-family="Carlito" font-size="18.667" fill="#000000" xml:space="preserve">Routing</text>
+  <text x="96" y="171.004" font-family="Caladea" font-size="18.667" font-weight="bold" fill="#3b608d" xml:space="preserve">Contents</text>
+  <text x="96" y="208.856" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Overview</text>
+  <text x="96" y="229.445" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">4</text>
+  <text x="96" y="266.034" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Terminology</text>
+  <text x="96" y="286.624" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">5</text>
+  <text x="96" y="323.213" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Key </text>
+  <text x="120.872" y="323.213" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">External </text>
+  <text x="173.122" y="323.213" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">classes </text>
+  <text x="217.537" y="323.213" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">used</text>
+  <text x="96" y="343.802" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="372.391" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">ApproximateComparer.cs</text>
+  <text x="144" y="392.98" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="413.569" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">BinaryHeapWithComparer</text>
+  <text x="144" y="434.159" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="454.748" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">EdgeGeometry.cs</text>
+  <text x="144" y="475.337" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="495.926" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">GenericBinaryHeapPriorityQueueWithTimestamp</text>
+  <text x="144" y="516.515" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="537.105" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Point.cs</text>
+  <text x="144" y="557.694" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="578.283" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">PortEntryOnCurve.cs</text>
+  <text x="144" y="598.872" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="619.461" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">RbTree.cs</text>
+  <text x="144" y="640.051" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="660.64" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">RectangleNode.cs</text>
+  <text x="144" y="681.229" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="701.818" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Rectangle.cs</text>
+  <text x="144" y="722.407" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="742.997" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Shape.cs</text>
+  <text x="144" y="763.586" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">7</text>
+  <text x="144" y="784.175" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">TransientVisibilityEdge.cs</text>
+  <text x="144" y="804.764" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="144" y="825.353" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityGraph.cs, </text>
+  <text x="253.563" y="825.353" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityVertex.cs, </text>
+  <text x="365.618" y="825.353" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">VisibilityEdge.cs</text>
+  <text x="144" y="845.943" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="96" y="882.532" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">RectilinearEdgeRouter </text>
+  <text x="232.727" y="882.532" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">classes</text>
+  <text x="96" y="903.121" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+  <text x="108" y="931.71" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">External </text>
+  <text x="160.25" y="931.71" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">interface</text>
+  <text x="108" y="952.299" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">8</text>
+</svg>

@@ -1,0 +1,2057 @@
+   Compiling strict-ooxml-core v0.1.0 (D:\projects\StrictLib\strict-ooxml-core)
+   Compiling hayro-jbig2 v0.3.1
+   Compiling strict-ooxml-fidelity v0.1.0 (D:\projects\StrictLib\strict-ooxml-fidelity)
+   Compiling strict-ooxml-testkit v0.1.0 (D:\projects\StrictLib\strict-ooxml-testkit)
+   Compiling strict-ooxml-wml v0.1.0 (D:\projects\StrictLib\strict-ooxml-wml)
+   Compiling hayro-syntax v0.7.2 (D:\projects\StrictLib\vendor\hayro-syntax)
+   Compiling strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+   Compiling strict-ooxml-write v0.1.0 (D:\projects\StrictLib\strict-ooxml-write)
+   Compiling strict-ooxml-report v0.1.0 (D:\projects\StrictLib\strict-ooxml-report)
+   Compiling hayro-interpret v0.7.0 (D:\projects\StrictLib\vendor\hayro-interpret)
+   Compiling strict-ooxml-render-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-pdf)
+   Compiling xtool v0.1.0 (D:\projects\StrictLib\xtool)
+   Compiling hayro v0.7.1 (D:\projects\StrictLib\vendor\hayro)
+   Compiling strict-ooxml-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-pdf)
+   Compiling strict-ooxml-convert v0.1.0 (D:\projects\StrictLib\strict-ooxml-convert)
+   Compiling strict-ooxml v0.1.0 (D:\projects\StrictLib\strict-ooxml)
+   Compiling strict-ooxml-view v0.1.0 (D:\projects\StrictLib\strict-ooxml-view)
+   Compiling strict-ooxml-cli v0.1.0 (D:\projects\StrictLib\strict-ooxml-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 54.89s
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml-309d723ca408d8dd.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\hostile.rs (target\debug\deps\hostile-25104b9586f602a1.exe)
+
+running 43 tests
+test opc::a_bad_local_header_offset_is_invalid_zip ... ok
+test opc::a_case_variant_duplicate_part_is_rejected ... ok
+test opc::a_bad_crc_is_invalid_zip ... ok
+test opc::a_rels_outside_rels_dir_does_not_hijack_the_main_document ... ok
+test smoke::a_transitional_package_is_rejected_under_strict_only ... ok
+test smoke::a_deflated_strict_package_opens ... ok
+test smoke::a_strict_package_opens_as_strict ... ok
+test overflow::a_grid_sum_past_i32_overflow_renders ... ok
+test math::an_ordinary_formula_is_still_supported ... ok
+test table::a_row_wider_than_the_grid_renders_and_says_so ... ok
+test overflow::a_fraction_too_small_for_its_rule_still_renders ... ok
+test escape::a_control_character_symbol_is_unsupported_and_renders_cleanly ... ok
+test nesting::the_text_box_budget_is_the_callers ... ok
+test nesting::thirteen_nested_tables_are_refused_by_kind ... ok
+test table::an_empty_grid_with_two_cells_renders ... ok
+test overflow::text_box_insets_that_overflow_render ... ok
+test overflow::a_numbering_start_at_the_top_of_the_range_does_not_wrap ... ok
+test table::a_row_wider_than_the_grid_reaches_the_pdf_backend_too ... ok
+test nesting::two_hundred_nested_tables_are_refused_rather_than_overflowing_the_stack ... ok
+test escape::a_control_character_in_the_model_is_written_as_well_formed_xml_and_reported ... ok
+test table::a_grid_span_of_65535_is_rendered_within_the_content_width ... ok
+test xml::an_empty_part_is_an_error ... ok
+test xml::the_main_document_truncated_inside_a_run_is_an_error ... ok
+test xml::a_document_truncated_inside_an_element_is_an_error ... ok
+test nesting::the_limit_is_configurable ... ok
+test xml::a_part_with_no_root_is_an_error ... ok
+test xml::a_document_with_two_roots_is_an_error ... ok
+test math::a_formula_nested_past_its_depth_budget_is_degraded_the_same_way ... ok
+test xml::a_well_formed_short_part_is_still_read ... ok
+test nesting::twelve_nested_tables_reach_the_pdf_backend_too ... ok
+test writer::an_app_properties_part_cut_short_inside_a_tag_is_written ... ok
+test nesting::a_table_in_a_header_nests_into_the_same_budget ... ok
+test opc::a_converted_vml_text_box_declares_wps_and_round_trips ... ok
+test writer::a_complete_app_properties_part_still_loses_its_rendering_counters ... ok
+test nesting::the_counter_is_one_for_the_whole_chain_not_one_per_container_kind ... ok
+test nesting::twelve_nested_tables_parse_and_survive_the_whole_pipeline ... ok
+test nesting::text_boxes_fit_the_whole_pipeline ... ok
+test xml::every_truncated_part_is_rejected_promptly ... ok
+test nesting::a_text_box_past_its_own_budget_costs_its_content_not_the_document ... ok
+test writer::an_app_properties_part_cut_short_anywhere_in_a_tag_is_written ... ok
+test math::a_formula_past_the_budget_leaves_the_next_paragraph_alone ... ok
+test math::a_formula_with_five_thousand_nodes_costs_the_formula_and_not_the_document ... ok
+test render::a_heavy_footer_on_many_pages_hits_the_render_item_budget ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+
+     Running tests\open.rs (target\debug\deps\open-5eb49a677e09dd70.exe)
+
+running 6 tests
+test rejects_transitional_under_strict_only ... ok
+test opens_and_exposes_model_and_support ... ok
+test report_file_name_can_be_overridden ... ok
+test report_contains_unsupported_mechanism ... ok
+test renders_pages_to_svg ... ok
+test an_edit_reaches_the_written_package ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\stage5_corpus.rs (target\debug\deps\stage5_corpus-37be19ad7e8d6692.exe)
+
+running 3 tests
+test parses_all_stage5_subsystems ... ok
+test report_lists_stage5_mechanisms_without_unsupported ... ok
+test renders_two_valid_pages_with_stage5_content ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\stage5b_corpus.rs (target\debug\deps\stage5b_corpus-92c295350b646ee6.exe)
+
+running 2 tests
+test parses_stage5b_drawing_mechanisms ... ok
+test renders_stage5b_floating_objects ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\stage5c_corpus.rs (target\debug\deps\stage5c_corpus-e2187e882749b1d2.exe)
+
+running 4 tests
+test the_math_repros_carry_formula_ink ... ok
+test every_repro_fixture_is_present_and_parses ... ok
+test no_repro_fixture_reports_an_unsupported_mechanism ... ok
+test every_repro_fixture_renders_with_the_reference_page_count ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\strict_corpus.rs (target\debug\deps\strict_corpus-efddde6c9c8d8bf0.exe)
+
+running 3 tests
+test opens_real_strict_profile ... ok
+test produces_valid_feature_report ... ok
+test renders_at_least_one_page ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\traits.rs (target\debug\deps\traits-19ec57a08f55d9d2.exe)
+
+running 2 tests
+test public_handles_are_send_sync ... ok
+test render_page_svg_rejects_usize_max ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\strict_ooxml-da7ae37229452d77.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\cli.rs (target\debug\deps\cli-982f475680aa7e5d.exe)
+
+running 21 tests
+test check_damaged_returns_two ... ok
+test report_missing_file_argument_returns_two ... ok
+test check_strict_returns_zero ... ok
+test render_damaged_returns_two ... ok
+test check_transitional_returns_one ... ok
+test check_transitional_with_flag_normalizes_and_returns_zero ... ok
+test check_rejects_an_unrecognized_office_document_relationship ... ok
+test check_unsupported_mechanism_returns_one ... ok
+test report_transitional_returns_two ... ok
+test render_out_file_requires_single_page ... ok
+test inspect_prints_conformance_and_parts ... ok
+test report_text_flag ... ok
+test render_prints_svg ... ok
+test normalize_manual_docx_counts_reltypes_once ... ok
+test report_damaged_returns_two ... ok
+test render_transitional_returns_two ... ok
+test render_unsupported_mechanism_returns_one ... ok
+test report_json_by_default ... ok
+test report_out_writes_file ... ok
+test render_out_directory_writes_pages ... ok
+test report_transitional_with_flag_includes_normalization_block ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_convert-b6936875f35ca919.exe)
+
+running 35 tests
+test geometry::tests::a_non_finite_point_does_not_poison_the_bounds ... ok
+test geometry::tests::an_empty_page_gets_the_default_margins ... ok
+test columns::tests::apply_puts_left_column_before_right ... ok
+test geometry::tests::ink_over_the_edge_gets_the_margin_floor ... ok
+test media::tests::a_collector_starts_empty ... ok
+test columns::tests::ordinary_line_spacing_is_not_a_gutter ... ok
+test columns::tests::a_clear_gutter_is_found ... ok
+test report::tests::the_same_fact_is_one_entry_with_a_count ... ok
+test tables::tests::a_border_size_stays_inside_the_schema ... ok
+test report::tests::the_report_counts_what_it_built ... ok
+test report::tests::inference_is_not_loss ... ok
+test media::tests::two_different_images_are_two_parts ... ok
+test media::tests::the_same_image_twice_is_one_part ... ok
+test recover::tests::a_models_breaks_become_paragraphs_and_they_are_marked ... ok
+test semantic::tests::a_run_preserves_a_space_at_either_end ... ok
+test tables::tests::a_caller_who_wants_no_conditions_gets_a_refusal ... ok
+test tables::tests::a_lone_rule_is_neither_a_table_nor_a_report ... ok
+test tables::tests::boundaries_a_tolerance_apart_are_one ... ok
+test tables::tests::a_frame_around_one_paragraph_is_not_a_table ... ok
+test tables::tests::a_filled_box_is_not_a_rule ... ok
+test tables::tests::a_missing_rule_merges_the_cells_across ... ok
+test tables::tests::an_empty_grid_is_not_a_table ... ok
+test tables::tests::a_grid_of_rules_becomes_a_table ... ok
+test geometry::tests::the_margins_frame_the_ink ... ok
+test tables::tests::rules_that_cross_without_meeting_are_one_figure ... ok
+test tables::tests::a_missing_rule_merges_the_cells_down ... ok
+test tests::half_points_clamp_to_the_schemas_range ... ok
+test tables::tests::the_table_rules_are_load_bearing ... ok
+test tests::the_mode_names_itself ... ok
+test media::tests::parts_are_numbered_in_the_order_they_appear ... ok
+test tables::tests::text_outside_the_grid_stays_in_the_page ... ok
+test tests::twips_round_to_the_nearest_twentieth_of_a_point ... ok
+test tables::tests::the_plan_is_reproducible ... ok
+test tables::tests::two_grids_are_two_tables ... ok
+test media::tests::raw_samples_become_a_png ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\columns.rs (target\debug\deps\columns-ad9ebe3d7a4066a7.exe)
+
+running 5 tests
+test two_column_paragraphs_keep_measured_x_indent ... ok
+test three_columns_are_unsupported_not_reordered ... ok
+test two_columns_read_left_then_right ... ok
+test uneven_column_widths_are_unsupported ... ok
+test a_single_column_page_is_not_split ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\convert.rs (target\debug\deps\convert-d6b09086c621484a.exe)
+
+running 6 tests
+test the_modes_reproduce_different_documents ... ok
+test the_paragraph_rules_are_load_bearing ... ok
+test the_conversion_is_reproducible ... ok
+test the_page_range_is_checked ... ok
+test the_written_package_is_strict ... ok
+test every_character_reaches_the_document ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests\hostile.rs (target\debug\deps\hostile-172c3c70c74b7289.exe)
+
+running 3 tests
+test smoke::an_empty_page_converts ... ok
+test text::a_control_character_is_stripped_and_named ... ok
+test tables::twenty_thousand_ruling_lines_stop_table_search ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests\inline_image.rs (target\debug\deps\inline_image-b4cc3ca6aa863f1e.exe)
+
+running 1 test
+test inline_image_reaches_written_media ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\lists.rs (target\debug\deps\lists-adc1560eac640012.exe)
+
+running 11 tests
+test one_bullet_is_not_a_list ... ok
+test a_marker_glued_to_its_word_is_not_a_marker ... ok
+test a_list_item_carries_the_geometry_the_pdf_had ... ok
+test a_year_at_the_start_of_a_line_is_not_a_list_item ... ok
+test a_caller_who_wants_longer_lists_gets_text ... ok
+test a_restarted_number_is_pinned_rather_than_counted ... ok
+test a_lettered_list_counts_letters ... ok
+test a_skipped_number_is_pinned_rather_than_counted ... ok
+test a_bulleted_run_becomes_a_list_and_the_marker_moves ... ok
+test two_runs_separated_by_a_paragraph_are_two_lists ... ok
+test a_numbered_list_becomes_a_list_with_its_own_numbers ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\recognition.rs (target\debug\deps\recognition-c068ef573323ae34.exe)
+
+running 6 tests
+test the_ocr_report_is_a_separate_fact ... ok
+test a_refused_description_is_recorded_not_guessed ... ok
+test an_answer_with_no_known_kind_is_rejected ... ok
+test a_description_reaches_the_document_and_the_report ... ok
+test without_a_model_nothing_is_invented ... ok
+test recognition_is_opt_in ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\recovery.rs (target\debug\deps\recovery-19ebccf0df46939f.exe)
+
+running 19 tests
+test a_page_of_picture_is_a_page_without_text ... ok
+test a_page_without_text_is_reported_when_no_model_is_configured ... ok
+test a_vector_drawing_on_a_readable_page_is_not_asked_about ... ok
+test a_small_picture_on_a_readable_page_is_not_asked_about ... ok
+test a_picture_too_small_to_be_text_is_not_sent ... ok
+test a_mixed_page_offers_the_picture_and_not_the_page ... ok
+test a_recovered_region_carries_the_picture_indent_and_the_recovered_style ... ok
+test a_page_of_vector_ink_is_sent_whole ... ok
+test the_visual_mode_keeps_the_recovered_text_without_inventing_a_position ... ok
+test a_page_with_text_is_not_shown_to_a_model ... ok
+test a_model_that_finds_nothing_on_a_picture_is_a_loss ... ok
+test a_scan_is_sent_as_its_picture ... ok
+test a_recovered_page_is_not_a_lost_page ... ok
+test a_model_that_refuses_is_recorded_and_the_rest_converts ... ok
+test a_model_reads_the_page_and_the_document_says_so ... ok
+test a_recovered_document_is_reproducible ... ok
+test the_region_cap_is_the_callers ... ok
+test the_largest_picture_is_sent_first_and_the_rest_follow ... ok
+test a_recovered_paragraph_is_indented_to_its_region ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.87s
+
+     Running tests\tables.rs (target\debug\deps\tables-16e6d0bf57ed8f0f.exe)
+
+running 9 tests
+test the_visual_mode_makes_no_structural_claim ... ok
+test the_table_rules_are_load_bearing ... ok
+test the_borders_are_the_ones_that_were_drawn ... ok
+test a_grid_becomes_a_table ... ok
+test the_table_sits_where_its_text_was ... ok
+test a_table_with_no_rules_stays_paragraphs ... ok
+test the_merges_survive_the_round_trip ... ok
+test every_character_reaches_the_document ... ok
+test the_conversion_is_reproducible ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_core-f2526cd679b50547.exe)
+
+running 192 tests
+test limits::tests::defaults_match_the_specification ... ok
+test error::tests::io_errors_convert_and_keep_a_source ... ok
+test error::tests::limit_kind_display_is_stable ... ok
+test limits::tests::individual_limits_are_overridable ... ok
+test normalize::report::tests::a_reported_removal_passes ... ok
+test normalize::report::tests::an_empty_report_is_a_noop ... ok
+test normalize::report::tests::transform_records_display_their_mapping ... ok
+test error::tests::errors_display_their_location ... ok
+test normalize::report::tests::an_error_severity_loss_marks_the_report_fatal ... ok
+test normalize::report::tests::a_zero_count_is_not_recorded ... ok
+test normalize::tables::tests::an_unverified_entry_is_never_applied ... ok
+test normalize::report::tests::equal_reports_compare_equal ... ok
+test normalize::tables::tests::the_removal_table_has_no_duplicates ... ok
+test normalize::report::tests::only_lossy_removals_count_as_a_cost ... ok
+test normalize::tables::tests::values_strict_keeps_are_not_mapped ... ok
+test normalize::report::tests::merge_part_sums_counts_and_keeps_the_first_mapping ... ok
+test normalize::report::tests::repeated_records_accumulate_under_one_stage ... ok
+test normalize::report::tests::the_first_mapping_is_kept_and_later_ones_do_not_overwrite_it ... ok
+test normalize::report::tests::losses_come_back_ordered_by_part ... ok
+test normalize::tables::tests::an_unlisted_element_is_not_removed ... ok
+test normalize::report::tests::a_silent_removal_is_reported_as_such ... ok
+test normalize::tables::tests::only_what_strict_does_not_declare_is_removed ... ok
+test normalize::tables::tests::the_four_renamed_containers_all_have_both_edges ... ok
+test normalize::tables::tests::the_value_map_only_applies_to_its_own_element ... ok
+test normalize::tests::noop_normalizer_borrows_input_unchanged ... ok
+test normalize::tables::tests::direction_neutral_values_are_mapped ... ok
+test normalize::tables::tests::no_direction_neutral_rename_without_its_parent ... ok
+test normalize::transitional::tests::a_non_xml_part_is_untouched ... ok
+test normalize::transitional::tests::a_charset_that_already_has_character_set_keeps_one_copy ... ok
+test normalize::transitional::tests::a_choice_requiring_a_namespace_we_drop_is_not_taken ... ok
+test normalize::transitional::tests::a_charset_value_becomes_the_attribute_strict_declares ... ok
+test normalize::transitional::tests::a_block_with_no_understood_choice_and_no_fallback_is_a_named_removal ... ok
+test normalize::transitional::tests::a_part_no_stage_touched_is_not_policed ... ok
+test normalize::transitional::tests::a_fallback_branch_still_meets_the_vml_picture_conversion ... ok
+test normalize::transitional::tests::a_left_that_is_legal_strict_is_not_renamed ... ok
+test normalize::transitional::tests::a_freeform_path_keeps_its_frame_and_names_the_geometry_it_dropped ... ok
+test normalize::transitional::tests::a_part_without_vml_gains_no_drawingml_prefixes ... ok
+test normalize::transitional::tests::a_strict_part_is_borrowed_unchanged_and_the_report_is_empty ... ok
+test normalize::transitional::tests::a_removed_element_takes_its_whole_subtree_with_it ... ok
+test normalize::transitional::tests::a_part_that_only_had_vml_gets_the_drawingml_prefixes_it_now_needs ... ok
+test normalize::transitional::tests::a_producer_extension_attribute_goes_with_its_elements ... ok
+test normalize::transitional::tests::a_transitional_part_is_rewritten ... ok
+test normalize::transitional::tests::a_floating_shape_keeps_its_wrap_and_its_offset ... ok
+test normalize::transitional::tests::an_escaped_quote_in_a_value_does_not_end_the_attribute ... ok
+test normalize::transitional::tests::a_table_look_mask_becomes_six_booleans_and_nothing_else ... ok
+test normalize::transitional::tests::an_ignorable_removal_does_not_count_as_a_cost ... ok
+test normalize::transitional::tests::a_shape_with_both_an_image_and_a_textbox_is_treated_as_an_ole_preview ... ok
+test normalize::transitional::tests::an_alternate_content_block_takes_the_choice_we_understand ... ok
+test normalize::transitional::tests::a_vml_text_box_becomes_a_shape_that_still_has_its_text ... ok
+test normalize::transitional::tests::a_vml_picture_becomes_a_drawingml_picture_that_keeps_its_relationship ... ok
+test normalize::transitional::tests::an_mc_ignorable_that_still_names_a_used_namespace_is_kept ... ok
+test normalize::transitional::tests::an_unrecognized_transitional_office_relationship_is_not_rewritten_but_is_reported ... ok
+test normalize::transitional::tests::an_inline_vml_shape_becomes_an_inline_picture ... ok
+test normalize::transitional::tests::an_mc_ignorable_naming_nothing_left_is_dropped ... ok
+test normalize::transitional::tests::an_unreadable_table_look_mask_is_carried_and_recorded ... ok
+test normalize::transitional::tests::attribute_values_survive_escaping ... ok
+test normalize::transitional::tests::an_unsized_vml_picture_gets_a_named_zero_extent ... ok
+test normalize::transitional::tests::bidi_paragraph_jc_left_maps_and_is_reported ... ok
+test normalize::transitional::tests::expansion_limit_factor_and_bytes_saturate ... ok
+test normalize::transitional::tests::direction_keep_leaves_jc_left_and_records_it ... ok
+test normalize::transitional::tests::bidi_visual_table_jc_right_maps_and_is_reported ... ok
+test normalize::transitional::tests::extended_and_custom_properties_rewrite_to_their_strict_spelling_exactly ... ok
+test normalize::transitional::tests::an_ole_object_keeps_its_preview_raster_and_names_what_is_gone ... ok
+test normalize::transitional::tests::dropping_an_empty_child_does_not_close_the_parent ... ok
+test normalize::transitional::tests::jc_left_without_bidi_has_no_bidi_loss ... ok
+test normalize::transitional::tests::namespace_declarations_ignore_text_and_keep_full_prefixes ... ok
+test normalize::transitional::tests::legacy_purl_package_uris_are_repaired ... ok
+test normalize::transitional::tests::namespaces_that_do_not_exist_in_strict_are_left_alone ... ok
+test normalize::transitional::tests::normalization_is_idempotent_over_bytes ... ok
+test normalize::transitional::tests::relationship_types_are_mapped ... ok
+test normalize::transitional::tests::options_are_configurable_without_changing_the_default_behaviour ... ok
+test normalize::transitional::tests::sibling_namespace_declarations_stay_on_each_sibling ... ok
+test normalize::transitional::tests::standard_opc_package_uris_are_not_rewritten_to_purl ... ok
+test normalize::transitional::tests::strict_relationship_types_are_left_alone ... ok
+test normalize::transitional::tests::styles_with_effects_has_no_strict_form_and_is_reported_not_rewritten ... ok
+test normalize::transitional::tests::reading_one_part_three_times_does_not_inflate_the_report ... ok
+test normalize::transitional::tests::report_is_equal_for_two_part_read_orders ... ok
+test normalize::transitional::tests::the_transitional_signal_check_is_textual_and_narrow ... ok
+test normalize::vml::tests::an_arc_is_not_a_path_this_converts ... ok
+test normalize::transitional::tests::the_strict_invariant_mode_turns_a_surviving_namespace_into_an_error ... ok
+test normalize::transitional::tests::t4_reaches_st_jc_values_and_writes_the_strict_spelling ... ok
+test normalize::transitional::tests::two_runs_agree_byte_for_byte_and_report_for_report ... ok
+test normalize::vml::tests::the_corpus_floating_shapes_classify_and_keep_their_wrap ... ok
+test ns::detect::tests::detects_unknown_without_signals ... ok
+test ns::detect::tests::detects_strict_and_transitional ... ok
+test normalize::transitional::tests::the_five_value_forms_are_converted_in_a_pass_through_part ... ok
+test ns::detect::tests::detects_mixed ... ok
+test normalize::transitional::tests::the_direction_neutral_rename_follows_the_container_and_not_the_name ... ok
+test normalize::transitional::tests::vml_is_dropped_and_recorded_as_lossy ... ok
+test ns::registry::tests::opc_package_namespaces_are_family_neutral ... ok
+test ns::registry::tests::classifies_relationship_types ... ok
+test normalize::transitional::tests::the_other_two_policies_do_what_they_say ... ok
+test normalize::transitional::tests::vml_fallback_report_and_drop_remove_pict_without_converting ... ok
+test ns::registry::tests::classifies_namespaces ... ok
+test ns::registry::tests::registry_lookup_finds_both_families ... ok
+test opc::content_types::tests::override_part_name_with_invalid_percent_encoding_is_rejected ... ok
+test opc::content_types::tests::override_part_name_is_percent_decoded ... ok
+test opc::path::tests::canonicalizes_plain_relative_names ... ok
+test opc::path::tests::external_targets_are_not_resolved ... ok
+test opc::content_types::tests::written_xml_is_ordered_and_reparses ... ok
+test opc::content_types::tests::resolves_override_and_default ... ok
+test opc::path::tests::normalizes_dot_segments ... ok
+test opc::path::tests::percent_decode_decodes_valid_escapes ... ok
+test opc::path::tests::percent_decode_passes_through_plain_text ... ok
+test opc::path::tests::percent_decode_rejects_invalid_utf8 ... ok
+test opc::path::tests::percent_decode_rejects_malformed_escapes ... ok
+test opc::path::tests::rejects_escaping_targets ... ok
+test opc::path::tests::rejects_traversal_and_absolute_and_backslash ... ok
+test opc::path::tests::resolves_absolute_and_parent_targets ... ok
+test opc::path::tests::resolves_relative_targets ... ok
+test opc::policy::tests::every_cell_of_the_matrix ... ok
+test opc::policy::tests::permissive_without_a_normalizer_no_longer_opens_transitional_as_is ... ok
+test opc::policy::tests::permissive_without_a_normalizer_still_opens_unknown ... ok
+test opc::policy::tests::strict_only_rejects_mixed_even_with_a_normalizer ... ok
+test opc::policy::tests::strict_only_rejects_unknown ... ok
+test opc::rels::tests::a_uri_with_a_known_suffix_but_wrong_base_is_other ... ok
+test opc::rels::tests::an_unknown_authoritys_office_document_uri_is_other ... ok
+test opc::rels::tests::attribute_values_are_escaped ... ok
+test opc::rels::tests::derives_source_part ... ok
+test opc::rels::tests::every_table_row_round_trips_through_from_uri ... ok
+test opc::rels::tests::external_target_is_not_percent_decoded ... ok
+test opc::rels::tests::internal_target_is_percent_decoded_before_resolving ... ok
+test opc::rels::tests::graph_resolves_and_lists ... ok
+test opc::rels::tests::invalid_percent_encoding_in_internal_target_is_rejected ... ok
+test opc::rels::tests::opc_package_rows_use_the_same_uri_for_both_columns ... ok
+test opc::rels::tests::styles_with_effects_has_no_strict_uri ... ok
+test opc::rels::tests::parses_internal_and_external_relationships ... ok
+test opc::rels::tests::the_table_has_no_duplicate_uris_within_a_column ... ok
+test opc::zip::tests::case_variant_duplicate_parts_are_rejected ... ok
+test opc::rels::tests::written_relationships_reparse_and_rewrite_to_strict ... ok
+test opc::zip::tests::compression_bomb_is_rejected_and_reports_the_ratio ... ok
+test opc::zip::tests::default_ratio_allows_repetitive_but_legitimate_documents ... ok
+test opc::zip::tests::detects_bad_crc_on_read ... ok
+test opc::zip::tests::detects_bad_signature ... ok
+test opc::zip::tests::parses_empty_archive ... ok
+test opc::zip::tests::parses_zip64_archive ... ok
+test opc::zip::tests::rejects_truncated_archive ... ok
+test opc::zip::tests::rejects_unsupported_compression ... ok
+test opc::zip::tests::unrelated_kind_names_are_accepted ... ok
+test opc::zip::tests::strict_ratio_override_rejects_a_legitimate_document ... ok
+test opc::zip::write::tests::a_duplicate_part_is_rejected ... ok
+test opc::zip::write::tests::an_empty_part_is_stored_and_readable ... ok
+test opc::zip::write::tests::an_unsafe_part_name_is_rejected ... ok
+test opc::zip::write::tests::duplicate_part_is_case_insensitive ... ok
+test opc::zip::tests::reads_stored_and_deflated_parts ... ok
+test opc::zip::write::tests::entry_and_size_limits_are_enforced ... ok
+test part::tests::case_variants_collide_in_hash_collections ... ok
+test part::tests::compression_variants_differ ... ok
+test part::tests::eq_hash_and_ord_are_ascii_case_insensitive ... ok
+test part::tests::non_ascii_bytes_are_compared_exactly ... ok
+test part::tests::part_id_display_and_as_ref ... ok
+test xml::escape::tests::attribute_escaping ... ok
+test opc::zip::write::tests::compressible_content_is_deflated ... ok
+test xml::escape::tests::every_forbidden_control_is_removed ... ok
+test xml::escape::tests::text_escaping ... ok
+test xml::ns_stack::tests::empty_default_declaration_unsets_namespace ... ok
+test xml::ns_stack::tests::xml_prefix_is_reserved ... ok
+test xml::escape::tests::the_edges_of_the_char_production_are_kept ... ok
+test xml::qname::tests::namespace_uri_compares_to_str ... ok
+test xml::tests::a_declaration_alone_has_no_root ... ok
+test xml::ns_stack::tests::resolves_and_scopes ... ok
+test xml::qname::tests::prefixed_and_plain_names ... ok
+test xml::tests::a_second_root_element_is_an_error ... ok
+test xml::tests::a_truncated_cdata_section_is_an_error ... ok
+test xml::tests::a_well_formed_document_still_reports_eof_repeatedly ... ok
+test xml::tests::an_empty_document_has_no_root ... ok
+test xml::tests::decodes_utf16_le_with_bom ... ok
+test xml::tests::default_namespace_does_not_apply_to_attributes ... ok
+test xml::tests::duplicate_attribute_names_are_rejected ... ok
+test xml::tests::end_of_document_with_open_elements_is_an_error_naming_them ... ok
+test opc::zip::write::tests::a_part_name_too_long_for_the_zip_field_is_refused ... ok
+test xml::tests::enforces_attribute_limit ... ok
+test xml::tests::enforces_depth_limit ... ok
+test xml::tests::locations_track_lines_and_columns ... ok
+test opc::zip::write::tests::an_ordinary_package_is_byte_for_byte_what_it_was ... ok
+test opc::zip::write::tests::output_is_byte_identical_across_runs ... ok
+test opc::zip::write::tests::a_written_package_reopens ... ok
+test xml::tests::deep_nesting_with_per_level_xmlns_hits_our_depth_limit ... ok
+test xml::tests::many_xmlns_declarations_count_toward_the_attribute_limit ... ok
+test xml::tests::non_whitespace_text_after_the_root_is_an_error ... ok
+test xml::tests::parses_cdata_and_text ... ok
+test xml::tests::rejects_doctype ... ok
+test xml::tests::rejects_unknown_prefix ... ok
+test xml::tests::resolves_namespaces_and_prefixes ... ok
+test xml::tests::resolves_predefined_and_rejects_custom_entities ... ok
+test xml::tests::the_unclosed_element_is_reported_on_every_later_call ... ok
+test xml::tests::whitespace_comments_and_pis_may_follow_the_root ... ok
+test xml::tests::xml_space_attribute_is_in_the_xml_namespace ... ok
+test xml::tests::many_distinct_attributes_finish_quickly ... ok
+test xml::escape::tests::escaped_attributes_are_well_formed_and_round_trip ... ok
+test xml::escape::tests::escaped_text_is_well_formed_and_round_trips ... ok
+test opc::zip::write::tests::more_entries_than_the_field_holds_are_refused ... ok
+
+test result: ok. 192 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 53.21s
+
+     Running tests\corpus_oracle.rs (target\debug\deps\corpus_oracle-88fe60b6f8875258.exe)
+
+running 1 test
+test corpus_matches_independent_zip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
+
+     Running tests\docx_corpus.rs (target\debug\deps\docx_corpus-1b492ff710ae333f.exe)
+
+running 1 test
+test local_docx_corpus_opens_without_panicking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+     Running tests\limits_audit.rs (target\debug\deps\limits_audit-227a52832edbad95.exe)
+
+running 1 test
+test corpus_stays_within_default_limits ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.54s
+
+     Running tests\normalization_report.rs (target\debug\deps\normalization_report-b95c21c41122bd7c.exe)
+
+running 1 test
+test rereading_every_part_does_not_change_the_merged_report ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests\opc_integration.rs (target\debug\deps\opc_integration-75d02713fa89671b.exe)
+
+running 27 tests
+test rejects_duplicate_part_names ... ok
+test rejects_path_traversal_entry ... ok
+test a_rels_entry_outside_rels_dir_does_not_replace_the_package_root ... ok
+test relationship_type_signal_is_read_before_the_normalizer_rewrites_it ... ok
+test an_invalid_percent_encoded_internal_target_is_rejected ... ok
+test percent_encoded_and_case_variant_target_resolves_to_the_zip_entry ... ok
+test unexpected_main_content_type_is_rejected_under_strict_only ... ok
+test unexpected_main_content_type_is_recorded_under_normalize ... ok
+test an_evil_office_document_relationship_does_not_win_over_the_real_one ... ok
+test detects_mixed_conformance ... ok
+test relationship_cycle_terminates ... ok
+test enforces_entry_count_limit ... ok
+test enforces_single_uncompressed_limit ... ok
+test opens_strict_package ... ok
+test damaged_archives_return_errors_not_panics ... ok
+test was_normalized_is_false_when_the_normalizer_has_nothing_to_rewrite ... ok
+test enforces_compressed_input_limit ... ok
+test conformance_is_detected_from_raw_bytes_even_with_a_normalizer_installed ... ok
+test normalize_without_normalizer_is_unsupported ... ok
+test permissive_without_a_normalizer_still_opens_unknown_for_inspect ... ok
+test rejects_transitional_under_strict_only ... ok
+test streaming_open_part_also_applies_normalization ... ok
+test was_normalized_is_false_with_no_normalizer_installed ... ok
+test permissive_without_a_normalizer_no_longer_opens_transitional_as_is ... ok
+test relationship_depth_limit_is_enforced ... ok
+test conformance_survives_root_beyond_prefix ... ok
+test enforces_compression_ratio_limit ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests\parallel_report.rs (target\debug\deps\parallel_report-ef5e17d0fe92dfb3.exe)
+
+running 2 tests
+test concurrent_normalize_calls_match_sequential_on_synthetic_parts ... ok
+test parallel_package_reread_matches_sequential_report ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests\perf.rs (target\debug\deps\perf-73455c10346c1069.exe)
+
+running 1 test
+test one_megabyte_xml_parses_within_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests\property.rs (target\debug\deps\property-79b1cf0495e2ced9.exe)
+
+running 5 tests
+test path_canonicalization_is_idempotent ... ok
+test resolved_targets_are_always_canonical ... ok
+test xml_reader_never_panics ... ok
+test package_open_never_panics ... ok
+test zip_round_trip ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\rel_type_oracle.rs (target\debug\deps\rel_type_oracle-de7610d75d05e299.exe)
+
+running 1 test
+test every_corpus_relationship_type_is_in_the_table_or_vendor_opc ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\samples_corpus.rs (target\debug\deps\samples_corpus-e6abe5c440d46c23.exe)
+
+running 3 tests
+test public_corpus_is_present ... ok
+test legitimate_stress_document_opens_and_strict_ratio_still_rejects ... ok
+test public_corpus_opens_detects_and_reads ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_fidelity-db22c788ee634b24.exe)
+
+running 29 tests
+test gray::tests::luma_is_rec_601 ... ok
+test gray::tests::a_stretched_page_keeps_its_ink ... ok
+test gray::tests::a_shifted_page_leaves_paper_where_content_left ... ok
+test gray::tests::a_crop_drops_the_outer_strip_and_refuses_to_grow ... ok
+test policy::tests::the_search_range_is_always_wider_than_the_bound ... ok
+test ssim::tests::a_page_smaller_than_the_window_falls_back_to_one_global_map ... ok
+test gray::tests::transparent_pixels_become_paper ... ok
+test structure::tests::a_page_with_no_ink_has_no_centroid ... ok
+test gray::tests::a_missing_file_says_which_one ... ok
+test ssim::tests::a_perturbed_page_scores_below_one ... ok
+test structure::tests::a_vertical_rule_is_found_by_the_extent ... ok
+test ssim::tests::identical_pages_score_one ... ok
+test structure::tests::an_unshifted_profile_correlates_perfectly ... ok
+test structure::tests::the_shift_bound_is_two_pixels_by_default ... ok
+test gray::tests::a_png_round_trips_through_the_decoder ... ok
+test policy::tests::a_minimal_policy_parses_and_a_missing_pdf_table_defaults_to_the_svg_one ... ok
+test policy::tests::an_unclassified_document_gets_the_strict_defaults ... ok
+test policy::tests::a_pdf_class_must_name_a_class_that_exists ... ok
+test policy::tests::a_pdf_class_changes_only_the_bound_it_names ... ok
+test policy::tests::an_override_touches_only_the_bounds_it_names ... ok
+test policy::tests::a_document_in_two_classes_is_refused ... ok
+test ssim::tests::worst_score_is_the_minimum_not_the_mean ... ok
+test structure::tests::a_failure_carries_the_numbers_that_produced_it ... ok
+test structure::tests::a_page_without_a_frame_measures_the_same_as_a_plain_centroid ... ok
+test structure::tests::the_extent_check_sees_drift_the_centroid_does_not ... ok
+test policy::tests::the_shared_policy_is_readable_and_consistent ... ok
+test structure::tests::a_page_that_is_only_a_frame_has_no_content_to_measure ... ok
+test structure::tests::the_default_bounds_reject_blank_and_shifted_pages ... ok
+test structure::tests::a_page_border_does_not_move_the_content_centroid ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_ocr-94b053182875134d.exe)
+
+running 14 tests
+test base64::tests::matches_the_rfc_4648_vectors ... ok
+test base64::tests::every_length_produces_whole_quads ... ok
+test base64::tests::the_full_alphabet_is_reachable ... ok
+test ollama::tests::a_trailing_slash_does_not_double ... ok
+test ollama::tests::json_strings_are_escaped ... ok
+test ollama::tests::the_default_endpoint_is_local ... ok
+test ollama::tests::the_default_model_is_a_vision_model ... ok
+test ollama::tests::the_endpoint_variable_is_the_one_ollama_uses ... ok
+test report::tests::a_gap_and_a_refusal_are_different_facts ... ok
+test report::tests::a_recovered_answer_names_its_model_and_version ... ok
+test tests::an_image_knows_its_own_encoding ... ok
+test tests::base64_matches_the_reference_alphabet ... ok
+test traits::tests::the_vocabulary_covers_what_a_model_answers ... ok
+test traits::tests::a_refusal_is_a_value_with_a_reason ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\ollama_client.rs (target\debug\deps\ollama_client-deebd205d790578d.exe)
+
+running 7 tests
+test the_client_does_not_depend_on_a_model_being_installed ... ok
+test the_response_budget_is_applied ... ok
+test an_answer_that_is_not_json_is_rejected ... ok
+test an_answer_with_no_content_is_unusable_not_empty ... ok
+test a_figure_is_described_and_the_answer_carries_its_model ... ok
+test the_request_carries_no_retry_and_no_temperature_above_zero ... ok
+test a_daemon_that_is_not_there_is_an_unreachable_error ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_pdf-65d5c6ffa126bc99.exe)
+
+running 33 tests
+test content::tests::every_flattened_point_sits_on_the_curve ... ok
+test content::tests::a_straight_cubic_flattens_onto_its_chord ... ok
+test document::tests::rotation_is_normalised_to_a_right_angle ... ok
+test error::tests::defaults_are_bounded ... ok
+test error::tests::encryption_is_its_own_refusal ... ok
+test fonts::tests::a_malformed_cmap_yields_nothing_rather_than_failing ... ok
+test image::tests::an_alpha_channel_is_readable ... ok
+test fonts::tests::glyph_names_resolve_the_common_latin_set ... ok
+test fonts::tests::hex_tokens_are_paired ... ok
+test fonts::tests::the_font_glyph_budget_is_enforced ... ok
+test error::tests::the_exceeded_error_names_its_budget ... ok
+test fonts::tests::to_unicode_bfchar_and_bfrange_are_read ... ok
+test image::tests::a_jpeg_reports_its_own_size_and_keeps_its_bytes ... ok
+test image::tests::a_broken_jpx_stream_is_broken_not_unsupported ... ok
+test fonts::tests::win_ansi_and_mac_roman_decode_the_latin_range ... ok
+test image::tests::jpx_respects_the_image_byte_budget_before_decode ... ok
+test fonts::tests::a_named_encoding_is_a_stated_mapping ... ok
+test image::tests::one_bit_gray_expands_msb_first_to_luma8 ... ok
+test text::tests::a_gap_on_the_same_baseline_ends_the_line ... ok
+test raster::tests::a_crop_is_inside_the_picture ... ok
+test image::tests::jpx_gray_decodes_to_exact_lossless_samples ... ok
+test raster::tests::a_scale_is_a_scale ... ok
+test text::tests::invisible_text_is_not_placed ... ok
+test report::tests::a_clean_report_says_so ... ok
+test report::tests::merging_adds_counts_and_keeps_approximations_apart_from_losses ... ok
+test report::tests::the_same_fact_is_counted_once ... ok
+test text::tests::a_contiguous_row_is_one_line ... ok
+test inline::tests::an_inline_image_with_garbage_bytes_is_not_tokenised_as_ops ... ok
+test text::tests::a_new_baseline_is_a_new_line ... ok
+test raster::tests::a_picture_is_never_zero_pixels ... ok
+test fonts::tests::a_width_the_font_did_not_state_is_marked_as_a_guess ... ok
+test image::tests::jpx_rgb_decodes_to_exact_lossless_samples ... ok
+test image::tests::raw_samples_come_back_with_their_component_count ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\bilevel.rs (target\debug\deps\bilevel-ccadf73d3a4a0b83.exe)
+
+running 4 tests
+test stroke_style_operators_are_carried_not_reported ... ok
+test a_ccitt_group4_xobject_decodes_to_eight_bit_gray ... ok
+test a_broken_jbig2_stream_is_broken_not_unsupported ... ok
+test a_one_bit_flate_gray_image_expands_to_eight_bit_raw ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\cache.rs (target\debug\deps\cache-d0bd46135547b265.exe)
+
+running 5 tests
+test the_same_picture_drawn_three_times_is_decoded_once ... ok
+test a_cache_with_no_room_changes_nothing_but_the_time ... ok
+test a_picture_drawn_on_two_pages_is_decoded_once ... ok
+test a_broken_picture_is_asked_about_once_and_reported_twice ... ok
+test a_refusal_is_held_even_when_no_picture_fits ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\formats.rs (target\debug\deps\formats-7f600fae6257cbbc.exe)
+
+running 3 tests
+test fixtures_embed_through_a_package ... ok
+test png_layouts_round_trip_through_hayro ... ok
+test jpeg_layouts_round_trip_through_hayro ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests\geometry.rs (target\debug\deps\geometry-fcdd68514af4c32c.exe)
+
+running 9 tests
+test a_foreign_pdf_is_readable ... ok
+test a_page_wide_transform_is_applied ... ok
+test a_hexadecimal_glyph_string_decodes ... ok
+test an_inline_dictionary_does_not_stop_the_walk ... ok
+test an_absent_dw_is_an_estimate_not_a_declaration ... ok
+test shape_geometry_survives_into_the_pdf ... ok
+test every_text_run_of_every_page_is_recovered ... ok
+test glyph_positions_and_advances_survive_into_the_pdf ... ok
+test the_reader_agrees_with_itself ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests\hostile.rs (target\debug\deps\hostile-2367e9810bfb3933.exe)
+
+running 20 tests
+test smoke::a_built_pdf_opens_with_its_pages ... ok
+test images::an_ordinary_picture_reports_no_mask_cycle ... ok
+test images::an_image_whose_mask_is_itself_is_refused_without_recursing ... ok
+test fonts::a_width_group_that_runs_backwards_is_reported_and_skipped ... ok
+test images::a_cycle_of_two_masks_is_refused_without_recursing ... ok
+test fonts::an_ordinary_font_produces_no_font_losses ... ok
+test raster::page_tree_kids_cycle_is_handled ... ok
+test fonts::a_to_unicode_token_that_is_not_ascii_hex_is_reported_not_fatal ... ok
+test raster::absurd_jbig2_dimensions_are_skipped ... ok
+test raster::absurd_image_dimensions_are_skipped ... ok
+test raster::self_referencing_type3_glyph_terminates ... ok
+test raster::self_referencing_tiling_pattern_terminates ... ok
+test fonts::a_width_group_spanning_the_glyph_space_is_cut_and_reported ... ok
+test fonts::a_bfrange_over_the_whole_code_space_is_cut_and_reported ... ok
+test raster::huge_cid_width_ranges_terminate ... ok
+test raster::deep_literal_dict_nesting_is_refused ... ok
+test budget::ten_thousand_fonts_trip_the_font_budget ... ok
+test budget::a_form_drawn_many_times_stops_on_the_page_glyph_budget ... ok
+test budget::a_flate_bomb_in_page_content_is_refused_without_hanging ... ok
+test budget::a_flate_bomb_in_an_image_is_refused_without_hanging ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.46s
+
+     Running tests\inline.rs (target\debug\deps\inline-8175b79affae78ab.exe)
+
+running 2 tests
+test inline_image_samples_are_not_drawn_as_vectors ... ok
+test inline_image_fills_placed_image_bytes ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\jpx.rs (target\debug\deps\jpx-abd2164cb847e017.exe)
+
+running 4 tests
+test a_broken_jpx_xobject_is_named_broken_not_unsupported ... ok
+test a_jpx_xobject_tolerates_a_lying_bits_per_component ... ok
+test a_jpx_xobject_is_decoded_and_placed ... ok
+test an_inline_jpx_image_is_decoded ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pdf_pixels.rs (target\debug\deps\pdf_pixels-0b40b3ab4f94c674.exe)
+
+running 8 tests
+test every_graded_document_has_references_and_back ... ok
+test a_page_lands_on_the_reference_grid ... ok
+test rasterizing_our_own_pdf_is_deterministic ... ok
+test the_pdf_gate_can_fail_on_a_page_it_passes ... ok
+test our_own_pdf_reads_back_without_loss ... ok
+test one_page_end_to_end_is_named ... ok
+test the_extent_ratchet_pins_every_gated_page_of_the_pdf_path ... ok
+test our_pdf_matches_the_wps_references ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.94s
+
+     Running tests\raster.rs (target\debug\deps\raster-c886cf73d8295619.exe)
+
+running 10 tests
+test a_file_the_reader_could_not_load_is_refused ... ok
+test nonsense_requests_are_refused_by_name ... ok
+test the_budget_is_the_callers ... ok
+test an_oversized_picture_is_refused_before_it_is_allocated ... ok
+test a_page_rasterizes_to_the_size_it_promised ... ok
+test a_region_is_a_crop_of_the_page ... ok
+test the_picture_has_the_document_on_it ... ok
+test a_region_off_the_page_is_clipped ... ok
+test a_page_with_nothing_on_it_is_white ... ok
+test a_picture_is_reproducible ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.31s
+
+     Running tests\read.rs (target\debug\deps\read-1fcb1db50d13059d.exe)
+
+running 11 tests
+test a_matrix_scale_factor_survives_a_rotation ... ok
+test a_construct_the_reader_does_not_carry_is_reported ... ok
+test a_curve_is_flattened_within_the_documented_tolerance ... ok
+test a_rectangle_becomes_a_path_with_its_fill ... ok
+test a_crop_box_smaller_than_the_media_box_is_the_page ... ok
+test invisible_text_is_measured_but_not_drawn ... ok
+test a_tj_adjustment_moves_the_pen_without_drawing ... ok
+test a_page_reports_its_size_and_its_glyphs ... ok
+test a_graphics_state_stack_is_honoured ... ok
+test a_transformed_page_places_its_glyphs_in_device_space ... ok
+test a_page_that_never_closes_its_graphics_state_is_still_readable ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\resources.rs (target\debug\deps\resources-1fc95a19b61709a8.exe)
+
+running 9 tests
+test the_foreign_corpus_is_not_part_of_the_build ... ok
+test an_indirect_xobject_table_is_an_xobject_table ... ok
+test a_picture_drawn_inside_a_form_is_the_forms_picture ... ok
+test nested_forms_compose_their_matrices ... ok
+test a_form_without_resources_uses_the_pages ... ok
+test a_form_drawn_often_is_stopped_by_the_operation_budget ... ok
+test an_indirect_font_table_is_a_font_table ... ok
+test a_form_that_draws_itself_is_refused_by_the_depth_bound ... ok
+test both_shapes_of_resource_dictionary_agree ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\tounicode.rs (target\debug\deps\tounicode-6e6e9fc167a32847.exe)
+
+running 1 test
+test space_and_nbsp_both_survive_text_extraction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_render_pdf-9dd7d02481b4bcd1.exe)
+
+running 49 tests
+test document::tests::a_part_name_is_only_cleaned_never_reordered ... ok
+test matrix::tests::a_flip_mirrors ... ok
+test document::tests::the_first_part_to_arrive_keeps_the_unsuffixed_name ... ok
+test document::tests::the_same_part_repeated_is_one_picture_with_one_name ... ok
+test document::tests::a_part_keeps_its_readable_name ... ok
+test document::tests::two_parts_that_clean_alike_get_different_names ... ok
+test document::tests::three_parts_that_clean_alike_all_get_a_name ... ok
+test font::tests::a_character_without_a_glyph_is_recorded_not_substituted ... ok
+test image::tests::a_jpeg_passes_through_byte_for_byte ... ok
+test image::tests::unsupported_and_damaged_input_is_a_recorded_reject ... ok
+test matrix::tests::a_quarter_turn_maps_x_onto_y ... ok
+test image::tests::the_budget_is_enforced_before_decoding ... ok
+test matrix::tests::chain_applies_its_arguments_in_order ... ok
+test image::tests::jpeg_component_count_selects_the_colour_space ... ok
+test image::tests::an_ihdr_that_claims_gigabytes_is_refused_before_allocation ... ok
+test path::tests::a_rounded_rectangle_keeps_its_corners ... ok
+test path::tests::a_zero_radius_arc_is_a_line ... ok
+test path::tests::a_circle_is_two_arcs_and_lands_on_the_circle ... ok
+test matrix::tests::identity_is_neutral ... ok
+test path::tests::an_arc_written_with_packed_flags_still_parses ... ok
+test path::tests::an_arc_back_to_its_start_draws_nothing ... ok
+test path::tests::an_unsupported_command_is_skipped_not_half_read ... ok
+test path::tests::close_returns_to_the_subpath_start ... ok
+test path::tests::curves_and_negative_exponents_parse ... ok
+test path::tests::extra_pairs_after_a_moveto_are_lines ... ok
+test path::tests::parses_the_rectangle_the_producer_emits ... ok
+test path::tests::truncated_input_keeps_what_parsed ... ok
+test report::tests::a_clean_report_says_so ... ok
+test report::tests::a_clean_report_says_so_and_has_nothing_to_sort ... ok
+test report::tests::a_stable_sort_keeps_discovery_order_within_a_severity ... ok
+test report::tests::the_same_fact_is_recorded_once ... ok
+test font::tests::cmaps_are_well_formed_enough_to_be_found ... ok
+test font::tests::collects_and_subsets_a_bundled_face ... ok
+test units::tests::aud86_white_black_and_garbage_do_not_overflow ... ok
+test report::tests::the_report_is_read_worst_first ... ok
+test font::tests::two_characters_that_share_a_glyph_get_distinct_cids ... ok
+test report::tests::severities_are_summarised_separately ... ok
+test units::tests::colours_parse_in_both_lengths ... ok
+test image::tests::a_2bit_grey_png_expands_to_eight_bit ... ok
+test units::tests::dash_arrays_parse ... ok
+test units::tests::none_is_not_paint ... ok
+test units::tests::points_follow_the_scale ... ok
+test image::tests::a_palette_png_expands_to_rgb ... ok
+test image::tests::a_16bit_png_keeps_the_high_byte ... ok
+test image::tests::a_png_with_alpha_yields_a_soft_mask ... ok
+test units::tests::y_is_reflected_about_the_page_middle ... ok
+test image::tests::a_png_becomes_raw_samples ... ok
+test font::tests::the_variable_face_is_instanced ... ok
+test font::tests::every_bundled_face_subsets ... ok
+
+test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\hostile.rs (target\debug\deps\hostile-cfba5e3c07abb26e.exe)
+
+running 1 test
+test image::a_png_whose_ihdr_claims_gigabytes_renders_with_a_named_loss ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pdf.rs (target\debug\deps\pdf-a108277e3ddcda7f.exe)
+
+running 11 tests
+test an_empty_document_produces_a_valid_page ... ok
+test the_package_is_a_media_source ... ok
+test the_source_package_is_strict ... ok
+test a_header_image_is_on_every_page_as_one_xobject ... ok
+test pictures_are_embedded_or_recorded ... ok
+test every_producer_path_uses_only_the_supported_commands ... ok
+test every_image_resource_name_is_unique_and_drawn ... ok
+test the_page_count_matches_the_svg_backend ... ok
+test the_content_stream_draws_text ... ok
+test every_used_font_is_embedded ... ok
+test rendering_is_reproducible ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_render_svg-d84c3ae1e75ea96e.exe)
+
+running 67 tests
+test fields::tests::parses_format_switch ... ok
+test fields::tests::identifies_computed_fields ... ok
+test font::metrics::tests::advance_is_deterministic_and_positive ... ok
+test error::tests::errors_display_and_convert ... ok
+test layout::table::tests::no_grid_at_all_splits_the_table_evenly ... ok
+test math::layout::tests::a_small_fraction_keeps_a_visible_gap ... ok
+test math::layout::tests::place_grows_the_box_in_both_directions ... ok
+test layout::table::tests::a_grid_that_fills_the_table_is_scaled_to_it ... ok
+test font::family::tests::maps_the_libreoffice_families_to_their_bundled_twins ... ok
+test layout::table::tests::a_grid_that_already_fills_the_table_gives_the_extra_columns_the_average ... ok
+test layout::table::tests::a_narrower_grid_is_scaled_up ... ok
+test font::family::tests::leaves_unknown_families_unchanged ... ok
+test math::layout::tests::a_denominator_is_further_from_the_rule_than_a_numerator_of_the_same_size ... ok
+test layout::table::tests::zero_columns_is_no_columns ... ok
+test math::layout::tests::a_fraction_with_room_keeps_the_nominal_clearance ... ok
+test math::layout::tests::a_fractions_parts_are_always_separated_by_its_rule ... ok
+test math::layout::tests::a_placed_child_never_shrinks_the_box ... ok
+test math::layout::tests::place_above_the_baseline_grows_the_ascent ... ok
+test math::layout::tests::the_budget_bounds_the_output ... ok
+test font::metrics::tests::character_classes ... ok
+test layout::table::tests::an_absurd_column_count_still_returns_that_many_columns ... ok
+test font::builtin::tests::builtin_metrics_are_stable ... ok
+test font::family::tests::maps_known_families_case_insensitively ... ok
+test font::tests::kinds_produce_providers ... ok
+test math::layout::tests::translate_moves_every_item_kind ... ok
+test font::family::tests::maps_the_math_family_to_the_bundled_ofl_face ... ok
+test font::builtin::tests::bundled_advances_match_known_metrics ... ok
+test math::layout::tests::the_rule_always_clears_both_parts_however_small_they_are ... ok
+test font::builtin::tests::math_face_covers_the_omml_repertoire ... ok
+test layout::table::tests::columns_the_grid_does_not_declare_take_the_leftover ... ok
+test math::layout::tests::translate_normalises_non_finite_offsets ... ok
+test math::layout::tests::size_is_always_finite ... ok
+test math::mathml::tests::a_display_formula_carries_its_justification ... ok
+test math::mathml::tests::a_fraction_becomes_mfrac ... ok
+test math::mathml::tests::an_unmodelled_construct_is_reported_not_dropped ... ok
+test math::mathml::tests::digits_become_mn_and_operators_mo ... ok
+test math::mathml::tests::text_is_escaped ... ok
+test math::shapes::tests::a_degenerate_box_still_produces_finite_coordinates ... ok
+test math::shapes::tests::characters_without_a_geometric_form_have_no_path ... ok
+test math::shapes::tests::coordinates_are_scaled_into_the_local_box ... ok
+test math::shapes::tests::the_radical_sign_reaches_the_top_edge ... ok
+test math::shapes::tests::every_geometric_delimiter_has_a_path ... ok
+test notes::tests::formats_cover_all_variants ... ok
+test notes::tests::parses_number_formats_with_defaults ... ok
+test math::shapes::tests::every_large_operator_has_a_path ... ok
+test notes::tests::roman_and_letters_fall_back_outside_range ... ok
+test math::mathml::tests::scr_sty_combinations_emit_one_mathvariant ... ok
+test numbering::tests::markers_default_is_empty ... ok
+test paint::image::tests::base64_matches_known_vectors ... ok
+test numbering::tests::start_override_and_bullet ... ok
+test numbering::tests::multi_level_counters_and_restart ... ok
+test numbering::tests::format_switches_are_applied ... ok
+test paint::image::tests::media_file_name_sanitizes_path ... ok
+test paint::tests::escaping_is_correct ... ok
+test paint::image::tests::media_file_names_disambiguate_basename_collisions ... ok
+test paint::tests::page_svg_has_header_viewbox_and_newline ... ok
+test style::tests::defaults_are_sane ... ok
+test style::tests::run_props_override_and_colors ... ok
+test style::tests::style_chain_then_direct_props ... ok
+test tests::options_builders_and_defaults ... ok
+test tests::page_selection_contains ... ok
+test units::tests::conversions_at_96_dpi ... ok
+test units::tests::fmt_num_is_stable ... ok
+test units::tests::to_i64_saturating_is_total ... ok
+test tests::the_render_budget_is_the_callers ... ok
+test tests::a_programmatically_built_document_is_held_to_the_same_block_budget ... ok
+test units::tests::properties::fmt_num_always_finite_string ... ok
+
+test result: ok. 67 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\corpus.rs (target\debug\deps\corpus-7e4c8ff62282717d.exe)
+
+running 1 test
+test corpus_renders_or_refuses_without_panics ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\coverage.rs (target\debug\deps\coverage-e33cc5df105de295.exe)
+
+running 6 tests
+test page_selection_out_of_range_is_empty ... ok
+test numbering_marker_is_rendered ... ok
+test rich_table_covers_borders_spans_and_merges ... ok
+test section_geometry_and_breaks ... ok
+test images_in_external_and_none_modes ... ok
+test rich_paragraphs_cover_formatting_paths ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\fields.rs (target\debug\deps\fields-6813aed92b867710.exe)
+
+running 8 tests
+test non_computed_field_uses_cache ... ok
+test complex_field_is_computed ... ok
+test roman_switch_is_applied ... ok
+test numpages_field_renders_total ... ok
+test numpages_in_footer_is_total_on_every_page ... ok
+test page_field_renders_current_page_number ... ok
+test page_in_footer_honours_pg_num_type_start_and_fmt ... ok
+test page_in_footer_updates_per_page ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\floating.rs (target\debug\deps\floating-df8c090d3c041258.exe)
+
+running 9 tests
+test wps_namespaces_are_declared ... ok
+test tiny_ch_ext_nested_groups_stay_finite ... ok
+test anchored_picture_is_rendered ... ok
+test floating_objects_can_be_disabled ... ok
+test page_borders_render ... ok
+test group_renders_all_children ... ok
+test anchored_shape_renders_positioned_path ... ok
+test page_border_edges_close_into_one_box ... ok
+test shape_text_box_renders_text ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\golden.rs (target\debug\deps\golden-985da16caf4b053b.exe)
+
+running 3 tests
+test table_golden ... ok
+test image_golden ... ok
+test paragraph_golden ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\headers.rs (target\debug\deps\headers-fca455a8dc57f6c7.exe)
+
+running 6 tests
+test first_page_header_wins_when_title_page ... ok
+test even_odd_headers_follow_settings ... ok
+test footer_sits_below_the_body_margin ... ok
+test default_header_and_footer_paint_on_every_page ... ok
+test title_page_without_first_leaves_first_page_blank ... ok
+test header_offset_follows_page_margin ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\images.rs (target\debug\deps\images-5cfc1c2ed9c2bcb9.exe)
+
+running 4 tests
+test missing_media_source_draws_a_placeholder ... ok
+test embeds_data_uri_by_default ... ok
+test none_mode_draws_a_placeholder ... ok
+test external_files_uses_the_part_file_name ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\math.rs (target\debug\deps\math-2e113c0494070a2f.exe)
+
+running 21 tests
+test an_unmodelled_construct_is_reported_by_the_mathml_projection ... ok
+test a_display_formula_projects_with_its_justification ... ok
+test the_mathml_projection_mirrors_the_model ... ok
+test a_delimiter_is_drawn_as_a_stretchy_vector ... ok
+test a_matrix_places_every_cell_on_a_grid ... ok
+test a_fraction_draws_a_rule_between_its_parts ... ok
+test a_subscript_is_lowered_below_its_base ... ok
+test an_inline_formula_is_drawn_with_the_bundled_math_face ... ok
+test a_radical_draws_its_sign_and_overline ... ok
+test no_math_skips_formulas_entirely ... ok
+test an_nary_operator_places_its_limits_over_and_under ... ok
+test every_coordinate_is_finite_and_the_svg_is_well_formed ... ok
+test a_box_and_a_border_box_draw_rectangles ... ok
+test a_superscript_is_raised_and_smaller_than_its_base ... ok
+test rendering_is_deterministic ... ok
+test a_phantom_reserves_space_without_drawing ... ok
+test ctrl_pr_invalid_color_uses_default_fill ... ok
+test an_equation_array_row_spacing_is_twips ... ok
+test a_display_formula_honours_its_justification ... ok
+test a_default_document_grid_does_not_snap_line_heights ... ok
+test the_stage5c_fixture_renders_two_pages ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\notes.rs (target\debug\deps\notes-2ceb51d143b6edc0.exe)
+
+running 3 tests
+test endnote_renders_at_document_end ... ok
+test footnote_renders_marker_and_note_area ... ok
+test long_footnote_continues_on_next_page ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\numbering.rs (target\debug\deps\numbering-97e23c6081c3bd4e.exe)
+
+running 4 tests
+test level_indentation_offsets_the_marker ... ok
+test start_override_applies ... ok
+test bullet_level_renders_its_glyph ... ok
+test multi_level_markers_and_restart ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\render.rs (target\debug\deps\render-b9f515eb46695d4d.exe)
+
+running 11 tests
+test empty_paragraph_still_produces_a_page ... ok
+test scale_changes_page_dimensions ... ok
+test default_page_is_letter_at_96_dpi ... ok
+test simple_paragraph_renders_text_and_formatting ... ok
+test no_nan_or_infinite_coordinates ... ok
+test explicit_page_break_creates_second_page ... ok
+test zero_page_size_falls_back_to_letter ... ok
+test table_renders_cells_and_borders ... ok
+test zero_default_tab_stop_advances_text ... ok
+test two_runs_produce_identical_bytes ... ok
+test page_selection_filters_output ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\revisions.rs (target\debug\deps\revisions-91517b6542c8cc13.exe)
+
+running 2 tests
+test original_view_hides_inserted_and_keeps_deleted ... ok
+test final_view_hides_deleted_and_keeps_inserted ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sections_render.rs (target\debug\deps\sections_render-3c0493747694d7d0.exe)
+
+running 4 tests
+test consecutive_page_breaks_keep_empty_pages ... ok
+test odd_page_section_break_inserts_blank_page ... ok
+test section_two_can_use_its_own_header ... ok
+test portrait_landscape_portrait_have_matching_viewboxes ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\ssim.rs (target\debug\deps\ssim-7082c3bd2c2b19c8.exe)
+
+running 16 tests
+test alignment_search_range_is_wider_than_every_bound ... ok
+test every_declared_class_is_exercised ... ok
+test every_reference_document_declares_a_class ... ok
+test every_gated_page_is_pinned_by_the_extent_ratchet ... ok
+test structural_check_rejects_blank_and_shifted_pages ... ok
+test structural_check_rejects_blank_stage5_page ... ok
+test structural_check_rejects_blank_stage5b_page ... ok
+test rasterization_is_deterministic ... ok
+test structural_check_rejects_real_vertical_shift ... ok
+test the_extent_check_sees_drift_the_centroid_does_not ... ok
+test structural_check_rejects_blank_and_shifted_stage5c_pages ... ok
+test a_drift_beyond_the_shift_bound_is_rejected ... ok
+test structural_check_rejects_real_horizontal_shift ... ok
+test at_least_one_formula_fixture_meets_the_class_bounds ... ok
+test structural_extent_ratchet_pins_the_known_drift ... ok
+test matches_wps_references ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.13s
+
+     Running tests\strict_profile.rs (target\debug\deps\strict_profile-a649a658b3e6617d.exe)
+
+running 1 test
+test strict_profile_renders_anchored_text_box ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\svg_oracle.rs (target\debug\deps\svg_oracle-53bc4cd23117d318.exe)
+
+running 2 tests
+test oracle_rejects_corrupted_svg ... ok
+test every_rendered_page_is_valid_and_within_bounds ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\tables.rs (target\debug\deps\tables-3d0b1cf37ee73000.exe)
+
+running 5 tests
+test nested_table_renders ... ok
+test grid_span_renders_a_single_wide_cell ... ok
+test vertical_merge_spans_the_merged_region ... ok
+test header_row_repeats_on_each_page ... ok
+test table_breaks_across_pages ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\themes.rs (target\debug\deps\themes-4f82b11f6e276ace.exe)
+
+running 4 tests
+test theme_shade_darkens_the_color ... ok
+test theme_font_is_resolved_to_the_bundled_face ... ok
+test direct_font_overrides_theme_font ... ok
+test theme_color_is_resolved ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\tristate.rs (target\debug\deps\tristate-d6de3bbf58abf001.exe)
+
+running 2 tests
+test paragraph_and_character_bold_xor_to_not_bold ... ok
+test vanished_text_is_not_drawn_unless_explicitly_turned_off ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\waivers.rs (target\debug\deps\waivers-18f541bce01162b6.exe)
+
+running 8 tests
+test the_pdf_classes_table_is_not_a_copy_of_the_classes_table ... ok
+test waiver_ids_are_unique ... ok
+test every_loosened_pdf_class_has_a_waiver ... ok
+test every_page_count_only_document_has_a_waiver ... ok
+test every_pdf_amber_document_has_a_waiver ... ok
+test every_amber_document_has_a_waiver ... ok
+test every_waiver_binds_to_something_that_still_exists ... ok
+test every_loosened_class_has_a_waiver ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_report-bac4ea86481e899a.exe)
+
+running 21 tests
+test model::tests::normalization_default_is_empty_and_ok ... ok
+test build::tests::input_defaults_and_builders ... ok
+test model::tests::conformance_name_every_variant ... ok
+test model::tests::overall_status_every_variant ... ok
+test model::tests::critical_report_is_detected ... ok
+test model::tests::location_round_trips_and_renders ... ok
+test build::tests::multiple_locations_are_carried_over ... ok
+test build::tests::fallback_location_fills_locationless_blockers ... ok
+test build::tests::no_fallback_leaves_blockers_unlocated ... ok
+test build::tests::build_sorts_features_and_derives_severity ... ok
+test text::tests::problem_without_location_renders_cleanly ... ok
+test model::tests::severity_every_variant_and_order ... ok
+test severity::tests::default_severity_table ... ok
+test severity::tests::overall_is_worst_of ... ok
+test json::tests::json_is_pretty_newline_terminated_and_stable ... ok
+test severity::tests::summarize_counts_every_status ... ok
+test model::tests::feature_status_every_variant ... ok
+test model::tests::report_helpers_and_serde ... ok
+test text::tests::renders_empty_report ... ok
+test text::tests::renders_features_and_problems ... ok
+test schema::tests::embedded_schema_is_valid_json_and_versioned ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\corpus.rs (target\debug\deps\corpus-15196bb3e3a928a0.exe)
+
+running 1 test
+test corpus_reports_are_consistent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\determinism.rs (target\debug\deps\determinism-88bbf5a2d6af9c49.exe)
+
+running 3 tests
+test location_order_within_a_feature_is_stable ... ok
+test output_is_independent_of_insertion_order ... ok
+test two_runs_produce_identical_bytes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\golden.rs (target\debug\deps\golden-d584180ce534f15d.exe)
+
+running 2 tests
+test clean_document_golden ... ok
+test mixed_document_golden ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\normalization.rs (target\debug\deps\normalization-c698c2b25af03a28.exe)
+
+running 2 tests
+test strict_sample_has_empty_normalization_block ... ok
+test manual_docx_transitional_report_carries_the_loss_report ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests\oracle.rs (target\debug\deps\oracle-caa6e1a51a884091.exe)
+
+running 6 tests
+test unsupported_mechanism_is_reported_with_severity_and_location ... ok
+test oracle_detects_a_wrong_count ... ok
+test oracle_detects_a_broken_summary ... ok
+test oracle_detects_a_missing_location ... ok
+test oracle_detects_an_extra_feature ... ok
+test oracle_passes_on_generated_reports ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\schema.rs (target\debug\deps\schema-35e516b77dd65b54.exe)
+
+running 4 tests
+test empty_report_is_schema_valid ... ok
+test golden_files_are_schema_valid ... ok
+test generated_reports_are_schema_valid ... ok
+test corrupted_reports_are_rejected ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_testkit-29256cb3c07102c4.exe)
+
+running 14 tests
+test xml::tests::nested_wraps_symmetrically ... ok
+test pdf::tests::xref_offsets_point_at_objects ... ok
+test pdf::tests::self_reference_is_expressible ... ok
+test docx::tests::a_default_part_is_replaced_not_duplicated ... ok
+test xml::tests::nested_tables_balance ... ok
+test docx::tests::transitional_package_names_transitional_namespaces ... ok
+test zip::tests::crc32_matches_the_check_value ... ok
+test harness::tests::a_panic_is_caught_with_its_message ... ok
+test docx::tests::strict_package_names_strict_namespaces_and_standard_opc ... ok
+test zip::tests::stored_archive_has_the_expected_layout ... ok
+test harness::tests::a_returned_value_comes_back ... ok
+test docx::tests::raw_entry_duplicates ... ok
+test zip::tests::deflated_entry_inflates_back ... ok
+test harness::tests::a_hang_times_out ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_view-b112d8c203d760ed.exe)
+
+running 6 tests
+test catalog::tests::a_view_for_a_document_that_failed_open_records_the_reason ... ok
+test catalog::tests::blockers_are_unsupported_or_error ... ok
+test catalog::tests::an_empty_directory_yields_nothing ... ok
+test catalog::tests::the_cache_stores_and_returns_by_name ... ok
+test catalog::tests::discovery_survives_a_non_ascii_name ... ok
+test catalog::tests::discovery_lists_only_docx_files_sorted ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\strict_ooxml_view-9d9e16d99cb7be72.exe)
+
+running 31 tests
+test http::tests::a_non_ascii_name_survives_the_round_trip ... ok
+test http::tests::a_non_get_method_is_marked_unsupported ... ok
+test http::tests::a_decoded_name_reaches_the_handler_intact ... ok
+test http::tests::a_get_request_line_is_split_into_path_and_query ... ok
+test http::tests::a_response_carries_its_length_and_type ... ok
+test http::tests::an_oversized_content_length_is_refused_with_413 ... ok
+test http::tests::a_response_always_closes_the_connection ... ok
+test tests::defaults_are_sensible ... ok
+test http::tests::percent_and_plus_decode_as_the_query_specifies ... ok
+test tests::the_fallback_corpora_are_the_workspace_test_directories ... ok
+test http::tests::one_hundred_and_one_headers_are_refused_with_431 ... ok
+test ui::tests::a_document_that_failed_to_open_says_so ... ok
+test tests::a_document_with_no_note_and_no_summary_still_produces_valid_json ... ok
+test http::tests::a_hundred_kib_request_line_is_refused_with_431 ... ok
+test tests::a_rendered_document_produces_valid_json ... ok
+test tests::an_unknown_option_is_rejected ... ok
+test http::tests::end_of_stream_ends_the_connection ... ok
+test http::tests::malformed_escapes_are_rejected_rather_than_guessed ... ok
+test tests::json_numbers_drop_a_trailing_zero ... ok
+test tests::json_strings_are_escaped ... ok
+test tests::options_are_parsed ... ok
+test tests::the_success_exit_code_is_zero ... ok
+test tests::a_bad_port_or_scale_is_rejected ... ok
+test tests::a_query_parameter_is_found_and_decoded ... ok
+test ui::tests::pages_scroll_and_can_have_their_gaps_switched_off ... ok
+test http::tests::plain_text_round_trips ... ok
+test ui::tests::the_script_only_talks_to_the_local_server ... ok
+test ui::tests::the_menu_and_the_page_column_exist ... ok
+test ui::tests::zooming_reuses_the_loaded_pages ... ok
+test ui::tests::the_shell_has_both_placeholders_and_they_are_filled ... ok
+test http::tests::an_idle_connection_closes_and_the_server_serves_the_next ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.07s
+
+     Running tests\catalog.rs (target\debug\deps\catalog-85f4b72cff176ba2.exe)
+
+running 1 test
+test every_strict_corpus_document_opens_without_panic ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_wml-c68610600e40faf7.exe)
+
+running 26 tests
+test model::math::tests::enumerations_parse_strict_lexical_forms ... ok
+test model::notes::tests::note_kind_round_trips ... ok
+test model::math::tests::element_names_identify_limit_direction ... ok
+test model::math::y_align_tests::st_yalign_is_exactly_six_values_and_they_round_trip ... ok
+test model::notes::tests::properties_merge_and_emptiness ... ok
+test model::math::y_align_tests::the_justification_vocabulary_is_not_this_one ... ok
+test model::math::tests::text_projection_walks_the_constructs ... ok
+test model::theme::tests::font_references_resolve_to_sets ... ok
+test model::notes::tests::table_indexes_notes_by_id_and_kind ... ok
+test parse::depth::tests::the_counter_is_back_at_zero_after_a_body_that_failed ... ok
+test model::values::percent_tests::negative_percents_carry_one_sign ... ok
+test model::theme::tests::color_references_resolve_aliases ... ok
+test parse::theme::tests::normalizes_hex_values ... ok
+test parse::depth::tests::the_bound_is_refused_rather_than_climbed ... ok
+test parse::dispatch::tests::known_elements_dispatch ... ok
+test parse::interner::tests::interns_and_shares_handles ... ok
+test parse::measure_tests::universal_measures_convert_to_twips ... ok
+test model::support::tests::overflow_collapses_past_the_budget ... ok
+test nesting::tests::the_block_budget_is_the_boundary_and_the_message_names_it ... ok
+test nesting::tests::the_two_budgets_are_independent ... ok
+test nesting::tests::a_text_box_has_its_own_budget_and_does_not_spend_the_block_one ... ok
+test nesting::tests::a_deep_table_in_a_header_is_a_header_problem_not_a_body_one ... ok
+test parse::tests::a_document_cut_short_inside_a_formula_leaves_the_guard_at_zero ... ok
+test parse::tests::every_formula_construct_leaves_the_guard_at_zero ... ok
+test parse::tests::the_guard_does_not_leak_across_repeated_parses_of_one_part ... ok
+test parse::tests::the_recursion_guard_is_back_at_zero_after_every_part_of_the_corpus ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests\corpus.rs (target\debug\deps\corpus-4d25fc071ab65281.exe)
+
+running 4 tests
+test local_corpus_parses_without_panicking ... ok
+test fixture_corpus_parses_without_panicking ... ok
+test damaged_files_do_not_panic ... ok
+test public_samples_parse_without_panicking ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running tests\corpus_oracle.rs (target\debug\deps\corpus_oracle-7f24cf10e47df1b9.exe)
+
+running 3 tests
+test schema_attribute_names_are_used ... ok
+test corpus_tab_tags_are_all_parsed ... ok
+test corpus_decimal_measures_are_applied ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+     Running tests\coverage_gate.rs (target\debug\deps\coverage_gate-6dfcb5f8bf25ec9d.exe)
+
+running 1 test
+test optional_element_coverage_gate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\document.rs (target\debug\deps\document-1abecb0581dd150e.exe)
+
+running 20 tests
+test unknown_block_becomes_opaque ... ok
+test parses_table_grid_rows_and_merges ... ok
+test row_level_sdt_unwraps_into_table_rows ... ok
+test alt_chunk_is_recorded_but_not_embedded ... ok
+test footnote_reference_is_fixed_and_recorded ... ok
+test unknown_element_becomes_opaque_and_is_recorded ... ok
+test parses_paragraph_properties ... ok
+test tracked_change_containers_stamp_run_revisions ... ok
+test sym_decodes_pua_window_and_rejects_controls ... ok
+test a_comment_reference_is_parsed_as_run_content_not_an_inline ... ok
+test parses_hyperlinks_bookmarks_and_fields ... ok
+test parses_text_runs_and_space ... ok
+test parses_tabs_breaks_and_carriage_returns ... ok
+test invalid_enum_value_is_recorded_and_defaulted ... ok
+test cell_level_sdt_unwraps_into_table_cells ... ok
+test parses_run_properties ... ok
+test mce_alternate_content_is_resolved ... ok
+test paragraph_locations_are_tracked ... ok
+test parses_block_and_inline_sdt ... ok
+test transparent_wrappers_keep_their_content ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\drawing.rs (target\debug\deps\drawing-a06da9647470388a.exe)
+
+running 4 tests
+test a_tight_wrap_without_a_polygon_carries_none ... ok
+test a_wrap_polygon_is_carried_rather_than_replaced_by_the_frame ... ok
+test resolves_inline_picture_to_media_part ... ok
+test floating_anchor_is_parsed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\drawing_stage5b.rs (target\debug\deps\drawing_stage5b-8d74588228e70979.exe)
+
+running 13 tests
+test microsoft_namespaces_are_accepted_as_partial ... ok
+test chart_and_diagram_graphic_are_classified ... ok
+test text_box_body_and_content_are_parsed ... ok
+test a_chart_without_an_element_carries_no_reference ... ok
+test a_diagram_carries_its_four_ids_in_schema_order ... ok
+test no_fill_and_unsupported_fill_are_recorded ... ok
+test inline_shape_parse_and_unknown_preset ... ok
+test shape_fills_geometry_outline_and_style_are_parsed ... ok
+test page_borders_parse_edges_offsets_and_theme ... ok
+test cust_geom_keeps_multiple_paths ... ok
+test anchor_positioning_and_wrap_are_parsed ... ok
+test pattern_and_no_fill_and_custom_geometry ... ok
+test group_parses_children_and_transform ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\golden.rs (target\debug\deps\golden-772872eb6719cefe.exe)
+
+running 5 tests
+test golden_drawing ... ok
+test golden_section ... ok
+test golden_table ... ok
+test golden_list ... ok
+test golden_paragraphs_and_properties ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\math.rs (target\debug\deps\math-b5d981fd464ada97.exe)
+
+running 18 tests
+test the_math_namespace_constant_is_the_strict_one ... ok
+test function_name_and_limits_are_parsed ... ok
+test an_unknown_construct_is_preserved_and_reported ... ok
+test an_inline_formula_is_paragraph_content_not_opaque ... ok
+test omath_para_keeps_multiple_equations ... ok
+test the_transitional_math_namespace_is_rejected ... ok
+test decorations_and_containers_are_parsed ... ok
+test a_display_formula_carries_its_justification ... ok
+test an_nary_operator_keeps_its_character_and_limit_placement ... ok
+test scripts_radicals_and_pre_scripts_are_parsed ... ok
+test an_out_of_enumeration_value_is_reported_not_dropped ... ok
+test run_and_argument_properties_are_parsed ... ok
+test a_deeply_nested_formula_is_degraded_and_reported ... ok
+test the_formula_budgets_are_the_callers ... ok
+test a_fraction_is_parsed_with_its_type_and_parts ... ok
+test matrices_and_equation_arrays_keep_their_grid ... ok
+test delimiters_default_and_can_be_suppressed ... ok
+test a_wide_formula_is_degraded_and_reported ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\misc.rs (target\debug\deps\misc-18be12e3b2fea532.exe)
+
+running 15 tests
+test model_variant_sizes_are_bounded ... ok
+test wrong_root_element_is_an_error ... ok
+test truncated_document_is_an_error_not_a_panic ... ok
+test depth_limit_is_enforced_without_panic ... ok
+test parses_sdt_with_placeholder_and_end_pr ... ok
+test parses_cdata_text ... ok
+test parses_inline_comment_and_note_references ... ok
+test parses_table_cell_change_containers ... ok
+test parses_body_background_and_foreign_elements ... ok
+test parses_drawing_link_without_embed ... ok
+test wrong_styles_root_is_an_error ... ok
+test support_model_caps_distinct_features_and_ignores_spoofed_prefix ... ok
+test block_nesting_is_bounded_by_its_own_limit_not_by_xml_depth ... ok
+test the_block_counter_is_shared_across_container_kinds ... ok
+test text_box_nesting_has_its_own_budget_and_its_own_kind ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\model.rs (target\debug\deps\model-edc6df4c69c32066.exe)
+
+running 11 tests
+test enum_lexical_round_trip ... ok
+test value_newtypes_and_defaults ... ok
+test parse_options_default_builds ... ok
+test identifier_newtypes ... ok
+test drawing_and_run_constructors ... ok
+test block_and_inline_accessors ... ok
+test media_index_behaviour ... ok
+test numbering_table_behaviour ... ok
+test style_table_behaviour ... ok
+test support_model_behaviour ... ok
+test document_accessors_and_tables ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\notes.rs (target\debug\deps\notes-0154be54aaf2653b.exe)
+
+running 5 tests
+test parses_note_numbering_properties ... ok
+test footnote_without_id_is_skipped ... ok
+test parses_note_ref_marker_in_run ... ok
+test parses_footnotes_and_endnotes_parts ... ok
+test footnote_media_is_merged_into_document ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\prolog.rs (target\debug\deps\prolog-918c50752550854e.exe)
+
+running 5 tests
+test foreign_namespace_root_is_rejected_even_when_detected_as_strict ... ok
+test significant_text_before_root_is_rejected ... ok
+test foreign_namespace_root_in_strict_package_is_rejected ... ok
+test document_root_prolog_forms_parse ... ok
+test styles_numbering_settings_prolog_parses ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\property.rs (target\debug\deps\property-e6ce97cb582df3c8.exe)
+
+running 4 tests
+test random_bytes_never_panic ... ok
+test document_namespace_is_accepted ... ok
+test random_bodies_never_panic ... ok
+test parsing_is_deterministic ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests\props.rs (target\debug\deps\props-5a83a18125f41fe3.exe)
+
+running 11 tests
+test parses_run_content_variants ... ok
+test percent_measurements_are_applied ... ok
+test tab_stop_losses_are_recorded_not_dropped ... ok
+test unreadable_measurements_are_recorded ... ok
+test tab_stops_use_schema_attributes ... ok
+test parses_rich_table_properties ... ok
+test parses_rich_paragraph_properties ... ok
+test parses_richer_section_properties ... ok
+test parses_rich_run_properties ... ok
+test decimal_measurements_are_applied_not_lost ... ok
+test records_invalid_numeric_and_enum_values ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\sections.rs (target\debug\deps\sections-8bf305d0c0b3e3df.exe)
+
+running 9 tests
+test missing_referenced_part_is_an_error ... ok
+test parses_header_and_footer_block_content ... ok
+test header_reference_with_wrong_relationship_type_is_partial ... ok
+test sections_inside_revision_markers_are_collected ... ok
+test zero_page_size_is_partial ... ok
+test writes_unresolved_header_reference_report ... ok
+test section_break_inside_table_cell_is_recorded ... ok
+test sections_from_sdt_and_body_stay_aligned ... ok
+test parses_sections_page_setup_and_columns ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\stage5_coverage.rs (target\debug\deps\stage5_coverage-a4dabb72a9fa391f.exe)
+
+running 1 test
+test stage5_scenario_coverage_gate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\stage5_fixture_oracle.rs (target\debug\deps\stage5_fixture_oracle-29bfcd715702c5c9.exe)
+
+running 1 test
+test independent_oracle_checks_stage5_parts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\stage5b_fixture_oracle.rs (target\debug\deps\stage5b_fixture_oracle-95b919d274fca444.exe)
+
+running 2 tests
+test independent_oracle_sees_stage5b_markup ... ok
+test our_parser_matches_the_fixture ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\stage5c_fixture_oracle.rs (target\debug\deps\stage5c_fixture_oracle-1f4b5fc4bff0fb89.exe)
+
+running 5 tests
+test the_fixture_uses_the_strict_math_namespace ... ok
+test the_fixture_contains_every_construct_of_the_order ... ok
+test our_model_sees_the_same_constructs ... ok
+test our_model_agrees_with_the_oracle_on_the_text ... ok
+test the_repro_packages_agree_with_the_oracle ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\styles_numbering.rs (target\debug\deps\styles_numbering-0e282bfc5cd45029.exe)
+
+running 12 tests
+test records_based_on_cycle ... ok
+test a_start_inside_the_range_is_kept_as_written ... ok
+test a_start_that_is_not_a_number_is_reported_and_the_level_starts_at_zero ... ok
+test ilvl_above_eight_is_clamped_and_reported ... ok
+test duplicate_abstract_and_num_ids_keep_the_first ... ok
+test num_style_link_resolves_to_linked_levels ... ok
+test num_style_link_cycle_is_reported_without_hanging ... ok
+test records_missing_abstract_numbering ... ok
+test parses_settings ... ok
+test resolves_numbering_abstracts ... ok
+test resolves_style_based_on_chain ... ok
+test a_start_past_the_models_range_is_clamped_and_reported ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\styles_settings.rs (target\debug\deps\styles_settings-b84b2ec872fc71f9.exe)
+
+running 10 tests
+test auxiliary_parts_absent_by_default ... ok
+test color_scheme_mapping_keeps_a_mapping_that_is_not_the_identity ... ok
+test compat_flags_survive_alongside_compat_settings ... ok
+test math_properties_survive_the_non_wml_filter ... ok
+test parses_all_settings_elements ... ok
+test parses_full_numbering_definitions ... ok
+test parses_full_style_definition ... ok
+test three_hundred_math_pr_in_a_row_are_not_nesting ... ok
+test a_thousand_math_pr_in_a_row_still_parse ... ok
+test three_hundred_font_entries_still_parse ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\theme.rs (target\debug\deps\theme-3c1a17a6dc0f8d0c.exe)
+
+running 2 tests
+test parses_run_theme_font_and_color_references ... ok
+test parses_theme_fonts_and_colors ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\tristate_aud44.rs (target\debug\deps\tristate_aud44-ce6af74b0aaa4153.exe)
+
+running 3 tests
+test even_and_odd_headers_can_be_turned_off ... ok
+test vanish_off_on_run_overrides_style_vanish ... ok
+test bold_xor_across_paragraph_and_character_styles ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\unmodelled_pr.rs (target\debug\deps\unmodelled_pr-a5c68df58e502839.exe)
+
+running 3 tests
+test modelled_properties_parse ... ok
+test property_change_and_tbl_style_pr_are_recorded ... ok
+test every_default_branch_records ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_write-d409c6dcc3db02f2.exe)
+
+running 39 tests
+test order::tests::the_sect_pr_order_is_the_one_the_group_declares ... ok
+test order::tests::an_unknown_child_ranks_last_rather_than_guessed ... ok
+test order::tests::gutter_at_top_is_a_setting_and_never_a_section_child ... ok
+test order::tests::a_child_ranks_by_its_position ... ok
+test package::tests::allocator_re_reserve_is_noop ... ok
+test package::tests::allocator_skips_reserved_media_names ... ok
+test drawing::tests::document_property_ids_stay_unique ... ok
+test math::tests::a_plain_run_round_trips ... ok
+test body::tests::a_paragraph_keeps_its_spacing ... ok
+test parts::tests::font_families_skip_empty_style_slots ... ok
+test body::tests::an_empty_paragraph_stays_empty ... ok
+test passthrough::tests::a_chart_in_a_table_cell_is_reached ... ok
+test math::tests::math_text_preserves_edge_whitespace ... ok
+test body::tests::leading_whitespace_forces_xml_space_preserve ... ok
+test math::tests::run_properties_use_the_math_vocabulary ... ok
+test passthrough::tests::a_truncated_app_properties_part_is_returned_as_it_arrived ... ok
+test order::tests::no_constant_names_a_child_twice ... ok
+test passthrough::tests::remove_element_survives_a_part_that_ends_inside_a_tag ... ok
+test body::tests::a_block_sdt_is_written_with_its_properties ... ok
+test package::tests::rel_allocator_starts_at_rid1 ... ok
+test passthrough::tests::the_rels_of_a_part_sit_beside_it ... ok
+test parts::tests::font_families_are_deduplicated_in_document_order ... ok
+test body::tests::text_without_edge_whitespace_omits_xml_space ... ok
+test drawing::tests::an_inline_picture_carries_its_extent_and_relationship ... ok
+test passthrough::tests::a_target_is_resolved_against_its_part ... ok
+test passthrough::tests::a_repeated_reference_is_one_id ... ok
+test parts::tests::a_style_keeps_its_type_and_relationships ... ok
+test drawing::tests::source_rect_is_a_sibling_of_blip ... ok
+test props::tests::a_table_width_is_written_as_a_universal_measure ... ok
+test props::tests::an_empty_ppr_is_not_emitted ... ok
+test props::tests::paragraph_and_table_borders_use_different_edge_names ... ok
+test props::tests::ppr_children_follow_schema_order ... ok
+test props::tests::sect_pr_uses_start_and_end_indirection ... ok
+test props::tests::unequal_columns_write_equal_width_false ... ok
+test xml::tests::a_depth_overflow_is_reported ... ok
+test xml::tests::an_unbalanced_element_is_reported ... ok
+test xml::tests::characters_xml_cannot_carry_are_removed_and_counted ... ok
+test xml::tests::escapes_text_and_attributes ... ok
+test xml::tests::writes_nested_elements ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\fonts.rs (target\debug\deps\fonts-96fb3d93d8df9144.exe)
+
+running 8 tests
+test an_obfuscated_font_is_declared_as_one ... ok
+test a_font_table_with_no_embedded_face_gets_no_relationship_part ... ok
+test an_unresolvable_embed_loses_the_face_and_keeps_the_family ... ok
+test the_four_faces_are_four_named_cases_in_the_schemas_order ... ok
+test the_font_table_is_read_and_every_embedded_face_is_resolved_to_a_part ... ok
+test the_font_key_travels_with_the_bytes_it_describes ... ok
+test every_embedded_font_reaches_the_written_package_with_its_bytes ... ok
+test the_written_package_settles_with_its_fonts ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+     Running tests\loss_gate.rs (target\debug\deps\loss_gate-ce222af7570f92a9.exe)
+
+running 3 tests
+test an_unreported_removal_fails_the_gate ... ok
+test a_reported_removal_passes_the_gate ... ok
+test the_theme_placeholder_loss_is_recorded_by_the_writer ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\normalize_roundtrip.rs (target\debug\deps\normalize_roundtrip-6bcd4650bc058056.exe)
+
+running 9 tests
+test a_written_package_needs_no_second_normalization_pass has been running for over 60 seconds
+test every_written_part_is_well_formed_xml has been running for over 60 seconds
+test no_written_part_carries_a_transitional_uri has been running for over 60 seconds
+test normalization_is_idempotent_part_by_part has been running for over 60 seconds
+test normalization_removes_nothing_silently has been running for over 60 seconds
+test nothing_that_reaches_the_page_disappears has been running for over 60 seconds
+test the_trip_loses_nothing_the_normalizer_kept has been running for over 60 seconds
+test the_written_form_is_a_fixed_point has been running for over 60 seconds
+test two_normalizations_agree_report_for_report has been running for over 60 seconds
+test normalization_removes_nothing_silently ... ok
+test normalization_is_idempotent_part_by_part ... ok
+test a_written_package_needs_no_second_normalization_pass ... ok
+test every_written_part_is_well_formed_xml ... ok
+test two_normalizations_agree_report_for_report ... ok
+test nothing_that_reaches_the_page_disappears ... ok
+test the_trip_loses_nothing_the_normalizer_kept ... ok
+test the_written_form_is_a_fixed_point ... ok
+test no_written_part_carries_a_transitional_uri ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 242.23s
+
+     Running tests\opc_oracle.rs (target\debug\deps\opc_oracle-8f8d9e2f78cf77de.exe)
+
+running 2 tests
+test written_strict_packages_keep_the_corpus_opc_uris ... ok
+test written_transitional_packages_match_lo_strict_opc_uris has been running for over 60 seconds
+test written_transitional_packages_match_lo_strict_opc_uris ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 111.52s
+
+     Running tests\passthrough.rs (target\debug\deps\passthrough-4a8d0436f108fc12.exe)
+
+running 17 tests
+test transitional_passthrough_parts_are_reported ... ok
+test media_names_avoid_passthrough_collisions ... ok
+test a_document_with_nothing_to_pass_through_is_untouched ... ok
+test without_the_source_the_reference_is_refused_not_dangling ... ok
+test a_document_built_from_scratch_reports_the_reference_it_cannot_write ... ok
+test an_unreadable_part_is_reported_and_the_rest_survives ... ok
+test the_custom_properties_are_carried_with_both_namespaces_rewritten ... ok
+test a_copied_part_has_a_content_type ... ok
+test the_extended_properties_come_without_the_rendering_counters ... ok
+test an_unmodelled_part_and_its_reference_survive ... ok
+test the_document_properties_survive_a_write ... ok
+test a_copied_parts_own_relationships_keep_their_ids ... ok
+test the_page_count_does_not_change ... ok
+test copied_parts_are_verbatim_and_written_parts_are_well_formed ... ok
+test pass_through_is_reproducible ... ok
+test a_write_with_pass_through_is_a_fixed_point ... ok
+test a_transitional_chart_stays_transitional_and_only_the_copied_parts_do ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests\roundtrip.rs (target\debug\deps\roundtrip-d08f6f0b144eca3e.exe)
+
+running 20 tests
+test an_empty_document_still_produces_a_valid_package ... ok
+test invalid_xml_chars_are_reported_and_output_parses ... ok
+test math_text_preserves_spaces_round_trip ... ok
+test media_bytes_survive ... ok
+test tracked_changes_round_trip ... ok
+test directional_round_trips_and_custom_xml_is_reported ... ok
+test aud46_property_extensions_round_trip ... ok
+test row_level_sdt_round_trips ... ok
+test multi_paragraph_footnote_round_trips ... ok
+test relationships_are_per_part_for_media ... ok
+test writing_without_a_source_reports_instead_of_failing ... ok
+test a_written_package_opens_under_the_strict_policy ... ok
+test content_types_cover_every_part ... ok
+test document_relationship_ids_exist ... ok
+test a_written_package_is_strict ... ok
+test every_declared_relationship_resolves ... ok
+test every_written_part_is_well_formed_xml ... ok
+test no_construct_is_dropped_silently ... ok
+test writing_is_reproducible ... ok
+test round_trip_preserves_the_model ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests\schema_order.rs (target\debug\deps\schema_order-50f45783975cd49d.exe)
+
+running 2 tests
+test every_container_follows_the_order_the_schema_declares ... ok
+test the_written_corpus_settles_in_one_generation ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s
+
+     Running tests\strict_conformance.rs (target\debug\deps\strict_conformance-16bc4c8bcf339929.exe)
+
+running 2 tests
+test a_written_part_declares_no_extension_namespace ... ok
+test no_written_paragraph_carries_a_paragraph_id ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests\word_oracle.rs (target\debug\deps\word_oracle-c91d252a3ef5e7ea.exe)
+
+running 1 test
+test word_oracle_on_strict_corpus ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+
+     Running unittests src\main.rs (target\debug\deps\xtool-577fc25a5219103d.exe)
+
+running 17 tests
+test tests::coverage_with_no_optional_elements_is_full ... ok
+test tests::coverage_formula_counts_supported_and_partial ... ok
+test tests::lint_eof_ignores_functions_that_never_loop ... ok
+test tests::inventory_rendering_has_meta_and_elements ... ok
+test tests::lint_eof_flags_a_loop_that_never_mentions_the_end_of_a_part ... ok
+test tests::lint_eof_accepts_a_loop_that_fails_on_the_end_of_a_part ... ok
+test tests::lint_eof_flags_a_loop_that_swallows_the_end_of_a_part ... ok
+test tests::statuses_default_to_unsupported ... ok
+test tests::lint_eof_flags_an_eof_arm_that_does_not_fail ... ok
+test tests::lint_eof_does_not_borrow_the_next_functions_error ... ok
+test tests::scans_xsd_element_names ... ok
+test tests::an_absent_status_counts_as_unsupported ... ok
+test tests::parses_inventory_and_missing_status_is_unsupported ... ok
+test tests::missing_elements_is_an_error ... ok
+test tests::an_ignore_without_a_reason_is_reported ... ok
+test tests::generated_inventory_passes_the_gate ... ok
+test tests::lint_eof_is_green_over_the_real_parser ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests strict_ooxml
+
+running 3 tests
+test strict-ooxml\src\lib.rs - StrictDocument::support_report (line 198) - compile ... ok
+test strict-ooxml\src\lib.rs - StrictDocument::render_svg (line 263) - compile ... ok
+test strict-ooxml\src\lib.rs - (line 9) - compile ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+   Doc-tests strict_ooxml_convert
+
+running 1 test
+test strict-ooxml-convert\src\lib.rs - (line 30) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+   Doc-tests strict_ooxml_core
+
+running 1 test
+test strict-ooxml-core\src\limits.rs - limits (line 8) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+   Doc-tests strict_ooxml_fidelity
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests strict_ooxml_ocr
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests strict_ooxml_pdf
+
+running 2 tests
+test strict-ooxml-pdf\src\raster.rs - raster (line 36) - compile ... ok
+test strict-ooxml-pdf\src\lib.rs - (line 20) - compile ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+   Doc-tests strict_ooxml_render_pdf
+
+running 1 test
+test strict-ooxml-render-pdf\src\lib.rs - (line 11) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+   Doc-tests strict_ooxml_render_svg
+
+running 1 test
+test strict-ooxml-render-svg\src\lib.rs - (line 18) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+   Doc-tests strict_ooxml_report
+
+running 1 test
+test strict-ooxml-report\src\lib.rs - (line 22) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+   Doc-tests strict_ooxml_testkit
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests strict_ooxml_view
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests strict_ooxml_wml
+
+running 1 test
+test strict-ooxml-wml\src\lib.rs - (line 19) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+   Doc-tests strict_ooxml_write
+
+running 1 test
+test strict-ooxml-write\src\lib.rs - (line 19) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+AUDIT_EXIT_CODE=0

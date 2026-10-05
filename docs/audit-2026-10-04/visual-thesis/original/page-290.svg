@@ -1,0 +1,1418 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="1122.533" height="793.733" viewBox="0 0 1122.533 793.733">
+  <rect x="0" y="0" width="1122.533" height="793.733" fill="#ffffff"/>
+  <text x="4" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">Table </text>
+  <text x="26.26" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">SI; </text>
+  <text x="38.272" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">Sequences </text>
+  <text x="79.18" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">of </text>
+  <text x="88.252" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">primers </text>
+  <text x="117.988" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">and </text>
+  <text x="132.688" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">probes </text>
+  <text x="158.56" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">used </text>
+  <text x="177.46" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">for </text>
+  <text x="189.304" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">sequencing </text>
+  <text x="231.556" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">and </text>
+  <text x="246.256" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">typing </text>
+  <text x="270.28" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">in </text>
+  <text x="278.932" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">the </text>
+  <text x="292.204" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">mitochondrial </text>
+  <text x="343.444" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">hypcrvariablc </text>
+  <text x="393.592" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">region </text>
+  <text x="417.616" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">I </text>
+  <text x="422.068" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">and </text>
+  <text x="436.768" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">coding </text>
+  <text x="462.22" y="6.4" font-family="Arial Narrow" font-size="8" fill="#000000" xml:space="preserve">region,</text>
+  <text x="55.733" y="17.067" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">Tv </text>
+  <text x="71.156" y="17.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">nl«S </text>
+  <text x="82.73" y="17.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ntellmd</text>
+  <line x1="53.733" y1="8" x2="53.733" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="110.4" y1="8" x2="110.4" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Targeted </text>
+  <text x="169.093" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">nNP</text>
+  <text x="178.373" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="179.707" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">m&gt;</text>
+  <line x1="145.6" y1="8" x2="145.6" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Forward </text>
+  <text x="214.693" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">priin</text>
+  <line x1="192" y1="8" x2="192" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="12.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">rs</text>
+  <text x="229.533" y="17.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Primer </text>
+  <text x="246.387" y="17.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">wijutnw:</text>
+  <line x1="227.533" y1="8" x2="227.533" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="341.467" y1="8" x2="341.467" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="386.267" y1="8" x2="386.267" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="421.8" y1="8" x2="421.8" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="529.333" y1="8" x2="529.333" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="599.067" y1="8" x2="599.067" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="8" x2="646.4" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="867.533" y1="8" x2="867.533" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <line x1="0" y1="25.933" x2="53.733" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="55.733" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Dired </text>
+  <text x="68.96" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sequencing</text>
+  <line x1="53.733" y1="25.933" x2="110.4" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="53.733" y1="25.933" x2="53.733" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/»</text>
+  <line x1="110.4" y1="25.933" x2="145.6" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="110.4" y1="25.933" x2="110.4" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tl/a</text>
+  <line x1="145.6" y1="25.933" x2="192" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="145.6" y1="25.933" x2="145.6" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L15996</text>
+  <line x1="192" y1="25.933" x2="227.533" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="192" y1="25.933" x2="192" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTCCACCATTAOCACCCAAAOC</text>
+  <line x1="227.533" y1="25.933" x2="341.467" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="227.533" y1="25.933" x2="227.533" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Vigiliin! </text>
+  <text x="362.4" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="366.4" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al, </text>
+  <text x="373.387" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1991</text>
+  <line x1="341.467" y1="25.933" x2="386.267" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="341.467" y1="25.933" x2="341.467" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI6I42</text>
+  <line x1="386.267" y1="25.933" x2="421.8" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="386.267" y1="25.933" x2="386.267" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ATGTACTACAGGTGGTCAAG</text>
+  <line x1="421.8" y1="25.933" x2="529.333" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="421.8" y1="25.933" x2="421.8" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Stone </text>
+  <text x="545.733" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">&amp;Stooekiug </text>
+  <text x="572.293" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">eta!, </text>
+  <text x="583.707" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1998</text>
+  <line x1="529.333" y1="25.933" x2="599.067" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="529.333" y1="25.933" x2="529.333" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="25.933" x2="646.4" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="599.067" y1="25.933" x2="599.067" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">a</text>
+  <text x="651.067" y="30.2" font-family="Tinos" font-size="5.333" fill="#000000" xml:space="preserve">k</text>
+  <line x1="646.4" y1="25.933" x2="867.533" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="25.933" x2="646.4" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="30.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="25.933" x2="892.467" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="867.533" y1="25.933" x2="867.533" y2="34.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="892.467" y1="25.933" x2="910.733" y2="25.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <text x="55.733" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Dtnxl </text>
+  <text x="68.96" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sequencing</text>
+  <line x1="53.733" y1="34.867" x2="53.733" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="110.4" y1="34.867" x2="110.4" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n''u</text>
+  <line x1="145.6" y1="34.867" x2="145.6" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L16045</text>
+  <line x1="192" y1="34.867" x2="192" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TOTTCmCATOOQOAAOCAOATT</text>
+  <line x1="227.533" y1="34.867" x2="227.533" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="34.867" x2="341.467" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H16218</text>
+  <line x1="386.267" y1="34.867" x2="386.267" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TGTGTGATAGTTGAGGGTTG</text>
+  <line x1="421.8" y1="34.867" x2="421.8" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Hand* </text>
+  <text x="546.64" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ei </text>
+  <text x="552.133" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="560.613" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="529.333" y1="34.867" x2="529.333" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="34.867" x2="599.067" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="34.867" x2="646.4" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="39.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="34.867" x2="867.533" y2="43.2" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <text x="55.733" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">DinSii </text>
+  <text x="70.827" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">fencing</text>
+  <line x1="53.733" y1="43.2" x2="53.733" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="110.4" y1="43.2" x2="110.4" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="145.6" y1="43.2" x2="145.6" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L16055</text>
+  <line x1="192" y1="43.2" x2="192" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">OAAOCAGATTTOOGTACCAC</text>
+  <line x1="227.533" y1="43.2" x2="227.533" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Handt </text>
+  <text x="357.867" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et«l.» </text>
+  <text x="372.16" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="341.467" y1="43.2" x2="341.467" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H16233</text>
+  <line x1="386.267" y1="43.2" x2="386.267" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GCTTTGGAGTTGCAOTTGATGTGT</text>
+  <line x1="421.8" y1="43.2" x2="421.8" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="549.733" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al„ </text>
+  <text x="558" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2005</text>
+  <line x1="529.333" y1="43.2" x2="529.333" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="43.2" x2="599.067" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="43.2" x2="646.4" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="47.467" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="43.2" x2="867.533" y2="51.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <text x="55.733" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Direct </text>
+  <text x="70.72" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sHpicncing</text>
+  <line x1="53.733" y1="51.533" x2="53.733" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="110.4" y1="51.533" x2="110.4" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ll'u</text>
+  <line x1="145.6" y1="51.533" x2="145.6" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">LIGHT</text>
+  <line x1="192" y1="51.533" x2="192" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tacattactgccagccaccat</text>
+  <line x1="227.533" y1="51.533" x2="227.533" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="361.867" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al„</text>
+  <text x="368.8" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="370.133" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2005</text>
+  <line x1="341.467" y1="51.533" x2="341.467" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI6240</text>
+  <line x1="386.267" y1="51.533" x2="386.267" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GGGTGGCTTTGGAGTTGCAGTT</text>
+  <line x1="421.8" y1="51.533" x2="421.8" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Handt </text>
+  <text x="545.733" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="556.88" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="529.333" y1="51.533" x2="529.333" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="51.533" x2="599.067" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="51.533" x2="646.4" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="55.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="51.533" x2="867.533" y2="59.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <text x="55.733" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Direct </text>
+  <text x="70.72" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sisjucnoing</text>
+  <line x1="53.733" y1="59.533" x2="53.733" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="110.4" y1="59.533" x2="110.4" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Ill'll</text>
+  <line x1="145.6" y1="59.533" x2="145.6" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L16209</text>
+  <line x1="192" y1="59.533" x2="192" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCCCATGCTTACAAGCAAGT</text>
+  <line x1="227.533" y1="59.533" x2="227.533" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haiidl </text>
+  <text x="357.92" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="363.413" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.. </text>
+  <text x="371.893" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="341.467" y1="59.533" x2="341.467" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H16303</text>
+  <line x1="386.267" y1="59.533" x2="386.267" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TGGCTTTATGTACIATGTAC</text>
+  <line x1="421.8" y1="59.533" x2="421.8" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Handt </text>
+  <text x="545.733" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="556.88" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="529.333" y1="59.533" x2="529.333" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="68.6" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">■i</text>
+  <text x="611.061" y="68.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">.</text>
+  <line x1="599.067" y1="59.533" x2="599.067" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="59.533" x2="646.4" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="63.8" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="59.533" x2="867.533" y2="70.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <text x="55.733" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Dined </text>
+  <text x="69.867" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sequencing</text>
+  <line x1="53.733" y1="70.867" x2="53.733" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="110.4" y1="70.867" x2="110.4" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ll'd</text>
+  <line x1="145.6" y1="70.867" x2="145.6" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L16212</text>
+  <line x1="192" y1="70.867" x2="192" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCCCATGCTTACAAGCAAGTACA</text>
+  <line x1="227.533" y1="70.867" x2="227.533" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="70.867" x2="341.467" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI6348</text>
+  <line x1="386.267" y1="70.867" x2="386.267" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ATGGGGACGAGAAGGGATTTG</text>
+  <line x1="421.8" y1="70.867" x2="421.8" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2005</text>
+  <line x1="529.333" y1="70.867" x2="529.333" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="603.893" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">i,*i,</text>
+  <line x1="599.067" y1="70.867" x2="599.067" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="70.867" x2="646.4" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="75.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="70.867" x2="867.533" y2="78.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HVRI</text>
+  <text x="55.733" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Dired </text>
+  <text x="68.96" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sequencing</text>
+  <line x1="53.733" y1="78.867" x2="53.733" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="110.4" y1="78.867" x2="110.4" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="145.6" y1="78.867" x2="145.6" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L162*7</text>
+  <line x1="192" y1="78.867" x2="192" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CACTAGC.ATACCAACAAACC</text>
+  <line x1="227.533" y1="78.867" x2="227.533" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Handt </text>
+  <text x="357.867" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="363.36" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">alj </text>
+  <text x="370.347" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">996</text>
+  <line x1="341.467" y1="78.867" x2="341.467" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H164IO</text>
+  <line x1="386.267" y1="78.867" x2="386.267" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GCGGGATATTGATTT </text>
+  <text x="474.733" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CACGG</text>
+  <line x1="421.8" y1="78.867" x2="421.8" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Handle* </text>
+  <text x="550.8" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al„ </text>
+  <text x="559.067" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">19%</text>
+  <line x1="529.333" y1="78.867" x2="529.333" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="78.867" x2="599.067" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="78.867" x2="646.4" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="83.133" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="78.867" x2="867.533" y2="91.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Cuiling </text>
+  <text x="20.453" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region</text>
+  <text x="55.733" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">DitvCI </text>
+  <text x="71.093" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sequencing</text>
+  <line x1="53.733" y1="91.333" x2="53.733" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI</text>
+  <line x1="110.4" y1="91.333" x2="110.4" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">3010</text>
+  <line x1="145.6" y1="91.333" x2="145.6" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L030Q5</text>
+  <line x1="192" y1="91.333" x2="192" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ACGACCTCGATOTTGGATCAGGACA</text>
+  <line x1="227.533" y1="91.333" x2="227.533" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="354.933" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">study</text>
+  <line x1="341.467" y1="91.333" x2="341.467" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H03056</text>
+  <line x1="386.267" y1="91.333" x2="386.267" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCGGTCTOAACT </text>
+  <text x="464.813" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CAGATCACGTAGG</text>
+  <line x1="421.8" y1="91.333" x2="421.8" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="542.8" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">study</text>
+  <line x1="529.333" y1="91.333" x2="529.333" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="91.333" x2="599.067" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="91.333" x2="646.4" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="95.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="91.333" x2="867.533" y2="103.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region</text>
+  <text x="55.733" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Dired </text>
+  <text x="68.96" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">sequencing</text>
+  <line x1="53.733" y1="103.8" x2="53.733" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H3</text>
+  <line x1="110.4" y1="103.8" x2="110.4" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">6253</text>
+  <line x1="145.6" y1="103.8" x2="145.6" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">46for</text>
+  <line x1="192" y1="103.8" x2="192" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ATCCTACCAGOCTTCOCAAT</text>
+  <line x1="227.533" y1="103.8" x2="227.533" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="354.933" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">study</text>
+  <line x1="341.467" y1="103.8" x2="341.467" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H06802</text>
+  <line x1="386.267" y1="103.8" x2="386.267" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GCOGAGGTGAAATATOCTCGTCTGT</text>
+  <line x1="421.8" y1="103.8" x2="421.8" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="542.8" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">study</text>
+  <line x1="529.333" y1="103.8" x2="529.333" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="599.067" y1="103.8" x2="599.067" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="646.4" y1="103.8" x2="646.4" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="108.067" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">n/a</text>
+  <line x1="867.533" y1="103.8" x2="867.533" y2="115.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extcfisiofi</text>
+  <line x1="53.733" y1="115.933" x2="53.733" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="120.2" font-family="Tinos" font-size="5.333" fill="#000000" xml:space="preserve">imtn</text>
+  <line x1="110.4" y1="115.933" x2="110.4" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2758</text>
+  <line x1="145.6" y1="115.933" x2="145.6" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L02727</text>
+  <line x1="192" y1="115.933" x2="192" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AAC </text>
+  <text x="240.787" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ACAGCAAGACGAGAAGACC</text>
+  <line x1="227.533" y1="115.933" x2="227.533" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ct </text>
+  <text x="361.867" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="370.347" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="115.933" x2="341.467" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H02760</text>
+  <line x1="386.267" y1="115.933" x2="386.267" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GGACCTGTGGGTTTGTTAGGT</text>
+  <line x1="421.8" y1="115.933" x2="421.8" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ct </text>
+  <text x="549.733" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="558.213" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="115.933" x2="529.333" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2758snF</text>
+  <line x1="599.067" y1="115.933" x2="599.067" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctdctetdcldctctddctctclctddctctclctdclddClAlGGAGCTrTAATnATrAATGCAAACA</text>
+  <line x1="646.4" y1="115.933" x2="646.4" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="120.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ct </text>
+  <text x="869.533" y="125.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al</text>
+  <line x1="867.533" y1="115.933" x2="867.533" y2="143.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="127.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="127.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="141.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="141.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="3.333" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding, </text>
+  <text x="21.627" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="36.88" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Shi’s</text>
+  <text x="55.733" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="143.933" x2="53.733" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="153" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">L</text>
+  <line x1="110.4" y1="143.933" x2="110.4" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">3554</text>
+  <line x1="145.6" y1="143.933" x2="145.6" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L035S5</text>
+  <line x1="192" y1="143.933" x2="192" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCCCTCCCCATACCCAAC</text>
+  <line x1="227.533" y1="143.933" x2="227.533" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="143.933" x2="341.467" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H0360I</text>
+  <line x1="386.267" y1="143.933" x2="386.267" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GGC1AGAATAAATAGGAGGCCTAGGTT</text>
+  <line x1="421.8" y1="143.933" x2="421.8" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="143.933" x2="529.333" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">35$lsnR</text>
+  <line x1="599.067" y1="143.933" x2="599.067" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="153" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctoldctotdddctGACGCCTACGTl </text>
+  <text x="720.133" y="153" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GAGG </text>
+  <text x="734.693" y="153" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">rr</text>
+  <line x1="646.4" y1="143.933" x2="646.4" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="148.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="153.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="143.933" x2="867.533" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="155.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="155.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="169.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="169.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="143.933" x2="892.467" y2="171.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="171.933" x2="53.733" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">A</text>
+  <line x1="110.4" y1="171.933" x2="110.4" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">4248</text>
+  <line x1="145.6" y1="171.933" x2="145.6" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L042J7</text>
+  <line x1="192" y1="171.933" x2="192" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TGATATGTCTCCATACCCATTACAA</text>
+  <line x1="227.533" y1="171.933" x2="227.533" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal, </text>
+  <text x="365.76" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="171.933" x2="341.467" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HM253</text>
+  <line x1="386.267" y1="171.933" x2="386.267" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTTTrATCAGACATATTTCTTAGGTn'GAG</text>
+  <line x1="421.8" y1="171.933" x2="421.8" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="171.933" x2="529.333" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">4248snF</text>
+  <line x1="599.067" y1="171.933" x2="599.067" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tetddctdctddATACCCATTACAATCTCCAGCAT</text>
+  <line x1="646.4" y1="171.933" x2="646.4" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="176.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="869.533" y="181.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="171.933" x2="867.533" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="183.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="183.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="197.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="197.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="171.933" x2="892.467" y2="199.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="199.933" x2="53.733" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">V,M3</text>
+  <line x1="110.4" y1="199.933" x2="110.4" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">4580</text>
+  <line x1="145.6" y1="199.933" x2="145.6" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L0457S</text>
+  <line x1="192" y1="199.933" x2="192" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TTACCTGAGTAGGCCTAGAAATAAACA</text>
+  <line x1="227.533" y1="199.933" x2="227.533" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">elal, </text>
+  <text x="367.253" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="199.933" x2="341.467" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HQ46I8</text>
+  <line x1="386.267" y1="199.933" x2="386.267" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GCAGCTTCTGTGGAACGAG</text>
+  <line x1="421.8" y1="199.933" x2="421.8" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="199.933" x2="529.333" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">4580snR</text>
+  <line x1="599.067" y1="199.933" x2="599.067" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">cWdctdddddddctTTTTGGTTAGAACTOGAATAAAAGCTAG</text>
+  <line x1="646.4" y1="199.933" x2="646.4" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="204.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">etal</text>
+  <line x1="867.533" y1="199.933" x2="867.533" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="211.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="211.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="225.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="225.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="199.933" x2="892.467" y2="227.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="227.933" x2="53.733" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">D</text>
+  <line x1="110.4" y1="227.933" x2="110.4" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">5178</text>
+  <line x1="145.6" y1="227.933" x2="145.6" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L05I7I</text>
+  <line x1="192" y1="227.933" x2="192" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ACCCTACTACTATCTCGCACCTCA</text>
+  <line x1="227.533" y1="227.933" x2="227.533" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="361.6" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="370.08" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="227.933" x2="341.467" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H05304</text>
+  <line x1="386.267" y1="227.933" x2="386.267" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTAGGGAOAGOAGOGTOGAT</text>
+  <line x1="421.8" y1="227.933" x2="421.8" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="549.467" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al„ </text>
+  <text x="557.733" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="227.933" x2="529.333" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">5I7&amp;J1R</text>
+  <line x1="599.067" y1="227.933" x2="599.067" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tetddddciddciddeidddddddriGAATTAAGGGT </text>
+  <text x="748.027" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GTTAGT </text>
+  <text x="769.2" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CAT </text>
+  <text x="780.453" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GTTA</text>
+  <line x1="646.4" y1="227.933" x2="646.4" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="232.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal</text>
+  <line x1="867.533" y1="227.933" x2="867.533" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="239.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="239.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="253.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="253.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="227.933" x2="892.467" y2="255.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="255.933" x2="53.733" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">X</text>
+  <line x1="110.4" y1="255.933" x2="110.4" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">6371</text>
+  <line x1="145.6" y1="255.933" x2="145.6" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L06363</text>
+  <line x1="192" y1="255.933" x2="192" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ACCATCTTCT </text>
+  <text x="263.933" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCTTACACCTAGCAG</text>
+  <line x1="227.533" y1="255.933" x2="227.533" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Hulk </text>
+  <text x="354.933" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal.. </text>
+  <text x="366.08" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="255.933" x2="341.467" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H06378</text>
+  <line x1="386.267" y1="255.933" x2="386.267" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GATGAAATTGATGOCCCCTaA</text>
+  <line x1="421.8" y1="255.933" x2="421.8" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="549.733" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="558.213" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="255.933" x2="529.333" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">6371aiR</text>
+  <line x1="599.067" y1="255.933" x2="599.067" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">idetddetctetdctddetddctetAAATTGATGGCCCCTAAGATAGA</text>
+  <line x1="646.4" y1="255.933" x2="646.4" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="260.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="869.533" y="265.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al</text>
+  <line x1="867.533" y1="255.933" x2="867.533" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="267.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="267.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="281.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="281.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="255.933" x2="892.467" y2="283.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="283.933" x2="53.733" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H</text>
+  <line x1="110.4" y1="283.933" x2="110.4" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">7028</text>
+  <line x1="145.6" y1="283.933" x2="145.6" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L0700J</text>
+  <line x1="192" y1="283.933" x2="192" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">OCAAACTCATCACTAOACATCOTACT</text>
+  <line x1="227.533" y1="283.933" x2="227.533" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Hunk </text>
+  <text x="356.107" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal.. </text>
+  <text x="367.253" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="283.933" x2="341.467" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H07029</text>
+  <line x1="386.267" y1="283.933" x2="386.267" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCTATTGATAOGACATAGTGGAAGTG</text>
+  <line x1="421.8" y1="283.933" x2="421.8" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="549.733" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.. </text>
+  <text x="558.213" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="283.933" x2="529.333" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">702*snR</text>
+  <line x1="599.067" y1="283.933" x2="599.067" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tetcWetdctetdctetctctctctetcWCTATTGATAOGACATAGTOGAAGTG</text>
+  <line x1="646.4" y1="283.933" x2="646.4" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="288.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al</text>
+  <line x1="867.533" y1="283.933" x2="867.533" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="295.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="295.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="309.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="309.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="283.933" x2="892.467" y2="311.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="311.933" x2="53.733" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">W</text>
+  <line x1="110.4" y1="311.933" x2="110.4" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="317.267" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">S</text>
+  <text x="150.907" y="317.267" font-family="Tinos" font-size="6.667" fill="#000000" xml:space="preserve">994</text>
+  <line x1="145.6" y1="311.933" x2="145.6" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L089T0</text>
+  <line x1="192" y1="311.933" x2="192" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CATACTAGnATTATCGAAACCATCAGC</text>
+  <line x1="227.533" y1="311.933" x2="227.533" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ct </text>
+  <text x="361.867" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="370.347" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="311.933" x2="341.467" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H09003</text>
+  <line x1="386.267" y1="311.933" x2="386.267" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTGCAG1AATGTTAGCGGTTAGG</text>
+  <line x1="421.8" y1="311.933" x2="421.8" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="547.973" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="556.453" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="311.933" x2="529.333" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">&amp;994snF</text>
+  <line x1="599.067" y1="311.933" x2="599.067" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dddctdddddddTACTCATTCAACCAATAGCCCT</text>
+  <line x1="646.4" y1="311.933" x2="646.4" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="316.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="869.533" y="321.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="311.933" x2="867.533" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="323.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="323.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="337.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="337.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="311.933" x2="892.467" y2="339.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="339.933" x2="53.733" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">I</text>
+  <line x1="110.4" y1="339.933" x2="110.4" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">10034</text>
+  <line x1="145.6" y1="339.933" x2="145.6" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L10025</text>
+  <line x1="192" y1="339.933" x2="192" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTTTTAflTATAAATAGTACCGTlAACTTCCAA</text>
+  <line x1="227.533" y1="339.933" x2="227.533" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="339.933" x2="341.467" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H100J7</text>
+  <line x1="386.267" y1="339.933" x2="386.267" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="431.985" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="440.169" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">G</text>
+  <text x="448.354" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="455.277" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">r</text>
+  <text x="459.051" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">r</text>
+  <text x="462.825" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="471.009" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="477.932" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="484.855" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="493.04" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="500.599" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="507.522" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="515.081" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">r</text>
+  <text x="518.855" y="349" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">i</text>
+  <text x="423.8" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="430.723" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="437.646" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="444.569" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="451.491" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">G</text>
+  <text x="459.676" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="467.861" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <text x="476.045" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="482.968" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">G</text>
+  <text x="491.153" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="498.075" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="504.998" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">G</text>
+  <text x="513.183" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">T</text>
+  <text x="520.106" y="360.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">C</text>
+  <text x="423.8" y="371.667" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">A</text>
+  <line x1="421.8" y1="339.933" x2="421.8" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="547.973" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="556.453" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="339.933" x2="529.333" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">]0034snF</text>
+  <line x1="599.067" y1="339.933" x2="599.067" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctdetetdelddetddctdGTAlAAATAGTACCGTTAACTTCCAAlTAACTAG</text>
+  <line x1="646.4" y1="339.933" x2="646.4" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="344.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="869.533" y="349.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="339.933" x2="867.533" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="351.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="351.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="365.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="365.133" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="339.933" x2="892.467" y2="373.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="373.933" x2="53.733" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Nl</text>
+  <line x1="110.4" y1="373.933" x2="110.4" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">10233</text>
+  <line x1="145.6" y1="373.933" x2="145.6" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L10228</text>
+  <line x1="192" y1="373.933" x2="192" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TCCCnTCTCCATAAAATTCTTCTT</text>
+  <line x1="227.533" y1="373.933" x2="227.533" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal, </text>
+  <text x="365.76" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="373.933" x2="341.467" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI0249</text>
+  <line x1="386.267" y1="373.933" x2="386.267" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AGGAGGGCAATTTCTAGATCAAATA</text>
+  <line x1="421.8" y1="373.933" x2="421.8" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="373.933" x2="529.333" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">]0238anF</text>
+  <line x1="599.067" y1="373.933" x2="599.067" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tctctdctdclctdclclddCTn'</text>
+  <text x="704.453" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTCCATAAAATTCTTCTTAGTA(3CTAT</text>
+  <line x1="646.4" y1="373.933" x2="646.4" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="893.32" y="378.2" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="867.533" y1="373.933" x2="867.533" y2="382.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="382.267" x2="53.733" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">W</text>
+  <line x1="110.4" y1="382.267" x2="110.4" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">10400</text>
+  <line x1="145.6" y1="382.267" x2="145.6" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L10382</text>
+  <line x1="192" y1="382.267" x2="192" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AAGTCTGGCCTATGAGTGACTACAA</text>
+  <line x1="227.533" y1="382.267" x2="227.533" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Hank </text>
+  <text x="356.107" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="382.267" x2="341.467" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI042I</text>
+  <line x1="386.267" y1="382.267" x2="386.267" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TGAGTCGAAATCATTCGTTTTG</text>
+  <line x1="421.8" y1="382.267" x2="421.8" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="382.267" x2="529.333" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">lOIOOsnR</text>
+  <line x1="599.067" y1="382.267" x2="599.067" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctddctdddddddctotilctddcte4dctddd/\AATCATTCGTrrTGTTT/\AACTATATACCAA'rrC</text>
+  <line x1="646.4" y1="382.267" x2="646.4" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="386.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="391.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="382.267" x2="867.533" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="393.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="393.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="407.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="407.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="382.267" x2="892.467" y2="410.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="410.267" x2="53.733" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">K</text>
+  <line x1="110.4" y1="410.267" x2="110.4" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1055(1</text>
+  <line x1="145.6" y1="410.267" x2="145.6" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">LI0S4S</text>
+  <line x1="192" y1="410.267" x2="192" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GAATACTAGTATATCOCTCACACCTCA</text>
+  <line x1="227.533" y1="410.267" x2="227.533" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal,, </text>
+  <text x="367.253" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="410.267" x2="341.467" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H105S8</text>
+  <line x1="386.267" y1="410.267" x2="386.267" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GCGATAGTATTATTCCTTCTAGGCATAGTA</text>
+  <line x1="421.8" y1="410.267" x2="421.8" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="549.467" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="557.947" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="410.267" x2="529.333" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">]0550snR</text>
+  <line x1="599.067" y1="410.267" x2="599.067" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">eidddddefctTCTAGOC </text>
+  <text x="699.227" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ATAOrAGGOAGOA</text>
+  <line x1="646.4" y1="410.267" x2="646.4" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="414.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal</text>
+  <line x1="867.533" y1="410.267" x2="867.533" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="421.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="421.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="435.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="435.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="410.267" x2="892.467" y2="438.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="438.267" x2="53.733" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">N</text>
+  <line x1="110.4" y1="438.267" x2="110.4" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">10813</text>
+  <line x1="145.6" y1="438.267" x2="145.6" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L10870</text>
+  <line x1="192" y1="438.267" x2="192" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CCACAGCCTAATTATTAGCATCATC</text>
+  <line x1="227.533" y1="438.267" x2="227.533" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal, </text>
+  <text x="365.76" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="438.267" x2="341.467" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI0888</text>
+  <line x1="386.267" y1="438.267" x2="386.267" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GCTAAATAGGTTGTTGTTGATTTGG</text>
+  <line x1="421.8" y1="438.267" x2="421.8" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="438.267" x2="529.333" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">10873snR</text>
+  <line x1="599.067" y1="438.267" x2="599.067" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">etddetdddddddctdiitctddetddetdGTT </text>
+  <text x="730.96" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GTT </text>
+  <text x="742.213" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GTTGATTIGCTTAAAAAATAGTAG</text>
+  <line x1="646.4" y1="438.267" x2="646.4" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="442.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal</text>
+  <line x1="867.533" y1="438.267" x2="867.533" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="449.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="449.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="463.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="463.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="438.267" x2="892.467" y2="466.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="466.267" x2="53.733" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">U</text>
+  <line x1="110.4" y1="466.267" x2="110.4" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">11467</text>
+  <line x1="145.6" y1="466.267" x2="145.6" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">LI </text>
+  <text x="200.133" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1454</text>
+  <line x1="192" y1="466.267" x2="192" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ATCGCT </text>
+  <text x="250.707" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CGGTCAATAGTACTTOC</text>
+  <line x1="227.533" y1="466.267" x2="227.533" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">[Met </text>
+  <text x="355.52" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ill, </text>
+  <text x="362.827" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="466.267" x2="341.467" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI </text>
+  <text x="394.4" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1479</text>
+  <line x1="386.267" y1="466.267" x2="386.267" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TOAGTGTGAGGCGTATTATACCATAG</text>
+  <line x1="421.8" y1="466.267" x2="421.8" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="549.733" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">4.2010</text>
+  <line x1="529.333" y1="466.267" x2="529.333" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">J </text>
+  <text x="605.707" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">l467alF</text>
+  <line x1="599.067" y1="466.267" x2="599.067" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctdeletdclddctdGTACTTGCCOCAGTACTCTT</text>
+  <line x1="646.4" y1="466.267" x2="646.4" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="470.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="475.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al</text>
+  <line x1="867.533" y1="466.267" x2="867.533" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="477.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="477.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="491.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="491.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="466.267" x2="892.467" y2="494.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding</text>
+  <text x="18.8" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="20.133" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="494.267" x2="53.733" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">preltV</text>
+  <line x1="110.4" y1="494.267" x2="110.4" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">11719</text>
+  <line x1="145.6" y1="494.267" x2="145.6" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">LII710</text>
+  <line x1="192" y1="494.267" x2="192" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">OGCGCAOTCATTCTCATAATC</text>
+  <line x1="227.533" y1="494.267" x2="227.533" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="494.267" x2="341.467" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI </text>
+  <text x="394.4" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">1735</text>
+  <line x1="386.267" y1="494.267" x2="386.267" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AGTTTGAGTTTGCTAGGCAGAATAG</text>
+  <line x1="421.8" y1="494.267" x2="421.8" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="549.733" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="558.213" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="494.267" x2="529.333" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="499.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HT</text>
+  <text x="607.68" y="499.6" font-family="Tinos" font-size="6.667" fill="#000000" xml:space="preserve">19</text>
+  <text x="614.347" y="499.6" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">aaR</text>
+  <line x1="599.067" y1="494.267" x2="599.067" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tetetdetelctetdctdTAGGCAGAATAGTAATGAGGATOTAAG</text>
+  <line x1="646.4" y1="494.267" x2="646.4" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="498.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="869.533" y="503.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al</text>
+  <line x1="867.533" y1="494.267" x2="867.533" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="505.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="505.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="519.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="519.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="494.267" x2="892.467" y2="522.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="522.267" x2="53.733" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">J</text>
+  <line x1="110.4" y1="522.267" x2="110.4" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">12612</text>
+  <line x1="145.6" y1="522.267" x2="145.6" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="201" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">.</text>
+  <text x="204.5" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="211.5" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="218.5" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">6</text>
+  <text x="194" y="547.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="201" y="547.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <line x1="192" y1="522.267" x2="192" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CTACTTCTCCATAATATTCATCCCTGT</text>
+  <line x1="227.533" y1="522.267" x2="227.533" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="522.267" x2="341.467" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H12621</text>
+  <line x1="386.267" y1="522.267" x2="386.267" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AATTCTATGATGGACCATGTAACG</text>
+  <line x1="421.8" y1="522.267" x2="421.8" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="547.973" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="556.453" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="522.267" x2="529.333" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">]26l2snF</text>
+  <line x1="599.067" y1="522.267" x2="599.067" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctdclctdclcldclcldctdctctddctcldctdclddCTACTTCTCCATAATATTCATCCCTGT</text>
+  <line x1="646.4" y1="522.267" x2="646.4" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="526.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="531.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="522.267" x2="867.533" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="533.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="547.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="547.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="522.267" x2="892.467" y2="550.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="550.267" x2="53.733" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">R</text>
+  <line x1="110.4" y1="550.267" x2="110.4" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">12705</text>
+  <line x1="145.6" y1="550.267" x2="145.6" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L126*9</text>
+  <line x1="192" y1="550.267" x2="192" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CAGACCCAAACATTAATCAGTTCTT</text>
+  <line x1="227.533" y1="550.267" x2="227.533" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="550.267" x2="341.467" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI27I5</text>
+  <line x1="386.267" y1="550.267" x2="386.267" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TGTTAGCGGTAACTAAGATTAGTATGGT</text>
+  <line x1="421.8" y1="550.267" x2="421.8" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">d </text>
+  <text x="547.973" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="556.453" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="550.267" x2="529.333" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">]2705snR</text>
+  <line x1="599.067" y1="550.267" x2="599.067" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctotclctotdc(dctc(dctctclctdclctclclctGG'TAACTAAGATTAG'TArGG'lAAnAGGAA</text>
+  <line x1="646.4" y1="550.267" x2="646.4" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="554.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="559.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="550.267" x2="867.533" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="561.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="561.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="575.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="575.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="550.267" x2="892.467" y2="578.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="578.267" x2="53.733" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">C</text>
+  <line x1="110.4" y1="578.267" x2="110.4" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">13263</text>
+  <line x1="145.6" y1="578.267" x2="145.6" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L13258</text>
+  <line x1="192" y1="578.267" x2="192" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ATCGTAGCCJTCTCCACTTCAA</text>
+  <line x1="227.533" y1="578.267" x2="227.533" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal, </text>
+  <text x="365.76" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="578.267" x2="341.467" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI3295</text>
+  <line x1="386.267" y1="578.267" x2="386.267" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AGGAATGCTAGGTGTGG1TGGT</text>
+  <line x1="421.8" y1="578.267" x2="421.8" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="578.267" x2="529.333" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">]3263snR</text>
+  <line x1="599.067" y1="578.267" x2="599.067" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">ctddddddddCCGATTGTAACTATTATGAGTCCTAG</text>
+  <line x1="646.4" y1="578.267" x2="646.4" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="582.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="587.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="578.267" x2="867.533" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="589.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="589.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="603.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="603.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="578.267" x2="892.467" y2="606.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="606.267" x2="53.733" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">I</text>
+  <line x1="110.4" y1="606.267" x2="110.4" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">13363</text>
+  <line x1="145.6" y1="606.267" x2="145.6" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L13350</text>
+  <line x1="192" y1="606.267" x2="192" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CACGCCTTCnCAAAGCCATA</text>
+  <line x1="227.533" y1="606.267" x2="227.533" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="606.267" x2="341.467" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H13372</text>
+  <line x1="386.267" y1="606.267" x2="386.267" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GTTCATTGTTAAGGTTGTGGATGAT</text>
+  <line x1="421.8" y1="606.267" x2="421.8" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="555.12" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="606.267" x2="529.333" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="615.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">]jj6SsuF</text>
+  <line x1="599.067" y1="606.267" x2="599.067" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">e </text>
+  <text x="652.4" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tddetddddc </text>
+  <text x="678.587" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">tddc </text>
+  <text x="689.68" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Id </text>
+  <text x="695.173" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">C </text>
+  <text x="699.813" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">CATACTA111ATGTGCTCCGG</text>
+  <line x1="646.4" y1="606.267" x2="646.4" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="610.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="615.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al.</text>
+  <line x1="867.533" y1="606.267" x2="867.533" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="617.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="617.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="631.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="631.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="606.267" x2="892.467" y2="634.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="634.267" x2="53.733" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HV</text>
+  <line x1="110.4" y1="634.267" x2="110.4" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">14766</text>
+  <line x1="145.6" y1="634.267" x2="145.6" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L14759</text>
+  <line x1="192" y1="634.267" x2="192" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AGAACACCAATGACCCCAATAC</text>
+  <line x1="227.533" y1="634.267" x2="227.533" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal, </text>
+  <text x="365.76" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="634.267" x2="341.467" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI4799</text>
+  <line x1="386.267" y1="634.267" x2="386.267" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">GGTGOGGAGGTCGATCA</text>
+  <line x1="421.8" y1="634.267" x2="421.8" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="549.467" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al„ </text>
+  <text x="557.733" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="634.267" x2="529.333" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">14766SHR</text>
+  <line x1="599.067" y1="634.267" x2="599.067" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">etddddddddddddctdddeidGAGTOGTTAATTAAmTArTAGGfiGGTTA</text>
+  <line x1="646.4" y1="634.267" x2="646.4" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="638.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal</text>
+  <line x1="867.533" y1="634.267" x2="867.533" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="645.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="645.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="659.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="659.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="634.267" x2="892.467" y2="662.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">region </text>
+  <text x="35.387" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="662.267" x2="53.733" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">R9</text>
+  <line x1="110.4" y1="662.267" x2="110.4" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">13928</text>
+  <line x1="145.6" y1="662.267" x2="145.6" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">LIMB</text>
+  <line x1="192" y1="662.267" x2="192" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">TTTCTCCAACATACTCGGATTCTAC</text>
+  <line x1="227.533" y1="662.267" x2="227.533" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="356.107" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal, </text>
+  <text x="365.76" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="662.267" x2="341.467" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">HI </text>
+  <text x="394.4" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">3942</text>
+  <line x1="386.267" y1="662.267" x2="386.267" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AGAAGGCCTAGATAGGGGATTGT</text>
+  <line x1="421.8" y1="662.267" x2="421.8" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal,, </text>
+  <text x="555.12" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="662.267" x2="529.333" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="666.533" font-family="Tinos" font-size="5.333" fill="#000000" xml:space="preserve">mm.</text>
+  <line x1="599.067" y1="662.267" x2="599.067" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">(detddddGATTGTGCGGTGTGTGATG</text>
+  <line x1="646.4" y1="662.267" x2="646.4" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak</text>
+  <text x="880.84" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="882.173" y="666.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal</text>
+  <line x1="867.533" y1="662.267" x2="867.533" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="673.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="673.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="687.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="687.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="662.267" x2="892.467" y2="690.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="3.333" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Coding </text>
+  <text x="20.133" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">regkrn </text>
+  <text x="35.653" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">SNPs</text>
+  <text x="55.733" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Single </text>
+  <text x="71.36" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Base </text>
+  <text x="84" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Extension</text>
+  <line x1="53.733" y1="690.267" x2="53.733" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="112.4" y="699.333" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">B</text>
+  <line x1="110.4" y1="690.267" x2="110.4" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="147.6" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">8280del</text>
+  <line x1="145.6" y1="690.267" x2="145.6" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="194" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">L08268</text>
+  <line x1="192" y1="690.267" x2="192" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="229.533" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AATAOGOCCCGTATTTACCCTATA</text>
+  <line x1="227.533" y1="690.267" x2="227.533" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="343.467" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Hank </text>
+  <text x="356.107" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">dal., </text>
+  <text x="367.253" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="341.467" y1="690.267" x2="341.467" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="388.267" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">H08295</text>
+  <line x1="386.267" y1="690.267" x2="386.267" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="423.8" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">AGGTTAATGCTAAGTTAOCTITACAGTG</text>
+  <line x1="421.8" y1="690.267" x2="421.8" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="531.333" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="543.973" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">et </text>
+  <text x="549.733" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al., </text>
+  <text x="558.213" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">2010</text>
+  <line x1="529.333" y1="690.267" x2="529.333" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="601.067" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">8280delsnR</text>
+  <line x1="599.067" y1="690.267" x2="599.067" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="648.4" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">letddctcictctcictctdtttlCTTTACAGTGGGCTCTAGAGOGOGT</text>
+  <line x1="646.4" y1="690.267" x2="646.4" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="869.533" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">Haak </text>
+  <text x="882.173" y="694.533" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">el </text>
+  <text x="869.533" y="699.867" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">al</text>
+  <line x1="867.533" y1="690.267" x2="867.533" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="894.467" y="701.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2</text>
+  <text x="901.467" y="701.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <text x="894.467" y="715.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1</text>
+  <text x="901.467" y="715.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">0</text>
+  <line x1="892.467" y1="690.267" x2="892.467" y2="718.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="4" y="724.667" font-family="Lucida Sans Unicode" font-size="5.333" fill="#000000" xml:space="preserve">'REFERENCES:</text>
+  <text x="4" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">I </text>
+  <text x="10.996" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Hank, </text>
+  <text x="42.988" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">W.„ </text>
+  <text x="65.641" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Ealfflwvsky, </text>
+  <text x="130.293" y="732.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">0</text>
+  <text x="136.96" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">.. </text>
+  <text x="145.96" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Sanchez, </text>
+  <text x="191.938" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">J„ </text>
+  <text x="204.934" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Kosbel, </text>
+  <text x="244.93" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">S.. </text>
+  <text x="260.604" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">ZajwnHhctienko, </text>
+  <text x="347.247" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">V. </text>
+  <text x="361.913" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Adler, </text>
+  <text x="395.235" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">C„ </text>
+  <text x="411.565" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Dex </text>
+  <text x="434.557" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Sartissian, </text>
+  <text x="487.221" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">C.. </text>
+  <text x="504.225" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">BimdL </text>
+  <text x="541.227" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">G, </text>
+  <text x="555.893" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Schwarz. </text>
+  <text x="603.208" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">C, </text>
+  <text x="617.212" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Niclducb, </text>
+  <text x="667.198" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">N„ </text>
+  <text x="684.19" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">el </text>
+  <text x="695.85" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">al. </text>
+  <text x="710.51" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">(</text>
+  <text x="714.507" y="732.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2010</text>
+  <text x="741.173" y="732.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">). </text>
+  <text x="4" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Ancient </text>
+  <text x="44.986" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">DNA </text>
+  <text x="73.984" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">from </text>
+  <text x="100.311" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">European </text>
+  <text x="149.289" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Early </text>
+  <text x="178.275" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Neolithic </text>
+  <text x="225.93" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Fanners </text>
+  <text x="266.922" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Ravils </text>
+  <text x="300.59" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Their </text>
+  <text x="329.576" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Near </text>
+  <text x="355.891" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Eastern </text>
+  <text x="394.873" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Affinities. </text>
+  <text x="446.863" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Plos </text>
+  <text x="470.541" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Biology. </text>
+  <text x="515.213" y="740.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.1</text>
+  <text x="531.88" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve"> </text>
+  <text x="534.88" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">[and!., </text>
+  <text x="569.198" y="740.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">0</text>
+  <text x="575.865" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">., </text>
+  <text x="584.865" y="740.667" font-family="Tinos" font-size="11.333" fill="#000000" xml:space="preserve">Knags, </text>
+  <text x="619.49" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">M, </text>
+  <text x="636.16" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Ward </text>
+  <text x="665.808" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">R,. </text>
+  <text x="682.812" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">and </text>
+  <text x="703.138" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Paabo, </text>
+  <text x="738.465" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">S. </text>
+  <text x="751.138" y="740.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">(</text>
+  <text x="755.134" y="740.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">19</text>
+  <text x="4" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">%), </text>
+  <text x="23.992" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">The </text>
+  <text x="45.648" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">retrieval </text>
+  <text x="88.621" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">ofancienl </text>
+  <text x="136.264" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">human </text>
+  <text x="171.924" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">DNA </text>
+  <text x="200.922" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">sequences. </text>
+  <text x="255.566" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">American </text>
+  <text x="305.875" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Journal </text>
+  <text x="344.201" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">of </text>
+  <text x="357.197" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Human </text>
+  <text x="395.523" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Genetics, </text>
+  <text x="443.506" y="748.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">368</text>
+  <text x="463.506" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">-</text>
+  <text x="467.502" y="748.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">376</text>
+  <text x="487.502" y="748.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">.</text>
+  <text x="4" y="756.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3</text>
+  <text x="4" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Stone, </text>
+  <text x="37.334" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">A,, </text>
+  <text x="55" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">and </text>
+  <text x="75.326" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Sknakiog, </text>
+  <text x="126.66" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">M </text>
+  <text x="140.33" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">(</text>
+  <text x="144.326" y="756.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1998</text>
+  <text x="170.993" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">) </text>
+  <text x="177.989" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">nilDNA </text>
+  <text x="219.655" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">analysis </text>
+  <text x="261.315" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">of </text>
+  <text x="274.311" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">a </text>
+  <text x="282.637" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">prehistoric </text>
+  <text x="336.954" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Oneota </text>
+  <text x="374.606" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">population: </text>
+  <text x="432.268" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Implications </text>
+  <text x="495.257" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">for </text>
+  <text x="512.249" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">iIk </text>
+  <text x="528.579" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">peopli</text>
+  <text x="558.573" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">ng </text>
+  <text x="573.573" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">of </text>
+  <text x="586.569" y="756.667" font-family="Lucida Sans Unicode" font-size="5.333" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="595.422" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">new </text>
+  <text x="618.415" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">world </text>
+  <text x="649.411" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">American </text>
+  <text x="699.719" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Journal </text>
+  <text x="738.045" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">iif </text>
+  <text x="751.709" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Hnman </text>
+  <text x="790.036" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Genetics, </text>
+  <text x="838.018" y="756.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1153</text>
+  <text x="864.685" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">-</text>
+  <text x="868.681" y="756.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1170</text>
+  <text x="895.347" y="756.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">,</text>
+  <text x="4" y="764.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">4</text>
+  <text x="4" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Vigilani, </text>
+  <text x="49.328" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">L, </text>
+  <text x="62.658" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Sioneking, </text>
+  <text x="117.326" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">M, </text>
+  <text x="133.996" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Haqpending, </text>
+  <text x="198.648" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">H, </text>
+  <text x="213.314" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Han'lses, </text>
+  <text x="259.469" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">K„ </text>
+  <text x="276.461" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">and </text>
+  <text x="296.787" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Wilson, </text>
+  <text x="337.451" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">A. </text>
+  <text x="352.117" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">(</text>
+  <text x="356.113" y="764.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1991</text>
+  <text x="382.78" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">), </text>
+  <text x="392.776" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Afiiean </text>
+  <text x="431.758" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">pop]#ions </text>
+  <text x="482.758" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">and </text>
+  <text x="503.085" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">the </text>
+  <text x="520.745" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">elution </text>
+  <text x="557.073" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">of </text>
+  <text x="570.069" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">human </text>
+  <text x="605.729" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">mitodwndrial </text>
+  <text x="673.387" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">DNA </text>
+  <text x="702.385" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">Science, </text>
+  <text x="745.698" y="764.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1503</text>
+  <text x="772.365" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">-</text>
+  <text x="776.361" y="764.667" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1507</text>
+  <text x="803.027" y="764.667" font-family="Tinos" font-size="12" fill="#000000" xml:space="preserve">.</text>
+  <text x="0" y="773.2" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">K3</text>
+  <text x="0" y="781.867" font-family="Arimo" font-size="8" fill="#000000" xml:space="preserve">CO</text>
+  <text x="0" y="790.533" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Ln</text>
+</svg>

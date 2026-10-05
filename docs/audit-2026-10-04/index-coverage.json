@@ -1,0 +1,477 @@
+{
+  "project": "D-projects-StrictLib",
+  "signal": "best_effort",
+  "indexed_at": "2026-10-04T10:44:26Z",
+  "metadata": {
+    "generation": "2026-10-04T10:44:26Z",
+    "index_mode": "full",
+    "recorded_at": "2026-10-04T10:44:26Z",
+    "recording_status": "complete",
+    "ignored_files_stored": 63,
+    "ignored_files_total": 63,
+    "hash_records_complete": true,
+    "coverage_version": 3,
+    "generation_matches": true
+  },
+  "paths": [
+    {
+      "requested_path": "README.md",
+      "path": "README.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "base_target.md",
+      "path": "base_target.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "Cargo.toml",
+      "path": "Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "TZ-STRICT-OOXML-RUST.md",
+      "path": "TZ-STRICT-OOXML-RUST.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "REWORK-AUDIT-2026-10.md",
+      "path": "REWORK-AUDIT-2026-10.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml/src/lib.rs",
+      "path": "strict-ooxml/src/lib.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml/Cargo.toml",
+      "path": "strict-ooxml/Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml/tests/open.rs",
+      "path": "strict-ooxml/tests/open.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml/tests/hostile.rs",
+      "path": "strict-ooxml/tests/hostile.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-cli/src/main.rs",
+      "path": "strict-ooxml-cli/src/main.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-cli/Cargo.toml",
+      "path": "strict-ooxml-cli/Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-cli/tests/cli.rs",
+      "path": "strict-ooxml-cli/tests/cli.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-view/src/catalog.rs",
+      "path": "strict-ooxml-view/src/catalog.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-view/src/main.rs",
+      "path": "strict-ooxml-view/src/main.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-view/src/http.rs",
+      "path": "strict-ooxml-view/src/http.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-view/src/ui.rs",
+      "path": "strict-ooxml-view/src/ui.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-view/Cargo.toml",
+      "path": "strict-ooxml-view/Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/src/lib.rs",
+      "path": "strict-ooxml-convert/src/lib.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/src/visual.rs",
+      "path": "strict-ooxml-convert/src/visual.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/src/semantic.rs",
+      "path": "strict-ooxml-convert/src/semantic.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/src/geometry.rs",
+      "path": "strict-ooxml-convert/src/geometry.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/src/recover.rs",
+      "path": "strict-ooxml-convert/src/recover.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/src/report.rs",
+      "path": "strict-ooxml-convert/src/report.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/Cargo.toml",
+      "path": "strict-ooxml-convert/Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/tests/convert.rs",
+      "path": "strict-ooxml-convert/tests/convert.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-convert/tests/tables.rs",
+      "path": "strict-ooxml-convert/tests/tables.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/src/package.rs",
+      "path": "strict-ooxml-write/src/package.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/src/body.rs",
+      "path": "strict-ooxml-write/src/body.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/src/ctx.rs",
+      "path": "strict-ooxml-write/src/ctx.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/src/lib.rs",
+      "path": "strict-ooxml-write/src/lib.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/src/passthrough.rs",
+      "path": "strict-ooxml-write/src/passthrough.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/tests/normalize_roundtrip.rs",
+      "path": "strict-ooxml-write/tests/normalize_roundtrip.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-write/tests/loss_gate.rs",
+      "path": "strict-ooxml-write/tests/loss_gate.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-pdf/src/document.rs",
+      "path": "strict-ooxml-pdf/src/document.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-pdf/src/fonts.rs",
+      "path": "strict-ooxml-pdf/src/fonts.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-pdf/src/content.rs",
+      "path": "strict-ooxml-pdf/src/content.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-pdf/src/report.rs",
+      "path": "strict-ooxml-pdf/src/report.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-pdf/src/error.rs",
+      "path": "strict-ooxml-pdf/src/error.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-pdf/Cargo.toml",
+      "path": "strict-ooxml-pdf/Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-ocr/Cargo.toml",
+      "path": "strict-ooxml-ocr/Cargo.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-core/src/normalize/report.rs",
+      "path": "strict-ooxml-core/src/normalize/report.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-core/src/opc/mod.rs",
+      "path": "strict-ooxml-core/src/opc/mod.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-core/src/opc/policy.rs",
+      "path": "strict-ooxml-core/src/opc/policy.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "strict-ooxml-core/src/limits.rs",
+      "path": "strict-ooxml-core/src/limits.rs",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "docs/ci-baseline-2026-10.md",
+      "path": "docs/ci-baseline-2026-10.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "docs/waivers.toml",
+      "path": "docs/waivers.toml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "docs/perf-baseline.md",
+      "path": "docs/perf-baseline.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "docs/transitional-to-strict-reaudit.md",
+      "path": "docs/transitional-to-strict-reaudit.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "xtool/xsd-gate/README.md",
+      "path": "xtool/xsd-gate/README.md",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "xtool/xsd-gate/xsd_gate.py",
+      "path": "xtool/xsd-gate/xsd_gate.py",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "xtool/xsd-gate/census_gate.py",
+      "path": "xtool/xsd-gate/census_gate.py",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": "xtool/xsd-gate/opc_gate.py",
+      "path": "xtool/xsd-gate/opc_gate.py",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    },
+    {
+      "requested_path": ".github/workflows/ci.yml",
+      "path": ".github/workflows/ci.yml",
+      "status": "no_recorded_issue",
+      "freshness": "metadata_changed",
+      "recommended_action": "read_source_and_reindex",
+      "coverage": []
+    }
+  ],
+  "scopes": [
+    {
+      "requested_scope": "strict-ooxml-view/src",
+      "scope": "strict-ooxml-view/src",
+      "total": 0,
+      "has_more": false,
+      "entries": [],
+      "status": "no_recorded_issue"
+    },
+    {
+      "requested_scope": "strict-ooxml-cli/src",
+      "scope": "strict-ooxml-cli/src",
+      "total": 0,
+      "has_more": false,
+      "entries": [],
+      "status": "no_recorded_issue"
+    },
+    {
+      "requested_scope": "strict-ooxml-convert/src",
+      "scope": "strict-ooxml-convert/src",
+      "total": 0,
+      "has_more": false,
+      "entries": [],
+      "status": "no_recorded_issue"
+    },
+    {
+      "requested_scope": "strict-ooxml/src",
+      "scope": "strict-ooxml/src",
+      "total": 0,
+      "has_more": false,
+      "entries": [],
+      "status": "no_recorded_issue"
+    }
+  ],
+  "caveat": "Best-effort signal only. No recorded issue does not prove graph or source completeness; read flagged source and qualify claims when metadata is changed or unavailable."
+}

@@ -1,0 +1,35 @@
+{
+  "source": "Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+  "producer": "WPS Office 12.1.0.28485 via kwps.Application ExportAsFixedFormat",
+  "pages": [
+    {
+      "page": 54,
+      "pdf": "page-54.pdf",
+      "bytes": 154642,
+      "width_pt": 595.3,
+      "height_pt": 841.9,
+      "text": 44,
+      "marks": 15
+    },
+    {
+      "page": 56,
+      "pdf": "page-56.pdf",
+      "bytes": 107634,
+      "width_pt": 595.3,
+      "height_pt": 841.9,
+      "text": 43,
+      "marks": 20
+    },
+    {
+      "page": 104,
+      "pdf": "page-104.pdf",
+      "bytes": 200462,
+      "width_pt": 595.3,
+      "height_pt": 841.9,
+      "text": 106,
+      "marks": 6
+    }
+  ],
+  "origin": "PDF user space, y measured from the top of the page",
+  "px": "96/72 * pt"
+}

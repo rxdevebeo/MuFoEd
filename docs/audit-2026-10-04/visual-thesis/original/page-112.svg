@@ -1,0 +1,416 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="793.733" height="1122.533" viewBox="0 0 793.733 1122.533">
+  <rect x="0" y="0" width="793.733" height="1122.533" fill="#ffffff"/>
+  <text x="0" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Table </text>
+  <text x="36.95" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2. </text>
+  <text x="52.531" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Comparison </text>
+  <text x="126.053" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="142.795" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="164.98" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">demographic </text>
+  <text x="243.143" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">models </text>
+  <text x="288.666" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">simulated </text>
+  <text x="348.181" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">with </text>
+  <text x="378.151" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">BayeSSC </text>
+  <text x="436.908" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">by </text>
+  <text x="455.988" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">relative </text>
+  <text x="503.042" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">model </text>
+  <text x="543.116" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">likelihood </text>
+  <text x="604.969" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Akai</text>
+  <text x="632.183" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ke </text>
+  <text x="650.477" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">weigths </text>
+  <text x="699.11" y="15.093" font-family="Arimo" font-size="10.667" fill="#000000" xml:space="preserve">go </text>
+  <text x="715.519" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="736.923" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">all </text>
+  <text x="755.997" y="15.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">tested </text>
+  <text x="0" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">models </text>
+  <text x="43.941" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ordered </text>
+  <text x="90.193" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">from </text>
+  <text x="120.907" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="141.511" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">most </text>
+  <text x="172.238" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">to </text>
+  <text x="186.628" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="207.231" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">least </text>
+  <text x="236.387" y="33.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">likely.</text>
+  <text x="10" y="46.8" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Demographic </text>
+  <text x="80.551" y="46.8" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">model </text>
+  <text x="114.568" y="46.8" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="136.626" y="46.8" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">hypothesis </text>
+  <text x="193.956" y="46.8" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">tested</text>
+  <line x1="0" y1="37.733" x2="268.133" y2="37.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="37.733" x2="0" y2="58.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="285.026" y="48.933" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Akaike </text>
+  <text x="328.953" y="48.933" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">weigths </text>
+  <text x="376.005" y="48.933" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">CD</text>
+  <line x1="268.133" y1="37.733" x2="409.267" y2="37.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="37.733" x2="268.133" y2="58.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="37.733" x2="409.267" y2="58.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="65.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1a_50</text>
+  <line x1="0" y1="58.533" x2="268.133" y2="58.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="58.533" x2="0" y2="76.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="325.446" y="65.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">3.80e</text>
+  <text x="347.134" y="62.607" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">1</text>
+  <line x1="268.133" y1="58.533" x2="409.267" y2="58.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="58.533" x2="268.133" y2="76.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="58.533" x2="409.267" y2="76.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="83.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1a_10</text>
+  <line x1="0" y1="76.467" x2="268.133" y2="76.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="76.467" x2="0" y2="94.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="83.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">3.27e </text>
+  <text x="348.338" y="80.54" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">1</text>
+  <line x1="268.133" y1="76.467" x2="409.267" y2="76.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="76.467" x2="268.133" y2="94.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="76.467" x2="409.267" y2="94.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="101.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1a_75</text>
+  <line x1="0" y1="94.4" x2="268.133" y2="94.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="94.4" x2="0" y2="112.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="101.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2.69e </text>
+  <text x="348.338" y="98.473" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">1</text>
+  <line x1="268.133" y1="94.4" x2="409.267" y2="94.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="94.4" x2="268.133" y2="112.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="94.4" x2="409.267" y2="112.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="119.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H110</text>
+  <line x1="0" y1="112.333" x2="268.133" y2="112.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="112.333" x2="0" y2="130.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="119.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1.23e </text>
+  <text x="348.338" y="116.407" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">2</text>
+  <line x1="268.133" y1="112.333" x2="409.267" y2="112.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="112.333" x2="268.133" y2="130.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="112.333" x2="409.267" y2="130.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="4.667" y="141.467" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">□=</text>
+  <text x="4.667" y="164.533" font-family="Tinos" font-size="25.333" fill="#000000" xml:space="preserve">c</text>
+  <text x="4.667" y="174.933" font-family="Arimo" font-size="6.667" fill="#000000" xml:space="preserve">cn</text>
+  <line x1="0" y1="130.267" x2="268.133" y2="130.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="130.267" x2="0" y2="176.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="137.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">6.39e </text>
+  <text x="348.338" y="134.34" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">3</text>
+  <line x1="268.133" y1="130.267" x2="409.267" y2="130.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="130.267" x2="268.133" y2="176.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="130.267" x2="409.267" y2="176.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="183.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1_50</text>
+  <line x1="0" y1="176.267" x2="268.133" y2="176.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="176.267" x2="0" y2="194.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="183.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">5.84e </text>
+  <text x="348.338" y="180.34" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">3</text>
+  <line x1="268.133" y1="176.267" x2="409.267" y2="176.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="176.267" x2="268.133" y2="194.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="176.267" x2="409.267" y2="194.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="201.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1b </text>
+  <text x="28.307" y="201.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">50</text>
+  <line x1="0" y1="194.533" x2="268.133" y2="194.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="194.533" x2="0" y2="212.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="201.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2.85e </text>
+  <text x="348.338" y="198.607" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">6</text>
+  <line x1="268.133" y1="194.533" x2="409.267" y2="194.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="194.533" x2="268.133" y2="212.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="194.533" x2="409.267" y2="212.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="219.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">HO </text>
+  <text x="25.408" y="219.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">SAA</text>
+  <line x1="0" y1="212.467" x2="268.133" y2="212.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="212.467" x2="0" y2="230.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="323.908" y="219.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1.90e"</text>
+  <text x="348.672" y="216.54" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">7</text>
+  <line x1="268.133" y1="212.467" x2="409.267" y2="212.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="212.467" x2="268.133" y2="230.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="212.467" x2="409.267" y2="230.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="237.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1b_10</text>
+  <line x1="0" y1="230.4" x2="268.133" y2="230.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="230.4" x2="0" y2="248.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="237.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2.44e </text>
+  <text x="348.338" y="234.473" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">8</text>
+  <line x1="268.133" y1="230.4" x2="409.267" y2="230.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="230.4" x2="268.133" y2="248.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="230.4" x2="409.267" y2="248.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="255.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">H1b_75</text>
+  <line x1="0" y1="248.333" x2="268.133" y2="248.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="248.333" x2="0" y2="266.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="324.242" y="255.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">8.50e </text>
+  <text x="348.338" y="252.407" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">9</text>
+  <line x1="268.133" y1="248.333" x2="409.267" y2="248.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="248.333" x2="268.133" y2="266.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="248.333" x2="409.267" y2="266.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="10" y="273.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">HO </text>
+  <text x="25.408" y="273.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">NEE</text>
+  <line x1="0" y1="266.6" x2="268.133" y2="266.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="285.8" x2="268.133" y2="285.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="266.6" x2="0" y2="285.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="321.832" y="273.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">6.56e </text>
+  <text x="345.928" y="270.673" font-family="Arimo" font-size="5.633" fill="#000000" xml:space="preserve">15</text>
+  <line x1="268.133" y1="266.6" x2="409.267" y2="266.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="285.8" x2="409.267" y2="285.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="268.133" y1="266.6" x2="268.133" y2="285.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="409.267" y1="266.6" x2="409.267" y2="285.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="1.333" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="24.099" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">tested </text>
+  <text x="58.209" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">demographic </text>
+  <text x="126.967" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">models </text>
+  <text x="166.738" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="186.355" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">ordered </text>
+  <text x="228.655" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="254.559" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="273.55" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">most </text>
+  <text x="301.346" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">likely </text>
+  <text x="329.773" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(as </text>
+  <text x="348.754" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">indicated </text>
+  <text x="397.357" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">by </text>
+  <text x="412.564" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">higher </text>
+  <text x="447.305" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">values </text>
+  <text x="483.302" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="495.99" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="514.982" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Akaike </text>
+  <text x="552.236" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">weight) </text>
+  <text x="592.007" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="604.695" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="623.687" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">least </text>
+  <text x="650.863" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">likely </text>
+  <text x="679.29" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(as </text>
+  <text x="698.271" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">indicated </text>
+  <text x="746.874" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">by </text>
+  <text x="762.081" y="298.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">lower </text>
+  <text x="1.333" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">values </text>
+  <text x="38.867" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="53.092" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="73.62" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Akaike </text>
+  <text x="112.41" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">weight). </text>
+  <text x="156.867" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="181.169" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">demographic </text>
+  <text x="251.463" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">models </text>
+  <text x="292.771" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="313.925" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">referred </text>
+  <text x="358.381" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="372.606" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">as </text>
+  <text x="389.349" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">follows: </text>
+  <text x="431.913" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">HO </text>
+  <text x="453.687" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">models </text>
+  <text x="494.994" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">consider </text>
+  <text x="542.605" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">genetic </text>
+  <text x="583.924" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">continuity </text>
+  <text x="636.576" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">between </text>
+  <text x="684.198" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">ancient </text>
+  <text x="725.517" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="749.2" y="313.4" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">modern </text>
+  <text x="1.333" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">populations </text>
+  <text x="62.558" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="75.262" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">north </text>
+  <text x="104.347" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">east </text>
+  <text x="129.021" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Europeans </text>
+  <text x="187.091" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(_NEE) </text>
+  <text x="227.498" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">or </text>
+  <text x="240.827" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Saami </text>
+  <text x="276.204" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(_SAA); </text>
+  <text x="319.134" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">H1 </text>
+  <text x="336.874" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">models </text>
+  <text x="376.661" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">take </text>
+  <text x="401.334" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">into </text>
+  <text x="422.86" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">account </text>
+  <text x="465.806" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">migrations </text>
+  <text x="521.337" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="547.256" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">central </text>
+  <text x="584.525" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Europe </text>
+  <text x="624.323" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">that </text>
+  <text x="646.479" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">occurred </text>
+  <text x="693.825" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">after </text>
+  <text x="719.755" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="738.762" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">M</text>
+  <text x="748.203" y="328.733" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">esolithic </text>
+  <text x="1.333" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(model </text>
+  <text x="39.124" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">H1a) </text>
+  <text x="66.838" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="88.896" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">after </text>
+  <text x="114.722" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="133.626" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Bronze </text>
+  <text x="172.684" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">Age </text>
+  <text x="195.998" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(model </text>
+  <text x="233.788" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">H1b). </text>
+  <text x="264.651" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="287.328" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">tested </text>
+  <text x="321.351" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">proportions </text>
+  <text x="381.199" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="393.8" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">migrants </text>
+  <text x="440.406" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="459.935" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">10% </text>
+  <text x="485.767" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(_10), </text>
+  <text x="518.522" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">50% </text>
+  <text x="544.354" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(_50) </text>
+  <text x="573.96" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="596.018" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">75% </text>
+  <text x="621.85" y="344.067" font-family="Arimo" font-size="11.333" fill="#000000" xml:space="preserve">(_75).</text>
+  <text x="1.333" y="358.333" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">DISCUSSION</text>
+  <text x="1.333" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Genetic </text>
+  <text x="48.365" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">discontinuity </text>
+  <text x="124.975" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">between </text>
+  <text x="175.117" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">prehistoric </text>
+  <text x="238.486" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="307.317" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="331.031" y="383.16" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Saami</text>
+  <text x="49.333" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Genetic </text>
+  <text x="97.265" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">continuity </text>
+  <text x="158.437" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">with </text>
+  <text x="187.727" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">modern-day </text>
+  <text x="259.768" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Saami </text>
+  <text x="299.161" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">was </text>
+  <text x="325.334" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">e</text>
+  <text x="331.548" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">vident </text>
+  <text x="370.941" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="391.665" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="413.168" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">18</text>
+  <text x="427.168" y="406.073" font-family="Tinos" font-size="9.1" fill="#000000" xml:space="preserve">th</text>
+  <text x="438.058" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="442.458" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">century </text>
+  <text x="488.838" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">A.D. </text>
+  <text x="520.458" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(200 </text>
+  <text x="550.52" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">yBP) </text>
+  <text x="583.706" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Chalmny-Varre </text>
+  <text x="675.962" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">individuals. </text>
+  <text x="746.082" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">The </text>
+  <text x="772.248" y="410.693" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">widespread </text>
+  <text x="49.333" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">modern-day </text>
+  <text x="120.875" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">distribution </text>
+  <text x="189.334" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="204.896" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">U5bl </text>
+  <text x="236.796" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="260.91" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">V </text>
+  <text x="274.921" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">lineages </text>
+  <text x="324.69" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">makes </text>
+  <text x="364.356" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">it </text>
+  <text x="376.035" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">difficult </text>
+  <text x="425.032" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">to </text>
+  <text x="439.822" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">identify </text>
+  <text x="487.267" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="508.27" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">places </text>
+  <text x="547.15" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="562.712" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">origin </text>
+  <text x="600.054" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="620.278" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="641.282" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">founders </text>
+  <text x="694.168" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="709.73" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="730.734" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Saami </text>
+  <text x="769.627" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(Tambets </text>
+  <text x="826.396" y="438.227" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">et </text>
+  <text x="1.333" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">al., </text>
+  <text x="21.937" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2004). </text>
+  <text x="61.599" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Despite </text>
+  <text x="107.865" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">its </text>
+  <text x="124.592" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">clear </text>
+  <text x="155.285" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">association </text>
+  <text x="220.993" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">with </text>
+  <text x="249.382" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Saami </text>
+  <text x="287.875" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ancestry, </text>
+  <text x="341.517" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="362.12" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">‘Sa</text>
+  <text x="380.783" y="465.76" font-family="Tinos" font-size="14" text-decoration="underline" fill="#000000" xml:space="preserve">ami</text>
+  <text x="401.776" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="405.276" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">motif’ </text>
+  <text x="443.769" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">has </text>
+  <text x="465.931" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">also </text>
+  <text x="491.983" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">been </text>
+  <text x="521.91" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">found </text>
+  <text x="558.073" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">at </text>
+  <text x="571.676" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">low </text>
+  <text x="596.176" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">frequency </text>
+  <text x="655.642" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(below </text>
+  <text x="698.018" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1%) </text>
+  <text x="724.842" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="739.232" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">a </text>
+  <text x="748.946" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">wide </text>
+  <text x="779.66" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">range </text>
+  <text x="814.249" y="465.76" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="1.333" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">non-Saami </text>
+  <text x="65.489" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="134.32" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="149.482" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Europe. </text>
+  <text x="196.91" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">This </text>
+  <text x="225.299" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">justified </text>
+  <text x="274.682" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">sampling </text>
+  <text x="329.513" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ancient </text>
+  <text x="373.434" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="442.265" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="457.427" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">NE-E </text>
+  <text x="492.803" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">such </text>
+  <text x="521.965" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">as </text>
+  <text x="537.127" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Uznyi </text>
+  <text x="574.841" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Oleni </text>
+  <text x="609.445" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Ostrov/Popovo, </text>
+  <text x="701.231" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="724.945" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Bolshoy </text>
+  <text x="775.12" y="493.293" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Oleni </text>
+  <text x="1.333" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Ostrov </text>
+  <text x="42.944" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="57.333" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="77.937" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">modern-day </text>
+  <text x="149.078" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">homeland </text>
+  <text x="207.785" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="222.948" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="243.551" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Saami. </text>
+  <text x="285.544" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">The </text>
+  <text x="310.81" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">absence </text>
+  <text x="358.614" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="373.776" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">these </text>
+  <text x="406.041" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">lineages </text>
+  <text x="455.41" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="469.8" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ancient </text>
+  <text x="513.721" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="582.552" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="597.714" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">European </text>
+  <text x="654.856" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">foragers </text>
+  <text x="704.218" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">suggests </text>
+  <text x="755.166" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">that </text>
+  <text x="779.66" y="520.827" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="1.333" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">migration(s) </text>
+  <text x="74.04" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">that </text>
+  <text x="98.534" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">brought </text>
+  <text x="145.585" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">U5bl </text>
+  <text x="177.085" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="200.799" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">V </text>
+  <text x="214.41" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">north </text>
+  <text x="247.461" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">occurred </text>
+  <text x="299.927" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">later </text>
+  <text x="328.296" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">than </text>
+  <text x="355.9" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="376.503" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Bronze </text>
+  <text x="420.431" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Age </text>
+  <text x="447.255" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">or </text>
+  <text x="462.417" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">that </text>
+  <text x="486.91" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">their </text>
+  <text x="516.066" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">genetic </text>
+  <text x="559.987" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">impact </text>
+  <text x="601.583" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">on </text>
+  <text x="619.083" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="639.687" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">su</text>
+  <text x="652.135" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">rrounding </text>
+  <text x="710.849" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="779.68" y="548.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">was </text>
+  <text x="1.333" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">weak. </text>
+  <text x="37.871" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Another </text>
+  <text x="87.247" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">possibility </text>
+  <text x="149.092" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">is </text>
+  <text x="161.93" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">that </text>
+  <text x="186.423" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">these </text>
+  <text x="218.689" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">lineages </text>
+  <text x="268.058" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">reached </text>
+  <text x="315.076" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Fennoscandia </text>
+  <text x="395.555" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">from </text>
+  <text x="426.269" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">western </text>
+  <text x="473.307" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Europe </text>
+  <text x="517.235" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">along </text>
+  <text x="551.838" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="572.442" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">western </text>
+  <text x="619.48" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">coast </text>
+  <text x="651.745" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="666.908" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Norway, </text>
+  <text x="719.004" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">hence </text>
+  <text x="755.146" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="769.535" y="575.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">isolation </text>
+  <text x="1.333" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">from </text>
+  <text x="32.047" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="52.651" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">post-glacial </text>
+  <text x="121.461" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="190.292" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="205.454" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">east </text>
+  <text x="230.72" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="254.434" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">north </text>
+  <text x="287.486" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">east </text>
+  <text x="312.751" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Europe </text>
+  <text x="356.679" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(Tambets </text>
+  <text x="413.048" y="603.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">et</text>
+  <text x="1.333" y="620.667" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">111</text>
+</svg>

@@ -1,0 +1,540 @@
+{
+  "page": 54,
+  "width_pt": 595.3,
+  "height_pt": 841.9,
+  "text": [
+    {
+      "text": "HVR-I",
+      "x_pt": 286.92,
+      "y_top_pt": 69.414,
+      "w_pt": 21.022,
+      "h_pt": 7.45,
+      "x_px": 382.56,
+      "y_top_px": 92.552
+    },
+    {
+      "text": "____________________________________ Positions' 15996 -16410__________________________________",
+      "x_pt": 134.04,
+      "y_top_pt": 79.707,
+      "w_pt": 326.485,
+      "h_pt": 7.075,
+      "x_px": 178.72,
+      "y_top_px": 106.276
+    },
+    {
+      "text": "L15996___________________",
+      "x_pt": 127.2,
+      "y_top_pt": 91.183,
+      "w_pt": 102.965,
+      "h_pt": 8.315,
+      "x_px": 169.6,
+      "y_top_px": 121.578
+    },
+    {
+      "text": "H16142",
+      "x_pt": 212.28,
+      "y_top_pt": 102.248,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 283.04,
+      "y_top_px": 136.331
+    },
+    {
+      "text": "L16055__________",
+      "x_pt": 158.28,
+      "y_top_pt": 110.622,
+      "w_pt": 66.515,
+      "h_pt": 8.195,
+      "x_px": 211.04,
+      "y_top_px": 147.496
+    },
+    {
+      "text": "H16142",
+      "x_pt": 212.28,
+      "y_top_pt": 118.808,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 283.04,
+      "y_top_px": 158.411
+    },
+    {
+      "text": "L16117__________________",
+      "x_pt": 212.28,
+      "y_top_pt": 136.783,
+      "w_pt": 99.515,
+      "h_pt": 8.315,
+      "x_px": 283.04,
+      "y_top_px": 182.378
+    },
+    {
+      "text": "H16233",
+      "x_pt": 283.68,
+      "y_top_pt": 147.848,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 378.24,
+      "y_top_px": 197.131
+    },
+    {
+      "text": "L16117_____________",
+      "x_pt": 212.28,
+      "y_top_pt": 158.383,
+      "w_pt": 79.265,
+      "h_pt": 8.315,
+      "x_px": 283.04,
+      "y_top_px": 211.178
+    },
+    {
+      "text": "H16217",
+      "x_pt": 283.68,
+      "y_top_pt": 169.448,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 378.24,
+      "y_top_px": 225.931
+    },
+    {
+      "text": "L16209________________________",
+      "x_pt": 276.24,
+      "y_top_pt": 191.983,
+      "w_pt": 123.215,
+      "h_pt": 8.315,
+      "x_px": 368.32,
+      "y_top_px": 255.978
+    },
+    {
+      "text": "H16348",
+      "x_pt": 387.24,
+      "y_top_pt": 203.934,
+      "w_pt": 27.06,
+      "h_pt": 7.45,
+      "x_px": 516.32,
+      "y_top_px": 271.912
+    },
+    {
+      "text": "L16209_________________",
+      "x_pt": 276.24,
+      "y_top_pt": 214.663,
+      "w_pt": 94.865,
+      "h_pt": 8.195,
+      "x_px": 368.32,
+      "y_top_px": 286.218
+    },
+    {
+      "text": "H16303",
+      "x_pt": 359.28,
+      "y_top_pt": 223.448,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 479.04,
+      "y_top_px": 297.931
+    },
+    {
+      "text": "116045_________________________________",
+      "x_pt": 158.28,
+      "y_top_pt": 251.863,
+      "w_pt": 160.265,
+      "h_pt": 8.195,
+      "x_px": 211.04,
+      "y_top_px": 335.818
+    },
+    {
+      "text": "H16240",
+      "x_pt": 295.2,
+      "y_top_pt": 262.254,
+      "w_pt": 26.581,
+      "h_pt": 7.45,
+      "x_px": 393.6,
+      "y_top_px": 349.672
+    },
+    {
+      "text": "L16212___________________________________",
+      "x_pt": 295.2,
+      "y_top_pt": 270.16,
+      "w_pt": 155.205,
+      "h_pt": 7.584,
+      "x_px": 393.6,
+      "y_top_px": 360.213
+    },
+    {
+      "text": "H16410",
+      "x_pt": 444.6,
+      "y_top_pt": 252.008,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 592.8,
+      "y_top_px": 336.011
+    },
+    {
+      "text": "L16287___________________",
+      "x_pt": 359.28,
+      "y_top_pt": 242.439,
+      "w_pt": 96.485,
+      "h_pt": 7.584,
+      "x_px": 479.04,
+      "y_top_px": 323.252
+    },
+    {
+      "text": "L15996___________________________________________________________________________",
+      "x_pt": 127.2,
+      "y_top_pt": 285.582,
+      "w_pt": 330.365,
+      "h_pt": 8.316,
+      "x_px": 169.6,
+      "y_top_px": 380.776
+    },
+    {
+      "text": "H16402",
+      "x_pt": 437.28,
+      "y_top_pt": 277.808,
+      "w_pt": 27.995,
+      "h_pt": 8.05,
+      "x_px": 583.04,
+      "y_top_px": 370.411
+    },
+    {
+      "text": "H16410",
+      "x_pt": 437.28,
+      "y_top_pt": 293.767,
+      "w_pt": 27.634,
+      "h_pt": 8.05,
+      "x_px": 583.04,
+      "y_top_px": 391.69
+    },
+    {
+      "text": "Figure 2: System of primers for HVR-I amplification and sequencing.",
+      "x_pt": 90.24,
+      "y_top_pt": 353.617,
+      "w_pt": 308.248,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 471.49
+    },
+    {
+      "text": "Typing of 22 coding region SNPs (GenoCore22 reaction)",
+      "x_pt": 127.2,
+      "y_top_pt": 408.598,
+      "w_pt": 254.037,
+      "h_pt": 10.45,
+      "x_px": 169.6,
+      "y_top_px": 544.797
+    },
+    {
+      "text": "The assessment of mtDNA haplogroups based on HVR-I sequences was refined and/or",
+      "x_pt": 127.2,
+      "y_top_pt": 429.238,
+      "w_pt": 378.599,
+      "h_pt": 10.45,
+      "x_px": 169.6,
+      "y_top_px": 572.317
+    },
+    {
+      "text": "confirmed by typing 22 haplogroup diagnostic SNPs in the coding region of the mtDNA",
+      "x_pt": 90.24,
+      "y_top_pt": 449.998,
+      "w_pt": 415.424,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 599.997
+    },
+    {
+      "text": "genome.",
+      "x_pt": 90.24,
+      "y_top_pt": 470.638,
+      "w_pt": 36.572,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 627.517
+    },
+    {
+      "text": "SNaPshot minisequencing has been previously applied to type SNPs",
+      "x_pt": 127.2,
+      "y_top_pt": 491.278,
+      "w_pt": 340.304,
+      "h_pt": 10.45,
+      "x_px": 169.6,
+      "y_top_px": 655.037
+    },
+    {
+      "text": "in the",
+      "x_pt": 476.04,
+      "y_top_pt": 491.278,
+      "w_pt": 29.829,
+      "h_pt": 10.45,
+      "x_px": 634.72,
+      "y_top_px": 655.037
+    },
+    {
+      "text": "mitochondrial genome (Brandstatter et al., 2003; Brandstatter et al., 2006; Grignani et al., 2006;",
+      "x_pt": 90.24,
+      "y_top_pt": 511.917,
+      "w_pt": 415.574,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 682.556
+    },
+    {
+      "text": "Niederstatter et al., 2006; Haak et al., 2010), on autosomal chromosomes (Grimes et al., 2001;",
+      "x_pt": 90.24,
+      "y_top_pt": 532.557,
+      "w_pt": 415.574,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 710.076
+    },
+    {
+      "text": "Dixon et al., 2005; Sanchez et al., 2006; Bouakaze et al., 2007) and on the Y-chromosome",
+      "x_pt": 90.24,
+      "y_top_pt": 553.198,
+      "w_pt": 415.507,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 737.597
+    },
+    {
+      "text": "(Sanchez et al., 2003; Sanchez et al., 2005; Brion et al., 2005a; Brion et al., 2005b; Onofri et al.,",
+      "x_pt": 90.24,
+      "y_top_pt": 573.838,
+      "w_pt": 415.532,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 765.117
+    },
+    {
+      "text": "2006; Bouakaze et al., 2009). These studies include work on modern, forensic and ancient DNA",
+      "x_pt": 90.24,
+      "y_top_pt": 594.478,
+      "w_pt": 415.544,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 792.637
+    },
+    {
+      "text": "and have demonstrated the",
+      "x_pt": 90.24,
+      "y_top_pt": 615.118,
+      "w_pt": 134.948,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 820.157
+    },
+    {
+      "text": "robustness,",
+      "x_pt": 234.6,
+      "y_top_pt": 615.118,
+      "w_pt": 48.213,
+      "h_pt": 10.45,
+      "x_px": 312.8,
+      "y_top_px": 820.157
+    },
+    {
+      "text": "reliability and sensitivity of",
+      "x_pt": 292.32,
+      "y_top_pt": 615.118,
+      "w_pt": 139.199,
+      "h_pt": 10.45,
+      "x_px": 389.76,
+      "y_top_px": 820.157
+    },
+    {
+      "text": "the SNaPshot",
+      "x_pt": 441.0,
+      "y_top_pt": 615.118,
+      "w_pt": 64.694,
+      "h_pt": 10.45,
+      "x_px": 588.0,
+      "y_top_px": 820.157
+    },
+    {
+      "text": "minisequencing approach (Bouakaze et al., 2009).",
+      "x_pt": 90.24,
+      "y_top_pt": 635.757,
+      "w_pt": 217.292,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 847.676
+    },
+    {
+      "text": "In general, coding region SNPs were characterised using a multiplex PCR followed by a",
+      "x_pt": 127.2,
+      "y_top_pt": 656.398,
+      "w_pt": 378.669,
+      "h_pt": 10.45,
+      "x_px": 169.6,
+      "y_top_px": 875.197
+    },
+    {
+      "text": "multiplexed Single Base Extension (SBE) reaction (GenoCore22, Haak et al., 2010) using the",
+      "x_pt": 90.24,
+      "y_top_pt": 677.038,
+      "w_pt": 415.629,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 902.717
+    },
+    {
+      "text": "SNaPshot minisequencing technique (Applied Biosystems). This approach consists of a",
+      "x_pt": 90.24,
+      "y_top_pt": 697.798,
+      "w_pt": 415.629,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 930.397
+    },
+    {
+      "text": "preliminary multiplex PCR amplification, in the present",
+      "x_pt": 90.24,
+      "y_top_pt": 718.438,
+      "w_pt": 242.655,
+      "h_pt": 10.45,
+      "x_px": 120.32,
+      "y_top_px": 957.917
+    },
+    {
+      "text": "54",
+      "x_pt": 494.4,
+      "y_top_pt": 772.99,
+      "w_pt": 12.076,
+      "h_pt": 11.05,
+      "x_px": 659.2,
+      "y_top_px": 1030.653
+    }
+  ],
+  "marks": [
+    {
+      "kind": "LTRect",
+      "x_pt": 84.76,
+      "y_top_pt": 66.95,
+      "w_pt": 425.78,
+      "h_pt": 0.48,
+      "x_px": 113.013,
+      "y_top_px": 89.267
+    },
+    {
+      "kind": "LTRect",
+      "x_pt": 84.76,
+      "y_top_pt": 66.95,
+      "w_pt": 0.48,
+      "h_pt": 9.0,
+      "x_px": 113.013,
+      "y_top_px": 89.267
+    },
+    {
+      "kind": "LTRect",
+      "x_pt": 510.06,
+      "y_top_pt": 67.43,
+      "w_pt": 0.48,
+      "h_pt": 8.52,
+      "x_px": 680.08,
+      "y_top_px": 89.907
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 261.45,
+      "y_top_pt": 85.4,
+      "w_pt": 81.75,
+      "h_pt": 0.0,
+      "x_px": 348.6,
+      "y_top_px": 113.867
+    },
+    {
+      "kind": "LTRect",
+      "x_pt": 84.76,
+      "y_top_pt": 87.75,
+      "w_pt": 425.78,
+      "h_pt": 0.48,
+      "x_px": 113.013,
+      "y_top_px": 117.0
+    },
+    {
+      "kind": "LTRect",
+      "x_pt": 84.76,
+      "y_top_pt": 75.95,
+      "w_pt": 0.48,
+      "h_pt": 12.28,
+      "x_px": 113.013,
+      "y_top_px": 101.267
+    },
+    {
+      "kind": "LTRect",
+      "x_pt": 510.06,
+      "y_top_pt": 75.95,
+      "w_pt": 0.48,
+      "h_pt": 12.28,
+      "x_px": 680.08,
+      "y_top_px": 101.267
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 131.5,
+      "y_top_pt": 98.0,
+      "w_pt": 21.7,
+      "h_pt": 0.0,
+      "x_px": 175.333,
+      "y_top_px": 130.667
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 162.6,
+      "y_top_pt": 117.2,
+      "w_pt": 21.7,
+      "h_pt": 0.0,
+      "x_px": 216.8,
+      "y_top_px": 156.267
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 280.55,
+      "y_top_pt": 198.8,
+      "w_pt": 21.7,
+      "h_pt": 0.0,
+      "x_px": 374.067,
+      "y_top_px": 265.067
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 280.55,
+      "y_top_pt": 221.4,
+      "w_pt": 21.7,
+      "h_pt": 0.0,
+      "x_px": 374.067,
+      "y_top_px": 295.2
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 363.6,
+      "y_top_pt": 248.6,
+      "w_pt": 21.8,
+      "h_pt": 0.0,
+      "x_px": 484.8,
+      "y_top_px": 331.467
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 167.0,
+      "y_top_pt": 258.6,
+      "w_pt": 17.9,
+      "h_pt": 0.0,
+      "x_px": 222.667,
+      "y_top_px": 344.8
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 299.5,
+      "y_top_pt": 276.2,
+      "w_pt": 21.35,
+      "h_pt": 0.0,
+      "x_px": 399.333,
+      "y_top_px": 368.267
+    },
+    {
+      "kind": "LTLine",
+      "x_pt": 131.6,
+      "y_top_pt": 292.2,
+      "w_pt": 22.2,
+      "h_pt": 0.0,
+      "x_px": 175.467,
+      "y_top_px": 389.6
+    }
+  ]
+}

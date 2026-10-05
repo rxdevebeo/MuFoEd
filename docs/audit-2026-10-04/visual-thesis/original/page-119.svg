@@ -1,0 +1,335 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="793.733" height="1122.533" viewBox="0 0 793.733 1122.533">
+  <rect x="0" y="0" width="793.733" height="1122.533" fill="#ffffff"/>
+  <text x="2.667" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">Table </text>
+  <text x="42.191" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">S4: </text>
+  <text x="66.232" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">Description </text>
+  <text x="142.408" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">and </text>
+  <text x="169.722" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">references </text>
+  <text x="237.706" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">for </text>
+  <text x="260.1" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="283.317" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">comparative </text>
+  <text x="365.18" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">population </text>
+  <text x="436.508" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">datasets </text>
+  <text x="490.691" y="14.613" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">and</text>
+  <text x="2.667" y="32.88" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">pools.</text>
+  <text x="1.333" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Table </text>
+  <text x="40.288" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">S5: </text>
+  <text x="66.049" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Population </text>
+  <text x="133.803" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">parameters </text>
+  <text x="202.296" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">used </text>
+  <text x="235.043" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="253.018" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">BayeSSC </text>
+  <text x="313.779" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">coalescent </text>
+  <text x="379.161" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">simulation </text>
+  <text x="445.357" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">analyses. </text>
+  <text x="503.37" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Sample </text>
+  <text x="552.448" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">sizes </text>
+  <text x="586.747" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="614.047" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ages </text>
+  <text x="646.008" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="664.755" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="688.944" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">sequences </text>
+  <text x="752.781" y="51.147" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">were </text>
+  <text x="1.333" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">implemented </text>
+  <text x="80.471" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="97.408" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="120.56" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">demographic </text>
+  <text x="199.69" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">models </text>
+  <text x="246.179" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">used </text>
+  <text x="277.889" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="300.261" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">genealogy </text>
+  <text x="363.84" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">simulations. </text>
+  <text x="437.947" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Haplotype </text>
+  <text x="502.312" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">diversity </text>
+  <text x="557.353" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="583.614" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">fixation </text>
+  <text x="633.207" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">indexes </text>
+  <text x="682.02" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">were </text>
+  <text x="715.268" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">used </text>
+  <text x="746.978" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="763.915" y="69.413" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="1.333" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">analyses </text>
+  <text x="52.261" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="67.423" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="88.027" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">simulation </text>
+  <text x="150.637" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="170.461" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">parameter </text>
+  <text x="229.92" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">estimation </text>
+  <text x="291.744" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="315.458" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">model </text>
+  <text x="353.951" y="87.68" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">selection.</text>
+  <text x="1.333" y="113.36" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ACKNOWLEDGEMENTS</text>
+  <text x="49.333" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">We </text>
+  <text x="72.676" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">warmly </text>
+  <text x="119.356" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">acknowledge </text>
+  <text x="197.127" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Oleg </text>
+  <text x="228.255" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Balanovsky,</text>
+  <text x="297.859" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="301.774" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Valery </text>
+  <text x="343.778" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Zaporozhchenko </text>
+  <text x="441.762" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="465.891" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Elena </text>
+  <text x="501.675" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Balanovska </text>
+  <text x="570.907" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="586.484" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="607.502" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Russian </text>
+  <text x="655.755" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Academy </text>
+  <text x="713.312" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="728.888" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Medical </text>
+  <text x="778.672" y="140.893" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Sciences, </text>
+  <text x="49.333" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Moscow, </text>
+  <text x="105.949" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Russia, </text>
+  <text x="151.682" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="172.902" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">compiling </text>
+  <text x="234.569" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="256.568" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">comparative </text>
+  <text x="330.65" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">database </text>
+  <text x="383.738" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="400.295" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">modern-day </text>
+  <text x="472.832" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations, </text>
+  <text x="546.558" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">performing </text>
+  <text x="614.433" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="636.432" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">genetic </text>
+  <text x="681.748" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">distance </text>
+  <text x="732.512" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">maps </text>
+  <text x="766.959" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="792.068" y="168.427" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">having </text>
+  <text x="1.333" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">actively </text>
+  <text x="49.144" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">participated </text>
+  <text x="118.72" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="133.11" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="153.713" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">haplotype</text>
+  <text x="208.92" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="212.42" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">sharing </text>
+  <text x="257.134" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">analysis. </text>
+  <text x="309.238" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">We </text>
+  <text x="332.165" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">thank </text>
+  <text x="366.769" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Valery </text>
+  <text x="408.359" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Zaporozhchenko </text>
+  <text x="505.928" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="525.752" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">searching </text>
+  <text x="582.894" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="603.497" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">comparative </text>
+  <text x="676.184" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">modern </text>
+  <text x="722.45" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">database. </text>
+  <text x="777.643" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">We </text>
+  <text x="800.571" y="195.96" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">are </text>
+  <text x="1.333" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">particularly </text>
+  <text x="70.81" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">grateful </text>
+  <text x="119.294" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">to </text>
+  <text x="135.136" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Oleg </text>
+  <text x="167.302" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Balanovsky </text>
+  <text x="238.358" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="259.634" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">his </text>
+  <text x="280.924" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">valuable </text>
+  <text x="333.297" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">comments </text>
+  <text x="395.795" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="420.961" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">suggestions. </text>
+  <text x="494.751" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">We </text>
+  <text x="519.131" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">acknowledge </text>
+  <text x="597.939" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Guido </text>
+  <text x="637.891" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Brandt </text>
+  <text x="680.947" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="697.561" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="719.617" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Institute </text>
+  <text x="770.452" y="223.493" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="1.333" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Anthropology, </text>
+  <text x="86.885" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Johann</text>
+  <text x="126.547" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">es </text>
+  <text x="141.709" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Gutenberg-University, </text>
+  <text x="271.565" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Mainz, </text>
+  <text x="314.33" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Germany, </text>
+  <text x="373.42" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="393.244" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="413.848" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">independent </text>
+  <text x="485.769" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">replication </text>
+  <text x="549.131" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="564.293" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="584.897" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">analysis </text>
+  <text x="633.5" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="657.214" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">cloning. </text>
+  <text x="706.207" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">We </text>
+  <text x="729.135" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">thank </text>
+  <text x="763.739" y="251.027" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Valery </text>
+  <text x="1.333" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Khartanovich </text>
+  <text x="81.027" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(Kunstkamera </text>
+  <text x="163.83" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Museum, </text>
+  <text x="219.83" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">St </text>
+  <text x="235.006" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Petersburg, </text>
+  <text x="301.882" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Russia), </text>
+  <text x="350.882" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Alexandra </text>
+  <text x="412.686" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Buzhilova </text>
+  <text x="473.731" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(Institute </text>
+  <text x="527.776" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="547.6" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Archaeology, </text>
+  <text x="626.904" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Russian </text>
+  <text x="674.742" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Academy </text>
+  <text x="731.883" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="747.045" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Sciences, </text>
+  <text x="803.025" y="278.56" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Mos</text>
+  <text x="1.333" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">cow, </text>
+  <text x="31.658" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Russia), </text>
+  <text x="80.658" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Sergey </text>
+  <text x="123.034" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Koshel </text>
+  <text x="166.196" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(Faculty </text>
+  <text x="216.351" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="231.513" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Geography, </text>
+  <text x="300.713" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Moscow </text>
+  <text x="352.434" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">State </text>
+  <text x="383.927" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">University, </text>
+  <text x="450.031" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Moscow, </text>
+  <text x="505.251" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Russia) </text>
+  <text x="550.751" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="570.576" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">providing </text>
+  <text x="628.517" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="649.12" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">samples. </text>
+  <text x="701.224" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">We </text>
+  <text x="724.152" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">thank </text>
+  <text x="758.755" y="306.093" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Marta </text>
+  <text x="1.333" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Kasper </text>
+  <text x="44.482" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="64.306" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">help </text>
+  <text x="91.91" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">with </text>
+  <text x="120.299" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">project </text>
+  <text x="162.668" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">logistics; </text>
+  <text x="216.727" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Kurt </text>
+  <text x="245.889" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Alt, </text>
+  <text x="270.779" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Jeremy </text>
+  <text x="314.706" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Austin, </text>
+  <text x="359.044" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Jessica </text>
+  <text x="401.42" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Metcalf, </text>
+  <text x="451.951" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">David </text>
+  <text x="489.665" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Soria, </text>
+  <text x="526.217" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="549.931" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Andrew </text>
+  <text x="598.528" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Clarke </text>
+  <text x="639.345" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="659.169" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">helpf</text>
+  <text x="687.935" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ul </text>
+  <text x="702.325" y="333.627" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">comments.</text>
+  <text x="1.333" y="350.333" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">REFERENCES</text>
+  <text x="1.333" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1.</text>
+  <text x="1.333" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Adler, </text>
+  <text x="40.209" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">C. </text>
+  <text x="56.547" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">J., </text>
+  <text x="72.495" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Haak, </text>
+  <text x="109.034" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">W., </text>
+  <text x="132.747" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Donlon, </text>
+  <text x="181.747" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">D. </text>
+  <text x="198.858" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">&amp;</text>
+  <text x="209.747" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve"> </text>
+  <text x="213.247" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Cooper, </text>
+  <text x="261.461" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">A. </text>
+  <text x="278.572" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(2010). </text>
+  <text x="322.896" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Survival </text>
+  <text x="373.837" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="397.551" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">recovery </text>
+  <text x="450.017" y="393.213" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of</text>
+  <text x="48" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">DNA </text>
+  <text x="81.831" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">from </text>
+  <text x="112.545" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ancient </text>
+  <text x="156.466" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">teeth </text>
+  <text x="187.173" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="210.887" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">bones. </text>
+  <text x="250.549" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">J </text>
+  <text x="259.497" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Archaeol </text>
+  <text x="314.301" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Sci </text>
+  <text x="335.69" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">38, </text>
+  <text x="356.69" y="411.48" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">956-964.</text>
+  <text x="1.333" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2.</text>
+  <text x="1.333" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Akaike </text>
+  <text x="45.261" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">H. </text>
+  <text x="62.371" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(1974) </text>
+  <text x="103.196" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">A </text>
+  <text x="116.806" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">new </text>
+  <text x="143.63" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">look </text>
+  <text x="172.02" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">at </text>
+  <text x="185.623" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="206.227" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">statistical </text>
+  <text x="262.603" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">model </text>
+  <text x="301.096" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">identification. </text>
+  <text x="382.738" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">IEEE </text>
+  <text x="416.555" y="429.747" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Trans</text>
+  <text x="48" y="448.013" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Automat </text>
+  <text x="100.493" y="448.013" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">C</text>
+  <text x="109.831" y="448.013" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ontr </text>
+  <text x="135.883" y="448.013" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">19(6), </text>
+  <text x="173.207" y="448.013" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">716-723.</text>
+  <text x="1.333" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">3.</text>
+  <text x="1.333" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Anderson, </text>
+  <text x="62.768" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">C., </text>
+  <text x="82.606" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Ramakrishnan, </text>
+  <text x="170.475" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">U., </text>
+  <text x="191.085" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Chan, </text>
+  <text x="227.637" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Y., </text>
+  <text x="248.247" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Hadly, </text>
+  <text x="289.461" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">E. </text>
+  <text x="305.013" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(2005). </text>
+  <text x="349.337" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Serial </text>
+  <text x="385.493" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">SimCoal: </text>
+  <text x="441.889" y="466.28" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">a</text>
+  <text x="48" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">population </text>
+  <text x="111.383" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">genetics </text>
+  <text x="160.752" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">model </text>
+  <text x="199.245" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="219.069" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">data </text>
+  <text x="245.887" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">from </text>
+  <text x="276.601" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">multiple </text>
+  <text x="326.763" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">populations </text>
+  <text x="395.594" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="419.308" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">points </text>
+  <text x="457.035" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="471.425" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">time. </text>
+  <text x="503.308" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Bioinformatics </text>
+  <text x="590.794" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">21, </text>
+  <text x="611.794" y="484.547" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">1733-1734.</text>
+  <text x="1.333" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">4.</text>
+  <text x="1.333" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Andrews, </text>
+  <text x="58.878" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">R., </text>
+  <text x="78.716" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Kubacka, </text>
+  <text x="135.468" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">I., </text>
+  <text x="150.63" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Chinnery, </text>
+  <text x="209.734" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">P., </text>
+  <text x="228.02" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Lightowlers, </text>
+  <text x="302.675" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">R., </text>
+  <text x="322.513" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Turnbull, </text>
+  <text x="378.506" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">D., </text>
+  <text x="399.117" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Howell, </text>
+  <text x="447.33" y="502.813" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">N.</text>
+  <text x="48" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(1999). </text>
+  <text x="92.324" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Reanalysis </text>
+  <text x="156.479" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">and </text>
+  <text x="180.193" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">revision </text>
+  <text x="228.797" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">of </text>
+  <text x="243.959" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">the </text>
+  <text x="264.563" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Cambridge </text>
+  <text x="330.27" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">reference </text>
+  <text x="385.825" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">sequence </text>
+  <text x="440.629" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">for </text>
+  <text x="460.453" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">human </text>
+  <text x="502.057" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">mitochondrial </text>
+  <text x="584.095" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">DNA. </text>
+  <text x="621.426" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Nat </text>
+  <text x="645.14" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Genet </text>
+  <text x="682.067" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">23, </text>
+  <text x="703.067" y="521.08" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">147.</text>
+  <text x="1.333" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">5.</text>
+  <text x="1.333" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Beaumont, </text>
+  <text x="65.878" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">M.A., </text>
+  <text x="102.437" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Zhang, </text>
+  <text x="145.202" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">W., </text>
+  <text x="168.916" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Balding, </text>
+  <text x="220.247" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">D.J. </text>
+  <text x="246.306" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">(2002). </text>
+  <text x="290.63" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Approximate </text>
+  <text x="367.999" y="539.347" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Bayesian</text>
+  <text x="48" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">computation </text>
+  <text x="121.486" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">in </text>
+  <text x="135.876" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">population </text>
+  <text x="199.259" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">ge</text>
+  <text x="212.473" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">netics. </text>
+  <text x="252.128" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">Genetics </text>
+  <text x="304.607" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">162, </text>
+  <text x="332.607" y="557.613" font-family="Tinos" font-size="14" fill="#000000" xml:space="preserve">2025-2035.</text>
+  <text x="1.333" y="573" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">118</text>
+</svg>

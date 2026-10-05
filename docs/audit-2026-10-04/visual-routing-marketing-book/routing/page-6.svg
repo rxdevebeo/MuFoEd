@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
+  <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
+  <text x="120" y="109.965" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">29</text>
+  <text x="108" y="138.554" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Nudging</text>
+  <text x="108" y="159.143" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">29</text>
+  <text x="120" y="179.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Main </text>
+  <text x="153.952" y="179.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">steps </text>
+  <text x="188.657" y="179.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">of </text>
+  <text x="204.183" y="179.732" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">nudging</text>
+  <text x="120" y="200.322" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">30</text>
+  <text x="120" y="220.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Nudging </text>
+  <text x="173.074" y="220.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">in </text>
+  <text x="187.461" y="220.911" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">direction</text>
+  <text x="120" y="241.5" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">31</text>
+  <text x="120" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">PathRefiner.RefinePaths(IEnumerable&lt;Path&gt; </text>
+  <text x="390.589" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">paths, </text>
+  <text x="430.65" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">bool </text>
+  <text x="460.506" y="262.089" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">mergePaths)</text>
+  <text x="120" y="282.678" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">32</text>
+  <text x="96" y="319.268" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Testing</text>
+  <text x="96" y="339.857" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">32</text>
+  <text x="108" y="368.446" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Unit </text>
+  <text x="136.71" y="368.446" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Testing </text>
+  <text x="183.095" y="368.446" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Architecture</text>
+  <text x="108" y="389.035" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">32</text>
+  <text x="132" y="409.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Overriding </text>
+  <text x="198.222" y="409.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">default </text>
+  <text x="244.027" y="409.624" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">values</text>
+  <text x="132" y="430.214" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">32</text>
+  <text x="132" y="450.803" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Datafiles</text>
+  <text x="132" y="471.392" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">34</text>
+  <text x="144" y="491.981" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Creating </text>
+  <text x="197.46" y="491.981" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="223.213" y="491.981" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Regenerating</text>
+  <text x="144" y="512.57" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">34</text>
+  <text x="108" y="541.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">DebugDevTrace </text>
+  <text x="205.682" y="541.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">build </text>
+  <text x="238.847" y="541.16" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">configuration</text>
+  <text x="108" y="561.749" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">35</text>
+  <text x="108" y="590.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">#define </text>
+  <text x="156.469" y="590.338" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">TEST_MSAGL</text>
+  <text x="108" y="610.927" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">35</text>
+  <text x="108" y="639.516" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">TestRectilinear.exe</text>
+  <text x="108" y="660.105" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">35</text>
+  <text x="120" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Useful </text>
+  <text x="161.307" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Parameters </text>
+  <text x="233.438" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">For </text>
+  <text x="256.34" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Test </text>
+  <text x="284.749" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Creation </text>
+  <text x="339.04" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="364.793" y="680.695" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Debugging</text>
+  <text x="120" y="701.284" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">35</text>
+  <text x="120" y="721.873" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Scripts</text>
+  <text x="120" y="742.462" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">37</text>
+  <text x="120" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">The </text>
+  <text x="145.466" y="763.051" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Display</text>
+  <text x="120" y="783.641" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">37</text>
+  <text x="108" y="812.23" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">TestForGDI.exe</text>
+  <text x="108" y="832.819" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">39</text>
+  <text x="108" y="861.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Debugging </text>
+  <text x="174.831" y="861.408" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Tips</text>
+  <text x="108" y="881.997" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">39</text>
+  <text x="120" y="902.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Conditional </text>
+  <text x="191.758" y="902.587" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Breakpoints</text>
+  <text x="120" y="923.176" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">39</text>
+  <text x="120" y="943.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Reducing </text>
+  <text x="178.165" y="943.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Datafile </text>
+  <text x="227.973" y="943.765" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">failures</text>
+</svg>

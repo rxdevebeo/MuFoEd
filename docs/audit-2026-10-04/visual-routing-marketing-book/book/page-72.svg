@@ -1,0 +1,328 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="672.067" height="960.133" viewBox="0 0 672.067 960.133">
+  <rect x="0" y="0" width="672.067" height="960.133" fill="#ffffff"/>
+  <text x="56.733" y="47.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">72</text>
+  <text x="70.6" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="73.933" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="77.267" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="80.6" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="83.933" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="87.267" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="167.4" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="209.4" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="238.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">C#</text>
+  <text x="56.733" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Watch </text>
+  <text x="94.858" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="104.11" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">video </text>
+  <text x="137.065" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">lesson </text>
+  <text x="173.732" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">about </text>
+  <text x="206.688" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="226.31" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">system </text>
+  <text x="266.681" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="310.744" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">here:</text>
+  <text x="337.391" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="340.724" y="49.682" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://youtu.be/</text>
+  <text x="427.762" y="49.682" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">ehHnNu6M55M</text>
+  <text x="516.649" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="83.839" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">The </text>
+  <text x="91.239" y="83.839" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">System </text>
+  <text x="150.732" y="83.839" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Console </text>
+  <text x="216.237" y="83.839" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Explained</text>
+  <text x="56.733" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Generally</text>
+  <text x="109.298" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">,</text>
+  <text x="112.632" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="116.1" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the</text>
+  <text x="132.389" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="135.857" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">system </text>
+  <text x="176.363" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console</text>
+  <text x="217.092" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="220.56" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">represents </text>
+  <text x="278.078" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="287.464" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="310.925" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">terminal</text>
+  <text x="355.352" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="362.154" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="398.206" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">means </text>
+  <text x="435.737" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">that </text>
+  <text x="459.198" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">it </text>
+  <text x="470.075" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">accepts </text>
+  <text x="512.775" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="535.495" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">visuali</text>
+  <text x="571.048" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">zes </text>
+  <text x="591.541" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">just</text>
+  <text x="610.805" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="614.273" y="108.378" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text</text>
+  <text x="60.067" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">without </text>
+  <text x="104.789" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">any </text>
+  <text x="128.021" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">graphical </text>
+  <text x="181.604" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">elements </text>
+  <text x="232.973" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">like </text>
+  <text x="256.947" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">buttons, </text>
+  <text x="303.525" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">menus, </text>
+  <text x="345.649" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">etc. </text>
+  <text x="368.503" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">It </text>
+  <text x="380.628" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">usually </text>
+  <text x="423.124" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">looks </text>
+  <text x="455.997" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">like </text>
+  <text x="479.971" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="489.869" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">black </text>
+  <text x="522.723" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">colored </text>
+  <text x="566.684" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">window </text>
+  <text x="613.626" y="123.71" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">like </text>
+  <text x="56.733" y="139.043" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">this </text>
+  <text x="79.331" y="139.043" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">one:</text>
+  <image x="56.733" y="164.492" width="450.046" height="312.757" preserveAspectRatio="none" xlink:href="data:image/png;base64,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"><title>Picture 695</title></image>
+  <text x="56.733" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">In </text>
+  <text x="71.821" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">most </text>
+  <text x="101.734" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">operating </text>
+  <text x="156.067" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">systems, </text>
+  <text x="205.608" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the</text>
+  <text x="221.897" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="225.878" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console</text>
+  <text x="266.608" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="270.589" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="283.464" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">available </text>
+  <text x="335.563" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">as </text>
+  <text x="350.651" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="360.551" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">standalone </text>
+  <text x="421.55" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">application </text>
+  <text x="484.77" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">on </text>
+  <text x="502.085" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="538.651" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">we </text>
+  <text x="558.179" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">write </text>
+  <text x="589.556" y="511.129" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="56.733" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">commands. </text>
+  <text x="122.168" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">It </text>
+  <text x="134.648" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="147.876" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">called </text>
+  <text x="184.04" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a</text>
+  <text x="189.958" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="194.293" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Command </text>
+  <text x="254.182" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Prompt</text>
+  <text x="293.446" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="297.781" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="312.487" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Windows, </text>
+  <text x="371.262" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="394.848" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a</text>
+  <text x="400.766" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="405.101" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Terminal</text>
+  <text x="453.968" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="458.303" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="473.009" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Linux </text>
+  <text x="509.193" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="532.779" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Mac. </text>
+  <text x="564.139" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="589.203" y="526.461" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="56.733" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">runs </text>
+  <text x="83.16" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="127.353" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">applications. </text>
+  <text x="198.578" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">They </text>
+  <text x="229.438" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">read </text>
+  <text x="255.845" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="279.303" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="308.685" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="328.438" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">command </text>
+  <text x="384.481" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line </text>
+  <text x="407.939" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="430.654" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">print </text>
+  <text x="459.301" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="482.758" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">on </text>
+  <text x="499.556" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="519.309" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console. </text>
+  <text x="566.836" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">In </text>
+  <text x="581.407" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">this </text>
+  <text x="604.136" y="541.793" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">book </text>
+  <text x="56.733" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">we </text>
+  <text x="75.614" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="95.223" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">going </text>
+  <text x="128.927" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="142.632" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">learn </text>
+  <text x="172.612" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">programming </text>
+  <text x="248.524" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">mostly </text>
+  <text x="288.159" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">through </text>
+  <text x="332.97" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">creating</text>
+  <text x="375.907" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="379.24" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="423.302" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">applications</text>
+  <text x="487.729" y="557.125" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">In </text>
+  <text x="71.604" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="91.658" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">next </text>
+  <text x="118.378" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">examples </text>
+  <text x="172.493" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">we </text>
+  <text x="191.804" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">will</text>
+  <text x="212.547" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="216.311" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">read </text>
+  <text x="243.018" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">data</text>
+  <text x="265.225" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="268.989" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="273.429" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">like </text>
+  <text x="297.187" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integers, </text>
+  <text x="346.491" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">floating-point </text>
+  <text x="423.576" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers </text>
+  <text x="473.258" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="496.274" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">strings</text>
+  <text x="531.834" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">) </text>
+  <text x="540.038" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="569.72" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="589.773" y="579.124" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="56.733" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="79.318" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">will</text>
+  <text x="100.06" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="103.393" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">print </text>
+  <text x="131.909" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">data</text>
+  <text x="154.116" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="157.449" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">on </text>
+  <text x="174.116" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="193.739" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="237.801" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="242.241" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="265.568" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="288.153" y="594.456" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">numbers).</text>
+  <text x="56.733" y="635.293" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Reading </text>
+  <text x="148.081" y="635.293" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Integers </text>
+  <text x="238.058" y="635.293" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">from </text>
+  <text x="294.694" y="635.293" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="332.686" y="635.293" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Console</text>
+  <text x="56.733" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">In </text>
+  <text x="71.439" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">order </text>
+  <text x="103.17" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="117.14" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">read </text>
+  <text x="143.682" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">an</text>
+  <text x="156.266" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="159.865" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integer</text>
+  <text x="196.884" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="200.483" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="204.923" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">not </text>
+  <text x="225.56" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="235.077" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">float</text>
+  <text x="259.51" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">)</text>
+  <text x="263.95" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="267.549" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">number</text>
+  <text x="308.278" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="311.878" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="341.395" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="361.283" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console, </text>
+  <text x="408.944" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">we </text>
+  <text x="428.09" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">have </text>
+  <text x="456.859" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to</text>
+  <text x="467.23" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="470.829" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">declare </text>
+  <text x="512.911" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="522.428" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">variable</text>
+  <text x="565.364" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="572.296" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">declare </text>
+  <text x="614.379" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the</text>
+  <text x="630.668" y="661.386" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="56.733" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">number </text>
+  <text x="106.299" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">type</text>
+  <text x="129.255" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="138.091" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="166.178" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">use </text>
+  <text x="192.788" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="217.914" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">standard </text>
+  <text x="271.919" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">command </text>
+  <text x="333.334" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">for</text>
+  <text x="348.88" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="357.717" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">reading </text>
+  <text x="406.534" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="421.288" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="450.118" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line</text>
+  <text x="470.111" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="478.947" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="513.702" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="538.827" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">system </text>
+  <text x="584.701" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console</text>
+  <text x="625.43" y="676.718" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="56.733" y="691.269" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">Console.ReadLine()</text>
+  <text x="200.757" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="211.035" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="240.565" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">after </text>
+  <text x="275.264" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">that</text>
+  <text x="295.258" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="305.536" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">convert </text>
+  <text x="355.795" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="382.363" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">text </text>
+  <text x="412.635" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line </text>
+  <text x="442.907" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">into </text>
+  <text x="473.927" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">an </text>
+  <text x="496.791" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integer </text>
+  <text x="544.087" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">number</text>
+  <text x="584.816" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="595.095" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">using</text>
+  <text x="623.988" y="691.269" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="56.733" y="706.373" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">int.Parse(text</text>
+  <text x="168.752" y="706.373" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">)</text>
+  <text x="176.753" y="706.373" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">:</text>
+  <text x="71.867" y="728.144" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="95.871" y="728.144" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="103.872" y="728.144" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">num </text>
+  <text x="135.877" y="728.144" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">= </text>
+  <text x="151.88" y="728.144" font-family="Cousine" font-size="13.333" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="175.884" y="728.144" font-family="Cousine" font-size="13.333" fill="#000000" xml:space="preserve">.Parse(Console.ReadLine());</text>
+  <text x="56.733" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="80.796" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">above </text>
+  <text x="115.965" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line </text>
+  <text x="139.292" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="153.732" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">C# </text>
+  <text x="172.625" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">code</text>
+  <text x="197.795" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="201.128" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">reads </text>
+  <text x="232.593" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">an </text>
+  <text x="248.511" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integer</text>
+  <text x="285.529" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="288.862" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="318.114" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="337.736" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">first </text>
+  <text x="362.547" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">line </text>
+  <text x="385.874" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">on </text>
+  <text x="402.541" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="422.163" y="750.696" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console.</text>
+  <text x="56.733" y="784.853" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Video: </text>
+  <text x="112.227" y="784.853" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Reading </text>
+  <text x="180.738" y="784.853" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Data </text>
+  <text x="222.231" y="784.853" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">from </text>
+  <text x="264.709" y="784.853" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="293.203" y="784.853" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Console</text>
+  <text x="56.733" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Watch </text>
+  <text x="94.858" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="104.11" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">video </text>
+  <text x="137.065" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">lesson </text>
+  <text x="173.732" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">about </text>
+  <text x="206.688" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">reading </text>
+  <text x="250.002" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="279.253" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="298.875" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">system </text>
+  <text x="339.246" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console:</text>
+  <text x="383.68" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="387.013" y="809.393" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://youtu.be/</text>
+  <text x="474.051" y="809.393" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">WPlQ5HYBGJQ</text>
+  <text x="566.649" y="809.393" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="843.55" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Video: </text>
+  <text x="112.227" y="843.55" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Reading </text>
+  <text x="180.738" y="843.55" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Integers </text>
+  <text x="248.221" y="843.55" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">from </text>
+  <text x="290.698" y="843.55" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="319.192" y="843.55" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Console</text>
+  <text x="56.733" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Watch </text>
+  <text x="94.858" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="104.11" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">video </text>
+  <text x="137.065" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">lesson </text>
+  <text x="173.732" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">about </text>
+  <text x="206.688" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">reading </text>
+  <text x="250.002" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">integer</text>
+  <text x="287.02" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">s</text>
+  <text x="292.209" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="295.542" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="324.793" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="344.416" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console:</text>
+  <text x="388.849" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="392.183" y="868.09" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://youtu.be/</text>
+  <text x="479.22" y="868.09" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">3TC2F</text>
+  <text x="517.007" y="868.09" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">-ffw34</text>
+  <text x="553.289" y="868.09" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="908.927" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Example: </text>
+  <text x="161.393" y="908.927" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Calculating </text>
+  <text x="286.069" y="908.927" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">a </text>
+  <text x="304.069" y="908.927" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Square </text>
+  <text x="383.417" y="908.927" font-family="Tinos" font-size="24" font-weight="bold" fill="#000000" xml:space="preserve">Area</text>
+</svg>

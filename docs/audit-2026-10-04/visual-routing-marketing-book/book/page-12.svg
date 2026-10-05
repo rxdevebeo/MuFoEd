@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="672.067" height="960.133" viewBox="0 0 672.067 960.133">
+  <rect x="0" y="0" width="672.067" height="960.133" fill="#ffffff"/>
+  <text x="56.733" y="47.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">12</text>
+  <text x="70.6" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="73.933" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="77.267" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="80.6" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="83.933" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="87.267" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="167.4" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="209.4" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="238.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">C#</text>
+  <text x="69.933" y="51.765" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">33</text>
+  <text x="69.933" y="73.668" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Development </text>
+  <text x="205.81" y="73.668" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Environments </text>
+  <text x="343.785" y="73.668" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">(IDE) </text>
+  <text x="427.755" y="73.668" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="505.387" y="73.668" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Visual </text>
+  <text x="596.103" y="73.668" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Studio</text>
+  <text x="69.933" y="91.572" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">34</text>
+  <text x="69.933" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Example: </text>
+  <text x="171.125" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Creating </text>
+  <text x="267.913" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">a </text>
+  <text x="321.581" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Console </text>
+  <text x="415.619" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Application </text>
+  <text x="529.838" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">"Hello </text>
+  <text x="613.262" y="113.476" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">C#"</text>
+  <text x="69.933" y="131.379" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">39</text>
+  <text x="69.933" y="153.283" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Typical </text>
+  <text x="208.005" y="153.283" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Mistakes </text>
+  <text x="357.908" y="153.283" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">in </text>
+  <text x="465.601" y="153.283" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">C# </text>
+  <text x="577.347" y="153.283" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programs</text>
+  <text x="69.933" y="171.187" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">43</text>
+  <text x="69.933" y="193.09" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Exercises: </text>
+  <text x="227.015" y="193.09" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">First </text>
+  <text x="351.778" y="193.09" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Steps </text>
+  <text x="483.064" y="193.09" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">in </text>
+  <text x="593.031" y="193.09" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Coding</text>
+  <text x="69.933" y="210.994" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">45</text>
+  <text x="69.933" y="232.898" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Lab: </text>
+  <text x="184.492" y="232.898" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Graphical </text>
+  <text x="330.992" y="232.898" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="443.166" y="232.898" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Web </text>
+  <text x="560.955" y="232.898" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Applications</text>
+  <text x="69.933" y="250.801" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">51</text>
+  <text x="56.733" y="272.705" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Chapter </text>
+  <text x="237.6" y="272.705" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">2.1. </text>
+  <text x="393.158" y="272.705" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Simple </text>
+  <text x="566.635" y="272.705" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Calculations</text>
+  <text x="56.733" y="290.609" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">61</text>
+  <text x="69.933" y="312.512" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Video: </text>
+  <text x="319.225" y="312.512" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Chapter </text>
+  <text x="577.748" y="312.512" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Overview</text>
+  <text x="69.933" y="330.416" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">61</text>
+  <text x="69.933" y="352.32" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Introduction </text>
+  <text x="203.293" y="352.32" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">to </text>
+  <text x="274.807" y="352.32" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Simple </text>
+  <text x="373.863" y="352.32" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Calculations </text>
+  <text x="504.695" y="352.32" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">by </text>
+  <text x="577.906" y="352.32" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Examples</text>
+  <text x="69.933" y="370.223" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">61</text>
+  <text x="69.933" y="392.127" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">The </text>
+  <text x="317.958" y="392.127" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">System </text>
+  <text x="586.872" y="392.127" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Console</text>
+  <text x="69.933" y="410.03" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">62</text>
+  <text x="69.933" y="431.934" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Reading </text>
+  <text x="210.739" y="431.934" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Integers </text>
+  <text x="352.24" y="431.934" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">from </text>
+  <text x="474.118" y="431.934" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">the </text>
+  <text x="586.872" y="431.934" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Console</text>
+  <text x="69.933" y="449.838" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">62</text>
+  <text x="69.933" y="471.741" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Example: </text>
+  <text x="216.445" y="471.741" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Calculating </text>
+  <text x="373.806" y="471.741" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">a </text>
+  <text x="472.795" y="471.741" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Square </text>
+  <text x="606.344" y="471.741" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Area</text>
+  <text x="69.933" y="489.645" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">63</text>
+  <text x="69.933" y="511.549" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Data </text>
+  <text x="239.396" y="511.549" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Types </text>
+  <text x="415.397" y="511.549" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="579.31" y="511.549" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Variables</text>
+  <text x="69.933" y="529.452" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">64</text>
+  <text x="69.933" y="551.356" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Declaring </text>
+  <text x="258.541" y="551.356" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="413.583" y="551.356" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Using </text>
+  <text x="579.31" y="551.356" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Variables</text>
+  <text x="69.933" y="569.26" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">64</text>
+  <text x="69.933" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Reading </text>
+  <text x="165.605" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Floating </text>
+  <text x="261.062" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Point </text>
+  <text x="340.062" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Numbers </text>
+  <text x="442.508" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">from </text>
+  <text x="519.252" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">the </text>
+  <text x="586.872" y="591.163" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Console</text>
+  <text x="69.933" y="609.067" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">65</text>
+  <text x="69.933" y="630.971" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Reading </text>
+  <text x="195.357" y="630.971" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">a </text>
+  <text x="279.838" y="630.971" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Text </text>
+  <text x="383.004" y="630.971" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">from </text>
+  <text x="489.5" y="630.971" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">the </text>
+  <text x="586.872" y="630.971" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Console</text>
+  <text x="69.933" y="648.874" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">65</text>
+  <text x="69.933" y="670.778" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Printing </text>
+  <text x="181.829" y="670.778" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="269.512" y="670.778" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Formatting </text>
+  <text x="400.886" y="670.778" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Text </text>
+  <text x="491.842" y="670.778" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="579.524" y="670.778" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Numbers</text>
+  <text x="69.933" y="688.682" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">66</text>
+  <text x="69.933" y="710.585" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Arithmetic </text>
+  <text x="567.959" y="710.585" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Operations</text>
+  <text x="69.933" y="728.489" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">68</text>
+  <text x="69.933" y="750.392" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Concatenating </text>
+  <text x="281.293" y="750.392" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Text </text>
+  <text x="432.045" y="750.392" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">and </text>
+  <text x="579.524" y="750.392" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Numbers</text>
+  <text x="69.933" y="768.296" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">70</text>
+  <text x="69.933" y="790.2" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Numerical </text>
+  <text x="564.621" y="790.2" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Expressions</text>
+  <text x="69.933" y="808.103" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">70</text>
+  <text x="69.933" y="830.007" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Exercises: </text>
+  <text x="325.116" y="830.007" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Simple </text>
+  <text x="562.301" y="830.007" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Calculations</text>
+  <text x="69.933" y="847.911" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">72</text>
+  <text x="69.933" y="869.814" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Lab: </text>
+  <text x="152.049" y="869.814" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">GUI </text>
+  <text x="231.701" y="869.814" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Applications </text>
+  <text x="362.306" y="869.814" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="446.069" y="869.814" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Numerical </text>
+  <text x="564.621" y="869.814" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Expressions</text>
+  <text x="69.933" y="887.718" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">87</text>
+  <text x="69.933" y="909.622" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Useful </text>
+  <text x="182.044" y="909.622" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Web </text>
+  <text x="284.214" y="909.622" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Sites </text>
+  <text x="386.384" y="909.622" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">for </text>
+  <text x="477.827" y="909.622" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">C# </text>
+  <text x="567.071" y="909.622" font-family="Carlito" font-size="14.667" text-decoration="underline" fill="#0000ff" xml:space="preserve">Developers</text>
+</svg>

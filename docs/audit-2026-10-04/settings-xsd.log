@@ -1,0 +1,76 @@
+D:\projects\StrictLib\xtool\xsd-gate\xsd_gate.py:806: FutureWarning: Truth-testing of elements was a source of confusion and will always return True in future versions. Use specific 'len(elem)' or 'elem is not None' test instead.
+  node = types.get(name) or groups.get(name)
+==============================================================================
+xsd-gate 1.0.0
+schema:  ECMA-376-1 5th edition, OfficeOpenXML-XMLSchema-Strict (5th edition, December 2016)
+         sha256 9d0bcad9cf06054785b03762fcfadbf6bab7e54a5f9d69434e34b7fd464d4129  (43501721 bytes)
+oracle:  lxml (6, 0, 1, 0), libxml2 (2, 11, 9), python 3.13.5
+corpus:  docs/audit-2026-10-04/schema-input
+schemas: cache C:\Users\gamer\AppData\Local\cache\strict-ooxml\xsd-gate\fixed
+schemas: 2133 drivers compiled, 0 failures
+roots:   0 declared UNCOVERED (prefixed root type, G12)
+control: ok   valid: 0 schema violation(s) - a minimal w:document, which must come out clean
+control: ok   invalid: 1 schema violation(s) - a w:pPr with w:pBdr before w:tabs, which xsd:sequence forbids - the defect this gate exists to find, and the one the project made most of
+control: ok   extension: 0 schema violation(s) - a w:p carrying w14:paraId with mc:Ignorable declared, which an MCE processor removes and the gate must therefore NOT count as a schema violation
+control: ok   no-mce-declared: 0 schema violation(s) - the same w:p with w14:paraId and NO mc:Ignorable: still an extension, because conformance is defined after MCE and the declaration changes nothing about the namespace. If this one ever counted as ours, the basket would be deciding on politeness rather than on the standard
+control: ok   prefixed-valid: 0 schema violation(s) - a cx:cNvSpPr carrying the a:spLocks its type requires - a root whose TYPE is a prefixed QName, which is the case 13 roots were wrongly excused on
+control: ok   prefixed-invalid: 1 schema violation(s) - the same root with a child that is not in its type: drop the driver's import and this is accepted, so this is the control that would have caught it
+
+=== the writer's order tables against the schema (G21)
+  PPR       CT_PPr       schema 36 child(ren), table 36
+  SETTINGS  CT_Settings  schema 96 child(ren), table 96
+  SECTPR    EG_SectPrContents schema 22 child(ren), table 22
+  TBLPR     CT_TblPr     schema 18 child(ren), table 18
+  TCPR      CT_TcPr      schema 14 child(ren), table 14
+  TRPR      CT_TrPr      schema 15 child(ren), table 15
+  STYLE     CT_Style     schema 22 child(ren), table 22
+  LVL       CT_Lvl       schema 11 child(ren), table 11
+  ok: the order is stated once and matches
+
+document                                        IN   OUT   delta
+  settings.docx                                  0     1      +1
+  TOTAL                                          0     1      +1
+
+parts not covered by the ECMA set (G10): 8 part(s), and 0 root(s) with no driver - both listed, never counted green
+
+=== skipped parts, by the reason there is no validator for them
+      6  OPC, not ECMA-376 Part 1
+      1  document: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+      1  settings: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+
+=== our output, by element: 1 violation(s), 1 distinct element(s)
+  stylePaneFormatFilter 1
+
+=== registry (`XS-nn` closes on a measured zero, never on a code review)
+  XS-01   ours      closed       w:fontTable: w:family and w:pitch written without their required w:val
+  XS-02   ours      closed       a:fmtScheme: four style lists written empty, and each list requires content
+  XS-03   ours      closed       a:fontScheme: majorFont/minorFont without the mandatory a:ea
+  XS-04   ours      closed       wp:wrapNone/wrapTopAndBottom carry @distL/@distR, which Strict's empty CT_WrapNone forbids
+  XS-08   ours      closed       w:pgMar without w:gutter/w:header/w:footer, all three use="required"
+  XS-09   ours      closed       CT_TblWidth/@w written as bare twips; the union accepts only a percentage or a universal measure
+  XS-06   ours      closed       w:settings: children out of CT_Settings' xsd:sequence order
+  XS-07   ours      closed       w:pPr, w:tblPr and w:style children out of xsd:sequence order
+  XS-23   ours      closed       border and margin edges under two names: Strict keeps left/right in CT_PBdr and renames them start/end in CT_TblBorders/CT_TcBorders/CT_TcMar
+  XS-05   ours      closed       ST_DecimalNumberOrPercent written without the % sign
+  XS-11   ours      closed       a:srcRect edges written without the % sign
+  XS-26   ours      closed       enumeration written with its Transitional spelling (w:textDirection 'tbRl' where Strict has 'lrV')
+  XS-20   ours      closed       w:bookmarkStart without its mandatory w:name
+  XS-21   ours      closed       wp:positionH/V without @relativeFrom and without an align or posOffset child
+  XS-22   ours      closed       wp:wrapSquare without @wrapText, and with it written in the WML namespace
+  XS-12   ours      closed       OMML enumeration written with a value outside the schema's set ('skew' for 'skw', 'ctr' for 'center')
+  XS-13   ours      closed       m:chr longer than maxLength 1 (a combining sequence)
+  XS-14   ours      closed       text directly inside an element-only OMML argument; it belongs in m:r/m:t
+  XS-15   ours      closed       OMML children out of their CT_* xsd:sequence order
+  XS-16   source    closed       chart parts: c:gapWidth/c:overlap/c:lblOffset rejected by ST_GapAmount/ST_Overlap/ST_LblOffset, invalid in the INPUT and carried verbatim
+  XS-17   extension closed       w14:paraId/w14:textId in a Strict package - ADR-0014; the gate files these in the extension basket, and `strict-ooxml-write/tests/strict_conformance.rs` is the gate that holds the zero
+  XS-18   extension closed       wps:wsp inside a:graphicData, whose Strict wildcard is processContents="strict" - ADR-0014
+  XS-19   extension closed       wp14:anchorId/@editId and w:txbxContent in a vendor namespace - ADR-0014
+  1 violation(s) match no registry item and are named above
+
+=== every message, so nothing is counted on trust
+  word/settings.xml:2: Element '{http://purl.oclc.org/ooxml/wordprocessingml/main}stylePaneFormatFilter', attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}val': The attribute '{http://purl.oclc.org/ooxml/wordprocessingml/main}val' is not allowed.
+
+uncovered roots (0), by schema:
+
+PASS: no schema violation of ours in the written corpus
+AUDIT_EXIT_CODE=0

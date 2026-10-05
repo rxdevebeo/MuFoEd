@@ -1,0 +1,35 @@
+    Checking strict-ooxml-core v0.1.0 (D:\projects\StrictLib\strict-ooxml-core)
+    Checking strict-ooxml-wml v0.1.0 (D:\projects\StrictLib\strict-ooxml-wml)
+    Checking strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+    Checking strict-ooxml-render-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-pdf)
+    Checking strict-ooxml v0.1.0 (D:\projects\StrictLib\strict-ooxml)
+error[E0412]: cannot find type `RenderOptions` in this scope
+   --> strict-ooxml\src\lib.rs:324:40
+    |
+324 |     pub fn render_pdf(&self, options: &RenderOptions) -> Result<PdfOutput> {
+    |                                        ^^^^^^^^^^^^^ not found in this scope
+    |
+note: found an item that was configured out
+   --> strict-ooxml\src\lib.rs:57:80
+    |
+ 56 | #[cfg(feature = "svg")]
+    |       --------------- the item is gated behind the `svg` feature
+ 57 | pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};
+    |                                                                                ^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `strict_ooxml_render_svg`
+   --> strict-ooxml\src\lib.rs:326:13
+    |
+326 |             strict_ooxml_render_svg::place_pages(&self.document, options, Some(&self.package))?;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `strict_ooxml_render_svg`
+    |
+help: there is a crate or module with a similar name
+    |
+326 -             strict_ooxml_render_svg::place_pages(&self.document, options, Some(&self.package))?;
+326 +             strict_ooxml_render_pdf::place_pages(&self.document, options, Some(&self.package))?;
+    |
+
+Some errors have detailed explanations: E0412, E0433.
+For more information about an error, try `rustc --explain E0412`.
+error: could not compile `strict-ooxml` (lib) due to 2 previous errors
+AUDIT_EXIT_CODE=101

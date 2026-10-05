@@ -1,0 +1,254 @@
+{
+  "source_sha256": "d5e2b824cf9a1d42d5c2ee366e1cdc70e3e9d48ec99306df0222bb17f19c8329",
+  "table_grid_twips": [
+    "2334",
+    "1139",
+    "3995"
+  ],
+  "right_cell_merges": [
+    {
+      "row": 0,
+      "merge": null
+    },
+    {
+      "row": 1,
+      "merge": "restart"
+    },
+    {
+      "row": 2,
+      "merge": "continue"
+    },
+    {
+      "row": 3,
+      "merge": "restart"
+    },
+    {
+      "row": 4,
+      "merge": "continue"
+    },
+    {
+      "row": 5,
+      "merge": "continue"
+    },
+    {
+      "row": 6,
+      "merge": "continue"
+    }
+  ],
+  "page8_image": {
+    "source_parts": [
+      "word/media/image15.png"
+    ],
+    "bytes": 40519,
+    "sha256": "b5bc1a1fa4f8abc440ea9a9cea216e9c8abde2e731201ba5dded487ea5ae1c34",
+    "format": "PNG",
+    "pixels": [
+      447,
+      157
+    ],
+    "decode": "complete",
+    "svg_box": {
+      "x": "56.733",
+      "y": "81.264",
+      "width": "448",
+      "height": "156.933"
+    }
+  },
+  "page8_caption": "8     Programming Basics with C#Part of the code is deliberately blurred, so you can test what you learned so far.Testing in the Judge SystemTest your solution here: https://judge.softuni.org/Contests/Practice/Index/506#3.Variable ScopeEach variable has a range in which it exists, called variable scope. This range spec",
+  "variant_exit": 1,
+  "cases": {
+    "original": {
+      "3": {
+        "cell_rectangles": [
+          {
+            "x": 56.733,
+            "y": 716.455,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 716.455,
+            "width": 75.933,
+            "height": 31.625
+          },
+          {
+            "x": 288.267,
+            "y": 716.455,
+            "width": 266.333,
+            "height": 63.25
+          },
+          {
+            "x": 56.733,
+            "y": 748.08,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 748.08,
+            "width": 75.933,
+            "height": 31.625
+          },
+          {
+            "x": 56.733,
+            "y": 779.705,
+            "width": 155.6,
+            "height": 51.25
+          },
+          {
+            "x": 212.333,
+            "y": 779.705,
+            "width": 75.933,
+            "height": 51.25
+          },
+          {
+            "x": 288.267,
+            "y": 779.705,
+            "width": 266.333,
+            "height": 165.75
+          },
+          {
+            "x": 56.733,
+            "y": 830.955,
+            "width": 155.6,
+            "height": 51.25
+          },
+          {
+            "x": 212.333,
+            "y": 830.955,
+            "width": 75.933,
+            "height": 51.25
+          }
+        ],
+        "page_height": 922.667
+      },
+      "4": {
+        "cell_rectangles": [
+          {
+            "x": 56.733,
+            "y": 37.8,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 37.8,
+            "width": 75.933,
+            "height": 31.625
+          },
+          {
+            "x": 56.733,
+            "y": 69.425,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 69.425,
+            "width": 75.933,
+            "height": 31.625
+          }
+        ],
+        "page_height": 922.667
+      }
+    },
+    "no-vertical-merge": {
+      "3": {
+        "cell_rectangles": [
+          {
+            "x": 56.733,
+            "y": 716.455,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 716.455,
+            "width": 75.933,
+            "height": 31.625
+          },
+          {
+            "x": 288.267,
+            "y": 716.455,
+            "width": 266.333,
+            "height": 31.625
+          },
+          {
+            "x": 56.733,
+            "y": 748.08,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 748.08,
+            "width": 75.933,
+            "height": 31.625
+          },
+          {
+            "x": 56.733,
+            "y": 779.705,
+            "width": 155.6,
+            "height": 51.25
+          },
+          {
+            "x": 212.333,
+            "y": 779.705,
+            "width": 75.933,
+            "height": 51.25
+          },
+          {
+            "x": 288.267,
+            "y": 779.705,
+            "width": 266.333,
+            "height": 51.25
+          },
+          {
+            "x": 56.733,
+            "y": 830.955,
+            "width": 155.6,
+            "height": 51.25
+          },
+          {
+            "x": 212.333,
+            "y": 830.955,
+            "width": 75.933,
+            "height": 51.25
+          }
+        ],
+        "page_height": 922.667
+      },
+      "4": {
+        "cell_rectangles": [
+          {
+            "x": 56.733,
+            "y": 37.8,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 37.8,
+            "width": 75.933,
+            "height": 31.625
+          },
+          {
+            "x": 56.733,
+            "y": 69.425,
+            "width": 155.6,
+            "height": 31.625
+          },
+          {
+            "x": 212.333,
+            "y": 69.425,
+            "width": 75.933,
+            "height": 31.625
+          }
+        ],
+        "page_height": 922.667
+      }
+    }
+  },
+  "source_unchanged": true
+}

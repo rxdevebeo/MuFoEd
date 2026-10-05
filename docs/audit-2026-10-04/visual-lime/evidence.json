@@ -1,0 +1,245 @@
+{
+  "source_sha256": "8035ff6125e082dd6b5285b73bc35fdf61439e0b4f1316a5afdac3b7ea859771",
+  "cases": {
+    "original": {
+      "exit": 1,
+      "pages": 7,
+      "heading": [
+        {
+          "text": "Приложение ",
+          "x": "113.4",
+          "y": "402.583",
+          "font-family": "Segoe UI",
+          "font-size": "16",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "№2 ",
+          "x": "200.6",
+          "y": "402.583",
+          "font-family": "Segoe UI",
+          "font-size": "16",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ],
+      "table_prefix": [
+        {
+          "text": "В",
+          "x": "113.4",
+          "y": "98.267"
+        },
+        {
+          "text": "и",
+          "x": "113.4",
+          "y": "118.267"
+        },
+        {
+          "text": "л",
+          "x": "113.4",
+          "y": "138.267"
+        },
+        {
+          "text": "о",
+          "x": "113.4",
+          "y": "158.267"
+        },
+        {
+          "text": "н",
+          "x": "113.4",
+          "y": "178.267"
+        },
+        {
+          "text": "и",
+          "x": "113.4",
+          "y": "198.267"
+        },
+        {
+          "text": "с",
+          "x": "113.4",
+          "y": "218.267"
+        },
+        {
+          "text": "а",
+          "x": "113.4",
+          "y": "238.267"
+        }
+      ]
+    },
+    "heading-no-paragraph-toggles": {
+      "exit": 1,
+      "pages": 7,
+      "heading": [
+        {
+          "text": "Приложение ",
+          "x": "113.4",
+          "y": "402.583",
+          "font-family": "Segoe UI",
+          "font-size": "16",
+          "font-weight": "bold",
+          "font-style": "italic",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "№2 ",
+          "x": "204.12",
+          "y": "402.583",
+          "font-family": "Segoe UI",
+          "font-size": "16",
+          "font-weight": "bold",
+          "font-style": "italic",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ],
+      "table_prefix": [
+        {
+          "text": "В",
+          "x": "113.4",
+          "y": "98.267"
+        },
+        {
+          "text": "и",
+          "x": "113.4",
+          "y": "118.267"
+        },
+        {
+          "text": "л",
+          "x": "113.4",
+          "y": "138.267"
+        },
+        {
+          "text": "о",
+          "x": "113.4",
+          "y": "158.267"
+        },
+        {
+          "text": "н",
+          "x": "113.4",
+          "y": "178.267"
+        },
+        {
+          "text": "и",
+          "x": "113.4",
+          "y": "198.267"
+        },
+        {
+          "text": "с",
+          "x": "113.4",
+          "y": "218.267"
+        },
+        {
+          "text": "а",
+          "x": "113.4",
+          "y": "238.267"
+        }
+      ]
+    },
+    "table-no-zero-width": {
+      "exit": 1,
+      "pages": 5,
+      "heading": [
+        {
+          "text": "Приложение ",
+          "x": "113.4",
+          "y": "402.583",
+          "font-family": "Segoe UI",
+          "font-size": "16",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "№2 ",
+          "x": "200.6",
+          "y": "402.583",
+          "font-family": "Segoe UI",
+          "font-size": "16",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ],
+      "table_prefix": [
+        {
+          "text": "Вилониса",
+          "x": "113.4",
+          "y": "503.435"
+        }
+      ]
+    },
+    "heading-bundled-font": {
+      "exit": 1,
+      "pages": 7,
+      "heading": [
+        {
+          "text": "Приложение ",
+          "x": "113.4",
+          "y": "404.841",
+          "font-family": "Tinos",
+          "font-size": "16",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "№2 ",
+          "x": "203.884",
+          "y": "404.841",
+          "font-family": "Tinos",
+          "font-size": "16",
+          "fill": "#0033cc",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ],
+      "table_prefix": [
+        {
+          "text": "В",
+          "x": "113.4",
+          "y": "98.267"
+        },
+        {
+          "text": "и",
+          "x": "113.4",
+          "y": "118.267"
+        },
+        {
+          "text": "л",
+          "x": "113.4",
+          "y": "138.267"
+        },
+        {
+          "text": "о",
+          "x": "113.4",
+          "y": "158.267"
+        },
+        {
+          "text": "н",
+          "x": "113.4",
+          "y": "178.267"
+        },
+        {
+          "text": "и",
+          "x": "113.4",
+          "y": "198.267"
+        },
+        {
+          "text": "с",
+          "x": "113.4",
+          "y": "218.267"
+        },
+        {
+          "text": "а",
+          "x": "113.4",
+          "y": "238.267"
+        }
+      ]
+    }
+  },
+  "segoe_ui_16px_hmtx": {
+    "heading_word_and_space": 99.5,
+    "heading_word_only": 95.1171875,
+    "layout_advance": 87.19999999999999,
+    "font_sha256": "8134dbcd09e7b123c9a7f229d49cffbcb01352cc72ea5e1076b65d0dca9f73cd",
+    "note": "Unshaped advance sum; actual browser shaping can differ slightly."
+  }
+}

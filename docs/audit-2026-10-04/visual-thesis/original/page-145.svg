@@ -1,0 +1,737 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="793.733" height="1122.533" viewBox="0 0 793.733 1122.533">
+  <rect x="0" y="0" width="793.733" height="1122.533" fill="#ffffff"/>
+  <text x="2.667" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">Table </text>
+  <text x="42.191" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">S4 </text>
+  <text x="61.348" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">(Continued </text>
+  <text x="135.92" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">4): </text>
+  <text x="156.688" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">Description </text>
+  <text x="232.865" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">and </text>
+  <text x="260.178" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">references </text>
+  <text x="328.162" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">for </text>
+  <text x="350.556" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="373.773" y="14.827" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">comparative</text>
+  <text x="2.667" y="33.36" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">population </text>
+  <text x="73.995" y="33.36" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">datasets </text>
+  <text x="128.178" y="33.36" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">and </text>
+  <text x="155.492" y="33.36" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">pools.</text>
+  <text x="0.667" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">Population</text>
+  <text x="0.667" y="61.867" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">name</text>
+  <line x1="0" y1="37.067" x2="96" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="37.067" x2="0" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">Population </text>
+  <text x="151.37" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">ID</text>
+  <line x1="96" y1="37.067" x2="181.133" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="37.067" x2="96" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="218.993" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">Pool</text>
+  <line x1="181.133" y1="37.067" x2="275.533" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="37.067" x2="181.133" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">Latitude</text>
+  <line x1="275.533" y1="37.067" x2="332.467" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="37.067" x2="275.533" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">Longitude</text>
+  <line x1="332.467" y1="37.067" x2="398.4" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="37.067" x2="332.467" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="414.063" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">N</text>
+  <line x1="398.4" y1="37.067" x2="436.467" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="37.067" x2="398.4" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="44.533" font-family="Arimo" font-size="9.333" fill="#000000" xml:space="preserve">Reference</text>
+  <line x1="436.467" y1="37.067" x2="556.8" y2="37.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="37.067" x2="436.467" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="37.067" x2="556.8" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Russians</text>
+  <text x="0.667" y="79.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Pomors</text>
+  <line x1="0" y1="63.733" x2="96" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="63.733" x2="0" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="63.733" x2="181.133" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="63.733" x2="96" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="63.733" x2="275.533" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="63.733" x2="181.133" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">66.0</text>
+  <line x1="275.533" y1="63.733" x2="332.467" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="63.733" x2="275.533" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">42.0</text>
+  <line x1="332.467" y1="63.733" x2="398.4" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="63.733" x2="332.467" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">81</text>
+  <line x1="398.4" y1="63.733" x2="436.467" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="63.733" x2="398.4" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Tonks </text>
+  <text x="471.142" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="480.778" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="494.747" y="70.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2006</text>
+  <line x1="436.467" y1="63.733" x2="556.8" y2="63.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="63.733" x2="436.467" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="63.733" x2="556.8" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="95.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Russians </text>
+  <text x="38.719" y="95.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Rostov</text>
+  <line x1="0" y1="89" x2="96" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="89" x2="0" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="89" x2="181.133" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="89" x2="96" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="95.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="89" x2="275.533" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="89" x2="181.133" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="95.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">47.2</text>
+  <line x1="275.533" y1="89" x2="332.467" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="89" x2="275.533" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="95.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">39.7</text>
+  <line x1="332.467" y1="89" x2="398.4" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="89" x2="332.467" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="95.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">111</text>
+  <line x1="398.4" y1="89" x2="436.467" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="89" x2="398.4" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="98.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Kornienko </text>
+  <text x="486.567" y="98.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="496.202" y="98.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="510.171" y="98.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2004, </text>
+  <text x="445.133" y="111.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Richards </text>
+  <text x="481.738" y="111.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="491.374" y="111.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="505.343" y="111.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2000</text>
+  <line x1="436.467" y1="89" x2="556.8" y2="89" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="89" x2="436.467" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="89" x2="556.8" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="133.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Russians</text>
+  <text x="0.667" y="142.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Smolensk</text>
+  <line x1="0" y1="126.467" x2="96" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="126.467" x2="0" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="126.467" x2="181.133" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="126.467" x2="96" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="133.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="126.467" x2="275.533" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="126.467" x2="181.133" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="133.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">53.9</text>
+  <line x1="275.533" y1="126.467" x2="332.467" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="126.467" x2="275.533" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="133.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">32.9</text>
+  <line x1="332.467" y1="126.467" x2="398.4" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="126.467" x2="332.467" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="133.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">147</text>
+  <line x1="398.4" y1="126.467" x2="436.467" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="126.467" x2="398.4" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="136.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="136.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="148.307" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="126.467" x2="556.8" y2="126.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="126.467" x2="436.467" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="126.467" x2="556.8" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="158.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Russians </text>
+  <text x="38.719" y="158.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Unja</text>
+  <line x1="0" y1="151.4" x2="96" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="151.4" x2="0" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="151.4" x2="181.133" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="151.4" x2="96" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="158.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="151.4" x2="275.533" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="151.4" x2="181.133" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="158.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">58.3</text>
+  <line x1="275.533" y1="151.4" x2="332.467" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="151.4" x2="275.533" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="158.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">44.8</text>
+  <line x1="332.467" y1="151.4" x2="398.4" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="151.4" x2="332.467" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="158.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">79</text>
+  <line x1="398.4" y1="151.4" x2="436.467" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="151.4" x2="398.4" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="161.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="161.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="173.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="151.4" x2="556.8" y2="151.4" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="151.4" x2="436.467" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="151.4" x2="556.8" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="183.6" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Saami</text>
+  <line x1="0" y1="176.667" x2="96" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="176.667" x2="0" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="183.6" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">saa</text>
+  <line x1="96" y1="176.667" x2="181.133" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="176.667" x2="96" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="176.667" x2="275.533" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="176.667" x2="181.133" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="183.6" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">68.9</text>
+  <line x1="275.533" y1="176.667" x2="332.467" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="176.667" x2="275.533" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="183.6" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">27.6</text>
+  <line x1="332.467" y1="176.667" x2="398.4" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="176.667" x2="332.467" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="183.6" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">559</text>
+  <line x1="398.4" y1="176.667" x2="436.467" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="176.667" x2="398.4" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="186.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Sajantila </text>
+  <text x="480.786" y="186.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="490.422" y="186.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="504.391" y="186.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1995, </text>
+  <text x="528.487" y="186.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Dupuy </text>
+  <text x="445.133" y="198.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="454.769" y="198.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="468.738" y="198.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1996, </text>
+  <text x="492.834" y="198.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Kittles </text>
+  <text x="518.842" y="198.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="528.478" y="198.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="445.133" y="210.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1999, </text>
+  <text x="469.229" y="210.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Delghandi </text>
+  <text x="510.667" y="210.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="520.302" y="210.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="445.133" y="222.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1998, </text>
+  <text x="469.229" y="222.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Tambets </text>
+  <text x="505.351" y="222.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="514.987" y="222.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="528.956" y="222.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2004, </text>
+  <text x="445.133" y="234.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Tonks </text>
+  <text x="471.142" y="234.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="480.778" y="234.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="494.747" y="234.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2006</text>
+  <line x1="436.467" y1="176.667" x2="556.8" y2="176.667" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="176.667" x2="436.467" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="176.667" x2="556.8" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Sardinia</text>
+  <line x1="0" y1="263.067" x2="96" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="263.067" x2="0" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">IT-88</text>
+  <line x1="96" y1="263.067" x2="181.133" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="263.067" x2="96" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="263.067" x2="275.533" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="263.067" x2="181.133" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">40.0</text>
+  <line x1="275.533" y1="263.067" x2="332.467" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="263.067" x2="275.533" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">9.0</text>
+  <line x1="332.467" y1="263.067" x2="398.4" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="263.067" x2="332.467" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">115</text>
+  <line x1="398.4" y1="263.067" x2="436.467" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="263.067" x2="398.4" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Richards </text>
+  <text x="481.738" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="491.374" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="505.343" y="270" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2000</text>
+  <line x1="436.467" y1="263.067" x2="556.8" y2="263.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="263.067" x2="436.467" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="263.067" x2="556.8" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="284.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Saudi </text>
+  <text x="25.241" y="284.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Arabia</text>
+  <line x1="0" y1="277.133" x2="96" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="277.133" x2="0" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="284.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">SAU</text>
+  <line x1="96" y1="277.133" x2="181.133" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="277.133" x2="96" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="277.133" x2="275.533" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="277.133" x2="181.133" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="284.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">24.6</text>
+  <line x1="275.533" y1="277.133" x2="332.467" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="277.133" x2="275.533" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="284.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">46.5</text>
+  <line x1="332.467" y1="277.133" x2="398.4" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="277.133" x2="332.467" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="284.067" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">325</text>
+  <line x1="398.4" y1="277.133" x2="436.467" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="277.133" x2="398.4" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="437.133" y="286.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="503.375" y="286.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="437.133" y="298.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication, </text>
+  <text x="502.65" y="298.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Abu- </text>
+  <text x="525.782" y="298.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Amero </text>
+  <text x="437.133" y="311.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="446.769" y="311.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="460.738" y="311.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2007</text>
+  <line x1="436.467" y1="277.133" x2="556.8" y2="277.133" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="277.133" x2="436.467" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="277.133" x2="556.8" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="321.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Selkups</text>
+  <line x1="0" y1="314.6" x2="96" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="314.6" x2="0" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="321.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">sel</text>
+  <line x1="96" y1="314.6" x2="181.133" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="314.6" x2="96" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="197.027" y="321.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Western/Central</text>
+  <text x="214.845" y="330.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Siberia</text>
+  <line x1="181.133" y1="314.6" x2="275.533" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="314.6" x2="181.133" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="321.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">65.8</text>
+  <line x1="275.533" y1="314.6" x2="332.467" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="314.6" x2="275.533" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="321.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">82.5</text>
+  <line x1="332.467" y1="314.6" x2="398.4" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="314.6" x2="332.467" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="321.533" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">120</text>
+  <line x1="398.4" y1="314.6" x2="436.467" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="314.6" x2="398.4" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="324.307" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="324.307" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="336.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="314.6" x2="556.8" y2="314.6" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="314.6" x2="436.467" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="314.6" x2="556.8" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Shors</text>
+  <line x1="0" y1="339.867" x2="96" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="339.867" x2="0" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">sho</text>
+  <line x1="96" y1="339.867" x2="181.133" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="339.867" x2="96" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="339.867" x2="275.533" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="339.867" x2="181.133" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">52.8</text>
+  <line x1="275.533" y1="339.867" x2="332.467" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="339.867" x2="275.533" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">87.9</text>
+  <line x1="332.467" y1="339.867" x2="398.4" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="339.867" x2="332.467" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">82</text>
+  <line x1="398.4" y1="339.867" x2="436.467" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="339.867" x2="398.4" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Derenko </text>
+  <text x="480.299" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="489.935" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="503.904" y="346.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2007</text>
+  <line x1="436.467" y1="339.867" x2="556.8" y2="339.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="339.867" x2="436.467" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="339.867" x2="556.8" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="360.867" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Slovaks</text>
+  <line x1="0" y1="353.933" x2="96" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="353.933" x2="0" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="360.867" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">SVK</text>
+  <line x1="96" y1="353.933" x2="181.133" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="353.933" x2="96" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="360.867" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="353.933" x2="275.533" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="353.933" x2="181.133" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="360.867" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">48.8</text>
+  <line x1="275.533" y1="353.933" x2="332.467" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="353.933" x2="275.533" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="360.867" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">19.3</text>
+  <line x1="332.467" y1="353.933" x2="398.4" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="353.933" x2="332.467" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="360.867" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">510</text>
+  <line x1="398.4" y1="353.933" x2="436.467" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="353.933" x2="398.4" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="363.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Koledova </text>
+  <text x="483.681" y="363.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="493.316" y="363.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="507.285" y="363.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2005 </text>
+  <text x="445.133" y="375.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Unpublished</text>
+  <line x1="436.467" y1="353.933" x2="556.8" y2="353.933" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="353.933" x2="436.467" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="353.933" x2="556.8" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="385.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Slovenians</text>
+  <line x1="0" y1="378.867" x2="96" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="378.867" x2="0" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="385.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">SVN</text>
+  <line x1="96" y1="378.867" x2="181.133" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="378.867" x2="96" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="385.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="378.867" x2="275.533" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="378.867" x2="181.133" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="385.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">46.1</text>
+  <line x1="275.533" y1="378.867" x2="332.467" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="378.867" x2="275.533" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="385.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">14.5</text>
+  <line x1="332.467" y1="378.867" x2="398.4" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="378.867" x2="332.467" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="385.8" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">233</text>
+  <line x1="398.4" y1="378.867" x2="436.467" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="378.867" x2="398.4" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="388.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Malyarchuk </text>
+  <text x="491.852" y="388.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="501.488" y="388.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="515.457" y="388.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2003, </text>
+  <text x="445.133" y="400.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Zupanic </text>
+  <text x="478.374" y="400.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="488.01" y="400.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="501.979" y="400.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2004</text>
+  <line x1="436.467" y1="378.867" x2="556.8" y2="378.867" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="378.867" x2="436.467" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="378.867" x2="556.8" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="423.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Spaniards</text>
+  <text x="0.667" y="431.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Andalusia</text>
+  <line x1="0" y1="416.333" x2="96" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="416.333" x2="0" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="423.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">ESP</text>
+  <line x1="96" y1="416.333" x2="181.133" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="416.333" x2="96" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="423.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="416.333" x2="275.533" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="416.333" x2="181.133" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="423.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">38.1</text>
+  <line x1="275.533" y1="416.333" x2="332.467" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="416.333" x2="275.533" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="423.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">355.2</text>
+  <line x1="332.467" y1="416.333" x2="398.4" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="416.333" x2="332.467" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="423.267" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">65</text>
+  <line x1="398.4" y1="416.333" x2="436.467" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="416.333" x2="398.4" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="426.04" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Larruga </text>
+  <text x="477.413" y="426.04" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="487.049" y="426.04" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="501.018" y="426.04" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2001, </text>
+  <text x="445.133" y="438.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Corte-Real </text>
+  <text x="489.444" y="438.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="499.08" y="438.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="513.049" y="438.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="436.467" y1="416.333" x2="556.8" y2="416.333" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="416.333" x2="436.467" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="416.333" x2="556.8" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="460.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Spaniards</text>
+  <text x="0.667" y="469.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Cantabria</text>
+  <line x1="0" y1="453.8" x2="96" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="453.8" x2="0" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="453.8" x2="181.133" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="453.8" x2="96" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="460.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="453.8" x2="275.533" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="453.8" x2="181.133" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="460.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">43.2</text>
+  <line x1="275.533" y1="453.8" x2="332.467" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="453.8" x2="275.533" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="460.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">356.0</text>
+  <line x1="332.467" y1="453.8" x2="398.4" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="453.8" x2="332.467" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="460.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">242</text>
+  <line x1="398.4" y1="453.8" x2="436.467" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="453.8" x2="398.4" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="463.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Maca-Meyer </text>
+  <text x="495.699" y="463.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="505.335" y="463.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="519.304" y="463.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2003a</text>
+  <line x1="436.467" y1="453.8" x2="556.8" y2="453.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="453.8" x2="436.467" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="453.8" x2="556.8" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="486" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Spaniards</text>
+  <text x="0.667" y="494.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">central</text>
+  <line x1="0" y1="479.067" x2="96" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="479.067" x2="0" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="479.067" x2="181.133" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="479.067" x2="96" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="486" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="479.067" x2="275.533" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="479.067" x2="181.133" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="486" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">40.6</text>
+  <line x1="275.533" y1="479.067" x2="332.467" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="479.067" x2="275.533" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="486" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">356.2</text>
+  <line x1="332.467" y1="479.067" x2="398.4" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="479.067" x2="332.467" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="486" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">129</text>
+  <line x1="398.4" y1="479.067" x2="436.467" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="479.067" x2="398.4" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="488.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Larruga </text>
+  <text x="477.413" y="488.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="487.049" y="488.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="501.018" y="488.773" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2001, </text>
+  <text x="445.133" y="500.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Corte-Real </text>
+  <text x="489.444" y="500.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="499.08" y="500.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="513.049" y="500.907" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="436.467" y1="479.067" x2="556.8" y2="479.067" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="479.067" x2="436.467" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="479.067" x2="556.8" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="523.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Spaniards</text>
+  <text x="0.667" y="532.133" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Galicia</text>
+  <line x1="0" y1="516.533" x2="96" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="516.533" x2="0" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="516.533" x2="181.133" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="516.533" x2="96" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="523.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="516.533" x2="275.533" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="516.533" x2="181.133" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="523.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">43.0</text>
+  <line x1="275.533" y1="516.533" x2="332.467" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="516.533" x2="275.533" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="523.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">352.0</text>
+  <line x1="332.467" y1="516.533" x2="398.4" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="516.533" x2="332.467" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="523.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">135</text>
+  <line x1="398.4" y1="516.533" x2="436.467" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="516.533" x2="398.4" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="526.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Gonzalez </text>
+  <text x="484.154" y="526.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="493.79" y="526.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="507.759" y="526.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2003, </text>
+  <text x="531.855" y="526.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Salas </text>
+  <text x="445.133" y="538.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="454.769" y="538.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="468.738" y="538.373" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1998</text>
+  <line x1="436.467" y1="516.533" x2="556.8" y2="516.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="516.533" x2="436.467" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="516.533" x2="556.8" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Spaniards </text>
+  <text x="42.1" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">north</text>
+  <text x="61.854" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">eastern</text>
+  <line x1="0" y1="541.8" x2="96" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="541.8" x2="0" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="541.8" x2="181.133" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="541.8" x2="96" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="548.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="541.8" x2="275.533" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="541.8" x2="181.133" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="548.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">41.6</text>
+  <line x1="275.533" y1="541.8" x2="332.467" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="541.8" x2="275.533" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="548.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1.9</text>
+  <line x1="332.467" y1="541.8" x2="398.4" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="541.8" x2="332.467" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="548.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">133</text>
+  <line x1="398.4" y1="541.8" x2="436.467" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="541.8" x2="398.4" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Crespillo </text>
+  <text x="481.256" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="490.891" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="504.861" y="551.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2000, </text>
+  <text x="445.133" y="563.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Corte-Real </text>
+  <text x="489.444" y="563.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="499.08" y="563.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="513.049" y="563.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="436.467" y1="541.8" x2="556.8" y2="541.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="541.8" x2="436.467" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="541.8" x2="556.8" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Swedes </text>
+  <text x="33.907" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">central</text>
+  <line x1="0" y1="579.267" x2="96" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="579.267" x2="0" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">SWE</text>
+  <line x1="96" y1="579.267" x2="181.133" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="579.267" x2="96" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="579.267" x2="275.533" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="579.267" x2="181.133" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">59.3</text>
+  <line x1="275.533" y1="579.267" x2="332.467" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="579.267" x2="275.533" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">17.7</text>
+  <line x1="332.467" y1="579.267" x2="398.4" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="579.267" x2="332.467" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="586.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">105</text>
+  <line x1="398.4" y1="579.267" x2="436.467" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="579.267" x2="398.4" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="588.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="588.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="601.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="579.267" x2="556.8" y2="579.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="579.267" x2="436.467" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="579.267" x2="556.8" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="611.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Swedes </text>
+  <text x="33.907" y="611.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Gotland</text>
+  <line x1="0" y1="604.533" x2="96" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="604.533" x2="0" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="604.533" x2="181.133" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="604.533" x2="96" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="611.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="604.533" x2="275.533" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="604.533" x2="181.133" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="611.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">57.7</text>
+  <line x1="275.533" y1="604.533" x2="332.467" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="604.533" x2="275.533" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="611.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">18.1</text>
+  <line x1="332.467" y1="604.533" x2="398.4" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="604.533" x2="332.467" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="611.467" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">267</text>
+  <line x1="398.4" y1="604.533" x2="436.467" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="604.533" x2="398.4" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="614.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="614.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="626.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="604.533" x2="556.8" y2="604.533" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="604.533" x2="436.467" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="604.533" x2="556.8" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="636.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Swedes </text>
+  <text x="33.907" y="636.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">northern</text>
+  <line x1="0" y1="629.8" x2="96" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="629.8" x2="0" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="629.8" x2="181.133" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="629.8" x2="96" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="636.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="629.8" x2="275.533" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="629.8" x2="181.133" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="636.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">68.0</text>
+  <line x1="275.533" y1="629.8" x2="332.467" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="629.8" x2="275.533" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="636.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">20.0</text>
+  <line x1="332.467" y1="629.8" x2="398.4" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="629.8" x2="332.467" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="636.733" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">97</text>
+  <line x1="398.4" y1="629.8" x2="436.467" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="629.8" x2="398.4" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="639.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="639.507" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="651.64" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="629.8" x2="556.8" y2="629.8" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="629.8" x2="436.467" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="629.8" x2="556.8" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="661.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Swedes</text>
+  <text x="0.667" y="670.333" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">southern</text>
+  <line x1="0" y1="654.733" x2="96" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="654.733" x2="0" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="654.733" x2="181.133" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="654.733" x2="96" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="661.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="654.733" x2="275.533" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="654.733" x2="181.133" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="661.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">55.9</text>
+  <line x1="275.533" y1="654.733" x2="332.467" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="654.733" x2="275.533" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="661.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">12.7</text>
+  <line x1="332.467" y1="654.733" x2="398.4" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="654.733" x2="332.467" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="661.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">177</text>
+  <line x1="398.4" y1="654.733" x2="436.467" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="654.733" x2="398.4" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="664.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="664.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="676.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication</text>
+  <line x1="436.467" y1="654.733" x2="556.8" y2="654.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="654.733" x2="436.467" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="654.733" x2="556.8" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="686.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Swiss</text>
+  <line x1="0" y1="680" x2="96" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="680" x2="0" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="686.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">CHE</text>
+  <line x1="96" y1="680" x2="181.133" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="680" x2="96" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="686.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="680" x2="275.533" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="680" x2="181.133" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="686.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">46.7</text>
+  <line x1="275.533" y1="680" x2="332.467" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="680" x2="275.533" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="686.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">6.6</text>
+  <line x1="332.467" y1="680" x2="398.4" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="680" x2="332.467" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="686.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">230</text>
+  <line x1="398.4" y1="680" x2="436.467" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="680" x2="398.4" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="689.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Dimo-Simonin </text>
+  <text x="501.962" y="689.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="511.598" y="689.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="525.567" y="689.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2000, </text>
+  <text x="445.133" y="701.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Pult </text>
+  <text x="462.475" y="701.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="472.111" y="701.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="486.08" y="701.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1994</text>
+  <line x1="436.467" y1="680" x2="556.8" y2="680" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="680" x2="436.467" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="680" x2="556.8" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="712.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Syrians</text>
+  <line x1="0" y1="705.267" x2="96" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="705.267" x2="0" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="712.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">SYR</text>
+  <line x1="96" y1="705.267" x2="181.133" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="705.267" x2="96" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="705.267" x2="275.533" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="705.267" x2="181.133" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="712.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">33.6</text>
+  <line x1="275.533" y1="705.267" x2="332.467" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="705.267" x2="275.533" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="712.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">36.2</text>
+  <line x1="332.467" y1="705.267" x2="398.4" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="705.267" x2="332.467" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="712.2" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">169</text>
+  <line x1="398.4" y1="705.267" x2="436.467" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="705.267" x2="398.4" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="714.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="494.268" y="714.973" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="445.133" y="727.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication, </text>
+  <text x="508.233" y="727.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Richards </text>
+  <text x="544.838" y="727.107" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="445.133" y="739.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="459.102" y="739.24" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2000</text>
+  <line x1="436.467" y1="705.267" x2="556.8" y2="705.267" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="705.267" x2="436.467" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="705.267" x2="556.8" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="749.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Tatars</text>
+  <line x1="0" y1="742.733" x2="96" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="742.733" x2="0" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="749.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">RU-TA</text>
+  <line x1="96" y1="742.733" x2="181.133" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="742.733" x2="96" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="214.36" y="749.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Europe</text>
+  <line x1="181.133" y1="742.733" x2="275.533" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="742.733" x2="181.133" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="749.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">65.0</text>
+  <line x1="275.533" y1="742.733" x2="332.467" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="742.733" x2="275.533" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="749.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">52.4</text>
+  <line x1="332.467" y1="742.733" x2="398.4" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="742.733" x2="332.467" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="749.667" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">225</text>
+  <line x1="398.4" y1="742.733" x2="436.467" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="742.733" x2="398.4" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="445.133" y="752.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Bermisheva </text>
+  <text x="493.299" y="752.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="502.935" y="752.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="516.904" y="752.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2002</text>
+  <line x1="436.467" y1="742.733" x2="556.8" y2="742.733" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="742.733" x2="436.467" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="742.733" x2="556.8" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="774.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Tofalars</text>
+  <line x1="0" y1="768" x2="96" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="768" x2="0" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="774.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">tof</text>
+  <line x1="96" y1="768" x2="181.133" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="768" x2="96" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="768" x2="275.533" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="768" x2="181.133" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="774.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">54.8</text>
+  <line x1="275.533" y1="768" x2="332.467" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="768" x2="275.533" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="774.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">99.0</text>
+  <line x1="332.467" y1="768" x2="398.4" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="768" x2="332.467" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="774.933" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">104</text>
+  <line x1="398.4" y1="768" x2="436.467" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="768" x2="398.4" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="437.133" y="777.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Derenko </text>
+  <text x="481.333" y="777.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="500.002" y="777.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="523.004" y="777.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2002, </text>
+  <text x="437.133" y="789.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Starikovskaya </text>
+  <text x="493.488" y="789.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="503.124" y="789.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="517.093" y="789.84" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2005</text>
+  <line x1="436.467" y1="768" x2="556.8" y2="768" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="768" x2="436.467" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="768" x2="556.8" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <text x="0.667" y="812.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Turkey</text>
+  <line x1="0" y1="805.467" x2="96" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="880" x2="96" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="0" y1="805.467" x2="0" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <text x="104.667" y="812.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">TUR</text>
+  <line x1="96" y1="805.467" x2="181.133" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="880" x2="181.133" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="96" y1="805.467" x2="96" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="805.467" x2="275.533" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="880" x2="275.533" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="181.133" y1="805.467" x2="181.133" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <text x="284.2" y="812.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">39.0</text>
+  <line x1="275.533" y1="805.467" x2="332.467" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="880" x2="332.467" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="275.533" y1="805.467" x2="275.533" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <text x="341.133" y="812.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">33.0</text>
+  <line x1="332.467" y1="805.467" x2="398.4" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="880" x2="398.4" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="332.467" y1="805.467" x2="332.467" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <text x="411.067" y="812.4" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">608</text>
+  <line x1="398.4" y1="805.467" x2="436.467" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="880" x2="436.467" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="398.4" y1="805.467" x2="398.4" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <text x="437.133" y="815.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Balanovsky, </text>
+  <text x="503.375" y="815.173" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">personal </text>
+  <text x="437.133" y="827.307" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">communication, </text>
+  <text x="437.133" y="839.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Quintana-Murci </text>
+  <text x="501.198" y="839.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="513.245" y="839.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="529.626" y="839.44" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2004, </text>
+  <text x="437.133" y="851.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Richards </text>
+  <text x="474.415" y="851.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="484.727" y="851.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="499.373" y="851.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">2000, </text>
+  <text x="524.146" y="851.573" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">Calafell </text>
+  <text x="437.133" y="863.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">et </text>
+  <text x="446.769" y="863.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">al., </text>
+  <text x="460.738" y="863.707" font-family="Arimo" font-size="8.667" fill="#000000" xml:space="preserve">1996</text>
+  <line x1="436.467" y1="805.467" x2="556.8" y2="805.467" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="880" x2="556.8" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="436.467" y1="805.467" x2="436.467" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <line x1="556.8" y1="805.467" x2="556.8" y2="880" stroke="#000000" stroke-width="0.667"/>
+  <text x="1.333" y="891.733" font-family="Tinos" font-size="14.667" font-weight="bold" fill="#000000" xml:space="preserve">143</text>
+</svg>

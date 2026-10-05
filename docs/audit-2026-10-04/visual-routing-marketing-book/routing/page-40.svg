@@ -1,0 +1,275 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
+  <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
+  <text x="168" y="108.695" font-family="Cousine" font-size="14.667" fill="#000000" xml:space="preserve">o</text>
+  <text x="192" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Initialize() </text>
+  <text x="248.458" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">-&gt; </text>
+  <text x="262.195" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">does </text>
+  <text x="291.095" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">*not* </text>
+  <text x="325.893" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">call </text>
+  <text x="347.052" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">ClearOverrideMembers(); </text>
+  <text x="489.227" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">any </text>
+  <text x="511.668" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.Override&lt;var&gt; </text>
+  <text x="621.108" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="632.397" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">set </text>
+  <text x="651.727" y="108.695" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="168" y="127.413" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">commandline</text>
+  <text x="264" y="159.464" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="288" y="159.464" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">clears </text>
+  <text x="322.596" y="159.464" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.&lt;var&gt;</text>
+  <text x="264" y="191.514" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="288" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">calls </text>
+  <text x="314.374" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">OverrideMembers() </text>
+  <text x="425.142" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="460.396" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">may </text>
+  <text x="486.483" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">set </text>
+  <text x="505.813" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.&lt;var&gt; </text>
+  <text x="567.772" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="582.284" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.Override&lt;var&gt; </text>
+  <text x="691.724" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">(to </text>
+  <text x="710.279" y="191.514" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="264" y="210.232" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">commandline </text>
+  <text x="341.142" y="210.232" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">value)</text>
+  <text x="168" y="242.283" font-family="Cousine" font-size="14.667" fill="#000000" xml:space="preserve">o</text>
+  <text x="192" y="242.283" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">-infile</text>
+  <text x="216" y="274.333" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="264.792" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">has </text>
+  <text x="286.413" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">*nothing </text>
+  <text x="337.917" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="352.428" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">do* </text>
+  <text x="376.12" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="403.197" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RectilinearFileTests; </text>
+  <text x="514.518" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">they </text>
+  <text x="541.673" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="562.357" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">separate </text>
+  <text x="612.747" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">ways </text>
+  <text x="642.93" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="657.441" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">run </text>
+  <text x="679.115" y="274.333" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="216" y="293.051" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">files</text>
+  <text x="264" y="325.102" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="288" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">there </text>
+  <text x="320.402" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="331.691" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">no </text>
+  <text x="348.742" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">way </text>
+  <text x="373.71" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="388.221" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">run </text>
+  <text x="409.895" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="419.296" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RectilinearFileTests.&lt;method&gt; </text>
+  <text x="586.49" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">via </text>
+  <text x="604.973" y="325.102" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">TestRectilinear</text>
+  <text x="264" y="357.152" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="288" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Therefore </text>
+  <text x="344.816" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">there </text>
+  <text x="377.219" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="388.508" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">no </text>
+  <text x="405.559" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">call </text>
+  <text x="426.717" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="441.229" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">ClearOverrideMembers, </text>
+  <text x="575.077" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">nor </text>
+  <text x="596.776" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="608.065" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">there </text>
+  <text x="640.467" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="649.868" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">test </text>
+  <text x="673.664" y="357.152" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">method </text>
+  <text x="264" y="375.87" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="299.254" y="375.87" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">can </text>
+  <text x="321.298" y="375.87" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">set </text>
+  <text x="340.628" y="375.87" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.Override&lt;var&gt;</text>
+  <text x="264" y="407.921" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="288" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">And </text>
+  <text x="312.74" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">therefore </text>
+  <text x="367.525" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.OverrideVar </text>
+  <text x="465.227" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">stays </text>
+  <text x="495.559" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="522.635" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">whatever </text>
+  <text x="576.978" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">value </text>
+  <text x="609.1" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">it </text>
+  <text x="619.641" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">has </text>
+  <text x="641.262" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">after </text>
+  <text x="670.48" y="407.921" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="264" y="426.638" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">TestRectilinear </text>
+  <text x="347.659" y="426.638" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">commandline </text>
+  <text x="424.801" y="426.638" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="436.09" y="426.638" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">parsed</text>
+  <text x="216" y="458.689" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">does </text>
+  <text x="268.9" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">commandline </text>
+  <text x="346.042" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">parsing </text>
+  <text x="388.652" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="412.064" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Initialize() </text>
+  <text x="468.522" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">as </text>
+  <text x="483.138" y="458.689" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">above</text>
+  <text x="216" y="490.74" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="490.74" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">calls </text>
+  <text x="266.374" y="490.74" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">ProcessFiles </text>
+  <text x="334.753" y="490.74" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="370.007" y="490.74" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">calls </text>
+  <text x="396.38" y="490.74" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RecordFileInfoAndDoRouting</text>
+  <text x="264" y="522.79" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="288" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">calls </text>
+  <text x="314.374" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">InitializeMembers(reader) </text>
+  <text x="458.977" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="494.23" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">sets </text>
+  <text x="518.775" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.&lt;var&gt; </text>
+  <text x="580.734" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="595.246" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">what </text>
+  <text x="625.65" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">was </text>
+  <text x="649.797" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="662.876" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="683.996" y="522.79" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">file</text>
+  <text x="312" y="554.841" font-family="Cousine" font-size="14.667" fill="#000000" xml:space="preserve">o</text>
+  <text x="336" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">calls </text>
+  <text x="362.374" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">OverrideMembers, </text>
+  <text x="468.383" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="503.637" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">may </text>
+  <text x="529.724" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">again </text>
+  <text x="561.853" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">set </text>
+  <text x="581.182" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.&lt;var&gt; </text>
+  <text x="643.142" y="554.841" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="312" y="573.559" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.Override&lt;var&gt;</text>
+  <text x="168" y="605.609" font-family="Cousine" font-size="14.667" fill="#000000" xml:space="preserve">o</text>
+  <text x="192" y="605.609" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RectilinearTests() </text>
+  <text x="288.96" y="605.609" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Method </text>
+  <text x="216" y="637.66" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">TestRectilinear </text>
+  <text x="323.659" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">derives </text>
+  <text x="365.892" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="395.306" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RectilinearTests, </text>
+  <text x="487.507" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">so </text>
+  <text x="502.767" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">all </text>
+  <text x="518.288" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">those </text>
+  <text x="551.654" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">methods </text>
+  <text x="602.676" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="623.359" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">methods </text>
+  <text x="674.382" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="688.496" y="637.66" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="216" y="656.378" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base </text>
+  <text x="244.255" y="656.378" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="258.37" y="656.378" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">TestRectilinear</text>
+  <text x="216" y="688.428" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">does </text>
+  <text x="268.9" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">commandline </text>
+  <text x="346.042" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">parsing </text>
+  <text x="388.652" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="412.064" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Initialize() </text>
+  <text x="468.522" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">as </text>
+  <text x="483.138" y="688.428" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">above</text>
+  <text x="216" y="720.479" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">TestMethod </text>
+  <text x="309.368" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">sets </text>
+  <text x="333.913" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.&lt;var&gt;, </text>
+  <text x="399.199" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">similar </text>
+  <text x="438.294" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="452.806" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">how </text>
+  <text x="479.388" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">it </text>
+  <text x="489.928" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="501.217" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">set </text>
+  <text x="520.547" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">by </text>
+  <text x="536.602" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="546.003" y="720.479" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RectFileReader</text>
+  <text x="216" y="752.53" font-family="Wingdings" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="240" y="752.53" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Calls </text>
+  <text x="267.845" y="752.53" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">CreateRouter </text>
+  <text x="343.763" y="752.53" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">or </text>
+  <text x="358.457" y="752.53" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">DoRouting</text>
+  <text x="312" y="784.581" font-family="Cousine" font-size="14.667" fill="#000000" xml:space="preserve">o</text>
+  <text x="336" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">calls </text>
+  <text x="362.374" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">OverrideMembers() </text>
+  <text x="473.142" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="508.396" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">may </text>
+  <text x="534.483" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">again </text>
+  <text x="566.612" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">set </text>
+  <text x="585.941" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.&lt;var&gt; </text>
+  <text x="647.901" y="784.581" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="312" y="803.298" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">base.Override&lt;var&gt;</text>
+  <text x="96" y="834.654" font-family="Caladea" font-size="13.333" font-weight="bold" font-style="italic" fill="#4f81bd" xml:space="preserve">Datafile</text>
+  <text x="143.227" y="834.654" font-family="Caladea" font-size="13.333" font-weight="bold" font-style="italic" fill="#4f81bd" xml:space="preserve">s</text>
+  <text x="96" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RER </text>
+  <text x="120.004" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">uses </text>
+  <text x="147.087" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">its </text>
+  <text x="162.842" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">own </text>
+  <text x="189.424" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">format </text>
+  <text x="229.691" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="248.454" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">datafiles, </text>
+  <text x="301.078" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">located </text>
+  <text x="344.314" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="357.393" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="378.513" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">MSAGLTests\Resources\Rectilinear\Data </text>
+  <text x="602.797" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">directory. </text>
+  <text x="658.344" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Files </text>
+  <text x="685.453" y="852.982" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">are </text>
+  <text x="96" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">parsed </text>
+  <text x="135.909" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="162.986" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">regular </text>
+  <text x="204.659" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">expressions </text>
+  <text x="271.111" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">by </text>
+  <text x="287.165" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">RectFileReader. </text>
+  <text x="374.952" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="377.966" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="401.117" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">regexes </text>
+  <text x="445.948" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">allow </text>
+  <text x="478.031" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">an </text>
+  <text x="494.438" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">extremely </text>
+  <text x="551.99" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">condensed </text>
+  <text x="614.177" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">format, </text>
+  <text x="657.771" y="871.7" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">which </text>
+  <text x="96" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">reduces </text>
+  <text x="141.794" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="162.914" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">time </text>
+  <text x="190.74" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="214.151" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">space </text>
+  <text x="248.044" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">requirement. </text>
+  <text x="322.816" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Initially </text>
+  <text x="365.323" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">these </text>
+  <text x="398.292" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">files </text>
+  <text x="423.344" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">were </text>
+  <text x="453.806" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">much </text>
+  <text x="487.12" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">simpler </text>
+  <text x="530.408" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="553.819" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">it </text>
+  <text x="564.359" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">was </text>
+  <text x="588.507" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">felt </text>
+  <text x="609.75" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">that </text>
+  <text x="635.089" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">storing </text>
+  <text x="675.805" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">all </text>
+  <text x="691.326" y="890.417" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="96" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">sections </text>
+  <text x="143.279" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">would </text>
+  <text x="179.926" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">be </text>
+  <text x="196.579" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">useful </text>
+  <text x="232.582" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="245.661" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">regression </text>
+  <text x="305.043" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">detection. </text>
+  <text x="363.363" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="366.378" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">Subsequently </text>
+  <text x="442.589" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">they </text>
+  <text x="469.743" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">acquired </text>
+  <text x="520.141" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="529.542" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">number </text>
+  <text x="575.505" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="589.62" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">different </text>
+  <text x="640.225" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">sections, </text>
+  <text x="690.831" y="909.135" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="96" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">we </text>
+  <text x="115.18" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">no </text>
+  <text x="132.23" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">longer </text>
+  <text x="169.9" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">store </text>
+  <text x="200.909" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">data </text>
+  <text x="228.168" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="246.931" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">all </text>
+  <text x="262.452" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">sections </text>
+  <text x="309.73" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">– </text>
+  <text x="319.385" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="338.148" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">example </text>
+  <text x="387.309" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="408.428" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">VisibilityGraph </text>
+  <text x="490.486" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="501.775" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">no </text>
+  <text x="518.826" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">longer </text>
+  <text x="556.495" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">written </text>
+  <text x="599.32" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="613.832" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">most </text>
+  <text x="644.21" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="658.324" y="927.852" font-family="Carlito" font-size="13.333" fill="#000000" xml:space="preserve">them.</text>
+</svg>

@@ -1,0 +1,347 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="672.067" height="960.133" viewBox="0 0 672.067 960.133">
+  <rect x="0" y="0" width="672.067" height="960.133" fill="#ffffff"/>
+  <text x="56.733" y="54.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">6</text>
+  <text x="63.667" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="67" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="70.333" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="73.667" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="77" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="80.333" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="160.467" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="202.467" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="231.933" y="54.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">C#</text>
+  <text x="56.733" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">"Programming </text>
+  <text x="208.893" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="284.493" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">with </text>
+  <text x="337.533" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">C#"</text>
+  <text x="372.333" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve"> </text>
+  <text x="378.333" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">Book </text>
+  <text x="435.213" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">and </text>
+  <text x="477.213" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">Video </text>
+  <text x="540.813" y="68.6" font-family="Lato Medium" font-size="15.6" fill="#000000" xml:space="preserve">Lessons</text>
+  <text x="56.733" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="82.376" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">free</text>
+  <text x="105.576" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="109.619" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">book </text>
+  <text x="140.329" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">"</text>
+  <text x="144.729" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="228.771" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="273.348" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">with </text>
+  <text x="304.857" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">C#</text>
+  <text x="320.324" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">" </text>
+  <text x="328.767" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">introduces </text>
+  <text x="392.01" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="413.786" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">readers </text>
+  <text x="459.962" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="475.071" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">writing </text>
+  <text x="520.048" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">programming </text>
+  <text x="602.49" y="95.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">code</text>
+  <text x="630.224" y="95.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="56.733" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">at </text>
+  <text x="74.119" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">beginner </text>
+  <text x="128.571" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">level </text>
+  <text x="162.357" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="166.757" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">variables </text>
+  <text x="224.943" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="251.262" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">data, </text>
+  <text x="285.714" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">conditional </text>
+  <text x="354.3" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">statements, </text>
+  <text x="428.886" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">loops </text>
+  <text x="465.605" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="491.924" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">methods</text>
+  <text x="540.99" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">) </text>
+  <text x="551.71" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">using </text>
+  <text x="588.429" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="612.481" y="109.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">C#</text>
+  <text x="627.948" y="109.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="56.733" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">language. </text>
+  <text x="114.347" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">It </text>
+  <text x="125.96" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">combines </text>
+  <text x="184.507" y="122.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">tutorial</text>
+  <text x="227.307" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">-style </text>
+  <text x="265.587" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">learning </text>
+  <text x="314.267" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">content </text>
+  <text x="359.88" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="389.493" y="122.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">video</text>
+  <text x="421.227" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="424.707" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">lessons, </text>
+  <text x="475.653" y="122.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">code </text>
+  <text x="507.133" y="122.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">examples</text>
+  <text x="564.333" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="567.813" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="591.293" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="601.44" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">lot </text>
+  <text x="619.72" y="122.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="56.733" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">practical </text>
+  <text x="112.372" y="135.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">coding </text>
+  <text x="157.344" y="135.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">exercises</text>
+  <text x="214.544" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="220.583" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="252.756" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">automated </text>
+  <text x="318.928" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">online </text>
+  <text x="359.1" y="135.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">evaluation</text>
+  <text x="420.3" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="426.339" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="430.739" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">judge</text>
+  <text x="461.139" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">) </text>
+  <text x="471.578" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">system </text>
+  <text x="520.017" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="537.122" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">ensure </text>
+  <text x="580.894" y="135.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">efficient </text>
+  <text x="56.733" y="149.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">learning.</text>
+  <text x="56.733" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Watch </text>
+  <text x="95.8" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="116.867" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">promo </text>
+  <text x="155.933" y="169.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">video</text>
+  <text x="187.667" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="191" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">about </text>
+  <text x="225.4" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">this </text>
+  <text x="250.2" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">book</text>
+  <text x="276.867" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="280.2" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="303.533" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">video </text>
+  <text x="337.267" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">lessons</text>
+  <text x="381" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">: </text>
+  <text x="388.067" y="169.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://youtu.be/</text>
+  <text x="475.104" y="169.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">_F606F3OgmQ</text>
+  <text x="559.564" y="169.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="189.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Brief </text>
+  <text x="87.533" y="189.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">information </text>
+  <text x="156.2" y="189.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">about </text>
+  <text x="190.6" y="189.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">this </text>
+  <text x="215.4" y="189.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">edition:</text>
+  <text x="75.667" y="209.133" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="94.6" y="209.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Title: </text>
+  <text x="128.467" y="209.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="211.8" y="209.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="255.667" y="209.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">with </text>
+  <text x="286.467" y="209.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">C#</text>
+  <text x="75.667" y="229.133" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="94.6" y="229.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Authors: </text>
+  <text x="145.4" y="229.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Svetlin </text>
+  <text x="191" y="229.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Nakov </text>
+  <text x="230.867" y="229.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">&amp; </text>
+  <text x="241.4" y="229.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Team</text>
+  <text x="75.667" y="249.133" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="94.6" y="249.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">ISBN</text>
+  <text x="123.133" y="249.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">: </text>
+  <text x="130.2" y="249.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">978-619-00-0902-3</text>
+  <text x="75.667" y="269.133" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="94.6" y="269.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Edition: </text>
+  <text x="141.8" y="269.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Faber </text>
+  <text x="179.4" y="269.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Publishing, </text>
+  <text x="249.133" y="269.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Sofia, </text>
+  <text x="287.8" y="269.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">2019</text>
+  <text x="75.667" y="289.133" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="94.6" y="289.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">License: </text>
+  <text x="147" y="289.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">CC</text>
+  <text x="164.067" y="289.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">-</text>
+  <text x="171" y="289.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">BY</text>
+  <text x="188.067" y="289.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">-</text>
+  <text x="195" y="289.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">SA</text>
+  <text x="75.667" y="309.133" font-family="Symbol" font-size="14.667" fill="#000000" xml:space="preserve"></text>
+  <text x="94.6" y="309.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Source </text>
+  <text x="137.267" y="309.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">code: </text>
+  <text x="171" y="309.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://github.com/</text>
+  <text x="272.113" y="309.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">SoftUni</text>
+  <text x="314.34" y="309.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">/Programming-Basics-Book-</text>
+  <text x="468.396" y="309.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">CSharp</text>
+  <text x="508.396" y="309.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">-</text>
+  <text x="512.836" y="309.133" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">EN</text>
+  <text x="56.733" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">All </text>
+  <text x="78.655" y="329.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">authors</text>
+  <text x="122.655" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="132.576" y="329.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">editors</text>
+  <text x="173.642" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="183.564" y="329.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">translators</text>
+  <text x="247.83" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="254.018" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="280.206" y="329.133" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">contributors</text>
+  <text x="351.406" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">: </text>
+  <text x="361.327" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Alexander </text>
+  <text x="423.915" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Krastev, </text>
+  <text x="477.57" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Alexander </text>
+  <text x="540.158" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Lazarov, </text>
+  <text x="596.079" y="329.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Angel </text>
+  <text x="56.733" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Dimitriev, </text>
+  <text x="119.552" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Bilyana </text>
+  <text x="168.103" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Borislavova, </text>
+  <text x="244.788" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Daniel </text>
+  <text x="286.673" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Tsvetkov, </text>
+  <text x="349.224" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Dimiter </text>
+  <text x="397.909" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Tatarski, </text>
+  <text x="455.261" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Dimo </text>
+  <text x="491.412" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Dimov, </text>
+  <text x="537.964" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Diyan </text>
+  <text x="576.115" y="342.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Tonchev, </text>
+  <text x="56.733" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Elena </text>
+  <text x="94.217" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Rogleva, </text>
+  <text x="148.767" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Hristiyan </text>
+  <text x="205.45" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Hristov, </text>
+  <text x="255.467" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Hristo </text>
+  <text x="295.083" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Hristov, </text>
+  <text x="345.1" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Iskra </text>
+  <text x="378.717" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nikolova, </text>
+  <text x="437" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Ivelin </text>
+  <text x="473.683" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Kirilov, </text>
+  <text x="520.1" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Julieta </text>
+  <text x="565.717" y="355.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Atanasova, </text>
+  <text x="56.733" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Kalin </text>
+  <text x="90.085" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Primov, </text>
+  <text x="139.17" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Kalina </text>
+  <text x="179.188" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Milanova, </text>
+  <text x="239.339" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Karina </text>
+  <text x="280.024" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Cholakova, </text>
+  <text x="346.709" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Kristiyan </text>
+  <text x="402.194" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Pamidov, </text>
+  <text x="460.212" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Lyuboslav </text>
+  <text x="523.164" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Lyubenov, </text>
+  <text x="586.115" y="369.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Marieta </text>
+  <text x="56.733" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Petrova, </text>
+  <text x="109.503" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Marina </text>
+  <text x="154.273" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Shideroff, </text>
+  <text x="215.176" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Mirela </text>
+  <text x="257.012" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Damyanova, </text>
+  <text x="332.315" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nelly </text>
+  <text x="366.685" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Karaivanova, </text>
+  <text x="445.455" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nikolay </text>
+  <text x="493.158" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Bankin, </text>
+  <text x="540.861" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nikolay </text>
+  <text x="588.564" y="382.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Dimov, </text>
+  <text x="56.733" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Pavlin </text>
+  <text x="98.05" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Petkov, </text>
+  <text x="146.7" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Peter </text>
+  <text x="182.683" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Ivanov, </text>
+  <text x="229.067" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Petko </text>
+  <text x="267.317" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Dyankov, </text>
+  <text x="324.9" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Preslav </text>
+  <text x="373.55" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Mihaylov, </text>
+  <text x="435" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Rositsa </text>
+  <text x="483.65" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nenova, </text>
+  <text x="534.567" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Ruslan </text>
+  <text x="578.817" y="395.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Philipov, </text>
+  <text x="56.733" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Stefka </text>
+  <text x="101.383" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Vasileva, </text>
+  <text x="161.767" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Svetlin </text>
+  <text x="209.483" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nakov, </text>
+  <text x="255.733" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Teodor </text>
+  <text x="302.65" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Kurtev, </text>
+  <text x="351.033" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Tonyo </text>
+  <text x="393.55" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Zhelev, </text>
+  <text x="443.533" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Tsvetan </text>
+  <text x="497.117" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Iliev, </text>
+  <text x="532.967" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Vasko </text>
+  <text x="575.483" y="409.133" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Viktorov, </text>
+  <text x="56.733" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Ventsislav </text>
+  <text x="120.2" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Petrov, </text>
+  <text x="164.333" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Yanitsa </text>
+  <text x="210.733" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Valeva, </text>
+  <text x="256.467" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Yulian </text>
+  <text x="295.533" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Linev, </text>
+  <text x="334.6" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Zahariya </text>
+  <text x="387.667" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Pehlivanova, </text>
+  <text x="463.8" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Zhivko </text>
+  <text x="505.8" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Nedylakov</text>
+  <text x="564.467" y="422.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="85.4" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">book </text>
+  <text x="115.4" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="129.133" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">available </text>
+  <text x="183.667" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="197.4" y="442.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">several </text>
+  <text x="244.333" y="442.467" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">versions</text>
+  <text x="294.6" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="297.933" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">in </text>
+  <text x="311.667" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">different </text>
+  <text x="363" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">programming </text>
+  <text x="441.533" y="442.467" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">languages:</text>
+  <text x="75.6" y="464.348" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programming </text>
+  <text x="167.393" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics </text>
+  <text x="205.538" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="232.576" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">C# </text>
+  <text x="251.469" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">(</text>
+  <text x="255.909" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">English</text>
+  <text x="296.651" y="464.348" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">)</text>
+  <text x="75.6" y="486.347" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programming </text>
+  <text x="167.393" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics </text>
+  <text x="205.538" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="232.576" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">C# </text>
+  <text x="251.469" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">(</text>
+  <text x="255.909" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bulgarian</text>
+  <text x="308.487" y="486.347" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">)</text>
+  <text x="75.6" y="508.346" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programming </text>
+  <text x="167.393" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics </text>
+  <text x="205.538" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="232.576" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Java </text>
+  <text x="259.601" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">(</text>
+  <text x="264.041" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bulgarian</text>
+  <text x="316.619" y="508.346" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">)</text>
+  <text x="75.6" y="530.344" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programming </text>
+  <text x="167.393" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics </text>
+  <text x="205.538" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="232.576" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">JavaScript </text>
+  <text x="291.449" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">(</text>
+  <text x="295.89" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bulgarian</text>
+  <text x="348.468" y="530.344" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">)</text>
+  <text x="75.6" y="552.343" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programming </text>
+  <text x="167.393" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics </text>
+  <text x="205.538" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="232.576" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Python </text>
+  <text x="273.696" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">(</text>
+  <text x="278.136" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bulgarian</text>
+  <text x="330.714" y="552.343" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">)</text>
+  <text x="75.6" y="574.342" font-family="Symbol" font-size="13.333" fill="#000000" xml:space="preserve"></text>
+  <text x="90.733" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Programming </text>
+  <text x="167.393" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics </text>
+  <text x="205.538" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">with </text>
+  <text x="232.576" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">C++ </text>
+  <text x="259.841" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">(</text>
+  <text x="264.282" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Bulgarian</text>
+  <text x="316.86" y="574.342" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">)</text>
+  <text x="56.733" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Enjoy </text>
+  <text x="99.079" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">reading </text>
+  <text x="150.891" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="181.237" y="594.459" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">sign </text>
+  <text x="216.649" y="594.459" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">up</text>
+  <text x="230.516" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="240.861" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">for </text>
+  <text x="266.674" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="294.753" y="594.459" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Practical </text>
+  <text x="351.739" y="594.459" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Free </text>
+  <text x="385.776" y="594.459" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Training </text>
+  <text x="442.033" y="594.459" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Course </text>
+  <text x="490.152" y="594.459" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">"Programming </text>
+  <text x="579.267" y="594.459" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">Basics"</text>
+  <text x="619.521" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="629.867" y="594.459" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="56.733" y="607.792" font-family="Lato Light" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://softuni.org</text>
+  <text x="163.267" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">) </text>
+  <text x="172.217" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">coming </text>
+  <text x="218.5" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">together </text>
+  <text x="269.583" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="300.267" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">this </text>
+  <text x="326.283" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">book, </text>
+  <text x="361.233" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">because </text>
+  <text x="412.45" y="607.792" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">programming </text>
+  <text x="495.4" y="607.792" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">is </text>
+  <text x="511.15" y="607.792" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">learned </text>
+  <text x="559.3" y="607.792" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">by </text>
+  <text x="577.983" y="607.792" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">practice</text>
+  <text x="625.983" y="607.792" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">, </text>
+  <text x="56.733" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">code </text>
+  <text x="86.733" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">writing </text>
+  <text x="131" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="154.333" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">solving </text>
+  <text x="198.467" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">many, </text>
+  <text x="236.867" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">many </text>
+  <text x="271.533" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">problems, </text>
+  <text x="331.4" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">not </text>
+  <text x="352.467" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">just </text>
+  <text x="377.267" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">by </text>
+  <text x="393.933" y="621.126" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">reading!</text>
+</svg>

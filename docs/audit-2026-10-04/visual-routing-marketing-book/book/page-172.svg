@@ -1,0 +1,359 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="672.067" height="960.133" viewBox="0 0 672.067 960.133">
+  <rect x="0" y="0" width="672.067" height="960.133" fill="#ffffff"/>
+  <text x="56.733" y="47.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">172</text>
+  <text x="77.533" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="80.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="84.2" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="87.533" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="90.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="94.2" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="174.333" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="216.333" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="245.8" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">C#</text>
+  <text x="56.733" y="52.058" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Testing </text>
+  <text x="111.405" y="52.058" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">in </text>
+  <text x="128.749" y="52.058" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="154.077" y="52.058" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Judge </text>
+  <text x="198.976" y="52.058" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">System</text>
+  <text x="56.733" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Test </text>
+  <text x="83.022" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">your </text>
+  <text x="110.796" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">code </text>
+  <text x="139.298" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">here</text>
+  <text x="162.241" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">:</text>
+  <text x="165.946" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="169.279" y="74.747" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://judge.softuni.org/Contests/Practice/Index/508#5</text>
+  <text x="464.8" y="74.747" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="108.904" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Example: </text>
+  <text x="135.228" y="108.904" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Fruit </text>
+  <text x="179.719" y="108.904" font-family="Tinos" font-size="18" font-weight="bold" fill="#000000" xml:space="preserve">Shop</text>
+  <text x="56.733" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">A </text>
+  <text x="69.696" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">fruit </text>
+  <text x="95.985" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">shop </text>
+  <text x="124.507" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">sells </text>
+  <text x="151.545" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">fruits </text>
+  <text x="183.022" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">during</text>
+  <text x="217.834" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="221.167" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">weekdays</text>
+  <text x="273.739" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="277.072" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and </text>
+  <text x="299.657" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">during </text>
+  <text x="337.801" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">weekends</text>
+  <text x="390.373" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="393.706" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">different</text>
+  <text x="439.604" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="442.938" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">prices</text>
+  <text x="474.774" y="133.444" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">:</text>
+  <rect x="56.733" y="136.894" width="82.4" height="27.332" fill="#eeeeee"/>
+  <text x="84.968" y="154.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Fruit</text>
+  <line x1="56.733" y1="136.894" x2="139.133" y2="136.894" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="164.226" x2="139.133" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="136.894" x2="56.733" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="139.133" y1="136.894" x2="139.133" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <rect x="139.133" y="136.894" width="114.867" height="27.332" fill="#eeeeee"/>
+  <text x="154.91" y="149.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">W</text>
+  <text x="167.494" y="149.776" font-family="Tinos" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">eekday </text>
+  <text x="210.828" y="149.776" font-family="Tinos" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">p</text>
+  <text x="218.243" y="149.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">rice</text>
+  <line x1="139.133" y1="136.894" x2="254" y2="136.894" stroke="#dddddd" stroke-width="1"/>
+  <line x1="139.133" y1="164.226" x2="254" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="139.133" y1="136.894" x2="139.133" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="254" y1="136.894" x2="254" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <rect x="254" y="136.894" width="116" height="27.332" fill="#eeeeee"/>
+  <text x="270.343" y="154.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">W</text>
+  <text x="282.928" y="154.776" font-family="Tinos" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">eekend </text>
+  <text x="326.261" y="154.776" font-family="Tinos" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">p</text>
+  <text x="333.676" y="154.776" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">rice</text>
+  <line x1="254" y1="136.894" x2="370" y2="136.894" stroke="#dddddd" stroke-width="1"/>
+  <line x1="254" y1="164.226" x2="370" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="254" y1="136.894" x2="254" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="370" y1="136.894" x2="370" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <rect x="56.733" y="164.226" width="82.4" height="119.324" fill="#ffffff"/>
+  <text x="69.733" y="182.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">banana</text>
+  <text x="69.733" y="197.44" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">apple</text>
+  <text x="69.733" y="212.772" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">orange</text>
+  <text x="69.733" y="228.104" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">grapefruit</text>
+  <text x="69.733" y="243.436" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">kiwi</text>
+  <text x="69.733" y="258.768" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">pineapple</text>
+  <text x="69.733" y="274.1" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">grapes</text>
+  <line x1="56.733" y1="164.226" x2="139.133" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="283.55" x2="139.133" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="164.226" x2="56.733" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <line x1="139.133" y1="164.226" x2="139.133" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <rect x="139.133" y="164.226" width="114.867" height="119.324" fill="#ffffff"/>
+  <text x="184.9" y="177.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.50</text>
+  <text x="184.9" y="192.44" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1.20</text>
+  <text x="184.9" y="207.772" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">0.85</text>
+  <text x="184.9" y="223.104" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1.45</text>
+  <text x="184.9" y="238.436" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.70</text>
+  <text x="184.9" y="253.768" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5.50</text>
+  <text x="184.9" y="269.1" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3.85</text>
+  <line x1="139.133" y1="164.226" x2="254" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="139.133" y1="283.55" x2="254" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <line x1="139.133" y1="164.226" x2="139.133" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <line x1="254" y1="164.226" x2="254" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <rect x="254" y="164.226" width="116" height="119.324" fill="#ffffff"/>
+  <text x="300.333" y="182.108" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.70</text>
+  <text x="300.333" y="197.44" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1.25</text>
+  <text x="300.333" y="212.772" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">0.90</text>
+  <text x="300.333" y="228.104" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">1.60</text>
+  <text x="300.333" y="243.436" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3.00</text>
+  <text x="300.333" y="258.768" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">5.60</text>
+  <text x="300.333" y="274.1" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">4.20</text>
+  <line x1="254" y1="164.226" x2="370" y2="164.226" stroke="#dddddd" stroke-width="1"/>
+  <line x1="254" y1="283.55" x2="370" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <line x1="254" y1="164.226" x2="254" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <line x1="370" y1="164.226" x2="370" y2="283.55" stroke="#dddddd" stroke-width="1"/>
+  <text x="56.733" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Write </text>
+  <text x="91.78" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="102.393" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">program </text>
+  <text x="152.258" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">that</text>
+  <text x="172.251" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="176.947" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">reads</text>
+  <text x="205.078" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="209.773" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="240.386" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="261.371" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">console </text>
+  <text x="306.795" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a</text>
+  <text x="312.713" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="317.408" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">fruit</text>
+  <text x="340.364" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="345.059" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="349.499" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">banana </text>
+  <text x="391.949" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="400.348" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">apple </text>
+  <text x="433.917" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="442.317" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">…),</text>
+  <text x="463.424" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="468.119" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="478.732" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">day </text>
+  <text x="502.679" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="518.481" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="539.465" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">week</text>
+  <text x="567.596" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="572.292" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="576.732" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Monday </text>
+  <text x="625.867" y="302.099" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="56.733" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Tuesday </text>
+  <text x="105.917" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">/ </text>
+  <text x="113.636" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">…) </text>
+  <text x="135.424" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and</text>
+  <text x="154.675" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="158.69" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="168.623" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">quantity </text>
+  <text x="216.335" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">(</text>
+  <text x="220.775" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="230.708" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">decimal </text>
+  <text x="276.923" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">number</text>
+  <text x="317.652" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">)</text>
+  <text x="322.092" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="326.107" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">and</text>
+  <text x="345.358" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="349.373" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">calculates </text>
+  <text x="405.946" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="426.249" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">price</text>
+  <text x="452.896" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="456.911" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">accor</text>
+  <text x="485.772" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">ding </text>
+  <text x="513.491" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="527.876" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="548.18" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">prices </text>
+  <text x="584.03" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">from </text>
+  <text x="613.963" y="317.431" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="56.733" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">tables </text>
+  <text x="91.331" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">above. </text>
+  <text x="129.998" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">The </text>
+  <text x="154.225" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">result </text>
+  <text x="187.345" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">has </text>
+  <text x="208.616" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="222.485" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">be </text>
+  <text x="238.567" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">printed</text>
+  <text x="276.334" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="279.831" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">rounded </text>
+  <text x="327.02" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">up </text>
+  <text x="343.851" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="357.72" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2 </text>
+  <text x="367.884" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">digits </text>
+  <text x="401.017" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">after </text>
+  <text x="428.936" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="448.722" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">decimal </text>
+  <text x="494.42" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">point</text>
+  <text x="521.829" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">. </text>
+  <text x="528.66" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Print</text>
+  <text x="554.591" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="558.089" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">“error”</text>
+  <text x="595.83" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="599.327" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">if </text>
+  <text x="610.969" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">it </text>
+  <text x="621.876" y="332.763" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="56.733" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">an</text>
+  <text x="69.318" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="72.651" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">invalid </text>
+  <text x="113.016" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">day</text>
+  <text x="132.267" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="135.601" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="150.041" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="169.663" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">week </text>
+  <text x="201.128" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">or </text>
+  <text x="215.568" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">an</text>
+  <text x="228.153" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="231.486" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">invalid </text>
+  <text x="271.851" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">name</text>
+  <text x="300.724" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="304.058" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="318.498" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">a </text>
+  <text x="327.749" y="348.095" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">fruit.</text>
+  <text x="56.733" y="379.136" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Video: </text>
+  <text x="106.061" y="379.136" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Fruit </text>
+  <text x="145.608" y="379.136" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Store</text>
+  <text x="56.733" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Watch </text>
+  <text x="94.858" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="114.481" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">video </text>
+  <text x="147.436" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="161.141" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">learn </text>
+  <text x="191.121" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">how </text>
+  <text x="217.417" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">to </text>
+  <text x="231.121" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">solve </text>
+  <text x="262.599" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="282.222" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">"Fruit </text>
+  <text x="316.929" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Store" </text>
+  <text x="353.849" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">problem: </text>
+  <text x="405.321" y="401.825" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://youtu.be/</text>
+  <text x="492.358" y="401.825" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">6vZZzil9xBU</text>
+  <text x="567.163" y="401.825" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+  <text x="56.733" y="432.867" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Sample </text>
+  <text x="111.405" y="432.867" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Input </text>
+  <text x="153.655" y="432.867" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">and </text>
+  <text x="183.452" y="432.867" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Output</text>
+  <rect x="56.733" y="437.007" width="63.6" height="27.332" fill="#eeeeee"/>
+  <text x="74.461" y="454.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="56.733" y1="437.007" x2="120.333" y2="437.007" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="464.339" x2="120.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="437.007" x2="56.733" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="120.333" y1="437.007" x2="120.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <rect x="120.333" y="437.007" width="63.467" height="27.332" fill="#eeeeee"/>
+  <text x="133.548" y="454.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="120.333" y1="437.007" x2="183.8" y2="437.007" stroke="#dddddd" stroke-width="1"/>
+  <line x1="120.333" y1="464.339" x2="183.8" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="120.333" y1="437.007" x2="120.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="183.8" y1="437.007" x2="183.8" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="183.8" y="437.007" width="17.067" height="27.332" fill="#ffffff"/>
+  <line x1="183.8" y1="437.007" x2="183.8" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="200.867" y1="437.007" x2="200.867" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="200.867" y="437.007" width="69.467" height="27.332" fill="#eeeeee"/>
+  <text x="221.528" y="454.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="200.867" y1="437.007" x2="270.333" y2="437.007" stroke="#dddddd" stroke-width="1"/>
+  <line x1="200.867" y1="464.339" x2="270.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="200.867" y1="437.007" x2="200.867" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="270.333" y1="437.007" x2="270.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <rect x="270.333" y="437.007" width="61.933" height="27.332" fill="#eeeeee"/>
+  <text x="282.781" y="454.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="270.333" y1="437.007" x2="332.267" y2="437.007" stroke="#dddddd" stroke-width="1"/>
+  <line x1="270.333" y1="464.339" x2="332.267" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="270.333" y1="437.007" x2="270.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="332.267" y1="437.007" x2="332.267" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="332.267" y="437.007" width="16.4" height="27.332" fill="#ffffff"/>
+  <line x1="332.267" y1="437.007" x2="332.267" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="348.667" y1="437.007" x2="348.667" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="348.667" y="437.007" width="73.2" height="27.332" fill="#eeeeee"/>
+  <text x="371.194" y="448.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="348.667" y1="437.007" x2="421.867" y2="437.007" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="348.667" y1="464.339" x2="421.867" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="348.667" y1="437.007" x2="348.667" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="421.867" y1="437.007" x2="421.867" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="421.867" y="437.007" width="61.933" height="27.332" fill="#eeeeee"/>
+  <text x="434.314" y="448.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="421.867" y1="437.007" x2="483.8" y2="437.007" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="421.867" y1="464.339" x2="483.8" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="421.867" y1="437.007" x2="421.867" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="483.8" y1="437.007" x2="483.8" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="483.8" y="437.007" width="16.4" height="27.332" fill="#ffffff"/>
+  <line x1="483.8" y1="437.007" x2="483.8" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="500.2" y1="437.007" x2="500.2" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="500.2" y="437.007" width="69.467" height="27.332" fill="#eeeeee"/>
+  <text x="520.861" y="448.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Input</text>
+  <line x1="500.2" y1="437.007" x2="569.667" y2="437.007" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="500.2" y1="464.339" x2="569.667" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="500.2" y1="437.007" x2="500.2" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="569.667" y1="437.007" x2="569.667" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="569.667" y="437.007" width="63.067" height="27.332" fill="#eeeeee"/>
+  <text x="582.681" y="448.889" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Output</text>
+  <line x1="569.667" y1="437.007" x2="632.733" y2="437.007" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="569.667" y1="464.339" x2="632.733" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="569.667" y1="437.007" x2="569.667" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="632.733" y1="437.007" x2="632.733" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="56.733" y="464.339" width="63.6" height="57.996" fill="#ffffff"/>
+  <text x="64.267" y="482.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">orange</text>
+  <text x="64.267" y="497.553" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Sunday</text>
+  <text x="64.267" y="512.885" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">3</text>
+  <line x1="56.733" y1="464.339" x2="120.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="522.335" x2="120.333" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="56.733" y1="464.339" x2="56.733" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="120.333" y1="464.339" x2="120.333" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <rect x="120.333" y="464.339" width="63.467" height="57.996" fill="#ffffff"/>
+  <text x="127.867" y="482.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.70</text>
+  <line x1="120.333" y1="464.339" x2="183.8" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="120.333" y1="522.335" x2="183.8" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="120.333" y1="464.339" x2="120.333" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="183.8" y1="464.339" x2="183.8" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="183.8" y="464.339" width="17.067" height="57.996" fill="#ffffff"/>
+  <line x1="183.8" y1="464.339" x2="183.8" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="200.867" y1="464.339" x2="200.867" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="200.867" y="464.339" width="69.467" height="57.996" fill="#ffffff"/>
+  <text x="208.4" y="482.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">kiwi</text>
+  <text x="208.4" y="497.553" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Monday</text>
+  <text x="208.4" y="512.885" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.5</text>
+  <line x1="200.867" y1="464.339" x2="270.333" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="200.867" y1="522.335" x2="270.333" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="200.867" y1="464.339" x2="200.867" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="270.333" y1="464.339" x2="270.333" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <rect x="270.333" y="464.339" width="61.933" height="57.996" fill="#ffffff"/>
+  <text x="277.867" y="482.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">6.75</text>
+  <line x1="270.333" y1="464.339" x2="332.267" y2="464.339" stroke="#dddddd" stroke-width="1"/>
+  <line x1="270.333" y1="522.335" x2="332.267" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="270.333" y1="464.339" x2="270.333" y2="522.335" stroke="#dddddd" stroke-width="1"/>
+  <line x1="332.267" y1="464.339" x2="332.267" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="332.267" y="464.339" width="16.4" height="57.996" fill="#ffffff"/>
+  <line x1="332.267" y1="464.339" x2="332.267" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="348.667" y1="464.339" x2="348.667" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <text x="356.2" y="476.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">grapes</text>
+  <text x="356.2" y="491.553" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Saturday</text>
+  <text x="356.2" y="506.885" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">0.5</text>
+  <line x1="348.667" y1="464.339" x2="421.867" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="348.667" y1="522.335" x2="421.867" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="348.667" y1="464.339" x2="348.667" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="421.867" y1="464.339" x2="421.867" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <text x="429.4" y="476.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">2.10</text>
+  <line x1="421.867" y1="464.339" x2="483.8" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="421.867" y1="522.335" x2="483.8" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="421.867" y1="464.339" x2="421.867" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="483.8" y1="464.339" x2="483.8" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <rect x="483.8" y="464.339" width="16.4" height="57.996" fill="#ffffff"/>
+  <line x1="483.8" y1="464.339" x2="483.8" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="500.2" y1="464.339" x2="500.2" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <text x="507.733" y="476.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">tomato</text>
+  <text x="507.733" y="491.553" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Monday</text>
+  <text x="507.733" y="506.885" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">0.5</text>
+  <line x1="500.2" y1="464.339" x2="569.667" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="500.2" y1="522.335" x2="569.667" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="500.2" y1="464.339" x2="500.2" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="569.667" y1="464.339" x2="569.667" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <text x="577.2" y="476.221" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">error</text>
+  <line x1="569.667" y1="464.339" x2="632.733" y2="464.339" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="569.667" y1="522.335" x2="632.733" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="569.667" y1="464.339" x2="569.667" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <line x1="632.733" y1="464.339" x2="632.733" y2="522.335" stroke="#d0cece" stroke-width="0.667"/>
+  <text x="56.733" y="574.992" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Solution</text>
+  <image x="56.733" y="604.197" width="418.667" height="224.049" preserveAspectRatio="none" xlink:href="data:image/png;base64,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"><title>https://csharp-book.softuni.org/assets/chapter-4-images/07.Fruit-shop-01.png</title></image>
+  <text x="56.733" y="874.236" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Testing </text>
+  <text x="111.405" y="874.236" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">in </text>
+  <text x="128.749" y="874.236" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">the </text>
+  <text x="154.077" y="874.236" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">Judge </text>
+  <text x="198.976" y="874.236" font-family="Tinos" font-size="16" font-weight="bold" fill="#000000" xml:space="preserve">System</text>
+  <text x="56.733" y="896.925" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">Test </text>
+  <text x="83.022" y="896.925" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">your </text>
+  <text x="110.796" y="896.925" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">solution </text>
+  <text x="157.098" y="896.925" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">here:</text>
+  <text x="183.745" y="896.925" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="187.078" y="896.925" font-family="Tinos" font-size="13.333" text-decoration="underline" fill="#0000ff" xml:space="preserve">https://judge.softuni.org/Contests/Practice/Index/508#6</text>
+  <text x="482.599" y="896.925" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">.</text>
+</svg>

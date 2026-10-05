@@ -1,0 +1,303 @@
+{
+  "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+  "grey_paragraphs_input": 75,
+  "code_source": [
+    {
+      "text": "Console.WriteLine(\"Welcome to coding\");",
+      "tabs": 0,
+      "runs": [
+        "Console.WriteLine(",
+        "\"Welcome to coding\"",
+        ");"
+      ]
+    },
+    {
+      "text": "Console.WriteLine(\"Welcome to coding\");",
+      "tabs": 0,
+      "runs": [
+        "Console.WriteLine(",
+        "\"Welcome to coding\"",
+        ");"
+      ]
+    }
+  ],
+  "margins": [
+    {
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}top": "567",
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}right": "567",
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bottom": "567",
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}left": "851",
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}header": "567",
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footer": "567",
+      "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}gutter": "0"
+    }
+  ],
+  "renders": {
+    "original": {
+      "exit": 1,
+      "pages": 46
+    },
+    "no-headers": {
+      "exit": 1,
+      "pages": 46
+    },
+    "explicit-relative-widths": {
+      "exit": 1,
+      "pages": 46
+    }
+  },
+  "grey_svg_shapes": 0,
+  "original_title_positions": [
+    {
+      "text": "FIRST ",
+      "x": "394.507",
+      "y": "520.133"
+    },
+    {
+      "text": "STEPS ",
+      "x": "522.933",
+      "y": "520.133"
+    },
+    {
+      "text": "IN ",
+      "x": "665.867",
+      "y": "520.133"
+    },
+    {
+      "text": "PROGRAMMING",
+      "x": "418.827",
+      "y": "562.8"
+    }
+  ],
+  "explicit-relative-widths_title_positions": [
+    {
+      "text": "FIRST ",
+      "x": "230.817",
+      "y": "520.133"
+    },
+    {
+      "text": "STEPS ",
+      "x": "359.244",
+      "y": "520.133"
+    },
+    {
+      "text": "IN ",
+      "x": "502.177",
+      "y": "520.133"
+    },
+    {
+      "text": "PROGRAMMING",
+      "x": "255.137",
+      "y": "562.8"
+    }
+  ],
+  "code_svg": [
+    {
+      "text": "Console.WriteLine(",
+      "x": "71.867",
+      "font": "Cousine",
+      "size": "13.333"
+    },
+    {
+      "text": "\"Welcome ",
+      "x": "215.89",
+      "font": "Cousine",
+      "size": "13.333"
+    },
+    {
+      "text": "to ",
+      "x": "287.902",
+      "font": "Cousine",
+      "size": "13.333"
+    },
+    {
+      "text": "coding\"",
+      "x": "311.906",
+      "font": "Cousine",
+      "size": "13.333"
+    },
+    {
+      "text": ");",
+      "x": "367.915",
+      "font": "Cousine",
+      "size": "13.333"
+    }
+  ],
+  "header_body_near_baseline_pages": [
+    {
+      "page": 3,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "14.667"
+    },
+    {
+      "page": 4,
+      "header_baseline": "47.8",
+      "body_baseline": "48.9",
+      "header_size": "13.333",
+      "body_size": "13.333"
+    },
+    {
+      "page": 5,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 6,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 7,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 8,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 9,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 10,
+      "header_baseline": "47.8",
+      "body_baseline": "48.9",
+      "header_size": "13.333",
+      "body_size": "13.333"
+    },
+    {
+      "page": 11,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 15,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 16,
+      "header_baseline": "47.8",
+      "body_baseline": "53.84",
+      "header_size": "13.333",
+      "body_size": "18"
+    },
+    {
+      "page": 19,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 21,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 24,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 26,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 30,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 31,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 32,
+      "header_baseline": "47.8",
+      "body_baseline": "53.84",
+      "header_size": "13.333",
+      "body_size": "18"
+    },
+    {
+      "page": 33,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 37,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 39,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 40,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 41,
+      "header_baseline": "47.8",
+      "body_baseline": "52.058",
+      "header_size": "13.333",
+      "body_size": "16"
+    },
+    {
+      "page": 46,
+      "header_baseline": "47.8",
+      "body_baseline": "58.8",
+      "header_size": "13.333",
+      "body_size": "28"
+    }
+  ],
+  "fallback_times_13_333_advance": {
+    "Console.WriteLine(": 106.2603642578125,
+    "\"Welcome ": 59.8552744140625,
+    " ": 3.33325,
+    ");": 8.14432763671875
+  },
+  "source_unchanged": true
+}

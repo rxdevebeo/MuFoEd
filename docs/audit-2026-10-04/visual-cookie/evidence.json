@@ -1,0 +1,239 @@
+{
+  "source_sha256": "6bc9a7d24d5c1acdf7af1fadb55311626c9481515899332d2a140b6733b9b7e7",
+  "cases": {
+    "original": {
+      "exit": 1,
+      "pages": 4,
+      "lists": [
+        {
+          "page": "page-4.svg",
+          "text": "Chrome: ",
+          "text_x": "113.4",
+          "text_y": "313.64",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "313.64",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Explorer: ",
+          "text_x": "113.4",
+          "text_y": "354.44",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "354.44",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Safari: ",
+          "text_x": "113.4",
+          "text_y": "395.24",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "395.24",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Firefox: ",
+          "text_x": "113.4",
+          "text_y": "436.04",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "436.04",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Opera: ",
+          "text_x": "113.4",
+          "text_y": "476.84",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "476.84",
+          "marker_font": "Symbol"
+        }
+      ],
+      "underscore": [
+        {
+          "text": "__________________",
+          "x": "204.461",
+          "y": "560.24",
+          "font-family": "Tinos",
+          "font-size": "13.333",
+          "text-decoration": "underline",
+          "fill": "#000000",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "________________",
+          "x": "529.949",
+          "y": "849.107",
+          "font-family": "Tinos",
+          "font-size": "13.333",
+          "text-decoration": "underline",
+          "fill": "#000000",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ]
+    },
+    "inherit-list-indent": {
+      "exit": 1,
+      "pages": 4,
+      "lists": [
+        {
+          "page": "page-4.svg",
+          "text": "Chrome: ",
+          "text_x": "161.4",
+          "text_y": "313.64",
+          "marker": "",
+          "marker_x": "137.4",
+          "marker_y": "313.64",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Explorer: ",
+          "text_x": "161.4",
+          "text_y": "354.44",
+          "marker": "",
+          "marker_x": "137.4",
+          "marker_y": "354.44",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Safari: ",
+          "text_x": "161.4",
+          "text_y": "395.24",
+          "marker": "",
+          "marker_x": "137.4",
+          "marker_y": "395.24",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Firefox: ",
+          "text_x": "161.4",
+          "text_y": "436.04",
+          "marker": "",
+          "marker_x": "137.4",
+          "marker_y": "436.04",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Opera: ",
+          "text_x": "161.4",
+          "text_y": "476.84",
+          "marker": "",
+          "marker_x": "137.4",
+          "marker_y": "476.84",
+          "marker_font": "Symbol"
+        }
+      ],
+      "underscore": [
+        {
+          "text": "__________________",
+          "x": "204.461",
+          "y": "560.24",
+          "font-family": "Tinos",
+          "font-size": "13.333",
+          "text-decoration": "underline",
+          "fill": "#000000",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "________________",
+          "x": "529.949",
+          "y": "849.107",
+          "font-family": "Tinos",
+          "font-size": "13.333",
+          "text-decoration": "underline",
+          "fill": "#000000",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ]
+    },
+    "no-underscore-decoration": {
+      "exit": 1,
+      "pages": 4,
+      "lists": [
+        {
+          "page": "page-4.svg",
+          "text": "Chrome: ",
+          "text_x": "113.4",
+          "text_y": "313.64",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "313.64",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Explorer: ",
+          "text_x": "113.4",
+          "text_y": "354.44",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "354.44",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Safari: ",
+          "text_x": "113.4",
+          "text_y": "395.24",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "395.24",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Firefox: ",
+          "text_x": "113.4",
+          "text_y": "436.04",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "436.04",
+          "marker_font": "Symbol"
+        },
+        {
+          "page": "page-4.svg",
+          "text": "Opera: ",
+          "text_x": "113.4",
+          "text_y": "476.84",
+          "marker": "",
+          "marker_x": "113.4",
+          "marker_y": "476.84",
+          "marker_font": "Symbol"
+        }
+      ],
+      "underscore": [
+        {
+          "text": "__________________",
+          "x": "204.461",
+          "y": "560.24",
+          "font-family": "Tinos",
+          "font-size": "13.333",
+          "fill": "#000000",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        },
+        {
+          "text": "________________",
+          "x": "529.949",
+          "y": "849.107",
+          "font-family": "Tinos",
+          "font-size": "13.333",
+          "text-decoration": "underline",
+          "fill": "#000000",
+          "{http://www.w3.org/XML/1998/namespace}space": "preserve"
+        }
+      ]
+    }
+  },
+  "source_unchanged": true
+}

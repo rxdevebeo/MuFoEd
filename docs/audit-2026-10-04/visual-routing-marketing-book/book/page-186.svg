@@ -1,0 +1,408 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="672.067" height="960.133" viewBox="0 0 672.067 960.133">
+  <rect x="0" y="0" width="672.067" height="960.133" fill="#ffffff"/>
+  <text x="56.733" y="47.8" font-family="Lato Light" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">186</text>
+  <text x="77.533" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="80.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="84.2" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="87.533" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="90.867" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="94.2" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Programming </text>
+  <text x="174.333" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">Basics </text>
+  <text x="216.333" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">with </text>
+  <text x="245.8" y="47.8" font-family="Lato Light" font-size="13.333" fill="#000000" xml:space="preserve">C#</text>
+  <text x="56.733" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">orientation. </text>
+  <text x="121.16" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">This </text>
+  <text x="148.198" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">is </text>
+  <text x="160.425" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="180.047" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">full </text>
+  <text x="201.896" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">version </text>
+  <text x="244.481" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">of </text>
+  <text x="258.921" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">the </text>
+  <text x="278.543" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">action</text>
+  <text x="311.121" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve"> </text>
+  <text x="314.455" y="49.682" font-family="Cousine" font-size="13.333" font-weight="bold" fill="#000000" xml:space="preserve">Draw()</text>
+  <text x="362.463" y="49.682" font-family="Tinos" font-size="13.333" fill="#000000" xml:space="preserve">:</text>
+  <text x="71.867" y="70.344" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">private</text>
+  <text x="125.075" y="70.344" font-family="Cousine" font-size="12.667" fill="#4271ae" xml:space="preserve"> </text>
+  <text x="132.677" y="70.344" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">void</text>
+  <text x="163.082" y="70.344" font-family="Cousine" font-size="12.667" fill="#4271ae" xml:space="preserve"> </text>
+  <text x="170.683" y="70.344" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Draw</text>
+  <text x="201.088" y="70.344" font-family="Cousine" font-size="12.667" fill="#4271ae" xml:space="preserve">()</text>
+  <text x="71.867" y="84.693" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">{</text>
+  <text x="87.069" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Get </text>
+  <text x="140.278" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="170.683" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">rectangle </text>
+  <text x="246.695" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">and </text>
+  <text x="277.1" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">point </text>
+  <text x="322.707" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">coordinates </text>
+  <text x="413.922" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">from </text>
+  <text x="451.929" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="482.333" y="99.042" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">form</text>
+  <text x="87.069" y="113.391" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="113.391" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="113.391" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x1 </text>
+  <text x="140.278" y="113.391" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="155.48" y="113.391" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="185.885" y="113.391" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">.numericUpDownX1.Value;</text>
+  <text x="87.069" y="127.74" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="127.74" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="127.74" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y1 </text>
+  <text x="140.278" y="127.74" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="155.48" y="127.74" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="185.885" y="127.74" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">.numericUpDownY1.Value;</text>
+  <text x="87.069" y="142.089" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="142.089" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="142.089" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x2 </text>
+  <text x="140.278" y="142.089" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="155.48" y="142.089" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="185.885" y="142.089" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">.numericUpDownX2.Value;</text>
+  <text x="87.069" y="156.438" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="156.438" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="156.438" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y2 </text>
+  <text x="140.278" y="156.438" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="155.48" y="156.438" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="185.885" y="156.438" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">.numericUpDownY2.Value;</text>
+  <text x="87.069" y="170.787" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="170.787" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="170.787" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x </text>
+  <text x="132.677" y="170.787" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="147.879" y="170.787" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="178.284" y="170.787" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">.numericUpDownX.Value;</text>
+  <text x="87.069" y="185.136" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="185.136" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="185.136" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y </text>
+  <text x="132.677" y="185.136" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="147.879" y="185.136" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">this</text>
+  <text x="178.284" y="185.136" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">.numericUpDownY.Value;</text>
+  <text x="87.069" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Display </text>
+  <text x="170.683" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">th</text>
+  <text x="185.885" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">e </text>
+  <text x="201.088" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">location </text>
+  <text x="269.499" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">of </text>
+  <text x="292.303" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="322.707" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">point: </text>
+  <text x="375.916" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Inside</text>
+  <text x="421.524" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">/</text>
+  <text x="429.125" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Border</text>
+  <text x="474.732" y="207.792" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">/Outside</text>
+  <text x="87.069" y="222.141" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">DisplayPointLocation(x1, </text>
+  <text x="277.1" y="222.141" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y1, </text>
+  <text x="307.505" y="222.141" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x2, </text>
+  <text x="337.91" y="222.141" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y2, </text>
+  <text x="368.315" y="222.141" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x, </text>
+  <text x="391.119" y="222.141" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y);</text>
+  <text x="87.069" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Calculate </text>
+  <text x="185.885" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="216.29" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">scale </text>
+  <text x="261.898" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">factor </text>
+  <text x="315.106" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">(ratio) </text>
+  <text x="375.916" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">for </text>
+  <text x="406.321" y="244.797" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="87.069" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">diagram </text>
+  <text x="170.683" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">holding </text>
+  <text x="231.493" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="261.898" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">and </text>
+  <text x="292.303" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">point </text>
+  <text x="337.91" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">in </text>
+  <text x="360.714" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">order </text>
+  <text x="406.321" y="259.146" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">to </text>
+  <text x="87.069" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">fit </text>
+  <text x="140.278" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">them </text>
+  <text x="178.284" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">well </text>
+  <text x="216.29" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">in </text>
+  <text x="239.094" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="269.499" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">picture </text>
+  <text x="330.309" y="273.495" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">box</text>
+  <text x="87.069" y="287.844" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="287.844" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="287.844" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minX </text>
+  <text x="155.48" y="287.844" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="170.683" y="287.844" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Min(x1, </text>
+  <text x="231.493" y="287.844" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x2, </text>
+  <text x="261.898" y="287.844" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x);</text>
+  <text x="87.069" y="302.193" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="302.193" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="302.193" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">maxX </text>
+  <text x="155.48" y="302.193" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="170.683" y="302.193" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Max(x1, </text>
+  <text x="231.493" y="302.193" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x2, </text>
+  <text x="261.898" y="302.193" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x);</text>
+  <text x="87.069" y="316.542" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="316.542" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="316.542" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minY </text>
+  <text x="155.48" y="316.542" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="170.683" y="316.542" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Min(y1, </text>
+  <text x="231.493" y="316.542" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y2, </text>
+  <text x="261.898" y="316.542" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y);</text>
+  <text x="87.069" y="330.891" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="330.891" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="330.891" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">maxY </text>
+  <text x="155.48" y="330.891" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="170.683" y="330.891" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Max(y1, </text>
+  <text x="231.493" y="330.891" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y2, </text>
+  <text x="261.898" y="330.891" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y);</text>
+  <text x="87.069" y="345.24" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="345.24" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="345.24" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">diagramWidth </text>
+  <text x="216.29" y="345.24" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="231.493" y="345.24" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">maxX </text>
+  <text x="269.499" y="345.24" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="284.701" y="345.24" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minX;</text>
+  <text x="87.069" y="359.589" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="359.589" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="359.589" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">diagramHeight </text>
+  <text x="223.891" y="359.589" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="239.094" y="359.589" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">maxY </text>
+  <text x="277.1" y="359.589" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="292.303" y="359.589" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minY;</text>
+  <text x="87.069" y="373.938" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="373.938" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="373.938" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio </text>
+  <text x="163.082" y="373.938" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="178.284" y="373.938" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">1.0</text>
+  <text x="201.088" y="373.938" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">m;</text>
+  <text x="87.069" y="388.287" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="388.287" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="388.287" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">offset </text>
+  <text x="170.683" y="388.287" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="185.885" y="388.287" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">10</text>
+  <text x="201.088" y="388.287" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">;</text>
+  <text x="87.069" y="402.636" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">if</text>
+  <text x="102.272" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="109.873" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(diagramWidth </text>
+  <text x="216.29" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">!= </text>
+  <text x="239.094" y="402.636" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">0</text>
+  <text x="246.695" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="254.296" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">&amp;&amp; </text>
+  <text x="277.1" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">diagramHeight </text>
+  <text x="383.517" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">!= </text>
+  <text x="406.321" y="402.636" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">0</text>
+  <text x="413.922" y="402.636" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)</text>
+  <text x="87.069" y="416.985" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">{</text>
+  <text x="102.272" y="431.334" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="125.075" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="132.677" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratioX </text>
+  <text x="185.885" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="201.088" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(pictureBox.Width </text>
+  <text x="337.91" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="353.112" y="431.334" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">2</text>
+  <text x="360.714" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="368.315" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="383.517" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">offset </text>
+  <text x="436.726" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="451.929" y="431.334" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">1</text>
+  <text x="459.53" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">) </text>
+  <text x="474.732" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">/ </text>
+  <text x="489.935" y="431.334" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">diagramWidth;</text>
+  <text x="102.272" y="445.682" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="125.075" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="132.677" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratioY </text>
+  <text x="185.885" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="201.088" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(pictureBox.Height </text>
+  <text x="345.511" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="360.714" y="445.682" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">2</text>
+  <text x="368.315" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="375.916" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="391.119" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">offset </text>
+  <text x="444.327" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="459.53" y="445.682" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">1</text>
+  <text x="467.131" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">) </text>
+  <text x="482.333" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">/ </text>
+  <text x="497.536" y="445.682" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">diagramHeight;</text>
+  <text x="102.272" y="460.031" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio </text>
+  <text x="147.879" y="460.031" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="163.082" y="460.031" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Math.Min(ratioX, </text>
+  <text x="292.303" y="460.031" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratioY);</text>
+  <text x="87.069" y="474.38" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">}</text>
+  <text x="87.069" y="497.037" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="497.037" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Calculate </text>
+  <text x="185.885" y="497.037" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="216.29" y="497.037" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">scaled </text>
+  <text x="269.499" y="497.037" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">rectangle </text>
+  <text x="345.511" y="497.037" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">coordinates</text>
+  <text x="87.069" y="511.386" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectLeft </text>
+  <text x="185.885" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="201.088" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">offset </text>
+  <text x="254.296" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">+ </text>
+  <text x="269.499" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="277.1" y="511.386" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="299.904" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)Math.Round((Math.Min(x1, </text>
+  <text x="497.536" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x2) </text>
+  <text x="527.941" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="543.143" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minX) </text>
+  <text x="588.751" y="511.386" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="71.867" y="525.735" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio);</text>
+  <text x="87.069" y="540.084" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectTop </text>
+  <text x="178.284" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="193.486" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">offset </text>
+  <text x="246.695" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">+ </text>
+  <text x="261.898" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="269.499" y="540.084" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="292.303" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)Math.Round((Math.Min(y1, </text>
+  <text x="489.935" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y2) </text>
+  <text x="520.34" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="535.542" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minY) </text>
+  <text x="581.15" y="540.084" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="71.867" y="554.432" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio);</text>
+  <text x="87.069" y="568.781" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectWidth </text>
+  <text x="193.486" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="208.689" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="216.29" y="568.781" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="239.094" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)Math.Round(Math.Abs(x2 </text>
+  <text x="421.524" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="436.726" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">x1) </text>
+  <text x="467.131" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="482.333" y="568.781" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio);</text>
+  <text x="87.069" y="583.13" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectHeight </text>
+  <text x="201.088" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="216.29" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="223.891" y="583.13" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="246.695" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)Math.Round(Math.Abs(y2 </text>
+  <text x="429.125" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="444.327" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">y1) </text>
+  <text x="474.732" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="489.935" y="583.13" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio);</text>
+  <text x="87.069" y="597.479" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rect </text>
+  <text x="155.48" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="170.683" y="597.479" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">new</text>
+  <text x="193.486" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="201.088" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Rectangle(rectLeft, </text>
+  <text x="353.112" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectTop, </text>
+  <text x="421.524" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectWidth, </text>
+  <text x="505.137" y="597.479" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rectHeight);</text>
+  <text x="87.069" y="620.136" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="620.136" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Calculate </text>
+  <text x="185.885" y="620.136" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="216.29" y="620.136" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">scaled </text>
+  <text x="269.499" y="620.136" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">point </text>
+  <text x="315.106" y="620.136" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">coordinates</text>
+  <text x="87.069" y="634.485" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pointX </text>
+  <text x="170.683" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="185.885" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="193.486" y="634.485" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="216.29" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)Math.Round(offset </text>
+  <text x="360.714" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">+ </text>
+  <text x="375.916" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(x </text>
+  <text x="398.72" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="413.922" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minX) </text>
+  <text x="459.53" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="474.732" y="634.485" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio);</text>
+  <text x="87.069" y="648.834" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pointY </text>
+  <text x="170.683" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="185.885" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="193.486" y="648.834" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">int</text>
+  <text x="216.29" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">)Math.Round(offset </text>
+  <text x="360.714" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">+ </text>
+  <text x="375.916" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(y </text>
+  <text x="398.72" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="413.922" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">minY) </text>
+  <text x="459.53" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">* </text>
+  <text x="474.732" y="648.834" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">ratio);</text>
+  <text x="87.069" y="663.182" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="109.873" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="117.474" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pointRect </text>
+  <text x="193.486" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="208.689" y="663.182" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">new</text>
+  <text x="231.493" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="239.094" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Rectangle(pointX </text>
+  <text x="368.315" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="383.517" y="663.182" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">2</text>
+  <text x="391.119" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">, </text>
+  <text x="406.321" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pointY </text>
+  <text x="459.53" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">- </text>
+  <text x="474.732" y="663.182" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">2</text>
+  <text x="482.333" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">, </text>
+  <text x="497.536" y="663.182" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">5</text>
+  <text x="505.137" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">, </text>
+  <text x="520.34" y="663.182" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">5</text>
+  <text x="527.941" y="663.182" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">);</text>
+  <text x="87.069" y="685.839" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="109.873" y="685.839" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Draw </text>
+  <text x="147.879" y="685.839" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="178.284" y="685.839" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">rectangle </text>
+  <text x="254.296" y="685.839" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">and </text>
+  <text x="284.701" y="685.839" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">point</text>
+  <text x="87.069" y="700.188" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pictureBox.Image </text>
+  <text x="216.29" y="700.188" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="231.493" y="700.188" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">new</text>
+  <text x="254.296" y="700.188" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="261.898" y="700.188" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Bitmap(pictureBox.Width, </text>
+  <text x="451.929" y="700.188" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pictureBox.Height);</text>
+  <text x="87.069" y="714.537" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">using</text>
+  <text x="125.075" y="714.537" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="132.677" y="714.537" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">(</text>
+  <text x="140.278" y="714.537" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="163.082" y="714.537" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="170.683" y="714.537" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">g </text>
+  <text x="185.885" y="714.537" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="201.088" y="714.537" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Graphics.FromImage(pictureBox.Image))</text>
+  <text x="87.069" y="728.886" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">{</text>
+  <text x="102.272" y="743.235" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="125.075" y="743.235" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Draw </text>
+  <text x="163.082" y="743.235" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">diagram </text>
+  <text x="223.891" y="743.235" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">background </text>
+  <text x="307.505" y="743.235" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">(white </text>
+  <text x="360.714" y="743.235" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">area)</text>
+  <text x="102.272" y="757.584" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">g.Clear(Color.White);</text>
+  <text x="102.272" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="125.075" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Draw </text>
+  <text x="163.082" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="193.486" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">rectangle </text>
+  <text x="269.499" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">(scaled </text>
+  <text x="330.309" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">to </text>
+  <text x="353.112" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="383.517" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">picture </text>
+  <text x="444.327" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">box </text>
+  <text x="474.732" y="781.75" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">size)</text>
+  <text x="102.272" y="796.099" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">var</text>
+  <text x="125.075" y="796.099" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="132.677" y="796.099" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pen </text>
+  <text x="163.082" y="796.099" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="178.284" y="796.099" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">new</text>
+  <text x="201.088" y="796.099" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="208.689" y="796.099" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Pen(Color.Blue, </text>
+  <text x="330.309" y="796.099" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">3</text>
+  <text x="337.91" y="796.099" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">);</text>
+  <text x="102.272" y="810.448" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">g.DrawRectangle(pen, </text>
+  <text x="261.898" y="810.448" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">rect);</text>
+  <text x="102.272" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">// </text>
+  <text x="125.075" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">Draw </text>
+  <text x="163.082" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="193.486" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">point </text>
+  <text x="239.094" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">(scaled </text>
+  <text x="299.904" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">to </text>
+  <text x="322.707" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">the </text>
+  <text x="353.112" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">picture </text>
+  <text x="413.922" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">box </text>
+  <text x="444.327" y="834.615" font-family="Cousine" font-size="12.667" fill="#8e908c" xml:space="preserve">size)</text>
+  <text x="102.272" y="848.964" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pen </text>
+  <text x="132.677" y="848.964" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">= </text>
+  <text x="147.879" y="848.964" font-family="Cousine" font-size="12.667" fill="#8959a8" xml:space="preserve">new</text>
+  <text x="170.683" y="848.964" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve"> </text>
+  <text x="178.284" y="848.964" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">Pen(Color.DarkBlue, </text>
+  <text x="330.309" y="848.964" font-family="Cousine" font-size="12.667" fill="#f5871f" xml:space="preserve">5</text>
+  <text x="337.91" y="848.964" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">);</text>
+  <text x="102.272" y="863.313" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">g.DrawEllipse(pen, </text>
+  <text x="246.695" y="863.313" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">pointRect);</text>
+  <text x="87.069" y="877.662" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">}</text>
+  <text x="71.867" y="892.011" font-family="Cousine" font-size="12.667" fill="#000000" xml:space="preserve">}</text>
+</svg>
