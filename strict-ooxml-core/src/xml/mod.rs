@@ -10,6 +10,8 @@ pub mod ns_stack;
 pub mod qname;
 pub mod safety;
 
+use std::io::Cursor;
+
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use quick_xml::XmlVersion;
@@ -55,7 +57,14 @@ pub enum XmlEvent {
 /// Owned, encoding-aware, namespace-resolving XML reader.
 pub struct XmlReader {
     part: PartId,
-    data: Vec<u8>,
+    /// One tokenizer for the whole part. Recreating `quick_xml::Reader` on a
+    /// mid-document slice that began with UTF-8 `EF BB BF` made quick-xml treat
+    /// U+FEFF text as a stream BOM (R01): the character disappeared and the
+    /// next three bytes were read twice. A persistent reader runs BOM detection
+    /// only once, at the start of the already-normalized buffer.
+    reader: Reader<Cursor<Vec<u8>>>,
+    /// Scratch buffer for [`Reader::read_event_into`].
+    scratch: Vec<u8>,
     pos: usize,
     event_start: usize,
     limits: ResourceLimits,
@@ -120,9 +129,13 @@ impl XmlReader {
     /// Returns [`StrictError::InvalidXml`] if the encoding is unsupported.
     pub fn from_vec(data: Vec<u8>, part: PartId, limits: &ResourceLimits) -> Result<Self> {
         let data = normalize_encoding(data, &part)?;
+        let mut reader = Reader::from_reader(Cursor::new(data));
+        reader.config_mut().check_end_names = false;
+        reader.config_mut().allow_unmatched_ends = true;
         Ok(Self {
             part,
-            data,
+            reader,
+            scratch: Vec::new(),
             pos: 0,
             event_start: 0,
             limits: *limits,
@@ -139,6 +152,11 @@ impl XmlReader {
             event_line: 1,
             event_col: 1,
         })
+    }
+
+    /// Borrowed view of the normalized UTF-8 part bytes.
+    fn data(&self) -> &[u8] {
+        self.reader.get_ref().get_ref()
     }
 
     /// Returns the part this reader is decoding.
@@ -307,72 +325,116 @@ impl XmlReader {
         self.event_line = self.line;
         self.event_col = self.column;
         let start = self.pos;
-        let (event, consumed) = {
-            let mut reader = Reader::from_reader(&self.data[start..]);
-            reader.config_mut().check_end_names = false;
-            reader.config_mut().allow_unmatched_ends = true;
-            let event = reader
-                .read_event()
-                .map_err(|error| self.invalid_xml(format!("{error}"), start))?;
-            let position = reader.buffer_position();
-            let consumed = usize::try_from(position)
-                .map_err(|_| self.invalid_xml("position overflow".to_owned(), start))?;
-            (event, consumed)
+        let err_location = SourceLocation::new(
+            self.part.clone(),
+            self.event_line,
+            self.event_col,
+            self.event_start as u64,
+        );
+        let invalid = |detail: String| -> StrictError {
+            StrictError::InvalidXml {
+                location: err_location.clone(),
+                detail,
+            }
         };
-        self.pos = start + consumed;
-        match event {
-            Event::Start(e) => self.parse_start(&e, false),
-            Event::Empty(e) => self.parse_start(&e, true),
+
+        self.scratch.clear();
+        let event = self
+            .reader
+            .read_event_into(&mut self.scratch)
+            .map_err(|error| invalid(format!("{error}")))?;
+        let position = self.reader.buffer_position();
+        // Copy out of `scratch` before any further `&self` use: the event
+        // borrows that buffer for its lifetime.
+        let parsed = match event {
+            Event::Start(e) => Self::own_start(&e, false, &invalid)?,
+            Event::Empty(e) => Self::own_start(&e, true, &invalid)?,
             Event::End(e) => {
-                let raw = self.raw_name(e.name().as_ref(), start)?;
-                Ok(Parsed::End { raw })
+                let raw = std::str::from_utf8(e.name().as_ref())
+                    .map(str::to_owned)
+                    .map_err(|error| invalid(format!("invalid name: {error}")))?;
+                Parsed::End { raw }
             }
             Event::Text(t) => {
                 let text = t
                     .xml10_content()
-                    .map_err(|error| self.invalid_xml(format!("{error}"), start))?
+                    .map_err(|error| invalid(format!("{error}")))?
                     .into_owned();
-                Ok(Parsed::Text(text))
+                Parsed::Text(text)
             }
             Event::GeneralRef(reference) => {
-                Ok(Parsed::Text(self.resolve_reference(&reference, start)?))
+                Parsed::Text(Self::decode_reference(&reference, &invalid)?)
             }
             Event::CData(c) => {
                 let text = std::str::from_utf8(&c.into_inner())
-                    .map_err(|error| self.invalid_xml(format!("{error}"), start))?
+                    .map_err(|error| invalid(format!("{error}")))?
                     .to_owned();
-                Ok(Parsed::CData(text))
+                Parsed::CData(text)
             }
-            Event::DocType(_) => Err(StrictError::InvalidXml {
-                location: self.location(),
-                detail: "DOCTYPE declarations are not allowed".to_owned(),
-            }),
-            Event::Comment(_) | Event::PI(_) | Event::Decl(_) => Ok(Parsed::Skip),
-            Event::Eof => Ok(Parsed::Eof),
-        }
+            Event::DocType(_) => {
+                return Err(invalid("DOCTYPE declarations are not allowed".to_owned()));
+            }
+            Event::Comment(_) | Event::PI(_) | Event::Decl(_) => Parsed::Skip,
+            Event::Eof => Parsed::Eof,
+        };
+        self.pos = usize::try_from(position)
+            .map_err(|_| invalid(format!("position overflow at {start}")))?;
+        Ok(parsed)
     }
 
     /// Owns a start/empty tag's name and attributes.
-    fn parse_start(
-        &self,
+    fn own_start(
         element: &quick_xml::events::BytesStart<'_>,
         empty: bool,
+        invalid: &dyn Fn(String) -> StrictError,
     ) -> Result<Parsed> {
-        let raw = self.raw_name(element.name().as_ref(), self.event_start)?;
+        let raw = std::str::from_utf8(element.name().as_ref())
+            .map(str::to_owned)
+            .map_err(|error| invalid(format!("invalid name: {error}")))?;
         let mut attrs = Vec::new();
         for attribute in element.attributes() {
-            let attribute = attribute
-                .map_err(|error| self.invalid_xml(format!("{error}"), self.event_start))?;
+            let attribute = attribute.map_err(|error| invalid(format!("{error}")))?;
             let key = std::str::from_utf8(attribute.key.as_ref())
-                .map_err(|error| self.invalid_xml(format!("{error}"), self.event_start))?
+                .map_err(|error| invalid(format!("{error}")))?
                 .to_owned();
             let value = attribute
                 .normalized_value(XmlVersion::Implicit1_0)
-                .map_err(|error| self.invalid_xml(format!("{error}"), self.event_start))?
+                .map_err(|error| invalid(format!("{error}")))?
                 .into_owned();
             attrs.push((key, value));
         }
         Ok(Parsed::Start { raw, attrs, empty })
+    }
+
+    /// Resolves a character or predefined entity while the tokenizer still
+    /// borrows the scratch buffer.
+    fn decode_reference(
+        reference: &quick_xml::events::BytesRef<'_>,
+        invalid: &dyn Fn(String) -> StrictError,
+    ) -> Result<String> {
+        if reference.is_char_ref() {
+            let ch = reference
+                .resolve_char_ref()
+                .map_err(|error| invalid(format!("{error}")))?
+                .ok_or_else(|| invalid("invalid character reference".to_owned()))?;
+            return Ok(ch.to_string());
+        }
+        let name = reference
+            .decode()
+            .map_err(|error| invalid(format!("{error}")))?;
+        let ch = match name.as_ref() {
+            "lt" => '<',
+            "gt" => '>',
+            "amp" => '&',
+            "apos" => '\'',
+            "quot" => '"',
+            other => {
+                return Err(invalid(format!(
+                    "entity reference '&{other};' is not allowed"
+                )));
+            }
+        };
+        Ok(ch.to_string())
     }
 
     /// Resolves a raw `prefix:local` name against the current namespace scope.
@@ -395,49 +457,6 @@ impl XmlReader {
         }
     }
 
-    /// Resolves a character or predefined entity reference.
-    ///
-    /// Custom (DTD-declared) entities are rejected because DTD processing is
-    /// forbidden.
-    fn resolve_reference(
-        &self,
-        reference: &quick_xml::events::BytesRef<'_>,
-        offset: usize,
-    ) -> Result<String> {
-        if reference.is_char_ref() {
-            let ch = reference
-                .resolve_char_ref()
-                .map_err(|error| self.invalid_xml(format!("{error}"), offset))?
-                .ok_or_else(|| {
-                    self.invalid_xml("invalid character reference".to_owned(), offset)
-                })?;
-            return Ok(ch.to_string());
-        }
-        let name = reference
-            .decode()
-            .map_err(|error| self.invalid_xml(format!("{error}"), offset))?;
-        let ch = match name.as_ref() {
-            "lt" => '<',
-            "gt" => '>',
-            "amp" => '&',
-            "apos" => '\'',
-            "quot" => '"',
-            other => {
-                return Err(self.invalid_xml(
-                    format!("entity reference '&{other};' is not allowed"),
-                    offset,
-                ))
-            }
-        };
-        Ok(ch.to_string())
-    }
-
-    fn raw_name(&self, bytes: &[u8], offset: usize) -> Result<String> {
-        std::str::from_utf8(bytes)
-            .map(str::to_owned)
-            .map_err(|error| self.invalid_xml(format!("invalid name: {error}"), offset))
-    }
-
     fn invalid_xml(&self, detail: String, _offset: usize) -> StrictError {
         StrictError::InvalidXml {
             location: self.location(),
@@ -450,18 +469,24 @@ impl XmlReader {
     /// Across a whole document every byte is scanned at most once, which keeps
     /// location bookkeeping amortized O(1) per event.
     fn advance_to(&mut self, target: usize) {
-        let target = target.min(self.data.len());
+        let len = self.data().len();
+        let target = target.min(len);
         if target <= self.scanned {
             return;
         }
-        for &byte in &self.data[self.scanned..target] {
+        let from = self.scanned;
+        let mut line = self.line;
+        let mut column = self.column;
+        for &byte in &self.data()[from..target] {
             if byte == b'\n' {
-                self.line = self.line.saturating_add(1);
-                self.column = 1;
+                line = line.saturating_add(1);
+                column = 1;
             } else {
-                self.column = self.column.saturating_add(1);
+                column = column.saturating_add(1);
             }
         }
+        self.line = line;
+        self.column = column;
         self.scanned = target;
     }
 
@@ -983,5 +1008,106 @@ mod tests {
             }
         }
         assert!(saw_limit, "expected XmlDepth LimitExceeded");
+    }
+
+    /// Collects the exact Unicode scalar values of every text/CDATA event.
+    fn text_code_points(xml: &[u8]) -> Vec<u32> {
+        let mut reader = XmlReader::new(xml, part(), &ResourceLimits::default()).unwrap();
+        let mut out = Vec::new();
+        loop {
+            match reader.next_event().unwrap() {
+                XmlEvent::Text(text) | XmlEvent::CData(text) => {
+                    out.extend(text.chars().map(|ch| u32::from(ch)));
+                }
+                XmlEvent::Eof => break,
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// R01: a mid-document U+FEFF (UTF-8 `EF BB BF`) is character data, not a
+    /// stream BOM. Recreating `quick_xml::Reader` on a slice that begins with
+    /// those bytes used to drop the FEFF and re-read the last three text bytes.
+    #[test]
+    fn text_node_leading_feff_preserves_exact_code_points() {
+        // U+FEFF + தமிழ் (Tamil) — the audit fixture's payload.
+        let expected: Vec<u32> = vec![0xFEFF, 0x0BA4, 0x0BAE, 0x0BBF, 0x0BB4, 0x0BCD];
+        let mut xml = b"<t xml:space=\"preserve\">".to_vec();
+        xml.extend_from_slice("\u{FEFF}\u{0BA4}\u{0BAE}\u{0BBF}\u{0BB4}\u{0BCD}".as_bytes());
+        xml.extend_from_slice(b"</t>");
+        assert_eq!(text_code_points(&xml), expected);
+    }
+
+    #[test]
+    fn text_node_feff_in_middle_and_end_is_kept() {
+        let xml = "<t>a\u{FEFF}b\u{FEFF}</t>".as_bytes();
+        assert_eq!(
+            text_code_points(xml),
+            vec![u32::from('a'), 0xFEFF, u32::from('b'), 0xFEFF]
+        );
+    }
+
+    #[test]
+    fn text_node_feff_only_is_kept() {
+        let xml = "<t>\u{FEFF}</t>".as_bytes();
+        assert_eq!(text_code_points(xml), vec![0xFEFF]);
+    }
+
+    #[test]
+    fn document_utf8_bom_is_stripped_but_text_feff_remains() {
+        let mut xml = vec![0xEF, 0xBB, 0xBF];
+        xml.extend_from_slice("<t>\u{FEFF}x</t>".as_bytes());
+        assert_eq!(text_code_points(&xml), vec![0xFEFF, u32::from('x')]);
+    }
+
+    #[test]
+    fn text_node_leading_feff_with_ascii_cyrillic_and_supplementary() {
+        // ASCII, Cyrillic, and a supplementary plane emoji after a leading FEFF.
+        let text = "\u{FEFF}AБ\u{1F600}";
+        let expected: Vec<u32> = text.chars().map(u32::from).collect();
+        let xml = format!("<t>{text}</t>");
+        assert_eq!(text_code_points(xml.as_bytes()), expected);
+    }
+
+    /// Inverse control for R01: the pre-fix pattern (new `Reader` on each
+    /// remaining slice) still corrupts a leading U+FEFF by dropping it and
+    /// re-reading the last three text bytes on the next event. Kept so a
+    /// regression to slice recreation cannot silently pass the positive tests.
+    #[test]
+    fn inverse_recreated_slice_reader_corrupts_leading_feff() {
+        use quick_xml::events::Event;
+        use quick_xml::reader::Reader;
+
+        let mut xml = b"<t>".to_vec();
+        xml.extend_from_slice("\u{FEFF}\u{0BA4}\u{0BAE}\u{0BBF}\u{0BB4}\u{0BCD}".as_bytes());
+        xml.extend_from_slice(b"</t>");
+        let mut pos = 3; // payload after `<t>`
+        let mut joined = String::new();
+        for _ in 0..8 {
+            let mut reader = Reader::from_reader(&xml[pos..]);
+            reader.config_mut().check_end_names = false;
+            reader.config_mut().allow_unmatched_ends = true;
+            let event = reader.read_event().unwrap();
+            let consumed = usize::try_from(reader.buffer_position()).unwrap();
+            pos += consumed;
+            match event {
+                Event::Text(text) => joined.push_str(&text.xml10_content().unwrap()),
+                Event::End(_) => break,
+                Event::Eof => break,
+                _ => {}
+            }
+        }
+        let points: Vec<u32> = joined.chars().map(u32::from).collect();
+        assert_eq!(
+            points,
+            vec![0x0BA4, 0x0BAE, 0x0BBF, 0x0BB4, 0x0BCD, 0x0BCD],
+            "inverse signature: FEFF lost and last Tamil sign duplicated"
+        );
+        // Production reader must not share that signature.
+        assert_eq!(
+            text_code_points(&xml),
+            vec![0xFEFF, 0x0BA4, 0x0BAE, 0x0BBF, 0x0BB4, 0x0BCD]
+        );
     }
 }

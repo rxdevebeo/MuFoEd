@@ -1,0 +1,12 @@
+--- write1/word/document.xml
+
++++ write2/word/document.xml
+
+@@ -116,5 +116,5 @@
+
+ </w:pPr>
+ <w:r>
+-<w:t xml:space="preserve">﻿அயோத்திதாசர் சிந்தனைகள் - சமயம்</w:t>
++<w:t xml:space="preserve">அயோத்திதாசர் சிந்தனைகள் - சமயம்்</w:t>
+ </w:r>
+ </w:p>

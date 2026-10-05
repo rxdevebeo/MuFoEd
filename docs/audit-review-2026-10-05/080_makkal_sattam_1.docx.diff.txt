@@ -1,0 +1,12 @@
+--- write1/word/document.xml
+
++++ write2/word/document.xml
+
+@@ -116,5 +116,5 @@
+
+ </w:pPr>
+ <w:r>
+-<w:t xml:space="preserve">﻿மக்கள் சட்டம்</w:t>
++<w:t xml:space="preserve">மக்கள் சட்டம்்</w:t>
+ </w:r>
+ </w:p>
