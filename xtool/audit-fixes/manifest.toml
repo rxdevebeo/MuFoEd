@@ -96,6 +96,7 @@ tests = [
     "f07_unknown_face_has_consistent_fallback",
 ]
 inverse_tests = ["inverse_naive_per_char_sum_is_not_shaped_for_kern_pair"]
+# Browser face-load gate lives in strict-ooxml-view (R09); see matrix F07-browser-face-load.
 
 [[task]]
 id = "F08"
@@ -219,7 +220,12 @@ id = "F20"
 findings = ["A08"]
 kind = "cargo"
 package = "strict-ooxml-view"
-tests = ["f20_successful_view_exposes_normalization_loss"]
+tests = [
+    "f20_successful_view_exposes_normalization_loss",
+    "f20_browser_dom_after_js_exposes_loss_matrix",
+    "f07_browser_loads_bundled_face_bytes_and_hash",
+    "inverse_static_html_shell_has_empty_losses_until_js",
+]
 
 [[task]]
 id = "F21"

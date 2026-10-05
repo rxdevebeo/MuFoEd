@@ -235,6 +235,11 @@ body.gaps-off #pages { gap: 0; }
 }
 body.gaps-off .page { box-shadow: none; border-bottom: 1px solid var(--line); }
 .page svg { display: block; width: 100%; height: auto; }
+/* Selectable rendered text is part of the F07/F20 browser contract. */
+.page, .page svg, .page svg text {
+  -webkit-user-select: text;
+  user-select: text;
+}
 .page .number {
   position: absolute;
   top: 6px;
@@ -351,30 +356,50 @@ function showPipeline(view) {
   const list = $('losses-list');
   const pipeline = view.pipeline;
   list.replaceChildren();
+  const setSurface = (outcome, sidecar) => {
+    box.dataset.outcome = outcome;
+    box.dataset.sidecar = sidecar;
+    toggle.dataset.outcome = outcome;
+    toggle.dataset.sidecar = sidecar;
+  };
+  const toggleList = () => {
+    list.hidden = !list.hidden;
+    toggle.setAttribute('aria-expanded', String(!list.hidden));
+  };
   if (!pipeline) {
     box.hidden = false;
     box.className = '';
-    toggle.dataset.outcome = 'unavailable';
+    setSurface('unavailable', 'absent');
     toggle.textContent = 'report unavailable';
     list.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.onclick = toggleList;
+    toggle.onkeydown = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleList();
+      }
+    };
     return;
   }
   const losses = (pipeline.issues || []).filter((issue) => {
     return issue.severity !== 'info' && issue.severity !== 'ignorable' && issue.severity !== 'inferred';
   });
   const count = losses.reduce((sum, issue) => sum + Number(issue.count || 1), 0);
+  const sidecar = pipeline.sidecar || 'absent';
   box.hidden = false;
   box.className = pipeline.outcome === 'clean' ? 'clean' : '';
-  toggle.dataset.outcome = pipeline.outcome;
+  setSurface(pipeline.outcome, sidecar);
   if (pipeline.outcome === 'clean' && count === 0) {
-    toggle.textContent = 'clean';
+    toggle.textContent = 'clean · sidecar ' + sidecar;
   } else {
     const reason = losses.length ? losses[0].detail : pipeline.outcome;
-    toggle.textContent = pipeline.outcome + ' · ' + count + (count === 1 ? ' loss' : ' losses') + ' · ' + reason;
+    toggle.textContent = pipeline.outcome + ' · ' + count + (count === 1 ? ' loss' : ' losses') + ' · sidecar ' + sidecar + ' · ' + reason;
   }
   for (const issue of pipeline.issues || []) {
     const item = document.createElement('li');
     const where = [issue.part, issue.page ? ('page ' + issue.page) : '', issue.location].filter(Boolean).join(' ');
+    // textContent keeps special characters visible without interpreting HTML.
     item.textContent = issue.stage + ' ' + issue.id + ' ×' + issue.count + ' ' + issue.detail + (where ? ' · ' + where : '');
     list.append(item);
   }
@@ -385,11 +410,14 @@ function showPipeline(view) {
       list.append(item);
     }
   }
-  list.hidden = pipeline.outcome === 'clean';
+  list.hidden = pipeline.outcome === 'clean' && count === 0;
   toggle.setAttribute('aria-expanded', String(!list.hidden));
-  toggle.onclick = () => {
-    list.hidden = !list.hidden;
-    toggle.setAttribute('aria-expanded', String(!list.hidden));
+  toggle.onclick = toggleList;
+  toggle.onkeydown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleList();
+    }
   };
 }
 
@@ -653,5 +681,26 @@ mod tests {
         let code = script();
         assert!(code.contains("view.note"), "a failed render must be shown");
         assert!(code.contains("could not render") || code.contains("could not"));
+    }
+
+    #[test]
+    fn the_loss_surface_publishes_sidecar_and_keyboard_toggle() {
+        let code = script();
+        assert!(
+            code.contains("dataset.sidecar") || code.contains("data-sidecar"),
+            "sidecar status must reach the DOM"
+        );
+        assert!(
+            code.contains("pipeline.sidecar"),
+            "the live API sidecar field must be bound"
+        );
+        assert!(
+            code.contains("event.key === 'Enter'") && code.contains("event.key === ' '"),
+            "losses must expand from the keyboard"
+        );
+        assert!(
+            css().contains("user-select: text"),
+            "rendered page text must stay selectable"
+        );
     }
 }

@@ -294,7 +294,15 @@ kind = "matrix"
 test = ""
 oracle = "theme major/minor, tab, missing glyph, corrupt resource, system fonts off"
 status = "blocked"
-blocker = "R05 shaped path + three F07 witnesses measured; remaining theme/tab/glyph matrix and browser face load are R09"
+blocker = "R05 shaped path + three F07 witnesses + R09 browser face load measured; remaining theme/tab/glyph matrix still open"
+
+[[scenario]]
+card = "F07"
+id = "F07-browser-face-load"
+kind = "matrix"
+test = "f07_browser_loads_bundled_face_bytes_and_hash"
+oracle = "pinned browser: document.fonts loaded; @font-face bytes SHA-256 = R05 Carlito resource_hash; selectable text; no installed-font dependency"
+status = "measured"
 
 [[scenario]]
 card = "F07"
@@ -672,10 +680,17 @@ status = "measured"
 card = "F20"
 id = "F20-matrix-browser-js"
 kind = "matrix"
-test = ""
-oracle = "browser DOM after JS: keyboard expansion, stale sidecar, font load"
-status = "blocked"
-blocker = "R09 owns live browser harness; current test is API/HTML only"
+test = "f20_browser_dom_after_js_exposes_loss_matrix"
+oracle = "browser DOM+API after JS: clean/degraded/failed/not_run, keyboard expand, escaping, many issues, matched/rejected sidecar"
+status = "measured"
+
+[[scenario]]
+card = "F20"
+id = "F20-inverse-static-html"
+kind = "inverse"
+test = "inverse_static_html_shell_has_empty_losses_until_js"
+oracle = "static TCP HTML shell must not already contain live loss fill"
+status = "measured"
 
 [[scenario]]
 card = "F21"

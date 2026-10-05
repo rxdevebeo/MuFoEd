@@ -27,6 +27,7 @@ sha2 = "0.11"
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
+sha2 = "0.11"
 
 [lints]
 workspace = true
