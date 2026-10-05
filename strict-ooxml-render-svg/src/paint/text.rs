@@ -21,6 +21,7 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
             super::escape_attr(highlight),
         );
     }
+    let shown = crate::font::present_text(&item.run.family, &item.text);
     let fill = item
         .run
         .color
@@ -55,6 +56,6 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
         coord(item.baseline),
         attributes,
         super::escape_attr(&fill),
-        super::escape_text(&item.text),
+        super::escape_text(&shown),
     );
 }

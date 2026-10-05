@@ -8,6 +8,9 @@
 pub mod builtin;
 pub mod family;
 pub mod metrics;
+mod symbol;
+
+pub(crate) use symbol::present_text;
 
 pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};
 pub use family::map_family;

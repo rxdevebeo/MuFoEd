@@ -541,9 +541,11 @@ impl LayoutContext<'_> {
     /// Measures the advance width of `text` for a run in px.
     #[must_use]
     pub(crate) fn measure(&self, text: &str, run: &ComputedRun) -> f64 {
+        let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
         let family = crate::style::chosen_family(run, text);
-        text.chars()
+        shown
+            .chars()
             .map(|ch| self.font.advance_em(&family, ch, run.bold, run.italic) * size_px)
             .sum()
     }

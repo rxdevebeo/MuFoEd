@@ -115,6 +115,42 @@ fn bullet_level_renders_its_glyph() {
         .any(|(text, _)| text == "\u{2022}"));
 }
 
+/// A bullet level whose marker is a private-use character of `font`.
+fn symbol_bullet(font: &str, marker: char) -> String {
+    format!(
+        "<?xml version=\"1.0\"?><w:numbering xmlns:w=\"{W}\"><w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"{marker}\"/>\
+<w:rPr><w:rFonts w:ascii=\"{font}\" w:hAnsi=\"{font}\"/></w:rPr></w:lvl>\
+</w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>"
+    )
+}
+
+#[test]
+fn symbol_private_bullet_renders_as_a_bullet() {
+    let pages = build(&item(0, "Item"), &symbol_bullet("Symbol", '\u{F0B7}'));
+    let svg = &pages[0].svg;
+    assert!(texts(svg).iter().any(|(text, _)| text == "\u{2022}"));
+    assert!(!svg.contains('\u{F0B7}'));
+    assert!(svg.contains("font-family=\"Carlito\""));
+}
+
+#[test]
+fn wingdings_square_renders_as_a_square() {
+    let pages = build(&item(0, "Item"), &symbol_bullet("Wingdings", '\u{F0A7}'));
+    assert!(texts(&pages[0].svg)
+        .iter()
+        .any(|(text, _)| text == "\u{25AA}"));
+}
+
+#[test]
+fn wingdings_clock_is_not_turned_into_a_bullet() {
+    let pages = build(&item(0, "Item"), &symbol_bullet("Wingdings", '\u{F0B7}'));
+    let rendered = texts(&pages[0].svg);
+    assert!(rendered.iter().any(|(text, _)| text.contains('\u{F0B7}')));
+    assert!(!rendered.iter().any(|(text, _)| text.contains('\u{2022}')));
+}
+
 #[test]
 fn level_indentation_offsets_the_marker() {
     let numbering = format!(
