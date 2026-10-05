@@ -11,7 +11,8 @@
 mod common;
 
 use common::{
-    build_docx, content_types, document, open_body, open_bytes, render_body, root_rels, W,
+    build_docx, content_types, document, open_body, open_bytes, render_body, root_rels,
+    without_font_faces, W,
 };
 use strict_ooxml_render_svg::{render, PageSelection, RenderOptions};
 
@@ -122,9 +123,10 @@ fn no_nan_or_infinite_coordinates() {
         "<w:p><w:r><w:t>abc</w:t></w:r></w:p><w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid><w:tr><w:tc><w:p/></w:tc></w:tr></w:tbl>",
     );
     for page in &pages {
-        assert!(!page.svg.contains("NaN"), "{}", page.svg);
-        assert!(!page.svg.contains("inf"), "{}", page.svg);
-        assert!(!page.svg.contains("-0."), "{}", page.svg);
+        let ink = without_font_faces(&page.svg);
+        assert!(!ink.contains("NaN"), "{ink}");
+        assert!(!ink.contains("inf"), "{ink}");
+        assert!(!ink.contains("-0."), "{ink}");
     }
 }
 
@@ -152,8 +154,9 @@ fn zero_default_tab_stop_advances_text() {
     let pages = render(&parsed, &RenderOptions::default()).expect("render");
     assert_eq!(pages.len(), 1);
     let svg = &pages[0].svg;
-    assert!(!svg.contains("NaN"), "{svg}");
-    assert!(!svg.contains("inf"), "{svg}");
+    let ink = without_font_faces(svg);
+    assert!(!ink.contains("NaN"), "{ink}");
+    assert!(!ink.contains("inf"), "{ink}");
     let document = roxmltree::Document::parse(svg).expect("svg");
     let text_x = document
         .descendants()

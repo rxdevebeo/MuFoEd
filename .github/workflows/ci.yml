@@ -108,6 +108,25 @@ jobs:
       # to ask three operating systems to do.
       - name: No ECMA bytes in the tree (G-6)
         run: python xtool/xsd-gate/no_ecma_bytes.py
+      - name: Text preservation metric (A04)
+        run: python xtool/audit-fixes/text_metric.py
+      - name: Audit fixture runner (F00)
+        run: python xtool/audit-fixes/run.py --task F00 --phase green --receipt-dir target/audit-fixes/F00/green
+      - name: Public audit suite (F21)
+        run: python xtool/audit-fixes/run.py --task F21 --phase green --receipt-dir target/audit-fixes/F21/green
+      # A07: `pdf` must compile and render on its own. The default and
+      # all-features builds do not cover `--features pdf` with defaults off.
+      - name: Feature matrix (A07)
+        run: |
+          cargo check -p strict-ooxml --locked --no-default-features
+          cargo check -p strict-ooxml --locked --no-default-features --features svg
+          cargo check -p strict-ooxml --locked --no-default-features --features pdf
+          cargo check -p strict-ooxml --locked --no-default-features --features write
+          cargo check -p strict-ooxml --locked --no-default-features --features convert
+          cargo check -p strict-ooxml --locked
+          cargo check -p strict-ooxml --locked --all-features
+          cargo run -p strict-ooxml --locked --no-default-features --features pdf --example render_pdf
+          cargo check -p strict-ooxml-cli --locked
       - name: Optional-element coverage gate (>= 90%)
         run: cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 89
       - name: Stage-5 extended-scenario coverage gate (>= 85%)
@@ -149,6 +168,8 @@ jobs:
           done
       - name: No ECMA bytes in the tree (G-6)
         run: python xtool/xsd-gate/no_ecma_bytes.py
+      - name: XSD gate failure modes (A05)
+        run: python xtool/xsd-gate/test_f01_gates.py
       - name: XSD gate
         run: python xtool/xsd-gate/xsd_gate.py --written /tmp/strict-xsd-gate --quiet-messages
       # G-14 of the acceptance: two runs on one corpus must agree. The gate is

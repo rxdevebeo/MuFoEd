@@ -9,10 +9,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use sha2::{Digest, Sha256};
 use strict_ooxml::{
     ConformancePolicy, OpenOptions, RenderOptions, StrictDocument, TransitionalNormalizer,
 };
 use strict_ooxml_core::error::Result;
+use strict_ooxml_core::pipeline::{PipelineIssue, PipelineStage, PipelineSummary};
 
 /// One `.docx` the viewer can open.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +99,53 @@ impl Summary {
     }
 }
 
+/// One stage of the viewer pipeline and whether this process ran it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StageStatus {
+    /// Stage name: `input`, `normalize`, `convert`, `write`, or `render`.
+    pub stage: String,
+    /// `ran`, `not_run`, or `failed`.
+    pub status: String,
+}
+
+/// One issue the viewer shows beside a successful or failed open.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ViewIssue {
+    /// Stage that recorded the issue.
+    pub stage: String,
+    /// Stable id from that stage.
+    pub id: String,
+    /// The stage's own severity word.
+    pub severity: String,
+    /// Package part, when the stage named one.
+    pub part: Option<String>,
+    /// Page number, when the stage named one.
+    pub page: Option<u32>,
+    /// Location text, when the stage named one.
+    pub location: Option<String>,
+    /// How many times this issue was counted.
+    pub count: u32,
+    /// The stage's own explanation.
+    pub detail: String,
+}
+
+/// The live pipeline report for one opened document.
+///
+/// The support [`Summary`] stays a separate count of mechanisms. This report
+/// is the loss ledger. A sidecar is attached only when its output hash is the
+/// file being viewed; it never clears a live issue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PipelineView {
+    /// `clean`, `degraded`, or `failed`.
+    pub outcome: String,
+    /// Issues from the stages that ran, plus a matching sidecar.
+    pub issues: Vec<ViewIssue>,
+    /// What this viewer process itself ran. Convert and write stay `not_run`.
+    pub stages: Vec<StageStatus>,
+    /// `absent`, `matched`, or `rejected`.
+    pub sidecar: String,
+}
+
 /// A rendered document, ready to serve.
 #[derive(Clone, Debug)]
 pub struct DocumentView {
@@ -110,6 +159,8 @@ pub struct DocumentView {
     pub note: Option<String>,
     /// Pages, empty when the document could not be opened.
     pub pages: Vec<Rendered>,
+    /// Normalization and render losses. Present for a failed open too.
+    pub pipeline: PipelineView,
 }
 
 /// Renders `entry`, normalizing it when `transitional` is set.
@@ -128,6 +179,7 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
         OpenOptions::default()
     };
     let document = StrictDocument::open_path(&entry.path, &options)?;
+    let pipeline = pipeline_for(&document, &entry.path);
     let conformance = format!("{:?}", document.package().conformance()).to_lowercase();
     let report = document.support_report();
     let summary = Summary {
@@ -157,6 +209,7 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
         summary: Some(summary),
         note: None,
         pages: rendered,
+        pipeline,
     })
 }
 
@@ -171,6 +224,189 @@ pub fn failed(entry: &Entry, reason: &str) -> DocumentView {
         summary: None,
         note: Some(reason.to_owned()),
         pages: Vec::new(),
+        pipeline: PipelineView {
+            outcome: "failed".to_owned(),
+            issues: vec![ViewIssue {
+                stage: "input".to_owned(),
+                id: "open".to_owned(),
+                severity: "error".to_owned(),
+                part: None,
+                page: None,
+                location: None,
+                count: 1,
+                detail: reason.to_owned(),
+            }],
+            stages: stage_rows("failed", false, false),
+            sidecar: "absent".to_owned(),
+        },
+    }
+}
+
+/// Builds the live report, then attaches a sidecar only when its hash matches.
+fn pipeline_for(document: &StrictDocument, path: &Path) -> PipelineView {
+    let normalization = document.package().normalization_report();
+    let mut summary = normalization
+        .as_ref()
+        .map_or_else(PipelineSummary::new, |report| {
+            PipelineSummary::from_normalization(PipelineStage::Normalize, report)
+        });
+    let sidecar = attach_sidecar(path, &mut summary);
+    PipelineView {
+        outcome: summary.outcome.to_string(),
+        issues: summary.issues.iter().map(view_issue).collect(),
+        stages: stage_rows("ran", normalization.is_some(), true),
+        sidecar: sidecar.to_owned(),
+    }
+}
+
+fn stage_rows(input: &str, normalize_ran: bool, render_ran: bool) -> Vec<StageStatus> {
+    let status = |stage: &str, value: &str| StageStatus {
+        stage: stage.to_owned(),
+        status: value.to_owned(),
+    };
+    vec![
+        status("input", input),
+        status("normalize", if normalize_ran { "ran" } else { "not_run" }),
+        status("convert", "not_run"),
+        status("write", "not_run"),
+        status("render", if render_ran { "ran" } else { "not_run" }),
+    ]
+}
+
+fn view_issue(issue: &PipelineIssue) -> ViewIssue {
+    ViewIssue {
+        stage: issue.stage.to_string(),
+        id: issue.id.clone(),
+        severity: issue.severity.clone(),
+        part: issue.part.clone(),
+        page: issue.page,
+        location: issue.location.clone(),
+        count: issue.count,
+        detail: issue.detail.clone(),
+    }
+}
+
+/// Reads `{file}.report.json`. A hash that is not this file's is ignored.
+fn attach_sidecar(path: &Path, summary: &mut PipelineSummary) -> &'static str {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return "absent";
+    };
+    let sidecar = path.with_file_name(format!("{name}.report.json"));
+    let Ok(text) = std::fs::read_to_string(&sidecar) else {
+        return "absent";
+    };
+    let Some(hash) = quoted_field(&text, "output_sha256") else {
+        return "rejected";
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return "rejected";
+    };
+    if hash != sha256_hex(&bytes) {
+        return "rejected";
+    }
+    let existing: Vec<(String, String, String)> = summary
+        .issues
+        .iter()
+        .map(|issue| {
+            (
+                issue.stage.to_string(),
+                issue.id.clone(),
+                issue.detail.clone(),
+            )
+        })
+        .collect();
+    let extra: Vec<PipelineIssue> = sidecar_issues(&text)
+        .into_iter()
+        .filter(|issue| {
+            !existing.iter().any(|(stage, id, detail)| {
+                stage == &issue.stage.to_string() && id == &issue.id && detail == &issue.detail
+            })
+        })
+        .collect();
+    summary.extend_issues(extra);
+    "matched"
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut text = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        text.push(char::from(HEX[usize::from(byte >> 4)]));
+        text.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    text
+}
+
+fn quoted_field(text: &str, key: &str) -> Option<String> {
+    let pattern = format!("\"{key}\"");
+    let start = text.find(&pattern)?;
+    let after = text.get(start + pattern.len()..)?;
+    let colon = after.find(':')?;
+    let rest = after.get(colon + 1..)?.trim_start();
+    let body = rest.strip_prefix('"')?;
+    let mut out = String::new();
+    let mut chars = body.chars();
+    while let Some(character) = chars.next() {
+        if character == '\\' {
+            out.push(chars.next()?);
+        } else if character == '"' {
+            return Some(out);
+        } else {
+            out.push(character);
+        }
+    }
+    None
+}
+
+fn sidecar_issues(text: &str) -> Vec<PipelineIssue> {
+    let mut issues = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("\"stage\"") {
+        let slice = &rest[start..];
+        let end = slice.find('}').map_or(slice.len(), |index| index);
+        let object = &slice[..end];
+        rest = &slice[end..];
+        let Some(stage) = quoted_field(object, "stage")
+            .as_deref()
+            .and_then(stage_named)
+        else {
+            continue;
+        };
+        let Some(id) = quoted_field(object, "id") else {
+            continue;
+        };
+        issues.push(PipelineIssue {
+            stage,
+            id,
+            severity: quoted_field(object, "severity").unwrap_or_else(|| "info".to_owned()),
+            part: quoted_field(object, "part"),
+            page: number_field(object, "page"),
+            location: quoted_field(object, "location"),
+            count: number_field(object, "count").unwrap_or(1),
+            detail: quoted_field(object, "detail").unwrap_or_default(),
+        });
+    }
+    issues
+}
+
+fn number_field(text: &str, key: &str) -> Option<u32> {
+    let pattern = format!("\"{key}\"");
+    let start = text.find(&pattern)?;
+    let after = text.get(start + pattern.len()..)?;
+    let colon = after.find(':')?;
+    let rest = after.get(colon + 1..)?.trim_start();
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+fn stage_named(name: &str) -> Option<PipelineStage> {
+    match name {
+        "input" => Some(PipelineStage::Input),
+        "normalize" => Some(PipelineStage::Normalize),
+        "convert" => Some(PipelineStage::Convert),
+        "write" => Some(PipelineStage::Write),
+        "render" => Some(PipelineStage::Render),
+        _ => None,
     }
 }
 
@@ -219,7 +455,7 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
-    use super::{discover, Cache, DocumentView, Summary};
+    use super::{discover, Cache, DocumentView, PipelineView, Summary};
     use std::path::Path;
 
     #[test]
@@ -272,6 +508,12 @@ mod tests {
             summary: None,
             note: None,
             pages: Vec::new(),
+            pipeline: PipelineView {
+                outcome: "clean".to_owned(),
+                issues: Vec::new(),
+                stages: Vec::new(),
+                sidecar: "absent".to_owned(),
+            },
         };
         cache.insert(view);
         assert_eq!(cache.len(), 1);
@@ -289,6 +531,8 @@ mod tests {
         let view = super::failed(&entry, "damaged zip");
         assert_eq!(view.note.as_deref(), Some("damaged zip"));
         assert!(view.pages.is_empty());
+        assert_eq!(view.pipeline.outcome, "failed");
+        assert_eq!(view.pipeline.issues[0].detail, "damaged zip");
     }
 
     #[test]

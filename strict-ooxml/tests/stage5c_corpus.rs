@@ -45,6 +45,24 @@ fn open(name: &str) -> StrictDocument {
     StrictDocument::open_path(&path, &OpenOptions::default()).expect("open strict fixture")
 }
 
+/// Drops the embedded `@font-face` block before a text search.
+///
+/// Layout checks read ink coordinates. The font program's base64 can contain
+/// the character sequences those checks reject.
+fn without_font_faces(svg: &str) -> String {
+    let Some(start) = svg.find("  <style type=\"text/css\">") else {
+        return svg.to_owned();
+    };
+    let rest = &svg[start..];
+    let Some(end) = rest.find("]]></style>\n") else {
+        return svg.to_owned();
+    };
+    let mut out = String::with_capacity(svg.len());
+    out.push_str(&svg[..start]);
+    out.push_str(&rest[end + "]]></style>\n".len()..]);
+    out
+}
+
 #[test]
 fn every_repro_fixture_is_present_and_parses() {
     for name in REPRO {
@@ -94,7 +112,12 @@ fn every_repro_fixture_renders_with_the_reference_page_count() {
         );
         for page in &rendered {
             assert!(page.svg.contains("<svg "), "{name}: invalid SVG");
-            assert!(!page.svg.contains("NaN"), "{name}: NaN in SVG");
+            // The embedded font program is base64; those bytes can spell "NaN"
+            // without any coordinate being NaN.
+            assert!(
+                !without_font_faces(&page.svg).contains("NaN"),
+                "{name}: NaN in SVG"
+            );
         }
     }
 }

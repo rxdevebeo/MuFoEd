@@ -17,8 +17,11 @@
 //! test crate spells out `WordprocessingML` and `O9a` in prose.
 #![allow(clippy::cast_precision_loss, clippy::doc_markdown)]
 
+mod common;
+
 use std::path::Path;
 
+use common::text::{pdf_reading_text, score};
 use strict_ooxml_convert::{convert, Mode, PdfOptions, TableRules};
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::opc::{OpenOptions, Package};
@@ -262,10 +265,6 @@ fn paragraph_text(paragraph: &Paragraph) -> String {
     out
 }
 
-fn significant(text: &str) -> Vec<char> {
-    text.chars().filter(|ch| !ch.is_whitespace()).collect()
-}
-
 /// Converts the fixture and writes it out, as a caller would.
 fn convert_fixture(options: &PdfOptions) -> (strict_ooxml_convert::Converted, Vec<u8>) {
     let pdf = fixture_pdf();
@@ -371,35 +370,20 @@ fn the_table_sits_where_its_text_was() {
 fn every_character_reaches_the_document() {
     let pdf = fixture_pdf();
     let mut reader = PdfDocument::open(&pdf, PdfLimits::default()).expect("open");
-    let expected: String = reader
-        .pages()
-        .expect("pages")
-        .iter()
-        .map(strict_ooxml_pdf::PdfPage::text)
-        .collect::<Vec<String>>()
-        .join(" ");
+    let expected = pdf_reading_text(&mut reader).expect("pages");
     let (converted, bytes) = convert_fixture(&PdfOptions::default());
     // The text of the *written package*, as a reader of the `.docx` sees it.
     let package = Package::open_reader(&bytes[..], &OpenOptions::default()).expect("open");
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let got = all_text(&document.body.blocks);
-    let want = significant(&expected);
-    let have = significant(&got);
-    assert!(!want.is_empty(), "the fixture carries no text to compare");
-    let mut index = 0;
-    for character in &have {
-        while index < want.len() && want[index] != *character {
-            index += 1;
-        }
-        if index < want.len() {
-            index += 1;
-        }
-    }
-    let ratio = index as f64 / want.len() as f64;
+    let measured = score(&expected, &got);
+    let ratio = measured
+        .recall()
+        .expect("the fixture carries no text to compare");
     assert!(
         ratio >= 0.999,
         "only {ratio:.4} of the PDF's {} characters reached the document",
-        want.len()
+        measured.want_len
     );
     assert_eq!(
         all_text(&converted.document.body.blocks).replace(' ', ""),

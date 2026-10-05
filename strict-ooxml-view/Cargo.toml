@@ -23,6 +23,10 @@ doc = false
 [dependencies]
 strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg"] }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+sha2 = "0.11"
+
+[dev-dependencies]
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 
 [lints]
 workspace = true

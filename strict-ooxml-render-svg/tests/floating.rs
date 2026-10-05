@@ -123,7 +123,7 @@ fn tiny_ch_ext_nested_groups_stay_finite() {
     let body = anchor(&format!(
         "<a:graphic><a:graphicData uri=\"{GROUP_DATA_URI}\">{inner}</a:graphicData></a:graphic>"
     ));
-    let svg = assert_single_page(&body);
+    let svg = common::without_font_faces(&assert_single_page(&body));
     assert!(!svg.contains("NaN"), "{svg}");
     assert!(!svg.contains("inf"), "{svg}");
 }

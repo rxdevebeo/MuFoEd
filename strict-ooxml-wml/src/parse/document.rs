@@ -121,6 +121,28 @@ impl PartParser<'_> {
         attrs: &[Attr],
         blocks: &mut Vec<Block>,
     ) -> Result<()> {
+        // A text box is a paragraph. This frame stays live for every nested box,
+        // so the other arms — tables, sections, revisions — live in a function
+        // that a paragraph does not call. Debug builds reserve a slot for every
+        // local of a function, and six of those combined frames have to fit in
+        // the 1 MiB stack the hostile suite uses.
+        if body_kind(name.local()) == BodyKind::Paragraph {
+            blocks.push(Block::Paragraph(self.parse_paragraph(attrs)?));
+            return Ok(());
+        }
+        self.dispatch_block_element_rest(name, attrs, blocks)
+    }
+
+    /// Block elements other than `w:p`.
+    ///
+    /// Split from [`dispatch_block_element`](Self::dispatch_block_element) so a
+    /// nested text box does not keep this match's locals on the stack.
+    fn dispatch_block_element_rest(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        blocks: &mut Vec<Block>,
+    ) -> Result<()> {
         match body_kind(name.local()) {
             BodyKind::Paragraph => {
                 blocks.push(Block::Paragraph(self.parse_paragraph(attrs)?));
@@ -277,8 +299,27 @@ impl PartParser<'_> {
     }
 
     /// Dispatches one paragraph child element into `out`.
-    #[allow(clippy::too_many_lines)]
     fn parse_inline_into(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        out: &mut Vec<Inline>,
+    ) -> Result<()> {
+        // `w:r` is the text-box path. Bookmarks, comments and the other arms
+        // reserve their locals for the whole function in a debug build, so they
+        // are not in this frame.
+        if inline_kind(name.local()) == InlineKind::Run {
+            out.push(Inline::Run(self.parse_run(attrs)?));
+            return Ok(());
+        }
+        self.parse_inline_into_rest(name, attrs, out)
+    }
+
+    /// Paragraph children other than `w:r`.
+    ///
+    /// See [`parse_inline_into`](Self::parse_inline_into) for why this is separate.
+    #[allow(clippy::too_many_lines)]
+    fn parse_inline_into_rest(
         &mut self,
         name: &QName,
         attrs: &[Attr],
@@ -432,7 +473,6 @@ impl PartParser<'_> {
     }
 
     /// Parses a run (`w:r`); its start element has been consumed.
-    #[allow(clippy::too_many_lines)]
     pub(crate) fn parse_run(&mut self, _attrs: &[Attr]) -> Result<Run> {
         let location = self.location();
         self.nested(|parser| {
@@ -441,229 +481,7 @@ impl PartParser<'_> {
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
-                        if is_mce(&name) && name.local() == "AlternateContent" {
-                            // AUD-50: Choice/Fallback before the `!is_wml` skip.
-                            parser.parse_mce_alternate_content_run(&attrs, &mut content)?;
-                            continue;
-                        }
-                        if !is_wml(&name) {
-                            parser.record_foreign(&name);
-                            parser.skip_element()?;
-                            continue;
-                        }
-                        match run_kind(name.local()) {
-                            RunKind::Text | RunKind::DeletedText => {
-                                content.push(RunContent::Text(parser.parse_text_element(&attrs)?));
-                            }
-                            RunKind::Tab => {
-                                content.push(RunContent::Tab);
-                                parser.skip_element()?;
-                            }
-                            RunKind::Break => {
-                                let kind = wml_attr(&attrs, "type")
-                                    .and_then(BreakKind::from_strict)
-                                    .unwrap_or(BreakKind::TextWrapping);
-                                content.push(RunContent::Break(kind));
-                                parser.skip_element()?;
-                            }
-                            RunKind::CarriageReturn => {
-                                content.push(RunContent::CarriageReturn);
-                                parser.skip_element()?;
-                            }
-                            RunKind::Drawing => {
-                                content.push(RunContent::Drawing(parser.parse_drawing()?));
-                            }
-                            RunKind::InstrText => {
-                                let text = parser.parse_text_content()?;
-                                let computed = super::field_is_computed(&text);
-                                parser.record(
-                                    "w:instrText",
-                                    if computed {
-                                        SupportStatus::Supported
-                                    } else {
-                                        SupportStatus::Partial
-                                    },
-                                    Some(if computed {
-                                        "computed at render time".to_owned()
-                                    } else {
-                                        "field result taken from cache (not computed)".to_owned()
-                                    }),
-                                    Some(parser.location()),
-                                );
-                                content.push(RunContent::InstrText(text));
-                            }
-                            RunKind::FieldChar => {
-                                let kind = wml_attr(&attrs, "fldCharType")
-                                    .and_then(FieldCharType::from_strict)
-                                    .unwrap_or(FieldCharType::Begin);
-                                let dirty =
-                                    wml_attr(&attrs, "dirty").is_some_and(parse_on_off_value);
-                                content.push(RunContent::FieldChar(FieldChar { kind, dirty }));
-                                parser.skip_element()?;
-                            }
-                            RunKind::FootnoteRef => {
-                                if let Some(id) = wml_attr(&attrs, "id").and_then(parse_u32) {
-                                    content.push(RunContent::FootnoteRef(id));
-                                    parser.record(
-                                        "w:footnoteReference",
-                                        SupportStatus::Supported,
-                                        None,
-                                        Some(parser.location()),
-                                    );
-                                } else {
-                                    parser.record(
-                                        "w:footnoteReference",
-                                        SupportStatus::Partial,
-                                        Some(
-                                            "footnote reference without a valid w:id was skipped"
-                                                .to_owned(),
-                                        ),
-                                        Some(parser.location()),
-                                    );
-                                }
-                                parser.skip_element()?;
-                            }
-                            RunKind::EndnoteRef => {
-                                if let Some(id) = wml_attr(&attrs, "id").and_then(parse_u32) {
-                                    content.push(RunContent::EndnoteRef(id));
-                                    parser.record(
-                                        "w:endnoteReference",
-                                        SupportStatus::Supported,
-                                        None,
-                                        Some(parser.location()),
-                                    );
-                                } else {
-                                    parser.record(
-                                        "w:endnoteReference",
-                                        SupportStatus::Partial,
-                                        Some(
-                                            "endnote reference without a valid w:id was skipped"
-                                                .to_owned(),
-                                        ),
-                                        Some(parser.location()),
-                                    );
-                                }
-                                parser.skip_element()?;
-                            }
-                            RunKind::Ptab => {
-                                // All three attributes are `use="required"`. An element
-                                // missing one cannot be written back without inventing a
-                                // value, so it is recorded and skipped rather than
-                                // defaulted - the schema names the defect, and a
-                                // defaulted one would not be named at all.
-                                let alignment = wml_attr(&attrs, "alignment");
-                                let relative_to = wml_attr(&attrs, "relativeTo");
-                                let leader = wml_attr(&attrs, "leader");
-                                match (alignment, relative_to, leader) {
-                                    (Some(alignment), Some(relative_to), Some(leader)) => {
-                                        content.push(RunContent::Ptab {
-                                            alignment: parser.intern(alignment),
-                                            relative_to: parser.intern(relative_to),
-                                            leader: parser.intern(leader),
-                                        });
-                                        parser.record(
-                                            "w:ptab",
-                                            SupportStatus::Supported,
-                                            None,
-                                            Some(parser.location()),
-                                        );
-                                    }
-                                    _ => {
-                                        parser.record(
-                                            "w:ptab",
-                                            SupportStatus::Partial,
-                                            Some(
-                                                "w:ptab requires alignment, relativeTo and leader"
-                                                    .to_owned(),
-                                            ),
-                                            Some(parser.location()),
-                                        );
-                                    }
-                                }
-                                parser.skip_element()?;
-                            }
-                            RunKind::CommentReference => {
-                                // Without the anchor a w:commentRangeStart/End pair
-                                // is a range that points at nothing: the comment text
-                                // survives in comments.xml and no run refers to it,
-                                // so Word shows a comment that is not attached to
-                                // any word. The two halves of a range have to be
-                                // written together or neither should be.
-                                let id = wml_attr(&attrs, "id").and_then(parse_u32).unwrap_or(0);
-                                content.push(RunContent::CommentReference(id));
-                                parser.record(
-                                    "w:commentReference",
-                                    SupportStatus::Supported,
-                                    Some(
-                                        "the comment body is carried in word/comments.xml"
-                                            .to_owned(),
-                                    ),
-                                    Some(parser.location()),
-                                );
-                                parser.skip_element()?;
-                            }
-                            RunKind::NoteRef => {
-                                content.push(RunContent::NoteRef);
-                                parser.skip_element()?;
-                            }
-                            RunKind::Symbol => {
-                                // AUD-45: decode hex case-insensitively; only the
-                                // Private Use Area window `F000..=F0FF` is remapped.
-                                if let (Some(font), Some(code)) =
-                                    (wml_attr(&attrs, "font"), wml_attr(&attrs, "char"))
-                                {
-                                    match decode_sym_char(code) {
-                                        Some(character) => {
-                                            content.push(RunContent::Symbol(Symbol {
-                                                font: parser.intern(font),
-                                                character,
-                                            }));
-                                        }
-                                        None => {
-                                            parser.record(
-                                                "w:sym",
-                                                SupportStatus::Unsupported,
-                                                Some(format!("invalid symbol code '{code}'")),
-                                                Some(parser.location()),
-                                            );
-                                        }
-                                    }
-                                }
-                                parser.skip_element()?;
-                            }
-                            RunKind::LastRenderedPageBreak => {
-                                content.push(RunContent::LastRenderedPageBreak);
-                                parser.skip_element()?;
-                            }
-                            RunKind::NoBreakHyphen => {
-                                content.push(RunContent::NoBreakHyphen);
-                                parser.skip_element()?;
-                            }
-                            RunKind::SoftHyphen => {
-                                content.push(RunContent::SoftHyphen);
-                                parser.skip_element()?;
-                            }
-                            RunKind::RunProperties => {
-                                props = parser.parse_run_properties()?;
-                            }
-                            RunKind::Separator => {
-                                let feature = feature_id_for(&name);
-                                parser.record(
-                                    &feature,
-                                    SupportStatus::Supported,
-                                    None,
-                                    Some(parser.location()),
-                                );
-                                parser.skip_element()?;
-                            }
-                            RunKind::Opaque => {
-                                parser.record_foreign(&name);
-                                content.push(RunContent::Opaque(
-                                    parser.capture_opaque_inline(&name, &attrs),
-                                ));
-                                parser.skip_element()?;
-                            }
-                        }
+                        parser.on_run_start(&name, &attrs, &mut props, &mut content)?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -677,6 +495,245 @@ impl PartParser<'_> {
                 location,
             })
         })
+    }
+
+    /// One child of `w:r` on the text-box path.
+    ///
+    /// A drawing is parsed here, and every other child goes to
+    /// [`on_run_start_rest`](Self::on_run_start_rest). The two cannot share a
+    /// function: a debug build keeps every local of the function that is on the
+    /// stack, and a text box is a drawing inside a run.
+    fn on_run_start(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        props: &mut crate::model::props::RunProperties,
+        content: &mut Vec<RunContent>,
+    ) -> Result<()> {
+        if is_wml(name) && run_kind(name.local()) == RunKind::Drawing {
+            content.push(RunContent::Drawing(self.parse_drawing()?));
+            return Ok(());
+        }
+        self.on_run_start_rest(name, attrs, props, content)
+    }
+
+    /// Run children other than `w:drawing`.
+    #[allow(clippy::too_many_lines)]
+    fn on_run_start_rest(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        props: &mut crate::model::props::RunProperties,
+        content: &mut Vec<RunContent>,
+    ) -> Result<()> {
+        if is_mce(name) && name.local() == "AlternateContent" {
+            // AUD-50: Choice/Fallback before the `!is_wml` skip.
+            self.parse_mce_alternate_content_run(attrs, content)?;
+            return Ok(());
+        }
+        if !is_wml(name) {
+            self.record_foreign(name);
+            self.skip_element()?;
+            return Ok(());
+        }
+        match run_kind(name.local()) {
+            RunKind::Text | RunKind::DeletedText => {
+                content.push(RunContent::Text(self.parse_text_element(attrs)?));
+            }
+            RunKind::Tab => {
+                content.push(RunContent::Tab);
+                self.skip_element()?;
+            }
+            RunKind::Break => {
+                let kind = wml_attr(attrs, "type")
+                    .and_then(BreakKind::from_strict)
+                    .unwrap_or(BreakKind::TextWrapping);
+                content.push(RunContent::Break(kind));
+                self.skip_element()?;
+            }
+            RunKind::CarriageReturn => {
+                content.push(RunContent::CarriageReturn);
+                self.skip_element()?;
+            }
+            RunKind::Drawing => {
+                content.push(RunContent::Drawing(self.parse_drawing()?));
+            }
+            RunKind::InstrText => {
+                let text = self.parse_text_content()?;
+                let computed = super::field_is_computed(&text);
+                self.record(
+                    "w:instrText",
+                    if computed {
+                        SupportStatus::Supported
+                    } else {
+                        SupportStatus::Partial
+                    },
+                    Some(if computed {
+                        "computed at render time".to_owned()
+                    } else {
+                        "field result taken from cache (not computed)".to_owned()
+                    }),
+                    Some(self.location()),
+                );
+                content.push(RunContent::InstrText(text));
+            }
+            RunKind::FieldChar => {
+                let kind = wml_attr(attrs, "fldCharType")
+                    .and_then(FieldCharType::from_strict)
+                    .unwrap_or(FieldCharType::Begin);
+                let dirty = wml_attr(attrs, "dirty").is_some_and(parse_on_off_value);
+                content.push(RunContent::FieldChar(FieldChar { kind, dirty }));
+                self.skip_element()?;
+            }
+            RunKind::FootnoteRef => {
+                if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
+                    content.push(RunContent::FootnoteRef(id));
+                    self.record(
+                        "w:footnoteReference",
+                        SupportStatus::Supported,
+                        None,
+                        Some(self.location()),
+                    );
+                } else {
+                    self.record(
+                        "w:footnoteReference",
+                        SupportStatus::Partial,
+                        Some("footnote reference without a valid w:id was skipped".to_owned()),
+                        Some(self.location()),
+                    );
+                }
+                self.skip_element()?;
+            }
+            RunKind::EndnoteRef => {
+                if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
+                    content.push(RunContent::EndnoteRef(id));
+                    self.record(
+                        "w:endnoteReference",
+                        SupportStatus::Supported,
+                        None,
+                        Some(self.location()),
+                    );
+                } else {
+                    self.record(
+                        "w:endnoteReference",
+                        SupportStatus::Partial,
+                        Some("endnote reference without a valid w:id was skipped".to_owned()),
+                        Some(self.location()),
+                    );
+                }
+                self.skip_element()?;
+            }
+            RunKind::Ptab => {
+                // All three attributes are `use="required"`. An element
+                // missing one cannot be written back without inventing a
+                // value, so it is recorded and skipped rather than
+                // defaulted - the schema names the defect, and a
+                // defaulted one would not be named at all.
+                let alignment = wml_attr(attrs, "alignment");
+                let relative_to = wml_attr(attrs, "relativeTo");
+                let leader = wml_attr(attrs, "leader");
+                match (alignment, relative_to, leader) {
+                    (Some(alignment), Some(relative_to), Some(leader)) => {
+                        content.push(RunContent::Ptab {
+                            alignment: self.intern(alignment),
+                            relative_to: self.intern(relative_to),
+                            leader: self.intern(leader),
+                        });
+                        self.record(
+                            "w:ptab",
+                            SupportStatus::Supported,
+                            None,
+                            Some(self.location()),
+                        );
+                    }
+                    _ => {
+                        self.record(
+                            "w:ptab",
+                            SupportStatus::Partial,
+                            Some("w:ptab requires alignment, relativeTo and leader".to_owned()),
+                            Some(self.location()),
+                        );
+                    }
+                }
+                self.skip_element()?;
+            }
+            RunKind::CommentReference => {
+                // Without the anchor a w:commentRangeStart/End pair
+                // is a range that points at nothing: the comment text
+                // survives in comments.xml and no run refers to it,
+                // so Word shows a comment that is not attached to
+                // any word. The two halves of a range have to be
+                // written together or neither should be.
+                let id = wml_attr(attrs, "id").and_then(parse_u32).unwrap_or(0);
+                content.push(RunContent::CommentReference(id));
+                self.record(
+                    "w:commentReference",
+                    SupportStatus::Supported,
+                    Some("the comment body is carried in word/comments.xml".to_owned()),
+                    Some(self.location()),
+                );
+                self.skip_element()?;
+            }
+            RunKind::NoteRef => {
+                content.push(RunContent::NoteRef);
+                self.skip_element()?;
+            }
+            RunKind::Symbol => {
+                // AUD-45: decode hex case-insensitively; only the
+                // Private Use Area window `F000..=F0FF` is remapped.
+                if let (Some(font), Some(code)) = (wml_attr(attrs, "font"), wml_attr(attrs, "char"))
+                {
+                    match decode_sym_char(code) {
+                        Some(character) => {
+                            content.push(RunContent::Symbol(Symbol {
+                                font: self.intern(font),
+                                character,
+                            }));
+                        }
+                        None => {
+                            self.record(
+                                "w:sym",
+                                SupportStatus::Unsupported,
+                                Some(format!("invalid symbol code '{code}'")),
+                                Some(self.location()),
+                            );
+                        }
+                    }
+                }
+                self.skip_element()?;
+            }
+            RunKind::LastRenderedPageBreak => {
+                content.push(RunContent::LastRenderedPageBreak);
+                self.skip_element()?;
+            }
+            RunKind::NoBreakHyphen => {
+                content.push(RunContent::NoBreakHyphen);
+                self.skip_element()?;
+            }
+            RunKind::SoftHyphen => {
+                content.push(RunContent::SoftHyphen);
+                self.skip_element()?;
+            }
+            RunKind::RunProperties => {
+                *props = self.parse_run_properties()?;
+            }
+            RunKind::Separator => {
+                let feature = feature_id_for(name);
+                self.record(
+                    &feature,
+                    SupportStatus::Supported,
+                    None,
+                    Some(self.location()),
+                );
+                self.skip_element()?;
+            }
+            RunKind::Opaque => {
+                self.record_foreign(name);
+                content.push(RunContent::Opaque(self.capture_opaque_inline(name, attrs)));
+                self.skip_element()?;
+            }
+        }
+        Ok(())
     }
 
     /// Reads `w:id` / `w:author` / `w:date` from a tracked-change wrapper.

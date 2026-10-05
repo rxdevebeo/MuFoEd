@@ -5,9 +5,10 @@
 //! the region selected by `titlePg`/`evenAndOddHeaders`, positioned by the
 //! `w:pgMar/@w:header` and `@w:footer` distances.
 //!
-//! Per the Stage-5 default decision (STAGE-5 §9, question 4), the header/footer
-//! do not reduce the body's available height in this first increment: they are
-//! painted inside the top/bottom margins, and the body keeps its own margins.
+//! Per the A15 decision, a header or footer that extends past the page margin
+//! pushes the body start down or the body end up. A region that fits inside
+//! the margin leaves the body margins unchanged. Negative margins and an
+//! intentional overlap stay a diagnostic, not an invented extra gap.
 //!
 //! AUD-70: a part that contains PAGE/NUMPAGES/SECTIONPAGES/SECTION is laid out
 //! again on every page with a [`FieldEnv`](crate::fields::FieldEnv); parts
@@ -224,6 +225,62 @@ fn prior_refs(sections: &[Section], index: usize, headers: bool) -> Option<Vec<H
     None
 }
 
+/// How far the body must move in from the margin so it clears the header and
+/// the footer. Distances already inside the margin add nothing.
+pub(crate) fn body_reserve(
+    ctx: &LayoutContext<'_>,
+    section: &SectionProperties,
+    geometry: &Geometry,
+) -> (f64, f64) {
+    let scale = ctx.options.scale;
+    let header_offset = twips_to_px(
+        section_margin(Some(section), true).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
+        scale,
+    );
+    let footer_offset = twips_to_px(
+        section_margin(Some(section), false).unwrap_or(DEFAULT_HEADER_FOOTER_TWIPS),
+        scale,
+    );
+    let header_height = tallest_region(ctx, &section.headers, geometry);
+    let footer_height = tallest_region(ctx, &section.footers, geometry);
+    let extra_top = if header_height > 0.0 {
+        (header_offset + header_height - geometry.top).max(0.0)
+    } else {
+        0.0
+    };
+    let extra_bottom = if footer_height > 0.0 {
+        (footer_offset + footer_height - geometry.bottom).max(0.0)
+    } else {
+        0.0
+    };
+    (extra_top, extra_bottom)
+}
+
+fn tallest_region(
+    ctx: &LayoutContext<'_>,
+    references: &[HeaderFooterRef],
+    geometry: &Geometry,
+) -> f64 {
+    references
+        .iter()
+        .filter_map(|reference| reference.part.as_ref())
+        .filter_map(|part| ctx.document.header_footer(part))
+        .map(|part| {
+            let charged = ctx.render_items.get();
+            let height = layout_region(
+                ctx,
+                &part.blocks,
+                geometry.left,
+                geometry.content_width(),
+                None,
+            )
+            .height;
+            ctx.render_items.set(charged);
+            height
+        })
+        .fold(0.0, f64::max)
+}
+
 /// Returns the `w:header`/`w:footer` margin in twips, if declared.
 fn section_margin(section: Option<&SectionProperties>, is_header: bool) -> Option<i32> {
     let margins = section?.page_margins?;
@@ -317,7 +374,19 @@ fn layout_region(
     ctx.field_env.set(env);
     let mut items = Vec::new();
     let mut y = 0.0;
-    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, 1, None);
+    let mut page_frames = Vec::new();
+    layout_blocks_inline(
+        ctx,
+        blocks,
+        left,
+        width,
+        &mut y,
+        &mut items,
+        1,
+        None,
+        false,
+        &mut page_frames,
+    );
     ctx.field_env.set(None);
     Region { items, height: y }
 }

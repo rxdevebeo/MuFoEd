@@ -443,6 +443,19 @@ pub struct Position {
     pub offset: Option<Emu>,
 }
 
+/// A relative size (`wp14:sizeRelH` / `wp14:sizeRelV`).
+///
+/// `percent` is in the Word unit where `100000` is 100%. A positive value
+/// replaces the fallback `wp:extent` on that axis. Zero is stored so the
+/// renderer can report it instead of inventing a size.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RelativeSize {
+    /// Reference rectangle (`relativeFrom`).
+    pub relative_from: Option<Arc<str>>,
+    /// Percentage, with `100000` meaning 100%.
+    pub percent: u32,
+}
+
 /// Text-wrapping kind (`wp:wrap*`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WrapKind {
@@ -529,6 +542,10 @@ pub struct AnchorDrawing {
     pub graphic_uri: Option<Arc<str>>,
     /// Graphic payload.
     pub graphic: Box<Graphic>,
+    /// Relative width (`wp14:sizeRelH`). A positive percent beats `extent`.
+    pub size_rel_h: Option<RelativeSize>,
+    /// Relative height (`wp14:sizeRelV`). A positive percent beats `extent`.
+    pub size_rel_v: Option<RelativeSize>,
     /// Source location.
     pub location: SourceLocation,
 }

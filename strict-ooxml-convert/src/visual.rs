@@ -32,13 +32,21 @@ use strict_ooxml_wml::model::values::Spacing;
 use strict_ooxml_wml::model::values::{Indentation, LineSpacingRule, Rsids, Twips};
 use strict_ooxml_wml::model::Document;
 
-use crate::geometry::section_for;
+use crate::geometry::{section_for, DEFAULT_MARGIN_PT};
 use crate::media::MediaCollector;
 use crate::recover::Recovered;
 use crate::report::ConversionReport;
+use crate::sections::SectionAccumulator;
 use crate::semantic::{body_pitch_pub, body_size_pub, images_pub, push_runs_public};
 
 use crate::{to_twips, PdfOptions, TWIPS_PER_POINT};
+
+/// Fraction of an exact line box that the renderer uses as the baseline.
+///
+/// `strict-ooxml-render-svg` places an exact line's baseline at 80% of the
+/// line box. The first paragraph's `w:spacing/@w:before` makes up the rest of
+/// the distance from the top margin to the PDF baseline.
+const EXACT_LINE_ASCENT: f64 = 0.8;
 
 /// Builds the visual document.
 pub(crate) fn build(
@@ -49,9 +57,11 @@ pub(crate) fn build(
 ) -> (Document, Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>) {
     let mut media = MediaCollector::new();
     let mut blocks: Vec<Block> = Vec::new();
-    let mut sections: Vec<crate::Section> = Vec::new();
+    let mut sections = SectionAccumulator::new();
 
     for (index, page) in pages.iter().enumerate() {
+        // Visual keeps a break on every page, including neighbours of the same size.
+        sections.begin_page(&mut blocks, section_for(page, true), true);
         let lines = strict_ooxml_pdf::text::lines(page.items());
         report.lines += lines.len();
         let body = body_size_pub(&lines);
@@ -62,13 +72,28 @@ pub(crate) fn build(
             // The leading of this line is the distance from the previous
             // baseline, which is the number the PDF actually has.
             let leading = previous_baseline.map_or(line.size, |previous| line.baseline - previous);
+            // The section already insets the page by the visual margin. The
+            // indent and the first baseline are measured from that edge, so a
+            // 72 pt margin is not added again on top of a 72 pt coordinate.
+            let indent = line.x - DEFAULT_MARGIN_PT;
+            let before = if previous_baseline.is_none() {
+                let ascent = leading * EXACT_LINE_ASCENT;
+                line.baseline - DEFAULT_MARGIN_PT - ascent
+            } else {
+                0.0
+            };
             let mut paragraph = Paragraph {
                 props: ParagraphProperties {
                     indentation: Some(Indentation {
-                        start: Some(Twips(to_twips(line.x))),
+                        start: Some(Twips(to_twips(indent))),
                         ..Indentation::default()
                     }),
                     spacing: Some(Spacing {
+                        before: if before.abs() > 0.01 {
+                            Some(Twips(to_twips(before)))
+                        } else {
+                            None
+                        },
                         line: Some(Twips(to_twips(leading))),
                         line_rule: Some(LineSpacingRule::Exact),
                         ..Spacing::default()
@@ -91,6 +116,7 @@ pub(crate) fn build(
         if options.embed_images {
             blocks.extend(images_pub(page, &mut media, report, options));
         }
+        blocks.extend(crate::vectors::blocks_for(page, report));
         // A recovered block has the indent of the region it came from and
         // nothing else: a model returns words, not baselines, so a fabricated
         // leading would be a lie about where the lines sat.
@@ -99,21 +125,11 @@ pub(crate) fn build(
                 blocks.push(Block::Paragraph(paragraph.clone()));
             }
         }
-        sections.push(crate::Section {
-            number: index + 1,
-            properties: section_for(page, true),
-        });
     }
 
     let mut document = crate::empty_document();
     document.body = strict_ooxml_wml::model::document::Body { blocks };
-    document.sections = sections
-        .into_iter()
-        .map(|section| strict_ooxml_wml::model::props::Section {
-            properties: section.properties,
-            location: strict_ooxml_core::error::SourceLocation::unknown(),
-        })
-        .collect();
+    document.sections = sections.finish();
     media.register(&mut document.media);
     report.paragraphs = document
         .body

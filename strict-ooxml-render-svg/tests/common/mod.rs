@@ -185,3 +185,21 @@ fn crc32(data: &[u8]) -> u32 {
     }
     !crc
 }
+
+/// Drops the embedded `@font-face` block.
+///
+/// Layout checks read ink coordinates. The font program is covered by its own
+/// test, and its base64 can contain the character sequences those checks reject.
+pub(crate) fn without_font_faces(svg: &str) -> String {
+    let Some(start) = svg.find("  <style type=\"text/css\">") else {
+        return svg.to_owned();
+    };
+    let rest = &svg[start..];
+    let Some(end) = rest.find("]]></style>\n") else {
+        return svg.to_owned();
+    };
+    let mut out = String::with_capacity(svg.len());
+    out.push_str(&svg[..start]);
+    out.push_str(&rest[end + "]]></style>\n".len()..]);
+    out
+}

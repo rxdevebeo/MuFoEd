@@ -78,6 +78,7 @@ fn main() -> ExitCode {
     if config.transitional {
         println!("(--transitional: Transitional packages are normalized to Strict)");
     }
+    let _ = std::io::Write::flush(&mut std::io::stdout());
 
     let stop = Arc::new(AtomicBool::new(false));
     let handler_state = Arc::clone(&state);
@@ -201,11 +202,61 @@ fn document_json(view: &DocumentView) -> String {
         .as_deref()
         .map_or_else(|| "null".to_owned(), json_string);
     format!(
-        "{{\"name\":{},\"conformance\":{},\"summary\":{summary},\"note\":{note},\"pages\":[{}]}}",
+        "{{\"name\":{},\"conformance\":{},\"summary\":{summary},\"note\":{note},\"pipeline\":{},\"pages\":[{}]}}",
         json_string(&view.name),
         json_string(&view.conformance),
+        pipeline_json(&view.pipeline),
         pages.join(",")
     )
+}
+
+/// The loss ledger, kept apart from the mechanism summary.
+fn pipeline_json(pipeline: &strict_ooxml_view::PipelineView) -> String {
+    let issues = pipeline
+        .issues
+        .iter()
+        .map(issue_json)
+        .collect::<Vec<_>>()
+        .join(",");
+    let stages = pipeline
+        .stages
+        .iter()
+        .map(|stage| {
+            format!(
+                "{{\"stage\":{},\"status\":{}}}",
+                json_string(&stage.stage),
+                json_string(&stage.status)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"outcome\":{},\"sidecar\":{},\"issues\":[{issues}],\"stages\":[{stages}]}}",
+        json_string(&pipeline.outcome),
+        json_string(&pipeline.sidecar)
+    )
+}
+
+fn issue_json(issue: &strict_ooxml_view::ViewIssue) -> String {
+    let mut body = format!(
+        "{{\"stage\":{},\"id\":{},\"severity\":{},\"count\":{},\"detail\":{}",
+        json_string(&issue.stage),
+        json_string(&issue.id),
+        json_string(&issue.severity),
+        issue.count,
+        json_string(&issue.detail)
+    );
+    if let Some(part) = &issue.part {
+        let _ = write!(body, ",\"part\":{}", json_string(part));
+    }
+    if let Some(page) = issue.page {
+        let _ = write!(body, ",\"page\":{page}");
+    }
+    if let Some(location) = &issue.location {
+        let _ = write!(body, ",\"location\":{}", json_string(location));
+    }
+    body.push('}');
+    body
 }
 
 /// Escapes `value` as a JSON string, quotes included.
@@ -287,8 +338,15 @@ impl Config {
             match args[index].as_str() {
                 "--port" => {
                     index += 1;
-                    let value = args.get(index)?;
-                    config.port = value.parse().ok().filter(|port: &u16| *port > 0)?;
+                    let Some(value) = args.get(index) else {
+                        eprintln!("error: --port needs a number from 1 to 65535");
+                        return None;
+                    };
+                    let Some(port) = value.parse().ok().filter(|port: &u16| *port > 0) else {
+                        eprintln!("error: --port needs a number from 1 to 65535");
+                        return None;
+                    };
+                    config.port = port;
                 }
                 "--scale" => {
                     index += 1;
@@ -339,7 +397,16 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::{json_number, json_string, query_value, Config, DEFAULT_DIRS, EXIT_OK};
-    use strict_ooxml_view::DocumentView;
+    use strict_ooxml_view::{DocumentView, PipelineView};
+
+    fn empty_pipeline() -> PipelineView {
+        PipelineView {
+            outcome: "clean".to_owned(),
+            issues: Vec::new(),
+            stages: Vec::new(),
+            sidecar: "absent".to_owned(),
+        }
+    }
 
     #[test]
     fn defaults_are_sensible() {
@@ -438,6 +505,7 @@ mod tests {
             summary: None,
             note: None,
             pages: Vec::new(),
+            pipeline: empty_pipeline(),
         };
         let json = super::document_json(&view);
         assert!(
@@ -467,6 +535,7 @@ mod tests {
                 error: 0,
             }),
             note: None,
+            pipeline: empty_pipeline(),
             pages: vec![strict_ooxml_view::Rendered {
                 number: 1,
                 width: 816.0,

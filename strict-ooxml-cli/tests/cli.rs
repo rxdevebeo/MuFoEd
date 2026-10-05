@@ -421,3 +421,162 @@ fn normalize_manual_docx_counts_reltypes_once() {
         "truncated xmlns prefix in report: {stdout}"
     );
 }
+
+fn temp_named(name: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!("strict-ooxml-cli-{}-{name}", std::process::id()));
+    path
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+    let mut text = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        let _ = write!(text, "{byte:02x}");
+    }
+    text
+}
+
+#[test]
+fn f03_normalization_loss_changes_exit() {
+    let input = strict_ooxml_testkit::audit::vml_loss_docx();
+    let source = write_temp("f03-vml.docx", &input);
+    let out = temp_named("f03-vml-out.docx");
+    let report = temp_named("f03-vml-report.json");
+    let (code, stdout, stderr) = run(&[
+        "write",
+        source.to_str().unwrap(),
+        "--transitional",
+        "--out",
+        out.to_str().unwrap(),
+        "--report-out",
+        report.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 1, "stdout: {stdout}\nstderr: {stderr}");
+    let written = std::fs::read(&out).expect("written package");
+    assert!(written.starts_with(b"PK"), "the package was not written");
+    assert!(
+        stderr.contains("lossy"),
+        "normalization loss was not reported: {stderr}"
+    );
+    let json = std::fs::read_to_string(&report).expect("sidecar");
+    assert!(json.contains("\"version\": 1"), "{json}");
+    assert!(json.contains("\"outcome\": \"degraded\""), "{json}");
+    assert!(json.contains("\"stage\": \"normalize\""), "{json}");
+    assert!(json.contains(&sha256_hex(&input)), "{json}");
+    assert!(json.contains(&sha256_hex(&written)), "{json}");
+
+    let blocked = write_temp("f03-not-a-directory", b"x");
+    let bad_report = blocked.join("report.json");
+    let out_again = temp_named("f03-vml-out-again.docx");
+    let (code, stdout, stderr) = run(&[
+        "write",
+        source.to_str().unwrap(),
+        "--transitional",
+        "--out",
+        out_again.to_str().unwrap(),
+        "--report-out",
+        bad_report.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        code, 2,
+        "a missing sidecar must fail the command\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    let _ = std::fs::remove_file(&source);
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&report);
+    let _ = std::fs::remove_file(&blocked);
+    let _ = std::fs::remove_file(&out_again);
+    let _ = std::fs::remove_file(format!("{}.partial", out.display()));
+}
+
+#[test]
+fn f03_writer_loss_changes_pdf_exit() {
+    let pdf = text_pdf();
+    let pdf_path = write_temp("f03-hello.pdf", &pdf);
+    let docx = temp_named("f03-hello.docx");
+    let report = temp_named("f03-hello.json");
+    let (code, stdout, stderr) = run(&[
+        "from-pdf",
+        pdf_path.to_str().unwrap(),
+        "--out",
+        docx.to_str().unwrap(),
+        "--report-out",
+        report.to_str().unwrap(),
+    ]);
+    assert_ne!(code, 2, "stdout: {stdout}\nstderr: {stderr}");
+    assert!(
+        stderr.contains("write:"),
+        "from-pdf did not print the writer report: {stderr}"
+    );
+    let written = std::fs::read(&docx).expect("converted package");
+    assert!(written.starts_with(b"PK"));
+    let json = std::fs::read_to_string(&report).expect("sidecar");
+    assert!(json.contains("\"version\": 1"), "{json}");
+    assert!(json.contains(&sha256_hex(&written)), "{json}");
+    let expected = if json.contains("\"outcome\": \"degraded\"") {
+        1
+    } else if json.contains("\"outcome\": \"failed\"") {
+        2
+    } else {
+        0
+    };
+    assert_eq!(code, expected, "exit must follow the sidecar\n{json}");
+
+    let source = write_temp("f03-missing-media.docx", &picture_without_media());
+    let out = temp_named("f03-missing-media-out.docx");
+    let media_report = temp_named("f03-missing-media.json");
+    let (code, stdout, stderr) = run(&[
+        "write",
+        source.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--report-out",
+        media_report.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 1, "stdout: {stdout}\nstderr: {stderr}");
+    let media_json = std::fs::read_to_string(&media_report).expect("writer sidecar");
+    assert!(media_json.contains("\"stage\": \"write\""), "{media_json}");
+    assert!(
+        media_json.contains("\"outcome\": \"degraded\""),
+        "{media_json}"
+    );
+    assert!(
+        media_json.contains("a:blip/@r:embed"),
+        "writer did not record the missing image: {media_json}\nstderr: {stderr}"
+    );
+    let _ = std::fs::remove_file(&pdf_path);
+    let _ = std::fs::remove_file(&docx);
+    let _ = std::fs::remove_file(&report);
+    let _ = std::fs::remove_file(&source);
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&media_report);
+}
+
+fn text_pdf() -> Vec<u8> {
+    let mut pdf = strict_ooxml_testkit::PdfBuilder::new();
+    let font = pdf.object(
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+            .to_vec(),
+    );
+    pdf.page_with(
+        b"BT /F1 12 Tf 72 720 Td (Hello) Tj ET",
+        &format!("<< /Font << /F1 {font} 0 R >> >>"),
+    );
+    pdf.build()
+}
+
+fn picture_without_media() -> Vec<u8> {
+    let body = "<w:p><w:r><w:drawing>\
+<wp:inline><wp:extent cx=\"9525\" cy=\"9525\"/><wp:docPr id=\"1\" name=\"lost\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\"><pic:pic>\
+<pic:nvPicPr><pic:cNvPr id=\"0\" name=\"lost\"/><pic:cNvPicPr/></pic:nvPicPr>\
+<pic:blipFill><a:blip/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"9525\" cy=\"9525\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>\
+</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>";
+    strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build()
+}

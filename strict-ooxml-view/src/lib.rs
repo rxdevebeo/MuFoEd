@@ -7,4 +7,7 @@
 
 mod catalog;
 
-pub use catalog::{discover, failed, render, Cache, DocumentView, Entry, Rendered, Summary};
+pub use catalog::{
+    discover, failed, render, Cache, DocumentView, Entry, PipelineView, Rendered, StageStatus,
+    Summary, ViewIssue,
+};

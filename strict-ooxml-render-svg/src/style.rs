@@ -3,7 +3,9 @@
 //! Cascade order: built-in defaults → paragraph style `basedOn` chain
 //! (furthest ancestor first) → the style itself → the paragraph's direct
 //! `pPr`/`rPr`. A run additionally applies its character style chain and its
-//! own `rPr`. `TriState::Absent` leaves the inherited value untouched.
+//! own `rPr`. Toggle properties XOR inside a style chain. Direct `On`/`Off`
+//! assign a state, so a paragraph mark and a run that both say italic stay
+//! italic. `TriState::Absent` leaves the inherited value untouched.
 
 use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
@@ -38,6 +40,8 @@ pub struct ComputedRun {
     pub caps: bool,
     /// Hidden text (`w:vanish`).
     pub vanish: bool,
+    /// Complex-script face (`w:rFonts/@w:cs`). Latin and Cyrillic keep [`Self::family`].
+    pub complex_family: Option<String>,
 }
 
 impl Default for ComputedRun {
@@ -54,6 +58,7 @@ impl Default for ComputedRun {
             vert_align: VertAlign::Baseline,
             caps: false,
             vanish: false,
+            complex_family: None,
         }
     }
 }
@@ -94,6 +99,8 @@ pub struct ComputedParagraph {
     pub keep_next: bool,
     /// Start on a new page.
     pub page_break_before: bool,
+    /// Paragraph shading fill (`w:shd/@w:fill`), `#rrggbb`.
+    pub shading: Option<String>,
     /// Numbering reference.
     pub numbering: Option<NumberingRef>,
     /// Default run format for runs without explicit properties.
@@ -115,6 +122,7 @@ impl Default for ComputedParagraph {
             keep_lines: false,
             keep_next: false,
             page_break_before: false,
+            shading: None,
             numbering: None,
             default_run: ComputedRun::default(),
         }
@@ -155,7 +163,7 @@ pub fn compute_paragraph(
     if let Some(style_id) = style_id {
         apply_paragraph_style(document, &mut computed, style_id, theme);
     }
-    apply_paragraph_props(&mut computed, &para.props, theme);
+    apply_paragraph_props_mode(&mut computed, &para.props, theme, ToggleMode::Direct);
     computed
 }
 
@@ -178,7 +186,7 @@ pub fn compute_run(
             apply_run_props(&mut computed, &style.run, theme);
         }
     }
-    apply_run_props(&mut computed, &run.props, theme);
+    apply_direct_run_props(&mut computed, &run.props, theme);
     computed
 }
 
@@ -202,11 +210,23 @@ fn apply_paragraph_style(
     apply_run_props(&mut computed.default_run, &style.run, theme);
 }
 
-/// Merges direct paragraph properties onto `computed`.
+/// Merges paragraph properties from a style or from document defaults.
+///
+/// The paragraph's own `pPr` is applied with direct assignment, so a mark and
+/// a run that both enable a toggle do not cancel.
 pub fn apply_paragraph_props(
     computed: &mut ComputedParagraph,
     props: &ParagraphProperties,
     theme: Option<&Theme>,
+) {
+    apply_paragraph_props_mode(computed, props, theme, ToggleMode::Cascade);
+}
+
+fn apply_paragraph_props_mode(
+    computed: &mut ComputedParagraph,
+    props: &ParagraphProperties,
+    theme: Option<&Theme>,
+    mark: ToggleMode,
 ) {
     if let Some(alignment) = props.alignment {
         computed.alignment = alignment;
@@ -216,6 +236,14 @@ pub fn apply_paragraph_props(
     }
     if let Some(indentation) = &props.indentation {
         apply_indentation(computed, indentation);
+    }
+    if let Some(fill) = props
+        .shading
+        .as_ref()
+        .and_then(|shading| shading.fill.as_ref())
+        .and_then(parse_color)
+    {
+        computed.shading = Some(fill);
     }
     if !props.tabs.is_empty() {
         computed.tabs.clone_from(&props.tabs);
@@ -232,7 +260,8 @@ pub fn apply_paragraph_props(
         }
     }
     if let Some(run) = &props.run_props {
-        apply_run_props(&mut computed.default_run, run, theme);
+        // A style mark toggles. The paragraph's own mark assigns, once.
+        apply_run_props_mode(&mut computed.default_run, run, theme, mark);
     }
 }
 
@@ -265,19 +294,48 @@ fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation
     }
 }
 
-/// Merges direct run properties onto `computed`.
+/// How a toggle property combines with the value inherited so far.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToggleMode {
+    /// Style hierarchy: `On` flips the inherited bit (ISO/IEC 29500-1 §17.7.3).
+    Cascade,
+    /// Direct formatting states the bit. `On` does not flip a mark or a style.
+    Direct,
+}
+
+/// Merges run properties from a style or from document defaults.
+///
+/// Toggle properties XOR. Direct formatting goes through [`apply_direct_run_props`].
 pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme: Option<&Theme>) {
+    apply_run_props_mode(computed, props, theme, ToggleMode::Cascade);
+}
+
+/// Merges direct `rPr` (`w:r` or the paragraph mark) without toggling.
+fn apply_direct_run_props(
+    computed: &mut ComputedRun,
+    props: &RunProperties,
+    theme: Option<&Theme>,
+) {
+    apply_run_props_mode(computed, props, theme, ToggleMode::Direct);
+}
+
+/// Merges `props` onto `computed`.
+fn apply_run_props_mode(
+    computed: &mut ComputedRun,
+    props: &RunProperties,
+    theme: Option<&Theme>,
+    mode: ToggleMode,
+) {
     if let Some(fonts) = &props.fonts {
         apply_fonts(computed, fonts, theme);
     }
-    // Toggle properties use XOR across the style cascade (ECMA-376 §17.7.3, AUD-44).
-    apply_toggle_xor(&mut computed.bold, props.bold);
-    apply_toggle_xor(&mut computed.italic, props.italic);
+    apply_toggle(&mut computed.bold, props.bold, mode);
+    apply_toggle(&mut computed.italic, props.italic, mode);
     if let Some(underline) = &props.underline {
         computed.underline = !matches!(underline, Underline::None);
     }
-    apply_toggle_xor(&mut computed.strike, props.strike);
-    apply_toggle_xor(&mut computed.strike, props.double_strike);
+    apply_toggle(&mut computed.strike, props.strike, mode);
+    apply_toggle(&mut computed.strike, props.double_strike, mode);
     if let Some(color) = &props.color {
         computed.color = parse_color(color);
     }
@@ -299,8 +357,8 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme:
             .as_ref()
             .is_some_and(|fonts| fonts.complex_script.is_some());
     if complex {
-        apply_toggle_xor(&mut computed.bold, props.bold_cs);
-        apply_toggle_xor(&mut computed.italic, props.italic_cs);
+        apply_toggle(&mut computed.bold, props.bold_cs, mode);
+        apply_toggle(&mut computed.italic, props.italic_cs, mode);
         if let Some(size) = props.size_cs {
             computed.size_pt = f64::from(size.value()) / 2.0;
         }
@@ -308,8 +366,8 @@ pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme:
     if let Some(vert) = props.vert_align {
         computed.vert_align = vert;
     }
-    apply_toggle_xor(&mut computed.caps, props.caps);
-    apply_toggle_xor(&mut computed.vanish, props.vanish);
+    apply_toggle(&mut computed.caps, props.caps, mode);
+    apply_toggle(&mut computed.vanish, props.vanish, mode);
 }
 
 fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>) {
@@ -323,17 +381,59 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
         computed.family = family;
     }
     if let Some(family) = fonts.complex_script.as_ref() {
-        // Prefer the CS face when one is named (AUD-46).
-        computed.family = family.to_string();
+        // Kept for complex-script characters. It must not replace ascii/hAnsi:
+        // a Cyrillic run with `w:cs` still uses the Latin face (A11).
+        computed.complex_family = Some(family.to_string());
     }
 }
 
-/// The mapped face used to measure a placed run's text.
+/// The face a run's text is measured and painted with.
 ///
-/// Kept public so interaction adapters share renderer font mapping.
+/// Latin and Cyrillic stay on ascii/hAnsi (or the theme face that resolved
+/// there). The complex-script face is used only when the text has no Latin or
+/// Cyrillic letters.
 #[must_use]
-pub fn chosen_family(run: &ComputedRun, _text: &str) -> String {
-    crate::font::map_family(&run.family).to_owned()
+pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
+    let requested = if run.complex_family.is_some() && script_is_complex_only(text) {
+        run.complex_family.as_deref().unwrap_or(&run.family)
+    } else {
+        run.family.as_str()
+    };
+    crate::font::map_family(requested).to_owned()
+}
+
+/// Whether `text` is a complex script, with no Latin or Cyrillic letters.
+fn script_is_complex_only(text: &str) -> bool {
+    let mut complex = false;
+    for ch in text.chars() {
+        if is_latin_or_cyrillic(ch) {
+            return false;
+        }
+        if is_complex_script(ch) {
+            complex = true;
+        }
+    }
+    complex
+}
+
+fn is_latin_or_cyrillic(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0041}'..='\u{024F}' | '\u{0400}'..='\u{052F}' | '\u{1E00}'..='\u{1EFF}' | '\u{2DE0}'
+            ..='\u{2DFF}' | '\u{A640}'..='\u{A69F}'
+    )
+}
+
+fn is_complex_script(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0590}'..='\u{08FF}'
+            | '\u{0900}'..='\u{0DFF}'
+            | '\u{0E00}'..='\u{0E7F}'
+            | '\u{0E80}'..='\u{0EFF}'
+            | '\u{1000}'..='\u{109F}'
+            | '\u{1780}'..='\u{17FF}'
+    )
 }
 
 /// Resolves a `w:*Theme` font reference through `theme`.
@@ -396,12 +496,13 @@ fn apply_flag(computed: &mut bool, state: TriState) {
     }
 }
 
-/// Toggle property: `On` XORs, `Off` clears, `Absent` inherits (AUD-44).
-fn apply_toggle_xor(computed: &mut bool, state: TriState) {
-    match state {
-        TriState::On => *computed = !*computed,
-        TriState::Off => *computed = false,
-        TriState::Absent => {}
+/// Toggle property. Cascade `On` flips; direct `On` sets. `Off` clears either way.
+fn apply_toggle(computed: &mut bool, state: TriState, mode: ToggleMode) {
+    match (state, mode) {
+        (TriState::Absent, _) => {}
+        (TriState::Off, _) => *computed = false,
+        (TriState::On, ToggleMode::Cascade) => *computed = !*computed,
+        (TriState::On, ToggleMode::Direct) => *computed = true,
     }
 }
 

@@ -25,9 +25,10 @@ fn golden_path(name: &str) -> PathBuf {
 
 fn assert_golden(name: &str, actual: &str) {
     let path = golden_path(name);
+    let actual = common::without_font_faces(actual);
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().expect("golden dir")).expect("create dir");
-        std::fs::write(&path, actual).expect("write golden");
+        std::fs::write(&path, &actual).expect("write golden");
         return;
     }
     let expected = std::fs::read_to_string(&path)

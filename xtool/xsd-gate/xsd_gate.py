@@ -116,6 +116,11 @@ EXIT_OK = 0
 EXIT_VIOLATIONS = 1
 EXIT_UNMEASURABLE = 2
 
+# G-10: this corpus file is refused by the conformance detector on purpose
+# (a Strict package with a Transitional relationship type). The refusal is the
+# measurement. Any other name with no written package is a missing output.
+EXPECTED_REFUSALS = frozenset({"annotation-ref-sdk-mixed-rels.docx"})
+
 
 # --------------------------------------------------------------------------
 # 1. Where the schemas come from
@@ -1042,6 +1047,72 @@ def load_registry() -> list[dict]:
         return tomllib.load(handle)["item"]
 
 
+def item_state(item: dict, count: int) -> str:
+    """How one registry row is printed.
+
+    A zero is `closed` only when the item names a fixture that exercises it.
+    Otherwise the zero is `NOT_EXERCISED`: absence of evidence is not a measured
+    close. A non-zero `source` row is carried and is not schema-clean.
+    """
+    if count == 0:
+        if item.get("fixture") or item.get("exercised"):
+            return "closed"
+        return "NOT_EXERCISED"
+    origin = item.get("origin", "")
+    if origin == "ours":
+        return f"OPEN  {count}"
+    if origin == "source":
+        return f"CARRIED {count}"
+    return f"n/a    {count}"
+
+
+def decide_gate(
+    *,
+    documents: int,
+    validated: int,
+    missing: int,
+    unmatched: int,
+    our_total: int,
+    source_total: int,
+) -> tuple[int, str]:
+    """Exit code for one measured corpus.
+
+    `validated == 0`, an empty document list, and any unexpected missing output
+    are unmeasurable. The named G-10 refusal is not one of those: the caller
+    counts only packages that should have been written. Unmatched schema errors
+    and `ours` hits fail. Registered
+    source hits stay visible and do not make the result schema-clean, and they
+    do not by themselves fail a corpus whose own output is clean.
+    """
+    if documents <= 0 or validated <= 0:
+        return (
+            EXIT_UNMEASURABLE,
+            f"FAIL: unmeasurable documents={documents} validated={validated} missing={missing}",
+        )
+    if missing:
+        return (
+            EXIT_UNMEASURABLE,
+            f"FAIL: missing={missing} validated={validated}",
+        )
+    if unmatched:
+        return (
+            EXIT_VIOLATIONS,
+            f"FAIL: unmatched={unmatched} schema violation(s) match no registry item",
+        )
+    if our_total:
+        return (
+            EXIT_VIOLATIONS,
+            f"FAIL: {our_total} schema violation(s) in our own output",
+        )
+    if source_total:
+        return (
+            EXIT_OK,
+            "PASS: no schema violation of ours; "
+            f"{source_total} source violation(s) are carried and the output is not schema-clean",
+        )
+    return (EXIT_OK, "PASS: schema-clean, no schema violation of ours in the written corpus")
+
+
 def registry_hits(registry: list[dict], messages: list[tuple[str, str, str]]) -> dict:
     """Maps the measured messages onto the `XS-nn` items of the registry.
 
@@ -1216,6 +1287,8 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
     skipped = 0
     skipped_entries: list[str] = []
     refused = 0
+    refused_names: list[str] = []
+    validated = 0
     out_schema = collections.Counter()
     out_messages: list[tuple[str, str, str]] = []
     per_document = []
@@ -1226,11 +1299,13 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
         if not os.path.exists(path):
             print(f"  {name:<42} {sum(incoming.schema.values()):>5} {'refused':>9}")
             refused += 1
+            refused_names.append(name)
             totals[0] += sum(incoming.schema.values())
             skipped += len(incoming.skipped)
             skipped_entries.extend(incoming.skipped)
             per_document.append((name, totals, None))
             continue
+        validated += 1
         outgoing = validate_package(path, oracle)
         totals[0] += sum(incoming.schema.values())
         totals[1] += sum(outgoing.schema.values())
@@ -1274,14 +1349,7 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
     for item in registry:
         count = counts[item["id"]]
         origin = item["origin"]
-        if count == 0:
-            state = "closed"
-        elif origin == "ours":
-            state = f"OPEN  {count}"
-        elif origin == "source":
-            state = f"CARRIED {count}"
-        else:
-            state = f"n/a    {count}"
+        state = item_state(item, count)
         print(f"  {item['id']:<7} {origin:<9} {state:<12} {item['summary']}")
     if hits["unmatched"]:
         print(f"  {hits['unmatched']} violation(s) match no registry item and are named above")
@@ -1297,19 +1365,28 @@ def report(args, oracle: Oracle, written_dir: str) -> int:
         print(f"  {name}: {count}")
 
     our_total = sum(counts[item_id] for item_id in ours)
-    carried = sum(
-        count for item_id, count in counts.items() if item_id not in ours and count
+    carried = sum(count for item_id, count in counts.items() if item_id not in ours and count)
+    unexpected = [name for name in refused_names if name not in EXPECTED_REFUSALS]
+    print(
+        f"\nmeasured: documents={len(documents)} validated={validated} "
+        f"missing={len(unexpected)} refused={refused} unmatched={hits['unmatched']} "
+        f"ours={our_total} source={carried}"
     )
-    if our_total:
-        print(f"\nFAIL: {our_total} schema violation(s) in our own output")
-        return EXIT_VIOLATIONS
-    print("\nPASS: no schema violation of ours in the written corpus")
-    if carried:
+    code, summary = decide_gate(
+        documents=len(documents),
+        validated=validated,
+        missing=len(unexpected),
+        unmatched=hits["unmatched"],
+        our_total=our_total,
+        source_total=carried,
+    )
+    print(f"\n{summary}")
+    if carried and code == EXIT_OK:
         print(
-            f"      ({carried} carried from the producer's own markup - pass-through parts "
-            f"the writer does not model. XS-16, closed by G18's mark rather than by a repair.)"
+            "      (source violations are carried from the producer's own markup and "
+            "are not schema-clean. XS-16 is that mark, not a repair.)"
         )
-    return EXIT_OK
+    return code
 
 
 if __name__ == "__main__":

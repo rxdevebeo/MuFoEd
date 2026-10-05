@@ -590,15 +590,26 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
 }
 
 fn source_rect(xml: &mut XmlWriter, slice: &SrcRect) {
-    if slice.left == 0 && slice.top == 0 && slice.right == 0 && slice.bottom == 0 {
-        return;
-    }
     xml.start("a:srcRect");
-    xml.attr("l", slice.left);
-    xml.attr("t", slice.top);
-    xml.attr("r", slice.right);
-    xml.attr("b", slice.bottom);
+    xml.attr("l", thousandths_percent(slice.left));
+    xml.attr("t", thousandths_percent(slice.top));
+    xml.attr("r", thousandths_percent(slice.right));
+    xml.attr("b", thousandths_percent(slice.bottom));
     xml.end();
+}
+
+/// `a:srcRect` stores thousandths of a percent. Strict writes a percentage
+/// with three fractional digits, so `1253` is `1.253%` and `10` is `0.010%`.
+/// Zero is `0%`. The spelling is decimal text, not a binary float.
+fn thousandths_percent(value: i32) -> String {
+    if value == 0 {
+        return String::from("0%");
+    }
+    let sign = if value < 0 { "-" } else { "" };
+    let absolute = value.unsigned_abs();
+    let whole = absolute / 1000;
+    let fraction = absolute % 1000;
+    format!("{sign}{whole}.{fraction:03}%")
 }
 
 /// Writes `wps:wsp`.
@@ -1165,12 +1176,22 @@ mod tests {
         drawing_element(&mut ctx, &mut xml, &drawing);
         let text = xml.finish().expect("balanced");
         assert!(
-            text.contains(r#"<a:blip r:embed="rId1"/><a:srcRect l="1" t="2" r="3" b="4"/>"#),
+            text.contains(
+                r#"<a:blip r:embed="rId1"/><a:srcRect l="0.001%" t="0.002%" r="0.003%" b="0.004%"/>"#
+            ),
             "srcRect must follow the closed blip: {text}"
         );
         assert!(
             !text.contains("<a:blip r:embed=\"rId1\"><a:srcRect"),
             "srcRect must not nest inside blip: {text}"
         );
+    }
+
+    #[test]
+    fn source_rectangle_percentages_keep_thousandths() {
+        assert_eq!(super::thousandths_percent(0), "0%");
+        assert_eq!(super::thousandths_percent(10), "0.010%");
+        assert_eq!(super::thousandths_percent(1253), "1.253%");
+        assert_eq!(super::thousandths_percent(-1253), "-1.253%");
     }
 }

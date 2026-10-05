@@ -118,7 +118,7 @@ fn transitional_corpus() -> Vec<Case> {
         .expect("read corpus dir")
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("docx"))
+        .filter(|path| is_corpus_docx(path))
         .collect();
     files.sort();
     let mut out = Vec::new();
@@ -137,6 +137,51 @@ fn transitional_corpus() -> Vec<Case> {
         });
     }
     out
+}
+
+/// A corpus document is a `.docx` that is not a Word owner lock.
+///
+/// Word writes `~$<name>.docx` beside an open document. That file is a lock,
+/// not a package, and it must not be offered to the reader. A damaged package
+/// with an ordinary name stays in the corpus: failing to open it is the result.
+fn is_corpus_docx(path: &Path) -> bool {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("docx") {
+        return false;
+    }
+    let Some(name) = path.file_name() else {
+        return false;
+    };
+    !name.to_string_lossy().starts_with("~$")
+}
+
+#[test]
+fn corpus_selection_skips_word_lock_files_and_keeps_damaged_packages() {
+    assert!(
+        !is_corpus_docx(Path::new(
+            "~$0090 16-23 Справочное руководство по STM32F4xx.docx"
+        )),
+        "a Word lock file is not a corpus document"
+    );
+    assert!(!is_corpus_docx(Path::new("~$.docx")));
+    assert!(!is_corpus_docx(Path::new("notes.txt")));
+    assert!(is_corpus_docx(Path::new(
+        "16-23 Справочное руководство по STM32F4xx.docx"
+    )));
+    assert!(
+        is_corpus_docx(Path::new("broken.docx")),
+        "a damaged package keeps its place in the corpus"
+    );
+}
+
+#[test]
+#[should_panic(expected = "broken.docx: open:")]
+fn a_damaged_docx_still_fails_to_open() {
+    let case = Case {
+        name: "broken.docx".to_owned(),
+        bytes: b"not a zip package".to_vec(),
+        transitional: true,
+    };
+    let _ = open(&case, &case.bytes);
 }
 
 fn corpus() -> Vec<Case> {

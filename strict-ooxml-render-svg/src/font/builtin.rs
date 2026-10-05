@@ -438,9 +438,11 @@ mod tests {
             provider.advance_em("Cambria Math", 'x', false, false)
         );
         // Characters outside the repertoire report no coverage so the math
-        // layout falls back to its deterministic vector model.
+        // layout falls back to its deterministic vector model. An unknown
+        // family is Carlito, which covers Latin and still has no private-use glyph.
         assert!(!provider.has_glyph("Cambria Math", '\u{10FFFD}'));
-        assert!(!provider.has_glyph("Totally Unknown", 'a'));
+        assert!(provider.has_glyph("Totally Unknown", 'a'));
+        assert!(!provider.has_glyph("Totally Unknown", '\u{10FFFD}'));
     }
 
     #[test]

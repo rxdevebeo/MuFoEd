@@ -16,8 +16,11 @@
     clippy::case_sensitive_file_extension_comparisons
 )]
 
+mod common;
+
 use std::path::Path;
 
+use common::text::{body_text, pdf_reading_text, score};
 use strict_ooxml_convert::{convert, Mode, ParagraphRules, PdfOptions};
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_pdf::{PdfDocument, PdfLimits};
@@ -40,40 +43,14 @@ fn source() -> Vec<u8> {
 /// The text the PDF's own content stream carries.
 fn pdf_text(pdf: &[u8]) -> String {
     let mut document = PdfDocument::open(pdf, PdfLimits::default()).expect("open");
-    document
-        .pages()
-        .expect("pages")
-        .iter()
-        .map(strict_ooxml_pdf::PdfPage::text)
-        .collect::<Vec<String>>()
-        .join(" ")
+    pdf_reading_text(&mut document).expect("pages")
 }
 
 /// The text of a converted document, as a reader of the `.docx` would see it.
 fn document_text(bytes: &[u8]) -> String {
     let package = Package::open_reader(bytes, &OpenOptions::default()).expect("open");
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
-    let mut out = String::new();
-    for block in &document.body.blocks {
-        if let strict_ooxml_wml::model::block::Block::Paragraph(paragraph) = block {
-            for inline in &paragraph.inlines {
-                if let strict_ooxml_wml::model::inline::Inline::Run(run) = inline {
-                    for content in &run.content {
-                        if let strict_ooxml_wml::model::inline::RunContent::Text(node) = content {
-                            out.push_str(&node.text);
-                        }
-                    }
-                }
-            }
-            out.push(' ');
-        }
-    }
-    out
-}
-
-/// The non-space characters of a string, which is what the comparison counts.
-fn significant(text: &str) -> Vec<char> {
-    text.chars().filter(|ch| !ch.is_whitespace()).collect()
+    body_text(&document)
 }
 
 /// Converts, writes, and re-reads, for one mode.
@@ -102,33 +79,18 @@ fn every_character_reaches_the_document() {
     for mode in [Mode::Semantic, Mode::Visual] {
         let (expected, _report, bytes) = round_trip(mode);
         let got = document_text(&bytes);
-        let want = significant(&expected);
-        let have = significant(&got);
-        assert!(
-            !want.is_empty(),
-            "{mode:?}: the fixture carries no text to compare"
-        );
-        // Subsequence comparison: the converted document may reorder nothing
-        // but it may insert a heading marker or lose a space, so the measure is
-        // "how much of the original text is present, in order".
-        let mut index = 0;
-        for ch in &have {
-            while index < want.len() && want[index] != *ch {
-                index += 1;
-            }
-            if index < want.len() {
-                index += 1;
-            }
-        }
-        let ratio = index as f64 / want.len() as f64;
+        let measured = score(&expected, &got);
+        let ratio = measured
+            .recall()
+            .unwrap_or_else(|| panic!("{mode:?}: the fixture carries no text to compare"));
         assert!(
             ratio >= 0.999,
             "{mode:?}: only {:.4} of the PDF's {} characters reached the document; \
-             got {} against {}",
+             matched {} of have {}",
             ratio,
-            want.len(),
-            have.len(),
-            got.len()
+            measured.want_len,
+            measured.matched,
+            measured.have_len
         );
     }
 }
@@ -207,22 +169,31 @@ fn the_modes_reproduce_different_documents() {
             "612 pt is 12240 twips"
         );
     }
-    // The indent is the PDF's left edge, in both modes: that is stated, not
-    // inferred.
-    for document in [&semantic.document, &visual.document] {
+    // Semantic indent is the PDF x measured from the page edge. Visual indent
+    // is that same x measured from the 72 pt section margin, so the margin is
+    // not applied twice when the page is rendered.
+    let indent_of = |document: &strict_ooxml_wml::model::Document| {
         let Some(strict_ooxml_wml::model::block::Block::Paragraph(paragraph)) =
             document.body.blocks.first()
         else {
             panic!("expected a paragraph");
         };
-        let indent = paragraph
+        paragraph
             .props
             .indentation
             .as_ref()
             .and_then(|indent| indent.start)
-            .expect("an indent");
-        assert!(indent.0 > 0, "the first line starts inside the margin");
-    }
+            .expect("an indent")
+            .0
+    };
+    let semantic_indent = indent_of(&semantic.document);
+    let visual_indent = indent_of(&visual.document);
+    assert!(semantic_indent > 0, "the first line starts inside the page");
+    assert_eq!(
+        semantic_indent - visual_indent,
+        1_440,
+        "visual indent is the page x minus the 72 pt margin"
+    );
 }
 
 /// The paragraph rules are the converter's claims about documents, so changing

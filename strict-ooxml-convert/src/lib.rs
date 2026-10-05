@@ -57,8 +57,10 @@ mod lists;
 mod media;
 mod recover;
 mod report;
+mod sections;
 mod semantic;
 mod tables;
+mod vectors;
 mod visual;
 
 use strict_ooxml_pdf::PdfDocument;

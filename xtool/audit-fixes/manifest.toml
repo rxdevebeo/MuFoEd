@@ -1,0 +1,180 @@
+# Public audit-fix manifest. Expected values live with the generators in
+# `strict-ooxml-testkit` (`src/audit.rs`). This file does not name the private
+# corpus. A local corpus is a separate directory passed to `run.py --corpus`
+# together with `--require-corpus`; a missing directory is BLOCKED.
+
+[[task]]
+id = "F00"
+findings = []
+kind = "infrastructure"
+summary = "Generated fixtures, independent ZIP/XML checks, and receipt failure modes."
+
+[[task]]
+id = "F01"
+findings = ["A04", "A05"]
+kind = "cargo"
+package = "strict-ooxml-convert"
+tests = [
+    "f01_text_metric_rejects_total_substitution",
+    "f01_text_metric_matrix",
+    "f01_table_text_is_in_the_body_and_headers_stay_separate",
+]
+scripts = ["xtool/xsd-gate/test_f01_gates.py"]
+
+[[task]]
+id = "F02"
+findings = ["A07"]
+kind = "cargo"
+package = "strict-ooxml"
+no_default_features = true
+features = ["pdf"]
+cargo_args = ["--test", "pdf_feature"]
+tests = ["f02_pdf_feature_renders"]
+
+[[task]]
+id = "F03"
+findings = ["A06"]
+kind = "cargo"
+package = "strict-ooxml-cli"
+tests = [
+    "f03_normalization_loss_changes_exit",
+    "f03_writer_loss_changes_pdf_exit",
+]
+
+[[task]]
+id = "F04"
+findings = ["A09"]
+kind = "cargo"
+package = "strict-ooxml-write"
+tests = [
+    "f04_settings_bitmap_is_strict",
+    "f04_crop_percentage_is_strict",
+    "f04_level_suffix_order_is_strict",
+    "f04_math_onoff_is_strict",
+]
+
+[[task]]
+id = "F05"
+findings = ["A01"]
+kind = "cargo"
+package = "strict-ooxml-convert"
+tests = ["f05_visual_preserves_two_page_sections"]
+
+[[task]]
+id = "F06"
+findings = ["A10"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f06_direct_italic_is_not_xor"]
+
+[[task]]
+id = "F07"
+findings = ["A11"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = [
+    "f07_font_resource_travels_with_svg",
+    "f07_cs_font_does_not_override_cyrillic",
+    "f07_unknown_face_has_consistent_fallback",
+]
+
+[[task]]
+id = "F08"
+findings = ["A20"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f08_first_line_indent_keeps_right_boundary"]
+
+[[task]]
+id = "F09"
+findings = ["A19"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f09_right_tab_aligns_segment_end"]
+
+[[task]]
+id = "F10"
+findings = ["A16"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f10_partial_zero_indent_does_not_overlap_marker"]
+
+[[task]]
+id = "F11"
+findings = ["A12"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f11_zero_table_width_uses_grid"]
+
+[[task]]
+id = "F12"
+findings = ["A14"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f12_paragraph_shading_reaches_output"]
+
+[[task]]
+id = "F13"
+findings = ["A15"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f13_body_respects_tall_header"]
+
+[[task]]
+id = "F14"
+findings = ["A13"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f14_relative_width_replaces_fallback_extent"]
+
+[[task]]
+id = "F15"
+findings = ["A21"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f15_square_changes_line_intervals"]
+
+[[task]]
+id = "F16"
+findings = ["A18"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f16_frame_translation_moves_all_children"]
+
+[[task]]
+id = "F17"
+findings = ["A17"]
+kind = "cargo"
+package = "strict-ooxml-render-svg"
+tests = ["f17_vmerge_has_continuation_on_next_page"]
+
+[[task]]
+id = "F18"
+findings = ["A03"]
+kind = "cargo"
+package = "strict-ooxml-convert"
+tests = ["f18_pdf_baseline_and_x_survive_write"]
+
+[[task]]
+id = "F19"
+findings = ["A02"]
+kind = "cargo"
+package = "strict-ooxml-convert"
+tests = [
+    "f19_text_and_vector_is_not_lossless_when_vector_missing",
+    "f19_supported_rectangle_survives",
+]
+
+[[task]]
+id = "F20"
+findings = ["A08"]
+kind = "cargo"
+package = "strict-ooxml-view"
+tests = ["f20_successful_view_exposes_normalization_loss"]
+
+[[task]]
+id = "F21"
+findings = ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19", "A20", "A21"]
+kind = "acceptance"
+package = "strict-ooxml-testkit"
+tests = ["f21_public_suite"]

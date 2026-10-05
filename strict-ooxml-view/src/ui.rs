@@ -34,6 +34,10 @@ pub(crate) fn index_html() -> &'static str {
     <label class="check"><input id="gaps" type="checkbox" checked> page gaps</label>
   </div>
 </header>
+<section id="losses" hidden>
+  <button id="losses-toggle" type="button" aria-expanded="false" aria-controls="losses-list"></button>
+  <ul id="losses-list" hidden></ul>
+</section>
 <nav id="menu" hidden>
   <input id="filter" type="search" placeholder="filter documents&hellip;" autocomplete="off">
   <ul id="menu-list"></ul>
@@ -73,8 +77,8 @@ body {
   color: var(--text);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas: "bar" "main" "status";
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas: "bar" "losses" "main" "status";
 }
 
 /* ---- header ---- */
@@ -117,6 +121,32 @@ body {
 #zoom { width: 140px; accent-color: var(--accent); }
 #zoom-value { font-variant-numeric: tabular-nums; min-width: 44px; }
 #tools .check { display: flex; align-items: center; gap: 5px; }
+
+/* ---- losses ---- */
+#losses {
+  grid-area: losses;
+  background: #241c18;
+  border-bottom: 1px solid #59352a;
+  padding: 6px 14px;
+}
+#losses[hidden] { display: none; }
+#losses-toggle {
+  font: inherit;
+  color: #ffd7c8;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+#losses-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+#losses-list[hidden] { display: none; }
+#losses.clean { background: var(--panel); border-bottom-color: var(--line); }
+#losses.clean #losses-toggle { color: var(--muted); }
 
 /* ---- menu ---- */
 #menu {
@@ -298,9 +328,58 @@ function showMessage(text, id) {
   pages.append(div);
 }
 
+function showPipeline(view) {
+  const box = $('losses');
+  const toggle = $('losses-toggle');
+  const list = $('losses-list');
+  const pipeline = view.pipeline;
+  list.replaceChildren();
+  if (!pipeline) {
+    box.hidden = false;
+    box.className = '';
+    toggle.dataset.outcome = 'unavailable';
+    toggle.textContent = 'report unavailable';
+    list.hidden = true;
+    return;
+  }
+  const losses = (pipeline.issues || []).filter((issue) => {
+    return issue.severity !== 'info' && issue.severity !== 'ignorable' && issue.severity !== 'inferred';
+  });
+  const count = losses.reduce((sum, issue) => sum + Number(issue.count || 1), 0);
+  box.hidden = false;
+  box.className = pipeline.outcome === 'clean' ? 'clean' : '';
+  toggle.dataset.outcome = pipeline.outcome;
+  if (pipeline.outcome === 'clean' && count === 0) {
+    toggle.textContent = 'clean';
+  } else {
+    const reason = losses.length ? losses[0].detail : pipeline.outcome;
+    toggle.textContent = pipeline.outcome + ' · ' + count + (count === 1 ? ' loss' : ' losses') + ' · ' + reason;
+  }
+  for (const issue of pipeline.issues || []) {
+    const item = document.createElement('li');
+    const where = [issue.part, issue.page ? ('page ' + issue.page) : '', issue.location].filter(Boolean).join(' ');
+    item.textContent = issue.stage + ' ' + issue.id + ' ×' + issue.count + ' ' + issue.detail + (where ? ' · ' + where : '');
+    list.append(item);
+  }
+  for (const stage of pipeline.stages || []) {
+    if (stage.status === 'not_run') {
+      const item = document.createElement('li');
+      item.textContent = stage.stage + ' not_run';
+      list.append(item);
+    }
+  }
+  list.hidden = pipeline.outcome === 'clean';
+  toggle.setAttribute('aria-expanded', String(!list.hidden));
+  toggle.onclick = () => {
+    list.hidden = !list.hidden;
+    toggle.setAttribute('aria-expanded', String(!list.hidden));
+  };
+}
+
 function renderView(view) {
   docName.textContent = view.name;
   docMeta.replaceChildren(...metaBits(view));
+  showPipeline(view);
   pages.replaceChildren();
 
   if (view.note) {

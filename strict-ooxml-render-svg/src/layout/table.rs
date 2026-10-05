@@ -1,6 +1,7 @@
 //! Table layout: grid, spans, vertical merges, borders, shading
 //! (`STAGE-4-TASK.md` §5.5, `STAGE-5-TASK.md` §5.7–§5.8).
 
+use strict_ooxml_wml::model::drawing::AnchorDrawing;
 use strict_ooxml_wml::model::props::CellProperties;
 use strict_ooxml_wml::model::values::{
     Border, BorderStyle, CellMargins, Twips, VerticalMerge, Width, WidthKind,
@@ -46,6 +47,8 @@ struct RawCell {
     width: f64,
     properties: CellProperties,
     items: Vec<Item>,
+    /// Page-absolute frames taken out of the cell flow.
+    page_frames: Vec<Item>,
     margin_top: f64,
     vmerge: VState,
 }
@@ -68,6 +71,7 @@ pub(crate) fn layout_table(
     content_left: f64,
     content_width: f64,
     depth: u32,
+    escape_frames: bool,
 ) -> Vec<Flow> {
     let scale = ctx.options.scale;
     let column_count = column_count(table);
@@ -84,7 +88,7 @@ pub(crate) fn layout_table(
 
     let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
-        let raw = layout_row(ctx, table, row, &widths, table_x, depth);
+        let raw = layout_row(ctx, table, row, &widths, table_x, depth, escape_frames);
         let mut height = raw.height;
         if let Some(declared) = &row.props.height {
             height = height.max(
@@ -106,37 +110,56 @@ pub(crate) fn layout_table(
     let mut flows = Vec::with_capacity(rows.len());
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
+        let mut page_frames = Vec::new();
         for cell in &row.cells {
-            // A continuation cell draws nothing: the restart cell owns the
-            // merged region's background, borders and content.
-            if cell.vmerge == VState::Continue {
-                continue;
-            }
-            let region_height = if cell.vmerge == VState::Restart {
-                merged_height(&rows, row_index, cell)
-            } else {
-                row.height
+            let (source, paint_text, top_edge, bottom_edge) = match cell.vmerge {
+                VState::Continue => {
+                    let Some(source) = restart_cell(&rows, row_index, cell) else {
+                        continue;
+                    };
+                    (
+                        source,
+                        false,
+                        false,
+                        !merge_continues(&rows, row_index, cell),
+                    )
+                }
+                VState::Restart => (cell, true, true, !merge_continues(&rows, row_index, cell)),
+                VState::None => (cell, true, true, true),
             };
-            if let Some(fill) = shading_fill(&cell.properties) {
+            if let Some(fill) = shading_fill(&source.properties) {
                 items.push(Item::Rect(RectItem {
                     x: cell.x,
                     y: 0.0,
                     w: cell.width,
-                    h: region_height,
+                    h: row.height,
                     fill: Some(fill),
                     stroke: None,
                     stroke_w: 0.0,
                 }));
             }
-            for item in &cell.items {
-                items.push(offset_item(item, 0.0, cell.margin_top));
+            if paint_text {
+                for item in &cell.items {
+                    items.push(offset_item(item, 0.0, cell.margin_top));
+                }
+                page_frames.extend(cell.page_frames.iter().cloned());
             }
-            push_borders(ctx, table, cell, region_height, &mut items);
+            push_borders(
+                ctx,
+                table,
+                cell,
+                &source.properties,
+                row.height,
+                top_edge,
+                bottom_edge,
+                &mut items,
+            );
         }
         flows.push(Flow::TableRow(TableRowFlow {
             items,
             height: row.height,
             header: row.header,
+            page_frames,
         }));
     }
     flows
@@ -165,6 +188,7 @@ fn layout_row(
     widths: &[f64],
     table_x: f64,
     depth: u32,
+    escape_frames: bool,
 ) -> LaidOutRow {
     let row_columns: usize = row
         .cells
@@ -202,12 +226,13 @@ fn layout_row(
         let end = column.saturating_add(span).min(widths.len());
         let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
         let cell_content_width = (width - margins.0 - margins.1).max(1.0);
-        let (items, content_height) = layout_cell_content(
+        let (items, content_height, page_frames) = layout_cell_content(
             ctx,
             &cell.blocks,
             x + margins.0,
             cell_content_width,
             depth + 1,
+            escape_frames,
         );
         let height = content_height + margins.2 + margins.3;
         max_content = max_content.max(height);
@@ -218,6 +243,7 @@ fn layout_row(
             width,
             properties: cell.props.clone(),
             items,
+            page_frames,
             margin_top: margins.2,
             vmerge: VState::from_merge(cell.props.vertical_merge),
         });
@@ -250,23 +276,33 @@ fn fit_to_box(mut widths: Vec<f64>, ceiling: f64) -> Vec<f64> {
     widths
 }
 
-/// Returns the total height of the merged region starting at `row`/`cell`.
-fn merged_height(rows: &[RawRow], row: usize, cell: &RawCell) -> f64 {
-    let mut total = rows[row].height;
-    let mut index = row + 1;
-    while index < rows.len() {
-        let continues = rows[index].cells.iter().any(|candidate| {
+/// The restart cell of the merge that `cell` continues, if that run is intact.
+fn restart_cell<'a>(rows: &'a [RawRow], row: usize, cell: &RawCell) -> Option<&'a RawCell> {
+    let mut index = row;
+    while index > 0 {
+        index -= 1;
+        let candidate = rows[index]
+            .cells
+            .iter()
+            .find(|candidate| candidate.col == cell.col && candidate.span == cell.span)?;
+        match candidate.vmerge {
+            VState::Restart => return Some(candidate),
+            VState::Continue => {}
+            VState::None => return None,
+        }
+    }
+    None
+}
+
+/// Whether the next row still belongs to this cell's vertical merge.
+fn merge_continues(rows: &[RawRow], row: usize, cell: &RawCell) -> bool {
+    rows.get(row + 1).is_some_and(|next| {
+        next.cells.iter().any(|candidate| {
             candidate.vmerge == VState::Continue
                 && candidate.col == cell.col
                 && candidate.span == cell.span
-        });
-        if !continues {
-            break;
-        }
-        total += rows[index].height;
-        index += 1;
-    }
-    total
+        })
+    })
 }
 
 /// Number of grid columns.
@@ -378,14 +414,17 @@ fn split_widths(total: f64, grid: &[f64], column_count: usize) -> Vec<f64> {
 fn table_total_width(ctx: &LayoutContext<'_>, table: &Table, content_width: f64) -> f64 {
     let scale = ctx.options.scale;
     let width = match table.props.width {
+        // A non-positive dxa (including the common `w:w="0"`) is not a 1 px
+        // table. It means "no preferred width": the grid, then the container,
+        // decide (A12).
         Some(Width {
             kind: WidthKind::Dxa,
             value: Some(value),
-        }) => twips_to_px(value, scale),
+        }) if value > 0 => twips_to_px(value, scale),
         Some(Width {
             kind: WidthKind::Pct,
             value: Some(value),
-        }) => content_width * f64::from(value) / 5000.0,
+        }) if value > 0 => content_width * f64::from(value) / 5000.0,
         _ => {
             // `i64`, not `i32`, and saturating: `w:gridCol/@w:w` is a twip count a
             // producer never checked, and a thousand of them overflow an `i32`
@@ -408,7 +447,7 @@ fn table_total_width(ctx: &LayoutContext<'_>, table: &Table, content_width: f64)
             }
         }
     };
-    width.clamp(1.0, content_width)
+    width.min(content_width).max(0.0)
 }
 
 /// Horizontal offset of the table within the content box.
@@ -491,18 +530,32 @@ fn effective_margins(
     )
 }
 
-/// Lays out cell block content, returning items (y relative) and height.
+/// Lays out cell block content, returning items (y relative), height, and any
+/// page-absolute frames pulled out of the flow.
 fn layout_cell_content(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
     left: f64,
     width: f64,
     depth: u32,
-) -> (Vec<Item>, f64) {
+    escape_frames: bool,
+) -> (Vec<Item>, f64, Vec<Item>) {
     let mut items = Vec::new();
+    let mut frames = Vec::new();
     let mut y = 0.0;
-    layout_blocks_inline(ctx, blocks, left, width, &mut y, &mut items, depth, None);
-    (items, y)
+    layout_blocks_inline(
+        ctx,
+        blocks,
+        left,
+        width,
+        &mut y,
+        &mut items,
+        depth,
+        None,
+        escape_frames,
+        &mut frames,
+    );
+    (items, y, frames)
 }
 
 /// Stacks blocks vertically (used inside cells; page breaks are ignored).
@@ -527,13 +580,26 @@ pub(crate) fn layout_blocks_inline(
     items: &mut Vec<Item>,
     depth: u32,
     note_marker: Option<&str>,
+    escape_frames: bool,
+    page_frames: &mut Vec<Item>,
 ) {
     if depth > ctx.options.limits.max_block_nesting {
         return;
     }
     ctx.set_block_depth(depth);
-    for block in blocks {
-        match block {
+    let mut index = 0;
+    while index < blocks.len() {
+        if escape_frames {
+            if let Block::Paragraph(para) = &blocks[index] {
+                if para.props.frame.is_some() {
+                    let end = frame_group_end(blocks, index);
+                    page_frames.extend(cell_frame_items(ctx, &blocks[index..end]));
+                    index = end;
+                    continue;
+                }
+            }
+        }
+        match &blocks[index] {
             Block::Paragraph(para) => {
                 let flow = layout_paragraph(ctx, para, left, width, None, note_marker);
                 *y += flow.space_before;
@@ -555,16 +621,18 @@ pub(crate) fn layout_blocks_inline(
                         Flow::Block {
                             items: block_items,
                             height,
-                        }
-                        | Flow::TableRow(TableRowFlow {
-                            items: block_items,
-                            height,
-                            ..
-                        }) => {
+                        } => {
                             for item in block_items {
                                 items.push(offset_item(&item, 0.0, *y));
                             }
                             *y += height;
+                        }
+                        Flow::TableRow(row) => {
+                            for item in &row.items {
+                                items.push(offset_item(item, 0.0, *y));
+                            }
+                            page_frames.extend(row.page_frames);
+                            *y += row.height;
                         }
                         Flow::PageBreak => {}
                     }
@@ -572,21 +640,25 @@ pub(crate) fn layout_blocks_inline(
                 *y += flow.space_after;
             }
             Block::Table(table) => {
-                for flow in layout_table(ctx, table, left, width, depth) {
-                    if let Flow::Block {
-                        items: block_items,
-                        height,
-                    }
-                    | Flow::TableRow(TableRowFlow {
-                        items: block_items,
-                        height,
-                        ..
-                    }) = flow
-                    {
-                        for item in block_items {
-                            items.push(offset_item(&item, 0.0, *y));
+                for flow in layout_table(ctx, table, left, width, depth, escape_frames) {
+                    match flow {
+                        Flow::Block {
+                            items: block_items,
+                            height,
+                        } => {
+                            for item in block_items {
+                                items.push(offset_item(&item, 0.0, *y));
+                            }
+                            *y += height;
                         }
-                        *y += height;
+                        Flow::TableRow(row) => {
+                            for item in &row.items {
+                                items.push(offset_item(item, 0.0, *y));
+                            }
+                            page_frames.extend(row.page_frames);
+                            *y += row.height;
+                        }
+                        Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
                     }
                 }
             }
@@ -600,11 +672,137 @@ pub(crate) fn layout_blocks_inline(
                     items,
                     depth + 1,
                     note_marker,
+                    escape_frames,
+                    page_frames,
                 );
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
+        index += 1;
     }
+}
+
+/// End of a run of paragraphs that share one frame signature.
+pub(crate) fn frame_group_end(blocks: &[Block], start: usize) -> usize {
+    let Block::Paragraph(first) = &blocks[start] else {
+        return start;
+    };
+    let Some(signature) = first.props.frame.clone() else {
+        return start;
+    };
+    let mut end = start + 1;
+    while end < blocks.len() {
+        let Block::Paragraph(para) = &blocks[end] else {
+            break;
+        };
+        if para.props.page_break_before.is_on() || para.props.frame.as_ref() != Some(&signature) {
+            break;
+        }
+        end += 1;
+    }
+    end
+}
+
+/// Page origin of a frame. A missing anchor, and `page`, are the page edge.
+pub(crate) fn frame_origin(
+    twips: Option<i32>,
+    anchor: Option<&str>,
+    margin: f64,
+    scale: f64,
+) -> f64 {
+    let value = crate::units::twips_to_px(twips.unwrap_or(0), scale);
+    match anchor {
+        Some("margin" | "text") => value + margin,
+        _ => value,
+    }
+}
+
+/// Paints a frame group at a page origin. Items are already absolute.
+pub(crate) fn layout_frame_contents(
+    ctx: &LayoutContext<'_>,
+    blocks: &[Block],
+    origin_x: f64,
+    origin_y: f64,
+    frame_width: f64,
+) -> (Vec<Item>, Vec<(f64, AnchorDrawing)>, f64) {
+    let mut items = Vec::new();
+    let mut anchors = Vec::new();
+    let mut local_y = 0.0_f64;
+    let mut pending_after = 0.0_f64;
+    for block in blocks {
+        let Block::Paragraph(para) = block else {
+            continue;
+        };
+        let flow = layout_paragraph(ctx, para, 0.0, frame_width, None, None);
+        local_y += pending_after.max(flow.space_before);
+        for anchor in flow.anchors {
+            anchors.push((origin_y + local_y, anchor));
+        }
+        for item in flow.flows {
+            match item {
+                Flow::Line(mut line) => {
+                    let height = line.height;
+                    line.offset(origin_x, origin_y + local_y);
+                    let graphics = std::mem::take(&mut line.graphics);
+                    let (backs, rest): (Vec<_>, Vec<_>) = graphics
+                        .into_iter()
+                        .partition(|item| matches!(item, Item::Rect(_)));
+                    items.extend(backs);
+                    items.extend(line.items.into_iter().map(Item::Text));
+                    items.extend(rest);
+                    local_y += height;
+                }
+                Flow::Image(mut image) => {
+                    image.x += origin_x;
+                    image.y += origin_y + local_y;
+                    let height = image.h;
+                    items.push(Item::Image(image));
+                    local_y += height;
+                }
+                Flow::Block {
+                    items: block_items,
+                    height,
+                } => {
+                    for item in &block_items {
+                        items.push(offset_item(item, origin_x, origin_y + local_y));
+                    }
+                    local_y += height;
+                }
+                Flow::TableRow(row) => {
+                    for item in &row.items {
+                        items.push(offset_item(item, origin_x, origin_y + local_y));
+                    }
+                    items.extend(row.page_frames);
+                    local_y += row.height;
+                }
+                Flow::PageBreak => break,
+            }
+        }
+        pending_after = flow.space_after;
+    }
+    (items, anchors, local_y)
+}
+
+/// Page-absolute items for a frame group found inside a cell.
+fn cell_frame_items(ctx: &LayoutContext<'_>, blocks: &[Block]) -> Vec<Item> {
+    let Block::Paragraph(first) = &blocks[0] else {
+        return Vec::new();
+    };
+    let Some(frame) = first.props.frame.as_ref() else {
+        return Vec::new();
+    };
+    let scale = ctx.options.scale;
+    let (margin_x, margin_y, content_width) = ctx.frame_anchor.get();
+    let origin_x = frame_origin(frame.x, frame.h_anchor.as_deref(), margin_x, scale);
+    let origin_y = frame_origin(frame.y, frame.v_anchor.as_deref(), margin_y, scale);
+    let frame_width = frame.width.map_or(content_width.max(1.0), |width| {
+        crate::units::twips_to_px(width.value(), scale)
+    });
+    let resume = ctx.frame_resume(frame);
+    let (items, _anchors, height) =
+        layout_frame_contents(ctx, blocks, origin_x, origin_y + resume, frame_width);
+    ctx.frame_advance(frame, height);
+    items
 }
 
 /// Offsets a paint item by `(dx, dy)`.
@@ -640,12 +838,16 @@ pub(crate) fn offset_item(item: &Item, dx: f64, dy: f64) -> Item {
     }
 }
 
-/// Emits the four borders of a cell region.
+/// Emits the borders of one vertical-merge fragment.
+#[allow(clippy::too_many_arguments)]
 fn push_borders(
     ctx: &LayoutContext<'_>,
     table: &Table,
     cell: &RawCell,
+    properties: &CellProperties,
     height: f64,
+    top_edge: bool,
+    bottom_edge: bool,
     items: &mut Vec<Item>,
 ) {
     let x = cell.x;
@@ -653,13 +855,16 @@ fn push_borders(
     let right = x + cell.width;
     let bottom = y + height;
     let edges = [
-        (0u8, x, y, right, y),
-        (1, x, bottom, right, bottom),
-        (2, x, y, x, bottom),
-        (3, right, y, right, bottom),
+        (0u8, top_edge, x, y, right, y),
+        (1, bottom_edge, x, bottom, right, bottom),
+        (2, true, x, y, x, bottom),
+        (3, true, right, y, right, bottom),
     ];
-    for (edge, x1, y1, x2, y2) in edges {
-        if let Some(stroke) = resolve_edge(ctx, table, &cell.properties, edge) {
+    for (edge, draw, x1, y1, x2, y2) in edges {
+        if !draw {
+            continue;
+        }
+        if let Some(stroke) = resolve_edge(ctx, table, properties, edge) {
             items.push(Item::Line(LineItem {
                 x1,
                 y1,

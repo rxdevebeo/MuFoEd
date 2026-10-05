@@ -261,7 +261,8 @@ fn every_coordinate_is_finite_and_the_svg_is_well_formed() {
 <m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup><m:d><m:e><m:r><m:t>q</m:t></m:r></m:e></m:d>\
 </m:oMath></w:p>",
     );
-    assert!(!svg.contains("NaN") && !svg.contains("inf"), "{svg}");
+    let ink = common::without_font_faces(&svg);
+    assert!(!ink.contains("NaN") && !ink.contains("inf"), "{ink}");
     // An independent XML parser must accept the document.
     roxmltree::Document::parse(&svg).expect("valid SVG");
 }
@@ -326,15 +327,15 @@ fn an_unmodelled_construct_is_reported_by_the_mathml_projection() {
 /// 175 px tall instead of 35 px and blew the display block apart.
 #[test]
 fn an_equation_array_row_spacing_is_twips() {
-    let narrow = render_body(
+    let narrow = common::without_font_faces(&render_body(
         "<w:p><m:oMathPara><m:oMath><m:eqArr><m:eqArrPr/><m:e><m:r><m:t>a</m:t></m:r></m:e>\
 <m:e><m:r><m:t>b</m:t></m:r></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>",
-    );
-    let wide = render_body(
+    ));
+    let wide = common::without_font_faces(&render_body(
         "<w:p><m:oMathPara><m:oMath><m:eqArr><m:eqArrPr><m:rSpRule m:val=\"exact\"/>\
 <m:rSp m:val=\"120\"/></m:eqArrPr><m:e><m:r><m:t>a</m:t></m:r></m:e>\
 <m:e><m:r><m:t>b</m:t></m:r></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>",
-    );
+    ));
     let row = |svg: &str| -> f64 {
         // The two rows are the only `<text>` runs; their baselines differ by the
         // row pitch.

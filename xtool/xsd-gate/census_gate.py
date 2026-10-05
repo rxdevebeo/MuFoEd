@@ -692,6 +692,8 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     total_in = total_out = 0
     clean = 0
     documents = 0
+    validated = 0
+    missing = 0
     refused: list[tuple[str, str]] = []
     lossy_documents = 0
     lossy_total = 0
@@ -720,10 +722,12 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
             incoming = xsd_gate.validate_package(os.path.join(corpus, name), oracle)
             path = os.path.join(destination, name)
             if not os.path.exists(path):
+                missing += 1
                 refused.append((name, "our writer wrote nothing"))
                 print(f"  {name:<42} {sum(incoming.schema.values()):>5} {'refused':>9}")
                 label_in += sum(incoming.schema.values())
                 continue
+            validated += 1
             outgoing = xsd_gate.validate_package(path, oracle)
             incoming_count = sum(incoming.schema.values())
             outgoing_count = sum(outgoing.schema.values())
@@ -856,14 +860,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         origin = item["origin"]
         signal = item.get("signal", "message")
         blind = item.get("blind_to")
-        if count == 0:
-            state = "closed"
-        elif origin == "ours":
-            state = f"OPEN  {count}"
-        elif origin == "source":
-            state = f"CARRIED {count}"
-        else:
-            state = f"n/a    {count}"
+        state = xsd_gate.item_state(item, count)
         # A zero from a signal that cannot see is not a zero. Printing `closed`
         # beside it without the reason is how `TZ-04` reported 0 for a rule that
         # had been dead all day, so the blindness is a column of its own.
@@ -905,16 +902,32 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
             print(f"  {where}: {message}")
 
     open_items = {item_id: counts[item_id] for item_id in sorted(ours) if counts[item_id]}
+    our_total = sum(open_items.values())
+    unmatched_n = len(hits["unmatched"])
+    print(
+        f"\nmeasured: documents={documents} validated={validated} "
+        f"missing={missing} unmatched={unmatched_n} ours={our_total}"
+    )
+    code, summary = xsd_gate.decide_gate(
+        documents=documents,
+        validated=validated,
+        missing=missing,
+        unmatched=unmatched_n,
+        our_total=our_total,
+        source_total=0,
+    )
+    print(f"\n{summary}")
     if open_items:
-        print("\nFAIL: the Transitional path leaves these open: "
-              + ", ".join(f"{key}={value}" for key, value in open_items.items()))
-        print(f"      ({lossy_documents}/{documents} document(s) also carry a lossy record)")
-        return EXIT_OPEN
-    print("\nPASS: every census item of ours is closed on a measured zero")
-    print(f"      ({documents - lossy_documents}/{documents} document(s) report no lossy record; "
-          f"{lossy_total} lossy record(s) total - a removal the report names is not a defect, "
-          "an un-named one would be)")
-    return EXIT_OK
+        print(
+            "      open: "
+            + ", ".join(f"{key}={value}" for key, value in open_items.items())
+        )
+    print(
+        f"      ({documents - lossy_documents}/{documents} document(s) report no lossy record; "
+        f"{lossy_total} lossy record(s) total - a removal the report names is not a defect, "
+        "an un-named one would be)"
+    )
+    return code
 
 
 if __name__ == "__main__":

@@ -37,8 +37,15 @@ impl PdfBuilder {
     /// Sets the media box of pages added afterwards.
     #[must_use]
     pub fn media_box(mut self, media_box: [i32; 4]) -> Self {
-        self.media_box = media_box;
+        self.set_media_box(media_box);
         self
+    }
+
+    /// Sets the media box of pages added afterwards, without consuming the builder.
+    ///
+    /// Coordinates are PDF user-space units (1 unit = 1 pt in these fixtures).
+    pub fn set_media_box(&mut self, media_box: [i32; 4]) {
+        self.media_box = media_box;
     }
 
     /// Reserves an object number, to be filled with [`set`](Self::set) — for

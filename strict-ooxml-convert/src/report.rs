@@ -182,6 +182,26 @@ impl ConversionReport {
             .iter()
             .any(|loss| matches!(loss.severity, Severity::Lost | Severity::Unsupported))
     }
+
+    /// Issues for the combined pipeline. `Inferred` stays clean; `Lost`,
+    /// `Unsupported`, and `Recovered` do not. Nothing is dropped because
+    /// another stage used the same id.
+    #[must_use]
+    pub fn pipeline_issues(&self) -> Vec<strict_ooxml_core::pipeline::PipelineIssue> {
+        self.losses
+            .iter()
+            .map(|loss| strict_ooxml_core::pipeline::PipelineIssue {
+                stage: strict_ooxml_core::pipeline::PipelineStage::Convert,
+                id: loss.id.clone(),
+                severity: loss.severity.to_string(),
+                part: None,
+                page: None,
+                location: None,
+                count: loss.count,
+                detail: loss.detail.clone(),
+            })
+            .collect()
+    }
 }
 
 impl fmt::Display for ConversionReport {

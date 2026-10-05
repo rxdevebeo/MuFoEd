@@ -133,9 +133,14 @@ fn fonts_dir() -> PathBuf {
 /// same compositing and the same luma the PDF gate's candidate goes through: two
 /// gates that disagree about what a pixel is are two gates.
 fn rasterize_gray(svg: &str, width: u32, height: u32, fonts: &Path) -> Gray {
+    // The measurement fonts are the ones loaded from disk. The SVG also embeds
+    // those faces for a viewer that has none; resvg then prefers the embedded
+    // face and stops using this directory, which moves the ink relative to the
+    // WPS references. The gate measures layout against the directory faces.
+    let svg = strip_embedded_faces(svg);
     let mut options = resvg::usvg::Options::default();
     options.fontdb_mut().load_fonts_dir(fonts);
-    let tree = resvg::usvg::Tree::from_str(svg, &options).expect("parse our SVG");
+    let tree = resvg::usvg::Tree::from_str(&svg, &options).expect("parse our SVG");
     let size = tree.size();
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height).expect("allocate raster target");
     let transform = resvg::tiny_skia::Transform::from_scale(
@@ -144,6 +149,21 @@ fn rasterize_gray(svg: &str, width: u32, height: u32, fonts: &Path) -> Gray {
     );
     resvg::render(&tree, transform, &mut pixmap.as_mut());
     strict_ooxml_fidelity::from_rgba8(pixmap.data(), width as usize, height as usize)
+}
+
+/// Drops the `@font-face` block so resvg uses `fonts_dir`.
+fn strip_embedded_faces(svg: &str) -> String {
+    let Some(start) = svg.find("  <style type=\"text/css\">") else {
+        return svg.to_owned();
+    };
+    let rest = &svg[start..];
+    let Some(end) = rest.find("]]></style>\n") else {
+        return svg.to_owned();
+    };
+    let mut out = String::with_capacity(svg.len());
+    out.push_str(&svg[..start]);
+    out.push_str(&rest[end + "]]></style>\n".len()..]);
+    out
 }
 
 /// Returns the reference PNGs of a document directory, sorted by page number.

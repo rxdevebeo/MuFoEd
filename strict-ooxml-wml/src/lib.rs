@@ -86,6 +86,10 @@ pub const MS_WORD_PROCESSING_SHAPE_NS: &str =
 pub const MS_WORD_PROCESSING_GROUP_NS: &str =
     "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 
+/// Microsoft 2010 wordprocessingDrawing namespace (`wp14:sizeRelH` / `sizeRelV`).
+pub const MS_WORD_PROCESSING_DRAWING_NS: &str =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing";
+
 /// Microsoft 2006 WordprocessingML namespace (`wne:txbxContent`).
 pub const MS_WORD_2006_WML_NS: &str = "http://schemas.microsoft.com/office/word/2006/wordml";
 

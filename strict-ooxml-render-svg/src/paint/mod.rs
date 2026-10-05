@@ -24,6 +24,7 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
         out,
         "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">"
     );
+    out.push_str(&font_faces(page));
     if background {
         let _ = writeln!(
             out,
@@ -67,6 +68,45 @@ pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
     })
 }
 
+/// Embeds each face the page paints, so a standalone SVG does not ask the
+/// machine for a font.
+fn font_faces(page: &PlacedPage) -> String {
+    let mut keys = Vec::new();
+    for item in &page.items {
+        let Item::Text(text) = item else {
+            continue;
+        };
+        let family = crate::style::chosen_family(&text.run, &text.text);
+        let key = (family, text.run.bold, text.run.italic);
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    if keys.is_empty() {
+        return String::new();
+    }
+    let mut css = String::from("  <style type=\"text/css\"><![CDATA[\n");
+    for (family, bold, italic) in keys {
+        let Some(source) = crate::font::face_source(&family, bold, italic) else {
+            continue;
+        };
+        let (mime, format) = if source.data.starts_with(b"OTTO") {
+            ("font/otf", "opentype")
+        } else {
+            ("font/ttf", "truetype")
+        };
+        let weight = if bold { "bold" } else { "normal" };
+        let style = if italic { "italic" } else { "normal" };
+        let encoded = image::base64_encode(source.data);
+        let _ = writeln!(
+            css,
+            "@font-face {{ font-family: \"{family}\"; src: url(\"data:{mime};base64,{encoded}\") format(\"{format}\"); font-weight: {weight}; font-style: {style}; }}"
+        );
+    }
+    css.push_str("]]></style>\n");
+    css
+}
+
 /// Formats an SVG coordinate.
 #[must_use]
 pub(crate) fn coord(value: f64) -> String {
@@ -75,8 +115,11 @@ pub(crate) fn coord(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_attr, escape_text, render_page};
-    use crate::layout::{Item, PlacedPage, RectItem};
+    use super::{escape_attr, escape_text, font_faces, render_page};
+    use crate::font::face_source;
+    use crate::layout::{Item, PlacedPage, RectItem, TextItem};
+    use crate::paint::image::base64_encode;
+    use crate::style::ComputedRun;
 
     #[test]
     fn escaping_is_correct() {
@@ -105,5 +148,30 @@ mod tests {
         assert!(svg.starts_with("<svg "));
         assert!(svg.contains("viewBox=\"0 0 816 1056\""));
         assert!(svg.ends_with("</svg>\n"));
+    }
+
+    #[test]
+    fn embedded_face_bytes_are_the_bundled_program() {
+        let page = PlacedPage {
+            width_px: 100.0,
+            height_px: 40.0,
+            section_index: 0,
+            items: vec![Item::Text(TextItem {
+                x: 0.0,
+                baseline: 20.0,
+                width: 10.0,
+                text: "A".to_owned(),
+                run: ComputedRun {
+                    family: "Calibri".to_owned(),
+                    ..ComputedRun::default()
+                },
+                size_px: 16.0,
+                field: None,
+            })],
+        };
+        let css = font_faces(&page);
+        let source = face_source("Carlito", false, false).expect("carlito");
+        assert!(css.contains(&base64_encode(source.data)));
+        assert!(css.contains("font-family: \"Carlito\""));
     }
 }

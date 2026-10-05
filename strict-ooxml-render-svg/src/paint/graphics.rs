@@ -351,6 +351,7 @@ fn text_box_items(
     // looked like the top of the document, and a chain of them overflowed the
     // stack. The over-deep case is already refused by the model walk in
     // `layout_document`; this is the layout's own accounting.
+    let mut page_frames = Vec::new();
     layout_blocks_inline(
         ctx,
         &text.blocks,
@@ -360,6 +361,8 @@ fn text_box_items(
         &mut items,
         ctx.block_depth() + 1,
         None,
+        false,
+        &mut page_frames,
     );
     let available = (h - emu_to_px(top_inset.saturating_add(bottom_inset), scale)).max(0.0);
     let shift = match body.anchor.unwrap_or(TextAnchor::Top) {

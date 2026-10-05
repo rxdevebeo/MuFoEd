@@ -264,6 +264,8 @@ pub fn place_pages(
         warnings: std::cell::RefCell::new(Vec::new()),
         field_env: std::cell::Cell::new(None),
         render_items: std::cell::Cell::new(0),
+        frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0)),
+        frame_cursors: std::cell::RefCell::new(Vec::new()),
     };
     Ok(layout::paginate::layout_document(&context)?.pages)
 }
@@ -303,6 +305,8 @@ pub fn render_with_media(
         warnings: std::cell::RefCell::new(Vec::new()),
         field_env: std::cell::Cell::new(None),
         render_items: std::cell::Cell::new(0),
+        frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0)),
+        frame_cursors: std::cell::RefCell::new(Vec::new()),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
     let layout_warnings = laid_out.warnings.clone();

@@ -8,7 +8,10 @@ use strict_ooxml_core::error::Result;
 use crate::error::RenderError;
 use crate::layout::floating::{reserves_vertical_space, PendingAnchor};
 use crate::layout::paragraph::layout_paragraph;
-use crate::layout::table::{layout_blocks_inline, layout_table, offset_item};
+use crate::layout::table::{
+    frame_group_end, frame_origin, layout_blocks_inline, layout_frame_contents, layout_table,
+    offset_item,
+};
 use crate::layout::{
     geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
     TextLine,
@@ -125,6 +128,7 @@ fn item_coords_finite(item: &Item) -> bool {
 /// Lays out the document once, using `total_pages` for NUMPAGES/SECTIONPAGES.
 fn layout_once(ctx: &LayoutContext<'_>, total_pages: usize) -> Result<(Layout, bool)> {
     ctx.render_items.set(0);
+    ctx.reset_frame_cursors();
     let sections = &ctx.document.sections;
     let runs = section_runs(&ctx.document.body.blocks, sections.len());
     let first_props = sections.first().map(|section| &section.properties);
@@ -291,17 +295,32 @@ fn layout_blocks(
     // top of the `before`. A page break ends the paragraph, so nothing pending
     // follows it onto the next page.
     let mut pending_after = 0.0f64;
-    for block in blocks {
+    let mut index = 0;
+    while index < blocks.len() {
+        if let Block::Paragraph(para) = &blocks[index] {
+            if para.props.frame.is_some() {
+                let end = frame_group_end(blocks, index);
+                place_frame_group(ctx, &blocks[index..end], paginator)?;
+                pending_after = 0.0;
+                index = end;
+                continue;
+            }
+        }
+        let block = &blocks[index];
         match block {
             Block::Paragraph(para) => {
                 let flow = layout_paragraph(ctx, para, left, width, grid, None);
+                // An empty paragraph that only carries `w:sectPr` is a boundary,
+                // not a line of text. Letting it overflow would insert a blank
+                // page before the section break that already starts the next page.
+                let boundary_marker = para.props.section.is_some() && para.inlines.is_empty();
                 if para.props.page_break_before.is_on() && !paginator.at_page_top() {
                     paginator.keep_empty_page = true;
                     paginator.page_break()?;
                     pending_after = 0.0;
                 }
                 paginator.add_vspace(pending_after.max(flow.space_before));
-                if flow.keep_lines {
+                if flow.keep_lines && !boundary_marker {
                     let total: f64 = flow
                         .flows
                         .iter()
@@ -323,7 +342,11 @@ fn layout_blocks(
                 let host_x = paginator.geometry.left;
                 let host_y = paginator.geometry.top + paginator.cursor;
                 for item in flow.flows {
-                    paginator.place(item)?;
+                    if boundary_marker {
+                        paginator.place_boundary_marker(item)?;
+                    } else {
+                        paginator.place(item)?;
+                    }
                 }
                 pending_after = flow.space_after;
                 for anchor in flow.anchors {
@@ -343,7 +366,12 @@ fn layout_blocks(
                 }
             }
             Block::Table(table) => {
-                let flows = layout_table(ctx, table, left, width, depth);
+                ctx.frame_anchor.set((
+                    paginator.geometry.left,
+                    paginator.geometry.top,
+                    paginator.geometry.content_width(),
+                ));
+                let flows = layout_table(ctx, table, left, width, depth, true);
                 paginator.set_table_headers(&flows);
                 for flow in flows {
                     paginator.place(flow)?;
@@ -355,6 +383,57 @@ fn layout_blocks(
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
+        index += 1;
+    }
+    Ok(())
+}
+
+/// Lays a frame group out once and paints every child from the frame origin.
+fn place_frame_group(
+    ctx: &LayoutContext<'_>,
+    blocks: &[Block],
+    paginator: &mut Paginator<'_>,
+) -> Result<()> {
+    let Block::Paragraph(first) = &blocks[0] else {
+        return Ok(());
+    };
+    let Some(frame) = first.props.frame.as_ref() else {
+        return Ok(());
+    };
+    let scale = ctx.options.scale;
+    let origin_x = frame_origin(
+        frame.x,
+        frame.h_anchor.as_deref(),
+        paginator.geometry.left,
+        scale,
+    );
+    let origin_y = frame_origin(
+        frame.y,
+        frame.v_anchor.as_deref(),
+        paginator.geometry.top,
+        scale,
+    );
+    let frame_width = frame
+        .width
+        .map_or(paginator.geometry.content_width(), |width| {
+            crate::units::twips_to_px(width.value(), scale)
+        });
+    paginator.started = true;
+    let page = paginator.pages.len();
+    let resume = ctx.frame_resume(frame);
+    let (items, anchors, height) =
+        layout_frame_contents(ctx, blocks, origin_x, origin_y + resume, frame_width);
+    ctx.frame_advance(frame, height);
+    for (host_y, anchor) in anchors {
+        paginator.anchors.push(PendingAnchor {
+            page,
+            host_x: origin_x,
+            host_y,
+            anchor,
+        });
+    }
+    for item in items {
+        paginator.push_item(item)?;
     }
     Ok(())
 }
@@ -432,7 +511,12 @@ fn append_note_blocks(
                 paginator.add_vspace(flow.space_after);
             }
             Block::Table(table) => {
-                for flow in layout_table(ctx, table, left, width, depth) {
+                ctx.frame_anchor.set((
+                    paginator.geometry.left,
+                    paginator.geometry.top,
+                    paginator.geometry.content_width(),
+                ));
+                for flow in layout_table(ctx, table, left, width, depth, true) {
                     paginator.place(flow)?;
                 }
             }
@@ -503,6 +587,7 @@ impl<'a> Paginator<'a> {
             {
                 let mut items = Vec::new();
                 let mut y = 0.0;
+                let mut page_frames = Vec::new();
                 layout_blocks_inline(
                     ctx,
                     &note.blocks,
@@ -512,6 +597,8 @@ impl<'a> Paginator<'a> {
                     &mut items,
                     0,
                     Some(&marker),
+                    false,
+                    &mut page_frames,
                 );
                 note_cache.insert(id, (items, y));
             }
@@ -557,6 +644,9 @@ impl<'a> Paginator<'a> {
             SectionType::NextPage | SectionType::NextColumn => {
                 self.keep_empty_page = true;
                 self.page_break()?;
+                // The break opened this page. An empty section (a blank PDF page)
+                // has nothing to paint, and `flush` would otherwise drop it.
+                self.keep_empty_page = true;
                 self.geometry = geometry;
                 self.section_index = section_index;
                 Ok(())
@@ -568,6 +658,7 @@ impl<'a> Paginator<'a> {
                     self.keep_empty_page = true;
                     self.page_break()?;
                 }
+                self.keep_empty_page = true;
                 self.geometry = geometry;
                 self.section_index = section_index;
                 Ok(())
@@ -579,6 +670,7 @@ impl<'a> Paginator<'a> {
                     self.keep_empty_page = true;
                     self.page_break()?;
                 }
+                self.keep_empty_page = true;
                 self.geometry = geometry;
                 self.section_index = section_index;
                 Ok(())
@@ -659,6 +751,7 @@ impl<'a> Paginator<'a> {
             return Ok(());
         }
         self.flush()?;
+        self.ctx.reset_frame_cursors();
         self.take_pending_geometry();
         self.cursor = 0.0;
         self.started = true;
@@ -740,6 +833,22 @@ impl<'a> Paginator<'a> {
         items
     }
 
+    /// Places an inkless section-break paragraph without opening a spare page.
+    ///
+    /// The paragraph is the last block of the section it ends. When the line
+    /// does not fit, a page break here would be a blank page in front of the
+    /// section break that already starts the next page.
+    fn place_boundary_marker(&mut self, flow: Flow) -> Result<()> {
+        if let Flow::Line(line) = &flow {
+            let inkless = line.items.is_empty() && line.graphics.is_empty();
+            let fits = self.current.is_empty() || self.cursor + line.height <= self.body_height();
+            if inkless && !fits {
+                return Ok(());
+            }
+        }
+        self.place(flow)
+    }
+
     /// Places one flow item, breaking the page if it does not fit.
     fn place(&mut self, flow: Flow) -> Result<()> {
         match flow {
@@ -780,7 +889,12 @@ impl<'a> Paginator<'a> {
         self.table_headers = flows
             .iter()
             .filter_map(|flow| match flow {
-                Flow::TableRow(row) if row.header => Some(row.clone()),
+                Flow::TableRow(row) if row.header => {
+                    let mut row = row.clone();
+                    // The first placement of the row already painted the frames.
+                    row.page_frames.clear();
+                    Some(row)
+                }
                 _ => None,
             })
             .collect();
@@ -806,6 +920,9 @@ impl<'a> Paginator<'a> {
         let dy = self.geometry.top + self.cursor;
         for item in &row.items {
             self.push_item(offset_item(item, 0.0, dy))?;
+        }
+        for item in &row.page_frames {
+            self.push_item(item.clone())?;
         }
         self.cursor += row.height;
         Ok(())
@@ -837,10 +954,17 @@ impl<'a> Paginator<'a> {
         }
         self.resolve_fields(&mut line);
         line.offset(0.0, self.geometry.top + self.cursor);
+        let graphics = std::mem::take(&mut line.graphics);
+        let (backs, rest): (Vec<_>, Vec<_>) = graphics
+            .into_iter()
+            .partition(|item| matches!(item, Item::Rect(_)));
+        for item in backs {
+            self.push_item(item)?;
+        }
         for item in line.items {
             self.push_item(Item::Text(item))?;
         }
-        for item in line.graphics {
+        for item in rest {
             self.push_item(item)?;
         }
         self.cursor += line.height;

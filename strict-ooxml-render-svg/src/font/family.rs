@@ -4,25 +4,26 @@
 ///
 /// Word documents request proprietary families (Calibri, Arial, …). The renderer
 /// substitutes the bundled open fonts that share their metrics so that line
-/// breaking matches the producer; the same name is emitted in the SVG
-/// `font-family` so the rasterizer resolves the bundled face rather than a
-/// system fallback. Unknown families are returned unchanged and resolved by the
-/// deterministic fallback model.
+/// breaking matches the producer. Unknown families resolve to Carlito, and that
+/// same name is what the SVG `@font-face` delivers.
 #[must_use]
 pub fn map_family(family: &str) -> &str {
     match family.trim().to_ascii_lowercase().as_str() {
-        "calibri" => "Carlito",
-        "cambria" => "Caladea",
+        // Calibri is the wildcard below: it is the family Carlito metrics match.
+        "cambria" | "caladea" => "Caladea",
         // LibreOffice writes its own metric-compatible Liberation families;
         // the bundled Arimo/Tinos/Cousine are the same designs under the OFL
         // names (STAGE-5C-REWORK-1 D1).
-        "arial" | "helvetica" | "liberation sans" => "Arimo",
-        "times new roman" | "liberation serif" => "Tinos",
-        "courier new" | "liberation mono" => "Cousine",
+        "arial" | "helvetica" | "liberation sans" | "arimo" => "Arimo",
+        "times new roman" | "liberation serif" | "tinos" => "Tinos",
+        "courier new" | "liberation mono" | "cousine" => "Cousine",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
         // is the bundled OFL face with the full OMML glyph repertoire.
         "cambria math" | "stix two math" | "stix2 math" | "stixgeneral" => "STIX Two Math",
-        _ => family,
+        // An unknown CSS family is measured and delivered as Carlito, the bundled
+        // Calibri-metric face. Leaving the request unchanged made layout use the
+        // fallback model while the SVG named a face the viewer does not have.
+        _ => "Carlito",
     }
 }
 
@@ -60,8 +61,16 @@ mod tests {
     }
 
     #[test]
-    fn leaves_unknown_families_unchanged() {
-        assert_eq!(map_family("Segoe UI"), "Segoe UI");
-        assert_eq!(map_family(""), "");
+    fn unknown_families_use_the_bundled_fallback() {
+        assert_eq!(map_family("Segoe UI"), "Carlito");
+        assert_eq!(map_family(""), "Carlito");
+        assert_eq!(map_family("Not A Real Font"), "Carlito");
+        // Mapping is idempotent: a second pass must not send Arimo through the
+        // unknown-family wildcard.
+        assert_eq!(map_family("Arimo"), "Arimo");
+        assert_eq!(map_family("Tinos"), "Tinos");
+        assert_eq!(map_family("Cousine"), "Cousine");
+        assert_eq!(map_family("Caladea"), "Caladea");
+        assert_eq!(map_family("Carlito"), "Carlito");
     }
 }

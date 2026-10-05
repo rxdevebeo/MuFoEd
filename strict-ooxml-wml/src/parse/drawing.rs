@@ -9,17 +9,17 @@ use strict_ooxml_core::xml::{Attr, XmlEvent};
 use crate::model::drawing::{
     AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
     ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing,
-    MediaItem, MediaKind, PathCommand, Picture, Position, Shape, ShapeColor, ShapeFill,
-    ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap,
-    WrapKind, Xfrm,
+    MediaItem, MediaKind, PathCommand, Picture, Position, RelativeSize, Shape, ShapeColor,
+    ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody,
+    Wrap, WrapKind, Xfrm,
 };
 use crate::model::support::SupportStatus;
 use crate::model::values::{Color, Emu, ThemeColor, ThemeColorRef};
 use crate::{
     CHART_STRICT_NS, DIAGRAM_STRICT_NS, DRAWINGML_STRICT_NS, MS_WORD_2006_WML_NS,
-    MS_WORD_PROCESSING_GROUP_NS, MS_WORD_PROCESSING_SHAPE_NS, PICTURE_STRICT_NS, RELS_STRICT_NS,
-    WORDPROCESSING_DRAWING_STRICT_NS, WORD_PROCESSING_GROUP_STRICT_NS,
-    WORD_PROCESSING_SHAPE_STRICT_NS,
+    MS_WORD_PROCESSING_DRAWING_NS, MS_WORD_PROCESSING_GROUP_NS, MS_WORD_PROCESSING_SHAPE_NS,
+    PICTURE_STRICT_NS, RELS_STRICT_NS, WORDPROCESSING_DRAWING_STRICT_NS,
+    WORD_PROCESSING_GROUP_STRICT_NS, WORD_PROCESSING_SHAPE_STRICT_NS,
 };
 
 use super::{attr_in_ns, plain_attr, PartParser};
@@ -155,6 +155,8 @@ impl PartParser<'_> {
                 locked: bool_attr(attrs, "locked"),
                 graphic_uri: None,
                 graphic: Box::new(Graphic::None),
+                size_rel_h: None,
+                size_rel_v: None,
                 location,
             };
             loop {
@@ -204,6 +206,16 @@ impl PartParser<'_> {
                             let (uri, graphic) = parser.parse_graphic()?;
                             anchor.graphic_uri = uri;
                             anchor.graphic = Box::new(graphic);
+                        } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS) {
+                            match name.local() {
+                                "sizeRelH" => {
+                                    anchor.size_rel_h = parser.parse_relative_size(&attrs)?;
+                                }
+                                "sizeRelV" => {
+                                    anchor.size_rel_v = parser.parse_relative_size(&attrs)?;
+                                }
+                                _ => parser.skip_element()?,
+                            }
                         } else {
                             parser.skip_element()?;
                         }
@@ -220,6 +232,35 @@ impl PartParser<'_> {
                 Some(anchor.location.clone()),
             );
             Ok(anchor)
+        })
+    }
+
+    /// Parses `wp14:sizeRelH` / `wp14:sizeRelV`.
+    fn parse_relative_size(&mut self, attrs: &[Attr]) -> Result<Option<RelativeSize>> {
+        let relative_from = plain_attr(attrs, "relativeFrom").map(|value| self.intern(value));
+        let mut percent = None;
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if name.local() == "pctWidth" || name.local() == "pctHeight" {
+                            let text = parser.read_element_text()?;
+                            percent = text.trim().parse::<u32>().ok();
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of relative size"));
+                    }
+                }
+            }
+            Ok(percent.map(|percent| RelativeSize {
+                relative_from,
+                percent,
+            }))
         })
     }
 
@@ -369,53 +410,8 @@ impl PartParser<'_> {
                         name,
                         attrs: element,
                     } => {
-                        if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
-                            graphic = Graphic::Picture(parser.parse_picture()?);
-                        } else if name.local() == "wsp" && is_shape_ns(&name) {
-                            if !is_ns(&name, WORD_PROCESSING_SHAPE_STRICT_NS) {
-                                parser.record(
-                                    "wps:wsp",
-                                    SupportStatus::Partial,
-                                    Some(
-                                        "Microsoft/legacy shape namespace compatibility".to_owned(),
-                                    ),
-                                    Some(parser.location()),
-                                );
-                            }
-                            graphic = Graphic::Shape(parser.parse_shape()?);
-                        } else if name.local() == "wgp" && is_group_ns(&name) {
-                            if !is_ns(&name, WORD_PROCESSING_GROUP_STRICT_NS) {
-                                parser.record(
-                                    "wpg:wgp",
-                                    SupportStatus::Partial,
-                                    Some(
-                                        "Microsoft/legacy group namespace compatibility".to_owned(),
-                                    ),
-                                    Some(parser.location()),
-                                );
-                            }
-                            graphic = Graphic::Group(parser.parse_group()?);
-                        } else if name.local() == "chart" {
-                            // The attributes of *this* element, not of the
-                            // `a:graphicData` that carries it: `r:id` is where the
-                            // chart part is named, and reading the wrong element's
-                            // attributes looks exactly like a document with no
-                            // reference at all.
-                            graphic = Graphic::Chart(parser.foreign_refs(&element, &[R_ID]));
-                            parser.skip_element()?;
-                        } else if name.local() == "relIds" {
-                            // `dgm:relIds` carries four ids in a fixed order, and the
-                            // order is the only thing that says which is which: the
-                            // attributes have no positional meaning in XML.
-                            graphic = Graphic::Diagram(
-                                parser.foreign_refs(&element, &[REL_DM, REL_LO, REL_QS, REL_CS]),
-                            );
-                            parser.skip_element()?;
-                        } else if is_ns(&name, CHART_STRICT_NS) || is_ns(&name, DIAGRAM_STRICT_NS) {
-                            graphic = Graphic::Other;
-                            parser.skip_element()?;
-                        } else {
-                            parser.skip_element()?;
+                        if let Some(parsed) = parser.parse_graphic_payload(&name, &element)? {
+                            graphic = parsed;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -434,6 +430,71 @@ impl PartParser<'_> {
             }
             Ok((uri, graphic))
         })
+    }
+
+    /// One child of `a:graphicData`.
+    ///
+    /// `None` means the element was skipped and the graphic already parsed stays.
+    /// A wordprocessing shape is handled here; pictures, groups, charts and
+    /// diagrams are [`parse_graphic_payload_rest`](Self::parse_graphic_payload_rest)
+    /// so their locals are not on the stack while a text box inside the shape is
+    /// parsed.
+    fn parse_graphic_payload(&mut self, name: &QName, attrs: &[Attr]) -> Result<Option<Graphic>> {
+        if name.local() == "wsp" && is_shape_ns(name) {
+            if !is_ns(name, WORD_PROCESSING_SHAPE_STRICT_NS) {
+                self.record(
+                    "wps:wsp",
+                    SupportStatus::Partial,
+                    Some("Microsoft/legacy shape namespace compatibility".to_owned()),
+                    Some(self.location()),
+                );
+            }
+            return Ok(Some(Graphic::Shape(self.parse_shape()?)));
+        }
+        self.parse_graphic_payload_rest(name, attrs)
+    }
+
+    /// Graphic-data children other than a wordprocessing shape.
+    fn parse_graphic_payload_rest(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+    ) -> Result<Option<Graphic>> {
+        if is_ns(name, PICTURE_STRICT_NS) && name.local() == "pic" {
+            return Ok(Some(Graphic::Picture(self.parse_picture()?)));
+        }
+        if name.local() == "wgp" && is_group_ns(name) {
+            if !is_ns(name, WORD_PROCESSING_GROUP_STRICT_NS) {
+                self.record(
+                    "wpg:wgp",
+                    SupportStatus::Partial,
+                    Some("Microsoft/legacy group namespace compatibility".to_owned()),
+                    Some(self.location()),
+                );
+            }
+            return Ok(Some(Graphic::Group(self.parse_group()?)));
+        }
+        if name.local() == "chart" {
+            // The attributes of *this* element, not of the `a:graphicData` that
+            // carries it: `r:id` is where the chart part is named.
+            let graphic = Graphic::Chart(self.foreign_refs(attrs, &[R_ID]));
+            self.skip_element()?;
+            return Ok(Some(graphic));
+        }
+        if name.local() == "relIds" {
+            // `dgm:relIds` carries four ids in a fixed order, and the order is
+            // the only thing that says which is which.
+            let graphic =
+                Graphic::Diagram(self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]));
+            self.skip_element()?;
+            return Ok(Some(graphic));
+        }
+        if is_ns(name, CHART_STRICT_NS) || is_ns(name, DIAGRAM_STRICT_NS) {
+            self.skip_element()?;
+            return Ok(Some(Graphic::Other));
+        }
+        self.skip_element()?;
+        Ok(None)
     }
 
     /// Captures the relationship ids a foreign graphic element carries.
@@ -1453,11 +1514,47 @@ fn is_wml_name(name: &QName) -> bool {
 /// Parses an `a:srcRect` crop.
 fn parse_src_rect(attrs: &[Attr]) -> SrcRect {
     SrcRect {
-        left: parse_i32_attr(attrs, "l").unwrap_or(0),
-        top: parse_i32_attr(attrs, "t").unwrap_or(0),
-        right: parse_i32_attr(attrs, "r").unwrap_or(0),
-        bottom: parse_i32_attr(attrs, "b").unwrap_or(0),
+        left: parse_src_component(attrs, "l"),
+        top: parse_src_component(attrs, "t"),
+        right: parse_src_component(attrs, "r"),
+        bottom: parse_src_component(attrs, "b"),
     }
+}
+
+/// Reads one `a:srcRect` edge. A bare integer is thousandths of a percent.
+/// A percentage (`1.253%`, `0%`, `0.010%`) is the Strict spelling of the same unit.
+fn parse_src_component(attrs: &[Attr], local: &str) -> i32 {
+    plain_attr(attrs, local)
+        .and_then(src_component_value)
+        .unwrap_or(0)
+}
+
+fn src_component_value(raw: &str) -> Option<i32> {
+    let text = raw.trim();
+    if let Some(number) = text.strip_suffix('%') {
+        return percent_to_thousandths(number.trim());
+    }
+    text.parse().ok()
+}
+
+fn percent_to_thousandths(text: &str) -> Option<i32> {
+    let negative = text.starts_with('-');
+    let text = text.strip_prefix(['+', '-']).unwrap_or(text);
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    if whole.is_empty() || !whole.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    if fraction.len() > 3 || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let whole = whole.parse::<i32>().ok()?;
+    let mut padded = fraction.to_owned();
+    while padded.len() < 3 {
+        padded.push('0');
+    }
+    let fraction = padded.parse::<i32>().ok()?;
+    let magnitude = whole.checked_mul(1000)?.checked_add(fraction)?;
+    Some(if negative { -magnitude } else { magnitude })
 }
 
 impl PartParser<'_> {

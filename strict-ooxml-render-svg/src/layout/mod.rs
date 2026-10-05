@@ -190,7 +190,7 @@ pub(crate) struct TextLine {
 
 impl TextLine {
     /// Offsets every item by `(dx, dy)`.
-    fn offset(&mut self, dx: f64, dy: f64) {
+    pub(crate) fn offset(&mut self, dx: f64, dy: f64) {
         for item in &mut self.items {
             item.x += dx;
             item.baseline += dy;
@@ -258,6 +258,8 @@ pub(crate) struct TableRowFlow {
     pub height: f64,
     /// Whether this row repeats as a header on each page (`w:tblHeader`).
     pub header: bool,
+    /// Page-absolute frame children. The row offset is not applied to these.
+    pub page_frames: Vec<Item>,
 }
 
 /// Page geometry derived from a section's `sectPr`.
@@ -369,7 +371,7 @@ pub(crate) fn geometry_for(
         .and_then(|grid| grid.line_pitch)
         .filter(|pitch| *pitch > 0)
         .map(|pitch| twips_to_px(pitch, scale));
-    Geometry {
+    let mut geometry = Geometry {
         width,
         height,
         left: value(margins.left, DEFAULT_MARGIN),
@@ -377,7 +379,25 @@ pub(crate) fn geometry_for(
         right: value(margins.right, DEFAULT_MARGIN),
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
-    }
+    };
+    reserve_header_footer(ctx, section, &mut geometry);
+    geometry
+}
+
+/// Grows the top and bottom margins so a header or footer that does not fit in
+/// the margin is not painted over the body (A15).
+fn reserve_header_footer(
+    ctx: Option<&LayoutContext<'_>>,
+    section: Option<&SectionProperties>,
+    geometry: &mut Geometry,
+) {
+    let (Some(ctx), Some(section)) = (ctx, section) else {
+        return;
+    };
+    let (extra_top, extra_bottom) =
+        crate::layout::headerfooter::body_reserve(ctx, section, geometry);
+    geometry.top = (geometry.top + extra_top).min(geometry.height * 0.75);
+    geometry.bottom = (geometry.bottom + extra_bottom).min(geometry.height - geometry.top);
 }
 
 /// Shared state for layout and media resolution.
@@ -423,6 +443,19 @@ pub(crate) struct LayoutContext<'a> {
     /// Document-wide paint-item counter for [`ResourceLimits::max_render_items`]
     /// (AUD-72). Reset at the start of each layout pass.
     pub(crate) render_items: std::cell::Cell<u64>,
+    /// `(left margin, top margin, content width)` in px for a frame inside a cell.
+    ///
+    /// Body pagination writes the current section here before a table. A page
+    /// anchor ignores the margins; a margin or text anchor adds them. A frame
+    /// without `w:w` uses the content width.
+    pub(crate) frame_anchor: std::cell::Cell<(f64, f64, f64)>,
+    /// How far each frame signature has already been filled, in px.
+    ///
+    /// Paragraphs that share one `w:framePr` belong to one frame even when a
+    /// table cell separates them. Each one continues where the previous one
+    /// stopped. Cleared at the start of a layout pass and at each page break.
+    pub(crate) frame_cursors:
+        std::cell::RefCell<Vec<(strict_ooxml_wml::model::props::FrameProperties, f64)>>,
 }
 
 impl LayoutContext<'_> {
@@ -465,6 +498,37 @@ impl LayoutContext<'_> {
         self.render_items.set(next);
         Ok(())
     }
+
+    /// Vertical offset already used by earlier paragraphs of this frame.
+    pub(crate) fn frame_resume(
+        &self,
+        frame: &strict_ooxml_wml::model::props::FrameProperties,
+    ) -> f64 {
+        self.frame_cursors
+            .borrow()
+            .iter()
+            .find(|(signature, _)| signature == frame)
+            .map_or(0.0, |(_, y)| *y)
+    }
+
+    /// Records that `height` px of this frame have been filled.
+    pub(crate) fn frame_advance(
+        &self,
+        frame: &strict_ooxml_wml::model::props::FrameProperties,
+        height: f64,
+    ) {
+        let mut cursors = self.frame_cursors.borrow_mut();
+        if let Some((_, y)) = cursors.iter_mut().find(|(signature, _)| signature == frame) {
+            *y += height;
+        } else {
+            cursors.push((frame.clone(), height));
+        }
+    }
+
+    /// Starts frame columns over. A new page, or a new layout pass, does this.
+    pub(crate) fn reset_frame_cursors(&self) {
+        self.frame_cursors.borrow_mut().clear();
+    }
 }
 
 impl LayoutContext<'_> {
@@ -478,8 +542,9 @@ impl LayoutContext<'_> {
     #[must_use]
     pub(crate) fn measure(&self, text: &str, run: &ComputedRun) -> f64 {
         let size_px = self.size_px(run.size_pt);
+        let family = crate::style::chosen_family(run, text);
         text.chars()
-            .map(|ch| self.font.advance_em(&run.family, ch, run.bold, run.italic) * size_px)
+            .map(|ch| self.font.advance_em(&family, ch, run.bold, run.italic) * size_px)
             .sum()
     }
 }

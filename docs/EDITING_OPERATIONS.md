@@ -33,4 +33,6 @@ Revision действительна внутри текущей Editor session. 
 
 Воспроизводимая обратная проверка: `python xtool/check_editing_operations.py` (Python 3.11+, cargo +1.92.0). Она создает отдельную копию в target/editing-operations/disabled-adapter, подменяет только Operations, сверяет побайтовую неизменность остальных editing исходников и требует падения каждого теста operations. Исходники рабочего дерева не подменяются. Логи green.log, feature-{none,save,visual,all}.log, facade.log, clippy.log, facade-clippy.log и disabled-adapter.log лежат в target/editing-operations.
 
-За границей этой очереди: UI, regex, Unicode normalization/full case folding, вычисление полей/оглавления, cross-container moves, merge/split cells, новая графика и механизмы модели. Они требуют отдельного контракта или расширения ядра. Визуальные дефекты корпуса закрываются параллельным аудитом и здесь не объявляются исправленными. Новый коммит не создавался.
+За границей этой очереди: UI, regex, Unicode normalization/full case folding, вычисление полей/оглавления, cross-container moves, merge/split cells, новая графика и механизмы модели. Они требуют отдельного контракта или расширения ядра. Визуальные дефекты корпуса закрываются параллельным аудитом и здесь не объявляются исправленными.
+
+Реализация адаптера зафиксирована коммитом `015e0c7`. Полное покрытие исходного списка оставшихся возможностей, архитектурные решения и порядок следующих работ зафиксированы в [EDITING_KERNEL_EXTENSION_PLAN.md](EDITING_KERNEL_EXTENSION_PLAN.md).

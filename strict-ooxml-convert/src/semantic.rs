@@ -56,6 +56,7 @@ use crate::geometry::section_for;
 use crate::media::MediaCollector;
 use crate::recover::Recovered;
 use crate::report::{ConversionReport, Severity};
+use crate::sections::SectionAccumulator;
 use crate::tables;
 use crate::{to_half_points, to_twips, PdfOptions};
 
@@ -129,13 +130,16 @@ pub(crate) fn build(
 ) -> (Document, Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>) {
     let mut media = MediaCollector::new();
     let mut blocks: Vec<Block> = Vec::new();
-    let mut sections: Vec<crate::Section> = Vec::new();
+    let mut sections = SectionAccumulator::new();
     // Lists the pages' markers added. The table is filled while the blocks are
     // built and moves into the document at the end, because a `w:numPr` paragraph
     // and the `numbering.xml` that defines its marker have to arrive together.
     let mut numbering = strict_ooxml_wml::model::numbering::NumberingTable::new();
 
     for (index, page) in pages.iter().enumerate() {
+        // A size or margin change closes the previous page before these blocks
+        // are appended. Identical neighbours stay in the open section.
+        sections.begin_page(&mut blocks, section_for(page, false), false);
         let raw_lines = strict_ooxml_pdf::text::lines(page.items());
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
@@ -208,6 +212,7 @@ pub(crate) fn build(
         if options.embed_images {
             blocks.extend(images_of(page, &mut media, report, options));
         }
+        blocks.extend(crate::vectors::blocks_for(page, report));
         // A page a model read stands where the region it came from was: after
         // whatever the PDF itself gave (nothing, or the caption under the
         // picture) and before the pictures, indented to the region's left edge.
@@ -216,21 +221,11 @@ pub(crate) fn build(
                 blocks.push(Block::Paragraph(paragraph.clone()));
             }
         }
-        sections.push(crate::Section {
-            number: index + 1,
-            properties: section_for(page, false),
-        });
     }
 
     let mut document = crate::empty_document();
     document.body = strict_ooxml_wml::model::document::Body { blocks };
-    document.sections = sections
-        .into_iter()
-        .map(|section| strict_ooxml_wml::model::props::Section {
-            properties: section.properties,
-            location: strict_ooxml_core::error::SourceLocation::unknown(),
-        })
-        .collect();
+    document.sections = sections.finish();
     media.register(&mut document.media);
     // The numbering the lists asked for, with the `w:numPr` paragraphs above.
     document.numbering = numbering;

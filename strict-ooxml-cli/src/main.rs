@@ -33,10 +33,12 @@
 //! `render` returns `0` on success, `1` when the document was rendered but the
 //! Feature Report has `unsupported`/`error` blockers, and `2` on failure.
 
-use std::path::Path;
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use sha2::{Digest, Sha256};
 use strict_ooxml::{
     ConformancePolicy, Feature, FeatureStatus, Location, PageSelection, RenderOptions,
     StrictDocument, TransitionalNormalizer,
@@ -45,6 +47,7 @@ use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_core::part::PartId;
+use strict_ooxml_core::pipeline::{PipelineIssue, PipelineOutcome, PipelineStage, PipelineSummary};
 
 /// Exit code: no critical problem.
 const EXIT_OK: u8 = 0;
@@ -79,15 +82,15 @@ fn main() -> ExitCode {
 fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|write|normalize> <file> \
-         [--json|--text] [--out <path>] [--pages 1-3] [--scale 96] [--no-floating] [--no-math] \
-         [--transitional]"
+         [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
+         [--no-floating] [--no-math] [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
-    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] (--out is required)");
-    eprintln!("  write           serialize the model back to a Strict .docx (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] [--report-out <json>] (--out is required)");
+    eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
 }
 
 /// Opens a package, normalizing it when `--transitional` is present.
@@ -466,23 +469,47 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
     let code = match StrictDocument::open_path(&parsed.file, &options) {
         Ok(document) => match document.render_pdf(&RenderOptions::default()) {
             Ok(output) => {
-                if let Err(error) = std::fs::write(&parsed.out, &output.bytes) {
-                    eprintln!("error: cannot write {}: {error}", parsed.out);
-                    return ExitCode::from(EXIT_ERROR);
-                }
-                println!(
-                    "wrote {} ({} page(s), {} bytes, {} embedded face(s))",
-                    parsed.out,
-                    output.page_count,
-                    output.bytes.len(),
-                    output.embedded_faces.len()
-                );
                 if !output.report.is_clean() {
                     eprintln!("warning: the render is not lossless");
                     eprint!("{}", output.report);
-                    return print_loss(normalizer.as_deref(), ExitCode::from(EXIT_PROBLEM));
                 }
-                ExitCode::from(EXIT_OK)
+                let input = match std::fs::read(&parsed.file) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        eprintln!("error: cannot read {}: {error}", parsed.file);
+                        return ExitCode::from(EXIT_ERROR);
+                    }
+                };
+                let mut summary = normalization_summary(normalizer.as_deref());
+                summary.extend_issues(output.report.losses().iter().map(|loss| PipelineIssue {
+                    stage: PipelineStage::Render,
+                    id: loss.id.to_owned(),
+                    severity: loss.severity.to_string(),
+                    part: None,
+                    page: None,
+                    location: None,
+                    count: 1,
+                    detail: loss.detail.clone(),
+                }));
+                match commit_result(
+                    &parsed.out,
+                    parsed.report_out.as_deref(),
+                    &input,
+                    &output.bytes,
+                    &summary,
+                ) {
+                    Ok(code) => {
+                        println!(
+                            "wrote {} ({} page(s), {} bytes, {} embedded face(s))",
+                            parsed.out,
+                            output.page_count,
+                            output.bytes.len(),
+                            output.embedded_faces.len()
+                        );
+                        code
+                    }
+                    Err(()) => ExitCode::from(EXIT_ERROR),
+                }
             }
             Err(error) => {
                 eprintln!("error: {error}");
@@ -507,6 +534,7 @@ struct WriteArgs {
     file: String,
     out: String,
     transitional: bool,
+    report_out: Option<String>,
 }
 
 impl WriteArgs {
@@ -514,6 +542,7 @@ impl WriteArgs {
         let mut file: Option<String> = None;
         let mut out: Option<String> = None;
         let mut transitional = false;
+        let mut report_out = None;
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
@@ -521,6 +550,14 @@ impl WriteArgs {
                 "--out" => {
                     index += 1;
                     out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
+                }
+                "--report-out" => {
+                    index += 1;
+                    report_out = Some(
+                        args.get(index)
+                            .ok_or("'--report-out' requires a path")?
+                            .clone(),
+                    );
                 }
                 flag if flag.starts_with("--") => {
                     return Err(format!("unknown option '{flag}'"));
@@ -538,6 +575,7 @@ impl WriteArgs {
             file: file.ok_or("'write' requires a package path")?,
             out: out.ok_or("'write' requires --out <path>")?,
             transitional,
+            report_out,
         })
     }
 }
@@ -555,6 +593,7 @@ impl WriteArgs {
 fn run_from_pdf(args: &[String]) -> ExitCode {
     let mut file: Option<&str> = None;
     let mut out: Option<&str> = None;
+    let mut report_out: Option<&str> = None;
     let mut mode = strict_ooxml::Mode::Semantic;
     let mut no_images = false;
     let mut index = 0;
@@ -576,6 +615,14 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
                 };
             }
             "--no-images" => no_images = true,
+            "--report-out" => {
+                index += 1;
+                report_out = Some(args.get(index).map_or("", String::as_str));
+                if report_out == Some("") {
+                    eprintln!("error: '--report-out' requires a path");
+                    return ExitCode::from(EXIT_ERROR);
+                }
+            }
             "--out" => {
                 index += 1;
                 out = Some(args.get(index).map_or("", String::as_str));
@@ -647,25 +694,26 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
             return ExitCode::from(EXIT_ERROR);
         }
     };
-    if let Err(error) = std::fs::write(out, &written.bytes) {
-        eprintln!("error: cannot write {out}: {error}");
-        return ExitCode::from(EXIT_ERROR);
+    let write_losses = written.report.losses();
+    eprintln!("write: {} loss(es)", write_losses.len());
+    for loss in &write_losses {
+        eprintln!("  {loss}");
     }
-    println!(
-        "wrote {out} ({} blocks, {} bytes)",
-        converted.document.body.blocks.len(),
-        written.bytes.len()
-    );
-    match strict_ooxml::verify_no_silent_loss(&written.report) {
-        Ok(()) if converted.report.is_lossless() => ExitCode::from(EXIT_OK),
-        Ok(()) => {
-            eprintln!("warning: the conversion is not lossless");
-            ExitCode::from(EXIT_PROBLEM)
+    let mut summary = PipelineSummary::from_normalization(PipelineStage::Write, &written.report);
+    summary.extend_issues(converted.report.pipeline_issues());
+    if summary.outcome == PipelineOutcome::Degraded {
+        eprintln!("warning: the conversion is not lossless");
+    }
+    match commit_result(out, report_out, &bytes, &written.bytes, &summary) {
+        Ok(code) => {
+            println!(
+                "wrote {out} ({} blocks, {} bytes)",
+                converted.document.body.blocks.len(),
+                written.bytes.len()
+            );
+            code
         }
-        Err(reason) => {
-            eprintln!("error: {reason}");
-            ExitCode::from(EXIT_ERROR)
-        }
+        Err(()) => ExitCode::from(EXIT_ERROR),
     }
 }
 
@@ -712,17 +760,13 @@ fn run_write(args: &[String]) -> ExitCode {
             return ExitCode::from(EXIT_ERROR);
         }
     };
-    if let Err(error) = std::fs::write(&parsed.out, &written.bytes) {
-        eprintln!("error: cannot write {}: {error}", parsed.out);
-        return ExitCode::from(EXIT_ERROR);
-    }
-
-    println!(
-        "wrote {} ({} part(s), {} bytes)",
-        parsed.out,
-        written.part_count,
-        written.bytes.len()
-    );
+    let input = match std::fs::read(&parsed.file) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("error: cannot read {}: {error}", parsed.file);
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
     let dropped = strict_ooxml::dropped_count(&written.report);
     if dropped > 0 {
         eprintln!("warning: {dropped} construct(s) could not be written");
@@ -730,13 +774,26 @@ fn run_write(args: &[String]) -> ExitCode {
     for loss in written.report.losses() {
         eprintln!("  {loss}");
     }
-    let code = match strict_ooxml::verify_no_silent_loss(&written.report) {
-        Ok(()) if dropped == 0 => ExitCode::from(EXIT_OK),
-        Ok(()) => ExitCode::from(EXIT_PROBLEM),
-        Err(reason) => {
-            eprintln!("error: {reason}");
-            ExitCode::from(EXIT_ERROR)
+    let summary = normalization_summary(normalizer.as_deref()).merge(
+        PipelineSummary::from_normalization(PipelineStage::Write, &written.report),
+    );
+    let code = match commit_result(
+        &parsed.out,
+        parsed.report_out.as_deref(),
+        &input,
+        &written.bytes,
+        &summary,
+    ) {
+        Ok(code) => {
+            println!(
+                "wrote {} ({} part(s), {} bytes)",
+                parsed.out,
+                written.part_count,
+                written.bytes.len()
+            );
+            code
         }
+        Err(()) => ExitCode::from(EXIT_ERROR),
     };
     print_loss(normalizer.as_deref(), code)
 }
@@ -836,4 +893,133 @@ fn print_relationships(package: &Package, source: &PartId) {
         };
         println!("    {} -> {:?} [{target}]", rel.id, rel.rel_type);
     }
+}
+
+fn normalization_summary(normalizer: Option<&TransitionalNormalizer>) -> PipelineSummary {
+    normalizer.map_or_else(PipelineSummary::new, |normalizer| {
+        let report = normalizer.report();
+        PipelineSummary::from_normalization(PipelineStage::Normalize, &report)
+    })
+}
+
+fn print_pipeline(summary: &PipelineSummary) {
+    for issue in &summary.issues {
+        eprintln!(
+            "stage {}: [{}] {} x{} {}",
+            issue.stage, issue.severity, issue.id, issue.count, issue.detail
+        );
+    }
+}
+
+fn exit_of(summary: &PipelineSummary) -> ExitCode {
+    ExitCode::from(match summary.outcome {
+        PipelineOutcome::Clean => EXIT_OK,
+        PipelineOutcome::Degraded => EXIT_PROBLEM,
+        PipelineOutcome::Failed => EXIT_ERROR,
+    })
+}
+
+/// Writes `output` and, when requested, the sidecar. `Err` means a requested
+/// file was not stored; the partial name is not the result.
+fn commit_result(
+    out: &str,
+    report_out: Option<&str>,
+    input: &[u8],
+    output: &[u8],
+    summary: &PipelineSummary,
+) -> Result<ExitCode, ()> {
+    print_pipeline(summary);
+    if let Err(error) = atomic_write(Path::new(out), output) {
+        eprintln!("error: cannot write {out}: {error}");
+        return Err(());
+    }
+    if let Some(path) = report_out {
+        let json = sidecar_json(input, output, summary);
+        if let Err(error) = atomic_write(Path::new(path), json.as_bytes()) {
+            eprintln!("error: cannot write report {path}: {error}");
+            return Err(());
+        }
+    }
+    Ok(exit_of(summary))
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut temporary_name = path.as_os_str().to_owned();
+    temporary_name.push(".partial");
+    let temporary = PathBuf::from(temporary_name);
+    std::fs::write(&temporary, bytes)?;
+    if let Err(error) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut text = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        let _ = write!(text, "{byte:02x}");
+    }
+    text
+}
+
+fn json_escape(text: &str) -> String {
+    let mut escaped = String::new();
+    for character in text.chars() {
+        match character {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            other if other.is_control() => {
+                let _ = write!(escaped, "\\u{value:04x}", value = u32::from(other));
+            }
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
+fn sidecar_json(input: &[u8], output: &[u8], summary: &PipelineSummary) -> String {
+    let mut body = String::new();
+    let _ = writeln!(body, "{{");
+    let _ = writeln!(body, "  \"version\": 1,");
+    let _ = writeln!(body, "  \"input_sha256\": \"{}\",", sha256_hex(input));
+    let _ = writeln!(body, "  \"output_sha256\": \"{}\",", sha256_hex(output));
+    let _ = writeln!(body, "  \"outcome\": \"{}\",", summary.outcome);
+    let _ = writeln!(body, "  \"issues\": [");
+    for (index, issue) in summary.issues.iter().enumerate() {
+        let _ = writeln!(body, "    {{");
+        push_json_string(&mut body, "stage", &issue.stage.to_string(), true);
+        push_json_string(&mut body, "id", &issue.id, true);
+        push_json_string(&mut body, "severity", &issue.severity, true);
+        if let Some(part) = &issue.part {
+            push_json_string(&mut body, "part", part, true);
+        }
+        if let Some(page) = issue.page {
+            let _ = writeln!(body, "      \"page\": {page},");
+        }
+        if let Some(location) = &issue.location {
+            push_json_string(&mut body, "location", location, true);
+        }
+        let _ = writeln!(body, "      \"count\": {},", issue.count);
+        push_json_string(&mut body, "detail", &issue.detail, false);
+        body.push_str("    }");
+        if index + 1 != summary.issues.len() {
+            body.push(',');
+        }
+        body.push('\n');
+    }
+    let _ = writeln!(body, "  ]");
+    let _ = writeln!(body, "}}");
+    body
+}
+
+fn push_json_string(body: &mut String, name: &str, value: &str, comma: bool) {
+    let _ = write!(body, "      \"{name}\": \"{}\"", json_escape(value));
+    if comma {
+        body.push(',');
+    }
+    body.push('\n');
 }

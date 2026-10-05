@@ -25,8 +25,10 @@ report = ["dep:strict-ooxml-report"]
 # StrictDocument (STAGE-8-TASK.md 3).
 write = ["dep:strict-ooxml-write"]
 # Stage 8B: enables strict-ooxml-render-pdf and the PDF methods on
-# StrictDocument (STAGE-8-TASK.md 4).
-pdf = ["dep:strict-ooxml-render-pdf"]
+# StrictDocument (STAGE-8-TASK.md 4). PDF rendering places pages through the
+# SVG layout, so `pdf` enables `svg` and `RenderOptions` is part of that
+# contract (A07).
+pdf = ["dep:strict-ooxml-render-pdf", "svg"]
 # Stage 8C+: PDF reading and the conversion of a PDF into a Strict document.
 convert = ["dep:strict-ooxml-pdf", "dep:strict-ooxml-convert"]
 # Parallel parsing of independent parts.
@@ -57,6 +59,10 @@ required-features = ["report"]
 [[example]]
 name = "render_svg"
 required-features = ["svg"]
+
+[[example]]
+name = "render_pdf"
+required-features = ["pdf"]
 
 [[example]]
 name = "corpus_scan"

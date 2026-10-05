@@ -67,12 +67,13 @@ fn vertical_merge_spans_the_merged_region() {
     assert_eq!(pages.len(), 1);
     let svg = &pages[0].svg;
     assert!(svg.contains("Merged"));
-    // The restart cell's fill spans both rows (a single row is far shorter).
+    // The restart fill is one fragment per row, so a page break keeps the
+    // continuation. Their heights add up to the merged region.
     let merged = rects(svg)
         .into_iter()
         .filter(|(fill, _)| fill == "#ff0000")
         .map(|(_, height)| height)
-        .fold(0.0_f64, f64::max);
+        .sum::<f64>();
     assert!(
         merged > 50.0,
         "merged region height {merged} should span two rows"

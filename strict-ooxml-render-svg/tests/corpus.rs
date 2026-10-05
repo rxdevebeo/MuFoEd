@@ -11,6 +11,8 @@
 
 use std::path::Path;
 
+mod common;
+
 use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_render_svg::{render, RenderOptions};
@@ -43,8 +45,9 @@ fn corpus_renders_or_refuses_without_panics() {
                 assert!(!pages.is_empty());
                 for page in &pages {
                     roxmltree::Document::parse(&page.svg).expect("valid SVG");
-                    assert!(!page.svg.contains("NaN"), "{}", page.svg);
-                    assert!(!page.svg.contains("inf"), "{}", page.svg);
+                    let ink = common::without_font_faces(&page.svg);
+                    assert!(!ink.contains("NaN"), "{ink}");
+                    assert!(!ink.contains("inf"), "{ink}");
                 }
                 rendered += 1;
             }

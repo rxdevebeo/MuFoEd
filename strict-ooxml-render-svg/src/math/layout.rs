@@ -512,6 +512,7 @@ impl Frame<'_, '_> {
     fn math_run(&self, style: MathStyle) -> ComputedRun {
         let mut run = self.run.clone();
         MATH_FAMILY.clone_into(&mut run.family);
+        run.complex_family = None;
         run.size_pt = crate::units::PT_PER_INCH * self.size_px / self.ctx.options.scale;
         run.highlight = None;
         run.underline = false;

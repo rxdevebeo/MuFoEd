@@ -552,3 +552,26 @@ fn a_header_image_is_on_every_page_as_one_xobject() {
         "the header picture must be one XObject, not one per page"
     );
 }
+
+/// Direct `w:i` together with the paragraph mark selects the italic face.
+#[test]
+fn direct_italic_embeds_the_italic_face() {
+    let bytes = strict_ooxml_testkit::docx::DocxBuilder::strict()
+        .body(
+            "<w:p><w:pPr><w:rPr><w:b/><w:i/></w:rPr></w:pPr>\
+             <w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>Hi</w:t></w:r></w:p>",
+        )
+        .build();
+    let (pdf, svg, _) = to_pdf(&bytes);
+    assert!(
+        svg.iter()
+            .any(|page| page.svg.contains("font-style=\"italic\"")),
+        "svg italic"
+    );
+    let raw = String::from_utf8_lossy(&pdf);
+    assert!(
+        raw.contains("/ItalicAngle -12") || raw.contains("/ItalicAngle -12.0"),
+        "the embedded face is italic"
+    );
+    assert!(!extracted_text(&pdf).is_empty(), "the page draws text");
+}

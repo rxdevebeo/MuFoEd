@@ -1,13 +1,16 @@
 //! Paragraph layout: inline flattening, line breaking, alignment and spacing
 //! (`STAGE-4-TASK.md` §5.4).
 
+use std::collections::VecDeque;
+
 use strict_ooxml_wml::model::values::{
-    BreakKind, FieldCharType, LineSpacingRule, TabAlignment, VertAlign,
+    BreakKind, FieldCharType, LineSpacingRule, TabAlignment, TabLeader, VertAlign,
 };
 use strict_ooxml_wml::model::{
     AnchorDrawing, Drawing, DrawingKind, Inline, Paragraph, Revision, Run, RunContent,
 };
 
+use crate::layout::floating::{square_exclusion, WrapExclusion, WrapSide};
 use crate::layout::{Flow, ImageItem, Item, LayoutContext, TextItem, TextLine};
 use crate::paint::image::layout_inline_image;
 use crate::style::{apply_caps, compute_paragraph, compute_run, ComputedParagraph, ComputedRun};
@@ -97,12 +100,18 @@ pub(crate) fn layout_paragraph(
     note_marker: Option<&str>,
 ) -> ParagraphFlow {
     let mut computed = compute_paragraph(ctx.document, para);
-    // A numbered paragraph without its own indentation inherits the level's.
-    if para.props.indentation.is_none() {
-        if let Some(marker) = ctx.numbering.get(&para.location) {
+    // Numbering supplies the fields the paragraph did not set. An explicit 0
+    // stays 0; a missing hanging/firstLine still comes from the level (A16).
+    if let Some(marker) = ctx.numbering.get(&para.location) {
+        let direct = para.props.indentation.as_ref();
+        if direct.and_then(|indent| indent.start).is_none() {
             if let Some(start) = marker.indent_start_pt {
                 computed.indent_start_pt = start;
             }
+        }
+        let direct_line =
+            direct.is_some_and(|indent| indent.hanging.is_some() || indent.first_line.is_some());
+        if !direct_line {
             if let Some(first_line) = marker.first_line_pt {
                 computed.first_line_pt = first_line;
             }
@@ -536,7 +545,10 @@ fn build_lines(
     let normal_x = content_left + indent_start;
     let first_offset = pt_to_px(computed.first_line_pt, scale);
     let first_x = content_left + indent_start + first_offset;
-    let line_width = (content_width - indent_start - indent_end).max(1.0);
+    // Every line ends on this edge. The first line may start further in
+    // (or further out, for a hanging indent); that changes its length, not
+    // this edge (A20).
+    let right_edge = content_left + content_width - indent_end;
 
     // AUD-71: Word's default when `defaultTabStop` is missing or non-positive
     // is 720 twips (0.5"); a zero step would make `relative / tab_step` NaN.
@@ -551,60 +563,95 @@ fn build_lines(
         None => DEFAULT_TAB_TWIPS,
     };
 
-    let marker = ctx
-        .numbering
-        .get(&para.location)
-        .map(|marker| (marker.text.clone(), marker.run.clone()));
+    let marker = ctx.numbering.get(&para.location).map(|marker| {
+        (
+            marker.text.clone(),
+            marker.run.clone(),
+            marker.suffix.clone(),
+        )
+    });
 
     let mut sink = LineSink {
         ctx,
         computed,
-        line_width,
+        right_edge,
+        shade: computed.shading.clone().map(|fill| {
+            let width = (right_edge - normal_x).max(0.0);
+            (normal_x, width, fill)
+        }),
         grid_line_pitch,
         flows: Vec::new(),
         anchors: Vec::new(),
         math_block: false,
+        exclusions: square_exclusions(ctx, &segments, content_left, content_width),
+        line_y: 0.0,
     };
     let mut current = LineBuilder::new();
     let mut x = if marker.is_some() { normal_x } else { first_x };
-    let mut line_start = x;
-    let mut first_line = true;
+    for stop in &computed.tabs {
+        if stop.alignment != TabAlignment::Bar {
+            continue;
+        }
+        let bar_x = content_left + twips_to_px(stop.position.value(), scale);
+        current.graphics.push(Item::Line(crate::layout::LineItem {
+            x1: bar_x,
+            y1: -12.0,
+            x2: bar_x,
+            y2: 2.0,
+            color: "#000000".to_owned(),
+            width: 0.75,
+            dashed: false,
+        }));
+    }
 
-    for segment in segments {
+    let mut pending: VecDeque<Seg> = segments.into();
+    while let Some(segment) = pending.pop_front() {
         match segment {
             Seg::PageBreak => {
                 sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
                 sink.flows.push(Flow::PageBreak);
+                // The square wrap stays on the page where the anchor was placed.
+                sink.exclusions.clear();
+                sink.line_y = 0.0;
                 x = normal_x;
-                line_start = x;
-                first_line = true;
             }
             Seg::Break => {
                 sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
                 x = normal_x;
-                line_start = x;
-                first_line = false;
             }
             Seg::Tab => {
-                x = next_tab_x(x, computed, default_tab, scale, content_left);
+                place_tab(
+                    ctx,
+                    computed,
+                    &mut current,
+                    &mut x,
+                    &pending,
+                    default_tab,
+                    scale,
+                    content_left,
+                );
             }
             Seg::Image(image) => {
-                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                // An empty line here is not a line the paragraph asked for. A
+                // picture that is the whole paragraph (a field result under a
+                // `w:sz="0"` mark) was pushed down by that line: the mark's size
+                // collapses to 1 px, which is 15 twips, and the picture followed
+                // it. Text that actually precedes the picture still ends its line.
+                if !current.is_empty() {
+                    sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                }
                 let mut image = image;
                 image.x = normal_x;
                 sink.flows.push(Flow::Image(image));
                 x = normal_x;
-                line_start = x;
-                first_line = false;
             }
             Seg::Object(items, width, height) => {
                 // An inline drawing sits in the text line with its bottom on the
                 // baseline, as Word places `wp:inline` (STAGE-5C-REWORK-1 D3).
-                let line_end = line_start + sink.line_width;
+                let line_end = sink.right_edge;
                 if x + width > line_end + 1e-9 && !current.is_empty() {
                     sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
-                    x = if first_line { first_x } else { normal_x };
-                    first_line = false;
+                    x = normal_x;
                 }
                 for item in items {
                     current.graphics.push(shift_item(item, x, -height));
@@ -614,16 +661,7 @@ fn build_lines(
             }
             Seg::Anchor(anchor) => sink.anchors.push(*anchor),
             Seg::Math(boxed, run) => {
-                place_formula(
-                    &mut sink,
-                    &mut current,
-                    &mut x,
-                    line_start,
-                    first_x,
-                    normal_x,
-                    &mut first_line,
-                    boxed,
-                );
+                place_formula(&mut sink, &mut current, &mut x, normal_x, boxed);
                 let _ = run;
             }
             Seg::MathParagraph(boxed) => {
@@ -645,22 +683,10 @@ fn build_lines(
                 sink.flows.push(Flow::Block { items, height });
                 sink.math_block = true;
                 x = normal_x;
-                line_start = x;
-                first_line = false;
             }
             Seg::Text(text, run) => {
                 for token in tokenize(&text) {
-                    place_token(
-                        &mut sink,
-                        &mut current,
-                        &mut x,
-                        line_start,
-                        first_x,
-                        normal_x,
-                        &token,
-                        &run,
-                        &mut first_line,
-                    );
+                    place_token(&mut sink, &mut current, &mut x, normal_x, &token, &run);
                 }
             }
             Seg::FootnoteMarker(id, run) => {
@@ -698,15 +724,23 @@ fn build_lines(
     let anchors = sink.anchors;
 
     // Prepend the numbering marker to the first line, if any.
-    if let Some((marker_text, marker_run)) = &marker {
+    if let Some((marker_text, marker_run, suffix)) = &marker {
         if let Some(Flow::Line(first)) = flows.iter_mut().find(|flow| matches!(flow, Flow::Line(_)))
         {
             let size_px = ctx.size_px(marker_run.size_pt);
             let width = ctx.measure(marker_text, marker_run);
+            let clearance = marker_clearance(ctx, marker_run, suffix.as_deref());
+            let mut marker_x = first_x;
+            // The text anchor stays where the paragraph declared it. A marker
+            // that would share that anchor, or that is wider than the hanging
+            // gap, moves left by the suffix clearance.
+            if marker_x + width + clearance > normal_x + 1e-6 {
+                marker_x = normal_x - clearance - width;
+            }
             first.items.insert(
                 0,
                 TextItem {
-                    x: first_x,
+                    x: marker_x,
                     baseline: first.ascent,
                     width,
                     text: marker_text.clone(),
@@ -720,6 +754,16 @@ fn build_lines(
 
     let _ = para;
     (flows, anchors)
+}
+
+/// The gap a numbering suffix keeps between the marker and the text.
+fn marker_clearance(ctx: &LayoutContext<'_>, run: &ComputedRun, suffix: Option<&str>) -> f64 {
+    match suffix.unwrap_or("tab") {
+        "space" => ctx.measure(" ", run),
+        // `nothing` and `tab` do not insert a measured glyph. A tab lands on
+        // the text indent, which is already the next stop.
+        _ => 0.0,
+    }
 }
 
 /// Splits text into wrap tokens (words keep a single trailing space).
@@ -765,18 +809,14 @@ fn place_formula(
     sink: &mut LineSink<'_, '_>,
     current: &mut LineBuilder,
     x: &mut f64,
-    line_start: f64,
-    first_x: f64,
     normal_x: f64,
-    first_line: &mut bool,
     boxed: crate::math::layout::MathBox,
 ) {
     let width = boxed.size.width;
-    let line_end = line_start + sink.line_width;
+    let line_end = sink.right_edge;
     if *x + width > line_end + 1e-9 && !current.is_empty() {
         sink.emit(std::mem::replace(current, LineBuilder::new()), false);
-        *x = if *first_line { first_x } else { normal_x };
-        *first_line = false;
+        *x = normal_x;
     }
     for item in boxed.items {
         current.graphics.push(shift_item(item, *x, 0.0));
@@ -790,28 +830,187 @@ fn place_formula(
 struct LineSink<'a, 'b> {
     ctx: &'b LayoutContext<'a>,
     computed: &'b ComputedParagraph,
-    line_width: f64,
+    /// Absolute right edge. The first line starts further in and still ends here.
+    right_edge: f64,
+    /// Paragraph shading: x, width, `#rrggbb`. Drawn behind each line.
+    shade: Option<(f64, f64, String)>,
     grid_line_pitch: Option<f64>,
     flows: Vec<Flow>,
     anchors: Vec<AnchorDrawing>,
     /// Whether the last flow is a display-formula block (so a trailing empty
     /// line must not be synthesised after it).
     math_block: bool,
+    /// Square-wrap rectangles in paragraph-local coordinates.
+    exclusions: Vec<WrapExclusion>,
+    /// Top of the line currently being filled, in paragraph-local px.
+    line_y: f64,
 }
 
 impl LineSink<'_, '_> {
     fn emit(&mut self, line: LineBuilder, last: bool) {
-        let finished = finish_line(
+        let mut finished = finish_line(
             self.ctx,
             self.computed,
             line,
-            self.line_width,
+            self.right_edge,
             self.grid_line_pitch,
             last,
         );
+        if let Some((x, width, fill)) = &self.shade {
+            finished.graphics.insert(
+                0,
+                Item::Rect(crate::layout::RectItem {
+                    x: *x,
+                    y: 0.0,
+                    w: *width,
+                    h: finished.height,
+                    fill: Some(fill.clone()),
+                    stroke: None,
+                    stroke_w: 0.0,
+                }),
+            );
+        }
+        let height = finished.height;
         self.flows.push(Flow::Line(finished));
+        self.line_y += height;
         self.math_block = false;
     }
+}
+
+/// Square-wrap boxes that change the free intervals of this paragraph.
+fn square_exclusions(
+    ctx: &LayoutContext<'_>,
+    segments: &[Seg],
+    content_left: f64,
+    content_width: f64,
+) -> Vec<WrapExclusion> {
+    segments
+        .iter()
+        .filter_map(|segment| {
+            let Seg::Anchor(anchor) = segment else {
+                return None;
+            };
+            square_exclusion(ctx, anchor, content_left, content_width)
+        })
+        .collect()
+}
+
+/// Moves `x` onto a free interval wide enough for `width`.
+///
+/// Returns false when no interval on an empty line can hold it.
+fn reserve(
+    sink: &mut LineSink<'_, '_>,
+    current: &mut LineBuilder,
+    x: &mut f64,
+    normal_x: f64,
+    width: f64,
+) -> bool {
+    for _ in 0..24 {
+        let spans = free_spans(sink, normal_x);
+        if spans.is_empty() {
+            if current.is_empty() {
+                return false;
+            }
+            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+            *x = normal_x;
+            continue;
+        }
+        let Some(index) = spans
+            .iter()
+            .position(|(start, end)| *x < *end - 1e-6 && *end - start.max(*x) + 1e-9 >= 0.0)
+        else {
+            if current.is_empty() {
+                return false;
+            }
+            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+            *x = normal_x;
+            continue;
+        };
+        let (start, end) = spans[index];
+        if *x < start {
+            *x = start;
+        }
+        if *x + width <= end + 1e-9 {
+            return true;
+        }
+        if let Some((next, _)) = spans.get(index + 1) {
+            *x = *next;
+            continue;
+        }
+        if current.is_empty() {
+            return false;
+        }
+        sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+        *x = normal_x;
+    }
+    false
+}
+
+/// Free intervals of the current line, left to right.
+fn free_spans(sink: &LineSink<'_, '_>, left: f64) -> Vec<(f64, f64)> {
+    let mut spans = vec![(left, sink.right_edge)];
+    for exclusion in &sink.exclusions {
+        if sink.line_y + 20.0 <= exclusion.top || sink.line_y >= exclusion.bottom {
+            continue;
+        }
+        apply_side(&mut spans, exclusion);
+    }
+    spans.retain(|(start, end)| *end - *start > 0.5);
+    spans
+}
+
+fn apply_side(spans: &mut Vec<(f64, f64)>, exclusion: &WrapExclusion) {
+    match exclusion.side {
+        WrapSide::Both => subtract(spans, exclusion.left, exclusion.right),
+        WrapSide::Left => clip_end(spans, exclusion.left),
+        WrapSide::Right => clip_start(spans, exclusion.right),
+        WrapSide::Largest => {
+            let mut left_spans = spans.clone();
+            clip_end(&mut left_spans, exclusion.left);
+            let mut right_spans = spans.clone();
+            clip_start(&mut right_spans, exclusion.right);
+            let width =
+                |side: &[(f64, f64)]| side.iter().map(|(start, end)| end - start).sum::<f64>();
+            *spans = if width(&right_spans) > width(&left_spans) {
+                right_spans
+            } else {
+                left_spans
+            };
+        }
+    }
+}
+
+fn subtract(spans: &mut Vec<(f64, f64)>, left: f64, right: f64) {
+    let mut next = Vec::new();
+    for (start, end) in spans.drain(..) {
+        if right <= start || left >= end {
+            next.push((start, end));
+            continue;
+        }
+        if start < left {
+            next.push((start, left.min(end)));
+        }
+        if end > right {
+            next.push((right.max(start), end));
+        }
+    }
+    *spans = next;
+}
+
+fn clip_end(spans: &mut Vec<(f64, f64)>, limit: f64) {
+    spans.retain(|(start, _)| *start < limit);
+    for (start, end) in spans.iter_mut() {
+        *end = (*end).min(limit).max(*start);
+    }
+    spans.retain(|(start, end)| end - start > 0.5);
+}
+
+fn clip_start(spans: &mut Vec<(f64, f64)>, limit: f64) {
+    spans.retain(|(_, end)| *end > limit);
+    for (start, end) in spans.iter_mut() {
+        *start = (*start).max(limit).min(*end);
+    }
+    spans.retain(|(start, end)| end - start > 0.5);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -819,30 +1018,34 @@ fn place_token(
     sink: &mut LineSink<'_, '_>,
     current: &mut LineBuilder,
     x: &mut f64,
-    line_start: f64,
-    first_x: f64,
     normal_x: f64,
     token: &str,
     run: &ComputedRun,
-    first_line: &mut bool,
 ) {
     let width = sink.ctx.measure(token, run);
-    let line_end = line_start + sink.line_width;
-    if *x + width > line_end + 1e-9 && !current.is_empty() {
-        sink.emit(std::mem::replace(current, LineBuilder::new()), false);
-        *x = if *first_line { first_x } else { normal_x };
-        *first_line = false;
-    }
-    // Skip a leading space at the start of a line.
-    if current.is_empty() && token.trim().is_empty() {
-        *x += width;
+    if sink.exclusions.is_empty() {
+        let line_end = sink.right_edge;
+        if *x + width > line_end + 1e-9 && !current.is_empty() {
+            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+            *x = normal_x;
+        }
+        if current.is_empty() && token.trim().is_empty() {
+            *x += width;
+            return;
+        }
+        if *x + width > line_end + 1e-9 && current.is_empty() {
+            place_long_token(sink, current, x, line_end, normal_x, token, run);
+            return;
+        }
+    } else if !reserve(sink, current, x, normal_x, width) {
+        if current.is_empty() && token.trim().is_empty() {
+            *x += width;
+            return;
+        }
+        place_long_token(sink, current, x, sink.right_edge, normal_x, token, run);
         return;
-    }
-    if *x + width > line_end + 1e-9 && current.is_empty() {
-        // A single token wider than the line: break by characters.
-        place_long_token(
-            sink, current, x, line_end, first_x, normal_x, token, run, first_line,
-        );
+    } else if current.is_empty() && token.trim().is_empty() {
+        *x += width;
         return;
     }
     let size_px = sink.ctx.size_px(run.size_pt);
@@ -864,19 +1067,20 @@ fn place_long_token(
     current: &mut LineBuilder,
     x: &mut f64,
     line_end: f64,
-    first_x: f64,
     normal_x: f64,
     token: &str,
     run: &ComputedRun,
-    first_line: &mut bool,
 ) {
     let size_px = sink.ctx.size_px(run.size_pt);
     for ch in token.chars() {
         let width = sink.ctx.measure(&ch.to_string(), run);
-        if *x + width > line_end + 1e-9 && !current.is_empty() {
-            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
-            *x = if *first_line { first_x } else { normal_x };
-            *first_line = false;
+        if sink.exclusions.is_empty() {
+            if *x + width > line_end + 1e-9 && !current.is_empty() {
+                sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+                *x = normal_x;
+            }
+        } else {
+            let _ = reserve(sink, current, x, normal_x, width);
         }
         current.items.push(TextItem {
             x: *x,
@@ -896,11 +1100,23 @@ fn finish_line(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
     mut line: LineBuilder,
-    line_width: f64,
+    right_edge: f64,
     grid_line_pitch: Option<f64>,
     last: bool,
 ) -> TextLine {
     let used = line_extent(&line.items, &line.graphics);
+    let origin = line_origin(&line.items, &line.graphics);
+    // Align inside this line's own interval. A positive first-line indent
+    // shortens that interval; a hanging indent lengthens it. Both end at
+    // `right_edge`. A non-positive interval is reported, not replaced by 1 px.
+    let line_width = if origin.is_finite() {
+        right_edge - origin
+    } else {
+        0.0
+    };
+    if used > 0.0 && line_width <= 0.0 {
+        ctx.warn("render.line-interval: indent leaves no room before the right edge".to_owned());
+    }
     let justify = !last
         && matches!(
             computed.alignment,
@@ -942,6 +1158,17 @@ fn finish_line(
         for item in &mut line.graphics {
             *item = shift_item(item.clone(), offset, 0.0);
         }
+    }
+    if line
+        .items
+        .iter()
+        .any(|item| item.x + item.width > right_edge + 0.25)
+        || line
+            .graphics
+            .iter()
+            .any(|item| item_right(item) > right_edge + 0.25)
+    {
+        ctx.warn("render.line-overflow: a glyph extends past the line's right edge".to_owned());
     }
 
     let (mut height, mut ascent) =
@@ -1070,14 +1297,12 @@ fn apply_vertical_align(item: &mut TextItem) {
 
 /// Returns the horizontal extent covered by a line's items.
 fn line_extent(items: &[TextItem], graphics: &[Item]) -> f64 {
-    let mut min = f64::INFINITY;
+    let min = line_origin(items, graphics);
     let mut max = f64::NEG_INFINITY;
     for item in items {
-        min = min.min(item.x);
         max = max.max(item.x + item.width);
     }
     for item in graphics {
-        min = min.min(item_left(item));
         max = max.max(item_right(item));
     }
     if min.is_finite() && max.is_finite() {
@@ -1085,6 +1310,18 @@ fn line_extent(items: &[TextItem], graphics: &[Item]) -> f64 {
     } else {
         0.0
     }
+}
+
+/// Left edge of the line's ink, before alignment shifts it.
+fn line_origin(items: &[TextItem], graphics: &[Item]) -> f64 {
+    let mut min = f64::INFINITY;
+    for item in items {
+        min = min.min(item.x);
+    }
+    for item in graphics {
+        min = min.min(item_left(item));
+    }
+    min
 }
 
 /// The left edge of a paint item.
@@ -1160,30 +1397,182 @@ fn resolve_line_metrics(
     (height, ascent)
 }
 
-/// Returns the next tab-stop x (absolute px), or a default step if none.
-fn next_tab_x(
+/// A resolved tab stop: where it sits, how the following segment aligns, and
+/// the leader drawn in the gap.
+struct ResolvedTab {
+    x: f64,
+    alignment: TabAlignment,
+    leader: Option<TabLeader>,
+}
+
+/// The next stop to the right of `x`. A custom stop wins; otherwise the
+/// default step is a start-aligned stop with no leader.
+fn resolve_tab(
     x: f64,
     computed: &ComputedParagraph,
     default_tab: i32,
     scale: f64,
     content_left: f64,
-) -> f64 {
+) -> ResolvedTab {
     let relative = x - content_left;
-    let mut stop_positions: Vec<f64> = computed
+    let mut stops: Vec<&strict_ooxml_wml::model::values::TabStop> = computed
         .tabs
         .iter()
         .filter(|candidate| !matches!(candidate.alignment, TabAlignment::Clear | TabAlignment::Bar))
-        .map(|candidate| twips_to_px(candidate.position.value(), scale))
         .collect();
-    stop_positions
-        .sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
-    if let Some(position) = stop_positions
+    stops.sort_by(|left, right| left.position.value().cmp(&right.position.value()));
+    if let Some(stop) = stops
         .into_iter()
-        .find(|position| *position > relative + 1e-6)
+        .find(|stop| twips_to_px(stop.position.value(), scale) > relative + 1e-6)
     {
-        return content_left + position;
+        return ResolvedTab {
+            x: content_left + twips_to_px(stop.position.value(), scale),
+            alignment: stop.alignment,
+            leader: stop.leader,
+        };
     }
     let tab_step = twips_to_px(default_tab.max(1), scale).max(1e-6);
-    let steps = (relative / tab_step).floor() + 1.0;
-    content_left + steps * tab_step
+    let advances = (relative / tab_step).floor() + 1.0;
+    ResolvedTab {
+        x: content_left + advances * tab_step,
+        alignment: TabAlignment::Start,
+        leader: None,
+    }
+}
+
+/// Width of the segment that this tab aligns, up to the next tab or break.
+fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
+    let mut width = 0.0;
+    for segment in pending {
+        match segment {
+            Seg::Text(text, run) => width += ctx.measure(text, run),
+            Seg::Object(_, object_width, _) => width += object_width,
+            Seg::Math(boxed, _) => width += boxed.size.width,
+            Seg::Tab | Seg::Break | Seg::PageBreak | Seg::Image(_) | Seg::MathParagraph(_) => break,
+            Seg::Anchor(_)
+            | Seg::FootnoteMarker(_, _)
+            | Seg::EndnoteMarker(_, _)
+            | Seg::NoteNumber(_)
+            | Seg::FieldResult(_, _, _) => {}
+        }
+    }
+    width
+}
+
+/// Distance from the start of the following segment to its decimal separator.
+/// Without a separator the whole segment is the anchor, as a right tab.
+fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
+    let mut width = 0.0;
+    for segment in pending {
+        match segment {
+            Seg::Text(text, run) => {
+                if let Some(index) = text.find(['.', ',']) {
+                    width += ctx.measure(&text[..index], run);
+                    return width;
+                }
+                width += ctx.measure(text, run);
+            }
+            Seg::Tab | Seg::Break | Seg::PageBreak => break,
+            _ => {}
+        }
+    }
+    width
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_tab(
+    ctx: &LayoutContext<'_>,
+    computed: &ComputedParagraph,
+    current: &mut LineBuilder,
+    x: &mut f64,
+    pending: &VecDeque<Seg>,
+    default_tab: i32,
+    scale: f64,
+    content_left: f64,
+) {
+    let tab = resolve_tab(*x, computed, default_tab, scale, content_left);
+    if matches!(tab.alignment, TabAlignment::Bar) {
+        current.graphics.push(Item::Line(crate::layout::LineItem {
+            x1: tab.x,
+            y1: -12.0,
+            x2: tab.x,
+            y2: 2.0,
+            color: "#000000".to_owned(),
+            width: 0.75,
+            dashed: false,
+        }));
+        return;
+    }
+    let ink = following_ink(ctx, pending);
+    let text_start = match tab.alignment {
+        TabAlignment::End => tab.x - ink,
+        TabAlignment::Center => tab.x - ink / 2.0,
+        TabAlignment::Decimal | TabAlignment::Num => tab.x - decimal_offset(ctx, pending),
+        TabAlignment::Start | TabAlignment::Clear | TabAlignment::Bar => tab.x,
+    };
+    if text_start > *x + 0.5 {
+        if let Some(leader) = tab.leader.filter(|leader| *leader != TabLeader::None) {
+            push_leader(current, *x, text_start, leader);
+        }
+        *x = text_start;
+    } else if matches!(tab.alignment, TabAlignment::Start) {
+        *x = text_start.max(*x);
+    }
+}
+
+/// Draws the leader in the gap. The marks are graphics, so they are not part
+/// of the paragraph's extracted text.
+fn push_leader(current: &mut LineBuilder, from: f64, to: f64, leader: TabLeader) {
+    let start = from + 4.0;
+    let end = to - 4.0;
+    if end <= start {
+        return;
+    }
+    match leader {
+        TabLeader::Underscore | TabLeader::Heavy => {
+            current.graphics.push(Item::Line(crate::layout::LineItem {
+                x1: start,
+                y1: 1.0,
+                x2: end,
+                y2: 1.0,
+                color: "#000000".to_owned(),
+                width: if leader == TabLeader::Heavy {
+                    1.5
+                } else {
+                    0.75
+                },
+                dashed: false,
+            }));
+        }
+        TabLeader::Hyphen => {
+            current.graphics.push(Item::Line(crate::layout::LineItem {
+                x1: start,
+                y1: -2.0,
+                x2: end,
+                y2: -2.0,
+                color: "#000000".to_owned(),
+                width: 0.75,
+                dashed: true,
+            }));
+        }
+        TabLeader::Dot | TabLeader::MiddleDot | TabLeader::None => {
+            let mut dot = start;
+            while dot < end {
+                current.graphics.push(Item::Rect(crate::layout::RectItem {
+                    x: dot,
+                    y: if leader == TabLeader::MiddleDot {
+                        -4.0
+                    } else {
+                        -1.5
+                    },
+                    w: 1.25,
+                    h: 1.25,
+                    fill: Some("#000000".to_owned()),
+                    stroke: None,
+                    stroke_w: 0.0,
+                }));
+                dot += 6.0;
+            }
+        }
+    }
 }

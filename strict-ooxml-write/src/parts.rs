@@ -261,6 +261,8 @@ fn ilvl_attr(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, ilvl: &Ilvl, at: &str) {
 }
 
 fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
+    // `CT_Lvl` order is [`crate::order::LVL`]: start, numFmt, lvlRestart,
+    // pStyle, isLgl, suff, lvlText, lvlPicBulletId, lvlJc, pPr, rPr.
     xml.start("w:lvl");
     ilvl_attr(ctx, xml, &level.ilvl, "w:lvl");
     if let Some(start) = level.start {
@@ -269,8 +271,26 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     if let Some(format) = &level.format {
         xml.empty_attr_w("w:numFmt", "val", format.as_ref());
     }
+    if let Some(restart) = level.restart {
+        xml.empty_attr_w("w:lvlRestart", "val", restart);
+    }
     if let Some(style) = &level.paragraph_style {
         xml.empty_attr_w("w:pStyle", "val", style.as_str());
+    }
+    if level.is_legal {
+        xml.empty("w:isLgl");
+    }
+    if let Some(suffix) = &level.suffix {
+        match suffix.as_ref() {
+            "tab" | "space" | "nothing" => {
+                xml.empty_attr_w("w:suff", "val", suffix.as_ref());
+            }
+            other => ctx.report_unsupported(
+                "w:suff",
+                &format!("suffix '{other}' is not tab, space, or nothing"),
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            ),
+        }
     }
     if let Some(text) = &level.text {
         xml.empty_attr_w("w:lvlText", "val", text.as_ref());
@@ -278,21 +298,11 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     if let Some(justification) = &level.justification {
         xml.empty_attr_w("w:lvlJc", "val", justification.as_str());
     }
-    if let Some(suffix) = &level.suffix {
-        xml.empty_attr_w("w:suff", "val", suffix.as_ref());
-    }
-    if let Some(restart) = level.restart {
-        xml.empty_attr_w("w:lvlRestart", "val", restart);
-    }
-    if level.is_legal {
-        xml.empty("w:isLgl");
-    }
     if level.tentative {
         xml.empty("w:tentative");
     }
     paragraph_properties(ctx, xml, &level.paragraph, None);
     run_properties(xml, &level.run);
-    let _ = ctx;
     xml.end();
 }
 
@@ -336,7 +346,7 @@ pub fn settings_part(
 /// keeps both — the schema, not the parser, decides that a document with both is
 /// invalid, and a malformed value the XSD gate names beats a value silently
 /// dropped.
-fn math_properties(xml: &mut XmlWriter, properties: &MathProperties) {
+fn math_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathProperties) {
     xml.start("m:mathPr");
     let children: [(&str, &Option<std::sync::Arc<str>>); 16] = [
         ("m:mathFont", &properties.math_font),
@@ -358,10 +368,107 @@ fn math_properties(xml: &mut XmlWriter, properties: &MathProperties) {
     ];
     for (name, value) in children {
         if let Some(value) = value {
-            xml.empty_attr(name, "m:val", value.as_ref());
+            if name == "m:smallFrac" {
+                match strict_on_off(value.as_ref()) {
+                    Some(word) => xml.empty_attr(name, "m:val", word),
+                    None => ctx.report_unsupported(
+                        "m:smallFrac",
+                        &format!(
+                            "value '{value}' is not an on/off token (on, off, 1, 0, true, false)"
+                        ),
+                        &strict_ooxml_core::error::SourceLocation::unknown(),
+                    ),
+                }
+            } else {
+                xml.empty_attr(name, "m:val", value.as_ref());
+            }
         }
     }
     xml.end();
+}
+
+/// Maps an OMML on/off token onto the Strict boolean spelling.
+fn strict_on_off(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        "on" | "1" | "true" => Some("true"),
+        "off" | "0" | "false" => Some("false"),
+        _ => None,
+    }
+}
+
+/// Legacy `w:stylePaneFormatFilter/@w:val` bits, in declaration order.
+///
+/// `0x0010` is reserved. A value that sets it, or that is not hexadecimal, is
+/// refused instead of being copied into Strict XML.
+const STYLE_PANE_FLAGS: &[(u16, &str)] = &[
+    (0x0001, "allStyles"),
+    (0x0002, "customStyles"),
+    (0x0004, "latentStyles"),
+    (0x0008, "stylesInUse"),
+    (0x0020, "headingStyles"),
+    (0x0040, "numberingStyles"),
+    (0x0080, "tableStyles"),
+    (0x0100, "directFormattingOnRuns"),
+    (0x0200, "directFormattingOnParagraphs"),
+    (0x0400, "directFormattingOnNumbering"),
+    (0x0800, "directFormattingOnTables"),
+    (0x1000, "clearFormatting"),
+    (0x2000, "top3HeadingStyles"),
+    (0x4000, "visibleStyles"),
+    (0x8000, "alternateStyleNames"),
+];
+
+fn write_style_pane_filter(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    pairs: &[(std::sync::Arc<str>, std::sync::Arc<str>)],
+) {
+    if pairs.is_empty() {
+        return;
+    }
+    let named: Vec<_> = pairs
+        .iter()
+        .filter(|(name, _)| name.as_ref() != "val")
+        .collect();
+    if !named.is_empty() {
+        xml.start("w:stylePaneFormatFilter");
+        for (attribute, value) in named {
+            xml.attr_w(attribute.as_ref(), value.as_ref());
+        }
+        xml.end();
+        return;
+    }
+    let Some((_, value)) = pairs.iter().find(|(name, _)| name.as_ref() == "val") else {
+        return;
+    };
+    match decode_style_pane(value.as_ref()) {
+        Ok(bits) => {
+            xml.start("w:stylePaneFormatFilter");
+            for (name, enabled) in bits {
+                if enabled {
+                    xml.attr_w(name, "true");
+                }
+            }
+            xml.end();
+        }
+        Err(reason) => ctx.report_unsupported(
+            "w:stylePaneFormatFilter",
+            reason,
+            &strict_ooxml_core::error::SourceLocation::unknown(),
+        ),
+    }
+}
+
+fn decode_style_pane(value: &str) -> Result<Vec<(&'static str, bool)>, &'static str> {
+    let bits = u16::from_str_radix(value.trim(), 16)
+        .map_err(|_| "style pane filter is not hexadecimal")?;
+    if bits & 0x0010 != 0 {
+        return Err("style pane filter sets reserved bit 0x0010");
+    }
+    Ok(STYLE_PANE_FLAGS
+        .iter()
+        .map(|(mask, name)| (*name, bits & mask != 0))
+        .collect())
 }
 
 fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, name: &str) {
@@ -552,13 +659,7 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             }
         }
         "stylePaneFormatFilter" => {
-            if !settings.style_pane_filter.is_empty() {
-                xml.start("w:stylePaneFormatFilter");
-                for (attribute, value) in &settings.style_pane_filter {
-                    xml.attr_w(attribute, value.as_ref());
-                }
-                xml.end();
-            }
+            write_style_pane_filter(ctx, xml, &settings.style_pane_filter);
         }
         "revisionView" => {
             if !settings.revision_view.is_empty() {
@@ -587,7 +688,7 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         }
         "mathPr" => {
             if let Some(mathematics) = &settings.math_properties {
-                math_properties(xml, mathematics);
+                math_properties(ctx, xml, mathematics);
             }
         }
         "themeFontLang" => {

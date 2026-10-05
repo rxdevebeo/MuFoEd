@@ -28,6 +28,8 @@ pub(crate) struct NumberingMarker {
     pub indent_start_pt: Option<f64>,
     /// Level first-line offset (negative for hanging), in points.
     pub first_line_pt: Option<f64>,
+    /// Suffix after the marker (`w:suff`): `tab`, `space` or `nothing`.
+    pub suffix: Option<String>,
 }
 
 /// Markers for every numbered paragraph, keyed by source location.
@@ -129,6 +131,7 @@ impl<'a> Engine<'a> {
             run,
             indent_start_pt,
             first_line_pt,
+            suffix: level.suffix.as_ref().map(ToString::to_string),
         })
     }
 }
