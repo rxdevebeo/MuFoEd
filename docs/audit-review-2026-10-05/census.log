@@ -1,0 +1,286 @@
+==============================================================================
+census-gate 1.0.0
+schema:  ECMA-376-1 5th edition, OfficeOpenXML-XMLSchema-Strict (5th edition, December 2016)
+oracle:  lxml (6, 0, 1, 0), libxml2 (2, 11, 9), python 3.13.5
+corpus:  docx     D:\projects\StrictLib\strict-ooxml-core\tests\docx
+corpus:  samples  D:\projects\StrictLib\strict-ooxml-core\tests\samples
+schemas: cache C:\Users\gamer\AppData\Local\cache\strict-ooxml\xsd-gate\fixed
+schemas: 2133 drivers compiled, 0 failures
+control: ok   valid: 0 schema violation(s) - a minimal w:document, which must come out clean
+control: ok   invalid: 1 schema violation(s) - a w:pPr with w:pBdr before w:tabs, which xsd:sequence forbids - the defect this gate exists to find, and the one the project made most of
+control: ok   extension: 0 schema violation(s) - a w:p carrying w14:paraId with mc:Ignorable declared, which an MCE processor removes and the gate must therefore NOT count as a schema violation
+control: ok   no-mce-declared: 0 schema violation(s) - the same w:p with w14:paraId and NO mc:Ignorable: still an extension, because conformance is defined after MCE and the declaration changes nothing about the namespace. If this one ever counted as ours, the basket would be deciding on politeness rather than on the standard
+control: ok   prefixed-valid: 0 schema violation(s) - a cx:cNvSpPr carrying the a:spLocks its type requires - a root whose TYPE is a prefixed QName, which is the case 13 roots were wrongly excused on
+control: ok   prefixed-invalid: 1 schema violation(s) - the same root with a child that is not in its type: drop the driver's import and this is accepted, so this is the control that would have caught it
+writer:  target\release\strict-ooxml.exe (named on the command line, not rebuilt)
+
+=== corpus `docx`: 99 document(s), written with --transitional
+  document                                        IN   OUT   delta   ext  gone
+  --exercises-table.docx                         0     0      +0     0     0
+  1. First-Steps-in-Programming.docx             0     0      +0    43     0
+  1_Вступительный_курс_при_регистрации_на_Платформе.docx     0     0      +0     0     1
+  2. Simple-Calculation.docx                     0     0      +0    43     0
+  2. Мероприятия по Лайму.docx                   0     0      +0     0     1
+  2024_application_form_ en.docx                 0     0      +0    10     0
+  3. Simple-Conditions.docx                      0     0      +0    43     0
+  4. Complex-Conditions.docx                     0     0      +0    43     0
+  5. Loops.docx                                  0     0      +0    43     0
+  6. Nested-Loops.docx                           0     0      +0    43     0
+  7. More-Complex-Loops.docx                     0     0      +0    43     0
+  8. Become-a-Software-Engineer.docx             0     0      +0    43     0
+  APPLICATION FOR VISA.docx                      0     0      +0     6     1
+  Agreement_To_Transfer.docx                     0     0      +0     0     0
+  Algorithmics_Test_v4.docx                      0     0      +0     0     0
+  Billing_Integration_Guide.docx                 0     0      +0     0     0
+  COOKIE POLICY.docx                             0     0      +0     0     0
+  Certificate Incumbency -.docx                  0     0      +0     0     0
+  Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx     0     0      +0     0     1
+  Contoso_Guest_WiFi_Connection_Guide.docx       0     0      +0     0     1
+  Design for Rectilinear Edge Routing.docx       0     0      +0     0     1
+  Digital_Marketing_Service_Agreement.docx       0     0      +0     0     0
+  Manual.docx                                    0     0      +0     0     0
+  NvidiaGameworks_License.docx                   0     0      +0     0     0
+  OBRAZAC.docx                                   0     0      +0     0     0
+  OverlapRemoval Design.docx                     0     0      +0     0     1
+  PEP - DVOJEZIČNI -IZJAVA KLIJENTA RADI UTVRĐIVANJA STATUSA FUNKCIONERA.docx     0     0      +0    15     0
+  Plataforma_manual_ES.docx                      0     0      +0     0     0
+  Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx     0     0      +0     0     0
+  ProjectionSolver Design.docx                   0     0      +0     0     1
+  Proxy for RTBF 260408.docx                     0     0      +0     0     0
+  RM0090 16-23 Справочное руководство по STM32F4xx.docx     0     0      +0  5696     0
+  SOKOBANJA_Nikita_Bakulin.docx                  0     0      +0     0     0
+  SampleEmploymentAgreement.docx                 0     0      +0     0     1
+  SampleOfferLetter.docx                         0     0      +0     0     1
+  Service_Agreement_Technical_Support.docx       0     0      +0     0     0
+  Spanner visibility graph.docx                  0     0      +0    35     0
+  SpellSimmer_Privacy_Policy_EN.docx             0     0      +0     0     0
+  add-separators.docx                            0     0      +0     0     0
+  context.docx                                   0     0      +0     0     0
+  contract.docx                                  0     0      +0     0     0
+  curso_comunicacion_masas_ES.docx               0     0      +0     0     0
+  curso_mentoria_coaching_ES.docx                0     0      +0     0     1
+  dalink.docx                                    0     0      +0     0     0
+  declaration_certificate_service.docx           0     0      +0     0     0
+  declaration_of_favorite_fruit.docx             0     0      +0     0     0
+  django-admin-otp_security_audit.docx           0     0      +0     0     0
+  doc-with-toc.docx                              0     0      +0     0     0
+  document-language.docx                         0     0      +0     0     0
+  docx-jinja2-demo.docx                          0     0      +0     0     0
+  docx-table-columns.docx                        0     0      +0     0     0
+  docx-template-auto.docx                        0     0      +0     0     0
+  docx-with-metadata.docx                        0     0      +0     0     0
+  docx_document.docx                             0     0      +0     0     0
+  exhibit_insert.docx                            0     0      +0     6     0
+  food_template.docx                             0     0      +0     0     0
+  fruit_declaration.docx                         0     0      +0     0     0
+  fruit_template.docx                            0     0      +0     0     0
+  generic-document.docx                          0     0      +0     0     0
+  graph.docx                                     0     0      +0     0     0
+  life_story.docx                                0     0      +0     0     0
+  logo_template.docx                             0     0      +0     0     0
+  main_doc_params.docx                           0     0      +0     0     0
+  main_document.docx                             0     0      +0     0     0
+  markdown_template_demo.docx                    0     0      +0     0     0
+  nested_list_table.docx                         0     0      +0     0     0
+  numbering_template.docx                        0     0      +0     0     0
+  praecipe_discontinue.docx                      0     0      +0     0     0
+  quotes-in-code.docx                            0     0      +0     0     0
+  recipe_template.docx                           0     0      +0     0     0
+  redact_demo.docx                               0     0      +0     0     0
+  resource_guide.docx                            0     0      +0     0     0
+  signature_template.docx                        0     0      +0     0     0
+  sub_doc_params.docx                            0     0      +0     0     0
+  sub_document.docx                              0     0      +0     0     0
+  table_template.docx                            0     0      +0     0     0
+  tagged.docx                                    0     0      +0     0     0
+  team.docx                                      0     0      +0     0     0
+  template_test.docx                             0     0      +0     0     0
+  test-document.docx                             0     0      +0     0     0
+  twostage.docx                                  0     0      +0     0     0
+  universal-test.docx                            0     0      +0     0     0
+  zahtev+za+odobrenje+SNS+Obrazac_2.docx         0     0      +0     0     0
+  Вольтман Л. - Учение о расах. - 1905.docx      0     0      +0     0     0
+  Интегралы (2).docx                             0     0      +0     0     0
+  Интегралы исх..docx                            0     0      +0     0     0
+  Интегралы.docx                                 0     0      +0     0     0
+  МК-2503 Ленников Статья.docx                   0     0      +0     0     0
+  Описание_работы_проекта_ЛК_Клиента.docx        0     0      +0     0     0
+  Пользовательское_соглашение_Lime_City.docx     0     0      +0     0     1
+  Пользовательское_соглашение_Majestic_Lime_International_Hub_Ltd.docx     0     0      +0     0     1
+  Приложение_№1_«Lime_City»_условия_и_порядок_участия_в_бонусной.docx     0     0      +0     0     1
+  Приложение_№5_порядок_и_условия_размещения_РЕКЛАМЫ_20_08_2025.docx     0     0      +0     0     1
+  Приложение_№_1_Описание_работы_Платформы_20_08_2025.docx     0     0      +0     0     1
+  Приложение_№_4_порядок_и_условия_создания_ОБРАЗОВАТЕЛЬНЫХ_КУРСОВ.docx     0     0      +0     0     1
+  Ремастер «Ведьмака 3».docx                     0     0      +0     0     0
+  Свами Видьянанда Сарасвати - Упадеша Сара Шри Бхагавана Раманы Махарши - 2011.docx     0     0      +0     0     0
+  правила оформл. текста.docx                    0     0      +0     0     0
+  приложение_№_3_порядок_и_условия_использования_КРИПТОВАЛЮТЫ_20_08.docx     0     0      +0     0     1
+  TOTAL                                          0     0      +0  6112    18   clean: 99/1
+  loss report: 22/99 document(s) marked lossy, 35 lossy record(s), 6411 ignorable, 0 error(s), 0 warning(s)
+
+=== corpus `samples`: 22 document(s), written with --transitional
+  document                                        IN   OUT   delta   ext  gone
+  DOCX_13_Pages_Medium_2cdcf0763c.docx           0     0      +0     6     0
+  DOCX_46_Pages_Large_4b2b5238a0.docx            0     0      +0     0     0
+  DOCX_73_Pages_Extra_Large_9d440610aa.docx      0     0      +0     0     0
+  DOCX_Charts_and_Graphs_Special_characters_a28ab89944.docx     0     0      +0     0     1
+  DOCX_Mathematical_Equations_2fd0caa825.docx     0     0      +0     0     0
+  DOCX_Non_Latin_Text_Chinese_Japanese_Arabic_67e061eacf.docx     0     0      +0     0     1
+  DOCX_Watermark_691b4503e0.docx                 0     0      +0     0     0
+  DOCX_With_comments_54baf34ad8.docx             0     0      +0     0     0
+  sample-docx-1mb.docx                           0     0      +0     0     0
+  sample-docx-200kb.docx                         0     0      +0     0     0
+  sample-docx-500kb.docx                         0     0      +0     0     0
+  sample-files.com-large-document.docx           0     0      +0     0     1
+  sample-files.com-lists.docx                    0     0      +0     0     1
+  sample-files.com-multi-column.docx             0     0      +0     0     1
+  sample-files.com-table-document.docx           0     0      +0     0     1
+  sample-files.com-tracked-changes.docx          0     0      +0     0     1
+  sample-long.docx                               0     0      +0     0     1
+  sample-resume.docx                             0     0      +0     0     1
+  sample-simple.docx                             0     0      +0     0     1
+  sample2.docx                                   0     0      +0     0     0
+  sample_report.docx                             0     0      +0     0     0
+  sample_tables.docx                             0     0      +0     0     0
+  TOTAL                                          0     0      +0     6    10   clean: 22/1
+  loss report: 8/22 document(s) marked lossy, 8 lossy record(s), 1005 ignorable, 0 error(s), 0 warning(s)
+
+  TOTAL                                          0     0      +0   110    28   clean: 121/121
+
+=== our output, by element: 0 violation(s), 0 distinct element(s)
+
+=== producer extension nodes left in our output: 110 (elements AND attributes, before MCE - a schema message never names either)
+  wsp                                      15
+  cNvSpPr                                  15
+  spPr                                     15
+  txbx                                     14
+  bodyPr                                   14
+  style                                    10
+  wgp                                      9
+  cNvGrpSpPr                               9
+  grpSpPr                                  9
+
+=== parts the input carried and our output does not: 28 (a missing part validates perfectly, which is what makes this a silent loss)
+  word/stylesWithEffects.xml                         23
+  docMetadata/LabelInfo.xml                          3
+  word/numbering.xml                                 2
+
+=== census registry (`TZ-nn` closes on a measured zero, never on a code review)
+  TZ-01   ours    message   NOT_EXERCISED ST_MeasurementOrPercent written as bare fiftieths-of-a-percent: w:w="5000" [blind: writer output]
+  TZ-02   ours    message   NOT_EXERCISED ST_TextScale (w:w in a run property bag) written as a bare number; Strict requires the % sign [blind: writer output]
+  TZ-03   ours    message   NOT_EXERCISED Transitional-only elements left in a Strict package: one REMOVALS entry per name [blind: regenerated parts]
+  TZ-04   ours    message   NOT_EXERCISED T3 element rename: CT_TblBorders/CT_TcBorders/CT_TblCellMar/CT_TcMar renamed their edges to start/end [blind: regenerated parts]
+  TZ-05   ours    message   NOT_EXERCISED w:ind keeps @w:left/@w:right; Strict CT_Ind declares @w:start/@w:end [blind: regenerated parts]
+  TZ-06   ours    message   NOT_EXERCISED w:jc/@w:val written with its Transitional spelling; ST_Jc and ST_JcTable lost left/right [blind: regenerated parts]
+  TZ-07   ours    message   NOT_EXERCISED ST_TabJc/ST_Jc values left/right on w:tab/@w:val and w:lvlJc/@w:val [blind: regenerated parts]
+  TZ-08   ours    message   NOT_EXERCISED w:tblLook carries the Transitional bitmask @w:val; Strict declares six boolean attributes [blind: regenerated parts]
+  TZ-09   ours    message   NOT_EXERCISED w:zoom is required to carry @w:percent, and Transitional markup omits it [blind: writer output]
+  TZ-10   ours    message   NOT_EXERCISED CT_PageMar's @w:gutter/@w:header/@w:footer are use=required and Transitional markup omits them [blind: writer output]
+  TZ-11   ours    message   NOT_EXERCISED w:sectPr children out of EG_SectPrContents' xsd:sequence order; w:gutterAtTop is a CT_Settings child, not a sectPr one [blind: regenerated parts]
+  TZ-12   ours    message   NOT_EXERCISED bare twips where ST_MeasurementOrPercent admits only a percentage or a universal measure [blind: writer output]
+  TZ-13   ours    extension NOT_EXERCISED w14/w15/wp14 nodes left in a Strict package: the pass-through half of XS-17 and of XS-19
+  TZ-14   waived  unaccounted NOT_EXERCISED closed by the fix: app.xml is carried, minus the seven counters that describe a rendering
+  TZ-15   ours    unaccounted NOT_EXERCISED a part the source had that the written package does not, and the write's own report does not name
+  TZ-16   waived  unaccounted NOT_EXERCISED named and deliberate: a stale second copy of a style set the write regenerates
+  TZ-17   waived  unaccounted NOT_EXERCISED closed by the fix: custom properties are the producer's own statements and are carried
+  TZ-18   source  message   NOT_EXERCISED chart parts the producer shipped invalid: c:gapWidth/c:overlap/c:lblOffset carry bare numbers
+  TZ-19   ours    picture   NOT_EXERCISED a part that carried a VML picture and whose written form carries no picture at all
+  TZ-20   ours    mce       NOT_EXERCISED an mc:AlternateContent block that survived T6 in a written package
+  TZ-21   ours    message   NOT_EXERCISED wp:wrapTight / wp:wrapThrough written without the wp:wrapPolygon the schema requires
+
+  A `blind` item is measured over a corpus that never exercises the rule, so its zero
+  is the absence of evidence. The gate for those is the unit test named in `audit`,
+  because a corpus gate cannot see what the corpus does not contain.
+
+=== Strict-declared elements a regenerated part dropped, unnamed: 4189 finding(s) over 186 distinct element(s)
+    The part is present in both packages, so TZ-15 sees nothing while its content
+    shrinks. This is a MEASUREMENT of the whole inventory: an element no registry
+    item claims may be a decision rather than a loss, and only a `signal = "element"`
+    item can turn one of these into a gate failure.
+  charset                       103 document(s)
+  pitch                         103 document(s)
+  Characters                    102 document(s)
+  CharactersWithSpaces          102 document(s)
+  Pages                         102 document(s)
+  Paragraphs                    102 document(s)
+  TotalTime                     102 document(s)
+  Words                         102 document(s)
+  shade                          78 document(s)
+  altName                        75 document(s)
+  continuationSeparator          73 document(s)
+  separator                      72 document(s)
+  gradFill                       70 document(s)
+  gs                             70 document(s)
+  gsLst                          70 document(s)
+  objectDefaults                 70 document(s)
+  satMod                         70 document(s)
+  tint                           70 document(s)
+  alpha                          69 document(s)
+  outerShdw                      69 document(s)
+  lin                            66 document(s)
+  font                           65 document(s)
+  sysClr                         65 document(s)
+  latentStyles                   62 document(s)
+  lsdException                   62 document(s)
+  Lines                          61 document(s)
+  panose1                        61 document(s)
+  sig                            61 document(s)
+  right                          59 document(s)
+  extraClrSchemeLst              59 document(s)
+  lumMod                         51 document(s)
+  path                           49 document(s)
+  nsid                           46 document(s)
+  tmpl                           46 document(s)
+  rsid                           46 document(s)
+  miter                          44 document(s)
+  textDirection                  43 document(s)
+  left                           41 document(s)
+  formProt                       41 document(s)
+  extLst                         40 document(s)
+
+=== 4189 violation(s) match no census item
+  --exercises-table.docx: docProps/app.xml [Characters]: 
+  --exercises-table.docx: docProps/app.xml [CharactersWithSpaces]: 
+  --exercises-table.docx: docProps/app.xml [Lines]: 
+  --exercises-table.docx: docProps/app.xml [Pages]: 
+  --exercises-table.docx: docProps/app.xml [Paragraphs]: 
+  --exercises-table.docx: docProps/app.xml [TotalTime]: 
+  --exercises-table.docx: docProps/app.xml [Words]: 
+  --exercises-table.docx: word/document.xml [left]: 
+  --exercises-table.docx: word/document.xml [right]: 
+  --exercises-table.docx: word/fontTable.xml [altName]: 
+  --exercises-table.docx: word/fontTable.xml [charset]: 
+  --exercises-table.docx: word/fontTable.xml [panose1]: 
+  --exercises-table.docx: word/fontTable.xml [pitch]: 
+  --exercises-table.docx: word/fontTable.xml [sig]: 
+  --exercises-table.docx: word/styles.xml [latentStyles]: 
+  --exercises-table.docx: word/styles.xml [left]: 
+  --exercises-table.docx: word/styles.xml [lsdException]: 
+  --exercises-table.docx: word/styles.xml [right]: 
+  --exercises-table.docx: word/theme/theme1.xml [alpha]: 
+  --exercises-table.docx: word/theme/theme1.xml [ext]: 
+  --exercises-table.docx: word/theme/theme1.xml [extLst]: 
+  --exercises-table.docx: word/theme/theme1.xml [extraClrSchemeLst]: 
+  --exercises-table.docx: word/theme/theme1.xml [font]: 
+  --exercises-table.docx: word/theme/theme1.xml [gradFill]: 
+  --exercises-table.docx: word/theme/theme1.xml [gs]: 
+  --exercises-table.docx: word/theme/theme1.xml [gsLst]: 
+  --exercises-table.docx: word/theme/theme1.xml [lin]: 
+  --exercises-table.docx: word/theme/theme1.xml [lumMod]: 
+  --exercises-table.docx: word/theme/theme1.xml [miter]: 
+  --exercises-table.docx: word/theme/theme1.xml [objectDefaults]: 
+  --exercises-table.docx: word/theme/theme1.xml [outerShdw]: 
+  --exercises-table.docx: word/theme/theme1.xml [satMod]: 
+  --exercises-table.docx: word/theme/theme1.xml [shade]: 
+  --exercises-table.docx: word/theme/theme1.xml [sysClr]: 
+  --exercises-table.docx: word/theme/theme1.xml [tint]: 
+  1. First-Steps-in-Programming.docx: docProps/app.xml [Characters]: 
+  1. First-Steps-in-Programming.docx: docProps/app.xml [CharactersWithSpaces]: 
+  1. First-Steps-in-Programming.docx: docProps/app.xml [Lines]: 
+  1. First-Steps-in-Programming.docx: docProps/app.xml [Pages]: 
+  1. First-Steps-in-Programming.docx: docProps/app.xml [Paragraphs]: 
+
+measured: documents=121 validated=121 missing=0 unmatched=4189 ours=0
+
+FAIL: unmatched=4189 schema violation(s) match no registry item
+      (91/121 document(s) report no lossy record; 43 lossy record(s) total - a removal the report names is not a defect, an un-named one would be)

@@ -37,7 +37,21 @@ Usage
     python xtool/xsd-gate/census_gate.py --write-reports DIR  # keep the loss reports
     python xtool/xsd-gate/census_gate.py --no-build
 
-Exit codes: 0 clean, 1 census items of ours open, 2 the harness could not measure.
+Exit codes: 0 clean, 1 census items of ours open / unmatched schema / real
+unnamed loss / unclassified inventory, 2 the harness could not measure.
+
+R03 classification (2026-10-05)
+-------------------------------
+Inventory element changes and XSD messages are different measurements:
+
+* `unmatched_schema` — a libxml2 schema message matching no registry item. FAIL.
+* `unclassified_element_changes` — a Strict-declared element that vanished from a
+  still-present part and matches no disposition item. Leaves acceptance
+  incomplete; it is **not** a schema error.
+* named losses / declared transforms — `signal = "element"` registry items with
+  a non-`ours` origin (usually `waived`). Counted and OK when non-zero.
+* real unnamed losses — `ours` hits on `element` / `unaccounted` (and other
+  owned signals). FAIL.
 """
 
 from __future__ import annotations
@@ -76,7 +90,32 @@ import xsd_gate  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = xsd_gate.REPO
-VERSION = "census-gate 1.0.0"
+VERSION = "census-gate 1.1.0"
+
+# Preferred prefixes for inventory matching. Transitional and Strict URIs of the
+# same vocabulary share a prefix so a registry item can say `w:left` once.
+NS_PREFIX = {
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main": "w",
+    "http://purl.oclc.org/ooxml/wordprocessingml/main": "w",
+    "http://schemas.openxmlformats.org/drawingml/2006/main": "a",
+    "http://purl.oclc.org/ooxml/drawingml/main": "a",
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing": "wp",
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing": "wp",
+    "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties": "ep",
+    "http://purl.oclc.org/ooxml/officeDocument/extendedProperties": "ep",
+    "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes": "vt",
+    "http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes": "vt",
+    "http://schemas.openxmlformats.org/drawingml/2006/chart": "c",
+    "http://purl.oclc.org/ooxml/drawingml/chart": "c",
+    "http://schemas.openxmlformats.org/officeDocument/2006/math": "m",
+    "http://purl.oclc.org/ooxml/officeDocument/math": "m",
+    "http://schemas.openxmlformats.org/drawingml/2006/picture": "pic",
+    "http://purl.oclc.org/ooxml/drawingml/picture": "pic",
+    "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing": "xdr",
+    "http://schemas.openxmlformats.org/package/2006/metadata/core-properties": "cp",
+    "http://purl.oclc.org/ooxml/officeDocument/relationships": "r",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships": "r",
+}
 
 # The corpus is Russian and Polish, and the console on this platform is cp1251.
 # A gate that dies printing a document name is a gate that cannot be run, which
@@ -119,7 +158,7 @@ def load_census() -> list[dict]:
 
 def vanished_elements(
     source: str, written: str, oracle, named: set[str]
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, str]]:
     """Strict-declared elements the input had and the written part does not.
 
     This is the `element` signal, and it is the only one of the five that can see
@@ -129,23 +168,17 @@ def vanished_elements(
     which no part-level signal can notice because a present part is not a lost
     part.
 
-    Three rules, all of them learned the hard way by the numbers in that audit:
+    Detection still compares LOCAL names across namespaces: the input is
+    Transitional and the output is Strict, so a qualified comparison finds
+    nothing. Each finding then carries a qualified label plus parent context in
+    `detail`, because `w:left` under `w:tblBorders` (a declared T3 rename) is not
+    the same change as an unexpected `w:left` elsewhere.
 
-      - Compare LOCAL names across namespaces, never qualified names. The input
-        is Transitional and the output is Strict, so every element changes
-        namespace on the way through and a qualified comparison finds nothing.
-      - Skip `mc:AlternateContent`. A `w:txbxContent` appears twice in the input
-        - once in `mc:Choice` and once in the `mc:Fallback` that duplicates it -
-        and once in the output. Counting occurrences called that a loss of one
-        per box; П-8 was that error, and it survived three measurements.
-      - Require the element to be declared by the ECMA set, and require the
-        document to have no lossy record at all. An element the model dropped on
-        purpose is named in the report, and a named removal is a decision.
-
-    `named` is every element name the writer's own report mentions, so a decision
-    is never reported as a defect.
+    Returns `(part, label, detail)` rows. `label` is `prefix:local` when the
+    namespace is known, otherwise the bare local name. `detail` encodes
+    `parent=<local>` for registry matching.
     """
-    found: list[tuple[str, str]] = []
+    found: list[tuple[str, str, str]] = []
     with zipfile.ZipFile(source) as before, zipfile.ZipFile(written) as after:
         for part in sorted(before.namelist()):
             if not part.endswith(".xml") or part not in after.namelist():
@@ -155,32 +188,56 @@ def vanished_elements(
                 new = etree.fromstring(after.read(part))
             except etree.XMLSyntaxError:
                 continue
-            gone = _local_names(old) - _local_names(new)
-            for local in sorted(gone):
+            old_ctx = _element_contexts(old)
+            new_locals = {local for local, _parent, _ns in _element_contexts(new)}
+            seen: set[tuple[str, str, str]] = set()
+            for local, parent, namespace in old_ctx:
                 if local in ("AlternateContent", "Choice", "Fallback"):
+                    continue
+                if local in new_locals:
                     continue
                 if local not in oracle.declared:
                     continue
-                if local in named:
+                if local in named or _qualified(local, namespace) in named:
                     continue
-                found.append((part, local))
+                label = _qualified(local, namespace)
+                detail = f"parent={parent or ''}"
+                key = (part, label, detail)
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append((part, label, detail))
     return found
 
 
-def _local_names(root: etree._Element) -> set[str]:
-    """Every local name in a part, counting neither namespaces nor branches.
-
-    The `mc:Ignorable` branches are stripped first: MCE removes them before
-    conformance is defined, so an element that only ever existed there is not in
-    the written package by construction and is not a loss.
-    """
+def _element_contexts(root: etree._Element) -> list[tuple[str, str | None, str | None]]:
+    """`(local, parent_local, namespace_uri)` for every element after MCE strip."""
     copy = etree.fromstring(etree.tostring(root))
     _strip_mce(copy)
-    return {
-        etree.QName(element).localname
-        for element in copy.iter()
-        if isinstance(element.tag, str)
-    }
+    rows: list[tuple[str, str | None, str | None]] = []
+    for element in copy.iter():
+        if not isinstance(element.tag, str):
+            continue
+        qname = etree.QName(element)
+        parent = element.getparent()
+        parent_local = etree.QName(parent).localname if parent is not None and isinstance(parent.tag, str) else None
+        rows.append((qname.localname, parent_local, qname.namespace))
+    return rows
+
+
+def _qualified(local: str, namespace: str | None) -> str:
+    prefix = NS_PREFIX.get(namespace or "")
+    return f"{prefix}:{local}" if prefix else local
+
+
+def _local_of(label: str) -> str:
+    _, separator, local = label.partition(":")
+    return local if separator else label
+
+
+def _local_names(root: etree._Element) -> set[str]:
+    """Every local name in a part, counting neither namespaces nor branches."""
+    return {local for local, _parent, _ns in _element_contexts(root)}
 
 
 def _strip_mce(root: etree._Element) -> None:
@@ -214,46 +271,27 @@ def census_hits(
 ) -> dict:
     """Maps each signal onto the `TZ-nn` items.
 
-    Four signals, because a schema message is the only one of them that shows up
-    for every defect class this path has:
+    Schema messages and inventory element changes are classified separately:
 
-    `message`    a libxml2 schema violation in our output. The same rule
-                 `xsd_gate.registry_hits` uses, kept separate because the two
-                 registries describe different things: `XS-nn` is what our
-                 writer emits for Strict input, `TZ-nn` is what the byte-level
-                 normalizer leaves in a part it does not regenerate.
-    `extension`  a node in the `extension` basket - a namespace the ECMA set does
-                 not declare, which MCE processing removes and which therefore
-                 is not a schema violation. It is still ours to clean up: a
-                 Strict package is defined after MCE, so shipping the markup and
-                 relying on the consumer to strip it is shipping the document
-                 un-normalized.
-    `dropped`    a part the input package carried and our output does not. This
-                 is the signal that catches the *silent* losses - `docProps/app.xml`,
-                 embedded fonts, `stylesWithEffects.xml` - none of which any schema
-                 can complain about, because a part that is absent is valid.
-    `unaccounted`  a dropped part the write's OWN loss report does not name. This
-                 is the signal the audit §8 meant when it called the embedded
-                 fonts "a silent loss": a dropped part is only a *defect* when
-                 nothing says so. A part the write names is a decision it
-                 reported; a part it does not is a loss it hid. Counting `dropped`
-                 alone would keep every deliberate decision on the list forever.
-    `lossy`      a `Lossy` record in the normalizer's own report.
+    `unmatched_schema` — `message` rows matching no item. These are real XSD
+    violations nobody named. They fail the gate as schema errors.
+    `unclassified_element_changes` — `element` rows matching no disposition
+    item. They keep acceptance incomplete but are **not** schema violations.
 
-    A message matching no item is counted as unmatched and printed: a defect with
-    no name is one nobody is looking for.
+    A blanket drop of every unknown inventory row is forbidden: unclassified
+    rows stay visible and prevent a clean census pass until each group has a
+    disposition (named loss, declared transform, or owned `ours` loss).
     """
     counts = {item["id"]: 0 for item in registry}
-    unmatched: list[tuple[str, str, str]] = []
+    unmatched_schema: list[tuple[str, str, str]] = []
+    unclassified_element_changes: list[tuple[str, str, str]] = []
     for signal, rows in signals.items():
         for where, label, detail in rows:
             for item in registry:
                 if item.get("signal", "message") != signal:
                     continue
                 if signal == "message":
-                    hit = label in item["elements"] and any(
-                        pattern in detail for pattern in item.get("messages", [])
-                    )
+                    hit = _message_matches(item, label, detail)
                 elif signal == "dropped":
                     hit = any(
                         fnmatch.fnmatch(label, pattern) for pattern in item["elements"]
@@ -269,19 +307,117 @@ def census_hits(
                 elif signal == "extension":
                     hit = any(marker in where for marker in item["elements"])
                 elif signal == "element":
-                    hit = label in item["elements"]
+                    hit = element_item_matches(item, where, label, detail)
                 else:
                     hit = any(marker in detail for marker in item["elements"])
                 if hit:
                     counts[item["id"]] += 1
                     break
             else:
-                # Only a `message` or an `element` can be an unnamed defect. A
-                # dropped part, an extension node and a lossy record each name
-                # themselves.
-                if signal in ("message", "element"):
-                    unmatched.append((where, label, detail))
-    return {"counts": counts, "unmatched": unmatched}
+                if signal == "message":
+                    unmatched_schema.append((where, label, detail))
+                elif signal == "element":
+                    unclassified_element_changes.append((where, label, detail))
+    return {
+        "counts": counts,
+        "unmatched_schema": unmatched_schema,
+        "unclassified_element_changes": unclassified_element_changes,
+        # Backward-compatible alias: historical callers that only knew "unmatched"
+        # meant schema messages. Inventory must not ride this name.
+        "unmatched": unmatched_schema,
+    }
+
+
+def _message_matches(item: dict, label: str, detail: str) -> bool:
+    locals_or_labels = set(item["elements"]) | {_local_of(x) for x in item["elements"]}
+    if label not in locals_or_labels and _local_of(label) not in locals_or_labels:
+        return False
+    return any(pattern in detail for pattern in item.get("messages", []))
+
+
+def element_item_matches(item: dict, where: str, label: str, detail: str) -> bool:
+    """Whether an inventory row matches a `signal = "element"` census item.
+
+    Matching uses the qualified label (`w:left`) and optional parent/part
+    filters from the registry. A local-only match without those filters is
+    still accepted when the item lists the bare local name, so older items keep
+    working; new dispositions should set `parents` and/or `parts`.
+    """
+    patterns = item.get("elements") or []
+    local = _local_of(label)
+    name_hit = any(
+        pattern == "*"
+        or pattern == label
+        or pattern == local
+        or _local_of(pattern) == local
+        or (
+            pattern.endswith(":*")
+            and ":" in label
+            and label.startswith(pattern[:-1])
+        )
+        for pattern in patterns
+    )
+    if not name_hit:
+        return False
+
+    parents = item.get("parents") or []
+    if parents:
+        parent = ""
+        for piece in detail.split("|"):
+            if piece.startswith("parent="):
+                parent = piece[len("parent=") :]
+                break
+        if parent not in parents:
+            return False
+
+    parts = item.get("parts") or []
+    if parts:
+        part = where.split(": ", 1)[-1] if ": " in where else where
+        if not any(fnmatch.fnmatch(part, pattern) for pattern in parts):
+            return False
+    return True
+
+
+def decide_census_gate(
+    *,
+    documents: int,
+    validated: int,
+    missing: int,
+    unmatched_schema: int,
+    unclassified_element_changes: int,
+    our_total: int,
+) -> tuple[int, str]:
+    """Census exit decision with schema / inventory / owned-loss separation."""
+    if documents <= 0 or validated <= 0:
+        return (
+            EXIT_UNMEASURABLE,
+            f"FAIL: unmeasurable documents={documents} validated={validated} missing={missing}",
+        )
+    if missing:
+        return (
+            EXIT_UNMEASURABLE,
+            f"FAIL: missing={missing} validated={validated}",
+        )
+    if unmatched_schema:
+        return (
+            EXIT_OPEN,
+            f"FAIL: unmatched_schema={unmatched_schema} schema violation(s) match no registry item",
+        )
+    if our_total:
+        return (
+            EXIT_OPEN,
+            f"FAIL: {our_total} owned census hit(s) (schema/loss/transform of ours) remain open",
+        )
+    if unclassified_element_changes:
+        return (
+            EXIT_OPEN,
+            f"FAIL: unclassified_element_changes={unclassified_element_changes} "
+            "(inventory incomplete; not a schema error)",
+        )
+    return (
+        EXIT_OK,
+        "PASS: schema-clean; inventory dispositions complete; no owned census hits open",
+    )
 
 
 def pictures_lost(source: str, written: str) -> list[str]:
@@ -620,25 +756,21 @@ def main(argv: list[str]) -> int:
         help="keep the normalizer's loss reports in this directory",
     )
     parser.add_argument("--quiet-messages", action="store_true")
-    # No `--written` here, and the absence is deliberate rather than a missing
-    # feature. The `unaccounted` signal is measured against the write's OWN loss
-    # report, so a run handed a directory of packages somebody else produced has
-    # no report to measure against - and it would then call every dropped part
-    # unaccounted, which is a number about nothing wearing the costume of a
-    # number about something. `xsd_gate.py` takes `--written` because its signals
-    # are all read off the bytes; the ones here are not.
-    #
-    # Named explicitly so the refusal is legible rather than argparse's
-    # "unrecognized argument": a reader who assumed the two gates take the same
-    # options should be told which flag is the difference and why.
+    parser.add_argument(
+        "--keep-written",
+        help="write the Transitional corpus into this directory and keep it",
+    )
+    # Judging a pre-built `--written` tree is refused: the `unaccounted` signal
+    # needs the write's own loss report. `--keep-written` is different — this
+    # process still performs the writes and keeps the bytes for receipts.
     parser.add_argument("--written", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.written:
         raise SystemExit(
             "error: census_gate.py measures the write's own loss report, so it cannot judge "
             "packages it did not write.\n"
-            "       It rebuilds the writer and writes its own corpus; use --cli to name a "
-            "binary,\n       or xsd_gate.py --written for the Strict-input gate."
+            "       Use --keep-written DIR to retain packages this run produces, "
+            "or xsd_gate.py --written for the Strict-input gate."
         )
 
     config = xsd_gate.load_config()
@@ -667,8 +799,9 @@ def main(argv: list[str]) -> int:
     cli = xsd_gate.find_cli(args)
 
     temporary = None
-    if args.written:
-        written_root = args.written
+    if args.keep_written:
+        written_root = args.keep_written
+        os.makedirs(written_root, exist_ok=True)
     else:
         written_root = tempfile.mkdtemp(prefix="strict-census-written-")
         temporary = written_root
@@ -703,13 +836,11 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         if not os.path.isdir(corpus):
             raise SystemExit(f"error: census corpus {corpus} is not there")
         destination = os.path.join(written_root, label)
-        reports: dict[str, str] = {}
-        if not os.path.isdir(destination):
-            count, problems, reports = write_transitional(corpus, destination, cli)
-            for name, why in problems:
-                refused.append((name, why))
-        else:
-            count = len([n for n in os.listdir(destination) if n.endswith(".docx")])
+        # Always write here: the unaccounted/element signals need this process's
+        # own loss report. Reusing a foreign tree would invent silent losses.
+        count, problems, reports = write_transitional(corpus, destination, cli)
+        for name, why in problems:
+            refused.append((name, why))
 
         print(f"\n=== corpus `{label}`: {count} document(s), written with --transitional")
         print(f"  {'document':<44} {'IN':>5} {'OUT':>5} {'delta':>7} {'ext':>5} {'gone':>5}")
@@ -754,15 +885,15 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
                 if not names_it(report, shape):
                     unaccounted.update({shape: count})
                     signals["unaccounted"].append((name, shape, ""))
-            for part, local in vanished_elements(
+            for part, label, detail in vanished_elements(
                 os.path.join(corpus, name), path, oracle, _names_in(report)
             ):
-                signals["element"].append((f"{name}: {part}", local, ""))
+                signals["element"].append((f"{name}: {part}", label, detail))
                 # `Counter.update({k: v})` ADDS v; it does not assign it, so the
                 # first spelling of this doubled the count on every hit and printed
                 # 9.2e19 findings over 232 elements.
-                silent_elements[local] += 1
-                silent_element_parts.append(f"{name}: {part} {local}")
+                silent_elements[_local_of(label)] += 1
+                silent_element_parts.append(f"{name}: {part} {label} {detail}")
             if outgoing_count == 0:
                 label_clean += 1
                 clean += 1
@@ -873,28 +1004,32 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
             "\n  because a corpus gate cannot see what the corpus does not contain."
         )
     if silent_elements:
-        # The inventory and the gate are different questions, and printing one
-        # as the other is how an instrument starts lying. Not every element a
-        # regenerated part drops is a defect: the writer rebuilds from the model,
-        # so `w:qFormat`, `w:latentStyles` and `a:alpha` are absent because the
-        # project decided to recompute them, and no registry item claims them.
-        # The inventory below is therefore printed as a MEASUREMENT, and only the
-        # elements a `signal = "element"` registry item names are allowed to fail
-        # the gate - which is what makes adding one an explicit decision.
+        # The inventory and the gate are different questions. Declared transforms
+        # and named losses are matched by `signal = "element"` items; anything
+        # left over is `unclassified_element_changes` (incomplete acceptance),
+        # never an XSD schema failure by itself.
         print(
-            f"\n=== Strict-declared elements a regenerated part dropped, unnamed: "
+            f"\n=== Strict-declared elements a regenerated part dropped: "
             f"{sum(silent_elements.values())} finding(s) over {len(silent_elements)} distinct element(s)"
             "\n    The part is present in both packages, so TZ-15 sees nothing while its content"
-            "\n    shrinks. This is a MEASUREMENT of the whole inventory: an element no registry"
-            "\n    item claims may be a decision rather than a loss, and only a `signal = \"element\"`"
-            "\n    item can turn one of these into a gate failure."
+            "\n    shrinks. Matched rows are named losses or declared transforms; unmatched rows"
+            "\n    are unclassified_element_changes (not schema errors)."
         )
         for local, count in silent_elements.most_common(40):
             print(f"  {local:<28} {count:>4} document(s)")
-    if hits["unmatched"]:
-        print(f"\n=== {len(hits['unmatched'])} violation(s) match no census item")
-        for where, local, message in hits["unmatched"][:40]:
+    if hits["unmatched_schema"]:
+        print(
+            f"\n=== {len(hits['unmatched_schema'])} schema violation(s) match no census item"
+        )
+        for where, local, message in hits["unmatched_schema"][:40]:
             print(f"  {where} [{local}]: {message}")
+    if hits["unclassified_element_changes"]:
+        print(
+            f"\n=== {len(hits['unclassified_element_changes'])} unclassified element change(s) "
+            "(inventory incomplete; not a schema error)"
+        )
+        for where, local, detail in hits["unclassified_element_changes"][:40]:
+            print(f"  {where} [{local}]: {detail}")
 
     if not args.quiet_messages and out_schema:
         print("\n=== every message, so nothing is counted on trust")
@@ -903,18 +1038,20 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
 
     open_items = {item_id: counts[item_id] for item_id in sorted(ours) if counts[item_id]}
     our_total = sum(open_items.values())
-    unmatched_n = len(hits["unmatched"])
+    unmatched_schema_n = len(hits["unmatched_schema"])
+    unclassified_n = len(hits["unclassified_element_changes"])
     print(
         f"\nmeasured: documents={documents} validated={validated} "
-        f"missing={missing} unmatched={unmatched_n} ours={our_total}"
+        f"missing={missing} unmatched_schema={unmatched_schema_n} "
+        f"unclassified_element_changes={unclassified_n} ours={our_total}"
     )
-    code, summary = xsd_gate.decide_gate(
+    code, summary = decide_census_gate(
         documents=documents,
         validated=validated,
         missing=missing,
-        unmatched=unmatched_n,
+        unmatched_schema=unmatched_schema_n,
+        unclassified_element_changes=unclassified_n,
         our_total=our_total,
-        source_total=0,
     )
     print(f"\n{summary}")
     if open_items:

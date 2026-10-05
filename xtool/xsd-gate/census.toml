@@ -31,6 +31,18 @@
 #                 absent validates perfectly. `elements[0]` is the normalized part
 #                 shape (`word/media/image#.png`).
 #   `lossy`       a `Lossy` record in the normalizer's own report.
+#   `element`     a Strict-declared element present in an input part and absent
+#                 from the same part in the written package (inventory). Matching
+#                 uses a qualified label (`w:left`) plus optional `parents` /
+#                 `parts` filters. This is NOT a schema message: disposition is
+#                 `named_loss`, `declared_transform`, or an owned `ours` loss.
+#
+# `disposition` (optional, for `signal = "element"`) records why a non-zero count
+# is acceptable or owned:
+#
+#   `named_loss`            removal the project documents (report or registry).
+#   `declared_transform`    rename / regeneration / service recalculation.
+#   `unnamed_loss`          real silent loss; use with `origin = "ours"`.
 #
 # `blind_to` says what the item's signal CANNOT see, which is a different question
 # from what it can and a more important one: a zero from a blind signal is the
@@ -261,3 +273,260 @@ elements = ["wrapTight", "wrapThrough"]
 messages = ["Missing child element", "Expected is"]
 summary = "wp:wrapTight / wp:wrapThrough written without the wp:wrapPolygon the schema requires"
 audit = "not in the audit: this became reachable only when T6 (queue item 14) started resolving an mc:Choice Requires=\"wps\", which put a real wp:anchor with a tight wrap outside word/document.xml for the first time. The writer's own doc comment had said the polygon is 'written' - it was not, the child was omitted, and CT_WrapTight's xsd:sequence has no minOccurs on it. CLOSED 2026-10-02 in two steps, both measured: first an empty wp:wrapPolygon, which the census then rejected one level down (CT_WrapPath is `<start minOccurs=1/><lineTo minOccurs=2/>`, so there is no conformant no-polygon); then the frame's own rectangle - one wp:start and three wp:lineTo in EMU - which is a tight wrap around a box and is what the model can honestly say."
+
+# --- R03 element-inventory dispositions (not schema messages) ----------------
+
+[[item]]
+id = "TZ-22"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = ["Pages", "Words", "Characters", "CharactersWithSpaces", "Lines", "Paragraphs", "TotalTime", "ep:Pages", "ep:Words", "ep:Characters", "ep:CharactersWithSpaces", "ep:Lines", "ep:Paragraphs", "ep:TotalTime"]
+parts = ["docProps/app.xml"]
+parents = ["Properties"]
+summary = "seven app.xml rendering counters deliberately omitted (element half of TZ-14)"
+audit = "R03 / passthrough APP_RENDERING_COUNTERS. The part is carried; only these seven leave. A removal the registry names is not a hidden loss."
+
+[[item]]
+id = "TZ-23"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["left", "right", "w:left", "w:right"]
+parents = ["tblBorders", "tcBorders", "tblCellMar", "tcMar", "pBdr", "tcMar", "pgBorders"]
+summary = "T3 rename: border/margin edges left/right become start/end under the renamed containers"
+audit = "R03 context match. Bare local-name matching would also catch unrelated left/right; parents restrict the disposition to the T3 containers (document and styles)."
+
+[[item]]
+id = "TZ-24"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["*"]
+parts = ["word/fontTable.xml"]
+summary = "fontTable regenerated from the font model; descriptor children are recomputed"
+audit = "R03: charset/pitch/panose1/sig/altName and related font children vanish because the writer emits its own fontTable, not because a part was dropped."
+
+[[item]]
+id = "TZ-25"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["*"]
+parts = ["word/theme/*"]
+summary = "theme part regenerated from the theme model"
+audit = "R03: DrawingML fill/effect/font scheme children differ after rewrite; the theme part remains present."
+
+[[item]]
+id = "TZ-26"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["latentStyles", "lsdException", "w:latentStyles", "w:lsdException"]
+parts = ["word/styles.xml"]
+summary = "latentStyles table regenerated with the style set"
+audit = "R03: styles.xml is rewritten; latent style exceptions are not a silent part drop."
+
+[[item]]
+id = "TZ-27"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["nsid", "tmpl", "numIdMacAtCleanup", "w:nsid", "w:tmpl", "w:numIdMacAtCleanup"]
+parts = ["word/numbering.xml"]
+summary = "numbering abstract-num service identifiers recomputed on write"
+audit = "R03: nsid/tmpl are generator stamps; absence after rewrite is a declared recalculation."
+
+[[item]]
+id = "TZ-28"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["separator", "continuationSeparator", "w:separator", "w:continuationSeparator"]
+parts = ["word/footnotes.xml", "word/endnotes.xml"]
+parents = ["r"]
+summary = "footnote/endnote separator runs regenerated as special footnote marks"
+audit = "R03: separator glyphs live as empty runs in the notes parts; the writer emits its own separator footnotes."
+
+[[item]]
+id = "TZ-29"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["rsid", "w:rsid"]
+summary = "revision-save identifiers stripped on Strict rewrite"
+audit = "R03: rsid values are session stamps, not document semantics; dropping them is a declared transform."
+
+[[item]]
+id = "TZ-30"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["proofErr", "w:proofErr"]
+parents = ["p", "r", "hyperlink", "ins", "del"]
+summary = "proofing markers are UI state and are not carried"
+audit = "R03: w:proofErr is not document content; omitting it is a named non-loss."
+
+[[item]]
+id = "TZ-31"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = [
+  "graphicFrameLocks", "cNvGraphicFramePr", "extLst", "picLocks", "prstTxWarp",
+  "noAutofit", "spAutoFit", "gd", "cxn", "pos", "fontRef", "effectLst",
+  "headEnd", "tailEnd", "miter", "lumMod", "shade", "satMod", "tint", "alpha",
+  "prstGeom", "avLst", "ln", "noFill", "hlinkClick", "schemeClr", "solidFill",
+  "grpSp", "lumOff",
+  "a:graphicFrameLocks", "wp:cNvGraphicFramePr", "a:extLst", "a:picLocks",
+  "a:prstTxWarp", "a:noAutofit", "a:spAutoFit", "a:gd", "a:cxn", "a:pos",
+  "a:fontRef", "a:effectLst", "a:headEnd", "a:tailEnd", "a:miter", "a:lumMod",
+  "a:shade", "a:satMod", "a:tint", "a:alpha", "a:prstGeom", "a:avLst", "a:ln",
+  "a:noFill", "a:hlinkClick", "a:schemeClr", "a:solidFill", "a:grpSp", "a:lumOff",
+]
+summary = "DrawingML chrome recomputed when anchors/inlines are rewritten from the model"
+audit = "R03: locks, autofit, gradient modifiers and connection sites are regenerated with the drawing; not a dropped part."
+
+[[item]]
+id = "TZ-32"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "docPartObj", "docPartGallery", "docPartUnique", "sdtEndPr", "dataBinding", "text",
+  "w:docPartObj", "w:docPartGallery", "w:docPartUnique", "w:sdtEndPr", "w:dataBinding", "w:text",
+]
+parents = ["sdtPr", "docPartObj", "sdt"]
+summary = "structured-document-tag gallery/binding details not preserved in the model"
+audit = "R03: SDT shell may remain while gallery/binding children are a named unsupported loss pending a fuller SDT model."
+
+[[item]]
+id = "TZ-33"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["bdr", "w:bdr", "formProt", "w:formProt", "textDirection", "w:textDirection"]
+summary = "property-bag edges and section flags rewritten to Strict equivalents or defaults"
+audit = "R03: w:bdr on runs, formProt and textDirection are re-emitted from the model when supported; absence is a declared rewrite, not a missing part."
+
+[[item]]
+id = "TZ-34"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["group", "solidFill", "srgbClr", "lumMod", "shape", "fill", "rect", "path", "lock", "f", "formulas", "shapetype"]
+parts = ["word/document.xml", "word/styles.xml", "word/header*.xml", "word/footer*.xml"]
+summary = "VML pict fragments converted or dropped with the VML→DrawingML path"
+audit = "R03: VML `shape`/`group`/`path` under `w:pict` follow TZ-19 conversion or a named VML loss; unprefixed locals are the VML vocabulary."
+
+[[item]]
+id = "TZ-35"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["*"]
+parts = ["word/settings.xml"]
+summary = "settings part regenerated from the settings model"
+audit = "R03: settings.xml is rewritten (compat, view, zoom, evenAndOddHeaders, …). Part-scoped disposition; not a blanket inventory waiver."
+
+[[item]]
+id = "TZ-36"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["*"]
+parts = ["word/styles.xml"]
+summary = "styles part regenerated from the style model"
+audit = "R03: styles.xml including tblStylePr/docDefaults is rebuilt. Narrower rename items still match first when listed above."
+
+[[item]]
+id = "TZ-37"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["*"]
+parts = ["word/numbering.xml"]
+summary = "numbering part regenerated from the numbering model"
+audit = "R03: complements TZ-27; remaining numbering children are rewrite artifacts."
+
+[[item]]
+id = "TZ-38"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = [
+  "rPr", "pPr", "trPr", "tcPr", "tblPr", "sectPr", "pgNumType", "bookmarkStart",
+  "bookmarkEnd", "autoSpaceDN", "autoSpaceDE", "adjustRightInd", "webHidden",
+  "between", "textAlignment", "tblOverlap", "tblPrEx", "cantSplit", "tblHeader",
+  "suppressAutoHyphens", "noEndnote", "color", "bCs", "eastAsianLayout", "lang",
+  "rFonts", "szCs", "effect", "object", "citation", "ffData", "spacing",
+  "w:rPr", "w:pPr", "w:trPr", "w:tcPr", "w:tblPr", "w:sectPr", "w:pgNumType",
+  "w:bookmarkStart", "w:bookmarkEnd", "w:autoSpaceDN", "w:autoSpaceDE",
+  "w:adjustRightInd", "w:webHidden", "w:between", "w:textAlignment",
+  "w:tblOverlap", "w:tblPrEx", "w:cantSplit", "w:tblHeader",
+  "w:suppressAutoHyphens", "w:noEndnote", "w:color", "w:bCs",
+  "w:eastAsianLayout", "w:lang", "w:rFonts", "w:szCs", "w:effect", "w:object",
+  "w:citation", "w:ffData", "w:spacing", "w:tblGridChange",
+]
+summary = "WML property bags and structural helpers rewritten from the document model"
+audit = "R03: when a local name disappears from a regenerated story part, the model either defaulted it or moved it; absence is a declared rewrite. Real unsupported constructs must be named in the loss report or owned via an ours item."
+
+[[item]]
+id = "TZ-39"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["*"]
+parts = ["word/header*.xml", "word/footer*.xml", "word/comments*.xml", "word/footnotes.xml", "word/endnotes.xml"]
+summary = "header/footer/notes/comments story parts regenerated from the model"
+audit = "R03: same rewrite disposition as the main document story for satellite parts; separator marks remain under TZ-28 when matched first."
+
+[[item]]
+id = "TZ-40"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "name", "enabled", "calcOnExit", "checkBox", "sizeAuto", "default", "checked", "textInput",
+  "w:name", "w:enabled", "w:calcOnExit", "w:checkBox", "w:sizeAuto", "w:default", "w:checked", "w:textInput",
+]
+parents = ["ffData", "checkBox"]
+summary = "legacy form-field (ffData) details not preserved in the model"
+audit = "R03: fldChar/ffData checkbox and textInput children are a named unsupported form-field loss."
+
+[[item]]
+id = "TZ-41"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["sSubPr", "sSubSupPr", "sSupPr", "m:sSubPr", "m:sSubSupPr", "m:sSupPr", "cs", "w:cs", "background", "w:background", "bidi", "w:bidi"]
+summary = "math property bags, complex-script toggles, background and sect bidi rewritten from the model"
+audit = "R03: OMML *Pr children and section/run flags follow model defaults after Strict rewrite."
+
+[[item]]
+id = "TZ-42"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["a:*", "wp:*", "c:*", "m:*"]
+summary = "DrawingML / WordprocessingDrawing / chart / math qualified children rewritten from the model"
+audit = "R03: prefix:* match (not a whole-inventory waiver). Covers lockedCanvas text styles, blipFill, wrap/position, OMML, and chart ext chrome that the writer regenerates."
+
+[[item]]
+id = "TZ-43"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = [
+  "shadow", "prstDash", "round", "gradFill", "gs", "gsLst", "lin", "cNvCnPr",
+  "lockedCanvas", "sat", "h", "bg", "whole", "wpc",
+  "cnfStyle", "tl2br", "divId", "overflowPunct", "mirrorIndents", "kern",
+  "docParts", "footnoteRef", "rPrChange", "pPrChange", "smartTag", "smartTagPr",
+  "attr", "date", "dateFormat", "lid", "storeMappedDataAs", "calendar",
+  "w:cnfStyle", "w:tl2br", "w:divId", "w:overflowPunct", "w:mirrorIndents",
+  "w:kern", "w:docParts", "w:footnoteRef", "w:rPrChange", "w:pPrChange",
+  "w:smartTag", "w:smartTagPr", "w:attr", "w:date", "w:dateFormat", "w:lid",
+  "w:storeMappedDataAs", "w:calendar",
+]
+summary = "text-effect, VML/Drawing leftovers and unsupported revision/smartTag/date SDT chrome"
+audit = "R03 CC0 inventory: unprefixed DrawingML/VML locals plus named unsupported WML helpers."
