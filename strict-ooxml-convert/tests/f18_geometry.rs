@@ -42,12 +42,18 @@ fn text_xy(svg: &str, needle: &str) -> (f64, f64) {
                 && node.text().is_some_and(|text| text.contains(needle))
         })
         .expect(needle);
-    let coord = |name: &str| {
-        node.attribute(name)
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0.0)
-    };
-    (coord("x"), coord("y"))
+    // F07 emits a space-separated cluster `x` list; the first value is the
+    // glyph origin this oracle measures. `y` stays a single baseline.
+    let x = node
+        .attribute("x")
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0.0);
+    let y = node
+        .attribute("y")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0.0);
+    (x, y)
 }
 
 #[test]

@@ -112,7 +112,10 @@ jobs:
         run: python xtool/audit-fixes/text_metric.py
       - name: Audit fixture runner (F00)
         run: python xtool/audit-fixes/run.py --task F00 --phase green --receipt-dir target/audit-fixes/F00/green
-      - name: Public audit suite (F21)
+      # Synthetic public suite: runs measured F00–F20 tests + metadata.
+      # This is not a full audit when matrix.toml still has blocked rows or
+      # when --require-corpus was not requested. Receipt claim makes that explicit.
+      - name: Public synthetic audit suite (F21)
         run: python xtool/audit-fixes/run.py --task F21 --phase green --receipt-dir target/audit-fixes/F21/green
       # A07: `pdf` must compile and render on its own. The default and
       # all-features builds do not cover `--features pdf` with defaults off.

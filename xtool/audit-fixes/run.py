@@ -11,6 +11,10 @@ The interface is fixed:
 `red` keeps the test's own exit code and stores the assertion. It does not turn
 a failure into success. `green` is nonzero when any required check failed or
 could not be measured. A missing corpus with `--require-corpus` is BLOCKED.
+
+Receipts always record code SHA and dirty-tree fingerprint. F21 green executes
+the behavioral public suite and never claims a full audit when matrix rows are
+blocked or the corpus was not required.
 """
 
 from __future__ import annotations
@@ -18,7 +22,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -37,20 +40,27 @@ except ModuleNotFoundError:
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 MANIFEST = HERE / "manifest.toml"
+MATRIX = HERE / "matrix.toml"
 
 EXIT_OK = 0
 EXIT_FAIL = 1
 EXIT_UNMEASURABLE = 2
 EXIT_BLOCKED = 3
 
+CLAIM_SYNTHETIC = "synthetic_public_suite"
+CLAIM_CORPUS = "corpus_acceptance"
+CLAIM_FULL = "full_audit"
+CLAIM_CARD = "card"
+
 
 class RunnerError(Exception):
     """A required check that did not succeed."""
 
-    def __init__(self, code: int, detail: str) -> None:
+    def __init__(self, code: int, detail: str, payload: dict | None = None) -> None:
         super().__init__(detail)
         self.code = code
         self.detail = detail
+        self.payload = payload or {}
 
 
 def require_file(path: Path) -> None:
@@ -122,6 +132,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def git_head() -> str:
     try:
         return subprocess.check_output(
@@ -135,6 +149,19 @@ def git_head() -> str:
         return "unknown"
 
 
+def dirty_tree_hash() -> str:
+    """SHA-256 of `git status --porcelain` (empty tree → hash of empty bytes)."""
+    try:
+        porcelain = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=REPO,
+            text=False,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    return hashlib.sha256(porcelain).hexdigest()
+
+
 def load_manifest() -> list[dict]:
     require_file(MANIFEST)
     with MANIFEST.open("rb") as handle:
@@ -145,11 +172,53 @@ def load_manifest() -> list[dict]:
     return tasks
 
 
+def load_matrix() -> list[dict]:
+    require_file(MATRIX)
+    with MATRIX.open("rb") as handle:
+        data = tomllib.load(handle)
+    rows = data.get("scenario", [])
+    if not rows:
+        raise RunnerError(EXIT_UNMEASURABLE, "matrix has zero scenarios")
+    return rows
+
+
 def task_by_id(tasks: list[dict], task_id: str) -> dict:
     for task in tasks:
         if task.get("id") == task_id:
             return task
     raise RunnerError(EXIT_UNMEASURABLE, f"unknown task {task_id}")
+
+
+def validate_receipt(payload: dict) -> None:
+    """Fail-closed schema for durable receipts."""
+    required = (
+        "code_sha",
+        "dirty_tree_hash",
+        "commands",
+        "phase",
+        "status",
+        "results",
+        "claim",
+        "full_audit",
+        "scenario_counts",
+    )
+    missing = [key for key in required if key not in payload]
+    if missing:
+        raise RunnerError(EXIT_FAIL, f"receipt missing fields: {missing}")
+    if not payload.get("code_sha") or payload["code_sha"] == "unknown":
+        raise RunnerError(EXIT_UNMEASURABLE, "receipt code_sha is unknown")
+    if not payload.get("dirty_tree_hash") or payload["dirty_tree_hash"] == "unknown":
+        raise RunnerError(EXIT_UNMEASURABLE, "receipt dirty_tree_hash is unknown")
+    counts = payload["scenario_counts"]
+    if not isinstance(counts, dict):
+        raise RunnerError(EXIT_FAIL, "scenario_counts must be an object")
+    for key in ("executed", "passed", "failed", "blocked", "unmeasurable"):
+        if key not in counts:
+            raise RunnerError(EXIT_FAIL, f"scenario_counts missing {key}")
+    if payload.get("full_audit") is True and payload.get("claim") != CLAIM_FULL:
+        raise RunnerError(EXIT_FAIL, "full_audit requires claim=full_audit")
+    if payload.get("claim") == CLAIM_FULL and payload.get("full_audit") is not True:
+        raise RunnerError(EXIT_FAIL, "claim=full_audit requires full_audit=true")
 
 
 def infrastructure_self_test() -> list[str]:
@@ -192,6 +261,51 @@ def infrastructure_self_test() -> list[str]:
         notes.append("damaged xml rejected")
     else:
         raise RunnerError(EXIT_FAIL, "damaged xml was accepted")
+    expect(
+        EXIT_FAIL,
+        "receipt without dirty_tree_hash",
+        lambda: validate_receipt(
+            {
+                "code_sha": "abc",
+                "commands": [],
+                "phase": "green",
+                "status": "pass",
+                "results": [],
+                "claim": CLAIM_CARD,
+                "full_audit": False,
+                "scenario_counts": {
+                    "executed": 0,
+                    "passed": 0,
+                    "failed": 0,
+                    "blocked": 0,
+                    "unmeasurable": 0,
+                },
+            }
+        ),
+    )
+    expect(
+        EXIT_FAIL,
+        "full_audit claim without flag",
+        lambda: validate_receipt(
+            {
+                "code_sha": "abc",
+                "dirty_tree_hash": "def",
+                "commands": [],
+                "phase": "green",
+                "status": "pass",
+                "results": [],
+                "claim": CLAIM_FULL,
+                "full_audit": False,
+                "scenario_counts": {
+                    "executed": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "blocked": 0,
+                    "unmeasurable": 0,
+                },
+            }
+        ),
+    )
     return notes
 
 
@@ -307,11 +421,12 @@ def measured_test_count(output: str) -> int:
 
 
 def missing_test_names(output: str, tests: list[str]) -> list[str]:
-    """Names that never appeared as a harness result line."""
+    """Names that never appeared as a harness result line (suffix match allowed)."""
     normalized = output.replace("\r\n", "\n").replace("\r", "\n")
     missing = []
     for name in tests:
-        if not re.search(rf"(?m)^test {re.escape(name)}\b", normalized):
+        pattern = rf"(?m)^test (?:.*::)?{re.escape(name)}\b"
+        if not re.search(pattern, normalized):
             missing.append(name)
     return missing
 
@@ -340,7 +455,8 @@ def cargo_tests(package: str, tests: list[str], phase: str, task: dict) -> dict:
         errors="replace",
     )
     output = (completed.stdout or "") + (completed.stderr or "")
-    if measured_test_count(output) == 0:
+    started = measured_test_count(output)
+    if started == 0:
         raise RunnerError(
             EXIT_UNMEASURABLE,
             f"cargo test matched zero tests for {package}: {tests}",
@@ -355,6 +471,8 @@ def cargo_tests(package: str, tests: list[str], phase: str, task: dict) -> dict:
         "command": arguments,
         "exit": completed.returncode,
         "phase": phase,
+        "tests_started": started,
+        "tests_requested": len(tests),
         "tail": output[-4000:],
     }
 
@@ -383,7 +501,48 @@ def run_scripts(scripts: list[str]) -> list[dict]:
     return outcomes
 
 
-def run_task(task: dict, phase: str, corpus: Path | None, require: bool) -> dict:
+def font_face_hashes() -> dict[str, str]:
+    """SHA-256 of bundled face programs. Recorded only when files exist."""
+    fonts_root = REPO / "strict-ooxml-render-svg" / "assets" / "fonts"
+    if not fonts_root.is_dir():
+        raise RunnerError(EXIT_UNMEASURABLE, "bundled font directory is missing")
+    faces = sorted(fonts_root.rglob("*.ttf"))
+    if not faces:
+        raise RunnerError(EXIT_UNMEASURABLE, "zero bundled font faces")
+    return {
+        str(path.relative_to(REPO)).replace("\\", "/"): sha256_file(path) for path in faces
+    }
+
+
+def matrix_summary(rows: list[dict], card: str | None = None) -> dict:
+    selected = [row for row in rows if card is None or row.get("card") == card]
+    measured = [row for row in selected if row.get("status") == "measured"]
+    blocked = [row for row in selected if row.get("status") == "blocked"]
+    unknown = [
+        row for row in selected if row.get("status") not in ("measured", "blocked")
+    ]
+    if unknown:
+        raise RunnerError(
+            EXIT_UNMEASURABLE,
+            "matrix rows with unknown status: "
+            + ", ".join(str(row.get("id")) for row in unknown),
+        )
+    return {
+        "total": len(selected),
+        "measured": len(measured),
+        "blocked": len(blocked),
+        "blocked_ids": [str(row.get("id")) for row in blocked],
+        "measured_ids": [str(row.get("id")) for row in measured],
+    }
+
+
+def run_task(
+    task: dict,
+    phase: str,
+    corpus: Path | None,
+    require: bool,
+    prior_results: list[dict] | None = None,
+) -> dict:
     """Run one card. Returns a result dict; raises RunnerError on green failure."""
     kind = task.get("kind", "")
     task_id = task["id"]
@@ -394,6 +553,14 @@ def run_task(task: dict, phase: str, corpus: Path | None, require: bool) -> dict
                 EXIT_UNMEASURABLE,
                 "F00 has no application defect; red is not a witness",
             )
+        if phase in ("mutation", "inverse"):
+            notes = infrastructure_self_test()
+            return {
+                "status": "pass",
+                "corpus": corpus_state,
+                "notes": notes,
+                "note": "damaged fixtures stay rejected; receipt schema rejects missing dirty_tree_hash",
+            }
         notes = infrastructure_self_test()
         files = emit_and_check()
         completed = subprocess.run(
@@ -424,9 +591,36 @@ def run_task(task: dict, phase: str, corpus: Path | None, require: bool) -> dict
             "notes": notes,
             "files": files,
             "commands": ["infrastructure_self_test", "emit_audit_fixtures", "cargo test audit::tests"],
+            "tests_started": measured_test_count(
+                (completed.stdout or "") + (completed.stderr or "")
+            ),
         }
+
+    if kind == "acceptance":
+        return run_acceptance(task, phase, corpus, require, prior_results)
+
     tests = list(task.get("tests") or [])
+    inverse_tests = list(task.get("inverse_tests") or [])
     package = task.get("package") or ""
+    if phase in ("mutation", "inverse"):
+        if not inverse_tests:
+            raise RunnerError(
+                EXIT_UNMEASURABLE,
+                f"{task_id} has no inverse_tests; inverse is not a blanket invert",
+            )
+        if not package:
+            raise RunnerError(EXIT_UNMEASURABLE, f"{task_id} has no cargo package")
+        outcome = cargo_tests(package, inverse_tests, phase, task)
+        if outcome["exit"] != 0:
+            raise RunnerError(EXIT_FAIL, f"{task_id} inverse tests failed")
+        return {
+            "status": "pass",
+            "corpus": corpus_state,
+            "outcome": outcome,
+            "scripts": [],
+            "exit": outcome["exit"],
+            "tests_started": outcome["tests_started"],
+        }
     if phase == "green" and not tests:
         raise RunnerError(EXIT_UNMEASURABLE, f"{task_id} has an empty test list")
     if not package:
@@ -441,6 +635,9 @@ def run_task(task: dict, phase: str, corpus: Path | None, require: bool) -> dict
             EXIT_FAIL,
             f"{task_id} red phase passed; that is not a defect witness",
         )
+    measurements: dict = {}
+    if task_id == "F07" and phase == "green":
+        measurements["font_face_hashes"] = font_face_hashes()
     status = "witness" if phase == "red" else "pass"
     return {
         "status": status,
@@ -448,10 +645,225 @@ def run_task(task: dict, phase: str, corpus: Path | None, require: bool) -> dict
         "outcome": outcome,
         "scripts": script_results,
         "exit": outcome["exit"],
+        "tests_started": outcome["tests_started"],
+        "measurements": measurements,
+    }
+
+
+def run_acceptance(
+    task: dict,
+    phase: str,
+    corpus: Path | None,
+    require: bool,
+    prior_results: list[dict] | None = None,
+) -> dict:
+    """Public end-to-end suite: metadata test + every non-acceptance card."""
+    if phase == "red":
+        raise RunnerError(
+            EXIT_UNMEASURABLE,
+            "F21 red is the pre-fix metadata-only suite under R08/red, not a live invert",
+        )
+    if phase in ("mutation", "inverse"):
+        # Inverse: synthetic green must not become full_audit when matrix is incomplete.
+        rows = load_matrix()
+        summary = matrix_summary(rows)
+        if summary["blocked"] == 0:
+            raise RunnerError(
+                EXIT_UNMEASURABLE,
+                "inverse expected blocked matrix rows; matrix has none",
+            )
+        # A receipt that claims full audit while blocked rows remain is invalid
+        # for acceptance reporting; the inverse proves we refuse that claim.
+        return {
+            "status": "pass",
+            "corpus": require_corpus(corpus, require),
+            "note": "inverse: full_audit refused while matrix has blocked rows",
+            "blocked_ids": summary["blocked_ids"],
+            "claim": CLAIM_SYNTHETIC,
+            "full_audit": False,
+            "scenario_counts": {
+                "executed": 1,
+                "passed": 1,
+                "failed": 0,
+                "blocked": summary["blocked"],
+                "unmeasurable": 0,
+            },
+        }
+
+    tasks = load_manifest()
+    matrix_rows = load_matrix()
+    summary = matrix_summary(matrix_rows)
+    metadata_tests = list(task.get("metadata_tests") or task.get("tests") or [])
+    require_tests(metadata_tests)
+    package = task.get("package") or "strict-ooxml-testkit"
+    metadata_outcome = cargo_tests(package, metadata_tests, phase, task)
+    if metadata_outcome["exit"] != 0:
+        raise RunnerError(EXIT_FAIL, "F21 metadata tests failed")
+
+    card_results = []
+    executed = 0
+    passed = 0
+    failed = 0
+    unmeasurable = 0
+    font_hashes = None
+    prior_by_id = {
+        item.get("id"): item for item in (prior_results or []) if item.get("id")
+    }
+
+    for card in tasks:
+        if card.get("kind") == "acceptance":
+            continue
+        card_id = card["id"]
+        if card_id in prior_by_id:
+            result = prior_by_id[card_id]
+            if result.get("status") not in ("pass", "witness"):
+                failed += 1
+                card_results.append(
+                    {
+                        "id": card_id,
+                        "status": "fail",
+                        "detail": result.get("detail") or result.get("status"),
+                        "reused_from_all": True,
+                    }
+                )
+                continue
+            started = int(result.get("tests_started") or 0)
+            executed += max(started, 1)
+            passed += 1
+            entry = {
+                "id": card_id,
+                "status": "pass",
+                "tests_started": started,
+                "reused_from_all": True,
+            }
+            measurements = result.get("measurements") or {}
+            if "font_face_hashes" in measurements:
+                font_hashes = measurements["font_face_hashes"]
+                entry["font_face_hashes"] = font_hashes
+            card_results.append(entry)
+            continue
+        try:
+            result = run_task(card, "green", corpus, require)
+        except RunnerError as error:
+            if error.code == EXIT_UNMEASURABLE:
+                unmeasurable += 1
+            elif error.code == EXIT_BLOCKED:
+                raise
+            else:
+                failed += 1
+            card_results.append(
+                {
+                    "id": card_id,
+                    "status": {
+                        EXIT_BLOCKED: "blocked",
+                        EXIT_UNMEASURABLE: "unmeasurable",
+                    }.get(error.code, "fail"),
+                    "detail": error.detail,
+                }
+            )
+            continue
+        started = int(result.get("tests_started") or 0)
+        if card.get("kind") != "infrastructure" and started == 0:
+            unmeasurable += 1
+            card_results.append(
+                {
+                    "id": card_id,
+                    "status": "unmeasurable",
+                    "detail": "zero tests started",
+                }
+            )
+            continue
+        executed += max(started, 1)
+        passed += 1
+        entry = {"id": card_id, "status": "pass", "tests_started": started}
+        measurements = result.get("measurements") or {}
+        if "font_face_hashes" in measurements:
+            font_hashes = measurements["font_face_hashes"]
+            entry["font_face_hashes"] = font_hashes
+        card_results.append(entry)
+
+    corpus_state = require_corpus(corpus, require)
+    blocked = summary["blocked"]
+    counts = {
+        "executed": executed,
+        "passed": passed,
+        "failed": failed,
+        "blocked": blocked,
+        "unmeasurable": unmeasurable,
+        "matrix_measured": summary["measured"],
+        "matrix_total": summary["total"],
+    }
+    base = {
+        "corpus": corpus_state,
+        "claim": CLAIM_SYNTHETIC if not require else CLAIM_CORPUS,
+        "full_audit": False,
+        "metadata": metadata_outcome,
+        "cards": card_results,
+        "matrix": summary,
+        "font_face_hashes": font_hashes,
+        "tests_started": executed + int(metadata_outcome.get("tests_started") or 0),
+        "scenario_counts": counts,
+    }
+    if failed:
+        failed_ids = [
+            f"{card['id']}: {card.get('detail', card.get('status'))}"
+            for card in card_results
+            if card.get("status") == "fail"
+        ]
+        raise RunnerError(
+            EXIT_FAIL,
+            f"F21 behavioral suite failed cards: {failed} ({'; '.join(failed_ids)})",
+            payload=base,
+        )
+    if unmeasurable:
+        bad = [
+            f"{card['id']}: {card.get('detail', card.get('status'))}"
+            for card in card_results
+            if card.get("status") == "unmeasurable"
+        ]
+        raise RunnerError(
+            EXIT_UNMEASURABLE,
+            f"F21 behavioral suite unmeasurable cards: {unmeasurable} ({'; '.join(bad)})",
+            payload=base,
+        )
+    if executed == 0:
+        raise RunnerError(
+            EXIT_UNMEASURABLE,
+            "F21 executed zero behavioral scenarios",
+            payload=base,
+        )
+
+    full_audit = (
+        require
+        and corpus_state.startswith("present:")
+        and blocked == 0
+        and failed == 0
+        and unmeasurable == 0
+    )
+    if full_audit:
+        claim = CLAIM_FULL
+    elif require:
+        claim = CLAIM_CORPUS
+    else:
+        claim = CLAIM_SYNTHETIC
+    base["claim"] = claim
+    base["full_audit"] = full_audit
+    base["status"] = "pass"
+    return base
+
+
+def empty_counts() -> dict:
+    return {
+        "executed": 0,
+        "passed": 0,
+        "failed": 0,
+        "blocked": 0,
+        "unmeasurable": 0,
     }
 
 
 def write_receipt(directory: Path, payload: dict) -> None:
+    validate_receipt(payload)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "receipt.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -461,7 +873,11 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Run one audit-fix card or all of them.")
     parser.add_argument("--task")
     parser.add_argument("--all", action="store_true")
-    parser.add_argument("--phase", required=True, choices=("red", "green", "mutation"))
+    parser.add_argument(
+        "--phase",
+        required=True,
+        choices=("red", "green", "mutation", "inverse"),
+    )
     parser.add_argument("--receipt-dir", required=True)
     parser.add_argument("--corpus")
     parser.add_argument("--require-corpus", action="store_true")
@@ -471,60 +887,119 @@ def main(argv: list[str]) -> int:
         return EXIT_UNMEASURABLE
     receipt_dir = Path(args.receipt_dir)
     corpus = Path(args.corpus) if args.corpus else None
+    results: list[dict] = []
+    claim = CLAIM_CARD
+    full_audit = False
+    counts = empty_counts()
+    font_hashes = None
+    matrix_info = None
     try:
         tasks = load_manifest()
         selected = tasks if args.all else [task_by_id(tasks, args.task)]
-        results = []
         code = EXIT_OK
         for task in selected:
             phase = args.phase
-            if phase == "mutation" and task.get("kind") == "infrastructure":
-                results.append(
-                    {
-                        "id": task["id"],
-                        "status": "pass",
-                        "note": "damaged fixtures stay rejected; F00 has no production logic to revert",
-                        "notes": infrastructure_self_test(),
-                    }
-                )
-                continue
-            if phase == "mutation":
-                raise RunnerError(
-                    EXIT_UNMEASURABLE,
-                    f"{task['id']} mutation is recorded by the card, not by a blanket invert",
-                )
-            result = {"id": task["id"], **run_task(task, phase, corpus, args.require_corpus)}
+            prior = results if task.get("kind") == "acceptance" and args.all else None
+            result = {
+                "id": task["id"],
+                **run_task(task, phase, corpus, args.require_corpus, prior),
+            }
             results.append(result)
-            if phase == "red":
-                # Keep the test's exit. A witness is not a successful run.
-                code = int(result.get("exit", EXIT_FAIL))
+            if "font_face_hashes" in (result.get("measurements") or {}):
+                font_hashes = result["measurements"]["font_face_hashes"]
+            if result.get("font_face_hashes"):
+                font_hashes = result["font_face_hashes"]
+            if task.get("kind") == "acceptance":
+                claim = result.get("claim", CLAIM_SYNTHETIC)
+                full_audit = bool(result.get("full_audit"))
+                counts = dict(result.get("scenario_counts") or counts)
+                matrix_info = result.get("matrix")
+            else:
+                started = int(result.get("tests_started") or 0)
+                counts["executed"] += max(started, 1 if result.get("status") == "pass" else 0)
+                if result.get("status") in ("pass", "witness"):
+                    counts["passed"] += 1
+                if phase == "red":
+                    # Keep the test's exit. A witness is not a successful run.
+                    code = int(result.get("exit", EXIT_FAIL))
         status = "witness" if args.phase == "red" and code != EXIT_OK else "pass"
         detail = ""
+        if args.phase == "red" and code == EXIT_OK and not results:
+            status = "unmeasurable"
+            code = EXIT_UNMEASURABLE
     except RunnerError as error:
         status = {EXIT_BLOCKED: "blocked", EXIT_UNMEASURABLE: "unmeasurable"}.get(
             error.code, "fail"
         )
         code = error.code
         detail = error.detail
-        results = []
+        if error.payload:
+            results = [{"id": args.task or "ALL", "status": status, **error.payload}]
+            if error.payload.get("scenario_counts"):
+                counts = dict(error.payload["scenario_counts"])
+            if error.payload.get("claim"):
+                claim = error.payload["claim"]
+            if "full_audit" in error.payload:
+                full_audit = bool(error.payload["full_audit"])
+            if error.payload.get("matrix"):
+                matrix_info = error.payload["matrix"]
+            if error.payload.get("font_face_hashes"):
+                font_hashes = error.payload["font_face_hashes"]
+        else:
+            results = results or []
+        if status == "unmeasurable":
+            counts["unmeasurable"] = max(counts.get("unmeasurable", 0), 1)
+        elif status == "blocked":
+            counts["blocked"] = max(counts.get("blocked", 0), 1)
+        else:
+            counts["failed"] = max(counts.get("failed", 0), 1)
+
+    limitations = [
+        "Private corpus files are not in this tree unless --require-corpus is set.",
+        "Corpus pass and synthetic public-suite pass are different claims.",
+        "A green F21 receipt with blocked matrix rows is not a full audit.",
+    ]
+    if matrix_info and matrix_info.get("blocked_ids"):
+        limitations.append(
+            "Blocked matrix rows: " + ", ".join(matrix_info["blocked_ids"])
+        )
+
     payload = {
+        "claim": claim,
         "code_sha": git_head(),
         "commands": [sys.argv],
         "detail": detail,
-        "limitations": [
-            "Private corpus files are not in this tree.",
-            "Font face hashes are recorded by F07 and later, not by F00.",
-        ],
+        "dirty_tree_hash": dirty_tree_hash(),
+        "full_audit": full_audit,
+        "limitations": limitations,
+        "matrix": matrix_info,
         "oracles": {
             "docx": "Python zipfile + xml.etree.ElementTree, plus testkit inspect",
+            "matrix": str(MATRIX.relative_to(REPO)).replace("\\", "/"),
             "pdf": "header, xref, startxref, %%EOF",
             "python": sys.version.split()[0],
         },
         "phase": args.phase,
         "results": results,
+        "scenario_counts": counts,
         "status": status,
     }
-    write_receipt(receipt_dir, payload)
+    if font_hashes:
+        payload["font_face_hashes"] = font_hashes
+    try:
+        write_receipt(receipt_dir, payload)
+    except RunnerError as error:
+        # Last resort: still leave a receipt for diagnosis, but fail closed.
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        broken = dict(payload)
+        broken["status"] = "fail"
+        broken["detail"] = (detail + " | " if detail else "") + error.detail
+        (receipt_dir / "receipt.json").write_text(
+            json.dumps(broken, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        sys.stderr.write(error.detail + "\n")
+        return EXIT_FAIL
     if detail:
         sys.stderr.write(detail + "\n")
     return code

@@ -42,12 +42,14 @@ fn texts(svg: &str) -> Vec<(String, f64)> {
         .descendants()
         .filter(|node| node.is_element() && node.tag_name().name() == "text")
         .map(|node| {
-            (
-                node.text().unwrap_or_default().to_owned(),
-                node.attribute("x")
-                    .and_then(|value| value.parse().ok())
-                    .unwrap_or(0.0),
-            )
+            // F07 emits a space-separated cluster `x` list; the first value is
+            // the run origin used by list indent oracles.
+            let x = node
+                .attribute("x")
+                .and_then(|value| value.split_whitespace().next())
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(0.0);
+            (node.text().unwrap_or_default().to_owned(), x)
         })
         .collect()
 }

@@ -1,0 +1,694 @@
+# FIX_PLAN scenario → exact test → oracle status.
+# status: measured | blocked
+# kind: primary_red | matrix | infrastructure | inverse | gate | metadata
+# A blocked row is not a pass. F21 green is synthetic_public_suite when any
+# required matrix row is blocked or corpus was not required.
+
+[[scenario]]
+card = "F00"
+id = "F00-infra-fail-closed"
+kind = "infrastructure"
+test = "infrastructure_self_test"
+oracle = "missing file/tool/empty tests/zero denominator/missing corpus → nonzero; damaged XML rejected"
+status = "measured"
+
+[[scenario]]
+card = "F00"
+id = "F00-emit-fixtures"
+kind = "infrastructure"
+test = "emit_audit_fixtures"
+oracle = "generated packages accepted/rejected by independent ZIP/XML/PDF checks; zero emit fails"
+status = "measured"
+
+[[scenario]]
+card = "F01"
+id = "F01-primary-substitution"
+kind = "primary_red"
+test = "f01_text_metric_rejects_total_substitution"
+oracle = "want=abc have=Z → recall=0, not 1"
+status = "measured"
+
+[[scenario]]
+card = "F01"
+id = "F01-matrix-lcs"
+kind = "matrix"
+test = "f01_text_metric_matrix"
+oracle = "abc→c recall=1/3; abc→ab/ac/bc; abc→cba not 100%; precision drops on extra text"
+status = "measured"
+
+[[scenario]]
+card = "F01"
+id = "F01-table-headers"
+kind = "matrix"
+test = "f01_table_text_is_in_the_body_and_headers_stay_separate"
+oracle = "table text in body; headers/footers separate regions"
+status = "measured"
+
+[[scenario]]
+card = "F01"
+id = "F01-xsd-missing-output"
+kind = "gate"
+test = "xtool/xsd-gate/test_f01_gates.py::missing_output"
+oracle = "expected document without result → nonzero, validated=0"
+status = "measured"
+
+[[scenario]]
+card = "F01"
+id = "F01-census-unknown"
+kind = "gate"
+test = "xtool/xsd-gate/test_f01_gates.py::unknown_violation"
+oracle = "unknown Strict settings violation → nonzero"
+status = "measured"
+
+[[scenario]]
+card = "F02"
+id = "F02-pdf-feature"
+kind = "primary_red"
+test = "f02_pdf_feature_renders"
+oracle = "pdf-only feature builds and render_pdf runs"
+status = "measured"
+
+[[scenario]]
+card = "F02"
+id = "F02-feature-matrix"
+kind = "matrix"
+test = "ci-feature-matrix"
+oracle = "none/svg/pdf/write/convert/default/all-features compile; pdf example runs"
+status = "measured"
+notes = "Executed by CI Feature matrix job, not by --task F02 alone"
+
+[[scenario]]
+card = "F03"
+id = "F03-normalization-exit"
+kind = "primary_red"
+test = "f03_normalization_loss_changes_exit"
+oracle = "VML-loss DOCX → exit=1, normalization.lossy>0"
+status = "measured"
+
+[[scenario]]
+card = "F03"
+id = "F03-writer-pdf-exit"
+kind = "primary_red"
+test = "f03_writer_loss_changes_pdf_exit"
+oracle = "writer media loss → Write stage Degraded"
+status = "measured"
+
+[[scenario]]
+card = "F03"
+id = "F03-matrix-stage-combos"
+kind = "matrix"
+test = ""
+oracle = "only-normalization / only-conversion / only-write / dual-stage / fatal / inferred / recovered / clean"
+status = "blocked"
+blocker = "No dedicated stage-combination fixtures beyond the two primary RED witnesses"
+
+[[scenario]]
+card = "F04"
+id = "F04-settings-bitmap"
+kind = "primary_red"
+test = "f04_settings_bitmap_is_strict"
+oracle = "val=0001 → allStyles=true, no val"
+status = "measured"
+
+[[scenario]]
+card = "F04"
+id = "F04-crop"
+kind = "primary_red"
+test = "f04_crop_percentage_is_strict"
+oracle = "srcRect thousandths → Strict percentages"
+status = "measured"
+
+[[scenario]]
+card = "F04"
+id = "F04-suffix-order"
+kind = "primary_red"
+test = "f04_level_suffix_order_is_strict"
+oracle = "suff before lvlText; nothing preserved"
+status = "measured"
+
+[[scenario]]
+card = "F04"
+id = "F04-math-onoff"
+kind = "primary_red"
+test = "f04_math_onoff_is_strict"
+oracle = "smallFrac=off → false"
+status = "measured"
+
+[[scenario]]
+card = "F04"
+id = "F04-matrix-bitflags-crop-variants"
+kind = "matrix"
+test = ""
+oracle = "individual bit flags, 2002 mask, signed/fractional/zero crop, successive writes"
+status = "blocked"
+blocker = "Primary scalars measured; full bit/crop variant matrix not separate tests"
+
+[[scenario]]
+card = "F05"
+id = "F05-two-page"
+kind = "primary_red"
+test = "f05_visual_preserves_two_page_sections"
+oracle = "612×792 and 842×595 survive write/reopen; 2 visual pages"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-three-sizes"
+kind = "matrix"
+test = "f05_three_page_sizes_survive_the_round_trip"
+oracle = "three page sizes round-trip"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-empty-middle"
+kind = "matrix"
+test = "f05_empty_middle_page_keeps_its_size"
+oracle = "empty middle page keeps size"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-empty-last"
+kind = "matrix"
+test = "f05_empty_last_page_is_a_body_section"
+oracle = "empty last page is a body section"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-last-table"
+kind = "matrix"
+test = "f05_last_page_table_does_not_grow_a_paragraph"
+oracle = "last-page table does not invent an empty page"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-page-range"
+kind = "matrix"
+test = "f05_page_range_drops_the_unselected_size"
+oracle = "page range drops unselected size"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-identical-neighbours"
+kind = "matrix"
+test = "f05_identical_neighbours_break_on_a_size_change"
+oracle = "identical neighbours break on size change"
+status = "measured"
+
+[[scenario]]
+card = "F05"
+id = "F05-semantic-blocks"
+kind = "matrix"
+test = "f05_semantic_blocks_keep_their_page_size"
+oracle = "semantic blocks keep page size"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-direct-italic"
+kind = "primary_red"
+test = "f06_direct_italic_is_not_xor"
+oracle = "pPr/rPr i + run i stays italic"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-style-chain"
+kind = "matrix"
+test = "f06_style_chain_xors_and_direct_assigns"
+oracle = "style basedOn XOR then direct assign"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-character-style"
+kind = "matrix"
+test = "f06_character_style_xor_stops_at_direct_formatting"
+oracle = "character style XOR stops at direct"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-latin-cyrillic-cs"
+kind = "matrix"
+test = "f06_direct_italic_covers_latin_and_cyrillic_and_cs"
+oracle = "Latin/Cyrillic/CS italic"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-empty-mark"
+kind = "matrix"
+test = "f06_empty_mark_leaves_direct_flags_on_their_run"
+oracle = "empty mark leaves direct flags"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-neighbour-isolation"
+kind = "matrix"
+test = "f06_mark_does_not_flip_a_neighbouring_run"
+oracle = "neighbouring run not flipped"
+status = "measured"
+
+[[scenario]]
+card = "F06"
+id = "F06-caps-vanish"
+kind = "matrix"
+test = "f06_caps_and_vanish_assign_direct_values"
+oracle = "caps/vanish direct values"
+status = "measured"
+
+[[scenario]]
+card = "F07"
+id = "F07-resource-travels"
+kind = "primary_red"
+test = "f07_font_resource_travels_with_svg"
+oracle = "standalone SVG embeds chosen face bytes + resource_hash comment"
+status = "measured"
+
+[[scenario]]
+card = "F07"
+id = "F07-cs-cyrillic"
+kind = "primary_red"
+test = "f07_cs_font_does_not_override_cyrillic"
+oracle = "cs does not override ascii/hAnsi for Cyrillic"
+status = "measured"
+
+[[scenario]]
+card = "F07"
+id = "F07-unknown-fallback"
+kind = "primary_red"
+test = "f07_unknown_face_has_consistent_fallback"
+oracle = "unknown CSS family → one bundled face for measure and delivery"
+status = "measured"
+
+[[scenario]]
+card = "F07"
+id = "F07-matrix-theme-tabs-missing-glyph"
+kind = "matrix"
+test = ""
+oracle = "theme major/minor, tab, missing glyph, corrupt resource, system fonts off"
+status = "blocked"
+blocker = "R05 shaped path + three F07 witnesses measured; remaining theme/tab/glyph matrix and browser face load are R09"
+
+[[scenario]]
+card = "F07"
+id = "F07-inverse-naive-advance"
+kind = "inverse"
+test = "inverse_naive_per_char_sum_is_not_shaped_for_kern_pair"
+oracle = "naive hmtx sum ≠ shaped advance for kern pair"
+status = "measured"
+notes = "Owned by R05 inverse log; also runnable via --lib font::"
+
+[[scenario]]
+card = "F08"
+id = "F08-first-line"
+kind = "primary_red"
+test = "f08_first_line_indent_keeps_right_boundary"
+oracle = "glyphs stay within right edge 600 px"
+status = "measured"
+
+[[scenario]]
+card = "F08"
+id = "F08-hanging"
+kind = "matrix"
+test = "f08_hanging_indent_keeps_the_same_right_edge"
+oracle = "hanging indent keeps right edge"
+status = "measured"
+
+[[scenario]]
+card = "F08"
+id = "F08-exact-pitch"
+kind = "matrix"
+test = "f08_exact_line_pitch_is_the_declared_line"
+oracle = "exact line pitch is declared line"
+status = "measured"
+
+[[scenario]]
+card = "F08"
+id = "F08-overflow-report"
+kind = "matrix"
+test = "f08_indent_past_the_edge_is_reported_not_clipped"
+oracle = "indent past edge reported, not silently clipped"
+status = "measured"
+
+[[scenario]]
+card = "F08"
+id = "F08-long-token"
+kind = "matrix"
+test = "f08_long_token_breaks_inside_the_right_edge"
+oracle = "long token breaks inside right edge"
+status = "measured"
+
+[[scenario]]
+card = "F08"
+id = "F08-matrix-rtl-justify-containers"
+kind = "matrix"
+test = ""
+oracle = "RTL, justify, cell/frame/text box indent cases"
+status = "blocked"
+blocker = "No RTL/justify/container-indent dedicated F08 tests in tree"
+
+[[scenario]]
+card = "F09"
+id = "F09-right-tab"
+kind = "primary_red"
+test = "f09_right_tab_aligns_segment_end"
+oracle = "right tab segment end at stop ±0.25; dot leader present"
+status = "measured"
+
+[[scenario]]
+card = "F09"
+id = "F09-underscore-leader"
+kind = "matrix"
+test = "f09_underscore_leader_does_not_move_the_word"
+oracle = "underscore leader does not move the word"
+status = "measured"
+
+[[scenario]]
+card = "F09"
+id = "F09-matrix-alignments-fields"
+kind = "matrix"
+test = ""
+oracle = "left/center/decimal/bar/clear, nested field+hyperlink, RTL"
+status = "blocked"
+blocker = "Only right-tab and underscore-leader witnesses exist"
+
+[[scenario]]
+card = "F10"
+id = "F10-partial-zero"
+kind = "primary_red"
+test = "f10_partial_zero_indent_does_not_overlap_marker"
+oracle = "explicit start=0 preserved; marker and text do not overlap"
+status = "measured"
+
+[[scenario]]
+card = "F10"
+id = "F10-matrix-levels-suffix"
+kind = "matrix"
+test = ""
+oracle = "bullet/decimal, levels, suffix tab/space/nothing, RTL, narrow cell"
+status = "blocked"
+blocker = "Only primary partial-zero witness exists"
+
+[[scenario]]
+card = "F11"
+id = "F11-zero-width-grid"
+kind = "primary_red"
+test = "f11_zero_table_width_uses_grid"
+oracle = "dxa0 + grid 9355 twips → 623.667 px"
+status = "measured"
+
+[[scenario]]
+card = "F11"
+id = "F11-matrix-width-modes"
+kind = "matrix"
+test = ""
+oracle = "auto/nil/pct/missing grid/nested/RTL"
+status = "blocked"
+blocker = "Only primary zero-width grid witness exists"
+
+[[scenario]]
+card = "F12"
+id = "F12-shading"
+kind = "primary_red"
+test = "f12_paragraph_shading_reaches_output"
+oracle = "grey F7F7F7 block rectangle under text"
+status = "measured"
+
+[[scenario]]
+card = "F12"
+id = "F12-matrix-pagebreak-nested"
+kind = "matrix"
+test = ""
+oracle = "style/table-derived shading, page break fragments, nested cell/frame"
+status = "blocked"
+blocker = "Only primary shading witness exists"
+
+[[scenario]]
+card = "F13"
+id = "F13-tall-header"
+kind = "primary_red"
+test = "f13_body_respects_tall_header"
+oracle = "body ink below header ink"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-tall-footer"
+kind = "matrix"
+test = "f13_body_stays_above_a_tall_footer"
+oracle = "body stays above tall footer"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-even-header"
+kind = "matrix"
+test = "f13_even_header_selection_is_not_the_odd_tallest"
+oracle = "even header selection is active, not tallest odd"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-inactive-footer"
+kind = "matrix"
+test = "f13_inactive_tall_footer_does_not_shrink_other_page"
+oracle = "inactive tall footer does not shrink other page"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-negative-margins"
+kind = "matrix"
+test = "f13_negative_margins_keep_source_overlap"
+oracle = "negative margins keep source overlap contract"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-numpages-rollover"
+kind = "matrix"
+test = "f13_numpages_digit_rollover_uses_field_env_height"
+oracle = "NUMPAGES digit rollover uses FieldEnv height"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-section-change"
+kind = "matrix"
+test = "f13_section_change_uses_that_section_active_header"
+oracle = "section change uses that section active header"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-convergence-bound"
+kind = "matrix"
+test = "f13_convergence_bound_is_eight_passes"
+oracle = "convergence bound is eight passes"
+status = "measured"
+
+[[scenario]]
+card = "F13"
+id = "F13-fingerprint-regions"
+kind = "matrix"
+test = "f13_fingerprint_includes_region_size_not_only_page_count"
+oracle = "fingerprint includes region size, not only page count"
+status = "measured"
+
+[[scenario]]
+card = "F14"
+id = "F14-relative-width"
+kind = "primary_red"
+test = "f14_relative_width_replaces_fallback_extent"
+oracle = "94.1% of 642.2 px → 604.3102 px"
+status = "measured"
+
+[[scenario]]
+card = "F14"
+id = "F14-image-frame"
+kind = "matrix"
+test = "f14_image_only_frame_starts_at_the_frame_origin"
+oracle = "image-only frame starts at frame origin"
+status = "measured"
+
+[[scenario]]
+card = "F14"
+id = "F14-matrix-align-offsets"
+kind = "matrix"
+test = ""
+oracle = "page/margin/column align, ±offsets, nested group, invalid relative"
+status = "blocked"
+blocker = "Align/offset/invalid-relative matrix not separate tests"
+
+[[scenario]]
+card = "F15"
+id = "F15-square"
+kind = "primary_red"
+test = "f15_square_changes_line_intervals"
+oracle = "Square ≠ None line breaks; no text ink inside expanded image box"
+status = "measured"
+
+[[scenario]]
+card = "F15"
+id = "F15-matrix-sides-distances"
+kind = "matrix"
+test = ""
+oracle = "4 side policies, distances, 2 objects, page break, Tight/Through unsupported"
+status = "blocked"
+blocker = "R04 wrap probes exist as acceptance artifacts; full F15 side/distance matrix not in public manifest tests"
+
+[[scenario]]
+card = "F16"
+id = "F16-frame-translation"
+kind = "primary_red"
+test = "f16_frame_translation_moves_all_children"
+oracle = "frame origin shifts children by resolved px"
+status = "measured"
+
+[[scenario]]
+card = "F16"
+id = "F16-shared-table"
+kind = "matrix"
+test = "f16_shared_page_frame_table_keeps_column_offsets"
+oracle = "shared page-frame table keeps column offsets"
+status = "measured"
+
+[[scenario]]
+card = "F16"
+id = "F16-cell-page-origin"
+kind = "matrix"
+test = "f16_page_frame_inside_a_cell_uses_the_page_origin"
+oracle = "page frame inside a cell uses page origin"
+status = "measured"
+
+[[scenario]]
+card = "F16"
+id = "F16-right-aligned"
+kind = "matrix"
+test = "f16_right_aligned_frame_ends_on_the_indented_edge"
+oracle = "right-aligned frame ends on indented edge"
+status = "measured"
+
+[[scenario]]
+card = "F16"
+id = "F16-separate-cells"
+kind = "matrix"
+test = "f16_same_frame_in_separate_cells_stacks"
+oracle = "same frame in separate cells stacks"
+status = "measured"
+
+[[scenario]]
+card = "F16"
+id = "F16-inverse-escaped"
+kind = "inverse"
+test = "f16_inverse_escaped_cell_frames_are_not_the_table_origin"
+oracle = "escaped cell frames are not collapsed to table origin"
+status = "measured"
+
+[[scenario]]
+card = "F16"
+id = "F16-complex-word-schemes"
+kind = "matrix"
+test = ""
+oracle = "complex scientific schemes vs Word reference"
+status = "blocked"
+blocker = "No Word reference; WPS residuals tracked by R07 PARTIAL"
+
+[[scenario]]
+card = "F17"
+id = "F17-vmerge"
+kind = "primary_red"
+test = "f17_vmerge_has_continuation_on_next_page"
+oracle = "merge continuation borders/background on both pages"
+status = "measured"
+
+[[scenario]]
+card = "F17"
+id = "F17-matrix-multipage-regions"
+kind = "matrix"
+test = ""
+oracle = "merge across 2/3 pages, gridSpan+vMerge, repeat header, cantSplit"
+status = "blocked"
+blocker = "Only primary vmerge witness exists"
+
+[[scenario]]
+card = "F18"
+id = "F18-baseline"
+kind = "primary_red"
+test = "f18_pdf_baseline_and_x_survive_write"
+oracle = "PDF x=72 pt baseline=92 pt → SVG x=96 px baseline=122.667±0.25"
+status = "measured"
+
+[[scenario]]
+card = "F18"
+id = "F18-matrix-positions-rotation"
+kind = "matrix"
+test = ""
+oracle = "3 text positions, landscape, crop/rotation quadrants"
+status = "blocked"
+blocker = "Only primary baseline/x witness exists"
+
+[[scenario]]
+card = "F19"
+id = "F19-vector-loss"
+kind = "primary_red"
+test = "f19_text_and_vector_is_not_lossless_when_vector_missing"
+oracle = "missing vector → Degraded with vector id, not silent omit"
+status = "measured"
+
+[[scenario]]
+card = "F19"
+id = "F19-rectangle-survives"
+kind = "primary_red"
+test = "f19_supported_rectangle_survives"
+oracle = "supported rectangle survives write/reopen/SVG/PDF"
+status = "measured"
+
+[[scenario]]
+card = "F19"
+id = "F19-matrix-stroke-cubic-pattern"
+kind = "matrix"
+test = ""
+oracle = "stroke, cubic, pattern/clip unsupported, empty page"
+status = "blocked"
+blocker = "cubic/clip/pattern remain explicitly unsupported; no extra matrix tests"
+
+[[scenario]]
+card = "F20"
+id = "F20-view-loss"
+kind = "primary_red"
+test = "f20_successful_view_exposes_normalization_loss"
+oracle = "HTTP view exposes normalize loss / Degraded"
+status = "measured"
+
+[[scenario]]
+card = "F20"
+id = "F20-matrix-browser-js"
+kind = "matrix"
+test = ""
+oracle = "browser DOM after JS: keyboard expansion, stale sidecar, font load"
+status = "blocked"
+blocker = "R09 owns live browser harness; current test is API/HTML only"
+
+[[scenario]]
+card = "F21"
+id = "F21-metadata"
+kind = "metadata"
+test = "f21_public_manifest_metadata"
+oracle = "manifest lists F00–F21 and A01–A21; named tests exist; unsupported vector list kept"
+status = "measured"
+
+[[scenario]]
+card = "F21"
+id = "F21-behavioral-suite"
+kind = "gate"
+test = "run.py --task F21"
+oracle = "executes measured manifest scenarios with exact counters; claim≠full_audit when deps incomplete"
+status = "measured"

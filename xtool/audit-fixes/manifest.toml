@@ -2,12 +2,13 @@
 # `strict-ooxml-testkit` (`src/audit.rs`). This file does not name the private
 # corpus. A local corpus is a separate directory passed to `run.py --corpus`
 # together with `--require-corpus`; a missing directory is BLOCKED.
+# Scenario coverage for FIX_PLAN matrices lives in `matrix.toml`.
 
 [[task]]
 id = "F00"
 findings = []
 kind = "infrastructure"
-summary = "Generated fixtures, independent ZIP/XML checks, and receipt failure modes."
+summary = "Generated fixtures, independent ZIP/XML checks, receipt schema, and fail-closed modes."
 
 [[task]]
 id = "F01"
@@ -58,14 +59,31 @@ id = "F05"
 findings = ["A01"]
 kind = "cargo"
 package = "strict-ooxml-convert"
-tests = ["f05_visual_preserves_two_page_sections"]
+tests = [
+    "f05_visual_preserves_two_page_sections",
+    "f05_three_page_sizes_survive_the_round_trip",
+    "f05_empty_middle_page_keeps_its_size",
+    "f05_empty_last_page_is_a_body_section",
+    "f05_last_page_table_does_not_grow_a_paragraph",
+    "f05_page_range_drops_the_unselected_size",
+    "f05_identical_neighbours_break_on_a_size_change",
+    "f05_semantic_blocks_keep_their_page_size",
+]
 
 [[task]]
 id = "F06"
 findings = ["A10"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f06_direct_italic_is_not_xor"]
+tests = [
+    "f06_direct_italic_is_not_xor",
+    "f06_style_chain_xors_and_direct_assigns",
+    "f06_character_style_xor_stops_at_direct_formatting",
+    "f06_direct_italic_covers_latin_and_cyrillic_and_cs",
+    "f06_empty_mark_leaves_direct_flags_on_their_run",
+    "f06_mark_does_not_flip_a_neighbouring_run",
+    "f06_caps_and_vanish_assign_direct_values",
+]
 
 [[task]]
 id = "F07"
@@ -77,20 +95,30 @@ tests = [
     "f07_cs_font_does_not_override_cyrillic",
     "f07_unknown_face_has_consistent_fallback",
 ]
+inverse_tests = ["inverse_naive_per_char_sum_is_not_shaped_for_kern_pair"]
 
 [[task]]
 id = "F08"
 findings = ["A20"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f08_first_line_indent_keeps_right_boundary"]
+tests = [
+    "f08_first_line_indent_keeps_right_boundary",
+    "f08_hanging_indent_keeps_the_same_right_edge",
+    "f08_exact_line_pitch_is_the_declared_line",
+    "f08_indent_past_the_edge_is_reported_not_clipped",
+    "f08_long_token_breaks_inside_the_right_edge",
+]
 
 [[task]]
 id = "F09"
 findings = ["A19"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f09_right_tab_aligns_segment_end"]
+tests = [
+    "f09_right_tab_aligns_segment_end",
+    "f09_underscore_leader_does_not_move_the_word",
+]
 
 [[task]]
 id = "F10"
@@ -118,14 +146,27 @@ id = "F13"
 findings = ["A15"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f13_body_respects_tall_header"]
+tests = [
+    "f13_body_respects_tall_header",
+    "f13_body_stays_above_a_tall_footer",
+    "f13_even_header_selection_is_not_the_odd_tallest",
+    "f13_inactive_tall_footer_does_not_shrink_other_page",
+    "f13_negative_margins_keep_source_overlap",
+    "f13_numpages_digit_rollover_uses_field_env_height",
+    "f13_section_change_uses_that_section_active_header",
+    "f13_convergence_bound_is_eight_passes",
+    "f13_fingerprint_includes_region_size_not_only_page_count",
+]
 
 [[task]]
 id = "F14"
 findings = ["A13"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f14_relative_width_replaces_fallback_extent"]
+tests = [
+    "f14_relative_width_replaces_fallback_extent",
+    "f14_image_only_frame_starts_at_the_frame_origin",
+]
 
 [[task]]
 id = "F15"
@@ -139,7 +180,15 @@ id = "F16"
 findings = ["A18"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f16_frame_translation_moves_all_children"]
+tests = [
+    "f16_frame_translation_moves_all_children",
+    "f16_shared_page_frame_table_keeps_column_offsets",
+    "f16_page_frame_inside_a_cell_uses_the_page_origin",
+    "f16_right_aligned_frame_ends_on_the_indented_edge",
+    "f16_same_frame_in_separate_cells_stacks",
+    "f16_inverse_escaped_cell_frames_are_not_the_table_origin",
+]
+inverse_tests = ["f16_inverse_escaped_cell_frames_are_not_the_table_origin"]
 
 [[task]]
 id = "F17"
@@ -177,4 +226,6 @@ id = "F21"
 findings = ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19", "A20", "A21"]
 kind = "acceptance"
 package = "strict-ooxml-testkit"
-tests = ["f21_public_suite"]
+metadata_tests = ["f21_public_manifest_metadata"]
+tests = ["f21_public_manifest_metadata"]
+summary = "Behavioral public suite: runs F00–F20 measured tests + metadata. claim=synthetic_public_suite unless --require-corpus and matrix blocked=0."
