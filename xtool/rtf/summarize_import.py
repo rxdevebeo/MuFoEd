@@ -29,6 +29,7 @@ def main():
     counts = Counter(r["status"] for r in rows)
     imported = [r for r in rows if r["status"] == "Imported"]
     result = {
+        "invocation_options": data.get("options", {}),
         "version": 1, "claim": "development_measurement_not_release_acceptance",
         "git_base": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "manifest_sha256": sha(manifest_path), "results_sha256": sha(args.results),
@@ -40,6 +41,7 @@ def main():
                     "exact_body_text_match": sum(r["exact_body_match"] for r in imported),
                     "roundtrip_text_match": sum(r["roundtrip_text_match"] for r in imported),
                     "roundtrip_media_bytes_match": sum(r["roundtrip_media_bytes_match"] for r in imported),
+                    "discarded_nuls": sum(r.get("discarded_nuls", 0) for r in imported),
                     "imported_media_parts": sum(r["media_parts"] for r in imported),
                     "writer_errors": sum(r["writer_error"] is not None for r in imported),
                     "writer_report_records": sum(r["writer_loss_count"] or 0 for r in imported),

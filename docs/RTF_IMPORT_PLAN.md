@@ -1,6 +1,6 @@
 # Импорт RTF в StrictLib
 
-Дата: 4 октября 2026 года. Статус: план; импортёр и его тестовый harness ещё не реализованы.
+Дата исходного плана: 4 октября 2026 года. Исторический проект этапов; текущая реализация и измерения на 5 октября: [IMPLEMENTATION_STATUS.md](rtf/IMPLEMENTATION_STATUS.md) и [COMPATIBILITY_RESOLUTION.md](rtf/COMPATIBILITY_RESOLUTION.md).
 
 ## 1. Цель и решение
 

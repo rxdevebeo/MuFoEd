@@ -5,8 +5,8 @@
 )]
 use crate::picture::PictureBuilder;
 use crate::{
-    Document, InvalidTextPolicy, PartId, RtfError, RtfImported, RtfIssue, RtfOptions, RtfReport,
-    RtfSpan, Severity, UnsupportedPolicy,
+    CompatibilityProfile, Document, InvalidTextPolicy, NulPolicy, PartId, RtfError, RtfImported,
+    RtfIssue, RtfOptions, RtfReport, RtfSpan, Severity, UnicodeParameterPolicy, UnsupportedPolicy,
 };
 use std::{collections::BTreeMap, sync::Arc};
 use strict_ooxml_core::error::SourceLocation;
@@ -15,8 +15,9 @@ use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     Block, BreakKind, CellProperties, Color, Fonts, GridCol, HalfPoints, Inline, Justification,
     PageOrientation, Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent,
-    RunProperties, Section, SectionProperties, Space, Table, TableCell, TableProperties, TableRow,
-    TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
+    RunProperties, Section, SectionProperties, SectionType, Space, Symbol, Table, TableCell,
+    TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign, VerticalJc,
+    VerticalMerge, Width, WidthKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,6 +41,8 @@ struct RowBuilder {
     cells: Vec<TableCell>,
     blocks: Vec<Block>,
     props: RowProperties,
+    merges: Vec<Option<bool>>,
+    next_merge: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -196,6 +199,7 @@ struct State {
     destination: Destination,
     upr_children: Option<u8>,
     allow_ud: bool,
+    literal_prefix: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -210,6 +214,7 @@ impl Default for State {
             destination: Destination::Body,
             upr_children: None,
             allow_ud: false,
+            literal_prefix: false,
         }
     }
 }
@@ -221,6 +226,7 @@ struct Parser<'a> {
     blocks: Vec<Block>,
     inlines: Vec<Inline>,
     paragraph_props: ParagraphProperties,
+    paragraph_pending: bool,
     bytes: Vec<u8>,
     bytes_offset: usize,
     fallback: usize,
@@ -236,6 +242,7 @@ struct Parser<'a> {
     rgb: [u8; 3],
     color_set: bool,
     section: SectionProperties,
+    sections: Vec<Section>,
     row: Option<RowBuilder>,
     table: Option<Table>,
     table_rows: usize,
@@ -272,9 +279,9 @@ impl Parser<'_> {
         if self.row.is_none() {
             return malformed(offset, "cell outside a table row");
         }
-        if !self.inlines.is_empty() || self.row.as_ref().is_some_and(|r| r.blocks.is_empty()) {
-            self.paragraph(offset)?;
-        }
+        // The cell mark terminates its final paragraph even after an explicit
+        // par: that final paragraph is empty and remains structurally meaningful.
+        self.paragraph(offset)?;
         self.table_cells += 1;
         bounded(
             self.table_cells,
@@ -314,6 +321,7 @@ impl Parser<'_> {
             ends: row.ends.clone(),
             declarations: row.declarations.clone(),
             props: row.props.clone(),
+            merges: row.merges.clone(),
             ..RowBuilder::default()
         });
         if row.cells.len() != row.declarations.len() || row.cells.is_empty() {
@@ -354,13 +362,56 @@ impl Parser<'_> {
                 location: SourceLocation::unknown(),
             });
         }
+        let mut cells: Vec<TableCell> = vec![];
+        let mut merge_active = false;
+        for (cell, marker) in row.cells.into_iter().zip(row.merges) {
+            if marker == Some(false) {
+                if !merge_active {
+                    return malformed(span.start, "horizontal merge continuation without restart");
+                }
+                let previous = cells.last_mut().expect("active merge has a cell");
+                previous.props.grid_span =
+                    Some(previous.props.grid_span.unwrap_or(1).checked_add(1).ok_or(
+                        RtfError::Malformed {
+                            offset: span.start,
+                            reason: "horizontal merge span overflow",
+                        },
+                    )?);
+                if let (Some(width), Some(extra)) = (&mut previous.props.width, &cell.props.width) {
+                    if let (Some(n), Some(m)) = (width.value, extra.value) {
+                        width.value = Some(n.checked_add(m).ok_or(RtfError::Malformed {
+                            offset: span.start,
+                            reason: "horizontal merge width overflow",
+                        })?);
+                    }
+                }
+                let sole_empty =
+                    matches!(cell.blocks.as_slice(), [Block::Paragraph(p)] if p.inlines.is_empty());
+                if !sole_empty {
+                    let mut incoming = cell.blocks.into_iter();
+                    if let Some(mut first) = incoming.next() {
+                        if let (Some(Block::Paragraph(last)), Block::Paragraph(first)) =
+                            (previous.blocks.last_mut(), &mut first)
+                        {
+                            last.inlines.append(&mut first.inlines);
+                        } else {
+                            previous.blocks.push(first);
+                        }
+                    }
+                    previous.blocks.extend(incoming);
+                }
+            } else {
+                merge_active = marker == Some(true);
+                cells.push(cell);
+            }
+        }
         self.table
             .as_mut()
             .expect("table initialized")
             .rows
             .push(TableRow {
                 props: row.props,
-                cells: row.cells,
+                cells,
                 sdt: None,
                 location: SourceLocation::unknown(),
             });
@@ -396,6 +447,8 @@ impl Parser<'_> {
             .codepage
             .or(match font.charset {
                 0 | 1 => Some(self.document_codepage),
+                // Font-encoded glyphs use w:sym, never an ANSI decoder.
+                2 => Some(-2),
                 77 => Some(10000),
                 128 => Some(932),
                 129 => Some(949),
@@ -412,10 +465,10 @@ impl Parser<'_> {
                 238 => Some(1250),
                 _ => None,
             })
-            .filter(|cp| codepage(*cp).is_some())
+            .filter(|cp| matches!(*cp, -2 | 0) || codepage(*cp).is_some())
             .ok_or(RtfError::InvalidEncoding {
                 offset: span.start,
-                reason: "unsupported font charset/codepage (including Symbol/OEM)",
+                reason: "unsupported font charset/codepage",
             })?;
         let face = Arc::<str>::from(font.name.as_str());
         self.state.run.fonts = Some(Fonts {
@@ -522,6 +575,25 @@ impl Parser<'_> {
             }
             return Ok(());
         }
+        self.paragraph_pending = true;
+        let nuls = text.chars().filter(|c| *c == '\0').count();
+        let text = if nuls != 0 && self.options.nul_policy == NulPolicy::DropAndReport {
+            self.report.discarded_nuls += nuls;
+            self.issue(
+                RtfSpan {
+                    start: offset,
+                    end: offset + 1,
+                },
+                Severity::Loss,
+                "text:NUL:dropped",
+            )?;
+            text.chars().filter(|c| *c != '\0').collect::<String>()
+        } else {
+            text
+        };
+        if text.is_empty() {
+            return Ok(());
+        }
         if self.state.run.fonts.is_none() && !self.fonts.is_empty() {
             if let Some(id) = self.default_font {
                 self.select_font(
@@ -586,6 +658,7 @@ impl Parser<'_> {
                 | RunContent::Break(_)
                 | RunContent::NoBreakHyphen
                 | RunContent::SoftHyphen
+                | RunContent::Symbol(_)
         ) {
             self.report.text_scalars += 1;
             bounded(
@@ -618,6 +691,7 @@ impl Parser<'_> {
         Ok(())
     }
     fn paragraph(&mut self, offset: usize) -> Result<(), RtfError> {
+        self.paragraph_pending = false;
         self.node(1, offset)?;
         let props = if self.inlines.is_empty() {
             self.state.paragraph.clone()
@@ -671,6 +745,35 @@ impl Parser<'_> {
         if self.bytes.is_empty() {
             return Ok(());
         }
+        if self.state.codepage == -2 {
+            let font = self
+                .state
+                .run
+                .fonts
+                .as_ref()
+                .and_then(|f| f.ascii.clone())
+                .expect("symbol encoding is set by a defined font");
+            let bytes = std::mem::take(&mut self.bytes);
+            for byte in bytes {
+                self.content(
+                    RunContent::Symbol(Symbol {
+                        font: font.clone(),
+                        character: char::from(byte),
+                    }),
+                    self.bytes_offset,
+                )?;
+            }
+            return Ok(());
+        }
+        // An unspecified ANSI codepage is irrelevant for ASCII/Unicode-only
+        // documents. Never guess a platform-dependent encoding for high bytes.
+        if self.state.codepage == 0 && self.bytes.is_ascii() {
+            let bytes = std::mem::take(&mut self.bytes);
+            return self.text(
+                String::from_utf8(bytes).expect("ASCII bytes"),
+                self.bytes_offset,
+            );
+        }
         let encoding = codepage(self.state.codepage).ok_or(RtfError::InvalidEncoding {
             offset: self.bytes_offset,
             reason: "unsupported codepage",
@@ -696,15 +799,24 @@ impl Parser<'_> {
         self.text(decoded.into_owned(), self.bytes_offset)
     }
     fn unicode(&mut self, n: Option<i32>, span: RtfSpan) -> Result<(), RtfError> {
-        let Some(n) = n.filter(|n| (-32768..=32767).contains(n)) else {
+        let allow_unsigned =
+            self.options.unicode_parameter_policy == UnicodeParameterPolicy::AllowUnsignedAndReport;
+        let Some(n) = n.filter(|n| {
+            (-32768..=32767).contains(n) || (allow_unsigned && (32768..=65535).contains(n))
+        }) else {
             return malformed(
                 span.start,
                 "Unicode parameter must be a signed 16-bit integer",
             );
         };
-        let unit = i16::try_from(n)
-            .expect("validated signed 16-bit parameter")
-            .cast_unsigned();
+        let unit = if n > 32767 {
+            self.issue(span, Severity::Info, "unicode:unsigned-parameter")?;
+            u16::try_from(n).expect("validated unsigned 16-bit parameter")
+        } else {
+            i16::try_from(n)
+                .expect("validated signed 16-bit parameter")
+                .cast_unsigned()
+        };
         self.fallback = self.state.uc;
         if (0xd800..=0xdbff).contains(&unit) {
             self.finish_high()?;
@@ -904,7 +1016,7 @@ impl Parser<'_> {
                 })
             }
             "ansicpg" => {
-                let Some(cp) = n.filter(|cp| codepage(*cp).is_some()) else {
+                let Some(cp) = n.filter(|cp| *cp == 0 || codepage(*cp).is_some()) else {
                     return Err(RtfError::InvalidEncoding {
                         offset: span.start,
                         reason: "unsupported codepage",
@@ -952,6 +1064,33 @@ impl Parser<'_> {
                 }
             }
             "pard" => self.state.paragraph = ParagraphProperties::default(),
+            "sectd" => self.section = SectionProperties::default(),
+            "sbknone" | "sbkpage" | "sbkcol" | "sbkeven" | "sbkodd" => {
+                self.section.section_type = Some(match name {
+                    "sbknone" => SectionType::Continuous,
+                    "sbkcol" => SectionType::NextColumn,
+                    "sbkeven" => SectionType::EvenPage,
+                    "sbkodd" => SectionType::OddPage,
+                    _ => SectionType::NextPage,
+                });
+            }
+            "sect" => {
+                if self.row.is_some() {
+                    return malformed(span.start, "section break inside a table row");
+                }
+                self.finish_high()?;
+                self.paragraph(span.start)?;
+                let Block::Paragraph(paragraph) = self.blocks.last_mut().expect("new paragraph")
+                else {
+                    unreachable!("paragraph terminator appends a paragraph");
+                };
+                paragraph.props.section = Some(self.section.clone());
+                self.node(1, span.start)?;
+                self.sections.push(Section {
+                    properties: self.section.clone(),
+                    location: SourceLocation::unknown(),
+                });
+            }
             "b" => self.state.run.bold = toggle,
             "i" => self.state.run.italic = toggle,
             "strike" => self.state.run.strike = toggle,
@@ -999,6 +1138,8 @@ impl Parser<'_> {
                     row.ends.clear();
                     row.declarations.clear();
                     row.next_props = CellProperties::default();
+                    row.merges.clear();
+                    row.next_merge = None;
                     row.props = RowProperties::default();
                 } else {
                     self.row = Some(RowBuilder::default());
@@ -1043,6 +1184,14 @@ impl Parser<'_> {
                 });
                 row.ends.push(end);
                 row.declarations.push(props);
+                row.merges.push(row.next_merge.take());
+            }
+            "clmgf" | "clmrg" => {
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                row.next_merge = Some(name == "clmgf");
             }
             "clvmgf" | "clvmrg" | "clvertalt" | "clvertalc" | "clvertalb" => {
                 let row = self.row.as_mut().ok_or(RtfError::Malformed {
@@ -1215,6 +1364,16 @@ impl Parser<'_> {
             }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
+                if self.options.compatibility_profile == CompatibilityProfile::WpsText
+                    && !first
+                    && ((name == "CocoaLigature" && n == Some(1))
+                        || (name == "AppleTypeServices" && n.is_none()))
+                    && !self.inlines.is_empty()
+                {
+                    let literal = n.map_or_else(|| format!("{name} "), |n| format!("{name}{n} "));
+                    self.issue(span, Severity::Loss, "wps:literal-unknown-inline-control")?;
+                    self.text(literal, span.start)?;
+                }
             }
         }
         if !self.inlines.is_empty() {
@@ -1278,6 +1437,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         blocks: vec![],
         inlines: vec![],
         paragraph_props: ParagraphProperties::default(),
+        paragraph_pending: false,
         bytes: vec![],
         bytes_offset: 0,
         fallback: 0,
@@ -1293,6 +1453,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         rgb: [0; 3],
         color_set: false,
         section: SectionProperties::default(),
+        sections: vec![],
         row: None,
         table: None,
         table_rows: 0,
@@ -1312,6 +1473,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         match token {
             Token::Open => {
                 p.flush()?;
+                p.state.literal_prefix = false;
                 p.fallback = 0;
                 bounded(p.stack.len() + 1, options.limits.depth, span.start, "depth")?;
                 let child_index = if let Some(index) = p.state.upr_children.as_mut() {
@@ -1328,6 +1490,18 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                 p.state.ignorable = false;
                 p.state.upr_children = None;
                 p.state.allow_ud = child_index == Some(2);
+                // WPS ignores leading header whitespace when the first
+                // meaningful token is a control word, but preserves it in a
+                // literal group (including before control symbols like ~).
+                let remaining = &input[lexer.pos..];
+                let head = remaining
+                    .iter()
+                    .position(|b| !b.is_ascii_whitespace())
+                    .unwrap_or(remaining.len());
+                p.state.literal_prefix = !(remaining.get(head) == Some(&b'\\')
+                    && remaining
+                        .get(head + 1)
+                        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'*'));
                 if child_index == Some(1) {
                     p.state.skip = true;
                 }
@@ -1385,7 +1559,43 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                         continue;
                     }
                     for (index, byte) in bytes.iter().copied().enumerate() {
+                        if p.state.first
+                            && !p.state.literal_prefix
+                            && byte.is_ascii_whitespace()
+                            && p.state.destination == Destination::Body
+                            && options.compatibility_profile == CompatibilityProfile::WpsText
+                        {
+                            if matches!(byte, b' ' | b'\t') {
+                                p.issue(
+                                    RtfSpan {
+                                        start: span.start + index,
+                                        end: span.start + index + 1,
+                                    },
+                                    Severity::Loss,
+                                    "wps:header-whitespace:dropped",
+                                )?;
+                            }
+                            continue;
+                        }
+                        if matches!(byte, b'\r' | b'\n')
+                            && p.state.literal_prefix
+                            && p.state.destination == Destination::Body
+                            && options.compatibility_profile == CompatibilityProfile::WpsText
+                        {
+                            p.byte(b'\n', span.start + index)?;
+                            p.issue(
+                                RtfSpan {
+                                    start: span.start + index,
+                                    end: span.start + index + 1,
+                                },
+                                Severity::Loss,
+                                "wps:leading-group-line-ending",
+                            )?;
+                        }
                         if !matches!(byte, b'\r' | b'\n') {
+                            if !byte.is_ascii_whitespace() {
+                                p.state.literal_prefix = false;
+                            }
                             p.state.first = false;
                             if byte == b'\t'
                                 && p.fallback == 0
@@ -1403,6 +1613,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
             }
             Token::Byte(byte) => {
                 if !p.state.skip {
+                    p.state.literal_prefix = false;
                     if p.state.destination == Destination::Picture {
                         p.picture.as_mut().expect("picture destination").push(
                             &[byte],
@@ -1437,6 +1648,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
             }
             Token::Word(name, n) => {
                 p.flush()?;
+                p.state.literal_prefix = false;
                 p.word(name, n, span)?;
             }
             Token::Symbol(symbol) => {
@@ -1470,6 +1682,10 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                 p.finish_high()?;
                 match symbol {
                     b'~' => p.text("\u{a0}".into(), span.start)?,
+                    b'-' if options.compatibility_profile == CompatibilityProfile::WpsText => {
+                        p.issue(span, Severity::Loss, "wps:soft-hyphen-to-hyphen")?;
+                        p.text("-".into(), span.start)?;
+                    }
                     b'-' => p.content(RunContent::SoftHyphen, span.start)?,
                     b'_' => p.content(RunContent::NoBreakHyphen, span.start)?,
                     _ => p.issue(
@@ -1504,9 +1720,13 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         return malformed(lexer.pos, "unterminated table row");
     }
     p.finish_table();
-    if !p.inlines.is_empty() || p.blocks.is_empty() {
+    if p.paragraph_pending || !p.inlines.is_empty() || p.blocks.is_empty() {
         p.paragraph(lexer.pos)?;
     }
+    p.sections.push(Section {
+        properties: p.section,
+        location: SourceLocation::unknown(),
+    });
     let document = Document {
         body: Body { blocks: p.blocks },
         styles: Default::default(),
@@ -1516,10 +1736,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         settings: Default::default(),
         theme: None,
         font_table: None,
-        sections: vec![Section {
-            properties: p.section,
-            location: SourceLocation::unknown(),
-        }],
+        sections: p.sections,
         headers_footers: vec![],
         media: p.media_index,
         support: Default::default(),

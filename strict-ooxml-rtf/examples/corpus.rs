@@ -3,7 +3,9 @@
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 use strict_ooxml_core::opc::{OpenOptions, Package};
-use strict_ooxml_rtf::{import, RtfOptions};
+use strict_ooxml_rtf::{
+    import, CompatibilityProfile, NulPolicy, RtfOptions, UnicodeParameterPolicy,
+};
 use strict_ooxml_wml::{
     model::{Block, BreakKind, Inline, RunContent},
     parse_document, ParseOptions,
@@ -31,6 +33,13 @@ fn texts(blocks: &[Block]) -> Vec<String> {
                             .into(),
                             RunContent::NoBreakHyphen => "\u{2011}".into(),
                             RunContent::SoftHyphen => "\u{ad}".into(),
+                            // Font glyph identity in WPS's PUA text view,
+                            // not a Unicode interpretation of its appearance.
+                            RunContent::Symbol(s) => {
+                                char::from_u32(0xf000 + u32::from(s.character))
+                                    .expect("font byte in PUA")
+                                    .to_string()
+                            }
                             _ => String::new(),
                         })
                         .collect::<String>(),
@@ -59,11 +68,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir(&output)?;
     let manifest: Value = serde_json::from_slice(&fs::read(input.join("manifest.json"))?)?;
     let mut rows = vec![];
+    let mut options = RtfOptions::default();
+    if std::env::var_os("RTF_ALLOW_UNSIGNED_UNICODE").is_some() {
+        options.unicode_parameter_policy = UnicodeParameterPolicy::AllowUnsignedAndReport;
+    }
+    if std::env::var_os("RTF_DROP_NUL").is_some() {
+        options.nul_policy = NulPolicy::DropAndReport;
+    }
+    if std::env::var_os("RTF_WPS_TEXT").is_some() {
+        options.compatibility_profile = CompatibilityProfile::WpsText;
+    }
     for item in manifest.as_array().ok_or("manifest array")? {
         let name = item["filename"].as_str().ok_or("filename")?;
         let bytes = fs::read(input.join(name))?;
         let stem = name.split('_').next().ok_or("file id")?;
-        let row = match import(&bytes, &RtfOptions::default()) {
+        let row = match import(&bytes, &options) {
             Err(error) => json!({"filename":name,"status":"ImportError","error":error.to_string()}),
             Ok(imported) => {
                 let body = texts(&imported.document.body.blocks);
@@ -119,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     output.join(format!("{stem}.text.json")),
                     serde_json::to_vec_pretty(&body)?,
                 )?;
-                json!({"filename":name,"status":"Imported","loss_count":imported.report.loss_count,"details_truncated":imported.report.details_truncated,"issues":issues,"paragraphs":body.len(),"expected_paragraphs":expected.len(),"exact_body_match":body==expected,"first_mismatch":body.iter().zip(&expected).position(|(a,b)|a!=b),"writer_error":writer_error,"roundtrip_text_match":roundtrip,"writer_loss_count":writer_loss_count,"media_parts":imported.media.len(),"roundtrip_media_bytes_match":media_match})
+                json!({"filename":name,"status":"Imported","discarded_nuls":imported.report.discarded_nuls,"loss_count":imported.report.loss_count,"details_truncated":imported.report.details_truncated,"issues":issues,"paragraphs":body.len(),"expected_paragraphs":expected.len(),"exact_body_match":body==expected,"first_mismatch":body.iter().zip(&expected).position(|(a,b)|a!=b),"writer_error":writer_error,"roundtrip_text_match":roundtrip,"writer_loss_count":writer_loss_count,"media_parts":imported.media.len(),"roundtrip_media_bytes_match":media_match})
             }
         };
         eprintln!("{name}: {}", row["status"]);
@@ -128,7 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(
         output.join("results.json"),
         serde_json::to_vec_pretty(
-            &json!({"claim":"development_measurement_not_acceptance","files":rows}),
+            &json!({"claim":"development_measurement_not_acceptance","options":{"unicode_parameter_policy":format!("{:?}",options.unicode_parameter_policy),"nul_policy":format!("{:?}",options.nul_policy),"compatibility_profile":format!("{:?}",options.compatibility_profile),"invalid_text_policy":format!("{:?}",options.invalid_text_policy),"unsupported_policy":format!("{:?}",options.unsupported_policy)},"files":rows}),
         )?,
     )?;
     Ok(())

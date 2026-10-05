@@ -1,22 +1,30 @@
 # RTF importer: состояние реализации
 
-2026-10-05. Worktree: `C:/Users/gamer/.codex/worktrees/rtf-import/StrictLib`, ветка `codex/rtf-import`, база `7a8e6d37d4d96543db00a9c4f2be51f879397c1f`. Изменения основного checkout не переносились. Коммитов нет.
+2026-10-05. Worktree: `C:/Users/gamer/.codex/worktrees/rtf-import/StrictLib`, ветка `codex/rtf-import`, база `7a8e6d37d4d96543db00a9c4f2be51f879397c1f`. Изменения основного checkout не переносились. Baseline закоммичен как `6b6d6d2` (feat(rtf): add bounded import crate and independent corpus checks). Последующие исправления NUL/corpus text coverage включены в отдельный коммит завершения этапа.
 
 ## Что работает
 
 Создан workspace crate `strict-ooxml-rtf`. Публичный контракт: `import(&[u8], &RtfOptions) -> Result<RtfImported, RtfError>`, где результат содержит owned WML document, отдельные media payloads и import report. Runtime не использует WPS, сеть, файловую систему или OCR. Workspace manifest и lock изменены только для этого crate.
 
 - Итеративный lexer: группы, escapes, hex, signed parameters, атомарный `binN`, header/trailer validation, bounded stack/tokens/input.
-- Scoped run/paragraph state, `plain`/`pard`, основные toggles, size, vertical alignment, bidi, alignment, indentation, spacing; единичная section geometry.
+- Scoped run/paragraph state, `plain`/`pard`, основные toggles, size, vertical alignment, bidi, alignment, indentation, spacing; section geometry, границы `sect`, reset `sectd` и типы `sbk*`.
 - Unicode: signed 16-bit `uN`, scoped `ucN`, fallback, surrogate pairs, `upr/ud`; invalid encoding по умолчанию fatal, replacement opt-in с loss.
-- `ansicpg` и используемый font charset; font/color tables, faces в run properties. Symbol/OEM и неявный system ACP не подменяются Windows-1252.
+- `ansicpg` и используемый font charset; font/color tables, faces в run properties. Symbol charset сохраняется как font/glyph через w:sym; OEM и неявный system ACP не подменяются Windows-1252. ansicpg0 допустим для ASCII/Unicode-only input.
 - Простые таблицы: строки/ячейки/empty cells, widths, повторные и переиспользуемые row definitions, vertical merge markers. Разные grids отмечаются loss; nested tables блокируются.
 - Inline PNG/JPEG из hex/binary, отдельные media parts, goal sizes/scale, byte budgets, signature checks. Неизвестные image formats и crop controls отмечаются loss. Это не полная raster validation.
 - Неизвестные controls сохраняют окружающий текст и получают named loss. Ignorable destinations пропускаются целиком. Issue cap не сбрасывает loss/info totals и имеет `details_truncated`.
 
-## Измеренный результат
+## Текущий результат
 
-`cargo +1.92.0 test -p strict-ooxml-rtf`: 27 behavioral tests и 1 doctest проходят. `clippy --all-targets -- -D warnings` проходит. Начальный компилируемый stub дал 8 assertion failures; затем все 8 исходных контрактов стали GREEN. Логи: `target/rtf-import/R02-{red,green}.log`. Compile failure первого scaffold не считается RED evidence.
+NUL и девять расхождений разобраны: [COMPATIBILITY_RESOLUTION.md](COMPATIBILITY_RESOLUTION.md). Explicit WPS profile: 100 imported / 100 exact text / 100 text+media roundtrip. Standard default: 97 imported / 89 exact; repair-only: 100 imported / 92 exact. 35 behavioral tests + doctest и все 100 Strict/OPC packages проходят. Это corpus text coverage, а не полная fidelity.
+
+## История первого приоритета после baseline commit
+
+Новые исправления и измерения: [PRIORITY_PROGRESS.md](PRIORITY_PROGRESS.md). Standard: 97 imported / 88 exact; explicit unsigned Unicode compatibility: 99 imported / 90 exact. 31 Rust tests + doctest и clippy проходят. Таблица ниже сохраняет baseline для сравнения.
+
+## Измеренный baseline результат
+
+`cargo +1.92.0 test -p strict-ooxml-rtf`: 31 behavioral tests и 1 doctest проходят. `clippy --all-targets -- -D warnings` проходит. Начальный компилируемый stub дал 8 assertion failures; затем все 8 исходных контрактов стали GREEN. Логи: `target/rtf-import/R02-{red,green}.log`. Compile failure первого scaffold не считается RED evidence.
 
 Корпусный пример `examples/corpus.rs` проверил ровно 100 manifest inputs. Последний измеренный прогон: `target/rtf-import/R06-corpus-v3/`; pinned source/result/reference hashes и список расхождений: [import.development-summary.json](import.development-summary.json).
 
@@ -45,7 +53,7 @@ DOCX facts v1 ошибочно учитывал `w:tab` внутри `w:pPr/w:ta
 
 R02 имеет работающие API и bounded parser, R03/R04/R05/R06 имеют частичную реализацию. Их полное acceptance не объявляется. Reviewed support-profile expectations R01 ещё не заморожены.
 
-Не завершены: полноценные styles/lists, multiple sections, horizontal/validated vertical merges, headers/footers/notes/comments/textboxes, tracked revisions, полевые инструкции/ссылки, WMF/EMF/shapes/OLE. Эти конструкции имеют loss/rejection, а не обещание fidelity. FontTable metadata сохраняется лишь частично через run fonts; actual resolved fonts не проверены.
+Не завершены: полноценные styles/lists, расширенные section properties, validated vertical merges, headers/footers/notes/comments/textboxes, tracked revisions, полевые инструкции/ссылки, WMF/EMF/shapes/OLE. Эти конструкции имеют loss/rejection, а не обещание fidelity. FontTable metadata сохраняется лишь частично через run fonts; actual resolved fonts не проверены.
 
 Strict XSD gate `xsd-gate 1.0.0` применён к 95 outputs с явными `--corpus` и `--written`, pointing at `R06-corpus-v3`: 2133 schema drivers compiled, 0 failures, 0 uncovered roots и 0 violations. ECMA archive SHA-256 закреплён в штатном gate; schema cache изолирован под worktree target. OPC parts, которые ECMA Part 1 gate отдельно исключает, проверены `opc-gate 1.0.0`: 95 packages, 0 violations. Oracle: lxml 6.0.1, libxml2 2.11.9, Python 3.13.5. Логи: `target/rtf-import/R06-xsd-corpus.log`, `R06-opc.log`. Первый `R06-xsd.log` выбрал штатный corpus из-за default `--corpus` и **не** используется как RTF evidence.
 

@@ -24,6 +24,34 @@ pub enum InvalidTextPolicy {
     /// Substitute U+FFFD and report the loss.
     ReplaceAndReport,
 }
+/// Interpretation of noncanonical positive UTF-16 control parameters.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UnicodeParameterPolicy {
+    /// Require the signed 16-bit representation specified by RTF.
+    #[default]
+    StrictSigned,
+    /// Accept positive values up to 65535 and record each repaired parameter.
+    AllowUnsignedAndReport,
+}
+/// Handling of U+0000, which cannot be stored in XML 1.0.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NulPolicy {
+    /// Reject NUL text; the default never discards input characters.
+    #[default]
+    Reject,
+    /// Discard only NUL, record a loss and count every discarded character.
+    DropAndReport,
+}
+/// Application-specific interpretation of otherwise unsupported RTF syntax.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CompatibilityProfile {
+    /// Preserve format semantics and report unknown controls.
+    #[default]
+    Standard,
+    /// Reproduce independently checked WPS text behavior: leading raw group
+    /// line endings, specific inline Apple/Cocoa words and discretionary hyphens.
+    WpsText,
+}
 /// Allocation and work budgets. Limits count input bytes, lexical tokens,
 /// emitted Unicode scalars and model nodes (paragraph/run/content).
 #[derive(Clone, Debug)]
@@ -77,6 +105,12 @@ pub struct RtfOptions {
     pub unsupported_policy: UnsupportedPolicy,
     /// Whether invalid text is rejected or explicitly replaced.
     pub invalid_text_policy: InvalidTextPolicy,
+    /// Whether legacy unsigned UTF-16 parameters are accepted.
+    pub unicode_parameter_policy: UnicodeParameterPolicy,
+    /// Explicit policy for XML-incompatible NUL characters.
+    pub nul_policy: NulPolicy,
+    /// Application-specific behavior; never enabled implicitly.
+    pub compatibility_profile: CompatibilityProfile,
 }
 /// Zero-based, half-open RTF input byte range.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +141,8 @@ pub struct RtfIssue {
 /// Import summary. Aggregate counts remain valid when details are truncated.
 #[derive(Clone, Debug, Default)]
 pub struct RtfReport {
+    /// NUL characters explicitly discarded by the selected policy.
+    pub discarded_nuls: usize,
     /// Retained diagnostic details; the configured maximum limits this list.
     pub issues: Vec<RtfIssue>,
     /// Total loss events, including details omitted by the cap.
