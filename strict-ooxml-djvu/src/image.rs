@@ -1,4 +1,5 @@
-//! Native JB2/IW44 composite, refused when any contributing codec is unsupported.
+//! Native layered DjVu composite, refused when a contributing codec is unsupported.
+mod codecs;
 use crate::{bounded, DjvuError, DjvuLimits, DjvuPage};
 /// A complete native page raster and whether it contains non-white pixels.
 #[derive(Debug, Clone)]
@@ -28,6 +29,12 @@ impl DjvuPage {
         let mut mask = None;
         let mut bg = None;
         let mut fg = None;
+        let mut bg_jpeg = None;
+        let mut fg_jpeg = None;
+        let mut palette = None;
+        let mut blit_map = None;
+        let mut blit_count = 0;
+        let indexed = self.chunks.iter().any(|c| c.id == *b"FGbz");
         for c in &self.chunks {
             match &c.id {
                 b"Djbz" => {
@@ -45,19 +52,32 @@ impl DjvuPage {
                     if mask.is_some() {
                         return Err(DjvuError::Image("multiple masks".into()));
                     }
-                    let bm = djvu_jb2::decode_with_limits(
-                        c.data(),
-                        dict.as_ref(),
-                        limits.max_ink_pixels,
-                        limits.max_sjbz_symbols,
-                    )
-                    .map_err(|e| fail(&e))?;
+                    let bm = if indexed {
+                        let (bitmap, map, count) = djvu_jb2::decode_indexed_with_limits(
+                            c.data(),
+                            dict.as_ref(),
+                            limits.max_ink_pixels,
+                            limits.max_sjbz_symbols,
+                        )
+                        .map_err(|e| fail(&e))?;
+                        blit_map = Some(map);
+                        blit_count = count;
+                        bitmap
+                    } else {
+                        djvu_jb2::decode_with_limits(
+                            c.data(),
+                            dict.as_ref(),
+                            limits.max_ink_pixels,
+                            limits.max_sjbz_symbols,
+                        )
+                        .map_err(|e| fail(&e))?
+                    };
                     if bm.width != w || bm.height != h {
                         return Err(DjvuError::Image("JB2 dimensions differ from INFO".into()));
                     }
                     mask = Some(bm);
                 }
-                b"BG44" | b"FG44" => {
+                b"BG44" | b"FG44" | b"PM44" | b"BM44" => {
                     if c.data().first() == Some(&0) {
                         let header = c
                             .data()
@@ -74,29 +94,68 @@ impl DjvuPage {
                             ));
                         }
                     }
-                    let plane = if c.id == *b"BG44" { &mut bg } else { &mut fg };
+                    let plane = if c.id == *b"FG44" { &mut fg } else { &mut bg };
                     plane
                         .get_or_insert_with(djvu_iw44::Iw44Image::new)
                         .decode_chunk(c.data())
                         .map_err(|e| fail(&e))?;
                 }
-                b"Smmr" | b"FGbz" | b"BGjp" | b"FGjp" => {
-                    return Err(DjvuError::Image(format!(
-                        "unsupported layer {}",
-                        String::from_utf8_lossy(&c.id)
-                    )))
+                b"Smmr" => {
+                    if mask.is_some() {
+                        return Err(codecs::error("multiple masks"));
+                    }
+                    mask = Some(codecs::mmr(c.data(), w, h, limits)?);
+                }
+                b"FGbz" => {
+                    if palette.is_some() {
+                        return Err(codecs::error("multiple FGbz palettes"));
+                    }
+                    palette = Some(codecs::Palette::parse(c.data(), limits)?);
+                }
+                b"BGjp" | b"FGjp" => {
+                    let plane = if c.id == *b"BGjp" {
+                        &mut bg_jpeg
+                    } else {
+                        &mut fg_jpeg
+                    };
+                    if plane.is_some() {
+                        return Err(codecs::error("multiple JPEG planes"));
+                    }
+                    *plane = Some(codecs::jpeg(c.data(), w, h, limits)?);
                 }
                 _ => {}
             }
         }
-        if mask.is_none() && bg.is_none() {
+        if mask.is_none() && bg.is_none() && bg_jpeg.is_none() {
             return Err(DjvuError::Image("page has no decodable image".into()));
         }
-        if mask.is_none() && fg.is_some() {
+        if mask.is_none() && (fg.is_some() || fg_jpeg.is_some() || palette.is_some()) {
             return Err(DjvuError::Image("foreground has no mask".into()));
         }
-        let bg = bg.map(|p| p.to_rgb()).transpose().map_err(|e| fail(&e))?;
-        let fg = fg.map(|p| p.to_rgb()).transpose().map_err(|e| fail(&e))?;
+        if (bg.is_some() && bg_jpeg.is_some())
+            || usize::from(fg.is_some())
+                + usize::from(fg_jpeg.is_some())
+                + usize::from(palette.is_some())
+                > 1
+        {
+            return Err(codecs::error("conflicting color planes"));
+        }
+        if let Some(palette) = &palette {
+            if blit_map.is_none() {
+                return Err(codecs::error("FGbz needs a JB2 mask"));
+            }
+            palette.validate(blit_count)?;
+        }
+        let bg = bg
+            .map(|p| p.to_rgb())
+            .transpose()
+            .map_err(|e| fail(&e))?
+            .or(bg_jpeg);
+        let fg = fg
+            .map(|p| p.to_rgb())
+            .transpose()
+            .map_err(|e| fail(&e))?
+            .or(fg_jpeg);
         let rotation = self.info.rotation;
         let (ow, oh) = if matches!(rotation, 90 | 270) {
             (h, w)
@@ -109,9 +168,17 @@ impl DjvuPage {
                 // Both codec output buffers use top-left row order.
                 let ink = mask.as_ref().is_some_and(|m| m.get(x, y));
                 let plane = if ink { fg.as_ref() } else { bg.as_ref() };
-                let color = plane.map_or(if ink { (0, 0, 0) } else { (255, 255, 255) }, |p| {
+                let mut color = plane.map_or(if ink { (0, 0, 0) } else { (255, 255, 255) }, |p| {
                     p.get_rgb(x * p.width / w, y * p.height / h)
                 });
+                if ink {
+                    if let (Some(palette), Some(map)) = (&palette, &blit_map) {
+                        let blit = usize::try_from(map[y as usize * w as usize + x as usize])
+                            .map_err(|_| codecs::error("JB2 ink has no blit index"))?;
+                        let [r, g, b] = palette.color(blit);
+                        color = (r, g, b);
+                    }
+                }
                 let (ox, oy) = match rotation {
                     90 => (y, w - 1 - x),
                     180 => (w - 1 - x, h - 1 - y),

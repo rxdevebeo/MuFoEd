@@ -50,9 +50,12 @@ pub struct DjvuPage {
 impl DjvuPage {
     /// Whether any image-bearing chunk exists; decoding may still be unsupported.
     pub fn has_image(&self) -> bool {
-        self.chunks
-            .iter()
-            .any(|c| matches!(&c.id, b"Sjbz" | b"Smmr" | b"BG44" | b"BGjp"))
+        self.chunks.iter().any(|c| {
+            matches!(
+                &c.id,
+                b"Sjbz" | b"Smmr" | b"BG44" | b"BGjp" | b"PM44" | b"BM44"
+            )
+        })
     }
 }
 /// Parsed document. Source bytes are shared with chunk payloads.
@@ -102,7 +105,9 @@ impl DjvuDocument {
         let mut page_roots = Vec::new();
         let mut warnings = Vec::new();
         match root.form_type.as_ref() {
-            Some(b"DJVU") => page_roots.push((String::new(), String::new(), root.clone())),
+            Some(b"DJVU" | b"PM44" | b"BM44") => {
+                page_roots.push((String::new(), String::new(), root.clone()));
+            }
             Some(b"DJVM") => {
                 let dir = root
                     .children()
@@ -171,13 +176,39 @@ impl DjvuDocument {
         let mut pages = Vec::new();
         let mut expanded = 0;
         for (id, title, form) in page_roots {
-            let info = page_info(
-                form.children()
+            let legacy = matches!(form.form_type.as_ref(), Some(b"PM44" | b"BM44"));
+            let info = if legacy {
+                let c = form
+                    .children()
                     .first()
-                    .filter(|c| c.id == *b"INFO")
-                    .ok_or_else(|| invalid("DJVU must start with INFO"))?
-                    .data(),
-            )?;
+                    .filter(|c| Some(c.id) == form.form_type)
+                    .ok_or_else(|| invalid("legacy FORM must start with matching IW44 chunk"))?;
+                let data = c.data();
+                if data.len() < 9 || data[0] != 0 {
+                    return Err(invalid("invalid legacy IW44 header"));
+                }
+                let width = u16::from_be_bytes([data[4], data[5]]);
+                let height = u16::from_be_bytes([data[6], data[7]]);
+                if width == 0 || height == 0 {
+                    return Err(invalid("zero legacy IW44 dimensions"));
+                }
+                PageInfo {
+                    width,
+                    height,
+                    dpi: 100,
+                    rotation: 0,
+                    gamma: 22,
+                    version: 24,
+                }
+            } else {
+                page_info(
+                    form.children()
+                        .first()
+                        .filter(|c| c.id == *b"INFO")
+                        .ok_or_else(|| invalid("DJVU must start with INFO"))?
+                        .data(),
+                )?
+            };
             let mut chunks = Vec::new();
             flatten(
                 &form,
@@ -191,6 +222,9 @@ impl DjvuDocument {
             let mut raw = Vec::new();
             let mut present = false;
             let mut page_warnings = Vec::new();
+            if legacy {
+                page_warnings.push("legacy IW44 has no INFO; 100 dpi page size is assumed".into());
+            }
             let mut dict_seen = false;
             let mut unknown = 0;
             for c in &chunks {
@@ -212,11 +246,8 @@ impl DjvuDocument {
                         }
                         dict_seen = true;
                     }
-                    b"INFO" | b"Sjbz" | b"BG44" | b"FG44" => {}
-                    b"Smmr" | b"BGjp" | b"FGjp" | b"FGbz" => page_warnings.push(format!(
-                        "{} image codec is unsupported",
-                        String::from_utf8_lossy(&c.id)
-                    )),
+                    b"INFO" | b"Sjbz" | b"BG44" | b"FG44" | b"Smmr" | b"BGjp" | b"FGjp"
+                    | b"FGbz" | b"PM44" | b"BM44" => {}
                     b"ANTa" | b"ANTz" | b"METa" | b"METz" => page_warnings.push(format!(
                         "{} annotations/metadata are not mapped to Word",
                         String::from_utf8_lossy(&c.id)

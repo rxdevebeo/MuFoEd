@@ -1,0 +1,100 @@
+{
+  "oracle": "DjVuLibre ddjvu 3.5.28-2ubuntu0.24.04.2",
+  "results": [
+    {
+      "file": "mmr-white.djvu",
+      "page": 1,
+      "sha256": "a1e68d8f9ecee2ef6718d798450395fe529647115615070cd3152717f6444433",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "different_pixels": 0,
+      "source": "Locally generated synthetic fixture; JPEG from tests/fixtures/red.jpg, MMR from explicit T.6 V(0) bits"
+    },
+    {
+      "file": "mmr-black.djvu",
+      "page": 1,
+      "sha256": "b013bbe2d74fe3a87139bab111e0b2dfcfa628811b6a0bfec9c78ea59729b0b3",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "different_pixels": 0,
+      "source": "Locally generated synthetic fixture; JPEG from tests/fixtures/red.jpg, MMR from explicit T.6 V(0) bits"
+    },
+    {
+      "file": "jpeg-red.djvu",
+      "page": 1,
+      "sha256": "951dca5edb26bd9a9a0b2f23adc60e1360e81dc706050f0cc21f0bb5ee1617f7",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "different_pixels": 0,
+      "source": "Locally generated synthetic fixture; JPEG from tests/fixtures/red.jpg, MMR from explicit T.6 V(0) bits"
+    },
+    {
+      "file": "legacy_bm44.djvu",
+      "page": 1,
+      "sha256": "3e68c0f733b119e36f3a7fd3b6763b0d2db22e52cc803ccbd2de64d1336fb9e3",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "different_pixels": 0,
+      "source_url": "https://github.com/matyushkin/djvu-rs/blob/main/tests/fixtures/legacy_bm44.djvu"
+    },
+    {
+      "file": "legacy_pm44.djvu",
+      "page": 1,
+      "sha256": "8fa8bb1ac9dc020b5a1ed8b2bcf3269e166165662bcbeab0c12ebbb79764bbc9",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "different_pixels": 0,
+      "source_url": "https://github.com/matyushkin/djvu-rs/blob/main/tests/fixtures/legacy_pm44.djvu"
+    },
+    {
+      "file": "navm_fgbz.djvu",
+      "page": 1,
+      "sha256": "aec189aa8a165580a87725f291e0da5ba9a16e25295b4e1e4aea162115d2d084",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "different_pixels": 0,
+      "source_url": "https://github.com/matyushkin/djvu-rs/blob/main/tests/fixtures/navm_fgbz.djvu"
+    },
+    {
+      "file": "navm_fgbz.djvu",
+      "page": 4,
+      "sha256": "aec189aa8a165580a87725f291e0da5ba9a16e25295b4e1e4aea162115d2d084",
+      "oracle_exit": 0,
+      "exact": false,
+      "max_channel_difference": 93,
+      "mean_channel_difference": 0.003279263220439691,
+      "different_pixels": 35769,
+      "source_url": "https://github.com/matyushkin/djvu-rs/blob/main/tests/fixtures/navm_fgbz.djvu"
+    },
+    {
+      "file": "navm_fgbz.djvu",
+      "page": 4,
+      "mode": "foreground",
+      "oracle_exit": 0,
+      "exact": true,
+      "max_channel_difference": 0,
+      "mean_channel_difference": 0.0,
+      "source_url": "https://github.com/matyushkin/djvu-rs/blob/main/tests/fixtures/navm_fgbz.djvu"
+    },
+    {
+      "file": "mmr-runs.djvu",
+      "page": 1,
+      "sha256": "00b27dc123e902ba81b8bd87b5aa9167b97cee377713f5357ec5d19124d587f1",
+      "source": "Locally generated G4 horizontal W(2), B(4) and vertical V(0) rows",
+      "oracle_exit": 0,
+      "exact": true
+    }
+  ]
+}

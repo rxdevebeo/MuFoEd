@@ -48,7 +48,7 @@ reference together with the vendored copy once upstream ships the fixes.
 [matyushkin/djvu-rs](https://github.com/matyushkin/djvu-rs), independently of
 the PrintCraft patches above. Their original license notices are retained.
 The `bzz_decode_with_limits`, `decode_with_limits` and
-`decode_dict_with_limits` APIs enforce caller budgets before allocating blocks,
+`decode_dict_with_limits` and `decode_indexed_with_limits` APIs enforce caller budgets before allocating blocks,
 canvases and record tables. Existing public APIs remain available.
 These patches are wired in both the root and separate fuzz workspaces;
 `strict-ooxml-djvu/tests/read.rs` and `tests/image.rs` exercise their guards.

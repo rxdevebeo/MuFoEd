@@ -20,3 +20,19 @@ The IFF implementation is local rather than the planned `djvu-iff` adapter:
 chunk/depth/work budgets and sharing of component source buffers are checked
 as headers are consumed, before building a tree. No umbrella `djvu-rs`
 dependency, GPL binding, tesseract, tract, or wasm runtime is introduced.
+
+## Decoder extension
+
+- FGbz byte layout and Smmr MMR header were cross-checked against MIT upstream
+  `matyushkin/djvu-rs` `src/fgbz.rs` and `src/smmr.rs`; those sources, not
+  DjVuLibre codec sources, were consulted. Our parsers are stricter and bounded.
+- JPEG uses existing permissively licensed `zune-jpeg` 0.5.15 / `zune-core`;
+  header dimensions are validated before decoding RGB pixels.
+- G4 decoding uses existing MIT/Apache-2.0 `hayro-ccitt` 0.4.0. Its output
+  adapter refuses truncated rows and bounds each callback to the declared canvas.
+- Legacy IW44 follows DjVu Reference Appendix 1, using the same codec as BG44.
+- Indexed JB2 gains caller canvas/record budgets and returns the full blit count,
+  including off-canvas blits, to validate the palette index table.
+- External oracle fixtures `navm_fgbz.djvu`, `legacy_pm44.djvu`,
+  `legacy_bm44.djvu` are retrieved only into ignored scratch storage from the
+  MIT upstream test fixtures; source URLs and SHA256 are in validation receipts.

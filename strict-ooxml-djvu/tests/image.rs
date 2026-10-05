@@ -77,3 +77,143 @@ fn iw44_progressive_chunks_decode_one_image() {
     assert_eq!((w, h), (64, 64));
     assert!(bytes.iter().all(|&v| (160..=200).contains(&v)));
 }
+
+#[test]
+fn fgbz_assigns_color_per_blit_and_validates_indices() {
+    let mask = scan();
+    let d = DjvuDocument::open(&mask, DjvuLimits::default()).expect("mask");
+    let stream = d.pages()[0]
+        .chunks
+        .iter()
+        .find(|c| c.id == *b"Sjbz")
+        .expect("stream")
+        .data();
+    let (_, _, count) =
+        djvu_jb2::decode_indexed_with_limits(stream, None, 10000, 100).expect("indexed");
+    let mut palette = vec![0x80, 0, 1, 40, 25, 230];
+    palette.extend(u24(count));
+    palette.extend(djvu_bzz::bzz_encode(&vec![0; count * 2]));
+    let chunks = |palette: &[u8]| {
+        single(&[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"FGbz", palette),
+            chunk(b"Sjbz", stream),
+        ])
+    };
+    let (_, _, rgb) = decoded(&chunks(&palette));
+    assert_eq!(
+        &rgb[(10 * 100 + 10) * 3..(10 * 100 + 10) * 3 + 3],
+        &[230, 25, 40]
+    );
+    let mut bad = vec![0x80, 0, 1, 40, 25, 230];
+    bad.extend(u24(count));
+    bad.extend(djvu_bzz::bzz_encode(&vec![255; count * 2]));
+    let d = DjvuDocument::open(&chunks(&bad), DjvuLimits::default()).expect("container");
+    assert!(d.pages()[0].image(d.limits).is_err());
+    let d = DjvuDocument::open(&chunks(&palette), DjvuLimits::default()).expect("container");
+    assert!(d.pages()[0]
+        .image(DjvuLimits {
+            max_ink_pixels: 9999,
+            ..d.limits
+        })
+        .is_err());
+    assert!(djvu_jb2::decode_indexed_with_limits(stream, None, 9999, 100).is_err());
+}
+#[test]
+fn jpeg_layers_decode_rgb_and_refuse_conflicts_and_bad_headers() {
+    let jpeg = include_bytes!("fixtures/red.jpg");
+    let bytes = single(&[chunk(b"INFO", &info(16, 16, 72)), chunk(b"BGjp", jpeg)]);
+    let (w, h, rgb) = decoded(&bytes);
+    assert_eq!((w, h), (16, 16));
+    assert!(rgb
+        .chunks_exact(3)
+        .all(|p| p[0] > 220 && p[1] < 40 && p[2] < 55));
+    for chunks in [
+        vec![chunk(b"BGjp", b"broken")],
+        vec![chunk(b"BGjp", jpeg), chunk(b"BGjp", jpeg)],
+        vec![chunk(b"FGjp", jpeg)],
+    ] {
+        let mut all = vec![chunk(b"INFO", &info(16, 16, 72))];
+        all.extend(chunks);
+        let d = DjvuDocument::open(&single(&all), DjvuLimits::default()).expect("framing");
+        assert!(d.pages()[0].image(d.limits).is_err());
+    }
+    let mut bad = jpeg.to_vec();
+    let sof = bad.windows(2).position(|w| w == [255, 192]).expect("SOF");
+    bad[sof + 5..sof + 9].copy_from_slice(&[255, 255, 255, 255]);
+    let d = DjvuDocument::open(
+        &single(&[chunk(b"INFO", &info(16, 16, 72)), chunk(b"BGjp", &bad)]),
+        DjvuLimits::default(),
+    )
+    .expect("framing");
+    assert!(d.pages()[0].image(d.limits).is_err());
+}
+#[test]
+fn mmr_white_and_inverted_masks_decode_and_truncated_rows_are_refused() {
+    // Eight V(0) bits: eight white rows, each referenced to an all-white row.
+    for flags in [0u8, 1] {
+        let mmr = [b'M', b'M', b'R', flags, 0, 8, 0, 8, 255, 0, 0];
+        let (_, _, rgb) = decoded(&single(&[
+            chunk(b"INFO", &info(8, 8, 72)),
+            chunk(b"Smmr", &mmr),
+        ]));
+        assert!(rgb.iter().all(|&p| p == if flags == 0 { 255 } else { 0 }));
+    }
+    for data in [
+        vec![b'M', b'M', b'R', 0, 0, 8, 0, 8],
+        vec![b'M', b'M', b'R', 2, 0, 8, 0, 8, 255],
+    ] {
+        let d = DjvuDocument::open(
+            &single(&[chunk(b"INFO", &info(8, 8, 72)), chunk(b"Smmr", &data)]),
+            DjvuLimits::default(),
+        )
+        .expect("framing");
+        assert!(d.pages()[0].image(d.limits).is_err());
+    }
+}
+#[test]
+fn legacy_bm44_without_info_uses_native_dimensions_and_progressive_chunks() {
+    let image = djvu_pixmap::GrayPixmap {
+        width: 32,
+        height: 32,
+        data: vec![180; 1024],
+    };
+    let parts = djvu_iw44::encode::encode_iw44_gray(
+        &image,
+        &djvu_iw44::encode::Iw44EncodeOptions::default(),
+    );
+    let chunks = parts.iter().map(|p| chunk(b"BM44", p)).collect::<Vec<_>>();
+    let bytes = file(&form(b"BM44", &chunks));
+    let (w, h, rgb) = decoded(&bytes);
+    assert_eq!((w, h), (32, 32));
+    assert!(rgb.iter().all(|&v| (160..=200).contains(&v)));
+}
+
+#[test]
+fn mmr_horizontal_and_vertical_modes_preserve_black_runs() {
+    // First row uses horizontal W(2), B(4), then V(0); subsequent rows use three V(0).
+    let bits = format!("00101110111{}", "111".repeat(7));
+    let mut mmr = b"MMR\0\0\x08\0\x08".to_vec();
+    for part in bits.as_bytes().chunks(8) {
+        let mut byte = 0u8;
+        for (bit, &c) in part.iter().enumerate() {
+            if c == b'1' {
+                byte |= 1 << (7 - bit);
+            }
+        }
+        mmr.push(byte);
+    }
+    mmr.extend([0, 0]);
+    let (_, _, rgb) = decoded(&single(&[
+        chunk(b"INFO", &info(8, 8, 72)),
+        chunk(b"Smmr", &mmr),
+    ]));
+    for y in 0..8 {
+        for x in 0..8 {
+            assert_eq!(
+                rgb[(y * 8 + x) * 3],
+                if (2..6).contains(&x) { 0 } else { 255 }
+            );
+        }
+    }
+}

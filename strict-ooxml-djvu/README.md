@@ -10,3 +10,8 @@ is not affiliated with, endorsed by, or a product of the format's trademark owne
 
 See [import and OCR guide](../docs/DJVU_IMPORT.md),
 [provenance](PROVENANCE.md), and [validation](../docs/djvu-validation/README.md).
+
+Image decoding also supports FGbz palettes, JPEG planes, ordinary Smmr and
+standalone PM44/BM44. Striped Smmr is explicitly refused. Physical legacy
+page size assumes 100 dpi because those files carry no INFO. See
+[decoder oracle](../docs/djvu-validation/decoder-oracle.json).

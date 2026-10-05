@@ -213,3 +213,9 @@ pub fn decode_with_limits(data: &[u8], dict: Option<&Jb2Dict>, max_pixels: usize
 pub fn decode_dict_with_limits(data: &[u8], dict: Option<&Jb2Dict>, max_records: usize) -> Result<Jb2Dict, Jb2Error> {
     dict::decode_dictionary_limited(data, dict, &mut Vec::new(), max_records)
 }
+
+/// Decode palette-ready blit indices with caller canvas/record budgets.
+/// The final count includes off-canvas blits, for validating FGbz index tables.
+pub fn decode_indexed_with_limits(data: &[u8], dict: Option<&Jb2Dict>, max_pixels: usize, max_records: usize) -> Result<(Bitmap, Vec<i32>, usize), Jb2Error> {
+    image::decode_image_indexed_limited(data, dict, &mut Vec::new(), max_pixels, max_records)
+}

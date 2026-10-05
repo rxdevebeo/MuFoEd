@@ -385,6 +385,14 @@ pub(super) fn decode_image_indexed_with_pool(
     shared_dict: Option<&Jb2Dict>,
     pool: &mut Vec<u8>,
 ) -> Result<(Bitmap, Vec<i32>), Jb2Error> {
+    decode_image_indexed_limited(data, shared_dict, pool, 64 * 1024 * 1024, MAX_RECORDS)
+        .map(|(bitmap, map, _)| (bitmap, map))
+}
+
+pub(super) fn decode_image_indexed_limited(
+    data: &[u8], shared_dict: Option<&Jb2Dict>, pool: &mut Vec<u8>,
+    max_pixels: usize, max_records: usize,
+) -> Result<(Bitmap, Vec<i32>, usize), Jb2Error> {
     let mut zp = ZpDecoder::new(data).map_err(|_| Jb2Error::ZpInitFailed)?;
 
     let mut record_type_ctx = NumContext::new();
@@ -413,7 +421,7 @@ pub(super) fn decode_image_indexed_with_pool(
         initial_dict_length = decode_num(&mut zp, &mut inherit_dict_size_ctx, 0, 262142) as usize;
         rtype = decode_num(&mut zp, &mut record_type_ctx, 0, 11);
     }
-    let _ = rtype;
+    if rtype != 0 { return Err(Jb2Error::UnknownRecordType); }
 
     let image_width = {
         let w = decode_num(&mut zp, &mut image_size_ctx, 0, 262142);
@@ -446,7 +454,7 @@ pub(super) fn decode_image_indexed_with_pool(
 
     const MAX_PIXELS: usize = 64 * 1024 * 1024;
     let page_size = (image_width as usize).saturating_mul(image_height as usize);
-    if page_size > MAX_PIXELS {
+    if page_size > max_pixels.min(MAX_PIXELS) {
         return Err(Jb2Error::ImageTooLarge);
     }
     let mut page = vec![0u8; page_size];
@@ -468,7 +476,7 @@ pub(super) fn decode_image_indexed_with_pool(
             // within the look-ahead slack, so this never rejects a good page.
             return Err(Jb2Error::Truncated);
         }
-        if record_count >= MAX_RECORDS {
+        if record_count >= max_records.min(MAX_RECORDS) {
             return Err(Jb2Error::TooManyRecords);
         }
         record_count += 1;
@@ -726,5 +734,5 @@ pub(super) fn decode_image_indexed_with_pool(
 
     let bm = page_to_bitmap(&page, image_width, image_height);
     flip_blit_map(&mut blit_map, image_width as usize, image_height as usize);
-    Ok((bm, blit_map))
+    Ok((bm, blit_map, blit_count as usize))
 }

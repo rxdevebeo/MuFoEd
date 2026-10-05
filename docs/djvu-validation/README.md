@@ -78,3 +78,22 @@ CI использует Linux target с sanitizer; внешняя CI этого 
 Аннотации, hyperlinks, NAVM, metadata, mixed-region OCR и неподдерживаемые
 image codecs перечислены в [руководстве](../DJVU_IMPORT.md); полный Stage 9
 не объявлен завершённым.
+
+## Decoder extension after baseline commit 93cc8ff
+
+[decoder-oracle.json](decoder-oracle.json) records exact RGB pixel equality for
+synthetic JPEG, ordinary/inverted MMR, external legacy BM44 and PM44, and
+FGbz page 1. FGbz page 4 foreground-only also matches exactly. The full page 4
+composite differs in the existing IW44 background (mean channel error 0.00328,
+maximum 93); no full-IW44 accuracy claim is made.
+
+External fixtures: MIT `matyushkin/djvu-rs/tests/fixtures/` on GitHub, filenames
+and input hashes recorded in the JSON. To reproduce any single page:
+
+```powershell
+cargo +1.92.0 run -p strict-ooxml-djvu --features djvu-image --example codec_probe -- input.djvu 1 native.png
+# Optional --foreground removes only background chunks; compare with ddjvu -mode=foreground.
+```
+
+Striped Smmr remains unsupported. This extension does not close annotations,
+bookmarks, region OCR, native-zone rotation or the other open Stage 9 criteria.
