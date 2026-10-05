@@ -203,12 +203,34 @@ mod tests {
 
     #[test]
     fn percent_decode_rejects_malformed_escapes() {
-        assert!(
-            percent_decode("100%").is_err(),
-            "truncated at end of string"
-        );
-        assert!(percent_decode("%G1").is_err(), "not a hex digit");
-        assert!(percent_decode("%2").is_err(), "only one hex digit present");
+        // Messages are computed eagerly so the diagnostic strings stay in the
+        // §15 line-coverage denominator (llvm-cov only counts assert format
+        // args when the assert fails).
+        let truncated = "truncated at end of string";
+        assert!(percent_decode("100%").is_err(), "{truncated}");
+        let not_hex = "not a hex digit";
+        assert!(percent_decode("%G1").is_err(), "{not_hex}");
+        let one_digit = "only one hex digit present";
+        assert!(percent_decode("%2").is_err(), "{one_digit}");
+        // Uppercase hex is a distinct arm of `hex_digit`.
+        assert_eq!(percent_decode("%2F").unwrap(), "/");
+    }
+
+    #[test]
+    fn resolve_target_rejects_empty_and_root_and_unsafe_bytes() {
+        let base = PartId::new("/word/document.xml");
+        assert!(resolve_target(&base, "", false).is_err());
+        assert!(resolve_target(&base, "/../", false).is_err());
+        assert!(resolve_target(&base, "a\0b", false).is_err());
+        assert!(resolve_target(&base, "a\u{0007}b", false).is_err());
+        // Absolute target that normalizes to the package root.
+        assert!(resolve_target(&base, "/", false).is_err());
+        assert!(canonicalize_part_name("a\0b").is_err());
+        assert!(canonicalize_part_name("a\u{0001}b").is_err());
+        // Dot-only names normalize to the package root.
+        assert!(canonicalize_part_name(".").is_err());
+        assert!(canonicalize_part_name("./.").is_err());
+        assert!(canonicalize_part_name("foo/..").is_err());
     }
 
     #[test]

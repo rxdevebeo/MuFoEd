@@ -107,6 +107,13 @@ mod tests {
     }
 
     #[test]
+    fn malformed_markup_is_not_well_formed() {
+        // Exercises the `Err(_)` arm of [`parses`] so the helper is fully covered.
+        assert!(!parses("<a><b></a>"));
+        assert!(!parses("<a>&</a>"));
+    }
+
+    #[test]
     fn every_forbidden_control_is_removed() {
         for code in (0u32..0x20).filter(|c| ![0x9, 0xA, 0xD].contains(c)) {
             let ch = char::from_u32(code).unwrap();

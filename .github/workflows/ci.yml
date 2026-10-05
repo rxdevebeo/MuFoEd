@@ -226,28 +226,73 @@ jobs:
       # number moved by 11 points on a 200-line change. This is set here rather
       # than in `[profile.dev]` so local debug builds keep the default.
       CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
+      # Dedicated target so Windows/local `target/` and dependency phantoms do
+      # not leak into the denominator (R10 / REWORK-AUDIT §15).
+      CARGO_TARGET_DIR: target/cov-ci
+      # Package-only reports: exclude registry / rustc / build phantoms.
+      LLVM_COV_IGNORE: (/\\.cargo/registry|/\\.cargo/git|/rustc-|/rustlib/|/build/|/deps/)
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
+      # Pin the tool: unpinned llvm-cov changed totals between 0.6.x and 0.9.x
+      # (R10). Bumping the pin is its own commit.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
-      - name: Coverage (core crate, threshold 80%)
-        run: cargo llvm-cov -p strict-ooxml-core --all-features --fail-under-lines 80
-      - name: Coverage (wml crate, threshold 80%)
-        run: cargo llvm-cov -p strict-ooxml-wml --all-features --fail-under-lines 80
-      - name: Coverage (report crate, threshold 80%)
-        run: cargo llvm-cov -p strict-ooxml-report --all-features --fail-under-lines 80
-      - name: Coverage (render-svg crate, threshold 80%)
-        run: cargo llvm-cov -p strict-ooxml-render-svg --all-features --fail-under-lines 80
-      # The fidelity crate is new and entirely gate arithmetic, so it is measured
-      # like any other crate: a threshold with no coverage behind it is a number
-      # nobody checked.
-      - name: Coverage (fidelity crate, threshold 80%)
-        run: cargo llvm-cov -p strict-ooxml-fidelity --all-features --fail-under-lines 80
+          tool: cargo-llvm-cov@0.9.1
+      # REWORK-AUDIT-2026-10 §15.1 line floors. `--ignore-run-fail` keeps the
+      # line report when an unrelated assertion fails: the `test` job is still
+      # the behavioral gate. Thresholds are not lowered to pass.
+      - name: Coverage (core ≥85% + §15 file floors)
+        run: |
+          cargo llvm-cov -p strict-ooxml-core --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --summary-only --output-path target/cov-ci/core.json \
+            --fail-under-lines 85
+          python xtool/coverage/file_line_gate.py --json target/cov-ci/core.json --min 100 \
+            --file xml/escape.rs --file opc/policy.rs --file opc/path.rs
+      - name: Coverage (wml ≥85%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-wml --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 85
+      - name: Coverage (report ≥80%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-report --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 80
+      - name: Coverage (render-svg ≥82%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-render-svg --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 82
+      - name: Coverage (fidelity ≥80%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-fidelity --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 80
+      - name: Coverage (write ≥80%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-write --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 80
+      - name: Coverage (pdf ≥75%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-pdf --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 75
+      - name: Coverage (render-pdf ≥75%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-render-pdf --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 75
+      - name: Coverage (convert ≥70%)
+        run: |
+          cargo llvm-cov -p strict-ooxml-convert --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 70
 
   fuzz-smoke:
     name: fuzz smoke (nightly)
@@ -288,13 +333,19 @@ jobs:
     name: fuzz nightly
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
+      CARGO_TARGET_DIR: target/cov-ci-branch
+      LLVM_COV_IGNORE: (/\\.cargo/registry|/\\.cargo/git|/rustc-|/rustlib/|/build/|/deps/)
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-fuzz
-      - name: Bounded nightly fuzz sessions
+          tool: cargo-fuzz,cargo-llvm-cov@0.9.1
+      - name: Bounded nightly fuzz sessions (3600s each; not the 60s smoke)
         working-directory: fuzz
         run: |
           for t in fuzz_zip fuzz_xml fuzz_relpath fuzz_wml fuzz_normalize fuzz_docx_full fuzz_pdf fuzz_convert; do
@@ -305,3 +356,33 @@ jobs:
             cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$t" -- \
               -max_total_time=3600 -rss_limit_mb=2048 -timeout=10 $EXTRA
           done
+      # REWORK-AUDIT-2026-10 §15.1 branch floors (≥70% core/wml). Unstable
+      # `--branch` needs nightly; the 60s fuzz-smoke job does not substitute.
+      - name: Branch coverage (core ≥70%)
+        run: |
+          cargo +nightly llvm-cov -p strict-ooxml-core --all-features --locked --branch \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 85 --json --summary-only \
+            --output-path target/cov-ci-branch/core-branch.json
+          python - <<'PY'
+          import json,sys
+          t=json.load(open("target/cov-ci-branch/core-branch.json"))["data"][0]["totals"]["branches"]
+          c,n=t.get("covered",0),t.get("count",0)
+          pct=(100.0*c/n) if n else 0.0
+          print(f"core branches {c}/{n} = {pct:.4f}%")
+          sys.exit(0 if pct+1e-9>=70.0 else 1)
+          PY
+      - name: Branch coverage (wml ≥70%)
+        run: |
+          cargo +nightly llvm-cov -p strict-ooxml-wml --all-features --locked --branch \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --fail-under-lines 85 --json --summary-only \
+            --output-path target/cov-ci-branch/wml-branch.json
+          python - <<'PY'
+          import json,sys
+          t=json.load(open("target/cov-ci-branch/wml-branch.json"))["data"][0]["totals"]["branches"]
+          c,n=t.get("covered",0),t.get("count",0)
+          pct=(100.0*c/n) if n else 0.0
+          print(f"wml branches {c}/{n} = {pct:.4f}%")
+          sys.exit(0 if pct+1e-9>=70.0 else 1)
+          PY

@@ -116,11 +116,11 @@ mod tests {
                         | (ConformancePolicy::Permissive, Strict | Unknown, false)
                         | (ConformancePolicy::Normalize, Strict, false)
                 );
-                assert_eq!(
-                    result.is_ok(),
-                    ok,
+                // Eager format keeps this diagnostic line in the §15 100% file gate.
+                let detail = format!(
                     "{policy:?} / {detected:?} / has_normalizer={has_normalizer} -> {result:?}"
                 );
+                assert_eq!(result.is_ok(), ok, "{detail}");
                 if !ok {
                     match (policy, detected) {
                         (ConformancePolicy::StrictOnly, Transitional) => assert!(matches!(

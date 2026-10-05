@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="816" height="1056" viewBox="0 0 816 1056">
   <rect x="0" y="0" width="816" height="1056" fill="#ffffff"/>
-  <text x="345.094" y="116.313" font-family="Carlito" font-size="21.333" font-weight="bold" fill="#000000" xml:space="preserve">Centered </text>
-  <text x="431.302" y="116.313" font-family="Carlito" font-size="21.333" font-weight="bold" fill="#000000" xml:space="preserve">bold</text>
-  <text x="96" y="136.007" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">Second </text>
-  <text x="142.7" y="136.007" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">paragraph</text>
+  <text x="345.443 356.734 367.474 378.724 385.859 396.599 403.943 414.682 426.13" y="116.313" font-family="Carlito" font-size="21.333" font-weight="bold" fill="#000000" xml:space="preserve">Centered </text>
+  <text x="430.953 442.401 453.87 459.109" y="116.313" font-family="Carlito" font-size="21.333" font-weight="bold" fill="#000000" xml:space="preserve">bold</text>
+  <text x="96 102.739 110.036 116.117 123.851 131.557 139.262" y="136.007" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">Second </text>
+  <text x="142.578 150.284 157.309 162.122 169.147 176.051 180.863 187.889 195.594" y="136.007" font-family="Carlito" font-size="14.667" fill="#000000" xml:space="preserve">paragraph</text>
 </svg>
