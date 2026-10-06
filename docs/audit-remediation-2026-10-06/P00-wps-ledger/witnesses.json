@@ -1,0 +1,19 @@
+{
+  "document": "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+  "source_sha256": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+  "pages": {
+    "54": {
+      "pdf_sha256": "fc58febe9187b112ef7b7f5c79e8183d108bd45e3df11adf2b48774eec0d9d1b",
+      "svg_sha256": "2a24f5e1b51e7410de62de6bd8c52f4a54de8ac1894d3a67a7d68b8b6c6dd1f9"
+    },
+    "56": {
+      "pdf_sha256": "01fb7af779291bfdcff400ecc5c164e5b5c9170afae60ca00b393913f95dadba",
+      "svg_sha256": "475f896824739c6a0f89026ea63bdf78d90041080983bd4ca90f1ca8aa66a109"
+    },
+    "104": {
+      "pdf_sha256": "f57b2818673c298be46d5dcda27c22a2e7d95128d78e293614072a312cce9d30",
+      "svg_sha256": "f5593fa3b6f015cdbbc8ece1fb93f07624da19d858bd26128e66803c61d2589f"
+    }
+  },
+  "ledger": "docs/audit-remediation-2026-10-06/wps-ledger.json"
+}

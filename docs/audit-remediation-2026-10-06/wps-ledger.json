@@ -1,0 +1,1040 @@
+{
+  "document": "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+  "source_sha256": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+  "expected_source_sha256": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+  "reference": "WPS, not Word",
+  "coordinates": "absolute glyph origin, top-left, 96 dpi",
+  "tolerance_px": 0.25,
+  "pages": {
+    "54": {
+      "pdf_sha256": "fc58febe9187b112ef7b7f5c79e8183d108bd45e3df11adf2b48774eec0d9d1b",
+      "svg_sha256": "2a24f5e1b51e7410de62de6bd8c52f4a54de8ac1894d3a67a7d68b8b6c6dd1f9",
+      "components": {
+        "p54.HVR_I.0": {
+          "text": "HVR-I",
+          "left": null,
+          "right": "Positions'15",
+          "ref_xy": [
+            382.56,
+            99.26666666666672
+          ],
+          "actual_xy": [
+            383.422,
+            97.333
+          ],
+          "dx": 0.8620000000000232,
+          "dy": -1.9336666666667242,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "figure_label",
+          "neighborhood": {
+            "left": null,
+            "right": "Positions'15"
+          }
+        },
+        "p54.HVR_I.1": {
+          "text": "HVR-I",
+          "left": "ofprimersfor",
+          "right": "amplificatio",
+          "ref_xy": [
+            310.24,
+            480.8666666666666
+          ],
+          "actual_xy": [
+            300.888,
+            481.0
+          ],
+          "dx": -9.352000000000032,
+          "dy": 0.1333333333333826,
+          "font": {
+            "reference": "ESHXQI+TimesNewRomanPS-BoldMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "ofprimersfor",
+            "right": "amplificatio"
+          }
+        },
+        "p54.HVR_I.2": {
+          "text": "HVR-I",
+          "left": "roupsbasedon",
+          "right": "sequenceswas",
+          "ref_xy": [
+            460.32,
+            581.9866666666667
+          ],
+          "actual_xy": [
+            458.587,
+            582.16
+          ],
+          "dx": -1.733000000000004,
+          "dy": 0.17333333333328937,
+          "font": {
+            "reference": "AUWCNV+TimesNewRomanPSMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "roupsbasedon",
+            "right": "sequenceswas"
+          }
+        },
+        "p54.L15996.0": {
+          "text": "L15996",
+          "left": "'15996-16410",
+          "right": "H16142L16055",
+          "ref_xy": [
+            169.6,
+            129.18666666666664
+          ],
+          "actual_xy": [
+            169.8,
+            125.253
+          ],
+          "dx": 0.20000000000001705,
+          "dy": -3.933666666666639,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "'15996-16410",
+            "right": "H16142L16055"
+          }
+        },
+        "p54.L15996.1": {
+          "text": "L15996",
+          "left": "L16212H16402",
+          "right": "H16410Figure",
+          "ref_xy": [
+            169.6,
+            388.38666666666677
+          ],
+          "actual_xy": [
+            169.8,
+            384.4
+          ],
+          "dx": 0.20000000000001705,
+          "dy": -3.9866666666667925,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "figure_label",
+          "neighborhood": {
+            "left": "L16212H16402",
+            "right": "H16410Figure"
+          }
+        },
+        "p54.H16142.0": {
+          "text": "H16142",
+          "left": "-16410L15996",
+          "right": "L16055H16142",
+          "ref_xy": [
+            283.03999999999996,
+            143.5866666666666
+          ],
+          "actual_xy": [
+            283.133,
+            139.653
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -3.9336666666665963,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "-16410L15996",
+            "right": "L16055H16142"
+          }
+        },
+        "p54.H16142.1": {
+          "text": "H16142",
+          "left": "H16142L16055",
+          "right": "L16117H16233",
+          "ref_xy": [
+            283.03999999999996,
+            165.66666666666666
+          ],
+          "actual_xy": [
+            283.133,
+            161.733
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -3.933666666666653,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "H16142L16055",
+            "right": "L16117H16233"
+          }
+        },
+        "p54.L16055.0": {
+          "text": "L16055",
+          "left": "L15996H16142",
+          "right": "H16142L16117",
+          "ref_xy": [
+            211.04,
+            154.94533333333325
+          ],
+          "actual_xy": [
+            211.133,
+            151.067
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -3.878333333333245,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "L15996H16142",
+            "right": "H16142L16117"
+          }
+        },
+        "p54.L16117.0": {
+          "text": "L16117",
+          "left": "L16055H16142",
+          "right": "H16233L16117",
+          "ref_xy": [
+            283.03999999999996,
+            189.98666666666668
+          ],
+          "actual_xy": [
+            283.133,
+            186.053
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -3.9336666666666815,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "L16055H16142",
+            "right": "H16233L16117"
+          }
+        },
+        "p54.L16117.1": {
+          "text": "L16117",
+          "left": "L16117H16233",
+          "right": "H16217L16209",
+          "ref_xy": [
+            283.03999999999996,
+            218.7866666666667
+          ],
+          "actual_xy": [
+            283.133,
+            214.853
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -3.9336666666666815,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "L16117H16233",
+            "right": "H16217L16209"
+          }
+        },
+        "p54.H16233.0": {
+          "text": "H16233",
+          "left": "H16142L16117",
+          "right": "L16117H16217",
+          "ref_xy": [
+            378.24,
+            204.3866666666666
+          ],
+          "actual_xy": [
+            378.351,
+            200.453
+          ],
+          "dx": 0.11099999999999,
+          "dy": -3.9336666666665963,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "H16142L16117",
+            "right": "L16117H16217"
+          }
+        }
+      },
+      "measurability_ok": true,
+      "geometry": {
+        "pass": false,
+        "tolerance_px": 0.25,
+        "points": [
+          {
+            "text": "HVR-I",
+            "status": "MEASURED",
+            "dx": 0.8620000000000232,
+            "dy": -1.9336666666667242,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "HVR-I",
+            "status": "MEASURED",
+            "dx": -9.352000000000032,
+            "dy": 0.1333333333333826,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "HVR-I",
+            "status": "MEASURED",
+            "dx": -1.733000000000004,
+            "dy": 0.17333333333328937,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "L15996",
+            "status": "MEASURED",
+            "dx": 0.20000000000001705,
+            "dy": -3.933666666666639,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "L15996",
+            "status": "MEASURED",
+            "dx": 0.20000000000001705,
+            "dy": -3.9866666666667925,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "H16142",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -3.9336666666665963,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "H16142",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -3.933666666666653,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "L16055",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -3.878333333333245,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "L16117",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -3.9336666666666815,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "L16117",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -3.9336666666666815,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "H16233",
+            "status": "MEASURED",
+            "dx": 0.11099999999999,
+            "dy": -3.9336666666665963,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          }
+        ]
+      }
+    },
+    "56": {
+      "pdf_sha256": "01fb7af779291bfdcff400ecc5c164e5b5c9170afae60ca00b393913f95dadba",
+      "svg_sha256": "475f896824739c6a0f89026ea63bdf78d90041080983bd4ca90f1ca8aa66a109",
+      "components": {
+        "p56.neg_M.0": {
+          "text": "-M",
+          "left": "’1\"L2’6\"L3'4",
+          "right": "\"C-D-N-A\"N1I",
+          "ref_xy": [
+            582.24,
+            325.66666666666663
+          ],
+          "actual_xy": [
+            582.333,
+            289.96
+          ],
+          "dx": 0.09299999999996089,
+          "dy": -35.70666666666665,
+          "font": {
+            "reference": "AUWCNV+TimesNewRomanPSMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "haplogroup_or_legend",
+          "neighborhood": {
+            "left": "’1\"L2’6\"L3'4",
+            "right": "\"C-D-N-A\"N1I"
+          }
+        },
+        "p56.H.0": {
+          "text": "H",
+          "left": "w-x■R■RO■HV■",
+          "right": "-v■B\"R9■T\"J-",
+          "ref_xy": [
+            589.4399999999999,
+            792.0666666666666
+          ],
+          "actual_xy": [
+            588.776,
+            756.227
+          ],
+          "dx": -0.6639999999999873,
+          "dy": -35.83966666666663,
+          "font": {
+            "reference": "VMBCQV+ArialMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "haplogroup_or_legend",
+          "neighborhood": {
+            "left": "w-x■R■RO■HV■",
+            "right": "-v■B\"R9■T\"J-"
+          }
+        },
+        "p56.8994.0": {
+          "text": "8994",
+          "left": "e22reaction.",
+          "right": "637112705117",
+          "ref_xy": [
+            362.24,
+            429.9866666666667
+          ],
+          "actual_xy": [
+            362.333,
+            429.467
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -0.5196666666666943,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "e22reaction.",
+            "right": "637112705117"
+          }
+        },
+        "p56.6371.0": {
+          "text": "6371",
+          "left": "eaction.8994",
+          "right": "127051171914",
+          "ref_xy": [
+            362.24,
+            467.26666666666665
+          ],
+          "actual_xy": [
+            362.333,
+            466.6
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -0.6666666666666288,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "eaction.8994",
+            "right": "127051171914"
+          }
+        },
+        "p56.11719.0": {
+          "text": "11719",
+          "left": "994637112705",
+          "right": "147667028458",
+          "ref_xy": [
+            424.0,
+            539.2666666666667
+          ],
+          "actual_xy": [
+            424.067,
+            538.6
+          ],
+          "dx": 0.06700000000000728,
+          "dy": -0.6666666666666288,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "994637112705",
+            "right": "147667028458"
+          }
+        },
+        "p56.14766.0": {
+          "text": "14766",
+          "left": "711270511719",
+          "right": "702845808280",
+          "ref_xy": [
+            455.19999999999993,
+            575.1066666666666
+          ],
+          "actual_xy": [
+            455.4,
+            574.467
+          ],
+          "dx": 0.20000000000004547,
+          "dy": -0.6396666666665851,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "711270511719",
+            "right": "702845808280"
+          }
+        },
+        "p56.7028.0": {
+          "text": "7028",
+          "left": "051171914766",
+          "right": "458082801392",
+          "ref_xy": [
+            517.2786666666666,
+            610.9453333333333
+          ],
+          "actual_xy": [
+            517.467,
+            610.333
+          ],
+          "dx": 0.18833333333338942,
+          "dy": -0.6123333333333676,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "snp_or_primer",
+          "neighborhood": {
+            "left": "051171914766",
+            "right": "458082801392"
+          }
+        }
+      },
+      "measurability_ok": true,
+      "geometry": {
+        "pass": false,
+        "tolerance_px": 0.25,
+        "points": [
+          {
+            "text": "-M",
+            "status": "MEASURED",
+            "dx": 0.09299999999996089,
+            "dy": -35.70666666666665,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "H",
+            "status": "MEASURED",
+            "dx": -0.6639999999999873,
+            "dy": -35.83966666666663,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "8994",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -0.5196666666666943,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "6371",
+            "status": "MEASURED",
+            "dx": 0.09300000000001774,
+            "dy": -0.6666666666666288,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "11719",
+            "status": "MEASURED",
+            "dx": 0.06700000000000728,
+            "dy": -0.6666666666666288,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "14766",
+            "status": "MEASURED",
+            "dx": 0.20000000000004547,
+            "dy": -0.6396666666665851,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "7028",
+            "status": "MEASURED",
+            "dx": 0.18833333333338942,
+            "dy": -0.6123333333333676,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          }
+        ]
+      }
+    },
+    "104": {
+      "pdf_sha256": "f57b2818673c298be46d5dcda27c22a2e7d95128d78e293614072a312cce9d30",
+      "svg_sha256": "f5593fa3b6f015cdbbc8ece1fb93f07624da19d858bd26128e66803c61d2589f",
+      "components": {
+        "p104.A_C.0": {
+          "text": "A,C",
+          "left": null,
+          "right": ":allhaplotyp",
+          "ref_xy": [
+            128.64,
+            103.42666666666673
+          ],
+          "actual_xy": [
+            131.703,
+            103.493
+          ],
+          "dx": 3.0630000000000166,
+          "dy": 0.06633333333326163,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "figure_label",
+          "neighborhood": {
+            "left": null,
+            "right": ":allhaplotyp"
+          }
+        },
+        "p104.B_D.0": {
+          "text": "B,D",
+          "left": "ucasusEurope",
+          "right": ":informative",
+          "ref_xy": [
+            120.79999999999998,
+            335.7453333333333
+          ],
+          "actual_xy": [
+            125.939,
+            335.867
+          ],
+          "dx": 5.13900000000001,
+          "dy": 0.12166666666672654,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "unique_on_page",
+          "status": "MEASURED",
+          "role": "haplogroup_or_legend",
+          "neighborhood": {
+            "left": "ucasusEurope",
+            "right": ":informative"
+          }
+        },
+        "p104.modern.0": {
+          "text": "modern",
+          "left": "haplotypesA:",
+          "right": "jnuflnUniiOB",
+          "ref_xy": [
+            168.64,
+            113.98666666666668
+          ],
+          "actual_xy": [
+            170.39,
+            114.027
+          ],
+          "dx": 1.75,
+          "dy": 0.04033333333332223,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "haplotypesA:",
+            "right": "jnuflnUniiOB"
+          }
+        },
+        "p104.modern.1": {
+          "text": "modern",
+          "left": "otypesonlyB:",
+          "right": "□UL01cl0<>->",
+          "ref_xy": [
+            224.16,
+            335.7453333333333
+          ],
+          "actual_xy": [
+            220.984,
+            335.867
+          ],
+          "dx": -3.1759999999999877,
+          "dy": 0.12166666666672654,
+          "font": {
+            "reference": "CWLLTB+Arial-BoldMT",
+            "actual": "Arimo"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "otypesonlyB:",
+            "right": "□UL01cl0<>->"
+          }
+        },
+        "p104.modern.2": {
+          "text": "modern",
+          "left": "edinselected",
+          "right": "(A,B)andanci",
+          "ref_xy": [
+            303.52,
+            598.7866666666666
+          ],
+          "actual_xy": [
+            295.166,
+            598.947
+          ],
+          "dx": -8.353999999999985,
+          "dy": 0.1603333333333694,
+          "font": {
+            "reference": "ESHXQI+TimesNewRomanPS-BoldMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "edinselected",
+            "right": "(A,B)andanci"
+          }
+        },
+        "p104.modern.3": {
+          "text": "modern",
+          "left": "leniOstrovin",
+          "right": "populationsf",
+          "ref_xy": [
+            554.8786666666666,
+            635.4253333333334
+          ],
+          "actual_xy": [
+            552.314,
+            635.48
+          ],
+          "dx": -2.5646666666666533,
+          "dy": 0.05466666666666242,
+          "font": {
+            "reference": "AUWCNV+TimesNewRomanPSMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "leniOstrovin",
+            "right": "populationsf"
+          }
+        },
+        "p104.modern.4": {
+          "text": "modern",
+          "left": "A,B).Foreach",
+          "right": "population,t",
+          "ref_xy": [
+            147.2,
+            671.9066666666666
+          ],
+          "actual_xy": [
+            147.311,
+            672.013
+          ],
+          "dx": 0.11100000000001842,
+          "dy": 0.10633333333339579,
+          "font": {
+            "reference": "AUWCNV+TimesNewRomanPSMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "A,B).Foreach",
+            "right": "population,t"
+          }
+        },
+        "p104.modern.5": {
+          "text": "modern",
+          "left": "dividedbythe",
+          "right": "populationsa",
+          "ref_xy": [
+            301.12,
+            690.1453333333334
+          ],
+          "actual_xy": [
+            299.757,
+            690.28
+          ],
+          "dx": -1.3629999999999995,
+          "dy": 0.13466666666658966,
+          "font": {
+            "reference": "AUWCNV+TimesNewRomanPSMT",
+            "actual": "Tinos"
+          },
+          "transform": {
+            "reference": "0.05,0.0,0.0,0.05",
+            "actual": "identity"
+          },
+          "match": "neighborhood",
+          "status": "MEASURED",
+          "role": "body",
+          "neighborhood": {
+            "left": "dividedbythe",
+            "right": "populationsa"
+          }
+        }
+      },
+      "measurability_ok": true,
+      "geometry": {
+        "pass": false,
+        "tolerance_px": 0.25,
+        "points": [
+          {
+            "text": "A,C",
+            "status": "MEASURED",
+            "dx": 3.0630000000000166,
+            "dy": 0.06633333333326163,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "B,D",
+            "status": "MEASURED",
+            "dx": 5.13900000000001,
+            "dy": 0.12166666666672654,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "modern",
+            "status": "MEASURED",
+            "dx": 1.75,
+            "dy": 0.04033333333332223,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "modern",
+            "status": "MEASURED",
+            "dx": -3.1759999999999877,
+            "dy": 0.12166666666672654,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "modern",
+            "status": "MEASURED",
+            "dx": -8.353999999999985,
+            "dy": 0.1603333333333694,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "modern",
+            "status": "MEASURED",
+            "dx": -2.5646666666666533,
+            "dy": 0.05466666666666242,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          },
+          {
+            "text": "modern",
+            "status": "MEASURED",
+            "dx": 0.11100000000001842,
+            "dy": 0.10633333333339579,
+            "within_tolerance": true,
+            "gate": "PASS"
+          },
+          {
+            "text": "modern",
+            "status": "MEASURED",
+            "dx": -1.3629999999999995,
+            "dy": 0.13466666666658966,
+            "within_tolerance": false,
+            "gate": "FAIL"
+          }
+        ]
+      }
+    }
+  },
+  "p0_measurability": "PASS",
+  "p1_geometry": "FAIL",
+  "note": "AMBIGUOUS is never PASS. P0 closes on MEASURED; P1 on ≤0.25 px."
+}

@@ -1,0 +1,2888 @@
+{
+  "total_rows": 10486,
+  "documents_with_rows": 205,
+  "classes": {
+    "A_placement": {
+      "rows": 1560,
+      "docs": 14,
+      "named1": 1135,
+      "top_docs": [
+        [
+          "070_Innovations_and_New_Technologies.docx",
+          1473
+        ],
+        [
+          "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+          30
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          10
+        ],
+        [
+          "014_BG_Slokas_With_Transliteration_1_18.docx",
+          7
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          4
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          4
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          4
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          4
+        ],
+        [
+          "5. Loops.docx",
+          4
+        ],
+        [
+          "6. Nested-Loops.docx",
+          4
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          4
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          4
+        ],
+        [
+          "023_VCA_BASIS_4.docx",
+          4
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          4
+        ]
+      ],
+      "top_labels": [
+        [
+          "a:off@y",
+          640
+        ],
+        [
+          "a:off@x",
+          517
+        ],
+        [
+          "a:ext@cx",
+          214
+        ],
+        [
+          "a:ext@cy",
+          179
+        ],
+        [
+          "a:chExt",
+          3
+        ],
+        [
+          "a:chOff",
+          3
+        ],
+        [
+          "a:chExt@cx",
+          1
+        ],
+        [
+          "a:chExt@cy",
+          1
+        ],
+        [
+          "a:chOff@x",
+          1
+        ],
+        [
+          "a:chOff@y",
+          1
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:ext@cx",
+          "parent": "xfrm",
+          "was": "2636886",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:ext@cy",
+          "parent": "xfrm",
+          "was": "2512330",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:off@x",
+          "parent": "xfrm",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:off@y",
+          "parent": "xfrm",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "a:ext@cx",
+          "parent": "xfrm",
+          "was": "2636886",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "a:ext@cy",
+          "parent": "xfrm",
+          "was": "2512330",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "a:off@x",
+          "parent": "xfrm",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "a:off@y",
+          "parent": "xfrm",
+          "was": "0",
+          "named": "0"
+        }
+      ]
+    },
+    "B_wp": {
+      "rows": 461,
+      "docs": 52,
+      "named1": 163,
+      "top_docs": [
+        [
+          "070_Innovations_and_New_Technologies.docx",
+          60
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          37
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          36
+        ],
+        [
+          "DOCX_46_Pages_Large_4b2b5238a0.docx",
+          20
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          19
+        ],
+        [
+          "031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+          19
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          18
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          18
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          18
+        ],
+        [
+          "5. Loops.docx",
+          18
+        ],
+        [
+          "6. Nested-Loops.docx",
+          18
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          18
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          18
+        ],
+        [
+          "023_VCA_BASIS_4.docx",
+          17
+        ],
+        [
+          "086_Oberon_La_citta_proibita.docx",
+          14
+        ]
+      ],
+      "top_labels": [
+        [
+          "wp:docPr@id",
+          38
+        ],
+        [
+          "wp:docPr@descr",
+          36
+        ],
+        [
+          "wp:extent@cx",
+          34
+        ],
+        [
+          "wp:extent@cy",
+          34
+        ],
+        [
+          "wp:inline@distL",
+          28
+        ],
+        [
+          "wp:inline@distR",
+          28
+        ],
+        [
+          "wp:docPr@name",
+          26
+        ],
+        [
+          "wp:inline@distB",
+          22
+        ],
+        [
+          "wp:inline@distT",
+          22
+        ],
+        [
+          "wp:docPr@title",
+          20
+        ],
+        [
+          "wp:positionV",
+          17
+        ],
+        [
+          "wp:effectExtent@r",
+          17
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:docPr@id",
+          "parent": "inline",
+          "was": "1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:docPr@name",
+          "parent": "inline",
+          "was": "Picture 1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:effectExtent@b",
+          "parent": "inline",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:effectExtent@l",
+          "parent": "inline",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:effectExtent@r",
+          "parent": "inline",
+          "was": "0",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:effectExtent@t",
+          "parent": "inline",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:extent@cx",
+          "parent": "inline",
+          "was": "2628900",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "wp:extent@cy",
+          "parent": "inline",
+          "was": "2504721",
+          "named": "0"
+        }
+      ]
+    },
+    "C_wps": {
+      "rows": 366,
+      "docs": 26,
+      "named1": 13,
+      "top_docs": [
+        [
+          "PEP - DVOJEZIČNI -IZJAVA KLIJENTA RADI UTVRĐIVANJA STATUSA FUNKCIONERA.docx",
+          42
+        ],
+        [
+          "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+          25
+        ],
+        [
+          "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+          21
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          17
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          16
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          16
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          16
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          16
+        ],
+        [
+          "5. Loops.docx",
+          16
+        ],
+        [
+          "6. Nested-Loops.docx",
+          16
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          16
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          16
+        ],
+        [
+          "023_VCA_BASIS_4.docx",
+          15
+        ],
+        [
+          "036_SM_401_USER_MANUAL.docx",
+          15
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          15
+        ]
+      ],
+      "top_labels": [
+        [
+          "bodyPr@wrap",
+          31
+        ],
+        [
+          "bodyPr@vert",
+          29
+        ],
+        [
+          "bodyPr@anchorCtr",
+          26
+        ],
+        [
+          "bodyPr@rot",
+          26
+        ],
+        [
+          "cNvSpPr@txBox",
+          25
+        ],
+        [
+          "bodyPr@rtlCol",
+          21
+        ],
+        [
+          "bodyPr@compatLnSpc",
+          20
+        ],
+        [
+          "bodyPr@forceAA",
+          20
+        ],
+        [
+          "bodyPr@fromWordArt",
+          20
+        ],
+        [
+          "bodyPr@horzOverflow",
+          20
+        ],
+        [
+          "bodyPr@numCol",
+          20
+        ],
+        [
+          "bodyPr@spcCol",
+          20
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@anchorCtr",
+          "parent": "wsp",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@compatLnSpc",
+          "parent": "wsp",
+          "was": "1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@forceAA",
+          "parent": "wsp",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@fromWordArt",
+          "parent": "wsp",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@horzOverflow",
+          "parent": "wsp",
+          "was": "overflow",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@numCol",
+          "parent": "wsp",
+          "was": "1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@rot",
+          "parent": "wsp",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "bodyPr@rtlCol",
+          "parent": "wsp",
+          "was": "0",
+          "named": "0"
+        }
+      ]
+    },
+    "D_theme": {
+      "rows": 1027,
+      "docs": 57,
+      "named1": 206,
+      "top_docs": [
+        [
+          "Contoso_Guest_WiFi_Connection_Guide.docx",
+          46
+        ],
+        [
+          "Digital_Marketing_Service_Agreement.docx",
+          46
+        ],
+        [
+          "Service_Agreement_Technical_Support.docx",
+          46
+        ],
+        [
+          "SpellSimmer_Privacy_Policy_EN.docx",
+          46
+        ],
+        [
+          "curso_mentoria_coaching_ES.docx",
+          46
+        ],
+        [
+          "Описание_работы_проекта_ЛК_Клиента.docx",
+          46
+        ],
+        [
+          "sample-files.com-large-document.docx",
+          46
+        ],
+        [
+          "sample-files.com-lists.docx",
+          46
+        ],
+        [
+          "sample-files.com-multi-column.docx",
+          46
+        ],
+        [
+          "sample-files.com-table-document.docx",
+          46
+        ],
+        [
+          "sample-files.com-tracked-changes.docx",
+          46
+        ],
+        [
+          "sample-long.docx",
+          46
+        ],
+        [
+          "sample-resume.docx",
+          46
+        ],
+        [
+          "sample-simple.docx",
+          46
+        ],
+        [
+          "010_SAC_AGIZhi_Neng_Yi_Shi_Ti_She_Ji_Yu_Bian_Ma_Ji_Luo.docx",
+          46
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:bottom@themeColor",
+          197
+        ],
+        [
+          "w:color@themeColor",
+          161
+        ],
+        [
+          "w:top@themeColor",
+          158
+        ],
+        [
+          "w:insideH@themeColor",
+          140
+        ],
+        [
+          "w:insideV@themeColor",
+          140
+        ],
+        [
+          "w:shd@themeFill",
+          36
+        ],
+        [
+          "w:shd@themeFillShade",
+          29
+        ],
+        [
+          "w:bottom@themeShade",
+          27
+        ],
+        [
+          "w:color@themeShade",
+          25
+        ],
+        [
+          "w:bottom@themeTint",
+          19
+        ],
+        [
+          "w:insideH@themeTint",
+          17
+        ],
+        [
+          "w:insideV@themeTint",
+          17
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@themeColor",
+          "parent": "rPr",
+          "was": "accent1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@themeColor",
+          "parent": "rPr",
+          "was": "accent5",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@themeColor",
+          "parent": "rPr",
+          "was": "text1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@themeShade",
+          "parent": "rPr",
+          "was": "BF",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@themeTint",
+          "parent": "rPr",
+          "was": "A6",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@themeTint",
+          "parent": "rPr",
+          "was": "BF",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:bottom@themeColor",
+          "parent": "pBdr",
+          "was": "background1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:bottom@themeShade",
+          "parent": "pBdr",
+          "was": "A6",
+          "named": "0"
+        }
+      ]
+    },
+    "E_color": {
+      "rows": 351,
+      "docs": 68,
+      "named1": 231,
+      "top_docs": [
+        [
+          "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+          21
+        ],
+        [
+          "081_Lab_De_Uniones.docx",
+          12
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          11
+        ],
+        [
+          "Contoso_Guest_WiFi_Connection_Guide.docx",
+          10
+        ],
+        [
+          "Digital_Marketing_Service_Agreement.docx",
+          10
+        ],
+        [
+          "Service_Agreement_Technical_Support.docx",
+          10
+        ],
+        [
+          "SpellSimmer_Privacy_Policy_EN.docx",
+          10
+        ],
+        [
+          "curso_mentoria_coaching_ES.docx",
+          10
+        ],
+        [
+          "Описание_работы_проекта_ЛК_Клиента.docx",
+          10
+        ],
+        [
+          "sample-files.com-large-document.docx",
+          10
+        ],
+        [
+          "sample-files.com-lists.docx",
+          10
+        ],
+        [
+          "sample-files.com-multi-column.docx",
+          10
+        ],
+        [
+          "sample-files.com-table-document.docx",
+          10
+        ],
+        [
+          "sample-files.com-tracked-changes.docx",
+          10
+        ],
+        [
+          "sample-long.docx",
+          10
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:color@val",
+          232
+        ],
+        [
+          "a:schemeClr@val",
+          65
+        ],
+        [
+          "w:shd",
+          26
+        ],
+        [
+          "a:srgbClr",
+          13
+        ],
+        [
+          "w:shd@fill",
+          4
+        ],
+        [
+          "w:shd@val",
+          4
+        ],
+        [
+          "a:srgbClr@val",
+          4
+        ],
+        [
+          "w:shd@color",
+          3
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@val",
+          "parent": "rPr",
+          "was": "2E74B5",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@val",
+          "parent": "rPr",
+          "was": "404040",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@val",
+          "parent": "rPr",
+          "was": "4472C4",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:color@val",
+          "parent": "rPr",
+          "was": "595959",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:schemeClr@val",
+          "parent": "effectRef",
+          "was": "accent1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:schemeClr@val",
+          "parent": "fillRef",
+          "was": "accent1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:schemeClr@val",
+          "parent": "lnRef",
+          "was": "accent1",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:color@val",
+          "parent": "rPr",
+          "was": "2E74B5",
+          "named": "1"
+        }
+      ]
+    },
+    "F_metrics": {
+      "rows": 1324,
+      "docs": 101,
+      "named1": 306,
+      "top_docs": [
+        [
+          "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+          296
+        ],
+        [
+          "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+          250
+        ],
+        [
+          "064_40_Islamic_Books.docx",
+          111
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          21
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          20
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          20
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          20
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          20
+        ],
+        [
+          "5. Loops.docx",
+          20
+        ],
+        [
+          "6. Nested-Loops.docx",
+          20
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          20
+        ],
+        [
+          "070_Innovations_and_New_Technologies.docx",
+          20
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          20
+        ],
+        [
+          "008_seyyid_ahmed_husameddin_hayati_ve_eserleri.docx",
+          14
+        ],
+        [
+          "072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx",
+          13
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:w@val",
+          185
+        ],
+        [
+          "w:sz@val",
+          169
+        ],
+        [
+          "w:szCs@val",
+          133
+        ],
+        [
+          "w:spacing@line",
+          132
+        ],
+        [
+          "w:spacing@after",
+          97
+        ],
+        [
+          "w:tab@pos",
+          80
+        ],
+        [
+          "w:ind@left",
+          75
+        ],
+        [
+          "w:sz",
+          71
+        ],
+        [
+          "w:spacing@before",
+          70
+        ],
+        [
+          "w:ind@right",
+          68
+        ],
+        [
+          "w:spacing@val",
+          53
+        ],
+        [
+          "w:jc@val",
+          32
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:ind@left",
+          "parent": "pPr",
+          "was": "-1418",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:jc@val",
+          "parent": "pPr",
+          "was": "center",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:jc@val",
+          "parent": "pPr",
+          "was": "right",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:spacing@after",
+          "parent": "pPr",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:spacing@before",
+          "parent": "pPr",
+          "was": "0",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:spacing@before",
+          "parent": "pPr",
+          "was": "120",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:sz@val",
+          "parent": "rPr",
+          "was": "18",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:sz@val",
+          "parent": "rPr",
+          "was": "20",
+          "named": "0"
+        }
+      ]
+    },
+    "G_table": {
+      "rows": 503,
+      "docs": 55,
+      "named1": 32,
+      "top_docs": [
+        [
+          "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+          90
+        ],
+        [
+          "070_Innovations_and_New_Technologies.docx",
+          90
+        ],
+        [
+          "033_Nghiep_cam_but_chi.docx",
+          32
+        ],
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          28
+        ],
+        [
+          "zahtev+za+odobrenje+SNS+Obrazac_2.docx",
+          22
+        ],
+        [
+          "DOCX_13_Pages_Medium_2cdcf0763c.docx",
+          21
+        ],
+        [
+          "DOCX_46_Pages_Large_4b2b5238a0.docx",
+          19
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          19
+        ],
+        [
+          "005_De_Thi_Van_Dgnl.docx",
+          18
+        ],
+        [
+          "APPLICATION FOR VISA.docx",
+          13
+        ],
+        [
+          "DOCX_73_Pages_Extra_Large_9d440610aa.docx",
+          11
+        ],
+        [
+          "059_ISE217_PowerShell_Programming_Syllabus.docx",
+          10
+        ],
+        [
+          "061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx",
+          10
+        ],
+        [
+          "062_ISE102_Implementing_And_Troubleshooting_Operating.docx",
+          10
+        ],
+        [
+          "063_ISE101_Implementing_And_Troubleshooting_Operating.docx",
+          10
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:tcW@w",
+          173
+        ],
+        [
+          "w:tblW@w",
+          61
+        ],
+        [
+          "w:gridCol@w",
+          59
+        ],
+        [
+          "w:insideH",
+          22
+        ],
+        [
+          "w:insideV",
+          22
+        ],
+        [
+          "w:bottom@w",
+          20
+        ],
+        [
+          "w:top@w",
+          20
+        ],
+        [
+          "w:bottom@val",
+          9
+        ],
+        [
+          "w:top@val",
+          9
+        ],
+        [
+          "w:bottom@sz",
+          7
+        ],
+        [
+          "w:top@sz",
+          7
+        ],
+        [
+          "w:gridCol",
+          6
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tblW@w",
+          "parent": "tblPr",
+          "was": "3369",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tblW@w",
+          "parent": "tblPr",
+          "was": "4097",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tblW@w",
+          "parent": "tblPr",
+          "was": "4387",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tblW@w",
+          "parent": "tblPr",
+          "was": "4595",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tblW@w",
+          "parent": "tblPr",
+          "was": "5000",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tcW@w",
+          "parent": "tcPr",
+          "was": "1236",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tcW@w",
+          "parent": "tcPr",
+          "was": "1610",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:tcW@w",
+          "parent": "tcPr",
+          "was": "3258",
+          "named": "0"
+        }
+      ]
+    },
+    "H_fonts": {
+      "rows": 510,
+      "docs": 125,
+      "named1": 3,
+      "top_docs": [
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          26
+        ],
+        [
+          "main_document.docx",
+          14
+        ],
+        [
+          "sub_document.docx",
+          14
+        ],
+        [
+          "PEP - DVOJEZIČNI -IZJAVA KLIJENTA RADI UTVRĐIVANJA STATUSA FUNKCIONERA.docx",
+          12
+        ],
+        [
+          "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+          12
+        ],
+        [
+          "014_BG_Slokas_With_Transliteration_1_18.docx",
+          12
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          12
+        ],
+        [
+          "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+          11
+        ],
+        [
+          "docx-jinja2-demo.docx",
+          9
+        ],
+        [
+          "recipe_template.docx",
+          9
+        ],
+        [
+          "056_Ask_Semiha_Cemal.docx",
+          9
+        ],
+        [
+          "021_Ljudi_Vole_SliAne_Sebi_RAPORT.docx",
+          8
+        ],
+        [
+          "052_Laporan_Hasil_Praktikum_Kecambah.docx",
+          7
+        ],
+        [
+          "059_ISE217_PowerShell_Programming_Syllabus.docx",
+          7
+        ],
+        [
+          "061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx",
+          7
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:themeFontLang@eastAsia",
+          69
+        ],
+        [
+          "w:themeFontLang@bidi",
+          67
+        ],
+        [
+          "w:rFonts@hint",
+          59
+        ],
+        [
+          "w:rFonts@ascii",
+          47
+        ],
+        [
+          "w:rFonts@hAnsi",
+          46
+        ],
+        [
+          "w:rFonts@cs",
+          41
+        ],
+        [
+          "w:rFonts@cstheme",
+          37
+        ],
+        [
+          "w:rFonts@eastAsiaTheme",
+          37
+        ],
+        [
+          "w:rFonts@asciiTheme",
+          34
+        ],
+        [
+          "w:rFonts@hAnsiTheme",
+          34
+        ],
+        [
+          "w:rFonts@eastAsia",
+          15
+        ],
+        [
+          "a:cs@charset",
+          4
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:rFonts@ascii",
+          "parent": "rPr",
+          "was": "Tahoma",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:rFonts@cs",
+          "parent": "rPr",
+          "was": "Tahoma",
+          "named": "0"
+        },
+        {
+          "doc": "APPLICATION FOR VISA.docx",
+          "label": "w:rFonts@hAnsi",
+          "parent": "rPr",
+          "was": "Tahoma",
+          "named": "0"
+        },
+        {
+          "doc": "COOKIE POLICY.docx",
+          "label": "w:themeFontLang@eastAsia",
+          "parent": "settings",
+          "was": "zh-CN",
+          "named": "0"
+        },
+        {
+          "doc": "Contoso_Guest_WiFi_Connection_Guide.docx",
+          "label": "w:themeFontLang@eastAsia",
+          "parent": "settings",
+          "was": "ja-JP",
+          "named": "0"
+        },
+        {
+          "doc": "Contoso_Guest_WiFi_Connection_Guide.docx",
+          "label": "w:rFonts@asciiTheme",
+          "parent": "rPr",
+          "was": "majorHAnsi",
+          "named": "0"
+        },
+        {
+          "doc": "Contoso_Guest_WiFi_Connection_Guide.docx",
+          "label": "w:rFonts@cstheme",
+          "parent": "rPr",
+          "was": "majorBidi",
+          "named": "0"
+        },
+        {
+          "doc": "Contoso_Guest_WiFi_Connection_Guide.docx",
+          "label": "w:rFonts@eastAsiaTheme",
+          "parent": "rPr",
+          "was": "majorEastAsia",
+          "named": "0"
+        }
+      ]
+    },
+    "I_rel": {
+      "rows": 422,
+      "docs": 112,
+      "named1": 412,
+      "top_docs": [
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          24
+        ],
+        [
+          "Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+          13
+        ],
+        [
+          "067_N_3_ACT_4_Ha_Tuan_Kiet.docx",
+          10
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          9
+        ],
+        [
+          "002_Bloggen_Forest_Man_del_3.docx",
+          8
+        ],
+        [
+          "019_Siirt_te_yabanci_Iliskleri.docx",
+          8
+        ],
+        [
+          "056_Ask_Semiha_Cemal.docx",
+          8
+        ],
+        [
+          "072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx",
+          8
+        ],
+        [
+          "100_SEC_MELI_TARI_H_11_SINIF_2_DO_NEM_1_YAZILI_CEVAP_A.docx",
+          8
+        ],
+        [
+          "065_ldny.docx",
+          7
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          6
+        ],
+        [
+          "026_hafizi_sirazi_divani_ve_tezler.docx",
+          6
+        ],
+        [
+          "039_DIVAN_I_SAMI_Abdurrahman_Sami_Niyazi_Saruhani_kadd.docx",
+          6
+        ],
+        [
+          "090_Gritos_Chutes_E_Pontapes.docx",
+          6
+        ],
+        [
+          "Certificate Incumbency -.docx",
+          5
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:headerReference@id",
+          138
+        ],
+        [
+          "w:footerReference@id",
+          107
+        ],
+        [
+          "w:footnote@id",
+          88
+        ],
+        [
+          "w:endnote@id",
+          83
+        ],
+        [
+          "c:chart@id",
+          6
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:headerReference@id",
+          "parent": "sectPr",
+          "was": "relationship:[\"http://purl.oclc.org/ooxml/officeDocument/relationships/header\", ",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:headerReference@id",
+          "parent": "sectPr",
+          "was": "relationship:[\"http://purl.oclc.org/ooxml/officeDocument/relationships/header\", ",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:endnote@id",
+          "parent": "endnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:footnote@id",
+          "parent": "footnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:headerReference@id",
+          "parent": "sectPr",
+          "was": "relationship:[\"http://purl.oclc.org/ooxml/officeDocument/relationships/header\", ",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:headerReference@id",
+          "parent": "sectPr",
+          "was": "relationship:[\"http://purl.oclc.org/ooxml/officeDocument/relationships/header\", ",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:endnote@id",
+          "parent": "endnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:footnote@id",
+          "parent": "footnotePr",
+          "was": "-1",
+          "named": "1"
+        }
+      ]
+    },
+    "J_ignorable": {
+      "rows": 387,
+      "docs": 100,
+      "named1": 387,
+      "top_docs": [
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          24
+        ],
+        [
+          "Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+          13
+        ],
+        [
+          "067_N_3_ACT_4_Ha_Tuan_Kiet.docx",
+          10
+        ],
+        [
+          "072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx",
+          10
+        ],
+        [
+          "002_Bloggen_Forest_Man_del_3.docx",
+          8
+        ],
+        [
+          "019_Siirt_te_yabanci_Iliskleri.docx",
+          8
+        ],
+        [
+          "029_For_Naturens_Skull_bloggen.docx",
+          8
+        ],
+        [
+          "056_Ask_Semiha_Cemal.docx",
+          8
+        ],
+        [
+          "078_For_mentalpatienters_manskliga_rattigheter.docx",
+          8
+        ],
+        [
+          "088_Bloggen_Mot_en_ny_romantik.docx",
+          8
+        ],
+        [
+          "100_SEC_MELI_TARI_H_11_SINIF_2_DO_NEM_1_YAZILI_CEVAP_A.docx",
+          8
+        ],
+        [
+          "090_Gritos_Chutes_E_Pontapes.docx",
+          7
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          6
+        ],
+        [
+          "026_hafizi_sirazi_divani_ve_tezler.docx",
+          6
+        ],
+        [
+          "039_DIVAN_I_SAMI_Abdurrahman_Sami_Niyazi_Saruhani_kadd.docx",
+          6
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:hdr@Ignorable",
+          119
+        ],
+        [
+          "w:footnotes@Ignorable",
+          90
+        ],
+        [
+          "w:ftr@Ignorable",
+          88
+        ],
+        [
+          "w:endnotes@Ignorable",
+          85
+        ],
+        [
+          "w:glossaryDocument@Ignorable",
+          5
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:endnotes@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:footnotes@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:hdr@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:hdr@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:endnotes@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:footnotes@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:hdr@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:hdr@Ignorable",
+          "parent": "",
+          "was": "w14 w15 w16se w16cid wp14",
+          "named": "1"
+        }
+      ]
+    },
+    "K_sdt": {
+      "rows": 405,
+      "docs": 54,
+      "named1": 19,
+      "top_docs": [
+        [
+          "1. First-Steps-in-Programming.docx",
+          22
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          22
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          22
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          22
+        ],
+        [
+          "5. Loops.docx",
+          22
+        ],
+        [
+          "6. Nested-Loops.docx",
+          22
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          22
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          22
+        ],
+        [
+          "Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+          15
+        ],
+        [
+          "067_N_3_ACT_4_Ha_Tuan_Kiet.docx",
+          13
+        ],
+        [
+          "024_Koumudi_Kiranalu_Kiran_prabha_kaumudi_kirnnaalu.docx",
+          10
+        ],
+        [
+          "090_Gritos_Chutes_E_Pontapes.docx",
+          9
+        ],
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          8
+        ],
+        [
+          "045_Ekoteologins_historia.docx",
+          8
+        ],
+        [
+          "049_FInal_DISERTATIE.docx",
+          8
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:docPartGallery",
+          82
+        ],
+        [
+          "w:docPartObj",
+          82
+        ],
+        [
+          "w:docPartUnique",
+          82
+        ],
+        [
+          "w:sdtEndPr",
+          71
+        ],
+        [
+          "w:dataBinding",
+          12
+        ],
+        [
+          "w:text",
+          9
+        ],
+        [
+          "w:alias",
+          8
+        ],
+        [
+          "w:id",
+          8
+        ],
+        [
+          "w:sdtContent",
+          8
+        ],
+        [
+          "w:sdtPr",
+          8
+        ],
+        [
+          "w:tag",
+          8
+        ],
+        [
+          "w:alias@val",
+          8
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:alias@val",
+          "parent": "sdtPr",
+          "was": "Author",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:id@val",
+          "parent": "sdtPr",
+          "was": "789243997",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:alias@val",
+          "parent": "sdtPr",
+          "was": "Author",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:id@val",
+          "parent": "sdtPr",
+          "was": "789243997",
+          "named": "1"
+        },
+        {
+          "doc": "3. Simple-Conditions.docx",
+          "label": "w:alias@val",
+          "parent": "sdtPr",
+          "was": "Author",
+          "named": "0"
+        },
+        {
+          "doc": "3. Simple-Conditions.docx",
+          "label": "w:id@val",
+          "parent": "sdtPr",
+          "was": "789243997",
+          "named": "1"
+        },
+        {
+          "doc": "4. Complex-Conditions.docx",
+          "label": "w:alias@val",
+          "parent": "sdtPr",
+          "was": "Author",
+          "named": "0"
+        },
+        {
+          "doc": "4. Complex-Conditions.docx",
+          "label": "w:id@val",
+          "parent": "sdtPr",
+          "was": "789243997",
+          "named": "1"
+        }
+      ]
+    },
+    "L_pic": {
+      "rows": 333,
+      "docs": 99,
+      "named1": 91,
+      "top_docs": [
+        [
+          "031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+          21
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          13
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          12
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          11
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          11
+        ],
+        [
+          "5. Loops.docx",
+          11
+        ],
+        [
+          "6. Nested-Loops.docx",
+          11
+        ],
+        [
+          "023_VCA_BASIS_4.docx",
+          11
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          10
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          10
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          10
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          10
+        ],
+        [
+          "DOCX_46_Pages_Large_4b2b5238a0.docx",
+          10
+        ],
+        [
+          "052_Laporan_Hasil_Praktikum_Kecambah.docx",
+          7
+        ],
+        [
+          "066_Gajendra_Mokshana_24_02_2021.docx",
+          6
+        ]
+      ],
+      "top_labels": [
+        [
+          "a:graphicData@uri",
+          110
+        ],
+        [
+          "pic:spPr@bwMode",
+          74
+        ],
+        [
+          "pic:cNvPr@descr",
+          34
+        ],
+        [
+          "pic:cNvPr@name",
+          16
+        ],
+        [
+          "pic:cNvPicPr@preferRelativeResize",
+          13
+        ],
+        [
+          "a:graphicData",
+          12
+        ],
+        [
+          "pic:blipFill",
+          11
+        ],
+        [
+          "pic:cNvPicPr",
+          11
+        ],
+        [
+          "pic:cNvPr",
+          11
+        ],
+        [
+          "pic:nvPicPr",
+          11
+        ],
+        [
+          "pic:pic",
+          11
+        ],
+        [
+          "pic:spPr",
+          11
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "pic:blipFill@rotWithShape",
+          "parent": "pic",
+          "was": "1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "a:graphicData@uri",
+          "parent": "graphic",
+          "was": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "pic:spPr@bwMode",
+          "parent": "pic",
+          "was": "auto",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "a:graphicData@uri",
+          "parent": "graphic",
+          "was": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "pic:spPr@bwMode",
+          "parent": "pic",
+          "was": "auto",
+          "named": "0"
+        },
+        {
+          "doc": "2. Мероприятия по Лайму.docx",
+          "label": "a:graphicData@uri",
+          "parent": "graphic",
+          "was": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+          "named": "1"
+        },
+        {
+          "doc": "2. Мероприятия по Лайму.docx",
+          "label": "pic:spPr@bwMode",
+          "parent": "pic",
+          "was": "auto",
+          "named": "0"
+        },
+        {
+          "doc": "2024_application_form_ en.docx",
+          "label": "a:graphicData@uri",
+          "parent": "graphic",
+          "was": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+          "named": "0"
+        }
+      ]
+    },
+    "M_settings": {
+      "rows": 658,
+      "docs": 176,
+      "named1": 246,
+      "top_docs": [
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          12
+        ],
+        [
+          "048_HTyn_mwln_khbyb_syd_shhyd_khy_qfly_kh_ykh_rhy_z_mw.docx",
+          12
+        ],
+        [
+          "061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx",
+          12
+        ],
+        [
+          "062_ISE102_Implementing_And_Troubleshooting_Operating.docx",
+          12
+        ],
+        [
+          "063_ISE101_Implementing_And_Troubleshooting_Operating.docx",
+          12
+        ],
+        [
+          "047_uz25a.docx",
+          9
+        ],
+        [
+          "001_wajiz.docx",
+          7
+        ],
+        [
+          "011_letters_of_peraringar_anna_6.docx",
+          7
+        ],
+        [
+          "019_Siirt_te_yabanci_Iliskleri.docx",
+          7
+        ],
+        [
+          "022_S_301.docx",
+          7
+        ],
+        [
+          "025_iyothee_dass_thoughts_religion.docx",
+          7
+        ],
+        [
+          "044_Yekuana_Prayers.docx",
+          7
+        ],
+        [
+          "045_Ekoteologins_historia.docx",
+          7
+        ],
+        [
+          "050_letters_of_peraringar_anna.docx",
+          7
+        ],
+        [
+          "060_Ekoteologins_historia_2nd_Ed.docx",
+          7
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:footnote",
+          88
+        ],
+        [
+          "w:footnote@id",
+          88
+        ],
+        [
+          "w:endnote",
+          83
+        ],
+        [
+          "w:endnote@id",
+          83
+        ],
+        [
+          "w:themeFontLang@eastAsia",
+          69
+        ],
+        [
+          "w:themeFontLang@bidi",
+          67
+        ],
+        [
+          "w:compat",
+          39
+        ],
+        [
+          "w:stylePaneFormatFilter@val",
+          25
+        ],
+        [
+          "w:autoHyphenation@val",
+          13
+        ],
+        [
+          "w:evenAndOddHeaders",
+          9
+        ],
+        [
+          "w:doNotTrackMoves",
+          9
+        ],
+        [
+          "r",
+          6
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:endnote@id",
+          "parent": "endnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:footnote@id",
+          "parent": "footnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:stylePaneFormatFilter@val",
+          "parent": "settings",
+          "was": "1721",
+          "named": "0"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:endnote@id",
+          "parent": "endnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:footnote@id",
+          "parent": "footnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:stylePaneFormatFilter@val",
+          "parent": "settings",
+          "was": "1721",
+          "named": "0"
+        },
+        {
+          "doc": "2024_application_form_ en.docx",
+          "label": "w:endnote@id",
+          "parent": "endnotePr",
+          "was": "-1",
+          "named": "1"
+        },
+        {
+          "doc": "2024_application_form_ en.docx",
+          "label": "w:footnote@id",
+          "parent": "footnotePr",
+          "was": "-1",
+          "named": "1"
+        }
+      ]
+    },
+    "N_styles": {
+      "rows": 2079,
+      "docs": 165,
+      "named1": 625,
+      "top_docs": [
+        [
+          "Contoso_Guest_WiFi_Connection_Guide.docx",
+          84
+        ],
+        [
+          "Описание_работы_проекта_ЛК_Клиента.docx",
+          84
+        ],
+        [
+          "curso_mentoria_coaching_ES.docx",
+          83
+        ],
+        [
+          "sample-files.com-large-document.docx",
+          83
+        ],
+        [
+          "sample-files.com-lists.docx",
+          83
+        ],
+        [
+          "sample-files.com-multi-column.docx",
+          83
+        ],
+        [
+          "sample-files.com-table-document.docx",
+          83
+        ],
+        [
+          "sample-files.com-tracked-changes.docx",
+          83
+        ],
+        [
+          "sample-long.docx",
+          83
+        ],
+        [
+          "sample-resume.docx",
+          83
+        ],
+        [
+          "sample-simple.docx",
+          83
+        ],
+        [
+          "010_SAC_AGIZhi_Neng_Yi_Shi_Ti_She_Ji_Yu_Bian_Ma_Ji_Luo.docx",
+          83
+        ],
+        [
+          "058_Apostila_Completa_C_E_Estruturas_De_Dados.docx",
+          83
+        ],
+        [
+          "Digital_Marketing_Service_Agreement.docx",
+          82
+        ],
+        [
+          "Service_Agreement_Technical_Support.docx",
+          82
+        ]
+      ],
+      "top_labels": [
+        [
+          "w:bottom@themeColor",
+          166
+        ],
+        [
+          "w:color@val",
+          155
+        ],
+        [
+          "w:top@themeColor",
+          145
+        ],
+        [
+          "w:insideH@themeColor",
+          138
+        ],
+        [
+          "w:insideV@themeColor",
+          138
+        ],
+        [
+          "w:style@customStyle",
+          136
+        ],
+        [
+          "w:color@themeColor",
+          129
+        ],
+        [
+          "w:lvl@tentative",
+          91
+        ],
+        [
+          "w:abstractNum@restartNumberingAfterBreak",
+          57
+        ],
+        [
+          "w:w@val",
+          44
+        ],
+        [
+          "w:sz@val",
+          29
+        ],
+        [
+          "w:szCs@val",
+          29
+        ]
+      ],
+      "sample_was": [
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:abstractNum@restartNumberingAfterBreak",
+          "parent": "numbering",
+          "was": "0",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:lvl@tentative",
+          "parent": "abstractNum",
+          "was": "1",
+          "named": "1"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:shd@themeFill",
+          "parent": "rPr",
+          "was": "background1",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:shd@themeFillShade",
+          "parent": "rPr",
+          "was": "F2",
+          "named": "0"
+        },
+        {
+          "doc": "1. First-Steps-in-Programming.docx",
+          "label": "w:style@customStyle",
+          "parent": "styles",
+          "was": "1",
+          "named": "0"
+        },
+        {
+          "doc": "1_Вступительный_курс_при_регистрации_на_Платформе.docx",
+          "label": "w:lvl@tentative",
+          "parent": "abstractNum",
+          "was": "1",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:abstractNum@restartNumberingAfterBreak",
+          "parent": "numbering",
+          "was": "0",
+          "named": "1"
+        },
+        {
+          "doc": "2. Simple-Calculation.docx",
+          "label": "w:lvl@tentative",
+          "parent": "abstractNum",
+          "was": "1",
+          "named": "1"
+        }
+      ]
+    },
+    "O_resource": {
+      "rows": 84,
+      "docs": 34,
+      "named1": 27,
+      "top_docs": [
+        [
+          "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+          35
+        ],
+        [
+          "070_Innovations_and_New_Technologies.docx",
+          7
+        ],
+        [
+          "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+          4
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          2
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          2
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          2
+        ],
+        [
+          "5. Loops.docx",
+          2
+        ],
+        [
+          "6. Nested-Loops.docx",
+          2
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          2
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          2
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          1
+        ],
+        [
+          "Algorithmics_Test_v4.docx",
+          1
+        ],
+        [
+          "Billing_Integration_Guide.docx",
+          1
+        ],
+        [
+          "Digital_Marketing_Service_Agreement.docx",
+          1
+        ],
+        [
+          "Plataforma_manual_ES.docx",
+          1
+        ]
+      ],
+      "top_labels": [
+        [
+          "resource:word/media/image#.png",
+          51
+        ],
+        [
+          "resource:_rels/",
+          12
+        ],
+        [
+          "resource:word/",
+          8
+        ],
+        [
+          "resource:word/media/image#.gif",
+          7
+        ],
+        [
+          "resource:word/media/image#.jpeg",
+          5
+        ],
+        [
+          "resource:word/fonts/font#.odttf",
+          1
+        ]
+      ],
+      "sample_was": []
+    },
+    "Z_other": {
+      "rows": 1722,
+      "docs": 160,
+      "named1": 219,
+      "top_docs": [
+        [
+          "070_Innovations_and_New_Technologies.docx",
+          146
+        ],
+        [
+          "DOCX_Mathematical_Equations_2fd0caa825.docx",
+          111
+        ],
+        [
+          "014_BG_Slokas_With_Transliteration_1_18.docx",
+          107
+        ],
+        [
+          "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+          75
+        ],
+        [
+          "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+          56
+        ],
+        [
+          "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+          55
+        ],
+        [
+          "7. More-Complex-Loops.docx",
+          44
+        ],
+        [
+          "1. First-Steps-in-Programming.docx",
+          43
+        ],
+        [
+          "2. Simple-Calculation.docx",
+          43
+        ],
+        [
+          "3. Simple-Conditions.docx",
+          43
+        ],
+        [
+          "8. Become-a-Software-Engineer.docx",
+          43
+        ],
+        [
+          "4. Complex-Conditions.docx",
+          42
+        ],
+        [
+          "5. Loops.docx",
+          42
+        ],
+        [
+          "6. Nested-Loops.docx",
+          42
+        ],
+        [
+          "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+          40
+        ]
+      ],
+      "top_labels": [
+        [
+          "a:ext",
+          77
+        ],
+        [
+          "w:hyperlink@history",
+          64
+        ],
+        [
+          "w:b",
+          55
+        ],
+        [
+          "Properties",
+          49
+        ],
+        [
+          "w:sym@char",
+          47
+        ],
+        [
+          "w:noProof",
+          46
+        ],
+        [
+          "a:blip@cstate",
+          46
+        ],
+        [
+          "w:txbxContent",
+          44
+        ],
+        [
+          "w:p",
+          41
+        ],
+        [
+          "w:r",
+          39
+        ],
+        [
+          "property",
+          38
+        ],
+        [
+          "vt:lpwstr",
+          37
+        ]
+      ],
+      "sample_was": []
+    }
+  },
+  "clio": {
+    "rows": 21,
+    "top_labels": [
+      [
+        "w:w@val",
+        7
+      ],
+      [
+        "w:spacing@val",
+        2
+      ],
+      [
+        "w:bottom",
+        1
+      ],
+      [
+        "w:tblCellMar",
+        1
+      ],
+      [
+        "w:top",
+        1
+      ],
+      [
+        "w:hyperlink@history",
+        1
+      ],
+      [
+        "w:endnotes@Ignorable",
+        1
+      ],
+      [
+        "w:footnotes@Ignorable",
+        1
+      ],
+      [
+        "w:endnote",
+        1
+      ],
+      [
+        "w:footnote",
+        1
+      ],
+      [
+        "w:endnote@id",
+        1
+      ],
+      [
+        "w:footnote@id",
+        1
+      ],
+      [
+        "w:autoRedefine",
+        1
+      ],
+      [
+        "w:style@customStyle",
+        1
+      ]
+    ],
+    "class_hits": {
+      "A_placement": 0,
+      "B_wp": 0,
+      "C_wps": 0,
+      "D_theme": 0,
+      "E_color": 0,
+      "F_metrics": 9,
+      "G_table": 0,
+      "H_fonts": 0,
+      "I_rel": 2,
+      "J_ignorable": 2,
+      "K_sdt": 0,
+      "L_pic": 0,
+      "M_settings": 4,
+      "N_styles": 11,
+      "O_resource": 0
+    }
+  },
+  "wps": {
+    "source": "Clio Der Sarkissian mitochondrial DNA thesis pages 54/56/104",
+    "tolerance_px": 0.25,
+    "pages": {
+      "54": {
+        "fail": [
+          {
+            "key": "L16055",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              211.04,
+              154.94533333333325
+            ],
+            "actual_px": [
+              211.133,
+              151.067
+            ],
+            "dx": 0.09300000000001774,
+            "dy": -3.878333333333245,
+            "status": "FAIL"
+          },
+          {
+            "key": "H16233",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              378.24,
+              204.38666666666663
+            ],
+            "actual_px": [
+              378.351,
+              200.453
+            ],
+            "dx": 0.11099999999999,
+            "dy": -3.9336666666666247,
+            "status": "FAIL"
+          }
+        ],
+        "ambiguous": [
+          {
+            "key": "HVR-I",
+            "reference_occurrences": 3,
+            "actual_occurrences": 3,
+            "status": "AMBIGUOUS_OR_MISSING"
+          },
+          {
+            "key": "L15996",
+            "reference_occurrences": 2,
+            "actual_occurrences": 2,
+            "status": "AMBIGUOUS_OR_MISSING"
+          },
+          {
+            "key": "H16142",
+            "reference_occurrences": 2,
+            "actual_occurrences": 2,
+            "status": "AMBIGUOUS_OR_MISSING"
+          },
+          {
+            "key": "L16117",
+            "reference_occurrences": 2,
+            "actual_occurrences": 2,
+            "status": "AMBIGUOUS_OR_MISSING"
+          }
+        ],
+        "pdf_sha256": "fc58febe9187b112ef7b7f5c79e8183d108bd45e3df11adf2b48774eec0d9d1b",
+        "svg_sha256": "2a24f5e1b51e7410de62de6bd8c52f4a54de8ac1894d3a67a7d68b8b6c6dd1f9"
+      },
+      "56": {
+        "fail": [
+          {
+            "key": "-M",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              582.24,
+              325.6666666666667
+            ],
+            "actual_px": [
+              582.333,
+              289.96
+            ],
+            "dx": 0.09299999999996089,
+            "dy": -35.706666666666706,
+            "status": "FAIL"
+          },
+          {
+            "key": "8994",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              362.24,
+              429.9866666666667
+            ],
+            "actual_px": [
+              362.333,
+              429.467
+            ],
+            "dx": 0.09300000000001774,
+            "dy": -0.5196666666666943,
+            "status": "FAIL"
+          },
+          {
+            "key": "6371",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              362.24,
+              467.26666666666665
+            ],
+            "actual_px": [
+              362.333,
+              466.6
+            ],
+            "dx": 0.09300000000001774,
+            "dy": -0.6666666666666288,
+            "status": "FAIL"
+          },
+          {
+            "key": "11719",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              424.0,
+              539.2666666666667
+            ],
+            "actual_px": [
+              424.067,
+              538.6
+            ],
+            "dx": 0.06700000000000728,
+            "dy": -0.6666666666666288,
+            "status": "FAIL"
+          },
+          {
+            "key": "14766",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              455.2,
+              575.1066666666667
+            ],
+            "actual_px": [
+              455.4,
+              574.467
+            ],
+            "dx": 0.19999999999998863,
+            "dy": -0.6396666666666988,
+            "status": "FAIL"
+          },
+          {
+            "key": "7028",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              517.2786666666667,
+              610.9453333333333
+            ],
+            "actual_px": [
+              517.467,
+              610.333
+            ],
+            "dx": 0.18833333333327573,
+            "dy": -0.6123333333333676,
+            "status": "FAIL"
+          }
+        ],
+        "ambiguous": [
+          {
+            "key": "H",
+            "reference_occurrences": 2,
+            "actual_occurrences": 2,
+            "status": "AMBIGUOUS_OR_MISSING"
+          }
+        ],
+        "pdf_sha256": "01fb7af779291bfdcff400ecc5c164e5b5c9170afae60ca00b393913f95dadba",
+        "svg_sha256": "475f896824739c6a0f89026ea63bdf78d90041080983bd4ca90f1ca8aa66a109"
+      },
+      "104": {
+        "fail": [
+          {
+            "key": "A,C",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              128.64000000000001,
+              103.42666666666673
+            ],
+            "actual_px": [
+              131.703,
+              103.493
+            ],
+            "dx": 3.062999999999988,
+            "dy": 0.06633333333326163,
+            "status": "FAIL"
+          },
+          {
+            "key": "B,D",
+            "reference_occurrences": 1,
+            "actual_occurrences": 1,
+            "reference_px": [
+              120.8,
+              335.7453333333333
+            ],
+            "actual_px": [
+              125.939,
+              335.867
+            ],
+            "dx": 5.138999999999996,
+            "dy": 0.12166666666672654,
+            "status": "FAIL"
+          }
+        ],
+        "ambiguous": [
+          {
+            "key": "modern",
+            "reference_occurrences": 6,
+            "actual_occurrences": 6,
+            "status": "AMBIGUOUS_OR_MISSING"
+          }
+        ],
+        "pdf_sha256": "f57b2818673c298be46d5dcda27c22a2e7d95128d78e293614072a312cce9d30",
+        "svg_sha256": "f5593fa3b6f015cdbbc8ece1fb93f07624da19d858bd26128e66803c61d2589f"
+      }
+    }
+  }
+}

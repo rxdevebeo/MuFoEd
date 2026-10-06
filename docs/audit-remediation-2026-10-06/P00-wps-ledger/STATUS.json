@@ -1,0 +1,24 @@
+{
+  "package": "P0",
+  "slug": "wps-ledger",
+  "visual_level": "V0",
+  "date_utc": "2026-10-06",
+  "rows_before": null,
+  "rows_after": null,
+  "labels": ["WPS absolute glyph origin matcher"],
+  "witness_docs": [
+    "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
+  ],
+  "tests_pass": true,
+  "corpus_slice_exit": 0,
+  "full_census_exit": "NOT_RUN",
+  "p0_measurability": "PASS",
+  "p1_geometry": "FAIL",
+  "tolerance_px": 0.25,
+  "notes": [
+    "All mandatory Clio keys on pages 54/56/104 are MEASURED.",
+    "AMBIGUOUS is never treated as PASS.",
+    "Key H is a whole haplogroup token, not a substring of HV or HVR-I.",
+    "Geometry ≤0.25 px remains P1; this package only makes the ledger measurable."
+  ]
+}
