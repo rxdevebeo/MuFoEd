@@ -115,6 +115,9 @@ jobs:
       # Synthetic public suite: runs measured F00–F20 tests + metadata.
       # This is not a full audit when matrix.toml still has blocked rows or
       # when --require-corpus was not requested. Receipt claim makes that explicit.
+      # F01's schema-oracle rows (`test_f01_gates.py --full`) stay in the
+      # xsd-gate job: they compile ECMA XSD. F21 runs the decide-matrix half
+      # of that script, which does not need lxml or a schema cache.
       - name: Public synthetic audit suite (F21)
         run: python xtool/audit-fixes/run.py --task F21 --phase green --receipt-dir target/audit-fixes/F21/green
       # A07: `pdf` must compile and render on its own. The default and
@@ -172,7 +175,7 @@ jobs:
       - name: No ECMA bytes in the tree (G-6)
         run: python xtool/xsd-gate/no_ecma_bytes.py
       - name: XSD gate failure modes (A05)
-        run: python xtool/xsd-gate/test_f01_gates.py
+        run: python xtool/xsd-gate/test_f01_gates.py --full
       - name: XSD gate
         run: python xtool/xsd-gate/xsd_gate.py --written /tmp/strict-xsd-gate --quiet-messages
       # G-14 of the acceptance: two runs on one corpus must agree. The gate is

@@ -22,7 +22,7 @@ strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 # Reads the bundled metric-compatible fonts' advances (S4F.1).
 skrifa.workspace = true
 # OpenType shaping shared by layout measurement and paint cluster positions (F07).
-rustybuzz.workspace = true
+harfrust.workspace = true
 # Hash of the exact face bytes delivered to SVG `@font-face` and PDF embedding.
 sha2.workspace = true
 

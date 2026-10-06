@@ -9,8 +9,10 @@ use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use rustybuzz::ttf_parser::Tag;
-use rustybuzz::{shape, BufferClusterLevel, Face, UnicodeBuffer, Variation};
+use harfrust::{
+    BufferClusterLevel, FontRef, ShapeOptions, ShaperData, ShaperInstance, Tag, UnicodeBuffer,
+    Variation,
+};
 
 use super::face::{resolve_face, ResolvedFace};
 use super::family::map_family;
@@ -26,7 +28,7 @@ const SHAPE_CACHE_PER_STYLE: usize = 16_384;
 pub enum ShapeStatus {
     /// Latin/Cyrillic/Greek and other simple scripts with kerning/ligatures.
     Full,
-    /// Arabic/Indic/Hebrew/… still go through rustybuzz, but F07/R05 does not
+    /// Arabic/Indic/Hebrew/… still go through harfrust, but F07/R05 does not
     /// claim full complex-script acceptance yet.
     DegradedComplexScript,
 }
@@ -90,7 +92,7 @@ pub struct ShapedText {
 
 /// Warning recorded when a run needs complex-script support beyond the closed matrix.
 pub const COMPLEX_SCRIPT_WARNING: &str =
-    "font.shaping.degraded: complex script present; advances use rustybuzz but \
+    "font.shaping.degraded: complex script present; advances use harfrust but \
      full complex-script acceptance (Arabic/Urdu/Tamil/Hindi matrix) is not claimed";
 
 /// Returns `true` when `text` contains a script that R05 marks degraded.
@@ -272,10 +274,15 @@ fn style_key(resolved: &ResolvedFace) -> StyleKey {
 }
 
 thread_local! {
-    static PARSED_FACES: RefCell<HashMap<StyleKey, Face<'static>>> =
-        RefCell::new(HashMap::new());
+    static PARSED_FACES: RefCell<HashMap<StyleKey, CachedFace>> = RefCell::new(HashMap::new());
     static SHAPED_RUNS: RefCell<HashMap<StyleKey, HashMap<String, ShapedText>>> =
         RefCell::new(HashMap::new());
+}
+
+struct CachedFace {
+    font: FontRef<'static>,
+    data: ShaperData,
+    instance: Option<ShaperInstance>,
 }
 
 fn cached_shaped(resolved: &ResolvedFace, text: &str) -> Option<ShapedText> {
@@ -300,22 +307,27 @@ fn store_shaped(resolved: &ResolvedFace, text: &str, shaped: &ShapedText) {
 }
 
 /// Borrows the parsed face for this style, building it once per thread.
-fn with_parsed_face<R>(
-    resolved: &ResolvedFace,
-    body: impl FnOnce(&Face<'static>) -> R,
-) -> Option<R> {
+fn with_parsed_face<R>(resolved: &ResolvedFace, body: impl FnOnce(&CachedFace) -> R) -> Option<R> {
     let key = style_key(resolved);
     PARSED_FACES.with(|cell| {
         let mut faces = cell.borrow_mut();
         if let Entry::Vacant(entry) = faces.entry(key) {
-            let mut face = Face::from_slice(resolved.bytes, 0)?;
-            if let Some(weight) = resolved.weight {
-                face.set_variations(&[Variation {
-                    tag: Tag::from_bytes(b"wght"),
-                    value: weight,
-                }]);
-            }
-            entry.insert(face);
+            let font = FontRef::from_index(resolved.bytes, 0).ok()?;
+            let data = ShaperData::new(&font);
+            let instance = resolved.weight.map(|weight| {
+                ShaperInstance::from_variations(
+                    &font,
+                    [Variation {
+                        tag: Tag::new(b"wght"),
+                        value: weight,
+                    }],
+                )
+            });
+            entry.insert(CachedFace {
+                font,
+                data,
+                instance,
+            });
         }
         Some(body(faces.get(&key).expect("parsed face just stored")))
     })
@@ -340,14 +352,23 @@ fn shape_with_face_uncached(text: &str, resolved: ResolvedFace) -> Option<Shaped
             status: ShapeStatus::Full,
         });
     }
-    let units = with_parsed_face(&resolved, |face| f64::from(face.units_per_em()))?;
-    if units <= 0.0 {
-        return None;
-    }
     let mut buffer = UnicodeBuffer::new();
     buffer.push_str(text);
     buffer.set_cluster_level(BufferClusterLevel::MonotoneCharacters);
-    let glyphs = with_parsed_face(&resolved, |face| shape(face, &[], buffer))?;
+    buffer.guess_segment_properties();
+    let (units, glyphs) = with_parsed_face(&resolved, |cached| {
+        let shaper = cached
+            .data
+            .shaper(&cached.font)
+            .instance(cached.instance.as_ref())
+            .build();
+        let units = f64::from(shaper.units_per_em());
+        let glyphs = shaper.shape(buffer, ShapeOptions::new());
+        (units, glyphs)
+    })?;
+    if units <= 0.0 {
+        return None;
+    }
     let infos = glyphs.glyph_infos();
     let positions = glyphs.glyph_positions();
     if infos.len() != positions.len() {

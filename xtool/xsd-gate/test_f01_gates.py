@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""F01: a missing output and an unmatched schema error must not PASS."""
+"""F01: a missing output and an unmatched schema error must not PASS.
+
+Default (what F21 runs) is the decide_gate matrix: no lxml, no schema compile.
+`--full` adds the oracle cases and is what the xsd-gate CI job runs.
+"""
 
 from __future__ import annotations
 
@@ -133,8 +137,9 @@ def test_unknown_settings_violation() -> None:
 
 def main() -> int:
     test_decide_matrix()
-    test_unknown_settings_violation()
-    test_missing_output_command()
+    if "--full" in sys.argv[1:]:
+        test_unknown_settings_violation()
+        test_missing_output_command()
     print("f01 gates: pass")
     return 0
 

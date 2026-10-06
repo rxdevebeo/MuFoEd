@@ -68,15 +68,27 @@ import urllib.request
 import zipfile
 
 try:
-    from lxml import etree
+    from lxml import etree as _lxml_etree
 except ImportError:  # pragma: no cover - the gate's own dependency
-    sys.stderr.write(
-        "error: the XSD gate needs lxml, which is not in the crate graph and is "
-        "not vendored here.\n"
-        "       install it with `pip install -r xtool/xsd-gate/requirements.txt`, "
-        "or point STRICT_XSD_DIR at an unpacked schema set.\n"
-    )
-    raise SystemExit(2)
+    _lxml_etree = None
+
+
+class _EtreeProxy:
+    """Load lxml on first real use so decide_gate tests do not need it."""
+
+    def __getattr__(self, name: str):
+        if _lxml_etree is None:
+            sys.stderr.write(
+                "error: the XSD gate needs lxml, which is not in the crate graph and is "
+                "not vendored here.\n"
+                "       install it with `pip install -r xtool/xsd-gate/requirements.txt`, "
+                "or point STRICT_XSD_DIR at an unpacked schema set.\n"
+            )
+            raise SystemExit(2)
+        return getattr(_lxml_etree, name)
+
+
+etree = _EtreeProxy()
 
 try:
     import tomllib
