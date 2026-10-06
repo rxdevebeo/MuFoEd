@@ -904,8 +904,8 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
 /// `word/fonts/*.ttf` behind one went missing — sixteen binaries in two corpus
 /// documents, named by nothing (`W7-DROPPED`).
 ///
-/// Children follow `CT_Font`'s sequence: hints (`altName`…`sig`), then embeds,
-/// then `notTrueType`. Hint elements are written only with their required
+/// Children follow `CT_Font`'s sequence: `altName`…`family`, `notTrueType`,
+/// `pitch`, `sig`, then embeds. Hint elements are written only with their required
 /// attributes — never as empty tags (`XS-01`). `w:charset` uses Strict
 /// `@w:characterSet`. `ctx.font_rel` gives the id **this part's own** `.rels`
 /// will carry.
@@ -954,6 +954,9 @@ fn write_font_entry(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, entry: &FontEntry) {
     if let Some(family) = hints.family.as_deref() {
         xml.empty_attr_w("w:family", "val", family);
     }
+    if hints.not_true_type {
+        xml.empty_attr_w("w:notTrueType", "val", "true");
+    }
     if let Some(pitch) = hints.pitch.as_deref() {
         xml.empty_attr_w("w:pitch", "val", pitch);
     }
@@ -994,9 +997,6 @@ fn write_font_entry(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, entry: &FontEntry) {
             xml.attr_w("subsetted", "true");
         }
         xml.end();
-    }
-    if hints.not_true_type {
-        xml.empty_attr_w("w:notTrueType", "val", "true");
     }
     xml.end();
 }
