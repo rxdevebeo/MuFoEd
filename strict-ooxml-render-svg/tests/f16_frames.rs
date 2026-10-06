@@ -399,3 +399,182 @@ fn f16_xalign_center_is_the_page_midpoint() {
         "centered frame text midpoint {midpoint} must be page center 408"
     );
 }
+
+/// Style-90 primer frame: stacked exact-160 lines must land near WPS page-54.
+#[test]
+fn f16_style90_primer_stack_matches_wps_offset() {
+    // Minimal stand-in for the L / 16055 column (frame y=1340, line=160 exact).
+    let mut body = String::new();
+    for label in ["L15996", "H16142", "L16055"] {
+        body.push_str(&format!(
+            "<w:p><w:pPr><w:pStyle w:val=\"90\"/>\
+<w:framePr w:w=\"8357\" w:h=\"5250\" w:hRule=\"exact\" w:wrap=\"none\" \
+w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"1787\" w:y=\"1340\"/>\
+<w:spacing w:line=\"160\" w:lineRule=\"exact\"/><w:ind w:left=\"1380\"/></w:pPr>\
+<w:r><w:rPr><w:rFonts w:ascii=\"Arial\"/><w:sz w:val=\"16\"/></w:rPr><w:t>{label}</w:t></w:r></w:p>"
+        ));
+    }
+    body.push_str(
+        "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>",
+    );
+    let styles = "\
+<w:style w:type=\"paragraph\" w:styleId=\"90\">\
+<w:pPr><w:spacing w:line=\"216\" w:lineRule=\"exact\"/></w:pPr>\
+<w:rPr><w:rFonts w:ascii=\"Arial\"/><w:sz w:val=\"16\"/></w:rPr></w:style>";
+    let (_package, parsed) = common::open_with_styles(&body, styles);
+    let svg = render(&parsed, &RenderOptions::default())
+        .expect("render")
+        .into_iter()
+        .next()
+        .expect("page")
+        .svg;
+    let (_, y0) = text_at(&svg, "L15996");
+    let (_, y1) = text_at(&svg, "H16142");
+    let (_, y2) = text_at(&svg, "L16055");
+    let slot = 160.0 / 20.0 * 96.0 / 72.0;
+    let frame_y = 1340.0 / 20.0 * 96.0 / 72.0;
+    assert!(
+        (y1 - y0 - slot).abs() <= 0.25 && (y2 - y1 - slot).abs() <= 0.25,
+        "exact-160 stack pitch, y0={y0} y1={y1} y2={y2} slot={slot}"
+    );
+    assert!(
+        y0 > frame_y + 8.0 && y0 < frame_y + slot + 2.0,
+        "first baseline in the frame box, y0={y0} frame_y={frame_y}"
+    );
+}
+
+/// Adjacent `w:pBdr` paragraphs in one page frame: top pad on the first, bottom
+/// pad after the last, and a collapsed shared edge between them (Clio HVR-I +
+/// Positions on page 54).
+#[test]
+fn f16_pbdr_collapses_between_bordered_frame_siblings() {
+    let styles = "\
+<w:style w:type=\"paragraph\" w:styleId=\"70\">\
+<w:pPr><w:spacing w:line=\"0\" w:lineRule=\"atLeast\"/></w:pPr>\
+<w:rPr><w:rFonts w:ascii=\"Arial\"/><w:sz w:val=\"15\"/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"81\">\
+<w:pPr><w:spacing w:line=\"216\" w:lineRule=\"exact\"/></w:pPr>\
+<w:rPr><w:rFonts w:ascii=\"Arial\"/><w:sz w:val=\"14\"/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"90\">\
+<w:pPr><w:spacing w:line=\"216\" w:lineRule=\"exact\"/></w:pPr>\
+<w:rPr><w:rFonts w:ascii=\"Arial\"/><w:sz w:val=\"16\"/></w:rPr></w:style>";
+    let frame = "<w:framePr w:w=\"8357\" w:h=\"5250\" w:hRule=\"exact\" w:wrap=\"none\" \
+w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"1787\" w:y=\"1340\"/>";
+    let bdr = "<w:pBdr>\
+<w:top w:val=\"single\" w:sz=\"4\" w:space=\"1\" w:color=\"auto\"/>\
+<w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"1\" w:color=\"auto\"/>\
+</w:pBdr>";
+    let body = format!(
+        "<w:p><w:pPr><w:pStyle w:val=\"70\"/>{frame}{bdr}\
+<w:spacing w:line=\"150\" w:lineRule=\"exact\"/></w:pPr>\
+<w:r><w:t>HVR-I</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"81\"/>{frame}{bdr}</w:pPr>\
+<w:r><w:t>Positions</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"90\"/>{frame}</w:pPr>\
+<w:r><w:t>L15996</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>"
+    );
+    let (_package, parsed) = common::open_with_styles(&body, styles);
+    let svg = render(&parsed, &RenderOptions::default())
+        .expect("render")
+        .into_iter()
+        .next()
+        .expect("page")
+        .svg;
+    let (_, hvr_y) = text_at(&svg, "HVR-I");
+    let (_, pos_y) = text_at(&svg, "Positions");
+    let (_, l_y) = text_at(&svg, "L15996");
+    let frame_y = 1340.0 / 20.0 * 96.0 / 72.0;
+    let border = (1.0 + 4.0 / 8.0) * 96.0 / 72.0;
+    // HVR-I: top border + exact*0.8 for 150-twip line at 7.5pt.
+    let exact_150 = 150.0 / 20.0 * 96.0 / 72.0;
+    assert!(
+        (hvr_y - (frame_y + border + exact_150 * 0.8)).abs() <= 0.35,
+        "HVR-I baseline {hvr_y} after top border {border} in frame {frame_y}"
+    );
+    // Collapsed edge: Positions sits one exact-150 advance below HVR, not +2 borders.
+    assert!(
+        (pos_y - (hvr_y - exact_150 * 0.8 + exact_150 + 216.0 / 20.0 * 96.0 / 72.0 * 0.8)).abs()
+            <= 0.5,
+        "Positions {pos_y} after collapsed HVR edge, HVR={hvr_y}"
+    );
+    // Bottom border of Positions clears L15996.
+    let exact_216 = 216.0 / 20.0 * 96.0 / 72.0;
+    assert!(
+        (l_y - (pos_y - exact_216 * 0.8 + exact_216 + border + exact_216 * 0.8)).abs() <= 0.5,
+        "L15996 {l_y} after Positions bottom border, Positions={pos_y}"
+    );
+}
+
+/// Exact line shorter than the font: baseline follows font ascent (WPS primers).
+#[test]
+fn f16_exact_line_shorter_than_font_uses_font_ascent() {
+    let body = "\
+<w:p><w:pPr><w:framePr w:w=\"4000\" w:h=\"800\" w:x=\"1921\" w:y=\"2854\"/>\
+<w:spacing w:after=\"0\" w:line=\"80\" w:lineRule=\"exact\"/></w:pPr>\
+<w:r><w:rPr><w:rFonts w:ascii=\"Arial\"/><w:sz w:val=\"16\"/></w:rPr><w:t>L16055</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let (_package, parsed) = open_body(body);
+    let svg = render(&parsed, &RenderOptions::default())
+        .expect("render")
+        .into_iter()
+        .next()
+        .expect("page")
+        .svg;
+    let (_, y) = text_at(&svg, "L16055");
+    let frame_y = 2854.0 / 20.0 * 96.0 / 72.0;
+    let exact = 80.0 / 20.0 * 96.0 / 72.0;
+    // Font ascent for 8pt Arimo is well above the 80-twip line; baseline must
+    // not be clamped to the line box (that left primers ~4 px too high vs WPS).
+    assert!(
+        y > frame_y + exact + 0.5,
+        "baseline {y} must sit below frame+exact ({frame_y}+{exact}); svg={svg}"
+    );
+}
+
+/// Clio page 56: style 130 (`w:spacing` 13 twips) wraps `"L3'4` inside a 480-twip
+/// frame with a 100-twip indent, so the next haplogroup sits one exact line lower.
+#[test]
+fn f16_haplogroup_l3_wraps_from_character_spacing() {
+    let styles = "\
+<w:style w:type=\"paragraph\" w:styleId=\"130\">\
+<w:pPr><w:spacing w:line=\"538\" w:lineRule=\"exact\"/></w:pPr>\
+<w:rPr><w:rFonts w:ascii=\"Arial\"/><w:spacing w:val=\"13\"/><w:sz w:val=\"16\"/></w:rPr>\
+</w:style>";
+    let frame = "<w:framePr w:w=\"480\" w:h=\"12330\" w:hRule=\"exact\" w:wrap=\"none\" \
+w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"8635\" w:y=\"1229\"/>";
+    let body = format!(
+        "<w:p><w:pPr><w:pStyle w:val=\"130\"/>{frame}<w:ind w:left=\"100\"/></w:pPr>\
+<w:r><w:t>\"L3'4</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"130\"/>{frame}<w:ind w:left=\"100\"/>\
+<w:spacing w:after=\"0\" w:line=\"538\" w:lineRule=\"exact\"/></w:pPr>\
+<w:r><w:t>-M</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>"
+    );
+    let (_package, parsed) = common::open_with_styles(&body, styles);
+    let svg = render(&parsed, &RenderOptions::default())
+        .expect("render")
+        .into_iter()
+        .next()
+        .expect("page")
+        .svg;
+    assert!(
+        svg.contains("L3") || svg.contains("3"),
+        "expected haplogroup glyphs: {svg}"
+    );
+    let (_, l3_y) = text_at(&svg, "3");
+    let (_, m_y) = text_at(&svg, "-M");
+    let slot = 538.0 / 20.0 * 96.0 / 72.0;
+    assert!(
+        (m_y - l3_y - 2.0 * slot).abs() <= 0.5,
+        "L3 must occupy two exact slots so -M is 2*538 twips below, L3={l3_y} M={m_y} slot={slot} {svg}"
+    );
+}

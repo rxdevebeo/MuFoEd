@@ -268,6 +268,8 @@ pub fn place_pages(
         render_items: std::cell::Cell::new(0),
         frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0, 0.0, 0.0)),
         frame_cursors: std::cell::RefCell::new(Vec::new()),
+        frame_prior_exact: std::cell::Cell::new(None),
+        frame_force_exact_grid: std::cell::Cell::new(false),
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
@@ -311,6 +313,8 @@ pub fn render_with_media(
         render_items: std::cell::Cell::new(0),
         frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0, 0.0, 0.0)),
         frame_cursors: std::cell::RefCell::new(Vec::new()),
+        frame_prior_exact: std::cell::Cell::new(None),
+        frame_force_exact_grid: std::cell::Cell::new(false),
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };

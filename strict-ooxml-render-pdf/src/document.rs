@@ -665,6 +665,7 @@ impl PageWriter<'_> {
         let family = strict_ooxml_render_svg::style::chosen_family(&text.run, shown);
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
         let size = px_to_pt(text.size_px, self.scale) as f32;
+        let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
         let mut cursor = 0.0;
         let mut drew = false;
         self.content.begin_text();
@@ -689,6 +690,9 @@ impl PageWriter<'_> {
             }
             cursor +=
                 provider.advance_em(&family, ch, text.run.bold, text.run.italic) * text.size_px;
+            if !ch.is_whitespace() {
+                cursor += extra;
+            }
         }
         self.content.end_text();
         drew
@@ -712,10 +716,14 @@ impl PageWriter<'_> {
         self.content.begin_text();
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
+        let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
+        let mut non_space_before = 0usize;
         for cluster in &shaped.clusters {
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
                 .unwrap_or("");
+            let cluster_extra = extra * non_space_before as f64;
+            non_space_before += unicode.chars().filter(|ch| !ch.is_whitespace()).count();
             let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
@@ -741,7 +749,7 @@ impl PageWriter<'_> {
                 let Some(cid) = cid else {
                     continue;
                 };
-                let x_px = text.x + glyph.x_em * text.size_px;
+                let x_px = text.x + glyph.x_em * text.size_px + cluster_extra;
                 let y_px = text.baseline - glyph.y_offset_em * text.size_px;
                 self.content
                     .set_text_matrix([1.0, 0.0, 0.0, 1.0, self.x(x_px), self.y(y_px)]);

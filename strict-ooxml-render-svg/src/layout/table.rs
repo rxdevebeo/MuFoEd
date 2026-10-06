@@ -621,7 +621,7 @@ pub(crate) fn layout_blocks_inline(
         match &blocks[index] {
             Block::Paragraph(para) => {
                 let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
-                *y += flow.space_before;
+                *y += flow.space_before + flow.border_before;
                 for item in flow.flows {
                     match item {
                         Flow::Line(line) => {
@@ -656,7 +656,7 @@ pub(crate) fn layout_blocks_inline(
                         Flow::PageBreak => {}
                     }
                 }
-                *y += flow.space_after;
+                *y += flow.space_after + flow.border_after;
             }
             Block::Table(table) => {
                 if push_uniform_framed_table(ctx, table, depth, escape_frames, page_frames) {
@@ -922,19 +922,38 @@ pub(crate) fn layout_frame_contents(
     let mut anchors = Vec::new();
     let mut local_y = 0.0_f64;
     let mut pending_after = 0.0_f64;
+    let mut pending_border_after = 0.0_f64;
+    let mut pending_bordered = false;
+    ctx.frame_prior_exact.set(None);
+    ctx.frame_force_exact_grid.set(false);
     for block in blocks {
         let Block::Paragraph(para) = block else {
             continue;
         };
         let flow = layout_paragraph(ctx, para, 0.0, frame_width, None, None, &[], None);
         local_y += pending_after.max(flow.space_before);
+        let curr_bordered = flow.border_before > 0.0 || flow.border_after > 0.0;
+        // Consecutive `w:pBdr` paragraphs share one edge: skip the pads between
+        // them (Clio HVR-I + Positions). First / last borders still apply.
+        if !(pending_bordered && curr_bordered) {
+            local_y += pending_border_after + flow.border_before;
+        }
         for anchor in flow.anchors {
             anchors.push((origin_y + local_y, anchor));
         }
+        let mut para_exact: Option<f64> = None;
+        let computed = crate::style::compute_paragraph(ctx.document, para);
+        let exact_para = matches!(
+            computed.line_rule,
+            strict_ooxml_wml::model::values::LineSpacingRule::Exact
+        );
         for item in flow.flows {
             match item {
                 Flow::Line(mut line) => {
                     let height = line.height;
+                    if exact_para {
+                        para_exact = Some(height);
+                    }
                     line.offset(origin_x, origin_y + local_y);
                     let graphics = std::mem::take(&mut line.graphics);
                     let (backs, rest): (Vec<_>, Vec<_>) = graphics
@@ -971,8 +990,16 @@ pub(crate) fn layout_frame_contents(
                 Flow::PageBreak => break,
             }
         }
+        if let Some(exact) = para_exact {
+            ctx.frame_prior_exact.set(Some(exact));
+        }
         pending_after = flow.space_after;
+        pending_border_after = flow.border_after;
+        pending_bordered = curr_bordered;
     }
+    ctx.frame_prior_exact.set(None);
+    ctx.frame_force_exact_grid.set(false);
+    local_y += pending_border_after;
     (items, anchors, local_y)
 }
 

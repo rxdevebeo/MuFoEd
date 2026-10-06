@@ -69,12 +69,30 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
     let xs = match item.advance {
         TextAdvanceKind::Metric => {
             let provider = BuiltinFontProvider::new();
+            let extra = crate::style::spacing_px(&item.run, item.size_px);
             let mut cursor = item.x;
-            let mut metric = Vec::with_capacity(shown.chars().count());
-            for ch in shown.chars() {
+            let mut prev = None;
+            let chars: Vec<char> = shown.chars().collect();
+            let mut metric = Vec::with_capacity(chars.len());
+            for (i, &ch) in chars.iter().enumerate() {
                 metric.push(cursor);
-                cursor +=
-                    provider.advance_em(family, ch, item.run.bold, item.run.italic) * item.size_px;
+                let next = chars.get(i + 1).copied().or(item.following_non_space);
+                let factor = crate::style::compressed_char_factor(
+                    prev,
+                    ch,
+                    next,
+                    item.compress_punctuation,
+                    item.plain_space_factor,
+                );
+                cursor += provider.advance_em(family, ch, item.run.bold, item.run.italic)
+                    * item.size_px
+                    * factor;
+                if !ch.is_whitespace() {
+                    cursor += extra;
+                    prev = Some(ch);
+                } else if factor > 0.0 {
+                    prev = Some(ch);
+                }
             }
             metric
         }
@@ -82,7 +100,45 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
             let Some(shaped) = shape_bundled(shown, family, item.run.bold, item.run.italic) else {
                 return coord(item.x);
             };
-            unicode_x_positions_px(shown, &shaped, item.x, item.size_px)
+            let mut xs = unicode_x_positions_px(shown, &shaped, item.x, item.size_px);
+            let extra = crate::style::spacing_px(&item.run, item.size_px);
+            let compress = item.compress_punctuation;
+            if extra != 0.0 || compress {
+                let chars: Vec<char> = shown.chars().collect();
+                let mut prev = None;
+                let mut non_space_index = 0usize;
+                let mut compress_shift = 0.0;
+                let provider = BuiltinFontProvider::new();
+                for (logical, &ch) in chars.iter().enumerate() {
+                    let next = chars.get(logical + 1).copied().or(item.following_non_space);
+                    let factor = crate::style::compressed_char_factor(
+                        prev,
+                        ch,
+                        next,
+                        compress,
+                        item.plain_space_factor,
+                    );
+                    if let Some(x) = xs.get_mut(logical) {
+                        *x += extra * non_space_index as f64 + compress_shift;
+                    }
+                    if (factor - 1.0).abs() > f64::EPSILON {
+                        compress_shift -= provider.advance_em(
+                            family,
+                            ch,
+                            item.run.bold,
+                            item.run.italic,
+                        ) * item.size_px
+                            * (1.0 - factor);
+                    }
+                    if !ch.is_whitespace() {
+                        non_space_index += 1;
+                        prev = Some(ch);
+                    } else if factor > 0.0 {
+                        prev = Some(ch);
+                    }
+                }
+            }
+            xs
         }
     };
     if xs.is_empty() {

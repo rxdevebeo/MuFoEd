@@ -566,6 +566,9 @@ impl Frame<'_, '_> {
             size_px: self.size_px,
             advance: crate::layout::TextAdvanceKind::Shaped,
             field: None,
+            compress_punctuation: false,
+            following_non_space: None,
+            plain_space_factor: 1.0,
         }));
         MathBox {
             size,
@@ -1291,6 +1294,9 @@ fn delimiter_item(
             size_px: frame.size_px,
             advance: crate::layout::TextAdvanceKind::Shaped,
             field: None,
+            compress_punctuation: false,
+            following_non_space: None,
+            plain_space_factor: 1.0,
         }));
     }
     let d = shapes::delimiter(character, width, height)?;

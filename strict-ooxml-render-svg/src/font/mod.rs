@@ -16,7 +16,7 @@ pub use symbol::present_text;
 
 pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};
 pub use face::{hash_face_bytes, hash_face_bytes_hex, resolve_face, FaceId, ResolvedFace};
-pub use family::map_family;
+pub use family::{map_family, substitute_width_scale};
 pub use metrics::FontMetrics;
 pub use shape::{
     needs_complex_script, shape_advance_em, shape_bundled, shape_text, unicode_cluster_map,

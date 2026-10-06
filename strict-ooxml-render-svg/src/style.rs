@@ -10,8 +10,8 @@
 use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
-    Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule, Spacing, TabStop,
-    ThemeColorRef, TriState, Underline, VertAlign,
+    Border, BorderStyle, Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule,
+    Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
 };
 use strict_ooxml_wml::model::Document;
 
@@ -22,6 +22,8 @@ pub struct ComputedRun {
     pub family: String,
     /// Font size in points.
     pub size_pt: f64,
+    /// Additional pitch after each character, in points (`w:spacing` on `w:rPr`).
+    pub spacing_pt: f64,
     /// Bold.
     pub bold: bool,
     /// Italic.
@@ -49,6 +51,7 @@ impl Default for ComputedRun {
         Self {
             family: "Calibri".to_owned(),
             size_pt: 11.0,
+            spacing_pt: 0.0,
             bold: false,
             italic: false,
             underline: false,
@@ -81,6 +84,10 @@ pub struct ComputedParagraph {
     pub space_before_pt: f64,
     /// Space after, in points.
     pub space_after_pt: f64,
+    /// Extra gap above the first line from `w:pBdr/w:top` (`space` + width), pt.
+    pub border_before_pt: f64,
+    /// Extra gap below the last line from `w:pBdr/w:bottom` (`space` + width), pt.
+    pub border_after_pt: f64,
     /// Line spacing value in points (interpretation depends on `line_rule`).
     pub line_pt: Option<f64>,
     /// Line-spacing rule.
@@ -113,6 +120,8 @@ impl Default for ComputedParagraph {
             alignment: Justification::Start,
             space_before_pt: 0.0,
             space_after_pt: 0.0,
+            border_before_pt: 0.0,
+            border_after_pt: 0.0,
             line_pt: None,
             line_rule: LineSpacingRule::Auto,
             indent_start_pt: 0.0,
@@ -237,6 +246,14 @@ fn apply_paragraph_props_mode(
     if let Some(indentation) = &props.indentation {
         apply_indentation(computed, indentation);
     }
+    // `w:pBdr` top/bottom push following content. Width is eighths of a point;
+    // `w:space` is points between the border stroke and the text.
+    if props.borders.top.is_some() {
+        computed.border_before_pt = border_pad_pt(props.borders.top.as_ref());
+    }
+    if props.borders.bottom.is_some() {
+        computed.border_after_pt = border_pad_pt(props.borders.bottom.as_ref());
+    }
     if let Some(fill) = props
         .shading
         .as_ref()
@@ -278,6 +295,22 @@ fn apply_spacing(computed: &mut ComputedParagraph, spacing: &Spacing) {
     if let Some(line) = spacing.line {
         computed.line_pt = Some(f64::from(line.value()) / 20.0);
     }
+}
+
+/// Layout gap from one paragraph border edge: `w:space` (pt) + `w:sz`/8 (pt).
+fn border_pad_pt(border: Option<&Border>) -> f64 {
+    let Some(border) = border else {
+        return 0.0;
+    };
+    match border.style {
+        None | Some(BorderStyle::Nil) | Some(BorderStyle::None) => return 0.0,
+        Some(_) => {}
+    }
+    let space = f64::from(border.space.unwrap_or(0));
+    let width = border
+        .size
+        .map_or(0.0, |size| f64::from(size.value()) / 8.0);
+    space + width
 }
 
 fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation) {
@@ -350,17 +383,43 @@ fn apply_run_props_mode(
     if let Some(size) = props.size {
         computed.size_pt = f64::from(size.value()) / 2.0;
     }
-    // AUD-46: complex-script toggles/size apply when the run is RTL or names a CS font.
+    if let Some(spacing) = props.spacing {
+        computed.spacing_pt = f64::from(spacing.value()) / 20.0;
+    }
+    // Complex-script toggles (`w:bCs`/`w:iCs`/`w:szCs`) are a parallel channel.
+    // Direct run props: when RTL or a CS face is named, CS toggles assign (so
+    // `i=0` + `iCs` still italics). Cascade styles: never XOR Latin On with CS
+    // On from the same `rPr` — Clio style 50 has `<w:b/><w:bCs/>` plus `w:cs`
+    // and that cancel (On XOR On → Off) dropped Figure-caption bold.
     let complex = props.rtl.is_on()
         || props
             .fonts
             .as_ref()
             .is_some_and(|fonts| fonts.complex_script.is_some());
     if complex {
-        apply_toggle(&mut computed.bold, props.bold_cs, mode);
-        apply_toggle(&mut computed.italic, props.italic_cs, mode);
-        if let Some(size) = props.size_cs {
-            computed.size_pt = f64::from(size.value()) / 2.0;
+        match mode {
+            ToggleMode::Direct => {
+                apply_toggle(&mut computed.bold, props.bold_cs, ToggleMode::Direct);
+                apply_toggle(&mut computed.italic, props.italic_cs, ToggleMode::Direct);
+                if props.size.is_none() {
+                    if let Some(size) = props.size_cs {
+                        computed.size_pt = f64::from(size.value()) / 2.0;
+                    }
+                }
+            }
+            ToggleMode::Cascade => {
+                if props.bold == TriState::Absent {
+                    apply_toggle(&mut computed.bold, props.bold_cs, mode);
+                }
+                if props.italic == TriState::Absent {
+                    apply_toggle(&mut computed.italic, props.italic_cs, mode);
+                }
+                if props.size.is_none() {
+                    if let Some(size) = props.size_cs {
+                        computed.size_pt = f64::from(size.value()) / 2.0;
+                    }
+                }
+            }
         }
     }
     if let Some(vert) = props.vert_align {
@@ -400,6 +459,72 @@ pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
         run.family.as_str()
     };
     crate::font::map_family(requested).to_owned()
+}
+
+/// Extra advance, in px, added after each character of `run`.
+///
+/// ECMA-376 17.3.2.35: `w:spacing` is pitch inserted after every character
+/// before the next is drawn. Layout width and paint `x` lists must use the
+/// same value or wrap and WPS glyph origins diverge.
+#[must_use]
+pub fn spacing_px(run: &ComputedRun, size_px: f64) -> f64 {
+    if run.spacing_pt == 0.0 || run.size_pt == 0.0 {
+        0.0
+    } else {
+        run.spacing_pt * (size_px / run.size_pt)
+    }
+}
+
+/// Whether `w:characterSpacingControl` asks for punctuation compression.
+#[must_use]
+pub fn compress_punctuation(control: Option<&str>) -> bool {
+    matches!(
+        control,
+        Some("compressPunctuation") | Some("compressPunctuationAndJapaneseKana")
+    )
+}
+
+/// Western punctuation that may swallow a following space under compressPunctuation.
+#[must_use]
+pub fn is_space_compressing_punct(ch: char) -> bool {
+    matches!(ch, ',' | ')')
+}
+
+/// Plain-space advance factor under `compressPunctuation` for this run.
+///
+/// Right-aligned tiny captions (Clio style 331 `A,C`) keep ~76% of each
+/// inter-word space so the line width matches the spaceless WPS PDF. Center
+/// legends (`B,D`) and body runs keep full spaces — a blanket shrink moves
+/// center lines both ways and breaks body `modern` hits.
+#[must_use]
+pub fn plain_space_factor(alignment: Justification, size_pt: f64) -> f64 {
+    if size_pt > 0.0 && size_pt <= 5.0 && matches!(alignment, Justification::End) {
+        0.76
+    } else {
+        1.0
+    }
+}
+
+/// Advance factor for `ch` when punctuation compression is active.
+///
+/// Collapse spaces after `,` / `)` (`Europe, East`, `(A, B)`) so Clio page-104
+/// keeps `For` on the preceding line. Other spaces use `plain_space_factor`.
+#[must_use]
+pub fn compressed_char_factor(
+    prev: Option<char>,
+    ch: char,
+    _next: Option<char>,
+    compress: bool,
+    plain_space_factor: f64,
+) -> f64 {
+    if !compress || !ch.is_whitespace() {
+        return 1.0;
+    }
+    if prev.is_some_and(is_space_compressing_punct) {
+        0.0
+    } else {
+        plain_space_factor.clamp(0.0, 1.0)
+    }
 }
 
 /// Whether `text` is a complex script, with no Latin or Cyrillic letters.

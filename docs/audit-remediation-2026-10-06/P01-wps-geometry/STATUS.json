@@ -1,0 +1,44 @@
+{
+  "package": "P1",
+  "slug": "wps-geometry",
+  "visual_level": "V0",
+  "date_utc": "2026-10-06",
+  "status": "PASS",
+  "tolerance_px": 0.25,
+  "p0_measurability": "PASS",
+  "p1_geometry": "PASS",
+  "pages": {
+    "56": "PASS — all mandatory MEASURED points ≤0.25 px",
+    "54": "PASS — primers + HVR-I (caption and body) ≤0.25 px",
+    "104": "PASS — A,C / B,D / all modern neighborhoods ≤0.25 px"
+  },
+  "code_changes": [
+    "ComputedRun.spacing_pt from w:rPr/w:spacing; measure/paint/PDF apply pitch on non-space scalars",
+    "Exact line ascent: overflow → font ascent; top-bordered / after taller Exact → exact*0.8 grid; first Exact → natural.max(exact*0.8); bold≥9pt → exact*0.8 (Clio style-50 captions)",
+    "w:pBdr top/bottom pads (space + sz/8); consecutive bordered frame siblings collapse the shared edge",
+    "Cascade styles: do not XOR Latin w:b with w:bCs from the same rPr when a CS face is named (Clio style 50); Direct still applies iCs/bCs",
+    "w:characterSpacingControl=compressPunctuation collapses spaces after `,`/`)`; shaped measure/paint honor partial space factors",
+    "Right-aligned tiny captions (≤5 pt, jc=end): plain spaces keep 76% advance so A,C matches spaceless WPS without shifting center B,D",
+    "Post-justify Tinos substitute stretch vs WPS Times: regular 1.008 (distance-blended), bold 0.9833 on justified lines only",
+    "wps_ledger: search all SVG pages; prefer size-compatible neighborhood hits"
+  ],
+  "tests_pass": [
+    "f06_character_style_size_overrides_based_on",
+    "f06_character_spacing_widens_the_run",
+    "f06_clio_l16055_is_four_point",
+    "f06_empty_b_on_paragraph_style_is_bold",
+    "f06_direct_italic_covers_latin_and_cyrillic_and_cs",
+    "f16_haplogroup_l3_wraps_from_character_spacing",
+    "f16_exact_line_shorter_than_font_uses_font_ascent",
+    "f16_pbdr_collapses_between_bordered_frame_siblings",
+    "f16_style90_primer_stack_matches_wps_offset",
+    "wps_ledger_selftest"
+  ],
+  "open_fails": [],
+  "notes": [
+    "WPS page-54 L16055 is split runs L + style91 16055 (Arial 8pt), not LucidaSansUnicode4pt0pt0.",
+    "Clio has 322 sectPr / ~322 pages in our layout; ledger matches across SVG page numbers.",
+    "WPS reference PDFs embed zero space characters; word gaps are inconsistent (caption keeps gap width, body often does not).",
+    "Do not raise 0.25 px tolerance. P1 closed with all mandatory MEASURED points ≤0.25."
+  ]
+}

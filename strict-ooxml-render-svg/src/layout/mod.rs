@@ -63,6 +63,12 @@ pub struct TextItem {
     /// and is matched by behaviour (`is_page_number` and friends), which is what
     /// keeps a second backend from depending on the field machinery's internals.
     pub field: Option<crate::fields::FieldMarker>,
+    /// Collapse spaces after Western punctuation (`w:characterSpacingControl`).
+    pub compress_punctuation: bool,
+    /// First non-space of the next token (for trailing post-punctuation spaces).
+    pub following_non_space: Option<char>,
+    /// Advance factor for spaces that are not post-punctuation collapses.
+    pub plain_space_factor: f64,
 }
 
 /// A filled/stroked rectangle.
@@ -468,6 +474,16 @@ pub(crate) struct LayoutContext<'a> {
     /// stopped. Cleared at the start of a layout pass and at each page break.
     pub(crate) frame_cursors:
         std::cell::RefCell<Vec<(strict_ooxml_wml::model::props::FrameProperties, f64)>>,
+    /// Exact line height of the previous paragraph in the current frame, in px.
+    ///
+    /// Used to choose the 80% Exact grid after a taller Exact neighbour
+    /// (Clio L16055 after `line=216`) while keeping `natural.max(exact*0.8)`
+    /// for the first Exact line in a frame (Clio SNP labels).
+    pub(crate) frame_prior_exact: std::cell::Cell<Option<f64>>,
+    /// Once a taller Exact neighbour forces the 80% grid, keep it for the rest
+    /// of the frame so same-size Exact follow-ups (Clio H16142 after L16055)
+    /// stay on that pitch.
+    pub(crate) frame_force_exact_grid: std::cell::Cell<bool>,
 }
 
 impl LayoutContext<'_> {
@@ -556,22 +572,93 @@ impl LayoutContext<'_> {
     /// the matching [`TextAdvanceKind`] on each [`TextItem`].
     #[must_use]
     pub(crate) fn measure(&self, text: &str, run: &ComputedRun) -> f64 {
+        self.measure_with_next(text, run, None)
+    }
+
+    /// Like [`Self::measure`], with the first non-space of the following token
+    /// so trailing post-punctuation spaces can collapse under compressPunctuation.
+    #[must_use]
+    pub(crate) fn measure_with_next(
+        &self,
+        text: &str,
+        run: &ComputedRun,
+        following: Option<char>,
+    ) -> f64 {
+        self.measure_with_next_factor(text, run, following, 1.0)
+    }
+
+    /// [`Self::measure_with_next`] with a plain-space advance factor.
+    #[must_use]
+    pub(crate) fn measure_with_next_factor(
+        &self,
+        text: &str,
+        run: &ComputedRun,
+        following: Option<char>,
+        plain_space_factor: f64,
+    ) -> f64 {
         let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
         let family = crate::style::chosen_family(run, text);
         let complex = crate::font::needs_complex_script(&shown);
+        let non_space = shown.chars().filter(|ch| !ch.is_whitespace()).count() as f64;
+        let extra = crate::style::spacing_px(run, size_px) * non_space;
+        let compress = crate::style::compress_punctuation(
+            self.document
+                .settings
+                .character_spacing_control
+                .as_deref(),
+        );
+        let chars: Vec<char> = shown.chars().collect();
         if complex || !self.metric_advances.get() {
             let shaped = crate::font::shape_text(&shown, &family, run.bold, run.italic, self.font);
             if shaped.status == crate::font::ShapeStatus::DegradedComplexScript {
                 self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
             }
-            return shaped.total_advance_em * size_px;
+            let mut width = shaped.total_advance_em * size_px + extra;
+            if compress {
+                let mut prev = None;
+                for (i, &ch) in chars.iter().enumerate() {
+                    let next = chars.get(i + 1).copied().or(following);
+                    let factor = crate::style::compressed_char_factor(
+                        prev,
+                        ch,
+                        next,
+                        true,
+                        plain_space_factor,
+                    );
+                    if (factor - 1.0).abs() > f64::EPSILON {
+                        width -= self.font.advance_em(&family, ch, run.bold, run.italic)
+                            * size_px
+                            * (1.0 - factor);
+                    }
+                    if !ch.is_whitespace() {
+                        prev = Some(ch);
+                    } else if factor > 0.0 {
+                        prev = Some(ch);
+                    }
+                }
+            }
+            return width;
         }
-        shown
-            .chars()
-            .map(|ch| self.font.advance_em(&family, ch, run.bold, run.italic))
-            .sum::<f64>()
-            * size_px
+        let mut total = 0.0;
+        let mut prev = None;
+        for (i, &ch) in chars.iter().enumerate() {
+            let next = chars.get(i + 1).copied().or(following);
+            let factor = crate::style::compressed_char_factor(
+                prev,
+                ch,
+                next,
+                compress,
+                plain_space_factor,
+            );
+            total += self.font.advance_em(&family, ch, run.bold, run.italic) * factor;
+            if !ch.is_whitespace() {
+                prev = Some(ch);
+            } else if factor > 0.0 {
+                prev = Some(ch);
+            }
+        }
+        total * size_px + extra
     }
 
     /// Advance kind [`Self::measure`] currently produces for `text`.

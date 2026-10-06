@@ -173,6 +173,9 @@ mod tests {
                 size_px: 16.0,
                 advance: crate::layout::TextAdvanceKind::Shaped,
                 field: None,
+                compress_punctuation: false,
+                following_non_space: None,
+                plain_space_factor: 1.0,
             })],
         };
         let css = font_faces(&page);

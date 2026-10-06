@@ -438,6 +438,7 @@ fn place_body_paragraph(
         Some((&paginator.geometry, host_x, host_y_pred)),
     );
     paginator.add_vspace(pending_after.max(flow.space_before));
+    paginator.add_vspace(flow.border_before);
     if flow.keep_lines && !boundary_marker {
         let total: f64 = flow
             .flows
@@ -474,7 +475,7 @@ fn place_body_paragraph(
             anchor,
         });
     }
-    Ok(flow.space_after)
+    Ok(flow.space_after + flow.border_after)
 }
 
 /// Lays a frame group out once and paints every child from the frame origin.

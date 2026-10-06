@@ -248,3 +248,197 @@ fn f06_direct_italic_covers_latin_and_cyrillic_and_cs() {
     assert!(run_flags(&doc, 2).0);
     assert!(run_flags(&doc, 3).0);
 }
+
+/// A character style's `w:sz` wins over the `basedOn` character style (Clio primers).
+#[test]
+fn f06_character_style_size_overrides_based_on() {
+    let styles = "\
+<w:style w:type=\"character\" w:styleId=\"a8\"><w:rPr><w:sz w:val=\"21\"/></w:rPr></w:style>\
+<w:style w:type=\"character\" w:styleId=\"LucidaSansUnicode4pt0pt0\">\
+<w:basedOn w:val=\"a8\"/><w:rPr><w:sz w:val=\"8\"/></w:rPr></w:style>";
+    let doc = package(
+        "<w:p><w:r><w:rPr><w:rStyle w:val=\"LucidaSansUnicode4pt0pt0\"/></w:rPr>\
+<w:t>L16055</w:t></w:r></w:p>",
+        styles,
+    );
+    let para = match &doc.body.blocks[0] {
+        Block::Paragraph(para) => para,
+        _ => panic!("paragraph"),
+    };
+    let computed_para = compute_paragraph(&doc, para);
+    let Inline::Run(run) = &para.inlines[0] else {
+        panic!("run");
+    };
+    let computed = compute_run(&doc, &computed_para, run);
+    assert!(
+        (computed.size_pt - 4.0).abs() < 1e-9,
+        "character sz=8 is 4pt, got {}",
+        computed.size_pt
+    );
+    let svg = svg_of(&doc);
+    assert!(
+        svg.contains("font-size=\"5.333\""),
+        "4pt at 96 dpi is 5.333px: {svg}"
+    );
+}
+
+/// Clio witness: primer label `L16055` resolves to 4pt via character style.
+#[test]
+fn f06_clio_l16055_is_four_point() {
+    use std::sync::Arc;
+    use strict_ooxml_core::normalize::TransitionalNormalizer;
+    use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
+    use strict_ooxml_wml::{parse_document, ParseOptions};
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../strict-ooxml-core/tests/docx/",
+        "Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
+    );
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer);
+    let package = Package::open_path(path, &options).expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    fn visit_para(document: &Document, para: &strict_ooxml_wml::model::Paragraph) -> Option<f64> {
+        for inline in &para.inlines {
+            let Inline::Run(run) = inline else {
+                continue;
+            };
+            let text: String = run
+                .content
+                .iter()
+                .filter_map(|content| match content {
+                    strict_ooxml_wml::model::RunContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            if !text.contains("L16055") {
+                continue;
+            }
+            let computed = compute_run(document, &compute_paragraph(document, para), run);
+            eprintln!(
+                "L16055 rStyle={:?} size={} family={} spacing={}",
+                run.props.style, computed.size_pt, computed.family, computed.spacing_pt
+            );
+            if let Some(style_id) = &run.props.style {
+                eprintln!("style present={}", document.styles.get(style_id).is_some());
+                if let Some(style) = document.styles.get(style_id) {
+                    eprintln!("style.size={:?} based_on={:?}", style.run.size, style.based_on);
+                }
+            }
+            return Some(computed.size_pt);
+        }
+        None
+    }
+    fn visit_block(document: &Document, block: &Block) -> Option<f64> {
+        match block {
+            Block::Paragraph(para) => visit_para(document, para),
+            Block::Table(table) => {
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        for nested in &cell.blocks {
+                            if let Some(size) = visit_block(document, nested) {
+                                return Some(size);
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+    let mut size = None;
+    for block in &document.body.blocks {
+        if let Some(found) = visit_block(&document, block) {
+            size = Some(found);
+            break;
+        }
+    }
+    let size = size.expect("L16055 run");
+    assert!(
+        (size - 4.0).abs() < 1e-9,
+        "Clio L16055 must be 4pt from LucidaSansUnicode4pt0pt0, got {size}"
+    );
+    let _ = package;
+}
+
+/// Expanded character spacing is part of the run width (Clio style 130, 13 twips).
+#[test]
+fn f06_character_spacing_widens_the_run() {
+    let tight = package(
+        "<w:p><w:r><w:rPr><w:sz w:val=\"16\"/></w:rPr><w:t>AB</w:t></w:r></w:p>",
+        "",
+    );
+    let expanded = package(
+        "<w:p><w:r><w:rPr><w:sz w:val=\"16\"/><w:spacing w:val=\"13\"/></w:rPr>\
+<w:t>AB</w:t></w:r></w:p>",
+        "",
+    );
+    let gap = |svg: &str| -> f64 {
+        let parsed = roxmltree::Document::parse(svg).expect("svg");
+        let node = parsed
+            .descendants()
+            .find(|node| {
+                node.tag_name().name() == "text"
+                    && node.text().is_some_and(|text| text.contains("AB"))
+            })
+            .expect("AB");
+        let xs: Vec<f64> = node
+            .attribute("x")
+            .expect("x")
+            .split_whitespace()
+            .map(|value| value.parse().expect("x"))
+            .collect();
+        assert_eq!(xs.len(), 2, "{svg}");
+        xs[1] - xs[0]
+    };
+    let extra = gap(&svg_of(&expanded)) - gap(&svg_of(&tight));
+    let expected = 13.0 / 20.0 * (10.667 / 8.0);
+    assert!(
+        (extra - expected).abs() <= 0.05,
+        "13 twips of character spacing at 8pt, got {extra} expected {expected}"
+    );
+}
+
+/// Empty `<w:b/>` on a paragraph style must yield bold default_run (Clio style 50).
+///
+/// Clio also sets `<w:bCs/>` and `w:cs` on the same style; those must not XOR-cancel
+/// Latin bold just because a complex-script face is named.
+#[test]
+fn f06_empty_b_on_paragraph_style_is_bold() {
+    let styles = "\
+<w:style w:type=\"paragraph\" w:styleId=\"a\" w:default=\"1\"><w:name w:val=\"Normal\"/></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"50\" w:customStyle=\"1\">\
+<w:basedOn w:val=\"a\"/>\
+<w:rPr><w:rFonts w:ascii=\"Times New Roman\" w:hAnsi=\"Times New Roman\" w:cs=\"Times New Roman\"/>\
+<w:b/><w:bCs/><w:sz w:val=\"21\"/><w:szCs w:val=\"21\"/></w:rPr>\
+</w:style>";
+    let body = "\
+<w:p><w:pPr><w:pStyle w:val=\"50\"/></w:pPr>\
+<w:r><w:t>Figure</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let doc = package(body, styles);
+    let Block::Paragraph(para) = &doc.body.blocks[0] else {
+        panic!("paragraph");
+    };
+    let computed = compute_paragraph(&doc, para);
+    assert!(
+        computed.default_run.bold,
+        "style 50 empty w:b must set default_run.bold (bCs+cs must not cancel)"
+    );
+    let Inline::Run(run) = &para.inlines[0] else {
+        panic!("run");
+    };
+    let cr = compute_run(&doc, &computed, run);
+    assert!(cr.bold, "run must inherit style bold");
+    let svg = svg_of(&doc);
+    assert!(
+        svg.contains("font-weight=\"bold\""),
+        "SVG must paint bold: {svg}"
+    );
+}

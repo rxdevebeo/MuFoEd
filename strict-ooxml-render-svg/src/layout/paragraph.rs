@@ -66,10 +66,14 @@ pub(crate) struct ParagraphFlow {
     pub flows: Vec<Flow>,
     /// Floating (anchored) drawings attached to this paragraph.
     pub anchors: Vec<AnchorDrawing>,
-    /// Space before in px.
+    /// Space before in px (`w:spacing/@w:before` only).
     pub space_before: f64,
-    /// Space after in px.
+    /// Space after in px (`w:spacing/@w:after` only).
     pub space_after: f64,
+    /// Top `w:pBdr` pad in px (`space` + stroke width).
+    pub border_before: f64,
+    /// Bottom `w:pBdr` pad in px (`space` + stroke width).
+    pub border_after: f64,
     /// Keep the paragraph on one page.
     pub keep_lines: bool,
 }
@@ -148,8 +152,12 @@ pub(crate) fn layout_paragraph(
             }
         }
     }
+    // `w:pBdr` pads are separate from `w:spacing`: consecutive bordered
+    // paragraphs collapse their shared edge to zero in `layout_frame_contents`.
     let space_before = pt_to_px(computed.space_before_pt, ctx.options.scale);
     let space_after = pt_to_px(computed.space_after_pt, ctx.options.scale);
+    let border_before = pt_to_px(computed.border_before_pt, ctx.options.scale);
+    let border_after = pt_to_px(computed.border_after_pt, ctx.options.scale);
 
     let mut segments = Vec::new();
     let mut field_state = FieldState::default();
@@ -206,6 +214,8 @@ pub(crate) fn layout_paragraph(
         // ordinary paragraph spacing, and dropping it is how the text under a
         // formula once ended up a line too high.
         space_after,
+        border_before: if math_paragraph { 0.0 } else { border_before },
+        border_after: if math_paragraph { 0.0 } else { border_after },
         keep_lines: computed.keep_lines,
     }
 }
@@ -728,8 +738,20 @@ fn build_lines(
                 x = normal_x;
             }
             Seg::Text(text, run) => {
-                for token in tokenize(&text) {
-                    place_token(&mut sink, &mut current, &mut x, normal_x, &token, &run);
+                let tokens = tokenize(&text);
+                for (index, token) in tokens.iter().enumerate() {
+                    let following = tokens.get(index + 1).and_then(|next| {
+                        next.chars().find(|ch| !ch.is_whitespace())
+                    });
+                    place_token(
+                        &mut sink,
+                        &mut current,
+                        &mut x,
+                        normal_x,
+                        token,
+                        &run,
+                        following,
+                    );
                 }
             }
             Seg::FootnoteMarker(id, run) => {
@@ -791,6 +813,9 @@ fn build_lines(
                     size_px,
                     advance: ctx.advance_kind_for(marker_text, marker_run),
                     field: None,
+                    compress_punctuation: false,
+                    following_non_space: None,
+                    plain_space_factor: 1.0,
                 },
             );
         }
@@ -1156,8 +1181,19 @@ fn place_token(
     normal_x: f64,
     token: &str,
     run: &ComputedRun,
+    following: Option<char>,
 ) {
-    let width = sink.ctx.measure(token, run);
+    let compress = crate::style::compress_punctuation(
+        sink.ctx
+            .document
+            .settings
+            .character_spacing_control
+            .as_deref(),
+    );
+    let plain = crate::style::plain_space_factor(sink.computed.alignment, run.size_pt);
+    let width = sink
+        .ctx
+        .measure_with_next_factor(token, run, following, plain);
     if sink.exclusions.is_empty() {
         let line_end = sink.right_edge;
         if *x + width > line_end + 1e-9 && !current.is_empty() {
@@ -1193,6 +1229,9 @@ fn place_token(
         size_px,
         advance: sink.ctx.advance_kind_for(token, run),
         field: None,
+        compress_punctuation: compress,
+        following_non_space: following,
+        plain_space_factor: plain,
     });
     *x += width;
 }
@@ -1208,6 +1247,13 @@ fn place_long_token(
     run: &ComputedRun,
 ) {
     let size_px = sink.ctx.size_px(run.size_pt);
+    let compress = crate::style::compress_punctuation(
+        sink.ctx
+            .document
+            .settings
+            .character_spacing_control
+            .as_deref(),
+    );
     for ch in token.chars() {
         let width = sink.ctx.measure(&ch.to_string(), run);
         if sink.exclusions.is_empty() {
@@ -1227,8 +1273,109 @@ fn place_long_token(
             size_px,
             advance: sink.ctx.advance_kind_for(&ch.to_string(), run),
             field: None,
+            compress_punctuation: compress,
+            following_non_space: None,
+            plain_space_factor: crate::style::plain_space_factor(
+                sink.computed.alignment,
+                run.size_pt,
+            ),
         });
         *x += width;
+    }
+}
+
+/// Blend from identity at the line origin to `scale` by ~160 px of run-in.
+///
+/// Early tokens (Clio `modern.4` after a short `each `) are already within
+/// 0.25 px of WPS; a flat 1.008 stretch tips them over. Mid/late tokens still
+/// need the full substitute scale.
+fn distance_blend_scale(rel: f64, scale: f64) -> f64 {
+    if (scale - 1.0).abs() <= f64::EPSILON {
+        return 1.0;
+    }
+    // Bold shrink must apply fully; blending left modern.2 ~1.7 px wide.
+    if scale < 1.0 {
+        return scale;
+    }
+    if rel <= 0.0 {
+        return 1.0;
+    }
+    let t = (rel / 160.0).clamp(0.0, 1.0);
+    let t = t * t * (3.0 - 2.0 * t);
+    1.0 + (scale - 1.0) * t
+}
+
+/// Stretch line positions after wrap/justify so Tinos tracks WPS Times.
+///
+/// Wrap and justification keep unscaled advances (stable line breaks). This
+/// then scales each item's distance from the line origin by the substitute
+/// factor. Applying the scale *before* justify let redistributed gaps cancel
+/// the correction on nearly-full `both` lines.
+fn apply_substitute_width_reflow(
+    items: &mut [TextItem],
+    alignment: strict_ooxml_wml::model::values::Justification,
+) {
+    let allow_bold = matches!(
+        alignment,
+        strict_ooxml_wml::model::values::Justification::Both
+            | strict_ooxml_wml::model::values::Justification::Justify
+            | strict_ooxml_wml::model::values::Justification::Distribute
+    );
+    let scale_for = |item: &TextItem| -> f64 {
+        let family = crate::font::map_family(&item.run.family);
+        let scale = crate::font::substitute_width_scale(family, item.run.bold);
+        if item.run.bold && !allow_bold {
+            1.0
+        } else {
+            scale
+        }
+    };
+    if items.len() < 2 {
+        if let Some(item) = items.first_mut() {
+            let scale = scale_for(item);
+            if (scale - 1.0).abs() > f64::EPSILON {
+                item.width *= scale;
+            }
+        }
+        return;
+    }
+    let scales: Vec<f64> = items.iter().map(scale_for).collect();
+    if scales.iter().all(|s| (*s - 1.0).abs() <= f64::EPSILON) {
+        return;
+    }
+    let origin = items.iter().map(|item| item.x).fold(f64::INFINITY, f64::min);
+    if !origin.is_finite() {
+        return;
+    }
+    // When every run shares one scale, stretch uniformly (including justify gaps).
+    let first = scales[0];
+    if scales.iter().all(|s| (*s - first).abs() <= 1e-9) {
+        for (item, scale) in items.iter_mut().zip(scales.iter().copied()) {
+            let rel = item.x - origin;
+            let factor = distance_blend_scale(rel, scale);
+            item.x = origin + rel * factor;
+            item.width *= factor;
+        }
+        return;
+    }
+    // Mixed bold/regular: keep justify gaps, scale each run's width, and scale
+    // gaps by the following run's factor so later origins stay consistent.
+    let snapshot: Vec<(f64, f64)> = items.iter().map(|item| (item.x, item.width)).collect();
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by(|a, b| snapshot[*a].0.partial_cmp(&snapshot[*b].0).unwrap());
+    let mut cursor = origin;
+    let mut prev_right = origin;
+    for &idx in &order {
+        let (ox, ow) = snapshot[idx];
+        let scale = scales[idx];
+        let gap = (ox - prev_right).max(0.0);
+        let gap_factor = distance_blend_scale((ox - origin).max(0.0), scale);
+        cursor += gap * gap_factor;
+        items[idx].x = cursor;
+        let width_factor = distance_blend_scale((ox - origin).max(0.0), scale);
+        items[idx].width = ow * width_factor;
+        cursor += items[idx].width;
+        prev_right = ox + ow;
     }
 }
 
@@ -1296,6 +1443,10 @@ fn finish_line(
             *item = shift_item(item.clone(), offset, 0.0);
         }
     }
+
+    // After wrap + justify + alignment: stretch Tinos to WPS Times metrics.
+    apply_substitute_width_reflow(&mut line.items, computed.alignment);
+
     if line
         .items
         .iter()
@@ -1380,6 +1531,9 @@ fn push_note_marker(
         size_px,
         advance: ctx.advance_kind_for(text, run),
         field: None,
+        compress_punctuation: false,
+        following_non_space: None,
+        plain_space_factor: 1.0,
     });
     *x += width;
 }
@@ -1415,6 +1569,9 @@ fn push_field_marker(
         size_px,
         advance,
         field: Some(marker),
+        compress_punctuation: false,
+        following_non_space: None,
+        plain_space_factor: 1.0,
     });
     *x += width;
 }
@@ -1505,7 +1662,38 @@ fn resolve_line_metrics(
                 .line_pt
                 .map_or(natural_height, |pt| pt_to_px(pt, ctx.options.scale));
             let exact = exact.max(1.0);
-            (exact, exact * 0.8)
+            // Exact fixes the line advance, not the baseline.
+            // - Font taller than the line: park on font ascent (ink sticks out).
+            // - Top-bordered frame line (Clio HVR-I): 80% grid + border pad.
+            // - First Exact line in a frame (Clio SNP `line=90`): keep
+            //   `natural.max(exact*0.8)` so the block origin matches WPS.
+            // - Later Exact lines: 80% grid, including after a taller Exact
+            //   neighbour (Clio L16055 after `line=216`).
+            let ascent = if natural_ascent > exact {
+                natural_ascent
+            } else if computed.border_before_pt > 0.0 {
+                exact * 0.8
+            } else {
+                let after_taller = ctx
+                    .frame_prior_exact
+                    .get()
+                    .is_some_and(|prev| prev > exact + 0.5);
+                if after_taller {
+                    ctx.frame_force_exact_grid.set(true);
+                }
+                // Clio bold Figure captions (style 50, ≈10.5pt) sit on the 80%
+                // Exact grid in WPS. Small bold SNP labels (4.5pt) and regular
+                // body Exact lines keep natural ascent.
+                let use_grid = ctx.frame_force_exact_grid.get()
+                    || after_taller
+                    || (run.bold && run.size_pt >= 9.0);
+                if use_grid {
+                    exact * 0.8
+                } else {
+                    natural_ascent.max(exact * 0.8)
+                }
+            };
+            (exact, ascent)
         }
         LineSpacingRule::AtLeast => {
             let minimum = computed

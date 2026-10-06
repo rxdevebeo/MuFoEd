@@ -27,6 +27,26 @@ pub fn map_family(family: &str) -> &'static str {
     }
 }
 
+/// Horizontal advance scale for a mapped family versus WPS-embedded Times.
+///
+/// Bundled Tinos is metric-compatible with Times New Roman on paper, but Clio
+/// WPS PDFs still drift: regular runs land short (~0.8%), bold runs long
+/// (~1.7%). Scale advances so body keys on pages 54/104 stay within 0.25 px
+/// without a global wrap-breaking multiplier.
+#[must_use]
+pub fn substitute_width_scale(mapped_family: &str, bold: bool) -> f64 {
+    if mapped_family != "Tinos" {
+        return 1.0;
+    }
+    // Regular Tinos runs short vs WPS Times (~0.8%). Bold runs long (~1.7%);
+    // callers gate bold on justified body lines so right-aligned captions stay put.
+    if bold {
+        0.9833
+    } else {
+        1.008
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::map_family;

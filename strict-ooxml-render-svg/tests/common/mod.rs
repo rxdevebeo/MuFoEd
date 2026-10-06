@@ -54,12 +54,34 @@ pub(crate) fn root_rels() -> String {
     )
 }
 
+/// Strict styles relationship type.
+pub(crate) const STYLES_REL: &str =
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/styles";
+
 /// Builds and parses a Strict `.docx` from a body, returning the package too.
 pub(crate) fn open_body(body: &str) -> (Package, Document) {
     let bytes = build_docx(&[
         ("[Content_Types].xml", content_types().into_bytes()),
         ("_rels/.rels", root_rels().into_bytes()),
         ("word/document.xml", document(body).into_bytes()),
+    ]);
+    open_bytes(bytes)
+}
+
+/// Builds and parses a Strict `.docx` with a `styles.xml` part.
+pub(crate) fn open_with_styles(body: &str, styles: &str) -> (Package, Document) {
+    let styles_xml = format!("<?xml version=\"1.0\"?><w:styles xmlns:w=\"{W}\">{styles}</w:styles>");
+    let rels = format!(
+        "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
+         <Relationship Id=\"rIdStyles\" Type=\"{STYLES_REL}\" Target=\"styles.xml\"/>\
+         </Relationships>"
+    );
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+        ("word/styles.xml", styles_xml.into_bytes()),
+        ("word/_rels/document.xml.rels", rels.into_bytes()),
     ]);
     open_bytes(bytes)
 }

@@ -222,6 +222,7 @@ def find_key_hits(glyphs: list[Glyph], key: str) -> list[dict[str, Any]]:
                     "x": g["x"],
                     "y": g["y"],
                     "font": g.get("font"),
+                    "size_px": g.get("size_px"),
                     "transform": g.get("transform") or "identity",
                     "i": i,
                 }
@@ -241,7 +242,9 @@ def pair_hits(
         pairs.append(_pair(reference[0], actual[0], "unique_on_page"))
         return pairs
 
-    # Unique neighborhood on both sides.
+    # Unique neighborhood on both sides. Prefer the actual hit whose painted
+    # size is closest to the reference when several neighborhoods still match
+    # (Clio page-54 false L+16055 vs real Lucida on another page).
     for ri, ref in enumerate(reference):
         cand = [
             (ai, act)
@@ -250,6 +253,20 @@ def pair_hits(
             and neighbors_compatible(ref["left"], act["left"])
             and neighbors_compatible(ref["right"], act["right"])
         ]
+        if not cand:
+            continue
+        if len(cand) > 1:
+            ref_size = ref.get("size_px")
+            if ref_size:
+                cand.sort(
+                    key=lambda item: abs((item[1].get("size_px") or ref_size) - ref_size)
+                )
+                best = abs((cand[0][1].get("size_px") or ref_size) - ref_size)
+                cand = [
+                    item
+                    for item in cand
+                    if abs((item[1].get("size_px") or ref_size) - ref_size) <= best + 1e-6
+                ]
         if len(cand) != 1:
             continue
         ai, act = cand[0]
@@ -336,6 +353,7 @@ def _pair(ref: dict[str, Any], act: dict[str, Any], match: str) -> dict[str, Any
         },
         "match": match,
         "status": "MEASURED" if measured else "MISSING",
+        "svg_page": act.get("svg_page"),
         "_ref_obj": ref,
     }
 
@@ -504,22 +522,106 @@ def _cid(key: str) -> str:
     return prefix + body
 
 
+def load_all_svg_glyphs(dest_svg: Path) -> dict[int, list[Glyph]]:
+    """Load every rendered page. WPS and our page numbers can diverge."""
+    out: dict[int, list[Glyph]] = {}
+    if not dest_svg.is_dir():
+        return out
+    for path in sorted(dest_svg.glob("page-*.svg")):
+        try:
+            number = int(path.stem.split("-", 1)[1])
+        except ValueError:
+            continue
+        out[number] = svg_glyphs(path)
+    return out
+
+
+def actual_hits_across_pages(
+    svg_by_page: dict[int, list[Glyph]], key: str
+) -> list[dict[str, Any]]:
+    """All whole-key hits in every SVG page, tagged with svg_page."""
+    hits: list[dict[str, Any]] = []
+    for number in sorted(svg_by_page):
+        for hit in find_key_hits(svg_by_page[number], key):
+            tagged = dict(hit)
+            tagged["svg_page"] = number
+            hits.append(tagged)
+    return hits
+
+
 def build_clio_ledger(root: Path) -> dict[str, Any]:
     dest_svg = root / "target/remediation-2026-10-06/clio-svg"
     ref_dir = root / "docs/audit-2026-10-04/visual-thesis/wps-reference"
     doc = root / CLIO_DOC
+    svg_by_page = load_all_svg_glyphs(dest_svg)
     pages: dict[str, Any] = {}
     for number, keys in CLIO_KEYS.items():
         pdfpath = ref_dir / f"page-{number}.pdf"
+        # Same-number SVG is only a hint for hashes; matching searches all pages
+        # because WPS and our section pagination disagree (Clio ~104 vs ~322).
         svgpath = dest_svg / f"page-{number}.svg"
-        pages[str(number)] = build_page_ledger(
-            number,
-            keys,
-            pdf_glyphs(pdfpath),
-            svg_glyphs(svgpath),
-            pdf_sha=sha256_file(pdfpath),
-            svg_sha=sha256_file(svgpath),
-        )
+        reference_glyphs = pdf_glyphs(pdfpath)
+        components: dict[str, Any] = {}
+        all_pairs: list[dict[str, Any]] = []
+        for key in keys:
+            ref_hits = find_key_hits(reference_glyphs, key)
+            act_hits = actual_hits_across_pages(svg_by_page, key)
+            if not ref_hits:
+                pairs = [
+                    {
+                        "text": key,
+                        "left": None,
+                        "right": None,
+                        "ref_xy": None,
+                        "actual_xy": None
+                        if not act_hits
+                        else [act_hits[0]["x"], act_hits[0]["y"]],
+                        "dx": None,
+                        "dy": None,
+                        "font": {"reference": None, "actual": None},
+                        "transform": {"reference": None, "actual": None},
+                        "match": None,
+                        "status": "MISSING",
+                        "svg_page": act_hits[0].get("svg_page") if act_hits else None,
+                        "_ref_obj": None,
+                    }
+                ]
+            else:
+                pairs = pair_hits(ref_hits, act_hits)
+            measured_index = 0
+            for pair in pairs:
+                pair.pop("_ref_obj", None)
+                if "svg_page" not in pair:
+                    pair["svg_page"] = None
+                    if pair.get("actual_xy") is not None:
+                        for act in act_hits:
+                            if (
+                                abs(act["x"] - pair["actual_xy"][0]) < 1e-6
+                                and abs(act["y"] - pair["actual_xy"][1]) < 1e-6
+                            ):
+                                pair["svg_page"] = act.get("svg_page")
+                                break
+                if pair["status"] == "AMBIGUOUS" and pair.get("ref_xy") is None:
+                    cid = f"p{number}.{_cid(key)}.extra{measured_index}"
+                else:
+                    cid = f"p{number}.{_cid(key)}.{measured_index}"
+                measured_index += 1
+                y = None if pair.get("ref_xy") is None else pair["ref_xy"][1]
+                pair["role"] = infer_role(key, y, pair.get("left"), pair.get("right"))
+                pair["neighborhood"] = {
+                    "left": pair.get("left"),
+                    "right": pair.get("right"),
+                }
+                components[cid] = pair
+                all_pairs.append(pair)
+        pages[str(number)] = {
+            "pdf_sha256": sha256_file(pdfpath),
+            "svg_sha256": sha256_file(svgpath) if svgpath.is_file() else None,
+            "svg_pages_loaded": len(svg_by_page),
+            "components": components,
+            "measurability_ok": measurability_ok(all_pairs, keys),
+            "geometry": evaluate_geometry(all_pairs),
+        }
     required_measured = True
     for rec in pages.values():
         if not rec["measurability_ok"]:

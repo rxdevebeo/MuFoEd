@@ -8,7 +8,8 @@
   "pages": {
     "54": {
       "pdf_sha256": "fc58febe9187b112ef7b7f5c79e8183d108bd45e3df11adf2b48774eec0d9d1b",
-      "svg_sha256": "2a24f5e1b51e7410de62de6bd8c52f4a54de8ac1894d3a67a7d68b8b6c6dd1f9",
+      "svg_sha256": "e26b2fc4c1cc0888d0c7d46d72f91b93f99d9645d6cb88b14467651b0e9274b4",
+      "svg_pages_loaded": 53,
       "components": {
         "p54.HVR_I.0": {
           "text": "HVR-I",
@@ -19,11 +20,11 @@
             99.26666666666672
           ],
           "actual_xy": [
-            383.422,
-            97.333
+            382.756,
+            99.333
           ],
-          "dx": 0.8620000000000232,
-          "dy": -1.9336666666667242,
+          "dx": 0.19599999999996953,
+          "dy": 0.06633333333327585,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -34,6 +35,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "figure_label",
           "neighborhood": {
             "left": null,
@@ -49,10 +51,10 @@
             480.8666666666666
           ],
           "actual_xy": [
-            300.888,
+            310.283,
             481.0
           ],
-          "dx": -9.352000000000032,
+          "dx": 0.043000000000006366,
           "dy": 0.1333333333333826,
           "font": {
             "reference": "ESHXQI+TimesNewRomanPS-BoldMT",
@@ -64,6 +66,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "body",
           "neighborhood": {
             "left": "ofprimersfor",
@@ -79,10 +82,10 @@
             581.9866666666667
           ],
           "actual_xy": [
-            458.587,
+            460.561,
             582.16
           ],
-          "dx": -1.733000000000004,
+          "dx": 0.24099999999998545,
           "dy": 0.17333333333328937,
           "font": {
             "reference": "AUWCNV+TimesNewRomanPSMT",
@@ -94,6 +97,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "body",
           "neighborhood": {
             "left": "roupsbasedon",
@@ -110,10 +114,10 @@
           ],
           "actual_xy": [
             169.8,
-            125.253
+            129.253
           ],
           "dx": 0.20000000000001705,
-          "dy": -3.933666666666639,
+          "dy": 0.0663333333333469,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -124,6 +128,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "'15996-16410",
@@ -140,10 +145,10 @@
           ],
           "actual_xy": [
             169.8,
-            384.4
+            388.4
           ],
           "dx": 0.20000000000001705,
-          "dy": -3.9866666666667925,
+          "dy": 0.01333333333320752,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -154,6 +159,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "figure_label",
           "neighborhood": {
             "left": "L16212H16402",
@@ -170,10 +176,10 @@
           ],
           "actual_xy": [
             283.133,
-            139.653
+            143.653
           ],
           "dx": 0.09300000000001774,
-          "dy": -3.9336666666665963,
+          "dy": 0.06633333333340374,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -184,6 +190,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "-16410L15996",
@@ -200,10 +207,10 @@
           ],
           "actual_xy": [
             283.133,
-            161.733
+            165.733
           ],
           "dx": 0.09300000000001774,
-          "dy": -3.933666666666653,
+          "dy": 0.0663333333333469,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -214,6 +221,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "H16142L16055",
@@ -230,10 +238,10 @@
           ],
           "actual_xy": [
             211.133,
-            151.067
+            155.067
           ],
           "dx": 0.09300000000001774,
-          "dy": -3.878333333333245,
+          "dy": 0.12166666666675496,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -242,8 +250,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "L15996H16142",
@@ -260,10 +269,10 @@
           ],
           "actual_xy": [
             283.133,
-            186.053
+            190.053
           ],
           "dx": 0.09300000000001774,
-          "dy": -3.9336666666666815,
+          "dy": 0.06633333333331848,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -274,6 +283,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "L16055H16142",
@@ -290,10 +300,10 @@
           ],
           "actual_xy": [
             283.133,
-            214.853
+            218.853
           ],
           "dx": 0.09300000000001774,
-          "dy": -3.9336666666666815,
+          "dy": 0.06633333333331848,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -304,6 +314,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "L16117H16233",
@@ -320,10 +331,10 @@
           ],
           "actual_xy": [
             378.351,
-            200.453
+            204.453
           ],
           "dx": 0.11099999999999,
-          "dy": -3.9336666666665963,
+          "dy": 0.06633333333340374,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -332,8 +343,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 54,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "H16142L16117",
@@ -343,103 +355,104 @@
       },
       "measurability_ok": true,
       "geometry": {
-        "pass": false,
+        "pass": true,
         "tolerance_px": 0.25,
         "points": [
           {
             "text": "HVR-I",
             "status": "MEASURED",
-            "dx": 0.8620000000000232,
-            "dy": -1.9336666666667242,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dx": 0.19599999999996953,
+            "dy": 0.06633333333327585,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "HVR-I",
             "status": "MEASURED",
-            "dx": -9.352000000000032,
+            "dx": 0.043000000000006366,
             "dy": 0.1333333333333826,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "HVR-I",
             "status": "MEASURED",
-            "dx": -1.733000000000004,
+            "dx": 0.24099999999998545,
             "dy": 0.17333333333328937,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "L15996",
             "status": "MEASURED",
             "dx": 0.20000000000001705,
-            "dy": -3.933666666666639,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.0663333333333469,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "L15996",
             "status": "MEASURED",
             "dx": 0.20000000000001705,
-            "dy": -3.9866666666667925,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.01333333333320752,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "H16142",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -3.9336666666665963,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.06633333333340374,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "H16142",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -3.933666666666653,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.0663333333333469,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "L16055",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -3.878333333333245,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.12166666666675496,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "L16117",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -3.9336666666666815,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.06633333333331848,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "L16117",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -3.9336666666666815,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.06633333333331848,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "H16233",
             "status": "MEASURED",
             "dx": 0.11099999999999,
-            "dy": -3.9336666666665963,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.06633333333340374,
+            "within_tolerance": true,
+            "gate": "PASS"
           }
         ]
       }
     },
     "56": {
       "pdf_sha256": "01fb7af779291bfdcff400ecc5c164e5b5c9170afae60ca00b393913f95dadba",
-      "svg_sha256": "475f896824739c6a0f89026ea63bdf78d90041080983bd4ca90f1ca8aa66a109",
+      "svg_sha256": "00260b87aed99521b8f96da2faffd20b9a895012050d443f058e65eaf63906f5",
+      "svg_pages_loaded": 53,
       "components": {
         "p56.neg_M.0": {
           "text": "-M",
@@ -451,10 +464,10 @@
           ],
           "actual_xy": [
             582.333,
-            289.96
+            325.827
           ],
           "dx": 0.09299999999996089,
-          "dy": -35.70666666666665,
+          "dy": 0.1603333333333694,
           "font": {
             "reference": "AUWCNV+TimesNewRomanPSMT",
             "actual": "Tinos"
@@ -463,8 +476,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "haplogroup_or_legend",
           "neighborhood": {
             "left": "’1\"L2’6\"L3'4",
@@ -480,11 +494,11 @@
             792.0666666666666
           ],
           "actual_xy": [
-            588.776,
-            756.227
+            589.643,
+            792.093
           ],
-          "dx": -0.6639999999999873,
-          "dy": -35.83966666666663,
+          "dx": 0.20300000000008822,
+          "dy": 0.026333333333354858,
           "font": {
             "reference": "VMBCQV+ArialMT",
             "actual": "Arimo"
@@ -493,8 +507,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "haplogroup_or_legend",
           "neighborhood": {
             "left": "w-x■R■RO■HV■",
@@ -511,10 +526,10 @@
           ],
           "actual_xy": [
             362.333,
-            429.467
+            430.098
           ],
           "dx": 0.09300000000001774,
-          "dy": -0.5196666666666943,
+          "dy": 0.1113333333333344,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
             "actual": "Arimo"
@@ -523,8 +538,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "e22reaction.",
@@ -541,10 +557,10 @@
           ],
           "actual_xy": [
             362.333,
-            466.6
+            467.232
           ],
           "dx": 0.09300000000001774,
-          "dy": -0.6666666666666288,
+          "dy": -0.03466666666662377,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
             "actual": "Arimo"
@@ -553,8 +569,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "eaction.8994",
@@ -571,10 +588,10 @@
           ],
           "actual_xy": [
             424.067,
-            538.6
+            539.232
           ],
           "dx": 0.06700000000000728,
-          "dy": -0.6666666666666288,
+          "dy": -0.03466666666668061,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
             "actual": "Arimo"
@@ -583,8 +600,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "994637112705",
@@ -601,10 +619,10 @@
           ],
           "actual_xy": [
             455.4,
-            574.467
+            575.098
           ],
           "dx": 0.20000000000004547,
-          "dy": -0.6396666666665851,
+          "dy": -0.00866666666661331,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
             "actual": "Arimo"
@@ -613,8 +631,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "711270511719",
@@ -631,10 +650,10 @@
           ],
           "actual_xy": [
             517.467,
-            610.333
+            610.965
           ],
           "dx": 0.18833333333338942,
-          "dy": -0.6123333333333676,
+          "dy": 0.019666666666694255,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
             "actual": "Arimo"
@@ -643,8 +662,9 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "unique_on_page",
+          "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 56,
           "role": "snp_or_primer",
           "neighborhood": {
             "left": "051171914766",
@@ -654,71 +674,72 @@
       },
       "measurability_ok": true,
       "geometry": {
-        "pass": false,
+        "pass": true,
         "tolerance_px": 0.25,
         "points": [
           {
             "text": "-M",
             "status": "MEASURED",
             "dx": 0.09299999999996089,
-            "dy": -35.70666666666665,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.1603333333333694,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "H",
             "status": "MEASURED",
-            "dx": -0.6639999999999873,
-            "dy": -35.83966666666663,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dx": 0.20300000000008822,
+            "dy": 0.026333333333354858,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "8994",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -0.5196666666666943,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.1113333333333344,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "6371",
             "status": "MEASURED",
             "dx": 0.09300000000001774,
-            "dy": -0.6666666666666288,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": -0.03466666666662377,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "11719",
             "status": "MEASURED",
             "dx": 0.06700000000000728,
-            "dy": -0.6666666666666288,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": -0.03466666666668061,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "14766",
             "status": "MEASURED",
             "dx": 0.20000000000004547,
-            "dy": -0.6396666666665851,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": -0.00866666666661331,
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "7028",
             "status": "MEASURED",
             "dx": 0.18833333333338942,
-            "dy": -0.6123333333333676,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "dy": 0.019666666666694255,
+            "within_tolerance": true,
+            "gate": "PASS"
           }
         ]
       }
     },
     "104": {
       "pdf_sha256": "f57b2818673c298be46d5dcda27c22a2e7d95128d78e293614072a312cce9d30",
-      "svg_sha256": "f5593fa3b6f015cdbbc8ece1fb93f07624da19d858bd26128e66803c61d2589f",
+      "svg_sha256": "d117ec4297249a90ec5f2a8dde947a4f7b8604489adb6fda8db4dc9f6e0fe513",
+      "svg_pages_loaded": 53,
       "components": {
         "p104.A_C.0": {
           "text": "A,C",
@@ -729,10 +750,10 @@
             103.42666666666673
           ],
           "actual_xy": [
-            131.703,
+            128.66,
             103.493
           ],
-          "dx": 3.0630000000000166,
+          "dx": 0.020000000000010232,
           "dy": 0.06633333333326163,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
@@ -744,6 +765,7 @@
           },
           "match": "unique_on_page",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "figure_label",
           "neighborhood": {
             "left": null,
@@ -759,10 +781,10 @@
             335.7453333333333
           ],
           "actual_xy": [
-            125.939,
+            120.96,
             335.867
           ],
-          "dx": 5.13900000000001,
+          "dx": 0.1600000000000108,
           "dy": 0.12166666666672654,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
@@ -774,6 +796,7 @@
           },
           "match": "unique_on_page",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "haplogroup_or_legend",
           "neighborhood": {
             "left": "ucasusEurope",
@@ -789,10 +812,10 @@
             113.98666666666668
           ],
           "actual_xy": [
-            170.39,
+            168.731,
             114.027
           ],
-          "dx": 1.75,
+          "dx": 0.09100000000000819,
           "dy": 0.04033333333332223,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
@@ -804,6 +827,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "body",
           "neighborhood": {
             "left": "haplotypesA:",
@@ -819,10 +843,10 @@
             335.7453333333333
           ],
           "actual_xy": [
-            220.984,
+            224.305,
             335.867
           ],
-          "dx": -3.1759999999999877,
+          "dx": 0.14500000000001023,
           "dy": 0.12166666666672654,
           "font": {
             "reference": "CWLLTB+Arial-BoldMT",
@@ -834,6 +858,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "body",
           "neighborhood": {
             "left": "otypesonlyB:",
@@ -849,10 +874,10 @@
             598.7866666666666
           ],
           "actual_xy": [
-            295.166,
+            303.519,
             598.947
           ],
-          "dx": -8.353999999999985,
+          "dx": -0.0009999999999763531,
           "dy": 0.1603333333333694,
           "font": {
             "reference": "ESHXQI+TimesNewRomanPS-BoldMT",
@@ -864,6 +889,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "body",
           "neighborhood": {
             "left": "edinselected",
@@ -879,10 +905,10 @@
             635.4253333333334
           ],
           "actual_xy": [
-            552.314,
+            554.969,
             635.48
           ],
-          "dx": -2.5646666666666533,
+          "dx": 0.09033333333343307,
           "dy": 0.05466666666666242,
           "font": {
             "reference": "AUWCNV+TimesNewRomanPSMT",
@@ -894,6 +920,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "body",
           "neighborhood": {
             "left": "leniOstrovin",
@@ -909,10 +936,10 @@
             671.9066666666666
           ],
           "actual_xy": [
-            147.311,
+            147.316,
             672.013
           ],
-          "dx": 0.11100000000001842,
+          "dx": 0.11600000000001387,
           "dy": 0.10633333333339579,
           "font": {
             "reference": "AUWCNV+TimesNewRomanPSMT",
@@ -924,6 +951,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "body",
           "neighborhood": {
             "left": "A,B).Foreach",
@@ -939,10 +967,10 @@
             690.1453333333334
           ],
           "actual_xy": [
-            299.757,
+            300.872,
             690.28
           ],
-          "dx": -1.3629999999999995,
+          "dx": -0.24799999999999045,
           "dy": 0.13466666666658966,
           "font": {
             "reference": "AUWCNV+TimesNewRomanPSMT",
@@ -954,6 +982,7 @@
           },
           "match": "neighborhood",
           "status": "MEASURED",
+          "svg_page": 104,
           "role": "body",
           "neighborhood": {
             "left": "dividedbythe",
@@ -963,61 +992,61 @@
       },
       "measurability_ok": true,
       "geometry": {
-        "pass": false,
+        "pass": true,
         "tolerance_px": 0.25,
         "points": [
           {
             "text": "A,C",
             "status": "MEASURED",
-            "dx": 3.0630000000000166,
+            "dx": 0.020000000000010232,
             "dy": 0.06633333333326163,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "B,D",
             "status": "MEASURED",
-            "dx": 5.13900000000001,
+            "dx": 0.1600000000000108,
             "dy": 0.12166666666672654,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "modern",
             "status": "MEASURED",
-            "dx": 1.75,
+            "dx": 0.09100000000000819,
             "dy": 0.04033333333332223,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "modern",
             "status": "MEASURED",
-            "dx": -3.1759999999999877,
+            "dx": 0.14500000000001023,
             "dy": 0.12166666666672654,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "modern",
             "status": "MEASURED",
-            "dx": -8.353999999999985,
+            "dx": -0.0009999999999763531,
             "dy": 0.1603333333333694,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "modern",
             "status": "MEASURED",
-            "dx": -2.5646666666666533,
+            "dx": 0.09033333333343307,
             "dy": 0.05466666666666242,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           },
           {
             "text": "modern",
             "status": "MEASURED",
-            "dx": 0.11100000000001842,
+            "dx": 0.11600000000001387,
             "dy": 0.10633333333339579,
             "within_tolerance": true,
             "gate": "PASS"
@@ -1025,16 +1054,16 @@
           {
             "text": "modern",
             "status": "MEASURED",
-            "dx": -1.3629999999999995,
+            "dx": -0.24799999999999045,
             "dy": 0.13466666666658966,
-            "within_tolerance": false,
-            "gate": "FAIL"
+            "within_tolerance": true,
+            "gate": "PASS"
           }
         ]
       }
     }
   },
   "p0_measurability": "PASS",
-  "p1_geometry": "FAIL",
+  "p1_geometry": "PASS",
   "note": "AMBIGUOUS is never PASS. P0 closes on MEASURED; P1 on ≤0.25 px."
 }
