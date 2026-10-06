@@ -36,6 +36,8 @@ pub const NS_MC: &str = "http://schemas.openxmlformats.org/markup-compatibility/
 pub const NS_W14: &str = "http://schemas.microsoft.com/office/word/2010/wordml";
 /// Microsoft Word 2012 wordml extensions.
 pub const NS_W15: &str = "http://schemas.microsoft.com/office/word/2012/wordml";
+/// Microsoft Word 2010 wordprocessingDrawing (`wp14:pctPos*`, `sizeRel*`).
+pub const NS_WP14: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing";
 /// The reserved `xml` prefix, needed for `xml:space`.
 pub const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
 
@@ -215,6 +217,20 @@ impl XmlWriter {
     pub fn text(&mut self, value: &str) {
         self.close_tag();
         self.invalid_chars += escape_text_into(&mut self.out, value);
+    }
+
+    /// Appends already-serialized Strict markup as element content.
+    ///
+    /// Used for locked-canvas capture (audit P2): the markup was rewritten to
+    /// Strict namespaces at parse time, so it is safe to place inside a part
+    /// this writer regenerates. `prefixes` are recorded as used so the root
+    /// declarations survive [`finish`](Self::finish) filtering.
+    pub fn raw_markup(&mut self, markup: &str, prefixes: &[&str]) {
+        self.close_tag();
+        for prefix in prefixes {
+            self.used_prefixes.insert((*prefix).to_owned());
+        }
+        self.out.push_str(markup);
     }
 
     /// Closes the innermost element.

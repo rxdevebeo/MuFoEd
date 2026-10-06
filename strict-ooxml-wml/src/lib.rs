@@ -77,6 +77,13 @@ pub const CHART_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/chart";
 /// Strict namespace of the DrawingML diagram (SmartArt) schema.
 pub const DIAGRAM_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/diagram";
 
+/// Strict namespace of the DrawingML locked canvas schema.
+pub const LOCKED_CANVAS_STRICT_NS: &str = "http://purl.oclc.org/ooxml/drawingml/lockedCanvas";
+
+/// Transitional namespace of the DrawingML locked canvas schema.
+pub const LOCKED_CANVAS_TRANSITIONAL_NS: &str =
+    "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas";
+
 /// Microsoft 2010 wordprocessingShape namespace (compatibility for real-world
 /// "Strict" producers, recorded as `Partial`).
 pub const MS_WORD_PROCESSING_SHAPE_NS: &str =
@@ -111,5 +118,6 @@ pub const M_NS: &str = MATH_STRICT_NS;
 pub const SUPPORTED_MCE_NAMESPACES: &[&str] = &[
     MS_WORD_PROCESSING_SHAPE_NS,
     MS_WORD_PROCESSING_GROUP_NS,
+    MS_WORD_PROCESSING_DRAWING_NS,
     MATH_STRICT_NS,
 ];

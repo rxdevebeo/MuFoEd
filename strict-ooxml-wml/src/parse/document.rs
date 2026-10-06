@@ -1184,7 +1184,7 @@ impl PartParser<'_> {
 
     /// Shared `mc:AlternateContent` walker: ProcessChoice against
     /// [`crate::SUPPORTED_MCE_NAMESPACES`].
-    fn parse_mce_alternate_content(
+    pub(super) fn parse_mce_alternate_content(
         &mut self,
         attrs: &[Attr],
         mut take_branch: impl FnMut(&mut PartParser<'_>, &[Attr]) -> Result<()>,

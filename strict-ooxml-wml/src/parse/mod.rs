@@ -1155,6 +1155,8 @@ fn namespace_feature_key(uri: Option<&str>) -> String {
             }
             crate::DRAWINGML_STRICT_NS
             | "http://schemas.openxmlformats.org/drawingml/2006/main" => "a".to_owned(),
+            crate::LOCKED_CANVAS_STRICT_NS
+            | "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas" => "lc".to_owned(),
             crate::WORDPROCESSING_DRAWING_STRICT_NS
             | "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" => {
                 "wp".to_owned()

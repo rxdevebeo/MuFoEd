@@ -1,0 +1,53 @@
+{
+  "package": "P2",
+  "slug": "drawingml-placement",
+  "visual_level": "V0-V1",
+  "date_utc": "2026-10-06",
+  "rows_before": 1560,
+  "rows_before_witness_slice_baseline": 1517,
+  "rows_after": 0,
+  "rows_after_package_labels_on_measured_slice": 0,
+  "labels": [
+    "a:chExt",
+    "a:chExt@cx",
+    "a:chExt@cy",
+    "a:chOff",
+    "a:chOff@x",
+    "a:chOff@y",
+    "a:ext@cx",
+    "a:ext@cy",
+    "a:off@x",
+    "a:off@y"
+  ],
+  "witness_docs": [
+    "070_Innovations_and_New_Technologies.docx",
+    "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+    "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+    "1. First-Steps-in-Programming.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P2-1": true,
+    "T-P2-2": true,
+    "T-P2-3": true,
+    "T-P2-4": true,
+    "T-P2-4-negative": true
+  },
+  "corpus_slice_exit": 1,
+  "full_census_exit": "NOT_RUN",
+  "missing": 0,
+  "unmatched_schema": 0,
+  "ours": 0,
+  "visual": {
+    "T-P2-4": true,
+    "T-P2-4-negative": true,
+    "artifact": "visual/bbox.json"
+  },
+  "notes": [
+    "Primary loss was lc:lockedCanvas / a:grpSp trees dropped as Graphic::Other.",
+    "Locked canvas is captured as Strict markup (Graphic::LockedCanvas).",
+    "Witness-slice A_placement residual rows after fix: 0.",
+    "SoftUni unique media: 1 VML/AC-only PNG absent (SHA bag); remaps follow content digest (P10 residual)."
+  ],
+  "declared_transforms": []
+}

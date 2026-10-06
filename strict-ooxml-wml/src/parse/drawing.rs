@@ -9,17 +9,18 @@ use strict_ooxml_core::xml::{Attr, XmlEvent};
 use crate::model::drawing::{
     AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
     ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing,
-    MediaItem, MediaKind, PathCommand, Picture, Position, RelativeSize, Shape, ShapeColor,
-    ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody,
-    Wrap, WrapKind, Xfrm,
+    LockedCanvas, MediaItem, MediaKind, PathCommand, Picture, Position, RelativeSize, Shape,
+    ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox,
+    TextBoxBody, Wrap, WrapKind, Xfrm,
 };
 use crate::model::support::SupportStatus;
 use crate::model::values::{Color, Emu, ThemeColor, ThemeColorRef};
 use crate::{
-    CHART_STRICT_NS, DIAGRAM_STRICT_NS, DRAWINGML_STRICT_NS, MS_WORD_2006_WML_NS,
-    MS_WORD_PROCESSING_DRAWING_NS, MS_WORD_PROCESSING_GROUP_NS, MS_WORD_PROCESSING_SHAPE_NS,
-    PICTURE_STRICT_NS, RELS_STRICT_NS, WORDPROCESSING_DRAWING_STRICT_NS,
-    WORD_PROCESSING_GROUP_STRICT_NS, WORD_PROCESSING_SHAPE_STRICT_NS,
+    CHART_STRICT_NS, DIAGRAM_STRICT_NS, DRAWINGML_STRICT_NS, LOCKED_CANVAS_STRICT_NS,
+    LOCKED_CANVAS_TRANSITIONAL_NS, MS_WORD_2006_WML_NS, MS_WORD_PROCESSING_DRAWING_NS,
+    MS_WORD_PROCESSING_GROUP_NS, MS_WORD_PROCESSING_SHAPE_NS, PICTURE_STRICT_NS, RELS_STRICT_NS,
+    WORDPROCESSING_DRAWING_STRICT_NS, WORD_PROCESSING_GROUP_STRICT_NS,
+    WORD_PROCESSING_SHAPE_STRICT_NS,
 };
 
 use super::{attr_in_ns, plain_attr, PartParser};
@@ -76,7 +77,7 @@ impl PartParser<'_> {
                             && name.local() == "inline"
                         {
                             record_editor_ids(parser, "wp:inline", &attrs);
-                            let inline = parser.parse_inline_drawing()?;
+                            let inline = parser.parse_inline_drawing(&attrs)?;
                             kind = DrawingKind::Inline(inline);
                         } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "anchor"
@@ -104,13 +105,17 @@ impl PartParser<'_> {
     }
 
     /// Parses `wp:inline`.
-    fn parse_inline_drawing(&mut self) -> Result<InlineDrawing> {
+    fn parse_inline_drawing(&mut self, attrs: &[Attr]) -> Result<InlineDrawing> {
         let location = self.location();
         self.nested(|parser| {
             let mut inline = InlineDrawing {
                 extent: None,
                 effect_extent: None,
                 doc_pr: None,
+                dist_top: parse_u32_attr(attrs, "distT"),
+                dist_bottom: parse_u32_attr(attrs, "distB"),
+                dist_left: parse_u32_attr(attrs, "distL"),
+                dist_right: parse_u32_attr(attrs, "distR"),
                 graphic_uri: None,
                 graphic: Box::new(Graphic::None),
                 location,
@@ -177,72 +182,7 @@ impl PartParser<'_> {
                 size_rel_v: None,
                 location,
             };
-            loop {
-                match parser.next_event()? {
-                    XmlEvent::StartElement { name, attrs } => {
-                        if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
-                            match name.local() {
-                                "positionH" => {
-                                    anchor.position_h = Some(parser.parse_position(&attrs)?);
-                                }
-                                "positionV" => {
-                                    anchor.position_v = Some(parser.parse_position(&attrs)?);
-                                }
-                                "extent" => {
-                                    anchor.extent = Some(parser.parse_extent(&attrs));
-                                    parser.skip_element()?;
-                                }
-                                "effectExtent" => {
-                                    anchor.effect_extent = Some(parser.parse_effect_extent(&attrs));
-                                    parser.skip_element()?;
-                                }
-                                "docPr" => {
-                                    anchor.doc_pr = Some(parser.parse_doc_pr(&attrs));
-                                    parser.skip_element()?;
-                                }
-                                "wrapNone" => {
-                                    anchor.wrap = Some(parser.parse_wrap(WrapKind::None, &attrs)?);
-                                }
-                                "wrapSquare" => {
-                                    anchor.wrap =
-                                        Some(parser.parse_wrap(WrapKind::Square, &attrs)?);
-                                }
-                                "wrapTight" => {
-                                    anchor.wrap = Some(parser.parse_wrap(WrapKind::Tight, &attrs)?);
-                                }
-                                "wrapThrough" => {
-                                    anchor.wrap =
-                                        Some(parser.parse_wrap(WrapKind::Through, &attrs)?);
-                                }
-                                "wrapTopAndBottom" => {
-                                    anchor.wrap =
-                                        Some(parser.parse_wrap(WrapKind::TopAndBottom, &attrs)?);
-                                }
-                                _ => parser.skip_element()?,
-                            }
-                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
-                            let (uri, graphic) = parser.parse_graphic()?;
-                            anchor.graphic_uri = uri;
-                            anchor.graphic = Box::new(graphic);
-                        } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS) {
-                            match name.local() {
-                                "sizeRelH" => {
-                                    anchor.size_rel_h = parser.parse_relative_size(&attrs)?;
-                                }
-                                "sizeRelV" => {
-                                    anchor.size_rel_v = parser.parse_relative_size(&attrs)?;
-                                }
-                                _ => parser.skip_element()?,
-                            }
-                        } else {
-                            parser.skip_element()?;
-                        }
-                    }
-                    XmlEvent::EndElement { .. } => break,
-                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of anchor")),
-                }
-            }
+            parser.parse_anchor_children_into(&mut anchor)?;
             parser.record(
                 "wp:anchor",
                 SupportStatus::Supported,
@@ -251,6 +191,88 @@ impl PartParser<'_> {
             );
             Ok(anchor)
         })
+    }
+
+    /// Fills an [`AnchorDrawing`] from its open element's children.
+    ///
+    /// `mc:AlternateContent` around `wp:positionV` (wp14 percent vs EMU Fallback)
+    /// is resolved here — skipping the block used to drop both branches and leave
+    /// the writer inventing `relativeFrom=paragraph` with a zero offset.
+    fn parse_anchor_children_into(&mut self, anchor: &mut AnchorDrawing) -> Result<()> {
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
+                        match name.local() {
+                            "positionH" => {
+                                anchor.position_h = Some(self.parse_position(&attrs)?);
+                            }
+                            "positionV" => {
+                                anchor.position_v = Some(self.parse_position(&attrs)?);
+                            }
+                            "extent" => {
+                                anchor.extent = Some(self.parse_extent(&attrs));
+                                self.skip_element()?;
+                            }
+                            "effectExtent" => {
+                                anchor.effect_extent = Some(self.parse_effect_extent(&attrs));
+                                self.skip_element()?;
+                            }
+                            "docPr" => {
+                                anchor.doc_pr = Some(self.parse_doc_pr(&attrs));
+                                self.skip_element()?;
+                            }
+                            "wrapNone" => {
+                                anchor.wrap = Some(self.parse_wrap(WrapKind::None, &attrs)?);
+                            }
+                            "wrapSquare" => {
+                                anchor.wrap = Some(self.parse_wrap(WrapKind::Square, &attrs)?);
+                            }
+                            "wrapTight" => {
+                                anchor.wrap = Some(self.parse_wrap(WrapKind::Tight, &attrs)?);
+                            }
+                            "wrapThrough" => {
+                                anchor.wrap = Some(self.parse_wrap(WrapKind::Through, &attrs)?);
+                            }
+                            "wrapTopAndBottom" => {
+                                anchor.wrap =
+                                    Some(self.parse_wrap(WrapKind::TopAndBottom, &attrs)?);
+                            }
+                            _ => self.skip_element()?,
+                        }
+                    } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
+                        let (uri, graphic) = self.parse_graphic()?;
+                        anchor.graphic_uri = uri;
+                        anchor.graphic = Box::new(graphic);
+                    } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS) {
+                        match name.local() {
+                            "sizeRelH" => {
+                                anchor.size_rel_h = self.parse_relative_size(&attrs)?;
+                            }
+                            "sizeRelV" => {
+                                anchor.size_rel_v = self.parse_relative_size(&attrs)?;
+                            }
+                            _ => self.skip_element()?,
+                        }
+                    } else if name
+                        .ns
+                        .as_ref()
+                        .is_some_and(|ns| ns.as_str() == super::MCE_NS)
+                        && name.local() == "AlternateContent"
+                    {
+                        self.parse_mce_alternate_content(&attrs, |parser, _| {
+                            parser.parse_anchor_children_into(anchor)
+                        })?;
+                    } else {
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of anchor")),
+            }
+        }
+        Ok(())
     }
 
     /// Parses `wp14:sizeRelH` / `wp14:sizeRelV`.
@@ -288,6 +310,7 @@ impl PartParser<'_> {
             relative_from: plain_attr(attrs, "relativeFrom").map(|value| self.intern(value)),
             align: None,
             offset: None,
+            percent_offset: None,
         };
         self.nested(|parser| {
             loop {
@@ -306,6 +329,59 @@ impl PartParser<'_> {
                             } else {
                                 parser.skip_element()?;
                             }
+                        } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS)
+                            && (name.local() == "pctPosHOffset" || name.local() == "pctPosVOffset")
+                        {
+                            let text = parser.read_element_text()?;
+                            position.percent_offset = text.trim().parse::<i32>().ok();
+                        } else if name
+                            .ns
+                            .as_ref()
+                            .is_some_and(|ns| ns.as_str() == super::MCE_NS)
+                            && name.local() == "AlternateContent"
+                        {
+                            // Rare: AC wrapping only the offset child. Resolve so
+                            // the Fallback `wp:posOffset` is not discarded.
+                            parser.parse_mce_alternate_content(&[], |parser, _| {
+                                loop {
+                                    match parser.next_event()? {
+                                        XmlEvent::StartElement { name, .. } => {
+                                            if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                                                && name.local() == "posOffset"
+                                            {
+                                                let text = parser.read_element_text()?;
+                                                position.offset =
+                                                    text.trim().parse::<i64>().ok().map(Emu);
+                                            } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS)
+                                                && (name.local() == "pctPosHOffset"
+                                                    || name.local() == "pctPosVOffset")
+                                            {
+                                                let text = parser.read_element_text()?;
+                                                position.percent_offset =
+                                                    text.trim().parse::<i32>().ok();
+                                            } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
+                                                && name.local() == "align"
+                                            {
+                                                let text = parser.read_element_text()?;
+                                                let value = text.trim().to_owned();
+                                                if !value.is_empty() {
+                                                    position.align = Some(parser.intern(&value));
+                                                }
+                                            } else {
+                                                parser.skip_element()?;
+                                            }
+                                        }
+                                        XmlEvent::EndElement { .. } => break,
+                                        XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                                        XmlEvent::Eof => {
+                                            return Err(parser.invalid(
+                                                "unexpected end of position AlternateContent",
+                                            ));
+                                        }
+                                    }
+                                }
+                                Ok(())
+                            })?;
                         } else {
                             parser.skip_element()?;
                         }
@@ -327,7 +403,7 @@ impl PartParser<'_> {
         // desynchronised the anchor loop, which then read the rest of the part as
         // children of nothing - the document came out truncated and the writer
         // refused it.
-        let polygon = self.parse_wrap_polygon()?;
+        let (polygon, polygon_edited) = self.parse_wrap_polygon()?;
         let wrap = Wrap {
             kind,
             wrap_text: plain_attr(attrs, "wrapText").map(|value| self.intern(value)),
@@ -336,6 +412,7 @@ impl PartParser<'_> {
             dist_top: parse_u32_attr(attrs, "distT"),
             dist_bottom: parse_u32_attr(attrs, "distB"),
             polygon,
+            polygon_edited,
         };
         Ok(wrap)
     }
@@ -353,8 +430,9 @@ impl PartParser<'_> {
     /// `lineTo`) is kept as read and left for the XSD gate to name. Dropping it
     /// would produce a conforming document and a silent loss, which is the one
     /// outcome this project treats as the defect.
-    fn parse_wrap_polygon(&mut self) -> Result<Vec<(i64, i64)>> {
+    fn parse_wrap_polygon(&mut self) -> Result<(Vec<(i64, i64)>, Option<bool>)> {
         let mut points = Vec::new();
+        let mut edited = None;
         let mut depth = 0usize;
         loop {
             match self.next_event()? {
@@ -362,7 +440,9 @@ impl PartParser<'_> {
                     if is_wordprocessing_drawing(&name) {
                         depth += 1;
                         let local = name.local();
-                        if local == "start" || local == "lineTo" {
+                        if local == "wrapPolygon" {
+                            edited = optional_bool_attr(&attrs, "edited");
+                        } else if local == "start" || local == "lineTo" {
                             let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
                             let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
                             if let (Some(x), Some(y)) = (x, y) {
@@ -386,7 +466,7 @@ impl PartParser<'_> {
                 XmlEvent::Eof => return Err(self.invalid("unexpected end of wrap")),
             }
         }
-        Ok(points)
+        Ok((points, edited))
     }
 
     /// Parses `a:graphic`, returning `(uri, graphic)`.
@@ -478,6 +558,11 @@ impl PartParser<'_> {
         name: &QName,
         attrs: &[Attr],
     ) -> Result<Option<Graphic>> {
+        if is_locked_canvas_ns(name) && name.local() == "lockedCanvas" {
+            return Ok(Some(Graphic::LockedCanvas(
+                self.capture_locked_canvas(name, attrs)?,
+            )));
+        }
         if is_ns(name, PICTURE_STRICT_NS) && name.local() == "pic" {
             return Ok(Some(Graphic::Picture(self.parse_picture()?)));
         }
@@ -513,6 +598,51 @@ impl PartParser<'_> {
         }
         self.skip_element()?;
         Ok(None)
+    }
+
+    /// Captures `lc:lockedCanvas` as Strict markup so `a:off`/`a:ext`/`chOff`
+    /// round-trip (audit P2). The start event is already consumed.
+    fn capture_locked_canvas(&mut self, name: &QName, attrs: &[Attr]) -> Result<LockedCanvas> {
+        let location = self.location();
+        let mut markup = String::new();
+        write_start_markup(&mut markup, name, attrs);
+        let mut depth = 1u32;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    depth = depth.saturating_add(1);
+                    write_start_markup(&mut markup, &name, &attrs);
+                }
+                XmlEvent::EndElement { name } => {
+                    write_end_markup(&mut markup, &name);
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                XmlEvent::Text(text) => {
+                    escape_text_into_markup(&mut markup, &text);
+                }
+                XmlEvent::CData(text) => {
+                    markup.push_str("<![CDATA[");
+                    markup.push_str(&text);
+                    markup.push_str("]]>");
+                }
+                XmlEvent::Eof => {
+                    return Err(self.invalid("unexpected end of locked canvas"));
+                }
+            }
+        }
+        self.record(
+            "lc:lockedCanvas",
+            SupportStatus::Supported,
+            None,
+            Some(location.clone()),
+        );
+        Ok(LockedCanvas {
+            markup: std::sync::Arc::<str>::from(markup),
+            location,
+        })
     }
 
     /// Captures the relationship ids a foreign graphic element carries.
@@ -704,6 +834,7 @@ impl PartParser<'_> {
             let mut shape = Shape {
                 name: None,
                 descr: None,
+                tx_box: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,
@@ -725,6 +856,10 @@ impl PartParser<'_> {
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     shape.descr =
                                         plain_attr(&attrs, "descr").map(|v| parser.intern(v));
+                                    parser.skip_element()?;
+                                }
+                                "cNvSpPr" => {
+                                    shape.tx_box = optional_bool_attr(&attrs, "txBox");
                                     parser.skip_element()?;
                                 }
                                 "spPr" => parser.parse_shape_sp_pr(&mut shape)?,
@@ -1360,11 +1495,24 @@ impl PartParser<'_> {
         };
         let body = TextBoxBody {
             anchor,
-            anchor_centered: bool_attr(attrs, "anchorCtr"),
+            anchor_centered: optional_bool_attr(attrs, "anchorCtr"),
             left_inset: plain_attr(attrs, "lIns").and_then(parse_emu_attr),
             top_inset: plain_attr(attrs, "tIns").and_then(parse_emu_attr),
             right_inset: plain_attr(attrs, "rIns").and_then(parse_emu_attr),
             bottom_inset: plain_attr(attrs, "bIns").and_then(parse_emu_attr),
+            wrap: plain_attr(attrs, "wrap").map(|value| self.intern(value)),
+            vert: plain_attr(attrs, "vert").map(|value| self.intern(value)),
+            rot: parse_i32_attr(attrs, "rot"),
+            upright: optional_bool_attr(attrs, "upright"),
+            rtl_col: optional_bool_attr(attrs, "rtlCol"),
+            compat_ln_spc: optional_bool_attr(attrs, "compatLnSpc"),
+            force_aa: optional_bool_attr(attrs, "forceAA"),
+            from_word_art: optional_bool_attr(attrs, "fromWordArt"),
+            horz_overflow: plain_attr(attrs, "horzOverflow").map(|value| self.intern(value)),
+            vert_overflow: plain_attr(attrs, "vertOverflow").map(|value| self.intern(value)),
+            num_col: parse_i32_attr(attrs, "numCol"),
+            spc_col: parse_i32_attr(attrs, "spcCol"),
+            spc_first_last_para: optional_bool_attr(attrs, "spcFirstLastPara"),
         };
         self.skip_element()?;
         Ok(body)
@@ -1384,7 +1532,18 @@ impl PartParser<'_> {
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
-                        if is_group_ns(&name) {
+                        if matches!(name.local(), "wgp" | "grpSp") && is_group_ns(&name) {
+                            // Nested groups must be matched before the generic
+                            // `is_group_ns` property skip: `grpSp` is itself a
+                            // group-ns element and used to fall into `_ => skip`.
+                            group.children.push(Graphic::Group(parser.parse_group()?));
+                        } else if name.local() == "wsp" && is_shape_ns(&name) {
+                            group.children.push(Graphic::Shape(parser.parse_shape()?));
+                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
+                            group
+                                .children
+                                .push(Graphic::Picture(parser.parse_picture()?));
+                        } else if is_group_ns(&name) {
                             match name.local() {
                                 "cNvPr" => {
                                     group.name =
@@ -1398,14 +1557,6 @@ impl PartParser<'_> {
                                 }
                                 _ => parser.skip_element()?,
                             }
-                        } else if name.local() == "wsp" && is_shape_ns(&name) {
-                            group.children.push(Graphic::Shape(parser.parse_shape()?));
-                        } else if matches!(name.local(), "wgp" | "grpSp") && is_group_ns(&name) {
-                            group.children.push(Graphic::Group(parser.parse_group()?));
-                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
-                            group
-                                .children
-                                .push(Graphic::Picture(parser.parse_picture()?));
                         } else {
                             parser.skip_element()?;
                         }
@@ -1479,6 +1630,7 @@ impl PartParser<'_> {
             id: plain_attr(attrs, "id").and_then(|value| value.trim().parse().ok()),
             name: plain_attr(attrs, "name").map(|value| self.intern(value)),
             descr: plain_attr(attrs, "descr").map(|value| self.intern(value)),
+            title: plain_attr(attrs, "title").map(|value| self.intern(value)),
         }
     }
 }
@@ -1498,6 +1650,89 @@ struct XfrmParts {
 /// Returns `true` if a name belongs to `namespace`.
 fn is_ns(name: &QName, namespace: &str) -> bool {
     name.ns.as_ref().is_some_and(|ns| ns == namespace)
+}
+
+/// Returns `true` for locked-canvas elements in Strict or Transitional form.
+fn is_locked_canvas_ns(name: &QName) -> bool {
+    is_ns(name, LOCKED_CANVAS_STRICT_NS) || is_ns(name, LOCKED_CANVAS_TRANSITIONAL_NS)
+}
+
+/// Writes a start tag with Strict namespace prefixes for locked-canvas capture.
+fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
+    let prefix = markup_prefix(name.ns.as_ref().map(|ns| ns.as_str()));
+    out.push('<');
+    if let Some(prefix) = prefix {
+        out.push_str(prefix);
+        out.push(':');
+    }
+    out.push_str(name.local());
+    if name.local() == "lockedCanvas" {
+        // Declare the vocabularies the canvas subtree uses so the fragment is
+        // well-formed when re-emitted inside `a:graphicData`.
+        out.push_str(" xmlns:lc=\"");
+        out.push_str(LOCKED_CANVAS_STRICT_NS);
+        out.push('"');
+        out.push_str(" xmlns:a=\"");
+        out.push_str(DRAWINGML_STRICT_NS);
+        out.push('"');
+        out.push_str(" xmlns:r=\"");
+        out.push_str(RELS_STRICT_NS);
+        out.push('"');
+    }
+    for attr in attrs {
+        let attr_prefix = markup_prefix(attr.name.ns.as_ref().map(|ns| ns.as_str()));
+        out.push(' ');
+        if let Some(prefix) = attr_prefix {
+            // Unprefixed attributes stay unprefixed (XML Namespaces).
+            if attr.name.ns.is_some() {
+                out.push_str(prefix);
+                out.push(':');
+            }
+        }
+        out.push_str(attr.name.local());
+        out.push_str("=\"");
+        let value = match attr.name.local() {
+            "uri" => strict_ooxml_core::ns::registry::strict_form(&attr.value)
+                .unwrap_or(attr.value.as_str()),
+            _ => attr.value.as_str(),
+        };
+        let _ = strict_ooxml_core::xml::escape::escape_attr_into(out, value);
+        out.push('"');
+    }
+    out.push('>');
+}
+
+/// Writes an end tag with the same prefix policy as [`write_start_markup`].
+fn write_end_markup(out: &mut String, name: &QName) {
+    let prefix = markup_prefix(name.ns.as_ref().map(|ns| ns.as_str()));
+    out.push_str("</");
+    if let Some(prefix) = prefix {
+        out.push_str(prefix);
+        out.push(':');
+    }
+    out.push_str(name.local());
+    out.push('>');
+}
+
+fn escape_text_into_markup(out: &mut String, text: &str) {
+    let _ = strict_ooxml_core::xml::escape::escape_text_into(out, text);
+}
+
+/// Stable prefix for a namespace URI when serialising locked-canvas markup.
+fn markup_prefix(ns: Option<&str>) -> Option<&'static str> {
+    match ns {
+        Some(LOCKED_CANVAS_STRICT_NS) | Some(LOCKED_CANVAS_TRANSITIONAL_NS) => Some("lc"),
+        Some(DRAWINGML_STRICT_NS)
+        | Some("http://schemas.openxmlformats.org/drawingml/2006/main") => Some("a"),
+        Some(RELS_STRICT_NS)
+        | Some("http://schemas.openxmlformats.org/officeDocument/2006/relationships") => {
+            Some("r")
+        }
+        Some(PICTURE_STRICT_NS)
+        | Some("http://schemas.openxmlformats.org/drawingml/2006/picture") => Some("pic"),
+        Some("http://www.w3.org/XML/1998/namespace") => Some("xml"),
+        _ => None,
+    }
 }
 
 /// Returns `true` for shape elements in the Strict, Microsoft or legacy
@@ -1628,6 +1863,11 @@ fn parse_i32_attr(attrs: &[Attr], local: &str) -> Option<i32> {
 /// Parses an on/off attribute (`1`/`true`/`on`).
 fn bool_attr(attrs: &[Attr], local: &str) -> bool {
     plain_attr(attrs, local).is_some_and(bool_value)
+}
+
+/// Parses an optional on/off attribute, preserving explicit `0`/`false`.
+fn optional_bool_attr(attrs: &[Attr], local: &str) -> Option<bool> {
+    plain_attr(attrs, local).map(bool_value)
 }
 
 /// Returns `true` when an attribute is present with a false-ish value.

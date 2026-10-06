@@ -162,6 +162,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
     let shape = Shape {
         name: Some(Arc::clone(&name)),
         descr: None,
+        tx_box: None,
         geometry: ShapeGeometry::Preset(Arc::from("rect")),
         xfrm: None,
         offset: Some((Emu(0), Emu(0))),
@@ -179,17 +180,20 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
             id: None,
             name: Some(name),
             descr: None,
+            title: None,
         }),
         simple_pos: false,
         position_h: Some(Position {
             relative_from: Some(Arc::from("page")),
             align: None,
             offset: Some(emu(rect.x)),
+            percent_offset: None,
         }),
         position_v: Some(Position {
             relative_from: Some(Arc::from("page")),
             align: None,
             offset: Some(emu(rect.y)),
+            percent_offset: None,
         }),
         wrap: Some(Wrap {
             kind: WrapKind::None,
@@ -199,6 +203,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
             dist_top: None,
             dist_bottom: None,
             polygon: Vec::new(),
+            polygon_edited: None,
         }),
         behind_doc: false,
         relative_height: Some(1),

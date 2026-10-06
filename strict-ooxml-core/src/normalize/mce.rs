@@ -278,6 +278,16 @@ pub(crate) fn record(
 /// **On the queue, not straight into the writer**, and that is the whole point of
 /// this function's existence: the branch is ordinary markup T1–T5 have not seen
 /// yet, and it has to meet the same dispatch as the rest of the part.
+/// Places resolved branch content at the **front** of the event queue so the
+/// main loop processes it before the markup that followed the
+/// `mc:AlternateContent` in the source.
+///
+/// Appending would defer the Choice until after surrounding end tags were
+/// already written — SoftUni's `wp:positionV` wrapped in `Requires="wp14"`
+/// then landed after `</wp:anchor></w:drawing>`, and the floating frame lost
+/// its page offset.
 pub(crate) fn queue(content: Vec<Event<'static>>, buffered: &mut VecDeque<Event<'static>>) {
-    buffered.extend(content);
+    for event in content.into_iter().rev() {
+        buffered.push_front(event);
+    }
 }

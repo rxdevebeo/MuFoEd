@@ -501,6 +501,38 @@ def test_relationship_rename_requires_identical_resource_and_type() -> None:
             raise SystemExit("same rId hid changed resource bytes")
 
 
+def test_process_choice_inventory_does_not_count_fallback() -> None:
+    """Source AC Choice+Fallback must not invent a placement loss after write."""
+    from types import SimpleNamespace
+
+    mc = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    wp = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+    wps = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+    oracle = SimpleNamespace(declared={"extent", "inline", "document", "body", "p", "r", "drawing"})
+    source_xml = f"""<w:document xmlns:w="{w}" xmlns:mc="{mc}" xmlns:wp="{wp}" xmlns:wps="{wps}">
+      <w:body><w:p><w:r><w:drawing>
+        <mc:AlternateContent>
+          <mc:Choice Requires="wps"><wp:inline><wp:extent cx="1" cy="2"/></wp:inline></mc:Choice>
+          <mc:Fallback><wp:inline><wp:extent cx="9" cy="9"/></wp:inline></mc:Fallback>
+        </mc:AlternateContent>
+      </w:drawing></w:r></w:p></w:body></w:document>"""
+    written_xml = f"""<w:document xmlns:w="{w}" xmlns:wp="{wp}">
+      <w:body><w:p><w:r><w:drawing>
+        <wp:inline><wp:extent cx="1" cy="2"/></wp:inline>
+      </w:drawing></w:r></w:p></w:body></w:document>"""
+    with tempfile.TemporaryDirectory() as tmp:
+        source, output = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        _docx(source, {"word/document.xml": source_xml})
+        _docx(output, {"word/document.xml": written_xml})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        extent_rows = [
+            row for row in rows if row[1].endswith("extent") or "@cx" in row[1] or "@cy" in row[1]
+        ]
+        if extent_rows:
+            raise SystemExit(f"ProcessChoice still counted Fallback extents: {extent_rows}")
+
+
 def main() -> int:
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
@@ -515,6 +547,7 @@ def main() -> int:
     test_attribute_value_and_resource_bytes()
     test_xsd_negative_control_still_fails()
     test_unnamed_element_loss_fails_as_ours()
+    test_process_choice_inventory_does_not_count_fallback()
     print("census_gate_selftest: pass")
     return 0
 

@@ -209,6 +209,7 @@ fn walk_graphic(
         | Graphic::Picture(_)
         | Graphic::Chart(_)
         | Graphic::Diagram(_)
+        | Graphic::LockedCanvas(_)
         | Graphic::Other => {}
     }
     Ok(())
@@ -297,10 +298,15 @@ mod tests {
                     extent: None,
                     effect_extent: None,
                     doc_pr: None,
+                    dist_top: None,
+                    dist_bottom: None,
+                    dist_left: None,
+                    dist_right: None,
                     graphic_uri: None,
                     graphic: Box::new(Graphic::Shape(Shape {
                         name: None,
                         descr: None,
+                        tx_box: None,
                         geometry: ShapeGeometry::None,
                         xfrm: None,
                         offset: None,

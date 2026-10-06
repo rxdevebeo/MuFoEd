@@ -1,0 +1,59 @@
+{
+  "package": "P4",
+  "slug": "wps-bodypr",
+  "visual_level": "V1",
+  "date_utc": "2026-10-06",
+  "rows_before": 366,
+  "rows_before_witness_slice_baseline": 89,
+  "rows_after": 0,
+  "rows_after_package_labels_on_measured_slice": 0,
+  "labels": [
+    "bodyPr",
+    "bodyPr@anchor",
+    "bodyPr@anchorCtr",
+    "bodyPr@bIns",
+    "bodyPr@compatLnSpc",
+    "bodyPr@forceAA",
+    "bodyPr@fromWordArt",
+    "bodyPr@horzOverflow",
+    "bodyPr@lIns",
+    "bodyPr@numCol",
+    "bodyPr@rIns",
+    "bodyPr@rot",
+    "bodyPr@rtlCol",
+    "bodyPr@spcCol",
+    "bodyPr@spcFirstLastPara",
+    "bodyPr@tIns",
+    "bodyPr@upright",
+    "bodyPr@vert",
+    "bodyPr@vertOverflow",
+    "bodyPr@wrap",
+    "cNvSpPr@txBox"
+  ],
+  "witness_docs": [
+    "PEP - DVOJEZIČNI -IZJAVA KLIJENTA RADI UTVRĐIVANJA STATUSA FUNKCIONERA.docx",
+    "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+    "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+    "1. First-Steps-in-Programming.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P4-1": true,
+    "T-P4-2": true,
+    "T-P4-3": true
+  },
+  "corpus_slice_exit": 1,
+  "full_census_exit": "NOT_RUN",
+  "missing": 0,
+  "unmatched_schema": 0,
+  "ours": 0,
+  "visual": {
+    "T-P4-2": true,
+    "artifact": "visual/bbox.json"
+  },
+  "notes": [
+    "TextBoxBody stores wrap/vert/rot and explicit optional bools; Shape.tx_box preserved.",
+    "Witness-slice C_wps residual rows after fix: 0."
+  ],
+  "declared_transforms": []
+}

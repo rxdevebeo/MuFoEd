@@ -769,7 +769,12 @@ fn image_paragraph(
                     // The field a screen reader reads, and the only place a
                     // model's words enter the document.
                     descr: description.clone().map(Arc::from),
+                    title: None,
                 }),
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::Picture(
                     strict_ooxml_wml::model::drawing::Picture {

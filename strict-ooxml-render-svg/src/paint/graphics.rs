@@ -57,6 +57,7 @@ pub(crate) fn inline_items(
         | Graphic::Group(_)
         | Graphic::Chart(_)
         | Graphic::Diagram(_)
+        | Graphic::LockedCanvas(_)
         | Graphic::Other => {}
         Graphic::None | Graphic::Picture(_) => return None,
     }
@@ -80,7 +81,11 @@ pub(crate) fn graphic_items(
         Graphic::Picture(picture) => picture_items(ctx, picture, None, x, y, w, h),
         Graphic::Shape(shape) => shape_items(ctx, shape, x, y, w, h),
         Graphic::Group(group) => group_items(ctx, group, x, y, w, h),
-        Graphic::None | Graphic::Chart(_) | Graphic::Diagram(_) | Graphic::Other => {
+        Graphic::None
+        | Graphic::Chart(_)
+        | Graphic::Diagram(_)
+        | Graphic::LockedCanvas(_)
+        | Graphic::Other => {
             vec![placeholder(x, y, w, h)]
         }
     }
@@ -317,7 +322,7 @@ fn text_box_items(
     w: f64,
     h: f64,
 ) -> Vec<Item> {
-    let body = text.body.unwrap_or_default();
+    let body = text.body.clone().unwrap_or_default();
     let scale = ctx.options.scale;
     let left_inset = body
         .left_inset

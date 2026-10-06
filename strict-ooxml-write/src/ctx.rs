@@ -207,6 +207,19 @@ impl<'a> Ctx<'a> {
         self.current_part = Some(PartId::new(part));
         self.part_rels = Some(RelAllocator::new());
         self.part_foreign.clear();
+        // `wp:docPr/@id` uniqueness is per part, not package-wide. A footer that
+        // reuses id `1` after the document body already spent it is legal OOXML;
+        // carrying the body's set into the footer forced a remap and renamed the
+        // drawing for no schema reason.
+        self.used_doc_pr_ids.clear();
+        self.next_doc_pr_id = 1;
+    }
+
+    /// Resets `wp:docPr/@id` allocation for a part that does not use
+    /// [`Self::begin_part_relationships`] (the main document).
+    pub fn begin_doc_pr_scope(&mut self) {
+        self.used_doc_pr_ids.clear();
+        self.next_doc_pr_id = 1;
     }
 
     /// Records a foreign (chart/diagram) id for the current part.

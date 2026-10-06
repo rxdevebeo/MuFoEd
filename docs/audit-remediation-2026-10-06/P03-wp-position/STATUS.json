@@ -1,0 +1,72 @@
+{
+  "package": "P3",
+  "slug": "wp-position",
+  "visual_level": "V1",
+  "date_utc": "2026-10-06",
+  "rows_before": 461,
+  "rows_before_witness_slice_baseline": 172,
+  "rows_after": 5,
+  "rows_after_package_labels_on_measured_slice": 11,
+  "labels": [
+    "wp:docPr",
+    "wp:docPr@descr",
+    "wp:docPr@id",
+    "wp:docPr@name",
+    "wp:docPr@title",
+    "wp:effectExtent",
+    "wp:effectExtent@b",
+    "wp:effectExtent@l",
+    "wp:effectExtent@r",
+    "wp:effectExtent@t",
+    "wp:extent",
+    "wp:extent@cx",
+    "wp:extent@cy",
+    "wp:inline",
+    "wp:inline@distB",
+    "wp:inline@distL",
+    "wp:inline@distR",
+    "wp:inline@distT",
+    "wp:positionV",
+    "wp:wrapPolygon@edited"
+  ],
+  "witness_docs": [
+    "070_Innovations_and_New_Technologies.docx",
+    "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+    "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+    "4. Complex-Conditions.docx",
+    "DOCX_46_Pages_Large_4b2b5238a0.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P3-1": true,
+    "T-P3-2": true,
+    "T-P3-3": true,
+    "T-P3-4": true
+  },
+  "corpus_slice_exit": 1,
+  "full_census_exit": "NOT_RUN",
+  "missing": 0,
+  "unmatched_schema": 0,
+  "ours": 0,
+  "visual": {
+    "T-P3-4": true,
+    "artifact": "visual/bbox.json"
+  },
+  "notes": [
+    "InlineDrawing stores/emits distT/B/L/R; DocPr.title parse/write.",
+    "wrapPolygon/@edited preserved; header/footer part basenames preserved.",
+    "wp14:pctPos* preserved via MCE ProcessChoice (queue prepend fix keeps positionV inside wp:anchor).",
+    "docPr/@id uniqueness is per part; 070 remaps five colliding ids when the written drawing count exceeds the source (expanded grpSp/lockedCanvas trees) — identity-only, visual bbox still matches.",
+    "Witness-slice B_wp residual rows after fix: 5."
+  ],
+  "declared_transforms": [
+    {
+      "label": "wp:docPr@id",
+      "docs": [
+        "070_Innovations_and_New_Technologies.docx"
+      ],
+      "kind": "uniqueness_remap",
+      "proof": "T-P2-4/T-P3-4 visual bbox pass; ids remain unique within the part"
+    }
+  ]
+}

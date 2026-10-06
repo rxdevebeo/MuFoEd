@@ -1,0 +1,21 @@
+{
+  "package": "P2",
+  "witness": "070_Innovations_and_New_Technologies.docx",
+  "metric": "DrawingML placement element counts in word/document.xml",
+  "before_writer": {
+    "a:off": 575,
+    "a:chOff": 0,
+    "lc:lockedCanvas": 0
+  },
+  "after_writer": {
+    "a:off": 2667,
+    "a:chOff": 41,
+    "lc:lockedCanvas": 19
+  },
+  "source": {
+    "a:off": 2315,
+    "a:chOff": 41,
+    "lc:lockedCanvas": 19
+  },
+  "note": "After can exceed source because VML conversion still invents picture transforms while locked canvases are now kept."
+}

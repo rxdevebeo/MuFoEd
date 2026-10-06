@@ -357,6 +357,13 @@
     "p1_geometry": "PASS",
     "note": "Absolute glyph-origin ledger vs WPS PDF; superseded wps-absolute-baselines.json as the live gate."
   },
+  "visual_priority": {
+    "p2_package": "P02-drawingml-placement",
+    "p3_package": "P03-wp-position",
+    "p4_package": "P04-wps-bodypr",
+    "m2_status": "PASS_SLICE_DECLARED_TRANSFORMS",
+    "note": "P2 A_placement=0 + visual/negative OK; P4 C_wps=0 + visual OK; P3 B_wp=5 docPr@id uniqueness remaps on 070 with visual proof. SoftUni wp14:pctPos kept (MCE queue prepend). corpus_slice_exit=1 from inherited unmatched_schema≈1182. Full 221 census NOT_RUN."
+  },
   "unsupported_vectors": [
     "cubic",
     "clip",

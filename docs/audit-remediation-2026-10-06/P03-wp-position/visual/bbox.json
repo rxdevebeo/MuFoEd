@@ -1,0 +1,251 @@
+{
+  "package": "P3",
+  "T-P3-4": {
+    "label": "wp-wrap",
+    "source": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+    "written": "target/p2p4-acceptance/census-written-slice/docx/1. First-Steps-in-Programming.docx",
+    "pages": "1-20",
+    "pass": true,
+    "chosen": {
+      "tol_px": 0.75,
+      "min_figures": 2,
+      "matched": 3,
+      "compared": 6,
+      "src_total": 54,
+      "dst_total": 54,
+      "pass": true,
+      "pairs": [
+        {
+          "src": {
+            "kind": "image",
+            "x": 56.733,
+            "y": 365.761,
+            "w": 548.022,
+            "h": 418.061,
+            "key": "pk2bNm3atGlLgu3Qqf8Po79XOHp3lB4AAAAASUVORK5CYII="
+          },
+          "dst": {
+            "kind": "image",
+            "x": 56.733,
+            "y": 365.761,
+            "w": 548.022,
+            "h": 418.061,
+            "key": "pk2bNm3atGlLgu3Qqf8Po79XOHp3lB4AAAAASUVORK5CYII="
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 56.733,
+            "y": 439.672,
+            "w": 548.1,
+            "h": 314.015,
+            "key": "YNdxH6UcYIDdxksv/T+PrLB2t9DvEgAAAABJRU5ErkJggg=="
+          },
+          "dst": {
+            "kind": "image",
+            "x": 56.733,
+            "y": 439.672,
+            "w": 548.1,
+            "h": 314.015,
+            "key": "YNdxH6UcYIDdxksv/T+PrLB2t9DvEgAAAABJRU5ErkJggg=="
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 56.733,
+            "y": 122.943,
+            "w": 548.033,
+            "h": 312.06,
+            "key": "AwAAAAAAAAAAAMCIRJ/0f0fOAnHuWUohAAAAAElFTkSuQmCC"
+          },
+          "dst": {
+            "kind": "image",
+            "x": 56.733,
+            "y": 122.943,
+            "w": 548.033,
+            "h": 312.06,
+            "key": "AwAAAAAAAAAAAMCIRJ/0f0fOAnHuWUohAAAAAElFTkSuQmCC"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        }
+      ],
+      "pages": "1-20"
+    },
+    "pages_detail": [
+      {
+        "page_src": "page-1.svg",
+        "page_dst": "page-1.svg",
+        "src": 9,
+        "dst": 9
+      },
+      {
+        "page_src": "page-10.svg",
+        "page_dst": "page-10.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-11.svg",
+        "page_dst": "page-11.svg",
+        "src": 3,
+        "dst": 3
+      },
+      {
+        "page_src": "page-12.svg",
+        "page_dst": "page-12.svg",
+        "src": 6,
+        "dst": 6
+      },
+      {
+        "page_src": "page-13.svg",
+        "page_dst": "page-13.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-14.svg",
+        "page_dst": "page-14.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-15.svg",
+        "page_dst": "page-15.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-16.svg",
+        "page_dst": "page-16.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-17.svg",
+        "page_dst": "page-17.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-18.svg",
+        "page_dst": "page-18.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-19.svg",
+        "page_dst": "page-19.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-2.svg",
+        "page_dst": "page-2.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-20.svg",
+        "page_dst": "page-20.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-3.svg",
+        "page_dst": "page-3.svg",
+        "src": 7,
+        "dst": 7
+      },
+      {
+        "page_src": "page-4.svg",
+        "page_dst": "page-4.svg",
+        "src": 8,
+        "dst": 8
+      },
+      {
+        "page_src": "page-5.svg",
+        "page_dst": "page-5.svg",
+        "src": 7,
+        "dst": 7
+      },
+      {
+        "page_src": "page-6.svg",
+        "page_dst": "page-6.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-7.svg",
+        "page_dst": "page-7.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-8.svg",
+        "page_dst": "page-8.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-9.svg",
+        "page_dst": "page-9.svg",
+        "src": 1,
+        "dst": 1
+      }
+    ],
+    "src_svg_sha256": {
+      "page-1.svg": "a9567b2d0a4c27fc5887bed75fd23bff5270f00deb768513804d1836aaa76441",
+      "page-10.svg": "ccf1a193343a96edea44dc2f8c9b21db884bd34f9134a06916fe787850dbef14",
+      "page-11.svg": "7b025c3e718883488829a656ac78331ed8999d9238d4a555a9f431d0c0de07de",
+      "page-12.svg": "55687f51380a00e33ec9fbe3d62c9ca39d1d461acd7516749bb77bc0545583f2",
+      "page-13.svg": "eb5c9ad27d5a525d67b0f6970e056106f1ebfb66151107ae9a76ef7bb02d5867",
+      "page-14.svg": "f589e1a07fe90c72310f1b81d57dfc6c3f87a778d0de11252bf6b66e18dec0db",
+      "page-15.svg": "836bd66e848296a6ba5e9a8e59c3fa9b21ee010c0858d0878feafadd48d3ca14",
+      "page-16.svg": "07962d8c4944342d1e63bc5803712754b1ffba93bbe52084ab40442a928f9776",
+      "page-17.svg": "7a1ce4599a4a04014d0af563fe2dbfb8740255f807a24c6aea7aad21bfb2988d",
+      "page-18.svg": "5a5014106d78b89c0e1e233bdd90553e1be2b8a7c4bf2cfdca4dfd21fee032bb",
+      "page-19.svg": "960bad81c4f71cde9c4c56021c486e24b26a484eff8edc6f85aa9cd3a86a7f8b",
+      "page-2.svg": "9f5749d2b7fcf16fdc64e76d8d0a7455a4c4166e4cf64c66bdfcf839623d483a",
+      "page-20.svg": "632d0d16d49ca3fc64222601d63cf003e7e1887b43aeb77f9307ceb86858fbf2",
+      "page-3.svg": "1112459dd2933c1654b35467df9b88a184a92570576ad189a8f718f27bc4b0c1",
+      "page-4.svg": "34de315ce7794e2b00ecbab7fe399cfd73b3a442f967a25f697affb7ce30ac35",
+      "page-5.svg": "89ab87afd8e9d5105e8127277eb7c8e565167ff2f189d688b07753d8b63e5b18",
+      "page-6.svg": "3c16a21aa46f1ab687e9454b62c9157c287b943214c716da1c5424d660073be0",
+      "page-7.svg": "a1099da547112ea45224b8c3d24bea735eeaec90332d3b48597234f26085ae80",
+      "page-8.svg": "b560022266acf42b436c77ee1efea0906b6df1bf10865e1a3c1ba5223655c4df",
+      "page-9.svg": "d69e8730a5cca1d8d28f385e63294b051ea08399e1d4df3a3bc5ea8173de48a5"
+    },
+    "dst_svg_sha256": {
+      "page-1.svg": "18030c19ce21c25ed34afbe42d53a531afd6f952294d651a1ed27bed9f2ce2b4",
+      "page-10.svg": "ccf1a193343a96edea44dc2f8c9b21db884bd34f9134a06916fe787850dbef14",
+      "page-11.svg": "7b025c3e718883488829a656ac78331ed8999d9238d4a555a9f431d0c0de07de",
+      "page-12.svg": "55687f51380a00e33ec9fbe3d62c9ca39d1d461acd7516749bb77bc0545583f2",
+      "page-13.svg": "eb5c9ad27d5a525d67b0f6970e056106f1ebfb66151107ae9a76ef7bb02d5867",
+      "page-14.svg": "f589e1a07fe90c72310f1b81d57dfc6c3f87a778d0de11252bf6b66e18dec0db",
+      "page-15.svg": "836bd66e848296a6ba5e9a8e59c3fa9b21ee010c0858d0878feafadd48d3ca14",
+      "page-16.svg": "07962d8c4944342d1e63bc5803712754b1ffba93bbe52084ab40442a928f9776",
+      "page-17.svg": "7a1ce4599a4a04014d0af563fe2dbfb8740255f807a24c6aea7aad21bfb2988d",
+      "page-18.svg": "5a5014106d78b89c0e1e233bdd90553e1be2b8a7c4bf2cfdca4dfd21fee032bb",
+      "page-19.svg": "960bad81c4f71cde9c4c56021c486e24b26a484eff8edc6f85aa9cd3a86a7f8b",
+      "page-2.svg": "36127d1a7dffd6ecc943fad9024d9adf0de1a80998e1030afeaf0b698d48e589",
+      "page-20.svg": "632d0d16d49ca3fc64222601d63cf003e7e1887b43aeb77f9307ceb86858fbf2",
+      "page-3.svg": "1112459dd2933c1654b35467df9b88a184a92570576ad189a8f718f27bc4b0c1",
+      "page-4.svg": "34de315ce7794e2b00ecbab7fe399cfd73b3a442f967a25f697affb7ce30ac35",
+      "page-5.svg": "89ab87afd8e9d5105e8127277eb7c8e565167ff2f189d688b07753d8b63e5b18",
+      "page-6.svg": "3c16a21aa46f1ab687e9454b62c9157c287b943214c716da1c5424d660073be0",
+      "page-7.svg": "a1099da547112ea45224b8c3d24bea735eeaec90332d3b48597234f26085ae80",
+      "page-8.svg": "b560022266acf42b436c77ee1efea0906b6df1bf10865e1a3c1ba5223655c4df",
+      "page-9.svg": "d69e8730a5cca1d8d28f385e63294b051ea08399e1d4df3a3bc5ea8173de48a5"
+    }
+  }
+}

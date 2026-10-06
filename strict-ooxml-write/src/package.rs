@@ -579,27 +579,42 @@ pub fn write_package(
         content_types.insert_override(PartId::new(FONT_TABLE_PART), CONTENT_TYPE_FONT_TABLE);
     }
 
-    // Headers and footers, in the order the document lists them, numbered per
-    // role so a document with two headers and one footer gets header1,
-    // header2 and footer1.
+    // Headers and footers keep the source basename when it is already
+    // `headerN.xml` / `footerN.xml`. Renumbering by discovery order swapped
+    // DOCX_46's footer1/footer2 contents under the same part paths and made
+    // census report docPr@id/name as removed even though the section refs were
+    // remapped correctly.
     let mut header_footer_map: BTreeMap<String, String> = BTreeMap::new();
-    let mut header_footer_parts: Vec<String> = Vec::new();
-    for header_footer in &document.headers_footers {
+    let mut header_footer_parts: Vec<(String, usize)> = Vec::new();
+    let mut used_hf_names: BTreeSet<String> = BTreeSet::new();
+    for (hf_index, header_footer) in document.headers_footers.iter().enumerate() {
         let role = if header_footer.is_header {
             "header"
         } else {
             "footer"
         };
-        let index = header_footer_parts
-            .iter()
-            .filter(|part| {
-                part.rsplit('/')
-                    .next()
-                    .is_some_and(|name| name.starts_with(role))
-            })
-            .count()
-            + 1;
-        let name = format!("{role}{index}.xml");
+        let source_base = header_footer
+            .part
+            .as_str()
+            .rsplit('/')
+            .next()
+            .unwrap_or("");
+        let name = if source_base.starts_with(role)
+            && source_base.ends_with(".xml")
+            && used_hf_names.insert(source_base.to_owned())
+        {
+            source_base.to_owned()
+        } else {
+            let mut index = 1usize;
+            let name = loop {
+                let candidate = format!("{role}{index}.xml");
+                if used_hf_names.insert(candidate.clone()) {
+                    break candidate;
+                }
+                index += 1;
+            };
+            name
+        };
         let rel_type = if header_footer.is_header {
             RelType::Header
         } else {
@@ -607,7 +622,7 @@ pub fn write_package(
         };
         let id = rels.add(&rel_type, name.clone(), false);
         header_footer_map.insert(header_footer.part.as_str().to_owned(), id);
-        header_footer_parts.push(format!("/word/{name}"));
+        header_footer_parts.push((format!("/word/{name}"), hf_index));
         content_types.insert_override(
             PartId::new(format!("/word/{name}").as_str()),
             if header_footer.is_header {
@@ -728,7 +743,10 @@ pub fn write_package(
     add_part(
         &mut zip,
         MAIN_DOCUMENT,
-        part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes(),
+        {
+            ctx.begin_doc_pr_scope();
+            part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes()
+        },
     )?;
     if content_types.content_type_for(&PartId::new(STYLES_PART)) == Some(CONTENT_TYPE_STYLES) {
         add_part(
@@ -896,9 +914,9 @@ pub fn write_package(
             add_part(&mut zip, &part, bytes)?;
         }
     }
-    for part in &header_footer_parts {
+    for (part, hf_index) in &header_footer_parts {
         let name = part.rsplit('/').next().unwrap_or(part.as_str()).to_owned();
-        if let Some(header_footer) = name_header_footer(document, &name) {
+        if let Some(header_footer) = document.headers_footers.get(*hf_index) {
             let foreign = passthrough::referenced_ids(header_footer.blocks.as_slice());
             write_content_part_with_rels(
                 &mut zip,
@@ -1192,22 +1210,6 @@ fn office_relationship_ids(xml: &str) -> Vec<String> {
     out
 }
 
-fn name_header_footer<'a>(
-    document: &'a Document,
-    name: &str,
-) -> Option<&'a strict_ooxml_wml::model::document::HeaderFooter> {
-    let role = name
-        .trim_start_matches("header")
-        .trim_start_matches("footer");
-    let index: usize = role.trim_end_matches(".xml").parse().ok()?;
-    let want_header = name.starts_with("header");
-    document
-        .headers_footers
-        .iter()
-        .filter(|candidate| candidate.is_header == want_header)
-        .nth(index.saturating_sub(1))
-}
-
 fn add_part(zip: &mut ZipWriter, part: &str, bytes: Vec<u8>) -> Result<()> {
     zip.add_part(&PartId::new(part), bytes)
 }
@@ -1295,6 +1297,7 @@ fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut Vec<String>) {
         | Graphic::Picture(_)
         | Graphic::Chart(_)
         | Graphic::Diagram(_)
+        | Graphic::LockedCanvas(_)
         | Graphic::Other => {}
     }
 }

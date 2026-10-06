@@ -88,7 +88,8 @@ except ImportError:  # pragma: no cover - the gate's own dependency
 # `xsd_gate` because the two tools use it for opposite purposes: there it selects
 # which driver validates a part, here it says which branches of the input are
 # alternatives of one another rather than two separate constructs.
-MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+MC_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+MC = "{" + MC_URI + "}"
 
 import xsd_gate  # noqa: E402
 
@@ -469,13 +470,36 @@ def _local_names(root: etree._Element) -> set[str]:
     return {local for local, _parent, _ns, _parent_ns in _element_contexts(root)}
 
 
+# Namespaces the writer understands for `mc:Choice/@Requires` (AUD-50 ProcessChoice).
+# Keep in sync with `strict_ooxml_wml::SUPPORTED_MCE_NAMESPACES`.
+SUPPORTED_MCE_NAMESPACES = {
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+    "http://purl.oclc.org/ooxml/officeDocument/math",
+}
+KNOWN_MCE_PREFIX_URI = {
+    "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+    "wpg": "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
+    "wp14": "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+    "m": "http://purl.oclc.org/ooxml/officeDocument/math",
+}
+
+
 def _strip_mce(root: etree._Element) -> None:
-    """Removes every element in a namespace MCE declares ignorable."""
+    """Resolve Markup Compatibility the way the writer does, then drop ignorables.
+
+    Inventory compares a source part to a regenerated part. The writer resolves
+    `mc:AlternateContent` with ProcessChoice before modelling; counting both
+    Choice and Fallback children as source inventory invents losses for every
+    document that carries a dual DrawingML/VML branch (SoftUni, 009, …).
+    """
+    _resolve_alternate_content(root)
     ignorable: set[str] = set()
     for element in root.iter():
         if not isinstance(element.tag, str):
             continue
-        value = element.get(f"{{{MC}}}Ignorable")
+        value = element.get(f"{MC}Ignorable")
         if value:
             for prefix in value.split():
                 uri = element.nsmap.get(prefix)
@@ -493,6 +517,58 @@ def _strip_mce(root: etree._Element) -> None:
                 for child in list(element):
                     element.addprevious(child)
                 parent.remove(element)
+
+
+def _resolve_alternate_content(root: etree._Element) -> None:
+    """Replace every `mc:AlternateContent` with the ProcessChoice branch."""
+    ac_tag = f"{MC}AlternateContent"
+    while True:
+        element = root.find(f".//{ac_tag}")
+        if element is None:
+            return
+        chosen = _select_mce_branch(element)
+        parent = element.getparent()
+        if parent is None:
+            return
+        index = list(parent).index(element)
+        replacement = list(chosen) if chosen is not None else []
+        tail = element.tail
+        for offset, child in enumerate(replacement):
+            parent.insert(index + offset, child)
+        if replacement and tail:
+            replacement[-1].tail = (replacement[-1].tail or "") + tail
+        parent.remove(element)
+
+
+def _select_mce_branch(ac: etree._Element) -> etree._Element | None:
+    """Return the Choice/Fallback element whose children should be kept."""
+    xmlns = {prefix: uri for prefix, uri in ac.nsmap.items() if prefix}
+    fallback = None
+    for child in ac:
+        if not isinstance(child.tag, str) or etree.QName(child).namespace != MC_URI:
+            continue
+        local = etree.QName(child).localname
+        for prefix, uri in child.nsmap.items():
+            if prefix:
+                xmlns[prefix] = uri
+        if local == "Choice":
+            requires = child.get("Requires") or ""
+            if _mce_requires_understood(requires, xmlns):
+                return child
+        elif local == "Fallback":
+            fallback = child
+    return fallback
+
+
+def _mce_requires_understood(requires: str, xmlns: dict[str, str]) -> bool:
+    prefixes = requires.split()
+    if not prefixes:
+        return False
+    for prefix in prefixes:
+        uri = xmlns.get(prefix) or KNOWN_MCE_PREFIX_URI.get(prefix)
+        if uri not in SUPPORTED_MCE_NAMESPACES:
+            return False
+    return True
 
 
 def census_hits(
@@ -1014,7 +1090,17 @@ def producer_markup(path: str) -> collections.Counter:
 
 
 
-def write_transitional(corpus: str, destination: str, cli: str) -> tuple[int, list, dict]:
+def document_names(corpus: str, only: set[str] | None = None) -> list[str]:
+    """Sorted `.docx` basenames in `corpus`, optionally restricted by `--only`."""
+    names = sorted(n for n in os.listdir(corpus) if n.endswith(".docx"))
+    if only is None:
+        return names
+    return [name for name in names if name in only]
+
+
+def write_transitional(
+    corpus: str, destination: str, cli: str, only: set[str] | None = None
+) -> tuple[int, list, dict]:
     """`strict-ooxml write --transitional` over every document in `corpus`.
 
     The exit code is not the question, and the reason is the same one
@@ -1031,9 +1117,7 @@ def write_transitional(corpus: str, destination: str, cli: str) -> tuple[int, li
     os.makedirs(destination, exist_ok=True)
     written, refused = 0, []
     reports: dict[str, str] = {}
-    for name in sorted(os.listdir(corpus)):
-        if not name.endswith(".docx"):
-            continue
+    for name in document_names(corpus, only):
         out = os.path.join(destination, name)
         if os.path.exists(out):
             for attempt in range(6):
@@ -1057,7 +1141,9 @@ def write_transitional(corpus: str, destination: str, cli: str) -> tuple[int, li
     return written, refused, reports
 
 
-def loss_report(corpus: str, cli: str, destination: str | None) -> tuple[list[dict], int]:
+def loss_report(
+    corpus: str, cli: str, destination: str | None, only: set[str] | None = None
+) -> tuple[list[dict], int]:
     """`strict-ooxml normalize` over every document: the normalizer's own account.
 
     Read as a measurement and not as a verdict: the audit's first finding was
@@ -1066,9 +1152,7 @@ def loss_report(corpus: str, cli: str, destination: str | None) -> tuple[list[di
     """
     rows: list[dict] = []
     failures = 0
-    for name in sorted(os.listdir(corpus)):
-        if not name.endswith(".docx"):
-            continue
+    for name in document_names(corpus, only):
         result = subprocess.run(
             [cli, "normalize", os.path.join(corpus, name)],
             **WRITER_IO,
@@ -1113,6 +1197,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--keep-written",
         help="write the Transitional corpus into this directory and keep it",
+    )
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="NAME.docx",
+        help=(
+            "measure only these document basenames (repeatable). "
+            "Used for per-package witness slices; omit for the full 221."
+        ),
     )
     # Judging a pre-built `--written` tree is refused: the `unaccounted` signal
     # needs the write's own loss report. `--keep-written` is different — this
@@ -1185,14 +1279,20 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     lossy_documents = 0
     lossy_total = 0
     lost_pictures = 0
+    only = set(args.only) if args.only else None
+    if only:
+        print(f"slice:   {len(only)} document basename(s) via --only")
 
     for label, corpus in CORPORA.items():
         if not os.path.isdir(corpus):
             raise SystemExit(f"error: census corpus {corpus} is not there")
+        selected = document_names(corpus, only)
+        if only is not None and not selected:
+            continue
         destination = os.path.join(written_root, label)
         # Always write here: the unaccounted/element signals need this process's
         # own loss report. Reusing a foreign tree would invent silent losses.
-        count, problems, reports = write_transitional(corpus, destination, cli)
+        count, problems, reports = write_transitional(corpus, destination, cli, only)
         for name, why in problems:
             refused.append((name, why))
 
@@ -1202,7 +1302,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         label_clean = 0
         label_extension = 0
         label_dropped = 0
-        for name in sorted(n for n in os.listdir(corpus) if n.endswith(".docx")):
+        for name in selected:
             documents += 1
             incoming = xsd_gate.validate_package(os.path.join(corpus, name), oracle)
             path = os.path.join(destination, name)
@@ -1266,7 +1366,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         total_in += label_in
         total_out += label_out
 
-        rows, failures = loss_report(corpus, cli, args.write_reports)
+        rows, failures = loss_report(corpus, cli, args.write_reports, only)
         counts = collections.Counter()
         for row in rows:
             if not row["ok"]:

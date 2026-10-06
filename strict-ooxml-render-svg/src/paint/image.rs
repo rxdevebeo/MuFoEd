@@ -33,7 +33,9 @@ pub(crate) fn layout_inline_image(
         return None;
     };
     match inline.graphic.as_ref() {
-        Graphic::Shape(_) | Graphic::Group(_) | Graphic::Other => return None,
+        Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_) | Graphic::Other => {
+            return None
+        }
         Graphic::None | Graphic::Picture(_) | Graphic::Chart(_) | Graphic::Diagram(_) => {}
     }
     let picture = inline.picture();

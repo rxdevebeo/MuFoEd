@@ -43,6 +43,8 @@ pub struct DocPr {
     pub name: Option<Arc<str>>,
     /// Description.
     pub descr: Option<Arc<str>>,
+    /// Title (`title`), when the producer set one.
+    pub title: Option<Arc<str>>,
 }
 
 /// A reference to an image part (`a:blip`).
@@ -257,13 +259,17 @@ pub enum TextAnchor {
     Bottom,
 }
 
-/// Text-box body properties (`w:bodyPr`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// Text-box body properties (`wps:bodyPr`).
+///
+/// Optional fields keep an explicit producer value, including lexical defaults
+/// such as `wrap="square"` / `anchorCtr="0"`: dropping them is a silent change
+/// the census inventory reports (P4).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TextBoxBody {
-    /// Vertical anchor.
+    /// Vertical anchor (`anchor`).
     pub anchor: Option<TextAnchor>,
     /// Center the text block horizontally (`anchorCtr`).
-    pub anchor_centered: bool,
+    pub anchor_centered: Option<bool>,
     /// Left inset (`lIns`) in EMU.
     pub left_inset: Option<Emu>,
     /// Top inset (`tIns`) in EMU.
@@ -272,6 +278,32 @@ pub struct TextBoxBody {
     pub right_inset: Option<Emu>,
     /// Bottom inset (`bIns`) in EMU.
     pub bottom_inset: Option<Emu>,
+    /// Text wrapping mode inside the box (`wrap`).
+    pub wrap: Option<Arc<str>>,
+    /// Text vertical direction (`vert`).
+    pub vert: Option<Arc<str>>,
+    /// Text rotation in 60000ths of a degree (`rot`).
+    pub rot: Option<i32>,
+    /// Keep text upright under shape rotation (`upright`).
+    pub upright: Option<bool>,
+    /// Right-to-left columns (`rtlCol`).
+    pub rtl_col: Option<bool>,
+    /// Compatible line spacing (`compatLnSpc`).
+    pub compat_ln_spc: Option<bool>,
+    /// Force anti-aliasing (`forceAA`).
+    pub force_aa: Option<bool>,
+    /// WordArt flag (`fromWordArt`).
+    pub from_word_art: Option<bool>,
+    /// Horizontal overflow (`horzOverflow`).
+    pub horz_overflow: Option<Arc<str>>,
+    /// Vertical overflow (`vertOverflow`).
+    pub vert_overflow: Option<Arc<str>>,
+    /// Number of columns (`numCol`).
+    pub num_col: Option<i32>,
+    /// Spacing between columns in EMU (`spcCol`).
+    pub spc_col: Option<i32>,
+    /// Space before/after first/last paragraph (`spcFirstLastPara`).
+    pub spc_first_last_para: Option<bool>,
 }
 
 /// A shape's text body (`wps:txbx`/`w:txbxContent`).
@@ -292,6 +324,8 @@ pub struct Shape {
     pub name: Option<Arc<str>>,
     /// Shape description (`wps:cNvPr/@descr`).
     pub descr: Option<Arc<str>>,
+    /// Whether this shape is a text box (`wps:cNvSpPr/@txBox`).
+    pub tx_box: Option<bool>,
     /// Geometry.
     pub geometry: ShapeGeometry,
     /// Transform (`a:xfrm`).
@@ -385,6 +419,21 @@ impl ForeignRefs {
     }
 }
 
+/// A DrawingML locked canvas (`lc:lockedCanvas`) preserved as Strict markup.
+///
+/// Nested `a:grpSp` / `a:sp` / `a:cxnSp` trees carry the document's `a:off` /
+/// `a:ext` / `a:chOff` / `a:chExt` placement. Modelling every connector would be
+/// a separate DrawingML product; the markup is rewritten to Strict namespaces
+/// at parse time so the writer can emit it into `document.xml` without a
+/// Transitional URI (ADR-0007; audit P2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LockedCanvas {
+    /// Strict-form XML of the `lc:lockedCanvas` element, including children.
+    pub markup: Arc<str>,
+    /// Source location of the canvas root.
+    pub location: SourceLocation,
+}
+
 /// The graphic payload of a drawing (`a:graphicData` content).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Graphic {
@@ -396,6 +445,8 @@ pub enum Graphic {
     Shape(Shape),
     /// A group (`wpg:wgp`).
     Group(GroupShape),
+    /// A locked canvas (`lc:lockedCanvas`) with Strict markup.
+    LockedCanvas(LockedCanvas),
     /// A chart reference (`c:chart`) and the part ids it points at.
     Chart(ForeignRefs),
     /// A SmartArt diagram reference (`dgm:relIds`) and the part ids it points at.
@@ -413,6 +464,14 @@ pub struct InlineDrawing {
     pub effect_extent: Option<EffectExtent>,
     /// Non-visual properties (`wp:docPr`).
     pub doc_pr: Option<DocPr>,
+    /// Distance above the object (`distT`), in EMU.
+    pub dist_top: Option<u32>,
+    /// Distance below the object (`distB`), in EMU.
+    pub dist_bottom: Option<u32>,
+    /// Distance left of the object (`distL`), in EMU.
+    pub dist_left: Option<u32>,
+    /// Distance right of the object (`distR`), in EMU.
+    pub dist_right: Option<u32>,
     /// `a:graphicData/@uri`.
     pub graphic_uri: Option<Arc<str>>,
     /// Graphic payload.
@@ -441,6 +500,12 @@ pub struct Position {
     pub align: Option<Arc<str>>,
     /// Offset in EMU (`wp:posOffset`).
     pub offset: Option<Emu>,
+    /// Percentage offset (`wp14:pctPosHOffset` / `wp14:pctPosVOffset`).
+    ///
+    /// Word unit where `100000` is 100%. When present this is the Choice branch
+    /// of an `mc:AlternateContent` that also carries a `wp:posOffset` Fallback;
+    /// either spelling positions the frame, and both are preserved when parsed.
+    pub percent_offset: Option<i32>,
 }
 
 /// A relative size (`wp14:sizeRelH` / `wp14:sizeRelV`).
@@ -501,6 +566,8 @@ pub struct Wrap {
     /// field is points and not a path string: a path would have to be re-parsed to
     /// be written, and re-parsing is where the unit goes wrong.
     pub polygon: Vec<(i64, i64)>,
+    /// `wp:wrapPolygon/@edited` when the producer set it (including explicit `0`).
+    pub polygon_edited: Option<bool>,
 }
 
 /// A floating drawing (`wp:anchor`).

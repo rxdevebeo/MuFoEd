@@ -249,10 +249,15 @@ fn picture_fixture() -> (
         kind: DrawingKind::Inline(InlineDrawing {
             extent: Some(extent),
             effect_extent: None,
+            dist_top: None,
+            dist_bottom: None,
+            dist_left: None,
+            dist_right: None,
             doc_pr: Some(DocPr {
                 id: Some(1),
                 name: Some("red pixel".into()),
                 descr: None,
+            title: None,
             }),
             graphic_uri: Some("http://purl.oclc.org/ooxml/drawingml/picture".into()),
             graphic: Box::new(Graphic::Picture(Picture {

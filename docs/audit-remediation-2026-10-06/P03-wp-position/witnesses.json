@@ -1,0 +1,40 @@
+{
+  "package": "P3",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
+      "role": "primary",
+      "source_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
+      "written_sha256": "90c0d46d26d3ba59ec46f899fc594fffcd5251c76763b8c85ad77ab24ff4d3c1",
+      "written_path": "target/p2p4-acceptance/census-written-slice/cc0/070_Innovations_and_New_Technologies.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+      "role": "secondary",
+      "source_sha256": "68a0a6470178ab6158d22ecddf9f1c26ff0bc0809c550d8d9bb62c1a9ccfd964",
+      "written_sha256": "2a22ce6b8da713794a3ae074c3057006bda35319d9ec2446a00a1f11a0ec934d",
+      "written_path": "target/p2p4-acceptance/census-written-slice/cc0/009_stratigrafi_regional_daerah_kulon_progo_diy.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+      "role": "secondary",
+      "source_sha256": "0a9964e7cdf2e23bd8f40729f1a2f06daaa8e0c98c8b365c15107e495b1d0327",
+      "written_sha256": "44bb4c1dd2c8f082218edef8e55824dbe9c94bedaf5ce6ecf9a73b08a39ac6fb",
+      "written_path": "target/p2p4-acceptance/census-written-slice/cc0/077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/4. Complex-Conditions.docx",
+      "role": "secondary",
+      "source_sha256": "3bc59ab7746a0dc24253c1ea59683ecad6a925d5f0ad85f9326307c0f771d1a6",
+      "written_sha256": "0eaa6d3269ef354beb0de908301d9bf0dce09b36ef5f4d54d597d5e210a55f6d",
+      "written_path": "target/p2p4-acceptance/census-written-slice/docx/4. Complex-Conditions.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/samples/DOCX_46_Pages_Large_4b2b5238a0.docx",
+      "role": "secondary",
+      "source_sha256": "ebc26b6947ea3e0d4ecc2b454e4123c77aff525c77f27d5c074946bc9b06393f",
+      "written_sha256": "ba859d088246aecc40238f966d0149b402994490c435145f4afff6270a203424",
+      "written_path": "target/p2p4-acceptance/census-written-slice/samples/DOCX_46_Pages_Large_4b2b5238a0.docx"
+    }
+  ]
+}

@@ -15,14 +15,15 @@
 
 use strict_ooxml_wml::model::drawing::{
     AnchorDrawing, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent, ForeignRefs,
-    Graphic, GroupShape, GroupTransform, InlineDrawing, PathCommand, Picture, Position, Shape,
-    ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, SrcRect, TextBox, TextBoxBody, Xfrm,
+    Graphic, GroupShape, GroupTransform, InlineDrawing, LockedCanvas, PathCommand, Picture,
+    Position, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, SrcRect, TextBox,
+    TextBoxBody, Xfrm,
 };
 use strict_ooxml_wml::model::values::Emu;
 
 use crate::body::blocks;
 use crate::ctx::Ctx;
-use crate::xml::{XmlWriter, NS_A, NS_PIC, NS_WPG, NS_WPS};
+use crate::xml::{XmlWriter, NS_A, NS_PIC, NS_WP14, NS_WPG, NS_WPS};
 
 /// The `graphicData` URI of a picture.
 pub const URI_PICTURE: &str = "http://purl.oclc.org/ooxml/drawingml/picture";
@@ -34,6 +35,10 @@ pub const URI_GROUP: &str = "http://schemas.microsoft.com/office/word/2010/wordp
 pub const URI_CHART: &str = "http://purl.oclc.org/ooxml/drawingml/chart";
 /// The `graphicData` URI of a SmartArt diagram.
 pub const URI_DIAGRAM: &str = "http://purl.oclc.org/ooxml/drawingml/diagram";
+/// The `graphicData` URI of a locked canvas.
+pub const URI_LOCKED_CANVAS: &str = "http://purl.oclc.org/ooxml/drawingml/lockedCanvas";
+/// Locked-canvas Strict namespace (same as the URI).
+pub const NS_LC: &str = URI_LOCKED_CANVAS;
 
 /// The relationship attributes of `dgm:relIds`, in the order the element carries
 /// them: data, layout, quick style, colours. The order is the schema's, and it is
@@ -53,7 +58,10 @@ fn writable(
     location: &strict_ooxml_core::error::SourceLocation,
 ) -> bool {
     let (feature_id, reason) = match graphic {
-        Graphic::Picture(_) | Graphic::Shape(_) | Graphic::Group(_) => return true,
+        Graphic::Picture(_)
+        | Graphic::Shape(_)
+        | Graphic::Group(_)
+        | Graphic::LockedCanvas(_) => return true,
         Graphic::Chart(refs) => match foreign(ctx, refs) {
             Ok(()) => return true,
             Err(reason) => ("c:chart", reason),
@@ -115,10 +123,10 @@ pub fn drawing_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, drawing: &Drawing
 /// Writes `wp:inline`.
 pub fn inline_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &InlineDrawing) {
     xml.start("wp:inline");
-    xml.attr("distT", "0");
-    xml.attr("distB", "0");
-    xml.attr("distL", "0");
-    xml.attr("distR", "0");
+    xml.attr("distT", inline.dist_top.unwrap_or(0));
+    xml.attr("distB", inline.dist_bottom.unwrap_or(0));
+    xml.attr("distL", inline.dist_left.unwrap_or(0));
+    xml.attr("distR", inline.dist_right.unwrap_or(0));
     match &inline.extent {
         Some(extent) => extent_element(xml, "wp:extent", extent),
         None => {
@@ -259,6 +267,17 @@ fn position_element(
             xml.start("wp:align");
             xml.text(align);
             xml.end();
+        } else if let Some(percent) = position.percent_offset {
+            // `wp14:pctPosHOffset` / `pctPosVOffset` — same Choice Word writes when
+            // the producer preferred a page-relative percent over an EMU offset.
+            let local = if name.ends_with('H') {
+                "wp14:pctPosHOffset"
+            } else {
+                "wp14:pctPosVOffset"
+            };
+            xml.start(local);
+            xml.text(&percent.to_string());
+            xml.end();
         } else if let Some(offset) = position.offset {
             xml.start("wp:posOffset");
             xml.text(&offset.0.to_string());
@@ -373,6 +392,9 @@ fn wrap_element(
                 // difference is named rather than absorbed.
                 if wrap.polygon.len() >= 3 {
                     xml.start("wp:wrapPolygon");
+                    if let Some(edited) = wrap.polygon_edited {
+                        xml.attr("edited", bool_str(edited));
+                    }
                     let mut points = wrap.polygon.iter();
                     if let Some((x, y)) = points.next() {
                         xml.start("wp:start");
@@ -474,6 +496,7 @@ fn document_properties(
             .unwrap_or(fallback_name),
     );
     xml.attr_opt("descr", doc_pr.as_ref().and_then(|pr| pr.descr.as_deref()));
+    xml.attr_opt("title", doc_pr.as_ref().and_then(|pr| pr.title.as_deref()));
     xml.end();
 }
 
@@ -511,6 +534,10 @@ fn graphic(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, graphic_uri: Option<&str>, pa
         Graphic::Group(group) => {
             xml.attr("uri", strict_graphic_uri(graphic_uri, URI_GROUP));
             group_element(ctx, xml, group);
+        }
+        Graphic::LockedCanvas(canvas) => {
+            xml.attr("uri", strict_graphic_uri(graphic_uri, URI_LOCKED_CANVAS));
+            locked_canvas_element(xml, canvas);
         }
         // A chart and a SmartArt diagram are references into parts the model does
         // not carry. `writable` has already refused the ones whose parts are not
@@ -624,7 +651,15 @@ fn thousandths_percent(value: i32) -> String {
 /// Writes `wps:wsp`.
 fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.start("wps:wsp");
+    xml.start("wps:cNvPr");
+    xml.attr("id", "0");
+    xml.attr("name", shape.name.as_deref().unwrap_or("Shape"));
+    xml.attr_opt("descr", shape.descr.as_deref());
+    xml.end();
     xml.start("wps:cNvSpPr");
+    if let Some(tx_box) = shape.tx_box {
+        xml.attr("txBox", bool_str(tx_box));
+    }
     xml.empty("a:spLocks");
     xml.end();
     xml.start("wps:spPr");
@@ -937,6 +972,11 @@ fn text_box(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, text: &TextBox) {
 
 fn body_properties(xml: &mut XmlWriter, body: &TextBoxBody) {
     use strict_ooxml_wml::model::drawing::TextAnchor as A;
+    xml.attr_opt("wrap", body.wrap.as_deref());
+    xml.attr_opt("vert", body.vert.as_deref());
+    if let Some(rot) = body.rot {
+        xml.attr("rot", rot);
+    }
     if let Some(anchor) = body.anchor {
         let value = match anchor {
             A::Top => "t",
@@ -945,8 +985,8 @@ fn body_properties(xml: &mut XmlWriter, body: &TextBoxBody) {
         };
         xml.attr("anchor", value);
     }
-    if body.anchor_centered {
-        xml.attr("anchorCtr", "true");
+    if let Some(centered) = body.anchor_centered {
+        xml.attr("anchorCtr", bool_str(centered));
     }
     if let Some(inset) = body.left_inset {
         xml.attr("lIns", inset.0);
@@ -960,11 +1000,51 @@ fn body_properties(xml: &mut XmlWriter, body: &TextBoxBody) {
     if let Some(inset) = body.bottom_inset {
         xml.attr("bIns", inset.0);
     }
+    if let Some(value) = body.upright {
+        xml.attr("upright", bool_str(value));
+    }
+    if let Some(value) = body.rtl_col {
+        xml.attr("rtlCol", bool_str(value));
+    }
+    if let Some(value) = body.compat_ln_spc {
+        xml.attr("compatLnSpc", bool_str(value));
+    }
+    if let Some(value) = body.force_aa {
+        xml.attr("forceAA", bool_str(value));
+    }
+    if let Some(value) = body.from_word_art {
+        xml.attr("fromWordArt", bool_str(value));
+    }
+    xml.attr_opt("horzOverflow", body.horz_overflow.as_deref());
+    xml.attr_opt("vertOverflow", body.vert_overflow.as_deref());
+    if let Some(value) = body.num_col {
+        xml.attr("numCol", value);
+    }
+    if let Some(value) = body.spc_col {
+        xml.attr("spcCol", value);
+    }
+    if let Some(value) = body.spc_first_last_para {
+        xml.attr("spcFirstLastPara", bool_str(value));
+    }
 }
 
-/// Writes `wpg:wgp`.
+/// Writes a preserved `lc:lockedCanvas` subtree.
+fn locked_canvas_element(xml: &mut XmlWriter, canvas: &LockedCanvas) {
+    xml.raw_markup(canvas.markup.as_ref(), &["lc", "a", "r", "pic"]);
+}
+
+/// Writes `wpg:wgp` (graphicData root) or a nested `wpg:grpSp`.
 fn group_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape) {
-    xml.start("wpg:wgp");
+    group_element_as(ctx, xml, group, "wpg:wgp");
+}
+
+fn group_element_as(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    group: &GroupShape,
+    tag: &'static str,
+) {
+    xml.start(tag);
     xml.start("wpg:cNvGrpSpPr");
     xml.end();
     xml.start("wpg:grpSpPr");
@@ -973,7 +1053,9 @@ fn group_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape) {
     for child in &group.children {
         match child {
             Graphic::Shape(shape) => shape_element(ctx, xml, shape),
-            Graphic::Group(nested) => group_element(ctx, xml, nested),
+            // Nested groups are `wpg:grpSp` in producer packages; emit that
+            // spelling so inventory does not see a wgp/grpSp rename.
+            Graphic::Group(nested) => group_element_as(ctx, xml, nested, "wpg:grpSp"),
             Graphic::Picture(picture) => picture_element(ctx, xml, picture),
             _ => ctx.report_unsupported(
                 "wpg:wgp/*",
@@ -1040,6 +1122,8 @@ pub fn namespaces() -> Vec<(&'static str, &'static str)> {
         ("pic", NS_PIC),
         ("wps", NS_WPS),
         ("wpg", NS_WPG),
+        ("wp14", NS_WP14),
+        ("lc", NS_LC),
         ("c", URI_CHART),
         ("dgm", URI_DIAGRAM),
     ]
@@ -1072,6 +1156,10 @@ mod tests {
                 }),
                 effect_extent: None,
                 doc_pr: None,
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: Some("Logo".into()),
@@ -1145,6 +1233,10 @@ mod tests {
                 }),
                 effect_extent: None,
                 doc_pr: None,
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: None,
@@ -1203,5 +1295,143 @@ mod tests {
         assert_eq!(super::thousandths_percent(10), "0.010%");
         assert_eq!(super::thousandths_percent(1253), "1.253%");
         assert_eq!(super::thousandths_percent(-1253), "-1.253%");
+    }
+
+    #[test]
+    fn body_pr_and_tx_box_are_written() {
+        use strict_ooxml_wml::model::drawing::{Shape, ShapeGeometry, TextBox, TextBoxBody};
+
+        let drawing = Drawing {
+            kind: DrawingKind::Inline(InlineDrawing {
+                extent: Some(Extent {
+                    cx: Emu(100),
+                    cy: Emu(100),
+                }),
+                effect_extent: None,
+                doc_pr: None,
+                dist_top: Some(1),
+                dist_bottom: Some(2),
+                dist_left: Some(3),
+                dist_right: Some(4),
+                graphic_uri: None,
+                graphic: Box::new(Graphic::Shape(Shape {
+                    name: Some("box".into()),
+                    descr: None,
+                    tx_box: Some(true),
+                    geometry: ShapeGeometry::Preset("rect".into()),
+                    xfrm: None,
+                    offset: Some((Emu(0), Emu(0))),
+                    extent: Some(Extent {
+                        cx: Emu(100),
+                        cy: Emu(100),
+                    }),
+                    fill: None,
+                    stroke: None,
+                    text: Some(TextBox {
+                        body: Some(TextBoxBody {
+                            wrap: Some("square".into()),
+                            vert: Some("horz".into()),
+                            rot: Some(0),
+                            anchor_centered: Some(false),
+                            ..TextBoxBody::default()
+                        }),
+                        blocks: Vec::new(),
+                        location: SourceLocation::unknown(),
+                    }),
+                    style: None,
+                    location: SourceLocation::unknown(),
+                })),
+                location: SourceLocation::unknown(),
+            }),
+            location: SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        drawing_element(&mut ctx, &mut xml, &drawing);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("distT=\"1\""), "{text}");
+        assert!(text.contains("distR=\"4\""), "{text}");
+        assert!(text.contains("txBox=\"true\""), "{text}");
+        assert!(text.contains("wrap=\"square\""), "{text}");
+        assert!(text.contains("vert=\"horz\""), "{text}");
+        assert!(text.contains("rot=\"0\""), "{text}");
+        assert!(text.contains("anchorCtr=\"false\""), "{text}");
+    }
+
+    #[test]
+    fn locked_canvas_markup_is_emitted_with_placement() {
+        use strict_ooxml_wml::model::drawing::LockedCanvas;
+
+        let markup = concat!(
+            r#"<lc:lockedCanvas xmlns:lc="http://purl.oclc.org/ooxml/drawingml/lockedCanvas" xmlns:a="http://purl.oclc.org/ooxml/drawingml/main">"#,
+            r#"<a:grpSpPr><a:xfrm><a:off x="10" y="20"/><a:ext cx="100" cy="200"/>"#,
+            r#"<a:chOff x="1" y="2"/><a:chExt cx="100" cy="200"/></a:xfrm></a:grpSpPr>"#,
+            r#"</lc:lockedCanvas>"#,
+        );
+        let drawing = Drawing {
+            kind: DrawingKind::Inline(InlineDrawing {
+                extent: Some(Extent {
+                    cx: Emu(100),
+                    cy: Emu(200),
+                }),
+                effect_extent: None,
+                doc_pr: None,
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
+                graphic_uri: None,
+                graphic: Box::new(Graphic::LockedCanvas(LockedCanvas {
+                    markup: markup.into(),
+                    location: SourceLocation::unknown(),
+                })),
+                location: SourceLocation::unknown(),
+            }),
+            location: SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        drawing_element(&mut ctx, &mut xml, &drawing);
+        let text = xml.finish().expect("balanced");
+        assert!(
+            text.contains("uri=\"http://purl.oclc.org/ooxml/drawingml/lockedCanvas\""),
+            "{text}"
+        );
+        assert!(text.contains("<a:off x=\"10\" y=\"20\"/>"), "{text}");
+        assert!(text.contains("<a:chOff x=\"1\" y=\"2\"/>"), "{text}");
+    }
+
+    #[test]
+    fn changing_offset_by_one_emu_is_visible() {
+        // T-P2-3 negative control: a one-EMU shift must not compare equal.
+        use strict_ooxml_wml::model::drawing::{Shape, ShapeGeometry, Xfrm};
+
+        let make = |x: i64| {
+            Graphic::Shape(Shape {
+                name: None,
+                descr: None,
+                tx_box: None,
+                geometry: ShapeGeometry::None,
+                xfrm: Some(Xfrm {
+                    offset: Some((Emu(x), Emu(0))),
+                    rot: None,
+                    flip_h: false,
+                    flip_v: false,
+                }),
+                offset: Some((Emu(x), Emu(0))),
+                extent: Some(Extent {
+                    cx: Emu(10),
+                    cy: Emu(10),
+                }),
+                fill: None,
+                stroke: None,
+                text: None,
+                style: None,
+                location: SourceLocation::unknown(),
+            })
+        };
+        assert_ne!(make(0), make(1));
     }
 }

@@ -1,0 +1,33 @@
+{
+  "package": "P2",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
+      "role": "primary",
+      "source_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
+      "written_sha256": "90c0d46d26d3ba59ec46f899fc594fffcd5251c76763b8c85ad77ab24ff4d3c1",
+      "written_path": "target/p2p4-acceptance/census-written-slice/cc0/070_Innovations_and_New_Technologies.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+      "role": "secondary",
+      "source_sha256": "e51a270c10ff4422f022d205e20cdc5c1ad90155bf678f411579ec6bc2e36d67",
+      "written_sha256": "e54270f53df1ef88e21e0f76a0c83a1000b3c6693ed2d9056d53ff3cdd5ab7d1",
+      "written_path": "target/p2p4-acceptance/census-written-slice/docx/RM0090 16-23 Справочное руководство по STM32F4xx.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+      "role": "secondary",
+      "source_sha256": "68a0a6470178ab6158d22ecddf9f1c26ff0bc0809c550d8d9bb62c1a9ccfd964",
+      "written_sha256": "2a22ce6b8da713794a3ae074c3057006bda35319d9ec2446a00a1f11a0ec934d",
+      "written_path": "target/p2p4-acceptance/census-written-slice/cc0/009_stratigrafi_regional_daerah_kulon_progo_diy.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "secondary",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "cae072d3cf70bfe58c585dae210919441b8ae0b4f72a3a42502d6178bb4039e9",
+      "written_path": "target/p2p4-acceptance/census-written-slice/docx/1. First-Steps-in-Programming.docx"
+    }
+  ]
+}

@@ -1065,7 +1065,7 @@ fn graphic_refs(payload: &Graphic, out: &mut Vec<String>) {
                 graphic_refs(child, out);
             }
         }
-        Graphic::None | Graphic::Picture(_) | Graphic::Other => {}
+        Graphic::None | Graphic::Picture(_) | Graphic::LockedCanvas(_) | Graphic::Other => {}
     }
 }
 
@@ -1103,6 +1103,10 @@ mod tests {
                     extent: None,
                     effect_extent: None,
                     doc_pr: None,
+                    dist_top: None,
+                    dist_bottom: None,
+                    dist_left: None,
+                    dist_right: None,
                     graphic_uri: None,
                     graphic: Box::new(Graphic::Chart(ForeignRefs {
                         rels: ids.iter().map(|id| std::sync::Arc::from(*id)).collect(),

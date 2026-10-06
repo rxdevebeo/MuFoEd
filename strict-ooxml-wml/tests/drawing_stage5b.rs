@@ -216,11 +216,121 @@ fn text_box_body_and_content_are_parsed() {
     };
     let text = parsed.text.as_ref().expect("text box");
     assert_eq!(text.blocks.len(), 1);
-    let body = text.body.unwrap();
+    let body = text.body.clone().unwrap();
     assert_eq!(body.anchor, Some(TextAnchor::Bottom));
-    assert!(body.anchor_centered);
+    assert_eq!(body.anchor_centered, Some(true));
     assert_eq!(body.left_inset.unwrap().value(), 91440);
     assert!(document.support.get("w:txbxContent").is_some());
+}
+
+#[test]
+fn text_box_body_preserves_wrap_vert_rot_and_tx_box() {
+    // T-P4-1: key `wps:bodyPr` attrs and `cNvSpPr@txBox` survive parse.
+    let shape = "<wps:wsp><wps:cNvPr id=\"1\" name=\"box\"/><wps:cNvSpPr txBox=\"1\"/>\
+<wps:spPr><a:prstGeom prst=\"rect\"/></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>Hi</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr wrap=\"square\" vert=\"horz\" rot=\"0\" anchorCtr=\"0\" \
+compatLnSpc=\"1\" forceAA=\"0\" fromWordArt=\"0\" horzOverflow=\"overflow\" \
+vertOverflow=\"overflow\" numCol=\"1\" spcCol=\"0\" rtlCol=\"0\" \
+spcFirstLastPara=\"0\"/></wps:wsp>";
+    let (_document, anchor) = anchor_of(&wrap_anchor(shape));
+    let Graphic::Shape(parsed) = anchor.graphic.as_ref() else {
+        panic!("shape");
+    };
+    assert_eq!(parsed.tx_box, Some(true));
+    let body = parsed.text.as_ref().unwrap().body.clone().unwrap();
+    assert_eq!(body.wrap.as_deref(), Some("square"));
+    assert_eq!(body.vert.as_deref(), Some("horz"));
+    assert_eq!(body.rot, Some(0));
+    assert_eq!(body.anchor_centered, Some(false));
+    assert_eq!(body.compat_ln_spc, Some(true));
+    assert_eq!(body.horz_overflow.as_deref(), Some("overflow"));
+}
+
+#[test]
+fn inline_dist_and_doc_pr_title_are_parsed() {
+    // T-P3-1: `wp:inline` distances and `docPr@title` round-trip through the model.
+    let body = "<w:p><w:r><w:drawing>\
+<wp:inline distT=\"10\" distB=\"20\" distL=\"30\" distR=\"40\">\
+<wp:extent cx=\"100\" cy=\"200\"/>\
+<wp:effectExtent l=\"1\" t=\"2\" r=\"3\" b=\"4\"/>\
+<wp:docPr id=\"7\" name=\"Pic\" descr=\"d\" title=\"T\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
+<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"p\"/><pic:cNvPicPr/></pic:nvPicPr>\
+<pic:blipFill><a:blip/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"100\" cy=\"200\"/></a:xfrm></pic:spPr>\
+</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>";
+    let parts = document_parts(body, &[]);
+    let document = parse_parts(&parts).expect("parse");
+    let Block::Paragraph(para) = &document.body.blocks[0] else {
+        panic!()
+    };
+    let Inline::Run(run) = &para.inlines[0] else {
+        panic!()
+    };
+    let RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!()
+    };
+    let DrawingKind::Inline(inline) = &drawing.kind else {
+        panic!()
+    };
+    assert_eq!(inline.dist_top, Some(10));
+    assert_eq!(inline.dist_bottom, Some(20));
+    assert_eq!(inline.dist_left, Some(30));
+    assert_eq!(inline.dist_right, Some(40));
+    let doc_pr = inline.doc_pr.as_ref().unwrap();
+    assert_eq!(doc_pr.title.as_deref(), Some("T"));
+    assert_eq!(inline.effect_extent.unwrap().right.value(), 3);
+}
+
+#[test]
+fn locked_canvas_preserves_off_ext_and_ch_off() {
+    // T-P2-1 / T-P2-2: locked-canvas `a:off`/`a:ext`/`chOff` stay in the markup.
+    let canvas = "<lc:lockedCanvas xmlns:lc=\"http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas\" \
+xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">\
+<a:nvGrpSpPr><a:cNvPr id=\"0\" name=\"\"/><a:cNvGrpSpPr/></a:nvGrpSpPr>\
+<a:grpSpPr><a:xfrm><a:off x=\"10\" y=\"20\"/><a:ext cx=\"100\" cy=\"200\"/>\
+<a:chOff x=\"1\" y=\"2\"/><a:chExt cx=\"100\" cy=\"200\"/></a:xfrm></a:grpSpPr>\
+</lc:lockedCanvas>";
+    let body = format!(
+        "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"100\" cy=\"200\"/>\
+<wp:docPr id=\"1\" name=\"c\"/><a:graphic>\
+<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas\">\
+{canvas}</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+    );
+    let parts = document_parts(&body, &[]);
+    let document = parse_parts(&parts).expect("parse");
+    let Block::Paragraph(para) = &document.body.blocks[0] else {
+        panic!()
+    };
+    let Inline::Run(run) = &para.inlines[0] else {
+        panic!()
+    };
+    let RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!()
+    };
+    let DrawingKind::Inline(inline) = &drawing.kind else {
+        panic!()
+    };
+    let Graphic::LockedCanvas(parsed) = inline.graphic.as_ref() else {
+        panic!("locked canvas")
+    };
+    assert!(
+        parsed.markup.contains("a:off x=\"10\" y=\"20\""),
+        "{}",
+        parsed.markup
+    );
+    assert!(
+        parsed.markup.contains("a:chOff x=\"1\" y=\"2\""),
+        "{}",
+        parsed.markup
+    );
+    assert!(
+        parsed.markup.contains("http://purl.oclc.org/ooxml/drawingml/lockedCanvas"),
+        "transitional lockedCanvas URI must be rewritten to Strict: {}",
+        parsed.markup
+    );
+    assert!(document.support.get("lc:lockedCanvas").is_some());
 }
 
 #[test]
@@ -242,6 +352,36 @@ fn group_parses_children_and_transform() {
     assert_eq!(xfrm.child_extent.unwrap().cx.value(), 400);
     assert!(xfrm.flip_v && xfrm.rot == Some(1));
     assert!(document.support.get("wpg:wgp").is_some());
+}
+
+#[test]
+fn nested_grp_sp_inside_wgp_is_parsed_not_skipped() {
+    // Regression: `grpSp` is a group-ns local name, so the property-skip arm
+    // used to swallow nested groups before the child-group arm ran (RM0090).
+    let child = "<wps:wsp><wps:cNvPr id=\"1\" name=\"c\"/><wps:spPr><a:prstGeom prst=\"rect\"/></wps:spPr></wps:wsp>";
+    let nested = format!(
+        "<wpg:grpSp><wpg:cNvPr id=\"2\" name=\"inner\"/><wpg:cNvGrpSpPr/><wpg:grpSpPr>\
+<a:xfrm><a:off x=\"5\" y=\"6\"/><a:ext cx=\"50\" cy=\"60\"/>\
+<a:chOff x=\"7\" y=\"8\"/><a:chExt cx=\"50\" cy=\"60\"/></a:xfrm></wpg:grpSpPr>\
+{child}{child}{child}</wpg:grpSp>"
+    );
+    let group = format!(
+        "<wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr>\
+<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"200\" cy=\"100\"/>\
+<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"400\" cy=\"200\"/></a:xfrm></wpg:grpSpPr>\
+{nested}{child}</wpg:wgp>"
+    );
+    let (_document, anchor) = anchor_of(&wrap_anchor(&group));
+    let Graphic::Group(parsed) = anchor.graphic.as_ref() else {
+        panic!("group");
+    };
+    assert_eq!(parsed.children.len(), 2, "nested grpSp + one sibling shape");
+    let Graphic::Group(inner) = &parsed.children[0] else {
+        panic!("first child must be the nested grpSp, got {:?}", parsed.children[0]);
+    };
+    assert_eq!(inner.name.as_deref(), Some("inner"));
+    assert_eq!(inner.children.len(), 3);
+    assert!(matches!(parsed.children[1], Graphic::Shape(_)));
 }
 
 #[test]

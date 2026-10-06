@@ -1,0 +1,33 @@
+{
+  "package": "P4",
+  "documents": [
+    {
+      "path": "strict-ooxml-core/tests/docx/PEP - DVOJEZIČNI -IZJAVA KLIJENTA RADI UTVRĐIVANJA STATUSA FUNKCIONERA.docx",
+      "role": "secondary",
+      "source_sha256": "ada040fd6593889b116a3830908074562330804d3531d495720de4076ac421eb",
+      "written_sha256": "6f8e01059553534093bea3f65f88a9cb18c7941d0b1a302840122b07c8a1d9f7",
+      "written_path": "target/p2p4-acceptance/census-written-slice/docx/PEP - DVOJEZIČNI -IZJAVA KLIJENTA RADI UTVRĐIVANJA STATUSA FUNKCIONERA.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+      "role": "secondary",
+      "source_sha256": "d0bbb44d604b2c18b744cfa9085da3d2a2a2428ad81cfea19d1de0e11c884583",
+      "written_sha256": "accb49cf2ceead69b0100eb6d72a7cd4abf56b39cbe863cb27c90361a9e196e0",
+      "written_path": "target/p2p4-acceptance/census-written-slice/cc0/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+      "role": "secondary",
+      "source_sha256": "e51a270c10ff4422f022d205e20cdc5c1ad90155bf678f411579ec6bc2e36d67",
+      "written_sha256": "e54270f53df1ef88e21e0f76a0c83a1000b3c6693ed2d9056d53ff3cdd5ab7d1",
+      "written_path": "target/p2p4-acceptance/census-written-slice/docx/RM0090 16-23 Справочное руководство по STM32F4xx.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "secondary",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "cae072d3cf70bfe58c585dae210919441b8ae0b4f72a3a42502d6178bb4039e9",
+      "written_path": "target/p2p4-acceptance/census-written-slice/docx/1. First-Steps-in-Programming.docx"
+    }
+  ]
+}

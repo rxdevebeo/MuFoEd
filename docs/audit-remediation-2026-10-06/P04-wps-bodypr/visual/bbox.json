@@ -1,0 +1,160 @@
+{
+  "package": "P4",
+  "T-P4-2": {
+    "label": "softuni-bodypr",
+    "source": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+    "written": "target/p2p4-acceptance/census-written-slice/docx/1. First-Steps-in-Programming.docx",
+    "pages": "1-3",
+    "pass": true,
+    "chosen": {
+      "tol_px": 0.75,
+      "min_figures": 3,
+      "matched": 9,
+      "compared": 9,
+      "src_total": 16,
+      "dst_total": 16,
+      "pass": true,
+      "pairs": [
+        {
+          "src": {
+            "kind": "image",
+            "x": 236.133,
+            "y": 133.352,
+            "w": 276.0,
+            "h": 262.963,
+            "key": "O73mG58WLYAWUN0C/x/kNIPSAUmuRgAAAABJRU5ErkJggg=="
+          },
+          "dst": {
+            "kind": "image",
+            "x": 236.133,
+            "y": 133.352,
+            "w": 276.0,
+            "h": 262.963,
+            "key": "O73mG58WLYAWUN0C/x/kNIPSAUmuRgAAAABJRU5ErkJggg=="
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 78.933,
+            "y": 170.552,
+            "w": 214.667,
+            "h": 73.883,
+            "key": "cGXKVlDV7dOlwCeXAv8H1bBCzzuOJJEAAAAASUVORK5CYII="
+          },
+          "dst": {
+            "kind": "image",
+            "x": 78.933,
+            "y": 170.552,
+            "w": 214.667,
+            "h": 73.883,
+            "key": "cGXKVlDV7dOlwCeXAv8H1bBCzzuOJJEAAAAASUVORK5CYII="
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "rect",
+            "x": 71.867,
+            "y": 336.683,
+            "w": 517.4,
+            "h": 16.276,
+            "key": "#f7f7f7"
+          },
+          "dst": {
+            "kind": "rect",
+            "x": 71.867,
+            "y": 336.683,
+            "w": 517.4,
+            "h": 16.276,
+            "key": "#f7f7f7"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "rect",
+            "x": 71.867,
+            "y": 424.021,
+            "w": 517.4,
+            "h": 16.276,
+            "key": "#f7f7f7"
+          },
+          "dst": {
+            "kind": "rect",
+            "x": 71.867,
+            "y": 424.021,
+            "w": 517.4,
+            "h": 16.276,
+            "key": "#f7f7f7"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "rect",
+            "x": 71.867,
+            "y": 485.162,
+            "w": 517.4,
+            "h": 16.276,
+            "key": "#f7f7f7"
+          },
+          "dst": {
+            "kind": "rect",
+            "x": 71.867,
+            "y": 485.162,
+            "w": 517.4,
+            "h": 16.276,
+            "key": "#f7f7f7"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        }
+      ],
+      "pages": "1-3"
+    },
+    "pages_detail": [
+      {
+        "page_src": "page-1.svg",
+        "page_dst": "page-1.svg",
+        "src": 9,
+        "dst": 9
+      },
+      {
+        "page_src": "page-2.svg",
+        "page_dst": "page-2.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-3.svg",
+        "page_dst": "page-3.svg",
+        "src": 7,
+        "dst": 7
+      }
+    ],
+    "src_svg_sha256": {
+      "page-1.svg": "a9567b2d0a4c27fc5887bed75fd23bff5270f00deb768513804d1836aaa76441",
+      "page-2.svg": "9f5749d2b7fcf16fdc64e76d8d0a7455a4c4166e4cf64c66bdfcf839623d483a",
+      "page-3.svg": "1112459dd2933c1654b35467df9b88a184a92570576ad189a8f718f27bc4b0c1"
+    },
+    "dst_svg_sha256": {
+      "page-1.svg": "18030c19ce21c25ed34afbe42d53a531afd6f952294d651a1ed27bed9f2ce2b4",
+      "page-2.svg": "36127d1a7dffd6ecc943fad9024d9adf0de1a80998e1030afeaf0b698d48e589",
+      "page-3.svg": "1112459dd2933c1654b35467df9b88a184a92570576ad189a8f718f27bc4b0c1"
+    },
+    "written_bodyPr_wrap_square": 7,
+    "written_txBox": 5,
+    "bodypr_attrs_present": true
+  }
+}

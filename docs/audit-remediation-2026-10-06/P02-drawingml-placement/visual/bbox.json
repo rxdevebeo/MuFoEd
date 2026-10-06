@@ -1,0 +1,389 @@
+{
+  "package": "P2",
+  "T-P2-4": {
+    "label": "070-placement",
+    "source": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
+    "written": "target/p2p4-acceptance/census-written-slice/cc0/070_Innovations_and_New_Technologies.docx",
+    "pages": "1-30",
+    "pass": true,
+    "chosen": {
+      "tol_px": 0.75,
+      "min_figures": 3,
+      "matched": 9,
+      "compared": 9,
+      "src_total": 26,
+      "dst_total": 26,
+      "pass": true,
+      "pairs": [
+        {
+          "src": {
+            "kind": "image",
+            "x": 96.0,
+            "y": 228.642,
+            "w": 552.0,
+            "h": 629.678,
+            "key": "OcfT0q6iiWwSZvvgAZHf60UUruwmWxEjKDjGR0HSiiikI//Z"
+          },
+          "dst": {
+            "kind": "image",
+            "x": 96.0,
+            "y": 228.642,
+            "w": 552.0,
+            "h": 629.678,
+            "key": "OcfT0q6iiWwSZvvgAZHf60UUruwmWxEjKDjGR0HSiiikI//Z"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 96.0,
+            "y": 365.239,
+            "w": 576.867,
+            "h": 432.267,
+            "key": "igAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP/Z"
+          },
+          "dst": {
+            "kind": "image",
+            "x": 96.0,
+            "y": 365.239,
+            "w": 576.867,
+            "h": 432.267,
+            "key": "igAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP/Z"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 143.2,
+            "y": 591.899,
+            "w": 474.453,
+            "h": 353.391,
+            "key": "BCAAAQhAAAIQgIASgf8fwEQKPecwFqkAAAAASUVORK5CYII="
+          },
+          "dst": {
+            "kind": "image",
+            "x": 143.2,
+            "y": 591.899,
+            "w": 474.453,
+            "h": 353.391,
+            "key": "BCAAAQhAAAIQgIASgf8fwEQKPecwFqkAAAAASUVORK5CYII="
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 96.0,
+            "y": 178.791,
+            "w": 462.0,
+            "h": 343.74,
+            "key": "CEAAAhCAAAQg4ELg/wMerJGVcfkUcgAAAABJRU5ErkJggg=="
+          },
+          "dst": {
+            "kind": "image",
+            "x": 96.0,
+            "y": 178.791,
+            "w": 462.0,
+            "h": 343.74,
+            "key": "CEAAAhCAAAQg4ELg/wMerJGVcfkUcgAAAABJRU5ErkJggg=="
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        },
+        {
+          "src": {
+            "kind": "image",
+            "x": 143.2,
+            "y": 607.792,
+            "w": 446.0,
+            "h": 332.044,
+            "key": "CBAgQIAAAQIECBBIEvj/Aa52zSikAioPAAAAAElFTkSuQmCC"
+          },
+          "dst": {
+            "kind": "image",
+            "x": 143.2,
+            "y": 607.792,
+            "w": 446.0,
+            "h": 332.044,
+            "key": "CBAgQIAAAQIECBBIEvj/Aa52zSikAioPAAAAAElFTkSuQmCC"
+          },
+          "dx": 0.0,
+          "dy": 0.0,
+          "extent_ok": true
+        }
+      ],
+      "pages": "1-30"
+    },
+    "pages_detail": [
+      {
+        "page_src": "page-1.svg",
+        "page_dst": "page-1.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-10.svg",
+        "page_dst": "page-10.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-11.svg",
+        "page_dst": "page-11.svg",
+        "src": 3,
+        "dst": 3
+      },
+      {
+        "page_src": "page-12.svg",
+        "page_dst": "page-12.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-13.svg",
+        "page_dst": "page-13.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-14.svg",
+        "page_dst": "page-14.svg",
+        "src": 3,
+        "dst": 3
+      },
+      {
+        "page_src": "page-15.svg",
+        "page_dst": "page-15.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-16.svg",
+        "page_dst": "page-16.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-17.svg",
+        "page_dst": "page-17.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-18.svg",
+        "page_dst": "page-18.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-19.svg",
+        "page_dst": "page-19.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-2.svg",
+        "page_dst": "page-2.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-20.svg",
+        "page_dst": "page-20.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-21.svg",
+        "page_dst": "page-21.svg",
+        "src": 3,
+        "dst": 3
+      },
+      {
+        "page_src": "page-22.svg",
+        "page_dst": "page-22.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-23.svg",
+        "page_dst": "page-23.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-24.svg",
+        "page_dst": "page-24.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-25.svg",
+        "page_dst": "page-25.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-26.svg",
+        "page_dst": "page-26.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-27.svg",
+        "page_dst": "page-27.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-28.svg",
+        "page_dst": "page-28.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-29.svg",
+        "page_dst": "page-29.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-3.svg",
+        "page_dst": "page-3.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-30.svg",
+        "page_dst": "page-30.svg",
+        "src": 2,
+        "dst": 2
+      },
+      {
+        "page_src": "page-4.svg",
+        "page_dst": "page-4.svg",
+        "src": 1,
+        "dst": 1
+      },
+      {
+        "page_src": "page-5.svg",
+        "page_dst": "page-5.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-6.svg",
+        "page_dst": "page-6.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-7.svg",
+        "page_dst": "page-7.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-8.svg",
+        "page_dst": "page-8.svg",
+        "src": 0,
+        "dst": 0
+      },
+      {
+        "page_src": "page-9.svg",
+        "page_dst": "page-9.svg",
+        "src": 1,
+        "dst": 1
+      }
+    ],
+    "src_svg_sha256": {
+      "page-1.svg": "a6e69d862fe0ac9ef561e80343bf005e88cec8ae489af10778292490bdc4fb40",
+      "page-10.svg": "a8d97300d9406def03416cbd6c38e9fee81c30960bf021647966888b875e0082",
+      "page-11.svg": "051dc477f6698615db88821ca7e3e4f3340594efd822d8a485b01c9f5961071d",
+      "page-12.svg": "d558e04db8cc2e63b7430c343a2923ac1fddb33f9f03a43e8fe415491cfccf2e",
+      "page-13.svg": "ed04f5f71cde77cd85de52289667073e2a065e08d36450f534d6f1d1eb5add1f",
+      "page-14.svg": "9281482e3fad7a577994e71d7ef91ce7620a3241bc2b8e2d0607e118ccc4d7e2",
+      "page-15.svg": "e8fa2b2165863c01d9c5cc13766484c55a3764b7340e225102613782820a01a0",
+      "page-16.svg": "f6c130e4c013e9045c4f186954832f1075cf38726f792f7dca5220ac59e5a0aa",
+      "page-17.svg": "52b2896386664d9bb4f255ad1b4d5978de7e6900cea71c7d4304b642fa27ac80",
+      "page-18.svg": "e01391854271e322d3594b7c573a8a9761cba2e133e976694b846bc3a66454f0",
+      "page-19.svg": "ddbc43e20cc6629601bd96edbb9c06d5cb5aa0ecc6ef7de3c7d353ee5451d935",
+      "page-2.svg": "31e4e7a518a4a34fdd9f32434b350e613b4eb4a163bcdbf6497072369cedc391",
+      "page-20.svg": "a6488cdd9bbf1415cc17fcba44924ca8c20d445cad2115204ad9f36359ddc23e",
+      "page-21.svg": "55529b0d25cb86b4861e52e6ffadf1c8ecfb3fb7742f15752c7cd6e2854e551f",
+      "page-22.svg": "cb05340066463034ced98bb16c44882e911d31e8fa3fd4efb2e22e1421c984ea",
+      "page-23.svg": "6f051193cede292fe4d98ebc2661ead6ce3d1c5b2cf4ec37f7763a30576b45c1",
+      "page-24.svg": "39f36098d9cc1ebd15af49932c60e0b216f761bb7927c270f1c0511ce559c15c",
+      "page-25.svg": "217707fac4b8b6c4fa953fa89bd69d4fa0cde130f07805b6723c63977385b4d1",
+      "page-26.svg": "420ed95acda78acca65363a58d1d6e67f3432c69627792cef51ac447c8d12e5f",
+      "page-27.svg": "0daf2f9f8ba016aff55103729f9a90aa83946cf124a834f48c0e85510f35d86f",
+      "page-28.svg": "b2383d7463483fbf7a1fba4625711428857dc3793d419b8ffcf02e8f24ad01be",
+      "page-29.svg": "196afbad6a940f78499051eda2b57cb5828641ddb371ad421144cdda782edf34",
+      "page-3.svg": "30b0a63a5dbf47707c7eb33cbd7d2c10cf3c9620ed7de25c69c560a958de3627",
+      "page-30.svg": "8bb0f6bd6d59bc2810af701804e55f10bf08e153ad95a1cfb53af8a7aa155592",
+      "page-4.svg": "57dca7d9f72635280230ad7b3d8fe61219bdab129abc6667951fb6e408fa52dd",
+      "page-5.svg": "523e08d88e1d9cf84b3273deab6a1ab466c2a84a84bce5589c6919c77e46e84c",
+      "page-6.svg": "fa6d8b52a75d95bbca9f353ff25170bbe0cb40566215ba312bf528b492a36f32",
+      "page-7.svg": "43e1cbefe43a8e2cb40a0c19328c021fa6d298a97ac7445ac5e840507a9a3bda",
+      "page-8.svg": "84d3ecaa4b61527a12241d4a4015e81086a6d0716f327102b2edfaf6601beed2",
+      "page-9.svg": "922713e1b4bd8291ff1c063e842e526cff4a4f868755550fcd1d1bf2d72513d1"
+    },
+    "dst_svg_sha256": {
+      "page-1.svg": "a6e69d862fe0ac9ef561e80343bf005e88cec8ae489af10778292490bdc4fb40",
+      "page-10.svg": "a8d97300d9406def03416cbd6c38e9fee81c30960bf021647966888b875e0082",
+      "page-11.svg": "051dc477f6698615db88821ca7e3e4f3340594efd822d8a485b01c9f5961071d",
+      "page-12.svg": "d558e04db8cc2e63b7430c343a2923ac1fddb33f9f03a43e8fe415491cfccf2e",
+      "page-13.svg": "ed04f5f71cde77cd85de52289667073e2a065e08d36450f534d6f1d1eb5add1f",
+      "page-14.svg": "9281482e3fad7a577994e71d7ef91ce7620a3241bc2b8e2d0607e118ccc4d7e2",
+      "page-15.svg": "e8fa2b2165863c01d9c5cc13766484c55a3764b7340e225102613782820a01a0",
+      "page-16.svg": "f6c130e4c013e9045c4f186954832f1075cf38726f792f7dca5220ac59e5a0aa",
+      "page-17.svg": "52b2896386664d9bb4f255ad1b4d5978de7e6900cea71c7d4304b642fa27ac80",
+      "page-18.svg": "e01391854271e322d3594b7c573a8a9761cba2e133e976694b846bc3a66454f0",
+      "page-19.svg": "ddbc43e20cc6629601bd96edbb9c06d5cb5aa0ecc6ef7de3c7d353ee5451d935",
+      "page-2.svg": "31e4e7a518a4a34fdd9f32434b350e613b4eb4a163bcdbf6497072369cedc391",
+      "page-20.svg": "a6488cdd9bbf1415cc17fcba44924ca8c20d445cad2115204ad9f36359ddc23e",
+      "page-21.svg": "55529b0d25cb86b4861e52e6ffadf1c8ecfb3fb7742f15752c7cd6e2854e551f",
+      "page-22.svg": "cb05340066463034ced98bb16c44882e911d31e8fa3fd4efb2e22e1421c984ea",
+      "page-23.svg": "6f051193cede292fe4d98ebc2661ead6ce3d1c5b2cf4ec37f7763a30576b45c1",
+      "page-24.svg": "39f36098d9cc1ebd15af49932c60e0b216f761bb7927c270f1c0511ce559c15c",
+      "page-25.svg": "217707fac4b8b6c4fa953fa89bd69d4fa0cde130f07805b6723c63977385b4d1",
+      "page-26.svg": "420ed95acda78acca65363a58d1d6e67f3432c69627792cef51ac447c8d12e5f",
+      "page-27.svg": "0daf2f9f8ba016aff55103729f9a90aa83946cf124a834f48c0e85510f35d86f",
+      "page-28.svg": "b2383d7463483fbf7a1fba4625711428857dc3793d419b8ffcf02e8f24ad01be",
+      "page-29.svg": "196afbad6a940f78499051eda2b57cb5828641ddb371ad421144cdda782edf34",
+      "page-3.svg": "30b0a63a5dbf47707c7eb33cbd7d2c10cf3c9620ed7de25c69c560a958de3627",
+      "page-30.svg": "8bb0f6bd6d59bc2810af701804e55f10bf08e153ad95a1cfb53af8a7aa155592",
+      "page-4.svg": "57dca7d9f72635280230ad7b3d8fe61219bdab129abc6667951fb6e408fa52dd",
+      "page-5.svg": "523e08d88e1d9cf84b3273deab6a1ab466c2a84a84bce5589c6919c77e46e84c",
+      "page-6.svg": "fa6d8b52a75d95bbca9f353ff25170bbe0cb40566215ba312bf528b492a36f32",
+      "page-7.svg": "43e1cbefe43a8e2cb40a0c19328c021fa6d298a97ac7445ac5e840507a9a3bda",
+      "page-8.svg": "84d3ecaa4b61527a12241d4a4015e81086a6d0716f327102b2edfaf6601beed2",
+      "page-9.svg": "922713e1b4bd8291ff1c063e842e526cff4a4f868755550fcd1d1bf2d72513d1"
+    }
+  },
+  "T-P2-4-negative": {
+    "pass": true,
+    "note": "1-inch a:off shift must break bbox match",
+    "shifted_compare_pass": false,
+    "detail": {
+      "tol_px": 0.75,
+      "min_figures": 3,
+      "matched": 0,
+      "compared": 9,
+      "src_total": 26,
+      "dst_total": 26,
+      "pass": false,
+      "pairs": [],
+      "pages": "1-30"
+    }
+  }
+}
