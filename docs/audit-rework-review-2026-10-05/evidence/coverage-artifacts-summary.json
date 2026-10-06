@@ -1,0 +1,317 @@
+{
+  "core-final": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 733,
+      "covered": 646,
+      "percent": 88.13096862210094
+    },
+    "instantiations": {
+      "count": 1264,
+      "covered": 923,
+      "percent": 73.02215189873418
+    },
+    "lines": {
+      "count": 7573,
+      "covered": 6858,
+      "percent": 90.5585633170474
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 12416,
+      "covered": 11222,
+      "notcovered": 1194,
+      "percent": 90.3833762886598
+    }
+  },
+  "wml-final": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 870,
+      "covered": 820,
+      "percent": 94.25287356321839
+    },
+    "instantiations": {
+      "count": 2041,
+      "covered": 1534,
+      "percent": 75.15923566878982
+    },
+    "lines": {
+      "count": 9582,
+      "covered": 8158,
+      "percent": 85.13880192026717
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 15571,
+      "covered": 12552,
+      "notcovered": 3019,
+      "percent": 80.61139297411856
+    }
+  },
+  "render-svg": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 729,
+      "covered": 652,
+      "percent": 89.43758573388203
+    },
+    "instantiations": {
+      "count": 1355,
+      "covered": 844,
+      "percent": 62.28782287822878
+    },
+    "lines": {
+      "count": 9038,
+      "covered": 7617,
+      "percent": 84.27749502102235
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 14147,
+      "covered": 11585,
+      "notcovered": 2562,
+      "percent": 81.89015338941118
+    }
+  },
+  "write": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 453,
+      "covered": 419,
+      "percent": 92.49448123620309
+    },
+    "instantiations": {
+      "count": 947,
+      "covered": 611,
+      "percent": 64.51953537486801
+    },
+    "lines": {
+      "count": 6552,
+      "covered": 5570,
+      "percent": 85.01221001221
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 11641,
+      "covered": 10048,
+      "notcovered": 1593,
+      "percent": 86.3156086246886
+    }
+  },
+  "pdf": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 349,
+      "covered": 293,
+      "percent": 83.95415472779369
+    },
+    "instantiations": {
+      "count": 658,
+      "covered": 359,
+      "percent": 54.559270516717326
+    },
+    "lines": {
+      "count": 3869,
+      "covered": 3122,
+      "percent": 80.69268544843627
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 6056,
+      "covered": 4792,
+      "notcovered": 1264,
+      "percent": 79.12813738441216
+    }
+  },
+  "render-pdf": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 174,
+      "covered": 158,
+      "percent": 90.80459770114942
+    },
+    "instantiations": {
+      "count": 388,
+      "covered": 209,
+      "percent": 53.865979381443296
+    },
+    "lines": {
+      "count": 2006,
+      "covered": 1793,
+      "percent": 89.38185443668993
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 3815,
+      "covered": 3404,
+      "notcovered": 411,
+      "percent": 89.2267365661861
+    }
+  },
+  "convert": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 323,
+      "covered": 303,
+      "percent": 93.80804953560371
+    },
+    "instantiations": {
+      "count": 590,
+      "covered": 402,
+      "percent": 68.13559322033899
+    },
+    "lines": {
+      "count": 3698,
+      "covered": 3445,
+      "percent": 93.1584640346133
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 5248,
+      "covered": 4870,
+      "notcovered": 378,
+      "percent": 92.79725609756098
+    }
+  },
+  "core-branch": {
+    "branches": {
+      "count": 840,
+      "covered": 669,
+      "notcovered": 171,
+      "percent": 79.64285714285714
+    },
+    "functions": {
+      "count": 747,
+      "covered": 661,
+      "percent": 88.48728246318608
+    },
+    "instantiations": {
+      "count": 1287,
+      "covered": 945,
+      "percent": 73.42657342657343
+    },
+    "lines": {
+      "count": 7319,
+      "covered": 6681,
+      "percent": 91.28296215329964
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 8385,
+      "covered": 7652,
+      "notcovered": 733,
+      "percent": 91.25819916517592
+    }
+  },
+  "wml-branch": {
+    "branches": {
+      "count": 1030,
+      "covered": 657,
+      "notcovered": 373,
+      "percent": 63.786407766990294
+    },
+    "functions": {
+      "count": 876,
+      "covered": 817,
+      "percent": 93.2648401826484
+    },
+    "instantiations": {
+      "count": 2053,
+      "covered": 1532,
+      "percent": 74.62250365319045
+    },
+    "lines": {
+      "count": 8979,
+      "covered": 7491,
+      "percent": 83.42799866354828
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 10225,
+      "covered": 7895,
+      "notcovered": 2330,
+      "percent": 77.21271393643032
+    }
+  }
+}

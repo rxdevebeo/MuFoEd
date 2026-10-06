@@ -1,0 +1,12 @@
+<xsd:complexType xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships" xmlns:s="http://purl.oclc.org/ooxml/officeDocument/sharedTypes" xmlns="http://purl.oclc.org/ooxml/drawingml/main" name="CT_Angle">
+    <xsd:attribute name="val" type="ST_Angle" use="required"/>
+  </xsd:complexType>
+  
+<xsd:complexType xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships" xmlns:s="http://purl.oclc.org/ooxml/officeDocument/sharedTypes" xmlns="http://purl.oclc.org/ooxml/drawingml/main" name="CT_PositiveFixedAngle">
+    <xsd:attribute name="val" type="ST_PositiveFixedAngle" use="required"/>
+  </xsd:complexType>
+  
+<xsd:element xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships" xmlns:s="http://purl.oclc.org/ooxml/officeDocument/sharedTypes" xmlns="http://purl.oclc.org/ooxml/drawingml/main" name="hue" type="CT_PositiveFixedAngle" minOccurs="1" maxOccurs="1"/>
+      
+<xsd:element xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships" xmlns:s="http://purl.oclc.org/ooxml/officeDocument/sharedTypes" xmlns="http://purl.oclc.org/ooxml/drawingml/main" name="hueOff" type="CT_Angle" minOccurs="1" maxOccurs="1"/>
+      

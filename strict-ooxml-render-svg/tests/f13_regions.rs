@@ -39,7 +39,11 @@ fn first_text<'a>(items: &[&'a TextItem], needle: &str) -> &'a TextItem {
         .expect(needle)
 }
 
-fn assert_no_region_collision(page: &strict_ooxml_render_svg::PlacedPage, body: &str, region: &str) {
+fn assert_no_region_collision(
+    page: &strict_ooxml_render_svg::PlacedPage,
+    body: &str,
+    region: &str,
+) {
     let items = text_items(page);
     let body_item = first_text(&items, body);
     let region_item = first_text(&items, region);
@@ -51,7 +55,11 @@ fn assert_no_region_collision(page: &strict_ooxml_render_svg::PlacedPage, body: 
     );
 }
 
-fn open_parts(body: &str, rels: &str, parts: &[(&str, Vec<u8>)]) -> strict_ooxml_wml::model::Document {
+fn open_parts(
+    body: &str,
+    rels: &str,
+    parts: &[(&str, Vec<u8>)],
+) -> strict_ooxml_wml::model::Document {
     let mut entries = vec![
         ("[Content_Types].xml", content_types().into_bytes()),
         ("_rels/.rels", root_rels().into_bytes()),
@@ -64,7 +72,11 @@ fn open_parts(body: &str, rels: &str, parts: &[(&str, Vec<u8>)]) -> strict_ooxml
     open_bytes(build_docx(&entries)).1
 }
 
-fn place_body(body: &str, rels: &str, parts: &[(&str, Vec<u8>)]) -> Vec<strict_ooxml_render_svg::PlacedPage> {
+fn place_body(
+    body: &str,
+    rels: &str,
+    parts: &[(&str, Vec<u8>)],
+) -> Vec<strict_ooxml_render_svg::PlacedPage> {
     let parsed = open_parts(body, rels, parts);
     place_pages(&parsed, &RenderOptions::default(), None).expect("place")
 }
@@ -106,9 +118,7 @@ fn ftr(text: &str) -> Vec<u8> {
 fn tall_ftr(marker: &str, lines: usize) -> Vec<u8> {
     let mut xml = format!("<?xml version=\"1.0\"?><w:ftr xmlns:w=\"{W}\">");
     for index in 0..lines {
-        xml.push_str(&format!(
-            "<w:p><w:r><w:t>{marker}{index}</w:t></w:r></w:p>"
-        ));
+        xml.push_str(&format!("<w:p><w:r><w:t>{marker}{index}</w:t></w:r></w:p>"));
     }
     xml.push_str("</w:ftr>");
     xml.into_bytes()
@@ -287,7 +297,8 @@ fn f13_numpages_digit_rollover_uses_field_env_height() {
             .find(|item| item.text.starts_with("BODY"))
             .expect("body");
         for item in items {
-            if item.text.contains("HDRWRAP") || item.text.contains(&total) && !item.text.starts_with("BODY")
+            if item.text.contains("HDRWRAP")
+                || item.text.contains(&total) && !item.text.starts_with("BODY")
             {
                 assert!(
                     !boxes_overlap(ink_box(body_item), ink_box(item), 0.25),
@@ -325,9 +336,7 @@ fn f13_section_change_uses_that_section_active_header() {
     tall.push_str(W);
     tall.push_str("\">");
     for index in 0..8 {
-        tall.push_str(&format!(
-            "<w:p><w:r><w:t>TALLH{index}</w:t></w:r></w:p>"
-        ));
+        tall.push_str(&format!("<w:p><w:r><w:t>TALLH{index}</w:t></w:r></w:p>"));
     }
     tall.push_str("</w:hdr>");
     let pages = place_body(
@@ -405,9 +414,7 @@ fn f13_even_header_selection_is_not_the_odd_tallest() {
     );
     let mut tall = format!("<?xml version=\"1.0\"?><w:hdr xmlns:w=\"{W}\">");
     for index in 0..10 {
-        tall.push_str(&format!(
-            "<w:p><w:r><w:t>EVENH{index}</w:t></w:r></w:p>"
-        ));
+        tall.push_str(&format!("<w:p><w:r><w:t>EVENH{index}</w:t></w:r></w:p>"));
     }
     tall.push_str("</w:hdr>");
     let pages = place_body(

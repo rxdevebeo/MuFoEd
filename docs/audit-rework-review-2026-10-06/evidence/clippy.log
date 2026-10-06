@@ -1,0 +1,53 @@
+    Blocking waiting for file lock on build directory
+    Checking strict-ooxml-core v0.1.0 (D:\projects\StrictLib\strict-ooxml-core)
+    Checking strict-ooxml-wml v0.1.0 (D:\projects\StrictLib\strict-ooxml-wml)
+    Checking xtool v0.1.0 (D:\projects\StrictLib\xtool)
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+   --> strict-ooxml-wml\src\parse\fonts.rs:117:21
+    |
+117 | /                     match EmbedKind::all()
+118 | |                         .into_iter()
+119 | |                         .find(|kind| kind.element().trim_start_matches("w:") == name.local())
+...   |
+149 | |                     }
+    | |_____________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#single_match_else
+    = note: `-D clippy::single-match-else` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::single_match_else)]`
+help: try
+    |
+117 ~                     if let Some(kind) = EmbedKind::all()
+118 +                         .into_iter()
+119 +                         .find(|kind| kind.element().trim_start_matches("w:") == name.local()) {
+120 +                         let font = self.parse_embed(kind, &attrs);
+121 +                         entry.embeds.insert(kind, font);
+122 +                         // `CT_FontRel` is an empty type: it carries
+123 +                         // attributes and no child, so the end tag is the
+124 +                         // only thing left to consume.
+125 +                         self.skip_element()?;
+126 +                     } else {
+127 +                         // `w:panose1`, `w:charset`, `w:family`, `w:pitch`,
+128 +                         // `w:sig`, `w:altName`, `w:notTrueType`: real hints
+129 +                         // about the face, none of them used for layout, and
+130 +                         // none of them required by `CT_Font`. The record is
+131 +                         // once per feature id (the support model aggregates
+132 +                         // counts), so a table of 400 faces does not become
+133 +                         // 400 differently named losses.
+134 +                         let feature = feature_id_for(&name);
+135 +                         self.record(
+136 +                             &feature,
+137 +                             SupportStatus::Unsupported,
+138 +                             Some(
+139 +                                 "font hint is not used for layout and is not written back"
+140 +                                     .to_owned(),
+141 +                             ),
+142 +                             Some(self.location()),
+143 +                         );
+144 +                         self.skip_element()?;
+145 +                     }
+    |
+
+error: could not compile `strict-ooxml-wml` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `strict-ooxml-wml` (lib test) due to 1 previous error

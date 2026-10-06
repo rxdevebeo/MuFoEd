@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "input_sha256": "abcfc59ce2916aeaec3baddce466815389b153623748ba13ccbcdc1d7733e15f",
+  "output_sha256": "5affb5dcca02fd150d9d4e2d26a59fe17fcf2f3ae3dffe1def284113f083a008",
+  "outcome": "clean",
+  "issues": [
+  ]
+}

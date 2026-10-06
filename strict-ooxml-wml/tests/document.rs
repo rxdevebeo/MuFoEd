@@ -198,7 +198,8 @@ fn parses_block_and_inline_sdt() {
 /// (`CT_Placeholder`), not a sentinel for "placeholder present".
 #[test]
 fn sdt_placeholder_carries_its_doc_part_value() {
-    let body = "<w:sdt><w:sdtPr><w:placeholder><w:docPart w:val=\"DefaultPlaceholder\"/></w:placeholder>\
+    let body =
+        "<w:sdt><w:sdtPr><w:placeholder><w:docPart w:val=\"DefaultPlaceholder\"/></w:placeholder>\
                 </w:sdtPr><w:sdtContent><w:p/></w:sdtContent></w:sdt>";
     let document = parse_body(body);
     let Block::SdtBlock(container) = &document.body.blocks[0] else {

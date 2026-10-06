@@ -1,7 +1,7 @@
 //! Per-part writing context: the loss report, the relationship-id maps and the
 //! counters a part needs.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::normalize::report::{LossRecord, NormalizationReport, Severity};
@@ -51,6 +51,8 @@ impl NoteRole {
 pub struct Ctx<'a> {
     report: &'a mut NormalizationReport,
     next_doc_pr_id: u32,
+    /// `wp:docPr/@id` values already written into the current part.
+    used_doc_pr_ids: BTreeSet<u32>,
     /// Old hyperlink relationship id → the id this write emits (document part).
     hyperlinks: BTreeMap<String, String>,
     /// Media source part → document-part relationship id.
@@ -101,6 +103,7 @@ impl<'a> Ctx<'a> {
             // `wp:docPr/@id` must be unique within a part and non-zero; 1 is the
             // first value Word uses.
             next_doc_pr_id: 1,
+            used_doc_pr_ids: BTreeSet::new(),
             hyperlinks: BTreeMap::new(),
             media: BTreeMap::new(),
             media_targets: BTreeMap::new(),
@@ -279,10 +282,28 @@ impl<'a> Ctx<'a> {
         self.report
     }
 
-    /// Allocates the next `wp:docPr/@id`.
+    /// Allocates the next free `wp:docPr/@id`.
     pub fn next_doc_pr_id(&mut self) -> u32 {
-        let id = self.next_doc_pr_id;
-        self.next_doc_pr_id += 1;
+        loop {
+            let id = self.next_doc_pr_id;
+            self.next_doc_pr_id = self.next_doc_pr_id.saturating_add(1);
+            if self.used_doc_pr_ids.insert(id) {
+                return id;
+            }
+        }
+    }
+
+    /// Keeps a parsed `wp:docPr/@id` when it is still free.
+    ///
+    /// The id is only a uniqueness key. Reusing the source value keeps the
+    /// drawing identity; a collision takes the next free id instead.
+    pub fn reserve_doc_pr_id(&mut self, id: u32) -> u32 {
+        if id == 0 || !self.used_doc_pr_ids.insert(id) {
+            return self.next_doc_pr_id();
+        }
+        if self.next_doc_pr_id <= id {
+            self.next_doc_pr_id = id.saturating_add(1);
+        }
         id
     }
 

@@ -27,11 +27,11 @@ use strict_ooxml_core::opc::rels::RelId;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_core::xml::XmlEvent;
 
-use crate::model::fonts::{EmbedKind, EmbeddedFont, FontEntry, FontTable};
+use crate::model::fonts::{EmbedKind, EmbeddedFont, FontEntry, FontHints, FontSig, FontTable};
 use crate::model::support::SupportStatus;
 use crate::RELS_STRICT_NS;
 
-use super::{attr_in_ns, is_wml, wml_attr, Attr, PartParser};
+use super::{attr_in_ns, feature_id_for, is_wml, wml_attr, Attr, PartParser};
 
 /// The part name a lost embedded face is given.
 ///
@@ -114,30 +114,31 @@ impl PartParser<'_> {
                         self.skip_element()?;
                         continue;
                     }
-                    match EmbedKind::all()
+                    if let Some(kind) = EmbedKind::all()
                         .into_iter()
                         .find(|kind| kind.element().trim_start_matches("w:") == name.local())
                     {
-                        Some(kind) => {
-                            let font = self.parse_embed(kind, &attrs);
-                            entry.embeds.insert(kind, font);
-                            // `CT_FontRel` is an empty type: it carries
-                            // attributes and no child, so the end tag is the
-                            // only thing left to consume.
-                            self.skip_element()?;
-                        }
-                        None => {
-                            // `w:panose1`, `w:charset`, `w:family`, `w:pitch`,
-                            // `w:sig`, `w:altName`, `w:notTrueType`: real hints
-                            // about the face, none of them used by anything in
-                            // this project, and none of them required. Skipping
-                            // them is a decision and it is recorded once per
-                            // element rather than per font, because a document
-                            // with 400 faces would otherwise produce 400 lines
-                            // saying the same thing.
-                            self.skip_element()?;
-                        }
+                        let font = self.parse_embed(kind, &attrs);
+                        entry.embeds.insert(kind, font);
+                        // `CT_FontRel` is an empty type: it carries
+                        // attributes and no child, so the end tag is the
+                        // only thing left to consume.
+                        self.skip_element()?;
+                        continue;
                     }
+                    if self.apply_font_hint(&mut entry.hints, name.local(), &attrs)? {
+                        continue;
+                    }
+                    // A real `CT_Font` child we do not model yet: name it once
+                    // per feature id so a large table does not explode the report.
+                    let feature = feature_id_for(&name);
+                    self.record(
+                        &feature,
+                        SupportStatus::Unsupported,
+                        Some("font table child is not preserved by this reader".to_owned()),
+                        Some(self.location()),
+                    );
+                    self.skip_element()?;
                 }
                 XmlEvent::EndElement { .. } => return Ok(entry),
                 XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -145,6 +146,66 @@ impl PartParser<'_> {
                 // inside a `w:font`, which is not a font with no children.
                 XmlEvent::Eof => return Err(self.invalid("unexpected end of w:font")),
             }
+        }
+    }
+
+    /// Stores a known face hint. Returns `true` when the element was consumed.
+    fn apply_font_hint(
+        &mut self,
+        hints: &mut FontHints,
+        local: &str,
+        attrs: &[Attr],
+    ) -> Result<bool> {
+        match local {
+            "altName" => {
+                hints.alt_name = wml_attr(attrs, "val").map(|value| self.intern(value));
+                self.skip_element()?;
+                Ok(true)
+            }
+            "panose1" => {
+                hints.panose1 = wml_attr(attrs, "val").map(|value| self.intern(value));
+                self.skip_element()?;
+                Ok(true)
+            }
+            "charset" => {
+                // Strict renames `@w:val` to `@w:characterSet` (`CT_Charset`).
+                // Accept either so transitional and hand-built Strict packages
+                // both round-trip without becoming Unsupported.
+                hints.charset = wml_attr(attrs, "characterSet")
+                    .or_else(|| wml_attr(attrs, "val"))
+                    .map(|value| self.intern(value));
+                self.skip_element()?;
+                Ok(true)
+            }
+            "family" => {
+                hints.family = wml_attr(attrs, "val").map(|value| self.intern(value));
+                self.skip_element()?;
+                Ok(true)
+            }
+            "pitch" => {
+                hints.pitch = wml_attr(attrs, "val").map(|value| self.intern(value));
+                self.skip_element()?;
+                Ok(true)
+            }
+            "sig" => {
+                hints.sig = Some(FontSig {
+                    usb0: wml_attr(attrs, "usb0").map(|value| self.intern(value)),
+                    usb1: wml_attr(attrs, "usb1").map(|value| self.intern(value)),
+                    usb2: wml_attr(attrs, "usb2").map(|value| self.intern(value)),
+                    usb3: wml_attr(attrs, "usb3").map(|value| self.intern(value)),
+                    csb0: wml_attr(attrs, "csb0").map(|value| self.intern(value)),
+                    csb1: wml_attr(attrs, "csb1").map(|value| self.intern(value)),
+                });
+                self.skip_element()?;
+                Ok(true)
+            }
+            "notTrueType" => {
+                hints.not_true_type =
+                    wml_attr(attrs, "val").is_none_or(|value| matches!(value, "1" | "true" | "on"));
+                self.skip_element()?;
+                Ok(true)
+            }
+            _ => Ok(false),
         }
     }
 

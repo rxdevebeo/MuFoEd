@@ -1,0 +1,24 @@
+{
+  "card": "baseline",
+  "recorded_before_production_edits": true,
+  "code_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "branch": "master",
+  "source_content_fingerprint": "4bf75f7681bbe128162902f44b9d6ccacd5346e85cd0375ed9ee91f4332a1798",
+  "content_hash_protocol": "SHA256 sorted canonical JSON mapping all tracked path names to SHA256(raw file bytes), copied from docs/audit-rework-review-2026-10-05/evidence/verification.json for this exact HEAD. git status porcelain is not the content identity.",
+  "tracked_diff_before_d01": "empty",
+  "untracked_before_d01": [
+    "docs/AUDIT_REWORK_RETURN_2026-10-05.md",
+    "docs/AUDIT_REWORK_REVIEW_2026-10-05.md",
+    "docs/WORD_INDEPENDENT_ACCEPTANCE_2026-10-05.md",
+    "docs/audit-review-2026-10-05/ci-last-green.json",
+    "docs/audit-review-2026-10-05/ci-runs.json",
+    "docs/audit-rework-2026-10-05/R07/",
+    "docs/audit-rework-review-2026-10-05/"
+  ],
+  "toolchain": {
+    "rustc": "1.92.0 (ded5c06cf 2025-12-08)",
+    "cargo": "1.92.0 (344c4567c 2025-10-21)",
+    "rustfmt": "1.8.0-stable (ded5c06cf2 2025-12-08)"
+  },
+  "limits": "Word export is NOT_RUN. This receipt does not close D01-D09."
+}

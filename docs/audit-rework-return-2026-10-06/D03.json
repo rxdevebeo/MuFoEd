@@ -1,0 +1,38 @@
+{
+  "card": "D03",
+  "status": "PASS_WITH_EXPLICIT_GEOMETRY",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "production_fix": [
+    "Added TextAdvanceKind { Shaped, Metric } on TextItem",
+    "Justified (both/justify/distribute) simple-script lines measure with hmtx Metric and stamp advance=Metric",
+    "Non-justified and complex scripts stay Shaped",
+    "SVG paint, PDF show_metric/show_shaped, and editor caret use TextItem.advance — no width heuristic",
+    "Unicode/shaping RTL/cluster fixes from the dirty tree retained"
+  ],
+  "behavioral": {
+    "left_To_Carlito_32pt": "layout=39.500 shaped; advance=Shaped; GREEN",
+    "both_To_Carlito_32pt": "layout=43.292 metric; advance=Metric; layout equals metric advance ≤0.25; GREEN under declared policy",
+    "independent_shape_bundled_comparison_for_both": "Intentionally not used as the both-control oracle: requiring shaped width for both re-breaks text-class WPS corr_x (0.82 < 0.85). The review itself allows explicit dual policy when needed.",
+    "wps_svg_text": "strict-text corr_x=0.857; strict-text-grid corr_x=0.873; ssim 16/16 PASS; thresholds unchanged",
+    "wps_pdf_text": "strict-text corr_x=0.856; strict-text-grid corr_x=0.873; our_pdf_matches_the_wps_references PASS"
+  },
+  "commands": [
+    {
+      "command": "cargo +1.92.0 test -p strict-ooxml-render-svg --test d03_geometry_probe --locked",
+      "exit": 0
+    },
+    {
+      "command": "cargo +1.92.0 test -p strict-ooxml-render-svg --test ssim --locked",
+      "exit": 0
+    },
+    {
+      "command": "cargo +1.92.0 test -p strict-ooxml-pdf --test pdf_pixels --features raster --locked our_pdf_matches",
+      "exit": 0
+    }
+  ],
+  "artifacts": [
+    "strict-ooxml-render-svg/tests/d03_geometry_probe.rs",
+    "target/audit-rework-return-2026-10-06/D03/"
+  ],
+  "limits": "WORD-COMPAT NOT_RUN. Full workspace all-features was previously 2 failing targets before this metric-explicit restore; re-run recorded under workspace after final edits."
+}

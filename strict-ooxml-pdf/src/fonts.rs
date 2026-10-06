@@ -137,7 +137,7 @@ pub struct PdfFont {
     /// `/Differences`: code → glyph name.
     pub differences: BTreeMap<u8, String>,
     /// `ToUnicode`: code → character.
-    pub to_unicode: BTreeMap<u32, char>,
+    pub to_unicode: BTreeMap<u32, String>,
     /// `/Widths` or `/W`, code → 1000-unit width.
     pub widths: BTreeMap<u32, f64>,
     /// The default width from `/DW` for a CID font.
@@ -330,10 +330,13 @@ impl PdfFont {
     }
 
     /// The character a code stands for.
+    ///
+    /// A ligature maps to several scalars. This returns the first one. Use
+    /// [`Self::to_unicode`] for the full string.
     #[must_use]
     pub fn character(&self, code: u32) -> Option<char> {
-        if let Some(ch) = self.to_unicode.get(&code) {
-            return Some(*ch);
+        if let Some(text) = self.to_unicode.get(&code) {
+            return text.chars().next();
         }
         let byte = u8::try_from(code).ok()?;
         if let Some(glyph) = self.differences.get(&byte) {
@@ -574,7 +577,7 @@ fn read_cid_widths(
 /// encoding instead of failing — a document with a broken CMap is still readable.
 fn read_to_unicode(
     bytes: &[u8],
-    out: &mut BTreeMap<u32, char>,
+    out: &mut BTreeMap<u32, String>,
     limits: &PdfLimits,
     notes: &mut Vec<(String, String)>,
 ) -> Result<()> {
@@ -634,7 +637,7 @@ fn read_to_unicode(
 /// `<lo> <hi> [<d1> <d2> …]`.
 fn read_bfrange(
     body: &str,
-    out: &mut BTreeMap<u32, char>,
+    out: &mut BTreeMap<u32, String>,
     limits: &PdfLimits,
     notes: &mut Vec<(String, String)>,
 ) -> Result<()> {
@@ -662,7 +665,7 @@ fn read_bfrange(
                 if out.len() >= limits.max_font_glyphs {
                     return Err(limits.exceeded(LimitKind::FontGlyphs, out.len() as u64 + 1));
                 }
-                out.insert(low.wrapping_add(offset), ch);
+                out.insert(low.wrapping_add(offset), ch.to_string());
             }
             continue;
         }
@@ -708,7 +711,7 @@ fn read_bfrange(
             }
             let ch =
                 char::from_u32(u32::from(destination).wrapping_add(offset)).unwrap_or('\u{fffd}');
-            out.insert(low.saturating_add(offset), ch);
+            out.insert(low.saturating_add(offset), ch.to_string());
         }
     }
     Ok(())
@@ -720,7 +723,7 @@ fn read_bfrange(
 /// line is three tokens in a row and uses [`hex_tokens`] instead — reading it
 /// with this function silently shifts every character by one position, which
 /// looks like a font problem and is not one.
-fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<char>)> {
+fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<String>)> {
     let tokens = hex_tokens(body);
     let mut out = Vec::with_capacity(tokens.len() / 2);
     for pair in tokens.as_chunks::<2>().0 {
@@ -728,7 +731,7 @@ fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<char>)> {
         // neither UTF-16 nor hex names no character, and substituting U+0000
         // for it turns a producer's mistake into a glyph this reader claims to
         // have read. `None` is the answer, and the caller reports it (AUD-12).
-        out.push((parse_hex(&pair[0]), utf16_value(&pair[1])));
+        out.push((parse_hex(&pair[0]), utf16_string(&pair[1])));
     }
     out
 }
@@ -768,6 +771,10 @@ fn parse_hex(token: &str) -> Option<u32> {
 /// reader, and the caller records `pdf.font.tounicode-invalid` rather than the
 /// process ending where a font is read.
 fn utf16_value(token: &str) -> Option<char> {
+    utf16_string(token)?.chars().next()
+}
+
+fn utf16_string(token: &str) -> Option<String> {
     let bytes = token.trim().as_bytes();
     if !bytes.iter().all(u8::is_ascii_hexdigit) {
         return None;
@@ -775,7 +782,8 @@ fn utf16_value(token: &str) -> Option<char> {
     if bytes.len() < 4 {
         return u32::from_str_radix(token.trim(), 16)
             .ok()
-            .and_then(char::from_u32);
+            .and_then(char::from_u32)
+            .map(|ch| ch.to_string());
     }
     let units: Vec<u16> = bytes
         .chunks_exact(4)
@@ -784,7 +792,12 @@ fn utf16_value(token: &str) -> Option<char> {
             u16::from_str_radix(text, 16).ok()
         })
         .collect();
-    String::from_utf16(&units).ok()?.chars().next()
+    utf16_string_from_units(&units)
+}
+
+fn utf16_string_from_units(units: &[u16]) -> Option<String> {
+    let text = String::from_utf16(units).ok()?;
+    (!text.is_empty()).then_some(text)
 }
 
 /// Decodes the `<d1> <d2> …` destinations of a `bfrange` array form.
@@ -1046,7 +1059,7 @@ pub fn decode_text_string(bytes: &[u8], format: lopdf::StringFormat) -> String {
 ///
 /// Returns [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded)
 /// when the CMap records more codes than `limits.max_font_glyphs`.
-pub fn parse_to_unicode(bytes: &[u8], limits: &PdfLimits) -> Result<BTreeMap<u32, char>> {
+pub fn parse_to_unicode(bytes: &[u8], limits: &PdfLimits) -> Result<BTreeMap<u32, String>> {
     let mut out = BTreeMap::new();
     let mut notes = Vec::new();
     read_to_unicode(bytes, &mut out, limits, &mut notes)?;
@@ -1096,12 +1109,12 @@ endbfrange
 endcmap";
         let mut out = std::collections::BTreeMap::new();
         read_to_unicode(cmap, &mut out, &limits(), &mut Vec::new()).expect("parsed");
-        assert_eq!(out.get(&0x0003), Some(&' '));
-        assert_eq!(out.get(&0x0004), Some(&'A'));
-        assert_eq!(out.get(&0x0010), Some(&'a'));
-        assert_eq!(out.get(&0x0012), Some(&'c'));
-        assert_eq!(out.get(&0x0020), Some(&'A'));
-        assert_eq!(out.get(&0x0021), Some(&'B'));
+        assert_eq!(out.get(&0x0003).map(String::as_str), Some(" "));
+        assert_eq!(out.get(&0x0004).map(String::as_str), Some("A"));
+        assert_eq!(out.get(&0x0010).map(String::as_str), Some("a"));
+        assert_eq!(out.get(&0x0012).map(String::as_str), Some("c"));
+        assert_eq!(out.get(&0x0020).map(String::as_str), Some("A"));
+        assert_eq!(out.get(&0x0021).map(String::as_str), Some("B"));
     }
 
     #[test]
@@ -1128,8 +1141,8 @@ endcmap";
     fn hex_tokens_are_paired() {
         let pairs = hex_pairs("<0001> <0041> <0002> <0042> ");
         assert_eq!(pairs.len(), 2);
-        assert_eq!(pairs[0], (Some(1), Some('A')));
-        assert_eq!(pairs[1], (Some(2), Some('B')));
+        assert_eq!(pairs[0], (Some(1), Some("A".to_owned())));
+        assert_eq!(pairs[1], (Some(2), Some("B".to_owned())));
     }
 
     #[test]

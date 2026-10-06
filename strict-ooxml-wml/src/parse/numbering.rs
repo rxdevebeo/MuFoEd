@@ -135,6 +135,14 @@ impl PartParser<'_> {
     /// Parses a `w:lvl` element.
     fn parse_level(&mut self, attrs: &[Attr]) -> Result<Level> {
         let ilvl = self.clamped_ilvl(wml_attr(attrs, "ilvl").and_then(parse_u32));
+        if wml_attr(attrs, "tplc").is_some() {
+            self.record(
+                "w:lvl@tplc",
+                crate::model::support::SupportStatus::Partial,
+                Some("numbering template code is not written back".to_owned()),
+                Some(self.location()),
+            );
+        }
         self.nested(|parser| {
             let mut level = Level::new(ilvl);
             loop {
@@ -209,6 +217,14 @@ impl PartParser<'_> {
             self.skip_element()?;
             return Ok(None);
         };
+        if attrs.iter().any(|attr| attr.name.local() == "durableId") {
+            self.record(
+                "w:num@durableId",
+                crate::model::support::SupportStatus::Partial,
+                Some("numbering durableId is not written back".to_owned()),
+                Some(self.location()),
+            );
+        }
         self.nested(|parser| {
             let mut abstract_id = None;
             let mut overrides = Vec::new();

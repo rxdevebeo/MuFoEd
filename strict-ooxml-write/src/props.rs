@@ -103,7 +103,12 @@ pub fn paragraph_properties(
 }
 
 /// Writes the `w:pPr` child called `name`, when the model has it.
-fn paragraph_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &ParagraphProperties, name: &str) {
+fn paragraph_child(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    props: &ParagraphProperties,
+    name: &str,
+) {
     match name {
         "pStyle" => {
             if let Some(style) = &props.style {
@@ -1361,8 +1366,8 @@ mod tests {
     };
 
     use super::{
-        borders_element, fonts_element, paragraph_properties, section_properties,
-        strict_font_hint, tbl_width_value, EdgeNames,
+        borders_element, fonts_element, paragraph_properties, section_properties, strict_font_hint,
+        tbl_width_value, EdgeNames,
     };
     use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
@@ -1543,7 +1548,10 @@ mod tests {
         assert!(!text.contains("w:ins"), "{text}");
         assert!(!text.contains("w:del"), "{text}");
         assert!(
-            report.losses().iter().any(|loss| loss.feature_id == "w:ins"),
+            report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "w:ins"),
             "{report:?}"
         );
     }

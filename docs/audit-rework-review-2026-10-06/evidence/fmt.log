@@ -1,0 +1,12 @@
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\passthrough.rs:752:
+ fn report_removed_rendering_counters(ctx: &mut Ctx<'_>, bytes: &[u8]) {
+     for name in APP_RENDERING_COUNTERS {
+         let open = format!("<{name}");
+-        if bytes.windows(open.len()).any(|window| window == open.as_bytes()) {
++        if bytes
++            .windows(open.len())
++            .any(|window| window == open.as_bytes())
++        {
+             ctx.report_lossy(
+                 &format!("ep:{name}"),
+                 "rendering counter is omitted; this writer does not paginate",

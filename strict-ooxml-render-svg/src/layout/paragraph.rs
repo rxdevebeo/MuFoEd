@@ -87,6 +87,17 @@ const DEFAULT_TAB_TWIPS: i32 = 720;
 /// producer's grid (`STAGE-5C-REWORK-1` C1, §5.2 of `STAGE-5C-TASK.md`).
 const MAX_MATH_LINE_GROWTH: f64 = 1.60;
 
+struct MetricAdvanceGuard<'a> {
+    cell: &'a std::cell::Cell<bool>,
+    previous: bool,
+}
+
+impl Drop for MetricAdvanceGuard<'_> {
+    fn drop(&mut self) {
+        self.cell.set(self.previous);
+    }
+}
+
 /// `note_marker` is the formatted number used to replace a `w:footnoteRef`/
 /// `w:endnoteRef` marker when laying out a note body; body paragraphs pass
 /// `None`.
@@ -108,6 +119,18 @@ pub(crate) fn layout_paragraph(
     host: Option<(&Geometry, f64, f64)>,
 ) -> ParagraphFlow {
     let mut computed = compute_paragraph(ctx.document, para);
+    let justify = matches!(
+        computed.alignment,
+        strict_ooxml_wml::model::values::Justification::Both
+            | strict_ooxml_wml::model::values::Justification::Justify
+            | strict_ooxml_wml::model::values::Justification::Distribute
+    );
+    let previous_advances = ctx.metric_advances.get();
+    ctx.metric_advances.set(justify);
+    let _restore_advances = MetricAdvanceGuard {
+        cell: &ctx.metric_advances,
+        previous: previous_advances,
+    };
     // Numbering supplies the fields the paragraph did not set. An explicit 0
     // stays 0; a missing hanging/firstLine still comes from the level (A16).
     if let Some(marker) = ctx.numbering.get(&para.location) {
@@ -766,6 +789,7 @@ fn build_lines(
                     text: marker_text.clone(),
                     run: marker_run.clone(),
                     size_px,
+                    advance: ctx.advance_kind_for(marker_text, marker_run),
                     field: None,
                 },
             );
@@ -1167,6 +1191,7 @@ fn place_token(
         text: token.to_owned(),
         run: run.clone(),
         size_px,
+        advance: sink.ctx.advance_kind_for(token, run),
         field: None,
     });
     *x += width;
@@ -1200,6 +1225,7 @@ fn place_long_token(
             text: ch.to_string(),
             run: run.clone(),
             size_px,
+            advance: sink.ctx.advance_kind_for(&ch.to_string(), run),
             field: None,
         });
         *x += width;
@@ -1352,6 +1378,7 @@ fn push_note_marker(
         text: text.to_owned(),
         run: run.clone(),
         size_px,
+        advance: ctx.advance_kind_for(text, run),
         field: None,
     });
     *x += width;
@@ -1378,6 +1405,7 @@ fn push_field_marker(
     let text = format.format(value);
     let width = ctx.measure(&text, run);
     let size_px = ctx.size_px(run.size_pt);
+    let advance = ctx.advance_kind_for(&text, run);
     current.items.push(TextItem {
         x: *x,
         baseline: 0.0,
@@ -1385,6 +1413,7 @@ fn push_field_marker(
         text,
         run: run.clone(),
         size_px,
+        advance,
         field: Some(marker),
     });
     *x += width;

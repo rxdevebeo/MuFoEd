@@ -64,9 +64,10 @@ pub fn lines(items: &[Item]) -> Vec<GlyphLine> {
             continue;
         }
         let continues = out.last().is_some_and(|line: &GlyphLine| {
+            let kerning = CONTINUITY_EPSILON.max(line.size * 0.12);
             (line.baseline - glyph.y).abs() < CONTINUITY_EPSILON
                 && (line.size - glyph.size).abs() < CONTINUITY_EPSILON
-                && (glyph.x - (line.x + line.width)).abs() < CONTINUITY_EPSILON
+                && (glyph.x - (line.x + line.width)).abs() < kerning
         });
         match out.last_mut() {
             Some(line) if continues => {
@@ -132,6 +133,14 @@ mod tests {
     fn a_new_baseline_is_a_new_line() {
         let items = vec![glyph("a", 72.0, 100.0, 5.0), glyph("b", 72.0, 114.0, 5.0)];
         assert_eq!(lines(&items).len(), 2);
+    }
+
+    #[test]
+    fn a_kerning_gap_stays_on_the_line_and_a_word_gap_does_not() {
+        let kerned = vec![glyph("r", 72.0, 100.0, 4.0), glyph("g", 75.6, 100.0, 5.0)];
+        assert_eq!(lines(&kerned).len(), 1, "0.4 pt kerning is one line");
+        let spaced = vec![glyph("d", 72.0, 100.0, 5.0), glyph("h", 80.0, 100.0, 5.0)];
+        assert_eq!(lines(&spaced).len(), 2, "a 3 pt hole is not kerning");
     }
 
     #[test]

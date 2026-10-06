@@ -292,20 +292,8 @@ pub(crate) fn page_exclusion(
     };
     let (width, height) = resolved_extent(ctx, anchor, geometry)?;
     let scale = ctx.options.scale;
-    let x = resolve_h(
-        anchor.position_h.as_ref(),
-        geometry,
-        host_x,
-        width,
-        scale,
-    );
-    let y = resolve_v(
-        anchor.position_v.as_ref(),
-        geometry,
-        host_y,
-        height,
-        scale,
-    );
+    let x = resolve_h(anchor.position_h.as_ref(), geometry, host_x, width, scale);
+    let y = resolve_v(anchor.position_v.as_ref(), geometry, host_y, height, scale);
     let dist = |anchor_dist: Option<u32>, wrap_dist: Option<u32>| {
         emu_to_px(i64::from(anchor_dist.or(wrap_dist).unwrap_or(0)), scale)
     };
@@ -347,7 +335,6 @@ pub(crate) fn wrap_exclusion(
     host_x: f64,
     host_y: f64,
 ) -> Option<WrapExclusion> {
-    page_exclusion(ctx, anchor, geometry, host_x, host_y).map(|exclusion| {
-        exclusion.to_paragraph_local(host_y)
-    })
+    page_exclusion(ctx, anchor, geometry, host_x, host_y)
+        .map(|exclusion| exclusion.to_paragraph_local(host_y))
 }

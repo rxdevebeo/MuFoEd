@@ -1,0 +1,2610 @@
+{
+  "coordinate_system": {
+    "unit": "pt",
+    "unit_definition": "1 pt = 1/72 inch",
+    "origin": "top-left of page",
+    "x": "increases rightward",
+    "y": "increases downward from TOP of page",
+    "consistent_with": "PDF page coordinate space as reported by pymupdf (fitz); y measured from top"
+  },
+  "page_selection": {
+    "criterion": "printed page numbers in document footer",
+    "printed_pages": [
+      54,
+      56,
+      104
+    ],
+    "source_pdf_indices_1based": [
+      53,
+      54,
+      100
+    ],
+    "note": "LibreOffice export: printed page N maps to PDF index 53/54/100 for N=54/56/104"
+  },
+  "pages": [
+    {
+      "page": 54,
+      "pdf_index_in_source": 53,
+      "pdf_page_index_in_extract": 1,
+      "page_size": {
+        "width": 595.304,
+        "height": 841.89,
+        "unit": "pt",
+        "paper": "A4",
+        "mm": {
+          "width": 210.0,
+          "height": 297.0
+        }
+      },
+      "texts": [
+        {
+          "text": "HVR-I",
+          "x": 89.45,
+          "y": 63.017,
+          "width": 36.0,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "__________________",
+          "x": 89.35,
+          "y": 71.117,
+          "width": 127.356,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Positions' 15996 -16410 ",
+          "x": 216.9,
+          "y": 74.766,
+          "width": 83.289,
+          "height": 7.812,
+          "font": "LiberationSans",
+          "size": 7.0
+        },
+        {
+          "text": "_________________",
+          "x": 298.55,
+          "y": 71.117,
+          "width": 118.176,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 127.45,
+          "y": 82.567,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "15996",
+          "x": 134.65,
+          "y": 85.311,
+          "width": 21.8,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "___________",
+          "x": 156.35,
+          "y": 82.567,
+          "width": 75.36,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16142",
+          "x": 212.45,
+          "y": 96.167,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 158.45,
+          "y": 106.167,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "16055",
+          "x": 165.65,
+          "y": 108.911,
+          "width": 21.8,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "______",
+          "x": 187.35,
+          "y": 106.167,
+          "width": 41.28,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16142",
+          "x": 212.45,
+          "y": 116.911,
+          "width": 27.992,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "L16117________",
+          "x": 212.45,
+          "y": 133.767,
+          "width": 99.524,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16233",
+          "x": 276.3,
+          "y": 147.367,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L16117______",
+          "x": 212.45,
+          "y": 160.967,
+          "width": 80.78,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16217",
+          "x": 276.3,
+          "y": 174.567,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 276.45,
+          "y": 198.767,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "16209",
+          "x": 283.65,
+          "y": 201.511,
+          "width": 21.8,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "______________",
+          "x": 305.35,
+          "y": 198.767,
+          "width": 95.496,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16348",
+          "x": 387.45,
+          "y": 210.067,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 276.45,
+          "y": 221.367,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "16209",
+          "x": 283.65,
+          "y": 224.111,
+          "width": 21.8,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "__________",
+          "x": 305.35,
+          "y": 221.367,
+          "width": 67.896,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16303",
+          "x": 359.45,
+          "y": 230.067,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 359.45,
+          "y": 248.767,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "16287 ",
+          "x": 366.65,
+          "y": 251.963,
+          "width": 23.628,
+          "height": 8.37,
+          "font": "LiberationSans",
+          "size": 7.5
+        },
+        {
+          "text": "__________",
+          "x": 388.4,
+          "y": 248.767,
+          "width": 70.596,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "11",
+          "x": 158.45,
+          "y": 258.617,
+          "width": 14.4,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "6045",
+          "x": 172.85,
+          "y": 261.361,
+          "width": 17.744,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "___________________",
+          "x": 190.5,
+          "y": 258.617,
+          "width": 130.752,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16410",
+          "x": 444.75,
+          "y": 258.617,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16240",
+          "x": 295.45,
+          "y": 270.617,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 295.45,
+          "y": 280.217,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "16212 ",
+          "x": 302.65,
+          "y": 283.413,
+          "width": 23.228,
+          "height": 8.37,
+          "font": "LiberationSans",
+          "size": 7.5
+        },
+        {
+          "text": "__________________",
+          "x": 323.9,
+          "y": 280.217,
+          "width": 129.192,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16402",
+          "x": 437.45,
+          "y": 288.117,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "L",
+          "x": 127.45,
+          "y": 296.117,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "15996",
+          "x": 134.65,
+          "y": 298.861,
+          "width": 22.192,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "___________________________________________",
+          "x": 156.75,
+          "y": 296.117,
+          "width": 304.057,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "H16410",
+          "x": 437.45,
+          "y": 304.117,
+          "width": 43.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Figure 2: System of primers for HVR-I amplification and ",
+          "x": 90.45,
+          "y": 350.767,
+          "width": 403.236,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "sequencing.",
+          "x": 90.45,
+          "y": 361.267,
+          "width": 79.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Typing of 22 coding region SNPs (GenoCore22 reaction)",
+          "x": 127.45,
+          "y": 406.595,
+          "width": 253.606,
+          "height": 11.624,
+          "font": "LiberationSerif-Italic",
+          "size": 10.5
+        },
+        {
+          "text": "The assessment of mtDNA haplogroups based on HVR-I sequences was refined and/or ",
+          "x": 127.45,
+          "y": 427.245,
+          "width": 381.475,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "confirmed by typing 22 haplogroup diagnostic SNPs in the coding region of the mtDNA ",
+          "x": 90.45,
+          "y": 447.895,
+          "width": 418.475,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "genome.",
+          "x": 90.45,
+          "y": 468.545,
+          "width": 36.645,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "SNaPshot minisequencing has been previously applied to type SNPs in the ",
+          "x": 127.45,
+          "y": 489.195,
+          "width": 381.525,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "mitochondrial genome (Brandstatter et al., 2003; Brandstatter et al., 2006; Grignani et al., ",
+          "x": 90.45,
+          "y": 509.845,
+          "width": 418.475,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "2006; Niederstatter et al., 2006; Haak et al., 2010), on autosomal chromosomes (Grimes et al., ",
+          "x": 90.45,
+          "y": 530.495,
+          "width": 418.525,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "2001; Dixon et al., 2005; Sanchez et al., 2006; Bouakaze et al., 2007) and on the Y-",
+          "x": 90.45,
+          "y": 551.145,
+          "width": 414.309,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "chromosome (Sanchez et al., 2003; Sanchez et al., 2005; Brion et al., 2005a; Brion et al., ",
+          "x": 90.45,
+          "y": 571.795,
+          "width": 418.475,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "2005b; Onofri et al., 2006; Bouakaze et al., 2009). These studies include work on modern, ",
+          "x": 90.45,
+          "y": 592.445,
+          "width": 418.475,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "forensic and ancient DNA and have demonstrated the robustness, reliability and sensitivity of ",
+          "x": 90.45,
+          "y": 613.095,
+          "width": 418.475,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "the SNaPshot minisequencing approach (Bouakaze et al., 2009).",
+          "x": 90.45,
+          "y": 633.745,
+          "width": 278.271,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "In general, coding region SNPs were characterised using a multiplex PCR followed by ",
+          "x": 127.45,
+          "y": 654.395,
+          "width": 381.525,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "a multiplexed Single Base Extension (SBE) reaction (GenoCore22, Haak et al., 2010) using the ",
+          "x": 90.45,
+          "y": 675.045,
+          "width": 418.475,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "SNaPshot minisequencing technique (Applied Biosystems). This approach consists of a ",
+          "x": 90.45,
+          "y": 695.695,
+          "width": 418.475,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "preliminary multiplex PCR amplification, in the present",
+          "x": 90.45,
+          "y": 716.345,
+          "width": 242.151,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "54",
+          "x": 494.6,
+          "y": 768.992,
+          "width": 12.441,
+          "height": 16.038,
+          "font": "NotoSerif-Regular",
+          "size": 11.0
+        }
+      ],
+      "images": [
+        {
+          "type": "vector_figure_union",
+          "x": 134.65,
+          "y": 81.901,
+          "width": 255.55,
+          "height": 225.1,
+          "drawing_path_count": 12,
+          "note": "Bounding box of all vector drawing paths on the page (LibreOffice often converts figures to vectors rather than embedded rasters)"
+        }
+      ],
+      "counts": {
+        "texts": 59,
+        "images": 1,
+        "raster_images": 0,
+        "vector_figure_unions": 1,
+        "drawing_paths": 12
+      }
+    },
+    {
+      "page": 56,
+      "pdf_index_in_source": 54,
+      "pdf_page_index_in_extract": 2,
+      "page_size": {
+        "width": 595.304,
+        "height": 841.89,
+        "unit": "pt",
+        "paper": "A4",
+        "mm": {
+          "width": 210.0,
+          "height": 297.0
+        }
+      },
+      "texts": [
+        {
+          "text": "8994",
+          "x": 2.1,
+          "y": 1.178,
+          "width": 10.292,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "6371",
+          "x": 2.1,
+          "y": 29.028,
+          "width": 10.292,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "12705",
+          "x": 2.1,
+          "y": 56.128,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "11719",
+          "x": 48.35,
+          "y": 83.028,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "14766",
+          "x": 71.85,
+          "y": 109.928,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "7028",
+          "x": 118.4,
+          "y": 136.828,
+          "width": 10.291,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "4580",
+          "x": 118.4,
+          "y": 164.178,
+          "width": 10.291,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "8280",
+          "x": 48.35,
+          "y": 191.078,
+          "width": 10.292,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "13928",
+          "x": 49.35,
+          "y": 217.978,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "13368",
+          "x": 71.85,
+          "y": 244.878,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "12612",
+          "x": 71.85,
+          "y": 271.978,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "11467",
+          "x": 48.35,
+          "y": 299.078,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "10550",
+          "x": 71.85,
+          "y": 326.178,
+          "width": 12.888,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "case targeting 22 short fragments encompassing haplogroup-specific SNPs in the coding region ",
+          "x": 90.1,
+          "y": 66.195,
+          "width": 419.175,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "(as defined in Behai' et al., 2007; Figure 3). A SBE reaction follows, where oligonucleotides ",
+          "x": 90.1,
+          "y": 86.845,
+          "width": 419.175,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "designed to hybridise one base pair upstream of each SNP of interest are used as primers for ",
+          "x": 90.1,
+          "y": 107.495,
+          "width": 419.175,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "the addition of a single dideoxyribonucloside triphosphate (ddNTP). Each ddNTP is labelled ",
+          "x": 90.1,
+          "y": 128.145,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "with a different fluorochrom to allow detection of the SNPs after fragment length-based ",
+          "x": 90.1,
+          "y": 148.795,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "electrophoresis separation of the 22 amplicons.",
+          "x": 90.1,
+          "y": 169.445,
+          "width": 204.036,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "The GenoCoRe22 reaction is particularly relevant to the study of ancient mtDNA for ",
+          "x": 126.1,
+          "y": 190.095,
+          "width": 383.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "several reasons. First, because the GenoCoRe22 targets 22 SNPs in a single reaction it is a time ",
+          "x": 90.1,
+          "y": 210.745,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "and cost-efficient method that uses very small amounts of valuable aDNA extracts. Because it ",
+          "x": 90.1,
+          "y": 231.395,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "limits the number of PCRs necessary to type 22 SNPs, GenoCoRe22 also reduces the risk of ",
+          "x": 90.1,
+          "y": 252.045,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "introducing modern contamination in the typing reactions (as opposed to 22 single reactions). ",
+          "x": 90.1,
+          "y": 272.695,
+          "width": 419.225,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "As the multiplex is designed to target short DNA fragments spanning sizes from 60 bp to 80 ",
+          "x": 90.1,
+          "y": 293.345,
+          "width": 419.225,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "bp, it is suitable for highly degraded DNA. Finally, the GenoCoRe22 reaction is used here as ",
+          "x": 90.1,
+          "y": 313.995,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "an internal control. The concordance between the haplogroup assessments independently ",
+          "x": 90.1,
+          "y": 334.645,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "obtained from the analysis of HVR-I sequences and SNaPshot profiles provides a key means to ",
+          "x": 90.1,
+          "y": 355.295,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "authenticate the aDNA results. In addition, because of the hierarchical nature of its design, i.e., ",
+          "x": 90.1,
+          "y": 375.945,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "typing of SNPs diagnostic of mtDNA macro-haplogroups, haplogroups and sub-haplogroups, ",
+          "x": 90.1,
+          "y": 396.595,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "the GenoCore22 reaction allows the detection of contamination and/or DNA damage through ",
+          "x": 90.1,
+          "y": 417.245,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "the observation of superimposed and/or phylogenetically inconsistent profiles.",
+          "x": 90.1,
+          "y": 437.895,
+          "width": 339.497,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "55",
+          "x": 494.25,
+          "y": 771.65,
+          "width": 11.594,
+          "height": 12.177,
+          "font": "LiberationSerif-Bold",
+          "size": 11.0
+        },
+        {
+          "text": "-L0",
+          "x": 436.85,
+          "y": 73.595,
+          "width": 15.435,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "’1",
+          "x": 436.85,
+          "y": 100.495,
+          "width": 8.841,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "\"L2",
+          "x": 436.85,
+          "y": 127.395,
+          "width": 16.181,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "’6",
+          "x": 436.85,
+          "y": 154.295,
+          "width": 8.841,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "\"L3'",
+          "x": 436.85,
+          "y": 183.311,
+          "width": 15.152,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "4",
+          "x": 436.85,
+          "y": 210.211,
+          "width": 4.448,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "-M",
+          "x": 436.85,
+          "y": 234.995,
+          "width": 12.926,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "\"C",
+          "x": 436.85,
+          "y": 264.011,
+          "width": 9.216,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "-D",
+          "x": 436.85,
+          "y": 290.911,
+          "width": 9.072,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "-N",
+          "x": 436.85,
+          "y": 317.811,
+          "width": 9.072,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "-A",
+          "x": 436.85,
+          "y": 344.711,
+          "width": 8.624,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "\"N1",
+          "x": 436.85,
+          "y": 371.611,
+          "width": 14.328,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "I",
+          "x": 436.85,
+          "y": 396.395,
+          "width": 3.496,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "-w",
+          "x": 436.85,
+          "y": 423.295,
+          "width": 11.172,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "-x",
+          "x": 436.85,
+          "y": 447.651,
+          "width": 9.95,
+          "height": 15.25,
+          "font": "Carlito-Regular",
+          "size": 12.5
+        },
+        {
+          "text": "■R",
+          "x": 436.85,
+          "y": 479.211,
+          "width": 11.216,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "■R",
+          "x": 436.85,
+          "y": 503.995,
+          "width": 13.43,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "O",
+          "x": 436.85,
+          "y": 530.895,
+          "width": 7.581,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "■HV",
+          "x": 436.85,
+          "y": 559.911,
+          "width": 17.208,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "■H",
+          "x": 436.85,
+          "y": 586.811,
+          "width": 11.216,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "-v",
+          "x": 436.85,
+          "y": 609.051,
+          "width": 10.175,
+          "height": 15.25,
+          "font": "Carlito-Regular",
+          "size": 12.5
+        },
+        {
+          "text": "■B",
+          "x": 436.85,
+          "y": 640.611,
+          "width": 10.768,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "\"R9",
+          "x": 436.85,
+          "y": 667.511,
+          "width": 14.328,
+          "height": 8.928,
+          "font": "LiberationSans",
+          "size": 8.0
+        },
+        {
+          "text": "Figure 3: Schematic representation ",
+          "x": 89.4,
+          "y": 689.545,
+          "width": 160.262,
+          "height": 11.623,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "of the human mitochondrial ",
+          "x": 89.4,
+          "y": 703.245,
+          "width": 128.215,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "phylogeny indicating the positions ",
+          "x": 89.4,
+          "y": 716.945,
+          "width": 155.001,
+          "height": 11.623,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "of the Single Nucleotide ",
+          "x": 89.4,
+          "y": 730.645,
+          "width": 108.381,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "Polymorphisms typed in the ",
+          "x": 89.4,
+          "y": 744.345,
+          "width": 128.205,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "GenoCore22 reaction.",
+          "x": 89.4,
+          "y": 758.045,
+          "width": 98.49,
+          "height": 11.623,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "56",
+          "x": 494.3,
+          "y": 769.25,
+          "width": 11.594,
+          "height": 12.177,
+          "font": "LiberationSerif-Bold",
+          "size": 11.0
+        }
+      ],
+      "images": [
+        {
+          "type": "vector_figure_union",
+          "x": -0.25,
+          "y": 1.201,
+          "width": 165.35,
+          "height": 352.55,
+          "drawing_path_count": 20,
+          "note": "Bounding box of all vector drawing paths on the page (LibreOffice often converts figures to vectors rather than embedded rasters)"
+        }
+      ],
+      "counts": {
+        "texts": 63,
+        "images": 1,
+        "raster_images": 0,
+        "vector_figure_unions": 1,
+        "drawing_paths": 20
+      }
+    },
+    {
+      "page": 104,
+      "pdf_index_in_source": 100,
+      "pdf_page_index_in_extract": 3,
+      "page_size": {
+        "width": 595.304,
+        "height": 841.89,
+        "unit": "pt",
+        "paper": "A4",
+        "mm": {
+          "width": 210.0,
+          "height": 297.0
+        }
+      },
+      "texts": [
+        {
+          "text": "A,C: all haplotypes A: ",
+          "x": 96.7,
+          "y": 73.528,
+          "width": 47.747,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "modern",
+          "x": 126.7,
+          "y": 81.428,
+          "width": 16.488,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "jnuflnUniiOBDjll.",
+          "x": 86.8,
+          "y": 141.678,
+          "width": 177.468,
+          "height": 32.223,
+          "font": "Inconsolata-Regular",
+          "size": 23.0
+        },
+        {
+          "text": "il",
+          "x": 238.95,
+          "y": 164.678,
+          "width": 22.908,
+          "height": 32.223,
+          "font": "Inconsolata-Regular",
+          "size": 23.0
+        },
+        {
+          "text": "Q",
+          "x": 116.35,
+          "y": 170.033,
+          "width": 4.351,
+          "height": 6.25,
+          "font": "LiberationSans-Bold",
+          "size": 5.6
+        },
+        {
+          "text": ":",
+          "x": 120.75,
+          "y": 168.766,
+          "width": 2.331,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": "Q",
+          "x": 123.1,
+          "y": 170.033,
+          "width": 4.351,
+          "height": 6.25,
+          "font": "LiberationSans-Bold",
+          "size": 5.6
+        },
+        {
+          "text": ":",
+          "x": 127.5,
+          "y": 168.766,
+          "width": 2.331,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": "Q",
+          "x": 129.85,
+          "y": 170.033,
+          "width": 4.351,
+          "height": 6.25,
+          "font": "LiberationSans-Bold",
+          "size": 5.6
+        },
+        {
+          "text": ".",
+          "x": 134.25,
+          "y": 168.766,
+          "width": 1.939,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": "Q",
+          "x": 136.2,
+          "y": 170.033,
+          "width": 4.351,
+          "height": 6.25,
+          "font": "LiberationSans-Bold",
+          "size": 5.6
+        },
+        {
+          "text": ";»-<<",
+          "x": 140.6,
+          "y": 168.766,
+          "width": 16.856,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": "Q",
+          "x": 157.55,
+          "y": 170.033,
+          "width": 4.351,
+          "height": 6.25,
+          "font": "LiberationSans-Bold",
+          "size": 5.6
+        },
+        {
+          "text": ";",
+          "x": 161.95,
+          "y": 168.766,
+          "width": 2.331,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": "__________—",
+          "x": 164.2,
+          "y": 171.481,
+          "width": 24.55,
+          "height": 4.464,
+          "font": "LiberationSans",
+          "size": 4.0
+        },
+        {
+          "text": "<",
+          "x": 143.95,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ">",
+          "x": 147.598,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ">",
+          "x": 151.246,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "-",
+          "x": 154.894,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "I",
+          "x": 157.59,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "D",
+          "x": 160.338,
+          "y": 175.637,
+          "width": 2.888,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "f",
+          "x": 164.634,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "t",
+          "x": 167.382,
+          "y": 175.637,
+          "width": 1.108,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ":",
+          "x": 169.878,
+          "y": 175.637,
+          "width": 1.108,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "t",
+          "x": 172.374,
+          "y": 175.637,
+          "width": 1.108,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "t",
+          "x": 174.87,
+          "y": 175.637,
+          "width": 1.108,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ":",
+          "x": 177.366,
+          "y": 175.637,
+          "width": 1.108,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "b",
+          "x": 179.914,
+          "y": 175.637,
+          "width": 2.0,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ">",
+          "x": 183.31,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ">",
+          "x": 186.958,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "I",
+          "x": 190.606,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ">",
+          "x": 193.354,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "O",
+          "x": 197.002,
+          "y": 175.637,
+          "width": 2.888,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "^",
+          "x": 201.25,
+          "y": 175.637,
+          "width": 1.876,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "D",
+          "x": 204.546,
+          "y": 175.637,
+          "width": 2.888,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "O",
+          "x": 208.842,
+          "y": 175.637,
+          "width": 2.888,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "?",
+          "x": 213.138,
+          "y": 175.637,
+          "width": 1.772,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "‘",
+          "x": 216.286,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ",",
+          "x": 219.1,
+          "y": 175.501,
+          "width": 0.575,
+          "height": 2.546,
+          "font": "LiberationSerif",
+          "size": 2.3
+        },
+        {
+          "text": ">",
+          "x": 221.05,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": ">",
+          "x": 224.698,
+          "y": 175.637,
+          "width": 2.252,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "l",
+          "x": 228.35,
+          "y": 177.551,
+          "width": 0.637,
+          "height": 2.546,
+          "font": "LiberationSerif",
+          "size": 2.3
+        },
+        {
+          "text": "n",
+          "x": 230.35,
+          "y": 175.637,
+          "width": 2.0,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "S . ",
+          "x": 233.746,
+          "y": 175.637,
+          "width": 11.492,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "v",
+          "x": 246.7,
+          "y": 177.551,
+          "width": 1.15,
+          "height": 2.546,
+          "font": "LiberationSerif",
+          "size": 2.3
+        },
+        {
+          "text": " -",
+          "x": 249.25,
+          "y": 175.637,
+          "width": 4.78,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "5-",
+          "x": 255.4,
+          "y": 175.637,
+          "width": 3.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "r",
+          "x": 260.096,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "-",
+          "x": 262.844,
+          "y": 175.637,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "T",
+          "x": 113.95,
+          "y": 179.737,
+          "width": 2.44,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "-",
+          "x": 117.746,
+          "y": 179.737,
+          "width": 1.332,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.0
+        },
+        {
+          "text": "S W O Q t L i L I W o cog-3 q; z w “l",
+          "x": 113.95,
+          "y": 183.837,
+          "width": 95.026,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.899
+        },
+        {
+          "text": "1",
+          "x": 209.0,
+          "y": 183.701,
+          "width": 1.725,
+          "height": 2.546,
+          "font": "LiberationSerif",
+          "size": 2.817
+        },
+        {
+          "text": " -I",
+          "x": 210.7,
+          "y": 183.837,
+          "width": 5.052,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.899
+        },
+        {
+          "text": "1",
+          "x": 215.75,
+          "y": 183.701,
+          "width": 1.725,
+          "height": 2.546,
+          "font": "LiberationSerif",
+          "size": 2.817
+        },
+        {
+          "text": " ' Q c ^ i o i",
+          "x": 217.45,
+          "y": 183.837,
+          "width": 27.072,
+          "height": 4.428,
+          "font": "LiberationSerif",
+          "size": 4.899
+        },
+        {
+          "text": "-A a a: dL ihiu",
+          "x": 113.95,
+          "y": 187.881,
+          "width": 24.656,
+          "height": 4.464,
+          "font": "LiberationSans",
+          "size": 4.0
+        },
+        {
+          "text": "z",
+          "x": 207.55,
+          "y": 186.425,
+          "width": 1.772,
+          "height": 6.636,
+          "font": "Gelasio-Italic",
+          "size": 4.0
+        },
+        {
+          "text": "o",
+          "x": 210.4,
+          "y": 186.425,
+          "width": 2.148,
+          "height": 6.636,
+          "font": "Gelasio-Italic",
+          "size": 4.0
+        },
+        {
+          "text": "«< 2: -S i",
+          "x": 237.05,
+          "y": 187.881,
+          "width": 16.08,
+          "height": 4.464,
+          "font": "LiberationSans",
+          "size": 4.0
+        },
+        {
+          "text": "<e=g ui “ < o",
+          "x": 113.95,
+          "y": 190.245,
+          "width": 57.918,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "-S",
+          "x": 207.55,
+          "y": 190.245,
+          "width": 9.429,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "1",
+          "x": 116.35,
+          "y": 198.717,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "3",
+          "x": 163.65,
+          "y": 198.717,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "“Si ",
+          "x": 221.25,
+          "y": 198.717,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "A",
+          "x": 250.05,
+          "y": 202.547,
+          "width": 4.529,
+          "height": 7.589,
+          "font": "LiberationSans",
+          "size": 6.8
+        },
+        {
+          "text": "5",
+          "x": 254.75,
+          "y": 201.008,
+          "width": 4.726,
+          "height": 9.486,
+          "font": "LiberationSans",
+          "size": 8.5
+        },
+        {
+          "text": "E",
+          "x": 259.65,
+          "y": 201.721,
+          "width": 2.597,
+          "height": 4.352,
+          "font": "LiberationSans",
+          "size": 3.9
+        },
+        {
+          "text": "Q",
+          "x": 184.9,
+          "y": 210.531,
+          "width": 3.108,
+          "height": 4.464,
+          "font": "LiberationSans",
+          "size": 4.0
+        },
+        {
+          "text": "5",
+          "x": 248.0,
+          "y": 210.141,
+          "width": 3.375,
+          "height": 4.982,
+          "font": "LiberationSerif-Italic",
+          "size": 5.511
+        },
+        {
+          "text": " c O’ ro",
+          "x": 251.35,
+          "y": 210.531,
+          "width": 12.868,
+          "height": 4.464,
+          "font": "LiberationSans",
+          "size": 4.0
+        },
+        {
+          "text": "___________",
+          "x": 160.25,
+          "y": 213.067,
+          "width": 73.92,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "al",
+          "x": 234.25,
+          "y": 210.361,
+          "width": 8.35,
+          "height": 16.59,
+          "font": "Gelasio-Regular",
+          "size": 10.0
+        },
+        {
+          "text": "«SBS",
+          "x": 237.8,
+          "y": 180.645,
+          "width": 24.308,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "S",
+          "x": 237.8,
+          "y": 191.145,
+          "width": 5.838,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "o",
+          "x": 265.35,
+          "y": 194.295,
+          "width": 5.25,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "Near East",
+          "x": 106.25,
+          "y": 230.828,
+          "width": 20.745,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "- Caucasus",
+          "x": 106.25,
+          "y": 237.528,
+          "width": 23.99,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "Europe",
+          "x": 174.65,
+          "y": 232.728,
+          "width": 15.439,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "B,D: informative haplotypes only B: modern",
+          "x": 90.85,
+          "y": 247.828,
+          "width": 93.91,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "□_",
+          "x": 117.55,
+          "y": 342.167,
+          "width": 14.4,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "U",
+          "x": 117.55,
+          "y": 353.891,
+          "width": 7.22,
+          "height": 11.07,
+          "font": "LiberationSerif-Italic",
+          "size": 10.0
+        },
+        {
+          "text": "L ",
+          "x": 117.55,
+          "y": 365.441,
+          "width": 8.19,
+          "height": 11.07,
+          "font": "LiberationSerif-Italic",
+          "size": 10.0
+        },
+        {
+          "text": "01",
+          "x": 117.55,
+          "y": 377.641,
+          "width": 10.14,
+          "height": 11.07,
+          "font": "LiberationSerif-Italic",
+          "size": 10.0
+        },
+        {
+          "text": "cl 0 < >- ",
+          "x": 128.85,
+          "y": 376.567,
+          "width": 72.0,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Q",
+          "x": 216.9,
+          "y": 339.745,
+          "width": 7.581,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "—I OT 0£ LU I",
+          "x": 180.55,
+          "y": 351.516,
+          "width": 50.785,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": "— < «o Q.< ",
+          "x": 180.55,
+          "y": 359.566,
+          "width": 52.789,
+          "height": 7.812,
+          "font": "LiberationSans-Bold",
+          "size": 7.0
+        },
+        {
+          "text": ">>x>O^Z30g",
+          "x": 159.75,
+          "y": 348.895,
+          "width": 58.895,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "ff|>|",
+          "x": 159.75,
+          "y": 359.395,
+          "width": 17.661,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "Ui",
+          "x": 258.15,
+          "y": 330.711,
+          "width": 10.96,
+          "height": 16.59,
+          "font": "Gelasio-Regular",
+          "size": 10.0
+        },
+        {
+          "text": "I H ",
+          "x": 163.65,
+          "y": 362.123,
+          "width": 17.174,
+          "height": 6.138,
+          "font": "LiberationSans-Bold",
+          "size": 5.5
+        },
+        {
+          "text": "1U",
+          "x": 163.65,
+          "y": 367.623,
+          "width": 7.667,
+          "height": 6.138,
+          "font": "LiberationSans-Bold",
+          "size": 5.5
+        },
+        {
+          "text": "\"",
+          "x": 163.85,
+          "y": 373.717,
+          "width": 7.2,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Near East ",
+          "x": 112.3,
+          "y": 398.328,
+          "width": 24.346,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "- ",
+          "x": 112.3,
+          "y": 405.028,
+          "width": 2.696,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "Caucasus",
+          "x": 112.3,
+          "y": 411.728,
+          "width": 21.244,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "in",
+          "x": 232.95,
+          "y": 355.423,
+          "width": 5.5,
+          "height": 6.138,
+          "font": "LiberationSans-Bold",
+          "size": 5.5
+        },
+        {
+          "text": "i",
+          "x": 258.65,
+          "y": 355.423,
+          "width": 1.523,
+          "height": 6.138,
+          "font": "LiberationSans-Bold",
+          "size": 5.5
+        },
+        {
+          "text": "' o ",
+          "x": 232.95,
+          "y": 361.517,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "c ¥ ",
+          "x": 232.95,
+          "y": 375.117,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "«> ",
+          "x": 232.95,
+          "y": 388.717,
+          "width": 21.6,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "o ",
+          "x": 232.95,
+          "y": 402.317,
+          "width": 14.4,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Europe",
+          "x": 174.65,
+          "y": 401.178,
+          "width": 15.439,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "% ",
+          "x": 289.15,
+          "y": 79.117,
+          "width": 14.4,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "hapl",
+          "x": 289.15,
+          "y": 87.017,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "otyp",
+          "x": 289.15,
+          "y": 94.917,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "es ",
+          "x": 289.15,
+          "y": 102.817,
+          "width": 21.6,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "shar",
+          "x": 289.15,
+          "y": 110.717,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "% ",
+          "x": 293.45,
+          "y": 254.978,
+          "width": 5.246,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "haplotypes ",
+          "x": 293.45,
+          "y": 262.878,
+          "width": 24.996,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "shared ",
+          "x": 293.45,
+          "y": 270.778,
+          "width": 15.996,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "with:",
+          "x": 293.45,
+          "y": 278.678,
+          "width": 10.435,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "□ ",
+          "x": 316.08,
+          "y": 278.678,
+          "width": 4.016,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "aBOO",
+          "x": 293.45,
+          "y": 286.578,
+          "width": 12.744,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "■ ",
+          "x": 316.135,
+          "y": 286.578,
+          "width": 3.962,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "C: ancient",
+          "x": 356.15,
+          "y": 74.167,
+          "width": 72.0,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "aHG aUzPo aPWC aBOO aEG aKUR",
+          "x": 358.55,
+          "y": 198.017,
+          "width": 201.6,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "D: ancient",
+          "x": 356.15,
+          "y": 250.817,
+          "width": 72.0,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "aHG aUzPo aPWC aBOO aEG aKUR",
+          "x": 354.2,
+          "y": 368.167,
+          "width": 201.6,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "% ",
+          "x": 496.95,
+          "y": 255.028,
+          "width": 5.246,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "haplotypes ",
+          "x": 477.2,
+          "y": 261.728,
+          "width": 24.996,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "shared ",
+          "x": 486.2,
+          "y": 268.428,
+          "width": 15.996,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "with:",
+          "x": 490.5,
+          "y": 275.128,
+          "width": 10.435,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "□ aBOO ",
+          "x": 484.25,
+          "y": 283.578,
+          "width": 17.947,
+          "height": 5.022,
+          "font": "LiberationSans-Bold",
+          "size": 4.5
+        },
+        {
+          "text": "% ",
+          "x": 500.3,
+          "y": 79.117,
+          "width": 14.4,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "hapl",
+          "x": 478.7,
+          "y": 87.017,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "otyp",
+          "x": 478.7,
+          "y": 94.917,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "es ",
+          "x": 493.1,
+          "y": 102.817,
+          "width": 21.6,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "shar",
+          "x": 478.7,
+          "y": 110.717,
+          "width": 28.8,
+          "height": 13.584,
+          "font": "LiberationMono",
+          "size": 12.0
+        },
+        {
+          "text": "Figure 4. Percentages of Uznyi Oleni Ostrov/Popovo (black) and Bolshoy Oleni Ostrov ",
+          "x": 86.65,
+          "y": 426.145,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "(white) haplotypes matched in selected modern ",
+          "x": 86.65,
+          "y": 439.845,
+          "width": 236.649,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "(A, ",
+          "x": 323.5,
+          "y": 439.845,
+          "width": 20.748,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "B) and ancient ",
+          "x": 344.4,
+          "y": 439.845,
+          "width": 79.832,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "(C, ",
+          "x": 424.35,
+          "y": 439.845,
+          "width": 20.15,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "D) Eurasian ",
+          "x": 444.7,
+          "y": 439.845,
+          "width": 61.175,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "population pools. ",
+          "x": 86.65,
+          "y": 453.545,
+          "width": 88.336,
+          "height": 11.624,
+          "font": "LiberationSerif-Bold",
+          "size": 10.5
+        },
+        {
+          "text": "The haplotype sharing analysis graph allows visualising the current ",
+          "x": 175.15,
+          "y": 453.545,
+          "width": 330.725,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "distribution of the ancient haplotypes from Uznyi Oleni Ostrov/Popovo and Bolshoy Oleni ",
+          "x": 86.65,
+          "y": 467.245,
+          "width": 419.225,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "Ostrov in modern populations from three main geographical regions: the Near-East/Caucasus, ",
+          "x": 86.65,
+          "y": 480.945,
+          "width": 419.225,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "Europe, East Siberia (A, B). For each modern population, the number of occurrences of each ",
+          "x": 86.65,
+          "y": 494.645,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "haplotype from a given ancient population was divided by the modern population sample size ",
+          "x": 86.65,
+          "y": 508.345,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "(N = 500). The corresponding percentages of shared haplotypes are represented by a black bar ",
+          "x": 86.65,
+          "y": 522.045,
+          "width": 419.175,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "for Uznyi Oleni Ostrov/Popovo haplotypes and by a white bar for Bolshoy Oleni Ostrov ",
+          "x": 86.65,
+          "y": 535.745,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "haplotypes. The same analyses were performed to compare the Uznyi Oleni Ostrov/Popovo and ",
+          "x": 86.65,
+          "y": 549.445,
+          "width": 419.225,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "Bolshoy Oleni Ostrov haplotypes with haplotypes previously described in ancient populations ",
+          "x": 86.65,
+          "y": 563.145,
+          "width": 419.225,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "(C, D). Figures A and C were constructed considering all haplotypes sequenced in the ",
+          "x": 86.65,
+          "y": 576.845,
+          "width": 419.175,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "populations of Uznyi Oleni Ostrov/Popovo and Bolshoy Oleni Ostrov, whereas uninformative ",
+          "x": 86.65,
+          "y": 590.545,
+          "width": 419.225,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "basal haplotypes were discarded in figures B and D. See Material and Methods for population ",
+          "x": 86.65,
+          "y": 604.245,
+          "width": 419.175,
+          "height": 11.624,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "abbreviations.",
+          "x": 86.65,
+          "y": 617.945,
+          "width": 60.963,
+          "height": 11.623,
+          "font": "LiberationSerif",
+          "size": 10.5
+        },
+        {
+          "text": "104",
+          "x": 484.35,
+          "y": 780.9,
+          "width": 17.688,
+          "height": 12.177,
+          "font": "LiberationSerif-Bold",
+          "size": 11.0
+        }
+      ],
+      "images": [
+        {
+          "type": "raster_image",
+          "x": 335.4,
+          "y": 91.301,
+          "width": 136.8,
+          "height": 115.2,
+          "xref": 255,
+          "width_px": 280,
+          "height_px": 233,
+          "colorspace": "DeviceGray"
+        },
+        {
+          "type": "raster_image",
+          "x": 332.5,
+          "y": 264.801,
+          "width": 136.8,
+          "height": 108.0,
+          "xref": 256,
+          "width_px": 280,
+          "height_px": 227,
+          "colorspace": "DeviceGray"
+        },
+        {
+          "type": "vector_figure_union",
+          "x": 87.775,
+          "y": 149.075,
+          "width": 172.474,
+          "height": 75.276,
+          "drawing_path_count": 20,
+          "note": "Bounding box of all vector drawing paths on the page (LibreOffice often converts figures to vectors rather than embedded rasters)"
+        }
+      ],
+      "counts": {
+        "texts": 151,
+        "images": 3,
+        "raster_images": 2,
+        "vector_figure_unions": 1,
+        "drawing_paths": 20
+      }
+    }
+  ]
+}

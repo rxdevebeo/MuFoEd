@@ -3,8 +3,8 @@
 use std::fmt::Write as _;
 
 use super::coord;
-use crate::font::{shape_bundled, unicode_x_positions_px};
-use crate::layout::TextItem;
+use crate::font::{shape_bundled, unicode_x_positions_px, BuiltinFontProvider, FontProvider};
+use crate::layout::{TextAdvanceKind, TextItem};
 
 /// Writes one text fragment, optionally with a highlight rectangle behind it.
 pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
@@ -66,10 +66,25 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
     if shown.is_empty() || shown.chars().count() == 1 {
         return coord(item.x);
     }
-    let Some(shaped) = shape_bundled(shown, family, item.run.bold, item.run.italic) else {
-        return coord(item.x);
+    let xs = match item.advance {
+        TextAdvanceKind::Metric => {
+            let provider = BuiltinFontProvider::new();
+            let mut cursor = item.x;
+            let mut metric = Vec::with_capacity(shown.chars().count());
+            for ch in shown.chars() {
+                metric.push(cursor);
+                cursor +=
+                    provider.advance_em(family, ch, item.run.bold, item.run.italic) * item.size_px;
+            }
+            metric
+        }
+        TextAdvanceKind::Shaped => {
+            let Some(shaped) = shape_bundled(shown, family, item.run.bold, item.run.italic) else {
+                return coord(item.x);
+            };
+            unicode_x_positions_px(shown, &shaped, item.x, item.size_px)
+        }
     };
-    let xs = unicode_x_positions_px(shown, &shaped, item.x, item.size_px);
     if xs.is_empty() {
         return coord(item.x);
     }

@@ -1,0 +1,16 @@
+   Compiling strict-ooxml-wml v0.1.0 (D:\projects\StrictLib\strict-ooxml-wml)
+   Compiling strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+   Compiling strict-ooxml-write v0.1.0 (D:\projects\StrictLib\strict-ooxml-write)
+   Compiling strict-ooxml-report v0.1.0 (D:\projects\StrictLib\strict-ooxml-report)
+   Compiling strict-ooxml-convert v0.1.0 (D:\projects\StrictLib\strict-ooxml-convert)
+   Compiling strict-ooxml-edit v0.1.0 (D:\projects\StrictLib\strict-ooxml-edit)
+   Compiling strict-ooxml-render-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-pdf)
+   Compiling strict-ooxml v0.1.0 (D:\projects\StrictLib\strict-ooxml)
+    Finished `release` profile [optimized] target(s) in 26.40s
+     Running tests\hostile.rs (target\release\deps\hostile-e51a897d2fabcf4a.exe)
+
+running 1 test
+test render::a_heavy_footer_on_many_pages_hits_the_render_item_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 42 filtered out; finished in 1.06s
+

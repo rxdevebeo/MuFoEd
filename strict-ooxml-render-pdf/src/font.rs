@@ -59,12 +59,14 @@ impl FaceKey {
 }
 
 /// One glyph the document uses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct UsedGlyph {
     /// Glyph id in the *source* face.
     source: GlyphId,
-    /// The character, when the glyph came from text.
+    /// The character, when the glyph came from a single scalar.
     character: Option<char>,
+    /// Unicode this CID extracts as. Empty for `.notdef` and continuation glyphs.
+    cluster_text: String,
 }
 
 /// Collects the glyphs a document uses, per face.
@@ -78,6 +80,8 @@ struct UsedGlyph {
 #[derive(Debug, Default)]
 pub struct FaceCollector {
     faces: BTreeMap<FaceKey, BTreeSet<(GlyphId, Option<char>)>>,
+    /// Shaped clusters whose glyph is not a single cmap character: `(source gid, unicode)`.
+    shaped: BTreeMap<FaceKey, BTreeSet<(u16, String)>>,
     /// Faces requested that the bundle does not carry.
     unknown: BTreeSet<FaceKey>,
 }
@@ -106,6 +110,43 @@ impl FaceCollector {
             return;
         };
         self.faces.entry(key).or_default().insert((glyph, Some(ch)));
+    }
+
+    /// Records one shaped glyph and the Unicode it should extract as.
+    ///
+    /// A single scalar is stored with the character path so space and NBSP keep
+    /// distinct CIDs. A ligature or a continuation glyph (empty Unicode) is
+    /// stored separately and still subsets the source glyph id.
+    pub fn add_cluster(
+        &mut self,
+        source: &FaceSource,
+        bold: bool,
+        italic: bool,
+        glyph_id: u16,
+        unicode: &str,
+    ) {
+        if glyph_id == 0 {
+            return;
+        }
+        let key = FaceKey {
+            family: source.family,
+            bold,
+            italic,
+        };
+        if unicode.chars().count() == 1 {
+            if let Some(ch) = unicode.chars().next() {
+                self.faces
+                    .entry(key)
+                    .or_default()
+                    .insert((GlyphId::new(u32::from(glyph_id)), Some(ch)));
+                return;
+            }
+        }
+        self.faces.entry(key.clone()).or_default();
+        self.shaped
+            .entry(key)
+            .or_default()
+            .insert((glyph_id, unicode.to_owned()));
     }
 
     /// The faces that carry at least one glyph, in a deterministic order.
@@ -166,6 +207,7 @@ impl FaceCollector {
                     .map(|(source, character)| UsedGlyph {
                         source: *source,
                         character: *character,
+                        cluster_text: character.map(|ch| ch.to_string()).unwrap_or_default(),
                     })
                     .collect()
             })
@@ -174,6 +216,16 @@ impl FaceCollector {
         // Subset once per distinct source glyph; several CIDs may share it.
         let mut remapper = GlyphRemapper::new();
         let mut seen_gids = BTreeSet::new();
+        let mut used = used;
+        if let Some(extra) = self.shaped.get(key) {
+            for (glyph_id, unicode) in extra {
+                used.push(UsedGlyph {
+                    source: GlyphId::new(u32::from(*glyph_id)),
+                    character: None,
+                    cluster_text: unicode.clone(),
+                });
+            }
+        }
         for glyph in &used {
             let old = glyph.source.to_u32() as u16;
             if seen_gids.insert(old) {
@@ -222,15 +274,22 @@ impl FaceCollector {
         // stream turns them back into subset GIDs for painting.
         let mut chars: BTreeMap<char, u16> = BTreeMap::new();
         let mut to_unicode: BTreeMap<u16, char> = BTreeMap::new();
+        let mut cluster_unicode: BTreeMap<u16, String> = BTreeMap::new();
+        let mut cluster_cids: BTreeMap<(u16, String), u16> = BTreeMap::new();
         let mut widths: BTreeMap<u16, u16> = BTreeMap::new();
         let mut cid_to_gid: Vec<u16> = Vec::with_capacity(used.len());
         for glyph in &used {
-            let Some(new_gid) = remapper.get(glyph.source.to_u32() as u16) else {
+            let source_gid = glyph.source.to_u32() as u16;
+            let Some(new_gid) = remapper.get(source_gid) else {
                 continue;
             };
             let cid = u16::try_from(cid_to_gid.len()).unwrap_or(u16::MAX);
             cid_to_gid.push(new_gid);
             widths.insert(cid, *gid_widths.get(&new_gid).unwrap_or(&0));
+            cluster_cids.insert((source_gid, glyph.cluster_text.clone()), cid);
+            if !glyph.cluster_text.is_empty() {
+                cluster_unicode.insert(cid, glyph.cluster_text.clone());
+            }
             if let Some(ch) = glyph.character {
                 chars.insert(ch, cid);
                 to_unicode.insert(cid, ch);
@@ -243,6 +302,8 @@ impl FaceCollector {
             widths,
             chars,
             to_unicode,
+            cluster_cids,
+            cluster_unicode,
             cid_to_gid,
             is_cff,
             ascent: f64::from(metrics.ascent) * scale,
@@ -269,6 +330,10 @@ pub struct EmbeddedFont {
     pub chars: BTreeMap<char, u16>,
     /// CID → the character it stands for, for the `ToUnicode` CMap.
     pub to_unicode: BTreeMap<u16, char>,
+    /// `(source glyph id, cluster Unicode)` → CID. Empty Unicode is a continuation glyph.
+    pub cluster_cids: BTreeMap<(u16, String), u16>,
+    /// CID → the Unicode string a shaped cluster extracts as.
+    pub cluster_unicode: BTreeMap<u16, String>,
     /// CID → subset GID, written as `/CIDToGIDMap` (AUD-82).
     pub cid_to_gid: Vec<u16>,
     /// Whether the program carries CFF (OpenType/PostScript) outlines.
@@ -355,15 +420,26 @@ pub fn to_unicode_cmap(font: &EmbeddedFont) -> Vec<u8> {
     out.push_str("1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
 
     // `bfchar` sections hold at most 100 entries each.
-    let entries: Vec<(u16, char)> = font
+    let mut entries: Vec<(u16, String)> = font
         .to_unicode
         .iter()
-        .map(|(gid, ch)| (*gid, *ch))
+        .map(|(gid, ch)| (*gid, ch.to_string()))
         .collect();
+    for (cid, text) in &font.cluster_unicode {
+        if font.to_unicode.contains_key(cid) || text.is_empty() {
+            continue;
+        }
+        entries.push((*cid, text.clone()));
+    }
+    entries.sort_by_key(|(cid, _)| *cid);
     for (index, chunk) in entries.chunks(100).enumerate() {
         let _ = writeln!(out, "{index} beginbfchar");
-        for (gid, ch) in chunk {
-            let _ = writeln!(out, "<{gid:04X}> <{:04X}>", *ch as u32);
+        for (gid, text) in chunk {
+            let mut encoded = String::new();
+            for unit in text.encode_utf16() {
+                let _ = write!(encoded, "{unit:04X}");
+            }
+            let _ = writeln!(out, "<{gid:04X}> <{encoded}>");
         }
         out.push_str("endbfchar\n");
     }

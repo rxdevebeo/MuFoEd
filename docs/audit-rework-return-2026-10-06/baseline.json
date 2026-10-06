@@ -1,0 +1,14 @@
+{
+  "card": "baseline",
+  "recorded_at": "2026-10-06",
+  "code_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "branch": "master",
+  "source_content_fingerprint": "1f4e1b028706046f4aadf41deba41a195e17cda2436ebab518647220d4a089ad",
+  "content_hash_protocol": "SHA256 of sorted canonical JSON mapping all tracked path names to SHA256(raw file bytes). Untracked docs/receipts/tests are outside this fingerprint.",
+  "dirty_tree": true,
+  "toolchain": {
+    "rustc": "1.92.0 (ded5c06cf 2025-12-08)",
+    "cargo": "1.92.0 (344c4567c 2025-10-21)"
+  },
+  "limits": "Word export is NOT_RUN. Commits/push require owner approval. This receipt does not close full_audit."
+}

@@ -205,6 +205,7 @@ impl PartParser<'_> {
 
     /// Parses a paragraph (`w:p`); its start element has been consumed.
     fn parse_paragraph(&mut self, attrs: &[Attr]) -> Result<Paragraph> {
+        record_unmodelled_revision_attrs(self, "w:p", attrs);
         let location = self.location();
         self.nested(|parser| {
             let mut props = ParagraphProperties::default();
@@ -473,7 +474,8 @@ impl PartParser<'_> {
     }
 
     /// Parses a run (`w:r`); its start element has been consumed.
-    pub(crate) fn parse_run(&mut self, _attrs: &[Attr]) -> Result<Run> {
+    pub(crate) fn parse_run(&mut self, attrs: &[Attr]) -> Result<Run> {
+        record_unmodelled_revision_attrs(self, "w:r", attrs);
         let location = self.location();
         self.nested(|parser| {
             let mut props = crate::model::props::RunProperties::default();
@@ -1421,6 +1423,28 @@ fn harmless_element(name: &QName) -> Option<(crate::model::support::SupportStatu
             "theme default/extension data does not affect the rendered page",
         )),
         _ => None,
+    }
+}
+
+/// Revision attributes the model does not store.
+///
+/// `w:p` keeps `rsidR`, `rsidRDefault`, `rsidP` and `rsidDel`. `rsidRPr` has
+/// no field, and a run stores none of them. Skipping one without a feature id
+/// is a silent inventory loss.
+fn record_unmodelled_revision_attrs(parser: &mut PartParser<'_>, element: &str, attrs: &[Attr]) {
+    const MODELLED_ON_PARAGRAPH: &[&str] = &["rsidR", "rsidRDefault", "rsidP", "rsidDel"];
+    for attr in attrs {
+        let local = attr.name.local();
+        let modelled = element == "w:p" && MODELLED_ON_PARAGRAPH.contains(&local);
+        if modelled || !local.starts_with("rsid") {
+            continue;
+        }
+        parser.record(
+            &format!("{element}@{local}"),
+            crate::model::support::SupportStatus::Partial,
+            Some("revision id is not written back".to_owned()),
+            Some(parser.location()),
+        );
     }
 }
 

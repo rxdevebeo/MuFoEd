@@ -774,6 +774,21 @@ fn run_write(args: &[String]) -> ExitCode {
     for loss in written.report.losses() {
         eprintln!("  {loss}");
     }
+    // Parser feature ids have to be in this process's own report. A registry
+    // entry named `named_loss` is not a report; the census only accepts the
+    // loss when the feature id is printed for this input.
+    for feature in document.support().iter() {
+        if feature.status == strict_ooxml::model::support::SupportStatus::Supported {
+            continue;
+        }
+        eprintln!(
+            "support: [{}] {} x{} {}",
+            feature.status.as_str(),
+            feature.feature_id,
+            feature.count,
+            feature.message.as_deref().unwrap_or("")
+        );
+    }
     let summary = normalization_summary(normalizer.as_deref()).merge(
         PipelineSummary::from_normalization(PipelineStage::Write, &written.report),
     );

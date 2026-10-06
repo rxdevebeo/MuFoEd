@@ -470,6 +470,114 @@ fn an_obfuscated_font_is_declared_as_one() {
     );
 }
 
+/// Face hints round-trip: Stage-5C packages carry panose/charset/family/pitch/sig
+/// and must not become Unsupported critical losses (D05/D09).
+#[test]
+fn font_hints_round_trip_without_unsupported() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../strict-ooxml-core/tests/strict/05-strict-math-simple.docx");
+    let package = Package::open_reader(
+        std::fs::read(&path).expect("stage5c fixture").as_slice(),
+        &OpenOptions::default(),
+    )
+    .expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let table = document.font_table.as_ref().expect("font table");
+    let calibri = table
+        .fonts
+        .iter()
+        .find(|entry| entry.name.as_ref() == "Calibri")
+        .expect("Calibri");
+    assert_eq!(
+        calibri.hints.panose1.as_deref(),
+        Some("020F0502020204030204")
+    );
+    assert_eq!(calibri.hints.charset.as_deref(), Some("00"));
+    assert_eq!(calibri.hints.family.as_deref(), Some("swiss"));
+    assert_eq!(calibri.hints.pitch.as_deref(), Some("variable"));
+    assert!(calibri.hints.sig.is_some());
+    for hint in ["w:panose1", "w:charset", "w:family", "w:pitch", "w:sig"] {
+        assert!(
+            document.support.get(hint).is_none(),
+            "{hint} must not be Unsupported after parse"
+        );
+    }
+
+    let written = write(&document, &package);
+    let reopened = Package::open_reader(&written.bytes[..], &OpenOptions::default()).unwrap();
+    let table_xml = String::from_utf8_lossy(
+        &reopened
+            .read_part(&PartId::new("/word/fontTable.xml"))
+            .expect("written font table"),
+    )
+    .into_owned();
+    assert!(
+        table_xml.contains(r#"w:panose1 w:val="020F0502020204030204""#)
+            || table_xml.contains(r#"<w:panose1 w:val="020F0502020204030204"/>"#),
+        "panose1 must be written back: {table_xml}"
+    );
+    assert!(
+        table_xml.contains(r#"w:characterSet="00""#),
+        "Strict charset attribute must be written: {table_xml}"
+    );
+    assert!(
+        table_xml.contains(r#"w:family w:val="swiss""#)
+            || table_xml.contains(r#"<w:family w:val="swiss"/>"#),
+        "family must be written back: {table_xml}"
+    );
+    let reparsed = parse_document(&reopened, &ParseOptions::default()).expect("reparse");
+    let again = reparsed
+        .font_table
+        .as_ref()
+        .expect("font table")
+        .fonts
+        .iter()
+        .find(|entry| entry.name.as_ref() == "Calibri")
+        .expect("Calibri");
+    assert_eq!(again.hints.panose1, calibri.hints.panose1);
+    assert_eq!(again.hints.charset, calibri.hints.charset);
+    assert_eq!(again.hints.family, calibri.hints.family);
+    assert_eq!(again.hints.pitch, calibri.hints.pitch);
+    assert_eq!(again.hints.sig, calibri.hints.sig);
+}
+
+/// Negative control: dropping a preserved hint is a real model change.
+#[test]
+fn dropping_a_font_hint_is_visible_in_the_model() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../strict-ooxml-core/tests/strict/05-strict-math-simple.docx");
+    let package = Package::open_reader(
+        std::fs::read(&path).expect("stage5c fixture").as_slice(),
+        &OpenOptions::default(),
+    )
+    .expect("open");
+    let mut document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let entry = document
+        .font_table
+        .as_mut()
+        .expect("font table")
+        .fonts
+        .iter_mut()
+        .find(|entry| entry.name.as_ref() == "Calibri")
+        .expect("Calibri");
+    let before = entry.hints.panose1.clone();
+    assert!(before.is_some());
+    entry.hints.panose1 = None;
+    assert_ne!(entry.hints.panose1, before);
+    let written = write(&document, &package);
+    let table_xml = String::from_utf8_lossy(
+        &Package::open_reader(&written.bytes[..], &OpenOptions::default())
+            .unwrap()
+            .read_part(&PartId::new("/word/fontTable.xml"))
+            .expect("written"),
+    )
+    .into_owned();
+    assert!(
+        !table_xml.contains("020F0502020204030204"),
+        "negative control: cleared panose1 must not reappear: {table_xml}"
+    );
+}
+
 /// The whole trip is a fixed point, which is what makes "the fonts are still
 /// there" checkable rather than asserted.
 #[test]

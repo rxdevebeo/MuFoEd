@@ -737,76 +737,10 @@ impl TransitionalNormalizer {
         let location = context.location();
         let (local, uri) = resolve(start, context);
         let qualified = qualify(&uri, &local);
-
-        // Empty `<w:docParts/>` is invalid Strict (`CT_DocParts` requires a
-        // `docPart` child). Drop only the self-closing form; a non-empty
-        // container keeps its children.
-        if empty && local == "docParts" && is_wml(&uri) {
-            report.record_loss(LossRecord {
-                transform_id: "T5.empty-docParts",
-                feature_id: qualified,
-                reason: "empty w:docParts has no docPart child and cannot be Strict".to_owned(),
-                severity: Severity::Lossy,
-                locations: vec![location.clone()],
-            });
-            report.count_reported_removal(1);
-            return Rewritten::Drop;
-        }
-        // Chart `c:ext` whose Office-2012 children were removed as ignorable
-        // extensions becomes a self-closing shell that Strict rejects. Drop the
-        // empty shell; do not invent replacement children.
-        if empty && local == "ext" && uri.contains("drawingml/chart") {
-            report.record_loss(LossRecord {
-                transform_id: "T5.empty-chart-ext",
-                feature_id: qualified,
-                reason: "empty c:ext has no extension child after ignorable content was removed"
-                    .to_owned(),
-                severity: Severity::Lossy,
-                locations: vec![location.clone()],
-            });
-            report.count_reported_removal(1);
-            return Rewritten::Drop;
-        }
-
-        // ---- T7: legacy graphics -------------------------------------
-        if VML_NAMESPACES.contains(&uri.as_str()) {
-            report.record_loss(LossRecord {
-                transform_id: "T7.vml",
-                feature_id: qualified,
-                reason: "VML is not part of Strict; the node is dropped, not rendered".to_owned(),
-                severity: Severity::Lossy,
-                locations: vec![location],
-            });
-            // The whole subtree goes with the root, and the record above is
-            // what accounts for it (SC-4).
-            report.count_reported_removal(1);
-            return Rewritten::Drop;
-        }
-        if let Some(removal) = tables::removal_for(&local) {
-            // ---- T5: Transitional-only element -------------------------
-            report.record_loss(LossRecord {
-                transform_id: "T5.removal",
-                feature_id: qualified,
-                reason: removal.reason.to_owned(),
-                severity: removal.severity,
-                locations: vec![location],
-            });
-            report.count_reported_removal(1);
-            return Rewritten::Drop;
-        }
-        if tables::is_ignorable_extension(&uri) {
-            // ---- T5: a producer extension we do not implement -----------
-            report.record_loss(LossRecord {
-                transform_id: "T5.extension",
-                feature_id: qualified,
-                reason: "producer extension outside the standard; Markup \
-                         Compatibility permits skipping it"
-                    .to_owned(),
-                severity: Severity::Ignorable,
-                locations: vec![location],
-            });
-            report.count_reported_removal(1);
-            return Rewritten::Drop;
+        if let Some(dropped) =
+            drop_unsupported_start(empty, &local, &uri, &qualified, &location, report)
+        {
+            return dropped;
         }
 
         // ---- T3: element name -----------------------------------------
@@ -881,72 +815,166 @@ impl TransitionalNormalizer {
         // a tag with a repeated `w:firstRow`, which is a hard XML error rather
         // than a tolerated one.
         if let Some(decoded) = tbl_look {
-            let prefix = context.prefix_for(&element_uri_of(&uri));
-            let already: Vec<&str> = tables::TBL_LOOK_BITS
-                .iter()
-                .map(|(_, attribute)| *attribute)
-                .filter(|attribute| {
-                    start
-                        .attributes()
-                        .flatten()
-                        .any(|present| present.key.as_ref().ends_with(attribute.as_bytes()))
-                })
-                .collect();
-            for (on, (_, attribute)) in decoded.flags.iter().zip(tables::TBL_LOOK_BITS) {
-                if already.contains(attribute) {
-                    continue;
-                }
-                let key = PartContext::qualified_name(&prefix, attribute);
-                buffer.push_attribute((key.as_str(), if *on { "true" } else { "false" }));
-            }
+            push_missing_tbl_look_flags(start, &decoded, &uri, &mut buffer, context);
         }
         // ---- T7: the DrawingML prefixes a converted picture will need ----
         declare_vml_picture_prefixes(&mut buffer, context);
-        // The element name is not an attribute: it has to be set through
-        // `set_name`, or the name survives *and* a bogus copy of it is
-        // emitted as one.
-        //
-        // The prefix is looked up under the *rewritten* namespace. Using the
-        // original here is what made every element pick up a freshly minted
-        // `n0` prefix while its declaration still named `w`.
-        //
-        // AUD-69: when the producer already bound a prefix to this URI on the
-        // element (or an ancestor), keep that prefix. `prefix_for` returns the
-        // *first* binding for the URI, so a sibling that declares only `xmlns:xs`
-        // after an earlier sibling declared `xmlns:xsd` for the same URI was
-        // renamed to `xsd:…` without a live `xmlns:xsd` — and the End tag still
-        // said `xs:`. Preferring the original prefix keeps both ends and the
-        // declaration in agreement.
-        let new_local = new_local.to_string();
-        let original_prefix = {
-            let name = start.name();
-            let raw = String::from_utf8_lossy(name.as_ref());
-            match raw.split_once(':') {
-                Some((prefix, _)) => prefix.to_owned(),
-                None => String::new(),
-            }
-        };
-        let prefix = if context.uri_for(original_prefix.as_bytes()) == Some(element_uri.as_str()) {
-            original_prefix
-        } else {
-            context.prefix_for(&element_uri)
-        };
-        let qualified = PartContext::qualified_name(&prefix, &new_local);
-        buffer.set_name(qualified.as_bytes());
-        // The element joins the open-element stack here rather than in the event
-        // loop, because here is the only place its final name is known: the loop
-        // holds a `BytesStart` and the name it carries is the *producer's*, and
-        // an earlier version pushed that — through a helper that returned the
-        // stack's own last entry, which is the parent's name — so every entry
-        // was the wrong string and the four direction-neutral renames stayed
-        // unreachable while the table said they were populated.
-        //
-        // The **Strict** local name is what `parent_local` needs (T3 keys), and
-        // the rewritten qualified name is what the matching `End` must emit
-        // (AUD-69).
-        context.push_element(&new_local, &qualified);
+        apply_rewritten_element_name(start, context, &element_uri, new_local, &mut buffer);
         Rewritten::Keep(buffer.into_owned())
     }
+}
+
+/// Drops a start tag that Strict cannot keep: empty shells, VML, Transitional-only
+/// elements, and ignorable producer extensions.
+///
+/// Empty `<w:docParts/>` is invalid Strict (`CT_DocParts` requires a `docPart`
+/// child). Only the self-closing form is dropped; a non-empty container keeps
+/// its children. An empty chart `c:ext` left after ignorable Office-2012 children
+/// were removed is the same kind of shell: drop it, do not invent children.
+fn drop_unsupported_start(
+    empty: bool,
+    local: &str,
+    uri: &str,
+    qualified: &str,
+    location: &SourceLocation,
+    report: &mut NormalizationReport,
+) -> Option<Rewritten> {
+    if empty && local == "docParts" && is_wml(uri) {
+        report.record_loss(LossRecord {
+            transform_id: "T5.empty-docParts",
+            feature_id: qualified.to_owned(),
+            reason: "empty w:docParts has no docPart child and cannot be Strict".to_owned(),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
+        report.count_reported_removal(1);
+        return Some(Rewritten::Drop);
+    }
+    if empty && local == "ext" && uri.contains("drawingml/chart") {
+        report.record_loss(LossRecord {
+            transform_id: "T5.empty-chart-ext",
+            feature_id: qualified.to_owned(),
+            reason: "empty c:ext has no extension child after ignorable content was removed"
+                .to_owned(),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
+        report.count_reported_removal(1);
+        return Some(Rewritten::Drop);
+    }
+    if VML_NAMESPACES.contains(&uri) {
+        report.record_loss(LossRecord {
+            transform_id: "T7.vml",
+            feature_id: qualified.to_owned(),
+            reason: "VML is not part of Strict; the node is dropped, not rendered".to_owned(),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
+        // The whole subtree goes with the root, and the record above is
+        // what accounts for it (SC-4).
+        report.count_reported_removal(1);
+        return Some(Rewritten::Drop);
+    }
+    if let Some(removal) = tables::removal_for(local) {
+        report.record_loss(LossRecord {
+            transform_id: "T5.removal",
+            feature_id: qualified.to_owned(),
+            reason: removal.reason.to_owned(),
+            severity: removal.severity,
+            locations: vec![location.clone()],
+        });
+        report.count_reported_removal(1);
+        return Some(Rewritten::Drop);
+    }
+    if tables::is_ignorable_extension(uri) {
+        report.record_loss(LossRecord {
+            transform_id: "T5.extension",
+            feature_id: qualified.to_owned(),
+            reason: "producer extension outside the standard; Markup \
+                     Compatibility permits skipping it"
+                .to_owned(),
+            severity: Severity::Ignorable,
+            locations: vec![location.clone()],
+        });
+        report.count_reported_removal(1);
+        return Some(Rewritten::Drop);
+    }
+    None
+}
+
+/// Writes the six Strict `w:tblLook` flags the producer did not already emit.
+///
+/// Word emits `w:val="04A0"` *and* `w:firstRow="1" w:lastRow="0" ...` in the same
+/// tag. Pushing the six flags again would repeat `w:firstRow`.
+fn push_missing_tbl_look_flags(
+    start: &BytesStart<'_>,
+    decoded: &TblLook,
+    uri: &str,
+    buffer: &mut BytesStart<'static>,
+    context: &mut PartContext,
+) {
+    let prefix = context.prefix_for(&element_uri_of(uri));
+    let already: Vec<&str> = tables::TBL_LOOK_BITS
+        .iter()
+        .map(|(_, attribute)| *attribute)
+        .filter(|attribute| {
+            start
+                .attributes()
+                .flatten()
+                .any(|present| present.key.as_ref().ends_with(attribute.as_bytes()))
+        })
+        .collect();
+    for (on, (_, attribute)) in decoded.flags.iter().zip(tables::TBL_LOOK_BITS) {
+        if already.contains(attribute) {
+            continue;
+        }
+        let key = PartContext::qualified_name(&prefix, attribute);
+        buffer.push_attribute((key.as_str(), if *on { "true" } else { "false" }));
+    }
+}
+
+/// Sets the rewritten element name and pushes it onto the open-element stack.
+///
+/// The element name is not an attribute: it has to be set through `set_name`,
+/// or the name survives *and* a bogus copy of it is emitted as one.
+///
+/// The prefix is looked up under the *rewritten* namespace. Using the original
+/// here is what made every element pick up a freshly minted `n0` prefix while
+/// its declaration still named `w`.
+///
+/// AUD-69: when the producer already bound a prefix to this URI on the element
+/// (or an ancestor), keep that prefix. `prefix_for` returns the *first* binding
+/// for the URI, so a sibling that declares only `xmlns:xs` after an earlier
+/// sibling declared `xmlns:xsd` for the same URI was renamed to `xsd:…` without
+/// a live `xmlns:xsd` — and the End tag still said `xs:`. Preferring the original
+/// prefix keeps both ends and the declaration in agreement.
+///
+/// The element joins the open-element stack here rather than in the event loop,
+/// because here is the only place its final name is known. The **Strict** local
+/// name is what `parent_local` needs (T3 keys), and the rewritten qualified name
+/// is what the matching `End` must emit (AUD-69).
+fn apply_rewritten_element_name(
+    start: &BytesStart<'_>,
+    context: &mut PartContext,
+    element_uri: &str,
+    new_local: &str,
+    buffer: &mut BytesStart<'static>,
+) {
+    let new_local = new_local.to_string();
+    let name = start.name();
+    let raw = String::from_utf8_lossy(name.as_ref());
+    let original_prefix = match raw.split_once(':') {
+        Some((prefix, _)) => prefix.to_owned(),
+        None => String::new(),
+    };
+    let prefix = if context.uri_for(original_prefix.as_bytes()) == Some(element_uri) {
+        original_prefix
+    } else {
+        context.prefix_for(element_uri)
+    };
+    let qualified = PartContext::qualified_name(&prefix, &new_local);
+    buffer.set_name(qualified.as_bytes());
+    context.push_element(&new_local, &qualified);
 }
 
 /// The Strict namespace a WML element's URI maps to, or the URI itself.
@@ -1773,6 +1801,16 @@ fn rewrite_attribute(
     // removals - booking it as one would put the two counters out of step.
     if !is_reserved && is_ignorable_extension(&uri) {
         report.record("T5.extension-attribute", 1);
+        // The stage id alone does not name the attribute. Census named-loss
+        // matching needs the local name in this input's report, and this is
+        // not a node removal, so it does not increment the removal counter.
+        report.record_loss(LossRecord {
+            transform_id: "T5.extension-attribute",
+            feature_id: format!("ext:{local}"),
+            reason: "ignorable extension attribute is not part of Strict".to_owned(),
+            severity: Severity::Ignorable,
+            locations: vec![location],
+        });
         return RewrittenAttribute::Drop;
     }
 
@@ -2607,6 +2645,36 @@ mod tests {
     const TRANSITIONAL: &str = r#"<?xml version="1.0"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>"#;
+
+    #[test]
+    fn drawingml_hue_stays_an_angle_and_lum_mod_becomes_a_percent() {
+        let input = br#"<a:srgbClr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" val="FF0000"><a:hue val="60000"/><a:hueOff val="60000"/><a:lumMod val="65000"/><a:comp val="60000"/><a:lin ang="60000"/></a:srgbClr>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let output = normalizer
+            .normalize(&PartId::new("/word/theme/theme1.xml"), input)
+            .expect("normalize");
+        let xml = String::from_utf8(output.to_vec()).expect("utf8");
+        assert!(
+            xml.contains(r#"<a:hue val="60000"/>"#) || xml.contains(r#"val="60000""#),
+            "{xml}"
+        );
+        assert!(xml.contains("hueOff"), "{xml}");
+        assert!(
+            !xml.contains("hueOff")
+                || xml.contains(r#"hueOff val="60000""#)
+                || xml.contains("60000"),
+            "{xml}"
+        );
+        assert!(
+            !xml.contains("60%"),
+            "angles must not become percents: {xml}"
+        );
+        assert!(xml.contains("65%"), "lumMod is a percentage: {xml}");
+        assert!(
+            !xml.contains(r#"comp val="60%"#) && !xml.contains(r#"ang="60%""#),
+            "{xml}"
+        );
+    }
 
     #[test]
     fn a_transitional_part_is_rewritten() {

@@ -166,8 +166,21 @@ fn zero_default_tab_stop_advances_text() {
                 && node.text().is_some_and(|text| text.contains("TABBED"))
         })
         .and_then(|node| node.attribute("x"))
-        .and_then(|x| x.parse::<f64>().ok())
+        .map(|x| {
+            x.split_whitespace()
+                .map(|token| {
+                    token
+                        .parse::<f64>()
+                        .unwrap_or_else(|_| panic!("bad x token {token} in {x}"))
+                })
+                .collect::<Vec<_>>()
+        })
         .expect("TABBED x");
+    assert!(
+        text_x.iter().all(|value| value.is_finite()),
+        "non-finite x {text_x:?}"
+    );
+    let text_x = text_x[0];
     // Content left is 96 px (1"); default tab 720 twips = 48 px → x ≈ 144.
     assert!(
         text_x > 96.0 + 1.0,

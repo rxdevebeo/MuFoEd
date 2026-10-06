@@ -171,6 +171,7 @@ mod tests {
                     ..ComputedRun::default()
                 },
                 size_px: 16.0,
+                advance: crate::layout::TextAdvanceKind::Shaped,
                 field: None,
             })],
         };

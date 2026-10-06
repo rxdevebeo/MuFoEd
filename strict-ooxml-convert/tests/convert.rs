@@ -151,10 +151,25 @@ fn the_modes_reproduce_different_documents() {
         convert(&mut semantic, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
     let visual = convert(&mut visual, &PdfOptions::default().mode(Mode::Visual)).expect("convert");
 
+    // The justified fox sentence wraps, matching the WPS page. Semantic joins
+    // that wrap back into one paragraph; visual keeps one block per PDF line.
     assert_eq!(
         semantic.document.body.blocks.len(),
+        7,
+        "semantic joins the wrapped fox line"
+    );
+    assert_eq!(
         visual.document.body.blocks.len(),
-        "the fixture has no wrapped lines, so both modes produce one paragraph per line"
+        8,
+        "visual keeps the wrapped fox line"
+    );
+    assert!(
+        body_text(&semantic.document).contains("moves gently"),
+        "the wrapped line is still in the semantic document"
+    );
+    assert!(
+        body_text(&visual.document).contains("moves gently"),
+        "the wrapped line is still in the visual document"
     );
     // The page size is the PDF's own, in twips, in both modes.
     for document in [&semantic.document, &visual.document] {

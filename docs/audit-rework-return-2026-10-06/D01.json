@@ -1,0 +1,27 @@
+{
+  "card": "D01",
+  "status": "PASS",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "source_content_fingerprint": "1f4e1b028706046f4aadf41deba41a195e17cda2436ebab518647220d4a089ad",
+  "toolchain": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+  "commands": [
+    {
+      "command": "cargo +1.92.0 fmt --all -- --check",
+      "exit": 0
+    },
+    {
+      "command": "cargo +1.92.0 clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "exit": 0
+    },
+    {
+      "command": "cargo +1.92.0 check --workspace --all-features --locked",
+      "exit": 0,
+      "note": "MSRV job on Rust 1.92.0"
+    }
+  ],
+  "fixes": [
+    "passthrough.rs:755 fmt of bytes.windows(...).any(...)",
+    "fonts.rs clippy::single_match_else removed by if-let rewrite while preserving hints"
+  ],
+  "limits": "Re-run after later production edits. No commit."
+}

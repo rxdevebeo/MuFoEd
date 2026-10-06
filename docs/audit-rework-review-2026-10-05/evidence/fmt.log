@@ -1,0 +1,322 @@
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-core\src\normalize\tables.rs:532:
+ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
+     match (element, attribute) {
+         (
+-            "tint" | "shade" | "satMod" | "lumMod" | "lumOff" | "alpha" | "alphaMod"
+-            | "alphaOff" | "hue" | "hueOff" | "hueMod" | "comp" | "inv" | "gray" | "gamma"
+-            | "invGamma",
++            "tint" | "shade" | "satMod" | "lumMod" | "lumOff" | "alpha" | "alphaMod" | "alphaOff"
++            | "hue" | "hueOff" | "hueMod" | "comp" | "inv" | "gray" | "gamma" | "invGamma",
+             "val",
+         ) => true,
+         ("gs", "pos") => true,
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-core\src\normalize\tables.rs:742:
+     #[test]
+     fn drawingml_thousandths_percent_converts_bare_thousandths() {
+         assert_eq!(drawingml_thousandths_percent("0").as_deref(), Some("0%"));
+-        assert_eq!(drawingml_thousandths_percent("65000").as_deref(), Some("65%"));
++        assert_eq!(
++            drawingml_thousandths_percent("65000").as_deref(),
++            Some("65%")
++        );
+         assert_eq!(
+             drawingml_thousandths_percent("1253").as_deref(),
+             Some("1.253%")
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\src\layout\floating.rs:292:
+     };
+     let (width, height) = resolved_extent(ctx, anchor, geometry)?;
+     let scale = ctx.options.scale;
+-    let x = resolve_h(
+-        anchor.position_h.as_ref(),
+-        geometry,
+-        host_x,
+-        width,
+-        scale,
+-    );
+-    let y = resolve_v(
+-        anchor.position_v.as_ref(),
+-        geometry,
+-        host_y,
+-        height,
+-        scale,
+-    );
++    let x = resolve_h(anchor.position_h.as_ref(), geometry, host_x, width, scale);
++    let y = resolve_v(anchor.position_v.as_ref(), geometry, host_y, height, scale);
+     let dist = |anchor_dist: Option<u32>, wrap_dist: Option<u32>| {
+         emu_to_px(i64::from(anchor_dist.or(wrap_dist).unwrap_or(0)), scale)
+     };
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\src\layout\floating.rs:347:
+     host_x: f64,
+     host_y: f64,
+ ) -> Option<WrapExclusion> {
+-    page_exclusion(ctx, anchor, geometry, host_x, host_y).map(|exclusion| {
+-        exclusion.to_paragraph_local(host_y)
+-    })
++    page_exclusion(ctx, anchor, geometry, host_x, host_y)
++        .map(|exclusion| exclusion.to_paragraph_local(host_y))
+ }
+ 
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\src\layout\paginate.rs:462:
+         }
+     }
+     for anchor in flow.anchors {
+-        if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y)
+-        {
++        if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y) {
+             paginator.wrap_exclusions.push(exclusion);
+         }
+         paginator.anchors.push(PendingAnchor {
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:39:
+         .expect(needle)
+ }
+ 
+-fn assert_no_region_collision(page: &strict_ooxml_render_svg::PlacedPage, body: &str, region: &str) {
++fn assert_no_region_collision(
++    page: &strict_ooxml_render_svg::PlacedPage,
++    body: &str,
++    region: &str,
++) {
+     let items = text_items(page);
+     let body_item = first_text(&items, body);
+     let region_item = first_text(&items, region);
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:51:
+     );
+ }
+ 
+-fn open_parts(body: &str, rels: &str, parts: &[(&str, Vec<u8>)]) -> strict_ooxml_wml::model::Document {
++fn open_parts(
++    body: &str,
++    rels: &str,
++    parts: &[(&str, Vec<u8>)],
++) -> strict_ooxml_wml::model::Document {
+     let mut entries = vec![
+         ("[Content_Types].xml", content_types().into_bytes()),
+         ("_rels/.rels", root_rels().into_bytes()),
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:64:
+     open_bytes(build_docx(&entries)).1
+ }
+ 
+-fn place_body(body: &str, rels: &str, parts: &[(&str, Vec<u8>)]) -> Vec<strict_ooxml_render_svg::PlacedPage> {
++fn place_body(
++    body: &str,
++    rels: &str,
++    parts: &[(&str, Vec<u8>)],
++) -> Vec<strict_ooxml_render_svg::PlacedPage> {
+     let parsed = open_parts(body, rels, parts);
+     place_pages(&parsed, &RenderOptions::default(), None).expect("place")
+ }
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:106:
+ fn tall_ftr(marker: &str, lines: usize) -> Vec<u8> {
+     let mut xml = format!("<?xml version=\"1.0\"?><w:ftr xmlns:w=\"{W}\">");
+     for index in 0..lines {
+-        xml.push_str(&format!(
+-            "<w:p><w:r><w:t>{marker}{index}</w:t></w:r></w:p>"
+-        ));
++        xml.push_str(&format!("<w:p><w:r><w:t>{marker}{index}</w:t></w:r></w:p>"));
+     }
+     xml.push_str("</w:ftr>");
+     xml.into_bytes()
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:287:
+             .find(|item| item.text.starts_with("BODY"))
+             .expect("body");
+         for item in items {
+-            if item.text.contains("HDRWRAP") || item.text.contains(&total) && !item.text.starts_with("BODY")
++            if item.text.contains("HDRWRAP")
++                || item.text.contains(&total) && !item.text.starts_with("BODY")
+             {
+                 assert!(
+                     !boxes_overlap(ink_box(body_item), ink_box(item), 0.25),
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:325:
+     tall.push_str(W);
+     tall.push_str("\">");
+     for index in 0..8 {
+-        tall.push_str(&format!(
+-            "<w:p><w:r><w:t>TALLH{index}</w:t></w:r></w:p>"
+-        ));
++        tall.push_str(&format!("<w:p><w:r><w:t>TALLH{index}</w:t></w:r></w:p>"));
+     }
+     tall.push_str("</w:hdr>");
+     let pages = place_body(
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-render-svg\tests\f13_regions.rs:405:
+     );
+     let mut tall = format!("<?xml version=\"1.0\"?><w:hdr xmlns:w=\"{W}\">");
+     for index in 0..10 {
+-        tall.push_str(&format!(
+-            "<w:p><w:r><w:t>EVENH{index}</w:t></w:r></w:p>"
+-        ));
++        tall.push_str(&format!("<w:p><w:r><w:t>EVENH{index}</w:t></w:r></w:p>"));
+     }
+     tall.push_str("</w:hdr>");
+     let pages = place_body(
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-testkit\tests\f21_public.rs:45:
+         assert!(manifest.contains(&format!("\"{id}\"")), "{id} has no card");
+     }
+ 
+-    let matrix = std::fs::read_to_string(root.join("xtool/audit-fixes/matrix.toml"))
+-        .expect("public matrix");
++    let matrix =
++        std::fs::read_to_string(root.join("xtool/audit-fixes/matrix.toml")).expect("public matrix");
+     assert!(
+         matrix.contains("status = \"blocked\""),
+         "matrix must keep honest blocked rows; empty blockers would fake completeness"
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-wml\tests\document.rs:198:
+ /// (`CT_Placeholder`), not a sentinel for "placeholder present".
+ #[test]
+ fn sdt_placeholder_carries_its_doc_part_value() {
+-    let body = "<w:sdt><w:sdtPr><w:placeholder><w:docPart w:val=\"DefaultPlaceholder\"/></w:placeholder>\
++    let body =
++        "<w:sdt><w:sdtPr><w:placeholder><w:docPart w:val=\"DefaultPlaceholder\"/></w:placeholder>\
+                 </w:sdtPr><w:sdtContent><w:p/></w:sdtContent></w:sdt>";
+     let document = parse_body(body);
+     let Block::SdtBlock(container) = &document.body.blocks[0] else {
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-wml\tests\r10_coverage.rs:21:
+     for (local, kind, feature, deletion, insertion) in [
+         ("ins", RevisionKind::Insert, "w:ins", false, true),
+         ("del", RevisionKind::Delete, "w:del", true, false),
+-        ("moveFrom", RevisionKind::MoveFrom, "w:moveFrom", true, false),
++        (
++            "moveFrom",
++            RevisionKind::MoveFrom,
++            "w:moveFrom",
++            true,
++            false,
++        ),
+         ("moveTo", RevisionKind::MoveTo, "w:moveTo", false, true),
+     ] {
+         assert_eq!(RevisionKind::from_local(local), Some(kind));
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-wml\tests\r10_coverage.rs:145:
+         panic!("paragraph");
+     };
+     assert_eq!(paragraph.inlines.len(), 2);
+-    for (idx, kind) in [
+-        (0, RevisionKind::MoveFrom),
+-        (1, RevisionKind::MoveTo),
+-    ] {
++    for (idx, kind) in [(0, RevisionKind::MoveFrom), (1, RevisionKind::MoveTo)] {
+         let strict_ooxml_wml::model::inline::Inline::Run(run) = &paragraph.inlines[idx] else {
+             panic!("run");
+         };
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\body.rs:593:
+     use strict_ooxml_core::error::SourceLocation;
+     use strict_ooxml_core::normalize::report::NormalizationReport;
+     use strict_ooxml_core::part::PartId;
+-    use strict_ooxml_wml::model::block::{
+-        Block, GridCol, Paragraph, Table, TableCell, TableRow,
+-    };
++    use strict_ooxml_wml::model::block::{Block, GridCol, Paragraph, Table, TableCell, TableRow};
+     use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
+     use strict_ooxml_wml::model::props::{
+         CellProperties, ParagraphProperties, RowProperties, TableProperties,
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\body.rs:742:
+         crate::body::block_item(&mut ctx, &mut xml, &Block::SdtBlock(sdt));
+         let text = xml.finish().expect("balanced");
+         assert!(
+-            text.contains(r#"<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>"#),
++            text.contains(
++                r#"<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>"#
++            ),
+             "{text}"
+         );
+         assert!(!text.contains("<w:placeholder/>"), "{text}");
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\body.rs:782:
+             props: TableProperties::default(),
+             grid: Vec::new(),
+             rows: vec![
+-                row(vec![cell_with_span(Some(2), None), cell_with_span(None, None)]),
+                 row(vec![
++                    cell_with_span(Some(2), None),
+                     cell_with_span(None, None),
++                ]),
++                row(vec![
+                     cell_with_span(None, None),
+                     cell_with_span(None, None),
++                    cell_with_span(None, None),
+                 ]),
+             ],
+             location: location(),
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\body.rs:828:
+             grid: vec![GridCol {
+                 width: Some(Twips(720)),
+             }],
+-            rows: vec![row(vec![
+-                cell_with_span(Some(5), None),
+-            ])],
++            rows: vec![row(vec![cell_with_span(Some(5), None)])],
+             location: location(),
+         };
+         assert_eq!(synthesize_grid(&table), vec![Some(Twips(720))]);
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\parts.rs:1306:
+     use strict_ooxml_core::normalize::report::NormalizationReport;
+     use strict_ooxml_wml::model::ids::StyleId;
+     use strict_ooxml_wml::model::props::RunProperties;
+-    use strict_ooxml_wml::model::styles::{Style, StyleTable};
+     use strict_ooxml_wml::model::settings::Settings;
++    use strict_ooxml_wml::model::styles::{Style, StyleTable};
+     use strict_ooxml_wml::model::values::{StyleType, TriState};
+ 
+     use super::{font_families, settings_part, strict_document_protection_attrs, styles_part, Ctx};
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\parts.rs:1435:
+             ("salt".into(), "ef01".into()),
+         ];
+         let attrs = strict_document_protection_attrs(&pairs);
+-        let find = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.as_ref());
++        let find = |name: &str| {
++            attrs
++                .iter()
++                .find(|(n, _)| *n == name)
++                .map(|(_, v)| v.as_ref())
++        };
+         assert_eq!(find("enforcement"), Some("1"));
+         assert_eq!(find("spinCount"), Some("100000"));
+         assert_eq!(find("hashValue"), Some("abcd"));
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\parts.rs:1470:
+             ("algorithmName".into(), "SHA-512".into()),
+         ];
+         let attrs = strict_document_protection_attrs(&pairs);
+-        let find = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.as_ref());
++        let find = |name: &str| {
++            attrs
++                .iter()
++                .find(|(n, _)| *n == name)
++                .map(|(_, v)| v.as_ref())
++        };
+         assert_eq!(find("formatting"), Some("1"));
+         assert_eq!(find("spinCount"), Some("50"));
+         assert_eq!(find("algorithmName"), Some("SHA-512"));
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\props.rs:103:
+ }
+ 
+ /// Writes the `w:pPr` child called `name`, when the model has it.
+-fn paragraph_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, props: &ParagraphProperties, name: &str) {
++fn paragraph_child(
++    ctx: &mut Ctx<'_>,
++    xml: &mut XmlWriter,
++    props: &ParagraphProperties,
++    name: &str,
++) {
+     match name {
+         "pStyle" => {
+             if let Some(style) = &props.style {
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\props.rs:1361:
+     };
+ 
+     use super::{
+-        borders_element, fonts_element, paragraph_properties, section_properties,
+-        strict_font_hint, tbl_width_value, EdgeNames,
++        borders_element, fonts_element, paragraph_properties, section_properties, strict_font_hint,
++        tbl_width_value, EdgeNames,
+     };
+     use crate::ctx::Ctx;
+     use crate::xml::XmlWriter;
+Diff in \\?\D:\projects\StrictLib\strict-ooxml-write\src\props.rs:1543:
+         assert!(!text.contains("w:ins"), "{text}");
+         assert!(!text.contains("w:del"), "{text}");
+         assert!(
+-            report.losses().iter().any(|loss| loss.feature_id == "w:ins"),
++            report
++                .losses()
++                .iter()
++                .any(|loss| loss.feature_id == "w:ins"),
+             "{report:?}"
+         );
+     }

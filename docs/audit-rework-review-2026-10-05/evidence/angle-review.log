@@ -1,0 +1,20 @@
+   Compiling strict-ooxml-core v0.1.0 (D:\projects\StrictLib\strict-ooxml-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s
+     Running tests\acceptance_angle_review.rs (target\debug\deps\acceptance_angle_review-efe782a88eedb2d0.exe)
+
+running 1 test
+<a:srgbClr xmlns:a="http://purl.oclc.org/ooxml/drawingml/main" val="FF0000"><a:hue val="60%"/><a:hueOff val="60%"/></a:srgbClr>
+
+thread 'acceptance_hue_angle_keeps_integer_units' (74968) panicked at strict-ooxml-core\tests\acceptance_angle_review.rs:11:5:
+angle must retain 60000ths of a degree, not percent
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test acceptance_hue_angle_keeps_integer_units ... FAILED
+
+failures:
+
+failures:
+    acceptance_hue_angle_keeps_integer_units
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p strict-ooxml-core --test acceptance_angle_review`

@@ -1,0 +1,24 @@
+{
+  "card": "D01",
+  "status": "PASS",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "base_source_content_fingerprint": "4bf75f7681bbe128162902f44b9d6ccacd5346e85cd0375ed9ee91f4332a1798",
+  "toolchain": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+  "commands": [
+    {
+      "command": "cargo +1.92.0 fmt --all -- --check",
+      "exit": 0
+    },
+    {
+      "command": "cargo +1.92.0 clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "exit": 0
+    },
+    {
+      "command": "cargo +1.92.0 check --workspace --all-features --locked",
+      "exit": 0,
+      "note": "MSRV job is this check on Rust 1.92.0"
+    }
+  ],
+  "behavior": "fmt and the rewrite_start split do not change normalization results. hue/hueOff behavior is D04, not this card.",
+  "limits": "Gates were re-run on the tree that also contains the D02 and D04 edits. No commit."
+}

@@ -1,0 +1,8 @@
+{
+  "passed": 1433,
+  "failed": 1,
+  "ignored": 0,
+  "result_lines": 161,
+  "exit": 101,
+  "failed_target": "strict-ooxml/stage5c_corpus"
+}

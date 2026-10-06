@@ -1,0 +1,10 @@
+   Compiling strict-ooxml-core v0.1.0 (D:\projects\StrictLib\strict-ooxml-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.72s
+     Running tests\acceptance_angle_review.rs (target\debug\deps\acceptance_angle_review-efe782a88eedb2d0.exe)
+
+running 1 test
+<a:srgbClr xmlns:a="http://purl.oclc.org/ooxml/drawingml/main" val="FF0000"><a:hue val="60000"/><a:hueOff val="60000"/></a:srgbClr>
+test acceptance_hue_angle_keeps_integer_units ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

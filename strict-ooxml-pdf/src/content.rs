@@ -1549,7 +1549,11 @@ fn render_glyph(
     }
     let (x, y) = placement.apply(0.0, 0.0);
     let scale = trm.scale_factor();
-    let character = font.character(code);
+    let character = font
+        .to_unicode
+        .get(&code)
+        .cloned()
+        .or_else(|| font.character(code).map(|ch| ch.to_string()));
     // "Mapped" means the *document* said which character this code is:
     // `/ToUnicode`, a `/Differences` entry, or a **named** base encoding. A
     // character that came out of the fallback — no `/Encoding`, or
@@ -1560,10 +1564,10 @@ fn render_glyph(
     let mapped = font.to_unicode.contains_key(&code)
         || font.differences.contains_key(&(code as u8))
         || (font.encoding_stated && character.is_some());
-    let ch = character.unwrap_or('\u{fffd}');
     if character.is_none() {
         out.unmapped_glyphs += 1;
     }
+    let ch = character.unwrap_or_else(|| "\u{fffd}".to_owned());
     let (ascent, descent) = font.vertical_metrics();
     let measured = font.width(code);
     let estimated = measured.is_estimated();
@@ -1572,7 +1576,7 @@ fn render_glyph(
         out.estimated_widths += 1;
     }
     Some(Glyph {
-        text: ch.to_string(),
+        text: ch,
         x,
         y: geometry.height - y,
         width: 0.0,

@@ -12,6 +12,8 @@ pub(crate) mod paginate;
 pub(crate) mod paragraph;
 pub(crate) mod table;
 
+use std::collections::HashMap;
+
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::props::{PageMargins, SectionProperties};
 use strict_ooxml_wml::model::values::{PageOrientation, Twips};
@@ -21,6 +23,20 @@ use crate::font::FontProvider;
 use crate::style::ComputedRun;
 use crate::units::twips_to_px;
 use crate::{MediaMode, MediaSource, RenderOptions};
+
+/// Which advance geometry produced [`TextItem::width`] and must be used to paint.
+///
+/// Layout, SVG, PDF and caret must agree on one policy per fragment. Guessing
+/// from a width comparison re-opened a both/justify divergence for Carlito
+/// pair-kerned runs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextAdvanceKind {
+    /// OpenType shaping (kerning, ligatures, complex scripts).
+    #[default]
+    Shaped,
+    /// Sum of `hmtx` advances without GPOS adjustments.
+    Metric,
+}
 
 /// A painted text fragment.
 #[derive(Clone, Debug)]
@@ -37,6 +53,8 @@ pub struct TextItem {
     pub run: ComputedRun,
     /// Font size in px.
     pub size_px: f64,
+    /// Advance geometry that produced [`Self::width`].
+    pub advance: TextAdvanceKind,
     /// Computed field marker, when this item is a PAGE/NUMPAGES/SECTIONPAGES/
     /// SECTION placeholder resolved at placement time.
     ///
@@ -432,6 +450,18 @@ pub(crate) struct LayoutContext<'a> {
     /// anchor ignores the margins; a margin or text anchor adds them. A frame
     /// without `w:w` uses the content width.
     pub(crate) frame_anchor: std::cell::Cell<(f64, f64, f64)>,
+    /// Height of a static header/footer part at a given content box.
+    ///
+    /// Key is `(part, left.to_bits, content_width.to_bits)`. Parts that contain
+    /// PAGE/NUMPAGES/SECTIONPAGES/SECTION are not stored: their height can
+    /// change with the field value. A cache hit must not charge render items.
+    pub(crate) region_heights: std::cell::RefCell<HashMap<(PartId, u64, u64), f64>>,
+    /// When set, simple-script measurement uses [`TextAdvanceKind::Metric`].
+    ///
+    /// Non-last justified lines need those advances for the text-class WPS
+    /// references. Last lines are remasured to shaped so a both/justify
+    /// single-line run matches PDF shaping (D03).
+    pub(crate) metric_advances: std::cell::Cell<bool>,
     /// How far each frame signature has already been filled, in px.
     ///
     /// Paragraphs that share one `w:framePr` belong to one frame even when a
@@ -523,18 +553,37 @@ impl LayoutContext<'_> {
 
     /// Measures the advance width of `text` for a run in px.
     ///
-    /// Uses the shared OpenType shaper (F07): kerning and ligatures affect the
-    /// width. Per-character `hmtx` sums are not the acceptance path.
+    /// [`Self::metric_advances`] selects shaped versus `hmtx` sums. Callers stamp
+    /// the matching [`TextAdvanceKind`] on each [`TextItem`].
     #[must_use]
     pub(crate) fn measure(&self, text: &str, run: &ComputedRun) -> f64 {
         let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
         let family = crate::style::chosen_family(run, text);
-        let shaped = crate::font::shape_text(&shown, &family, run.bold, run.italic, self.font);
-        if shaped.status == crate::font::ShapeStatus::DegradedComplexScript {
-            self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
+        let complex = crate::font::needs_complex_script(&shown);
+        if complex || !self.metric_advances.get() {
+            let shaped = crate::font::shape_text(&shown, &family, run.bold, run.italic, self.font);
+            if shaped.status == crate::font::ShapeStatus::DegradedComplexScript {
+                self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
+            }
+            return shaped.total_advance_em * size_px;
         }
-        shaped.total_advance_em * size_px
+        shown
+            .chars()
+            .map(|ch| self.font.advance_em(&family, ch, run.bold, run.italic))
+            .sum::<f64>()
+            * size_px
+    }
+
+    /// Advance kind [`Self::measure`] currently produces for `text`.
+    #[must_use]
+    pub(crate) fn advance_kind_for(&self, text: &str, run: &ComputedRun) -> TextAdvanceKind {
+        let shown = crate::font::present_text(&run.family, text);
+        if crate::font::needs_complex_script(&shown) || !self.metric_advances.get() {
+            TextAdvanceKind::Shaped
+        } else {
+            TextAdvanceKind::Metric
+        }
     }
 }
 

@@ -1017,7 +1017,7 @@ mod tests {
         loop {
             match reader.next_event().unwrap() {
                 XmlEvent::Text(text) | XmlEvent::CData(text) => {
-                    out.extend(text.chars().map(|ch| u32::from(ch)));
+                    out.extend(text.chars().map(u32::from));
                 }
                 XmlEvent::Eof => break,
                 _ => {}
@@ -1093,8 +1093,7 @@ mod tests {
             pos += consumed;
             match event {
                 Event::Text(text) => joined.push_str(&text.xml10_content().unwrap()),
-                Event::End(_) => break,
-                Event::Eof => break,
+                Event::End(_) | Event::Eof => break,
                 _ => {}
             }
         }

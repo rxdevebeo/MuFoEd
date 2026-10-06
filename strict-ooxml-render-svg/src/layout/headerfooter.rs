@@ -368,16 +368,20 @@ fn measure_part(
     let Some(header_footer) = ctx.document.header_footer(part) else {
         return 0.0;
     };
+    let width = geometry.content_width();
+    let dynamic = blocks_have_dynamic_fields(&header_footer.blocks);
+    let key = (part.clone(), geometry.left.to_bits(), width.to_bits());
+    if !dynamic {
+        if let Some(height) = ctx.region_heights.borrow().get(&key).copied() {
+            return height;
+        }
+    }
     let charged = ctx.render_items.get();
-    let height = layout_region(
-        ctx,
-        &header_footer.blocks,
-        geometry.left,
-        geometry.content_width(),
-        Some(env),
-    )
-    .height;
+    let height = layout_region(ctx, &header_footer.blocks, geometry.left, width, Some(env)).height;
     ctx.render_items.set(charged);
+    if !dynamic {
+        ctx.region_heights.borrow_mut().insert(key, height);
+    }
     height
 }
 

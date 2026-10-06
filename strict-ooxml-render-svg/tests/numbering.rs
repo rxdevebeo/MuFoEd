@@ -39,7 +39,26 @@ fn item(ilvl: u8, text: &str) -> String {
     )
 }
 
-/// Returns `(text, x)` of every `<text>` node.
+/// Every token of an `x` list. A bad token fails the test; zero is not a stand-in.
+fn parse_coord_list(value: &str) -> Result<Vec<f64>, String> {
+    let mut numbers = Vec::new();
+    for token in value.split_whitespace() {
+        let number: f64 = token
+            .parse()
+            .map_err(|_| format!("bad x token {token} in {value}"))?;
+        if !number.is_finite() {
+            return Err(format!("non-finite x token {token}"));
+        }
+        numbers.push(number);
+    }
+    if numbers.is_empty() {
+        return Err(format!("empty x list {value}"));
+    }
+    Ok(numbers)
+}
+
+/// Returns `(text, x)` of every `<text>` node. `x` is the run origin, and every
+/// cluster coordinate in the list has to be finite.
 fn texts(svg: &str) -> Vec<(String, f64)> {
     let document = roxmltree::Document::parse(svg).expect("valid svg");
     document
@@ -47,10 +66,17 @@ fn texts(svg: &str) -> Vec<(String, f64)> {
         .filter(|node| node.is_element() && node.tag_name().name() == "text")
         .map(|node| {
             let text = node.text().unwrap_or_default().to_owned();
-            let x = node
+            let xs = node
                 .attribute("x")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0);
+                .map(parse_coord_list)
+                .transpose()
+                .expect("x list")
+                .unwrap_or_default();
+            assert!(
+                xs.iter().all(|value| value.is_finite()),
+                "non-finite x in {text:?}: {xs:?}"
+            );
+            let x = xs.first().copied().expect("x origin");
             (text, x)
         })
         .collect()

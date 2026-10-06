@@ -1,0 +1,26 @@
+{
+  "card": "D03",
+  "status": "WPS_TEXT_RESTORED",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "closed": [
+    "RTL clusters keep byte_start < byte_end; logical spans and visual glyphs are separate",
+    "font::shape::tests::rtl_clusters_keep_logical_spans_and_cover_every_scalar PASS for office, e+acute, سلام, தமிழ்",
+    "SVG x lists: every token is parsed; NaN or out-of-bounds in any token fails svg_oracle",
+    "numbering, render, svg_oracle PASS",
+    "caret_matches_renderer_and_hits_exact_unicode_boundaries PASS; caret widths use the shaper",
+    "convert tables 9/9 PASS, including Merged header and table position",
+    "PDF shows shaped source glyph ids at visual origins; ToUnicode keeps a ligature string"
+  ],
+  "wps_svg": {
+    "strict-text_corr_x": 0.857,
+    "strict-text-grid_corr_x": 0.873,
+    "min_column_correlation": 0.85,
+    "ssim_suite": "16/16 PASS",
+    "extent_pin": "strict-text bottom 1 -> 0; grid bottom stays 1"
+  },
+  "pdf_pixels": "8/8 PASS including our_pdf_matches_the_wps_references and the_pdf_gate_can_fail_on_a_page_it_passes",
+  "open": [
+    "full workspace --all-features test not re-run as one command after this justification change"
+  ],
+  "limits": "A single run-origin x did not raise the text correlation, so the miss is run ink versus the WPS raster, not the x-list parser. Thresholds were not lowered."
+}

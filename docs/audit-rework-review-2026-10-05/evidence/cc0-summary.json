@@ -1,0 +1,25 @@
+{
+  "documents": 100,
+  "hash_matches": 100,
+  "size_matches": 100,
+  "write": {
+    "0": 33,
+    "1": 67
+  },
+  "reopen": {
+    "0": 100
+  },
+  "rewrite": {
+    "0": 45,
+    "1": 55
+  },
+  "render_first_page": {
+    "0": 98,
+    "TIMEOUT": 2
+  },
+  "fixed_point": {
+    "pass": 100,
+    "fail": 0,
+    "not_run": 0
+  }
+}

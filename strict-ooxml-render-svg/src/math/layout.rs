@@ -564,6 +564,7 @@ impl Frame<'_, '_> {
             text: text.to_owned(),
             run,
             size_px: self.size_px,
+            advance: crate::layout::TextAdvanceKind::Shaped,
             field: None,
         }));
         MathBox {
@@ -1288,6 +1289,7 @@ fn delimiter_item(
             text,
             run,
             size_px: frame.size_px,
+            advance: crate::layout::TextAdvanceKind::Shaped,
             field: None,
         }));
     }

@@ -302,20 +302,28 @@ id = "TZ-24"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["*"]
+elements = ["w:charset@val"]
+parents = ["font"]
 parts = ["word/fontTable.xml"]
-summary = "fontTable regenerated from the font model; descriptor children are recomputed"
-audit = "R03: charset/pitch/panose1/sig/altName and related font children vanish because the writer emits its own fontTable, not because a part was dropped."
+summary = "font hints are preserved; Strict rewrites charset @val to @characterSet"
+audit = "D05/D09: panose1/family/pitch/sig/altName/notTrueType round-trip in the model. Hand-built Strict packages still carry @w:val; the writer emits CT_Charset @w:characterSet, and inventory records that attribute change as w:charset@val."
 
 [[item]]
 id = "TZ-25"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["*"]
+elements = [
+  "a:bevelT", "a:bodyPr", "a:camera", "a:effectRef", "a:ext", "a:extraClrSchemeLst",
+  "a:fillRef", "a:fillToRect", "a:font", "a:gradFill", "a:gs", "a:gsLst", "a:lightRig",
+  "a:lin", "a:lnDef", "a:lnRef", "a:lstStyle", "a:objectDefaults", "a:outerShdw",
+  "a:path", "a:rot", "a:scene3d", "a:sp3d", "a:spDef", "a:spPr", "a:srgbClr",
+  "a:style", "a:sysClr",
+]
 parts = ["word/theme/*"]
-summary = "theme part regenerated from the theme model"
-audit = "R03: DrawingML fill/effect/font scheme children differ after rewrite; the theme part remains present."
+requires_cited = ["a:fmtScheme", "a:objectDefaults", "a:extraClrSchemeLst", "a:theme"]
+summary = "theme scheme children replaced by the recorded placeholder"
+audit = "D05: parse/theme.rs records a:fmtScheme as partial and record_foreign on objectDefaults/extraClrSchemeLst. The child list is the measured scheme vocabulary, and the item matches only when this input's report cites one of those feature ids. An unlisted theme element stays unclassified."
 
 [[item]]
 id = "TZ-26"
@@ -424,30 +432,30 @@ id = "TZ-35"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["*"]
+elements = []
 parts = ["word/settings.xml"]
-summary = "settings part regenerated from the settings model"
-audit = "R03: settings.xml is rewritten (compat, view, zoom, evenAndOddHeaders, …). Part-scoped disposition; not a blanket inventory waiver."
+summary = "settings catch-all removed; each vanished child needs its own qualified disposition"
+audit = "D05: elements=['*'] accepted every settings change, including ones the report did not name. The empty list matches nothing."
 
 [[item]]
 id = "TZ-36"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["*"]
+elements = []
 parts = ["word/styles.xml"]
-summary = "styles part regenerated from the style model"
-audit = "R03: styles.xml including tblStylePr/docDefaults is rebuilt. Narrower rename items still match first when listed above."
+summary = "styles catch-all removed"
+audit = "D05: a whole-part '*' is not a disposition. Style children that the writer rebuilds are listed on the narrower items above."
 
 [[item]]
 id = "TZ-37"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["*"]
+elements = []
 parts = ["word/numbering.xml"]
-summary = "numbering part regenerated from the numbering model"
-audit = "R03: complements TZ-27; remaining numbering children are rewrite artifacts."
+summary = "numbering catch-all removed"
+audit = "D05: complements TZ-27 only for the service ids that item names. Other numbering children stay unclassified until a qualified disposition exists."
 
 [[item]]
 id = "TZ-38"
@@ -476,10 +484,10 @@ id = "TZ-39"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["*"]
+elements = []
 parts = ["word/header*.xml", "word/footer*.xml", "word/comments*.xml", "word/footnotes.xml", "word/endnotes.xml"]
-summary = "header/footer/notes/comments story parts regenerated from the model"
-audit = "R03: same rewrite disposition as the main document story for satellite parts; separator marks remain under TZ-28 when matched first."
+summary = "satellite-part catch-all removed"
+audit = "D05: regenerating a header is not permission to drop an arbitrary child. Separator marks stay on TZ-28."
 
 [[item]]
 id = "TZ-40"
@@ -508,9 +516,48 @@ id = "TZ-42"
 origin = "waived"
 signal = "element"
 disposition = "declared_transform"
-elements = ["a:*", "wp:*", "c:*", "m:*"]
-summary = "DrawingML / WordprocessingDrawing / chart / math qualified children rewritten from the model"
-audit = "R03: prefix:* match (not a whole-inventory waiver). Covers lockedCanvas text styles, blipFill, wrap/position, OMML, and chart ext chrome that the writer regenerates."
+elements = []
+summary = "namespace catch-all removed"
+audit = "D05: a:* / wp:* / c:* / m:* matched a:blipFill and any other qualified name. DrawingML children that are actually rewritten are listed on TZ-31 and TZ-25."
+
+[[item]]
+id = "TZ-44"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "w:r@rsidR", "w:r@rsidRPr", "w:r@rsidDel", "w:r@rsidP", "w:r@rsidRDefault",
+  "w:p@rsidRPr", "w:tr@rsidTr", "w:tr@rsidR", "w:tr@rsidRPr", "w:lvl@tplc",
+  "w:sectPr@rsidR", "w:sectPr@rsidRPr",
+]
+summary = "revision attributes the model does not write back"
+audit = "D05: parse/document.rs records w:r@rsid* and w:p@rsidRPr. The item matches only when this input's report contains that feature id."
+
+[[item]]
+id = "TZ-45"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "w:p@paraId", "w:p@textId", "w:tr@paraId", "w:tr@textId",
+  "wp:inline@anchorId", "wp:inline@editId", "wp:anchor@anchorId", "wp:anchor@editId",
+]
+summary = "ignorable extension attributes named by T5 on this input"
+audit = "D05: T5.extension-attribute records ext:paraId, ext:textId, ext:anchorId and ext:editId. The item matches only those labels, and only when this input's report contains the local name. Any other extension attribute stays unclassified."
+
+[[item]]
+id = "TZ-46"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "pic:cNvPr@id",
+  "a:theme@name", "a:clrScheme@name", "a:fontScheme@name",
+  "w:num@durableId",
+  "w:document@Ignorable", "w:styles@Ignorable",
+]
+summary = "replacements the write report names for this input"
+audit = "D05: pic:cNvPr/@id is written as 0, theme scheme names are rewritten to strict-ooxml, numbering durableId is recorded on read, and mc:Ignorable is already in the normalize report. Each label matches only when that feature id is in this input's report."
 
 [[item]]
 id = "TZ-43"

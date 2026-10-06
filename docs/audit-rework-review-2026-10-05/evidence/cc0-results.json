@@ -1,0 +1,2405 @@
+{
+  "manifest_sha256": "68b0aead98882ac1d85bdaf24eda015a6eae06b01fd1f582b2f1321e86ed5745",
+  "rows": [
+    {
+      "filename": "001_wajiz.docx",
+      "input_sha256": "5a33e8041a0e706acc4ca6a476d71030f20210464e1b5f3d163378b50be761b3",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 1.169
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.156
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.247
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 14.501
+      }
+    },
+    {
+      "filename": "002_Bloggen_Forest_Man_del_3.docx",
+      "input_sha256": "5cfa409cdc7588e1efc8078e01ad3119728b8fc3c68aa1f3bbb6b97b826e2921",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 2.91
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.635
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.96
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 36.987
+      }
+    },
+    {
+      "filename": "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+      "input_sha256": "222d8f388f02aae34b3a2548689c32f4468a64a9210c070ddd947bc855791867",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.73
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.058
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.594
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 11.587
+      }
+    },
+    {
+      "filename": "004_Elementary_English_Worksheets.docx",
+      "input_sha256": "68cd0957d8f47b9e4b41e04145715b248547744488a20224362187304eeda150",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.044
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.015
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.022
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.025
+      }
+    },
+    {
+      "filename": "005_De_Thi_Van_Dgnl.docx",
+      "input_sha256": "770777cdda4caf0ac8a4a863928b5a5aee3156e8f41e8b32dcabd63c99b9270f",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.085
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.023
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.033
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 2.306
+      }
+    },
+    {
+      "filename": "006_Forest_Man_bloggen_del_4.docx",
+      "input_sha256": "a0a36a92a146a44a52144ea4a92f721625d3d2086a5a3f1435d2657d9f3efa4f",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 3.65
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.862
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 1.21
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 61.357
+      }
+    },
+    {
+      "filename": "007_Sinteze_Corint.docx",
+      "input_sha256": "0136c20b2160fdeaff8f31a4e5f47a1d5f9e22adb170ad5679c55e12973f4feb",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 1.423
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.136
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.86
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 10.913
+      }
+    },
+    {
+      "filename": "008_seyyid_ahmed_husameddin_hayati_ve_eserleri.docx",
+      "input_sha256": "890cb6adda7b98ce06a00d5cd5987b3a78760388db160fd9f601ead52d1cf7a4",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.304
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.056
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.112
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 14.42
+      }
+    },
+    {
+      "filename": "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+      "input_sha256": "68a0a6470178ab6158d22ecddf9f1c26ff0bc0809c550d8d9bb62c1a9ccfd964",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.421
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.058
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.213
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 7.362
+      }
+    },
+    {
+      "filename": "010_SAC_AGIZhi_Neng_Yi_Shi_Ti_She_Ji_Yu_Bian_Ma_Ji_Luo.docx",
+      "input_sha256": "6872af5a2b930cc97a386829961087fc859249194dc316fceef130793101d243",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.322
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.049
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.072
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.056
+      }
+    },
+    {
+      "filename": "011_letters_of_peraringar_anna_6.docx",
+      "input_sha256": "928b5de253055b5551cb0434a240b294f92b8e62f01c1c7fda6c4eb6e3188784",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.482
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.09
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.353
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 3.599
+      }
+    },
+    {
+      "filename": "012_Diagnostic_Test_AP.docx",
+      "input_sha256": "808db2c759fde5a5a01527f751f7a722d54fa308819268dbf10995566ca87a52",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.127
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.108
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.04
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.859
+      }
+    },
+    {
+      "filename": "013_woord.docx",
+      "input_sha256": "37724ef92d6190cde15d6a9bccbed82dd6725b6eb657c69d20fb6653cdf5f5bc",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.068
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.228
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.031
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.382
+      }
+    },
+    {
+      "filename": "014_BG_Slokas_With_Transliteration_1_18.docx",
+      "input_sha256": "c0c7e8cbf38d26ccfea6c8103f6877955203be1238d6569cbba44206502ceebf",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 1.101
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.208
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.336
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 15.531
+      }
+    },
+    {
+      "filename": "015_Garizumarako_abesti_eta_antifonak.docx",
+      "input_sha256": "2165f99ab65794b75a1455a59e9637ef2298ab908edfd175b47c17bf97d0a050",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.117
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.097
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.079
+      }
+    },
+    {
+      "filename": "016_Lutja_Kur_Mediton_Njeriu_Per_Allahun_Dhe_Krijimin.docx",
+      "input_sha256": "1907a22de767513a564aba4d4874216930a71e9325b936337715677b0b3de82a",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.02
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.01
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.015
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.096
+      }
+    },
+    {
+      "filename": "017_Catalogue_Of_Books_At_J_C_Collage_Library_Mysore.docx",
+      "input_sha256": "1b1e4104dfb5d617f4a6d938a94a1f9258c3dc4fc5f4b887636000cdd89464fc",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 2.676
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.491
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.743
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": "TIMEOUT",
+        "seconds": 90.024
+      }
+    },
+    {
+      "filename": "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+      "input_sha256": "d0bbb44d604b2c18b744cfa9085da3d2a2a2428ad81cfea19d1de0e11c884583",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 1.183
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.175
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.372
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 9.519
+      }
+    },
+    {
+      "filename": "019_Siirt_te_yabanci_Iliskleri.docx",
+      "input_sha256": "85fdd90c275223627dbb90c3df51831f4b7abe4b61b7608cdf36e37882ce54ab",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.069
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.017
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.025
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.103
+      }
+    },
+    {
+      "filename": "020_Nghien_cuu_cac_roi_loan_giao_tiep_cua_tre_tu_ki_ng.docx",
+      "input_sha256": "8056f677b0e5feb8e863192456068d0272ba3e258880d695721eedcb11e24122",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.627
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.102
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.161
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.272
+      }
+    },
+    {
+      "filename": "021_Ljudi_Vole_SliAne_Sebi_RAPORT.docx",
+      "input_sha256": "98e536d94081b2703c87e4a74f750483ba3c92d51cd35dfeee42fcb48703fd8e",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.078
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.021
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.041
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 4.843
+      }
+    },
+    {
+      "filename": "022_S_301.docx",
+      "input_sha256": "5e8bd58b2800a03b4e20fb51f93cf363a58c866d7abdc938415633fbaa6c6f9e",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.111
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.026
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.046
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.44
+      }
+    },
+    {
+      "filename": "023_VCA_BASIS_4.docx",
+      "input_sha256": "73c0015330e186864a3d5130f42a0bcf62c27048ee349944bccc036b03504e94",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.403
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.062
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.145
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 4.883
+      }
+    },
+    {
+      "filename": "024_Koumudi_Kiranalu_Kiran_prabha_kaumudi_kirnnaalu.docx",
+      "input_sha256": "e4b6a94094e0cff6cb7afac1e393fb4b7c037d9bd342ecceb3e6ac6f8f38ac39",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 1.252
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.202
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.391
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 34.651
+      }
+    },
+    {
+      "filename": "025_iyothee_dass_thoughts_religion.docx",
+      "input_sha256": "3f161899700c911fdaa653fde9aca33c9891157035c7bc16320a256bea4de3dc",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.468
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.087
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.309
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 5.659
+      }
+    },
+    {
+      "filename": "026_hafizi_sirazi_divani_ve_tezler.docx",
+      "input_sha256": "4f034d65f636849adc71321536d577b978fad4ffd9f8ae916aa32379e003f431",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 6.102
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.821
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 1.296
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 72.989
+      }
+    },
+    {
+      "filename": "027_Cokovic_Rusmir_Vjerovanje_imama_ebu_hanife_u_pogle.docx",
+      "input_sha256": "21a8a1a86f88a279a026c588dc2cdc937d1ade83cc17834d487f1dc6cfad864d",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.063
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.017
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.033
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.097
+      }
+    },
+    {
+      "filename": "028_nbhvv.docx",
+      "input_sha256": "58ae8f81c5a410b1cea6652cbe16c26be63f542a8153a768e6f2a7ade49b351d",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.034
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.015
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.017
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.135
+      }
+    },
+    {
+      "filename": "029_For_Naturens_Skull_bloggen.docx",
+      "input_sha256": "079825c953573470a6bc0c29c50fcc220fb898f2fdeb4b4fc708f39f017efa41",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 1.441
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.534
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.507
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 67.865
+      }
+    },
+    {
+      "filename": "030_Kaafarun_Kithamme_Nuruhunas.docx",
+      "input_sha256": "7915f8df1566d599cf90f76e2467d738b5a00c4730a45233bc094cebb8d386f6",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.071
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.021
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.031
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.731
+      }
+    },
+    {
+      "filename": "031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+      "input_sha256": "7297fa8bf6c75462d3108226b18f5b25562414e3e96c800dc4b48633597b0f77",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.18
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.02
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.138
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.778
+      }
+    },
+    {
+      "filename": "032_lqT_lfwy_d_fy_wrq_t_lq_l_lHy_T_j_1.docx",
+      "input_sha256": "ae3ebdab9c820a7e9dd3628e3d7b45a4de009b223a9b11e579a5030fc4ca328b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.788
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.145
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.237
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 7.269
+      }
+    },
+    {
+      "filename": "033_Nghiep_cam_but_chi.docx",
+      "input_sha256": "dc6d69c66dbd513af3ff531a1a18176b87fa5e7e8f758e4960a087c11f9f602d",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.515
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.047
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.353
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 11.141
+      }
+    },
+    {
+      "filename": "034_CCOO_Cat_Comunicat_PRESTACIO_DESOCUPACIO_19_03_202.docx",
+      "input_sha256": "f7fdbe4513e78cd1b6a88980f54d15fba47c3676ced536280e0e099bb136027a",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.026
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.012
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.279
+      }
+    },
+    {
+      "filename": "035_Scarlat_Demetrescu_Din_Tainele_Vieii_Si_Ale_Univer.docx",
+      "input_sha256": "3ce7e77255123062caf9583b42ac747fdba456d2b5aed5d8371ae962ff779084",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.694
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.124
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.332
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": "TIMEOUT",
+        "seconds": 90.022
+      }
+    },
+    {
+      "filename": "036_SM_401_USER_MANUAL.docx",
+      "input_sha256": "b4ef9a8f9a28c6c0b6d6b9e1c23aac62ce205276c1fd11361df60bfc02bc6a07",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.048
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.014
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.025
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.332
+      }
+    },
+    {
+      "filename": "037_TIPE_SISIK_IKAN.docx",
+      "input_sha256": "086dffefd0d0b2ead153a081f6e120b34e30d996b32bb0d1c538bc92b85a9ff4",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.077
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.02
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.035
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.345
+      }
+    },
+    {
+      "filename": "038_4_Stotras.docx",
+      "input_sha256": "8b8d1496601101404171ce63bce1c3aea3d2eef651abd31f7bd3961118e98b4b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.139
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.03
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.068
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 5.62
+      }
+    },
+    {
+      "filename": "039_DIVAN_I_SAMI_Abdurrahman_Sami_Niyazi_Saruhani_kadd.docx",
+      "input_sha256": "d8df8d734d5dfe1fc20893358e4370b54dcabad3c8b740975fb65cc93eeeb2fb",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.896
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.147
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.274
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 22.733
+      }
+    },
+    {
+      "filename": "040_aNbriissaakhyaanN_AMBARISHAKHYANAM.docx",
+      "input_sha256": "879a65fffe01da1f13886aa9065e77a63e1c56210705d15f69fba587194fd4d5",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.488
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.085
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.118
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 4.114
+      }
+    },
+    {
+      "filename": "041_l_lm_l_qyd.docx",
+      "input_sha256": "ab5cae9553a5b753931d309284b3f0bcfe38fdac8845d5ec32763a50359b679e",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.062
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.019
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.026
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.173
+      }
+    },
+    {
+      "filename": "042_1_DS_Starting.docx",
+      "input_sha256": "073f3371a1c6eceae1fbad26623f364d861c40fb12e4fefc7b7ab6cb2765f5ad",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.07
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.015
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.075
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.145
+      }
+    },
+    {
+      "filename": "043_old_openyogaclass_com_av_yoga_Anandalahari_Kurs_yo.docx",
+      "input_sha256": "f40943d5220882f826d7914334445cf38e511ee828f287c3cac71fad1fb074d3",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.187
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.03
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.135
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 2.301
+      }
+    },
+    {
+      "filename": "044_Yekuana_Prayers.docx",
+      "input_sha256": "0ad5f4ecaac5d7573773334453675253260547d0ecfded76404117c7ef977453",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.023
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.014
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.051
+      }
+    },
+    {
+      "filename": "045_Ekoteologins_historia.docx",
+      "input_sha256": "feb0d68d0dad66dbf55d8cf9c5d92d7ba6a4918374fe3be7e04af120662379af",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.653
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.123
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.128
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 14.827
+      }
+    },
+    {
+      "filename": "046_praise_and_guide_bn_doc.docx",
+      "input_sha256": "7640f2ecf97f78ad23d001e61705745f66c7776963423ba71b14c8a33930c79b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.165
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.153
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.154
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.532
+      }
+    },
+    {
+      "filename": "047_uz25a.docx",
+      "input_sha256": "0c8e3456cd9662731633205197f4dba3513cada1e3b1e8c5fe87a3521b82ff75",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.071
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.051
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.119
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.454
+      }
+    },
+    {
+      "filename": "048_HTyn_mwln_khbyb_syd_shhyd_khy_qfly_kh_ykh_rhy_z_mw.docx",
+      "input_sha256": "1dea41a98b2e84c3256c039e6a9f5b89ff8b883bfa7216b56c81475c28135b41",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.44
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.025
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.351
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.627
+      }
+    },
+    {
+      "filename": "049_FInal_DISERTATIE.docx",
+      "input_sha256": "7bbd11e97c06a1bdf4a0a0c62630767ea4abe208f327b22fefddbf187099593a",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.144
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.027
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.07
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 5.564
+      }
+    },
+    {
+      "filename": "050_letters_of_peraringar_anna.docx",
+      "input_sha256": "1a148cb5480eb4b3bfb030b453aeb3d1d8912d67cc8217b29bf70ef54f7c976d",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.478
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.085
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.292
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 5.783
+      }
+    },
+    {
+      "filename": "051_E_Glossa_Tes_Astheneias_27_Pules_Pros_Ton_Eauto.docx",
+      "input_sha256": "f57cedac9b4df4201bfbb10e0fb2ef684b70000b17d007380e606c04ba0cfd15",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.788
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.157
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.211
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 4.947
+      }
+    },
+    {
+      "filename": "052_Laporan_Hasil_Praktikum_Kecambah.docx",
+      "input_sha256": "7cdd7196d77c8a1db063705a8db5792c115e3669248220270a5967ebe7585d9b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.201
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.026
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.14
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.784
+      }
+    },
+    {
+      "filename": "053_Cokovic_Rusmir_Post_16.docx",
+      "input_sha256": "59de187f129ba08f6e297fa35a66bb9338beebcaad1a4b09f1384d01938ac962",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.052
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.035
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.439
+      }
+    },
+    {
+      "filename": "054_Zydzi_W_Woj_Wielkopolskim_1.docx",
+      "input_sha256": "22e2aca345ef39a738395d767fbc097e287003f699feefbe8341dd1e622ca54b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.032
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.017
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.022
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.099
+      }
+    },
+    {
+      "filename": "055_Matematiques_2n_Batxillerat_Col_leccio_completa.docx",
+      "input_sha256": "3d31b3ed4ed07c9218d7ae2c273f476715099e8203128d8efc84e3e5f8d4e449",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.301
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.055
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.085
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 2.781
+      }
+    },
+    {
+      "filename": "056_Ask_Semiha_Cemal.docx",
+      "input_sha256": "a1d87dcf5229e39cec336fb10c308d2e3ef145bab425e9ea7b008918ad9892a8",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.937
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.134
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.268
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 32.038
+      }
+    },
+    {
+      "filename": "057_Wen_Xue_Ge_Ming_Xi_Lie_Quan_Ji_Version_3_1_Di_Zao.docx",
+      "input_sha256": "5b4a59eab4014fe953612fbe94b2ddd441326569dc6343d9ae3b5137db550e3c",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.185
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.023
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.162
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 7.668
+      }
+    },
+    {
+      "filename": "058_Apostila_Completa_C_E_Estruturas_De_Dados.docx",
+      "input_sha256": "9b193e7f85f6e95d3c6e2ef92328e2e9cfd1924560ff727024a226a30c519dcc",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.191
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.028
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.047
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 3.575
+      }
+    },
+    {
+      "filename": "059_ISE217_PowerShell_Programming_Syllabus.docx",
+      "input_sha256": "debe6494d69d7c156ba0bb07e920eeeee4d5035a242fd6249902d59b41b8b0c2",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.159
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.027
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.115
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.967
+      }
+    },
+    {
+      "filename": "060_Ekoteologins_historia_2nd_Ed.docx",
+      "input_sha256": "9b451ccb8d4c79c8fd39888726c58263bca333dc60f98ee5af2babb8b9d1db81",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.422
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.141
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.123
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 17.035
+      }
+    },
+    {
+      "filename": "061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx",
+      "input_sha256": "c5287bfec03334dae54e12c8e52a055db3b87669a2f0422a2e13b4b85053e96b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.266
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.036
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.059
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 3.248
+      }
+    },
+    {
+      "filename": "062_ISE102_Implementing_And_Troubleshooting_Operating.docx",
+      "input_sha256": "e0b3ced99858b366a50e238bcbb8bc15f5c4ee8eddaa1ca47c81814b39a080e9",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.172
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.029
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.044
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.606
+      }
+    },
+    {
+      "filename": "063_ISE101_Implementing_And_Troubleshooting_Operating.docx",
+      "input_sha256": "18ef07ca5019dc3bb79f883b35dc424a573e4e74cc59ece3a427d8b65a26c9fc",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.168
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.025
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.04
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.488
+      }
+    },
+    {
+      "filename": "064_40_Islamic_Books.docx",
+      "input_sha256": "26acb9dcce6543760106048cf071e7b4ab704f667f5aec31ea11f9fa897442f2",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.592
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.101
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.173
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 3.547
+      }
+    },
+    {
+      "filename": "065_ldny.docx",
+      "input_sha256": "ce2993da0a5b2b7b3bad4e62fb546bc19fcba25f2ea621188458e80b98a5840f",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.714
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.126
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.207
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 36.501
+      }
+    },
+    {
+      "filename": "066_Gajendra_Mokshana_24_02_2021.docx",
+      "input_sha256": "aa99410b4cef82298c431c336e6800c679da2ece2d9a53a3614fa8a466a4a5b0",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.758
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.119
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.24
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 18.491
+      }
+    },
+    {
+      "filename": "067_N_3_ACT_4_Ha_Tuan_Kiet.docx",
+      "input_sha256": "5f86192269f27af6ed3fb3c2740e0a16eabc26578c1bf691f05565d7dd592dee",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.175
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.035
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.074
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 7.24
+      }
+    },
+    {
+      "filename": "068_Madhurya_Kadambini_Roman_Sanskrit.docx",
+      "input_sha256": "7631da9ac0dd358a9092f491f29fc29b8e137a85d12617a7609b2f3f25b53f07",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.343
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.018
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.303
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 3.111
+      }
+    },
+    {
+      "filename": "069_Puasa_01_Pengantar_Mauizhah.docx",
+      "input_sha256": "a37aeb6fb03ad76b3d69f422b0b23454030a5ba212bf8f5f5009d6f4f9b865ea",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.108
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.031
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.038
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 3.016
+      }
+    },
+    {
+      "filename": "070_Innovations_and_New_Technologies.docx",
+      "input_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 2.075
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 7.725
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.683
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 73.651
+      }
+    },
+    {
+      "filename": "071_Repubblicanesimo_Geopolitico_Anticipating_Future_T.docx",
+      "input_sha256": "07ab0ab4b6fe85844cdbc173379ff28fc2312e191510a5ddd559c32740696652",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.41
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.167
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.146
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 12.818
+      }
+    },
+    {
+      "filename": "072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx",
+      "input_sha256": "0a87021279265df19eeafadbb4ab1fa67a1c1acd4eadb5ecf2b1e80e0db0cb44",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.362
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.069
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.11
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 6.81
+      }
+    },
+    {
+      "filename": "073_Global_uppvarming_och_mansklighetens_undergang.docx",
+      "input_sha256": "1cdef5812af876f8cb8fd968d3d8ef25280a289541afc665d90d756a560f4387",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.465
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.145
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.138
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 23.409
+      }
+    },
+    {
+      "filename": "074_hmy_T_m_lT_m_fy_lslm.docx",
+      "input_sha256": "0f39c23d076b06757e1edc1c4aa04d9bc5c7008bde1316bd687299b8b18f0c56",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.035
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.014
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.018
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.092
+      }
+    },
+    {
+      "filename": "075_Hindi_Rashtra_Bhasha.docx",
+      "input_sha256": "8995db62b1c3858a4835903c5334df66606ce5c2beebee4ed1a9a16e841c419c",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.086
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.023
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.031
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.461
+      }
+    },
+    {
+      "filename": "076_Selefus_Salih.docx",
+      "input_sha256": "638fff73cb6f477b2d19ed254bb2e7ac3d2d40728736e40fc45612c0b45f5dad",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.026
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.013
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.243
+      }
+    },
+    {
+      "filename": "077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+      "input_sha256": "0a9964e7cdf2e23bd8f40729f1a2f06daaa8e0c98c8b365c15107e495b1d0327",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.429
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.244
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.252
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 12.529
+      }
+    },
+    {
+      "filename": "078_For_mentalpatienters_manskliga_rattigheter.docx",
+      "input_sha256": "64cb2c6b0e6760237ef1d46c70967f1665297438c93c528d17de701367fec418",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.098
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.027
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.041
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 5.094
+      }
+    },
+    {
+      "filename": "079_MALAS_PRACTICAS_REGISTRALES.docx",
+      "input_sha256": "94a3df321b882a6a89619c8275e08936b4974d9c052da5f576939972693dd04c",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.142
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.02
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.028
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.482
+      }
+    },
+    {
+      "filename": "080_makkal_sattam_1.docx",
+      "input_sha256": "9d143ddd9328754985effb258c221760935dbf2626d0bace3300fe0234f9892c",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.205
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.035
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.15
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.215
+      }
+    },
+    {
+      "filename": "081_Lab_De_Uniones.docx",
+      "input_sha256": "dae53123559b0f676b6f6f7533b31770aac192e571ac2a916340cb7c85dc8e35",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.492
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.132
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.272
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.44
+      }
+    },
+    {
+      "filename": "082_Empaquetado_De_Instrumental.docx",
+      "input_sha256": "70ef8d2c21dfeb02769edcf35dd9f59543f9976589ce2685b44de92adb9d1b64",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.058
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.017
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.026
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.498
+      }
+    },
+    {
+      "filename": "083_MafiaCon_Tutorial_Russian_language.docx",
+      "input_sha256": "4f6cc61f744d62c4364430b9bb88387937c816644a7d00476edd1f44f82f18b2",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.21
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.112
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.29
+      }
+    },
+    {
+      "filename": "084_Iblisee_Mazhab_Deobandi_wahabi_mazhab_urdu_islami.docx",
+      "input_sha256": "12f5df1faed358f596f3ebe127021a97f666406e88dd95d54e688f14babab5fd",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.084
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.022
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.037
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 7.347
+      }
+    },
+    {
+      "filename": "085_Fu_Ben_2Yue_2Ri_Xiu_Gai_Zhong_Yang_She_Luvme_HairG.docx",
+      "input_sha256": "f0675805993972c81457c6f1c110fa315696b4bef34a6cf534b0f569b1e85acc",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.085
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.025
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.064
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.154
+      }
+    },
+    {
+      "filename": "086_Oberon_La_citta_proibita.docx",
+      "input_sha256": "273565d1c55f08d595ef8e111a9cf94c4cc65e9a469b4f54517f779d7f7fce12",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.846
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.074
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.23
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 8.169
+      }
+    },
+    {
+      "filename": "087_zakkum_gercegi_ziya_ozel.docx",
+      "input_sha256": "71a4cd792f7373cd185513079a96734cf60d4b1481d15069eccea30347c0fd6b",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.286
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.053
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.097
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 9.593
+      }
+    },
+    {
+      "filename": "088_Bloggen_Mot_en_ny_romantik.docx",
+      "input_sha256": "26cb9d9e485944f910cd75fbb7b8abbee94921e60a6a765b393205a5ede5d41c",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.109
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.028
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.04
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 2.829
+      }
+    },
+    {
+      "filename": "089_Greer_Steven_M_Adevarul_ascuns_informatii_interzis.docx",
+      "input_sha256": "d0fb91f744e716ee284d45f62cccc35bbf91ecdb974b72ac39f854e3947a2419",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.631
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.112
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.192
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 56.1
+      }
+    },
+    {
+      "filename": "090_Gritos_Chutes_E_Pontapes.docx",
+      "input_sha256": "353eed9a972753b42ce9123db33c0e2f58b083dc19d4b978948105f46f79bde9",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.059
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.018
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.106
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 2.098
+      }
+    },
+    {
+      "filename": "091_MTD_A1_Ma_Thoi_Den_Thanh_Co_Tinh_Tuyet.docx",
+      "input_sha256": "7bd7ce5416b474c7f2e2b13486b65ee94d9d5c6e0a2699fb23e7f382db9c541a",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.285
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.071
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.138
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 15.154
+      }
+    },
+    {
+      "filename": "092_Vamana_Vijayam.docx",
+      "input_sha256": "b96617118db3fc2514073e3a75003ffaaaab2a273a9663485cbcf3fe1a978e2d",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.881
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.147
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.251
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 9.333
+      }
+    },
+    {
+      "filename": "093_lmbdr_lyjby_mn_khll_syr_by_TlH_l_nSry_rDy_llh_nh.docx",
+      "input_sha256": "b07014a2f0d73bac31384ff7a47e1b34f6ae98ff802aa228c7f7824fcfcc56d9",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.031
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.012
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.018
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.521
+      }
+    },
+    {
+      "filename": "094_Exp_doc.docx",
+      "input_sha256": "756e602216f54330b2c097fb2e0c65f350f630dad0f7f31d308ca2cdb35a0d28",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.045
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.022
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.107
+      }
+    },
+    {
+      "filename": "095_Door_Prize_Kajian_Islam.docx",
+      "input_sha256": "f4a1435f1acfb4946f045d7eca53421f22e243e9c50d65bea05909ced78d8cae",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.021
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.01
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.013
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.087
+      }
+    },
+    {
+      "filename": "096_old_openyogaclass_com_av_yoga_108_aforizmov_Kurs_y.docx",
+      "input_sha256": "21fcdc71ce4a40cca83d6b0df1dd996bcad80d6017eb4bb30282b93aede83ba9",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.066
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.018
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.036
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 6.586
+      }
+    },
+    {
+      "filename": "097_2_DS_Ancient_Text.docx",
+      "input_sha256": "37334f8c64da0ab253ba7730f0544c29cf1898aa6248db58c38aa8ba356dc822",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.057
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.015
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.104
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 7.327
+      }
+    },
+    {
+      "filename": "098_nenjai_allum_thanjai.docx",
+      "input_sha256": "c9a0f097936d2a9a89764e57fafb97fa931cb7e20de7cc4c55ce0531fa8736ae",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 0,
+        "seconds": 0.177
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.019
+      },
+      "rewrite": {
+        "exit": 0,
+        "seconds": 0.089
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.544
+      }
+    },
+    {
+      "filename": "099_A_HistA3ria_Ambiental_e_a_EducaASSAPSo_Ambiental_c.docx",
+      "input_sha256": "d6d811353cc89780a92253f5b38604e97ffa20b90eb36e260ce91b332aac63d1",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.054
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.016
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.024
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 1.354
+      }
+    },
+    {
+      "filename": "100_SEC_MELI_TARI_H_11_SINIF_2_DO_NEM_1_YAZILI_CEVAP_A.docx",
+      "input_sha256": "3d962073de6682091e245d359224dde392791bf64cc54bd82767fbe8d88209d0",
+      "manifest_hash_match": true,
+      "size_match": true,
+      "write": {
+        "exit": 1,
+        "seconds": 0.046
+      },
+      "reopen": {
+        "exit": 0,
+        "seconds": 0.017
+      },
+      "rewrite": {
+        "exit": 1,
+        "seconds": 0.019
+      },
+      "fixed_point": true,
+      "changed_parts": [],
+      "render_first_page": {
+        "exit": 0,
+        "seconds": 0.297
+      }
+    }
+  ]
+}

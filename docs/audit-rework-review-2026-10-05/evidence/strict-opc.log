@@ -1,0 +1,11 @@
+opc-gate 1.0.0
+source:  ECMA-376-2 5th edition, OpenPackagingConventions-XMLSchema
+         sha256 1d489dc491168ea1f9e9a59063acc8dd5f02b4ad1d21aa7ec19ba9a58d020c70
+oracle:  lxml (6, 0, 1, 0), libxml2 (2, 11, 9), python 3.13.5
+schemas: C:\Users\gamer\AppData\Local\cache\strict-ooxml\opc-gate\working
+packages: 26
+violations: 0
+  OP-01 closed     0  .rels validates against opc-relationships.xsd
+  OP-02 closed     0  [Content_Types].xml validates against opc-contentTypes.xsd
+  OP-03 closed     0  core-properties parts validate against opc-coreProperties.xsd
+PASS

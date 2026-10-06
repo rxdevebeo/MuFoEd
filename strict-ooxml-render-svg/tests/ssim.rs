@@ -81,7 +81,9 @@ fn stage5c_limits() -> StructuralLimits {
 /// the current measurement — lowering one is the way to claim progress, and it
 /// is the number the Stage-5C rework has to move down.
 const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
-    ("strict-text", 0, 0.0, 1.0),
+    // Bottom drift 1 -> 0 after justified lines use metric-compatible advances,
+    // the same advances this text class was pinned against.
+    ("strict-text", 0, 0.0, 0.0),
     ("strict-text-grid", 0, 0.0, 1.0),
     ("strict-stage5", 0, 0.0, -1.0),
     ("strict-stage5", 1, 1.0, 0.0),

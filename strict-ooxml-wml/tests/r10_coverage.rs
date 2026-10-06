@@ -21,7 +21,13 @@ fn revision_kind_covers_every_local_name_and_view_flag() {
     for (local, kind, feature, deletion, insertion) in [
         ("ins", RevisionKind::Insert, "w:ins", false, true),
         ("del", RevisionKind::Delete, "w:del", true, false),
-        ("moveFrom", RevisionKind::MoveFrom, "w:moveFrom", true, false),
+        (
+            "moveFrom",
+            RevisionKind::MoveFrom,
+            "w:moveFrom",
+            true,
+            false,
+        ),
         ("moveTo", RevisionKind::MoveTo, "w:moveTo", false, true),
     ] {
         assert_eq!(RevisionKind::from_local(local), Some(kind));
@@ -126,6 +132,22 @@ fn font_table_parses_embeds_lost_faces_and_hints() {
         document.support.get("w:font").map(|e| e.status),
         Some(SupportStatus::Partial)
     ));
+    assert_eq!(
+        entry.hints.panose1.as_deref(),
+        Some("020B0604030504040204"),
+        "panose1 must round-trip in the model"
+    );
+    assert_eq!(entry.hints.charset.as_deref(), Some("00"));
+    assert!(
+        document.support.get("w:panose1").is_none(),
+        "preserved hints must not be Unsupported: {:?}",
+        document.support.get("w:panose1")
+    );
+    assert!(
+        document.support.get("w:charset").is_none(),
+        "preserved hints must not be Unsupported: {:?}",
+        document.support.get("w:charset")
+    );
 }
 
 #[test]
@@ -145,10 +167,7 @@ fn move_revision_containers_stamp_runs() {
         panic!("paragraph");
     };
     assert_eq!(paragraph.inlines.len(), 2);
-    for (idx, kind) in [
-        (0, RevisionKind::MoveFrom),
-        (1, RevisionKind::MoveTo),
-    ] {
+    for (idx, kind) in [(0, RevisionKind::MoveFrom), (1, RevisionKind::MoveTo)] {
         let strict_ooxml_wml::model::inline::Inline::Run(run) = &paragraph.inlines[idx] else {
             panic!("run");
         };

@@ -458,10 +458,12 @@ fn document_properties(
     fallback_name: &str,
     _location: &strict_ooxml_core::error::SourceLocation,
 ) {
-    // `wp:docPr/@id` must be unique within the part and Word refuses a file that
-    // repeats one, so a fresh id is allocated rather than reusing the parsed
-    // value. The id carries no meaning beyond that uniqueness.
-    let id = ctx.next_doc_pr_id();
+    // `wp:docPr/@id` must be unique within the part. The parsed id is kept
+    // when it is still free; only a missing or repeated id is freshly allocated.
+    let id = match doc_pr.as_ref().and_then(|pr| pr.id) {
+        Some(id) => ctx.reserve_doc_pr_id(id),
+        None => ctx.next_doc_pr_id(),
+    };
     xml.start("wp:docPr");
     xml.attr("id", id);
     xml.attr(
@@ -548,6 +550,13 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.start("pic:pic");
     xml.start("pic:nvPicPr");
     xml.start("pic:cNvPr");
+    // The model does not store `pic:cNvPr/@id`. Writing 0 is a named replacement,
+    // not a silent one.
+    ctx.report_partial(
+        "pic:cNvPr@id",
+        "picture non-visual id is not stored and is written as 0",
+        &strict_ooxml_core::error::SourceLocation::unknown(),
+    );
     xml.attr("id", "0");
     xml.attr("name", picture.name.as_deref().unwrap_or("Picture"));
     xml.attr_opt("descr", picture.descr.as_deref());

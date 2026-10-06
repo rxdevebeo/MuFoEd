@@ -1,0 +1,11 @@
+   Compiling strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.95s
+     Running tests\acceptance_wrap_probe.rs (target\debug\deps\acceptance_wrap_probe-821e2d961ca3249c.exe)
+
+running 3 tests
+test acceptance_top_bottom_reserves_object_height ... ok
+test acceptance_square_wrap_covers_following_paragraph ... ok
+test f15_square_changes_line_intervals ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+

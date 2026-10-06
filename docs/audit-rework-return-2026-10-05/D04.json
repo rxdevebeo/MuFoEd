@@ -1,0 +1,20 @@
+{
+  "card": "D04",
+  "status": "PARTIAL",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "angles": {
+    "removed_from_percent": ["a:hue/@val CT_PositiveFixedAngle", "a:hueOff/@val CT_Angle", "empty comp/inv/gray/gamma/invGamma"],
+    "still_percent": "EG_ColorTransform percentage @val, gs/@pos, CT_RelativeRect l/t/r/b including tileRect, defRPr/rPr/endParaRPr @baseline",
+    "test": "normalize::transitional::tests::drawingml_hue_stays_an_angle_and_lum_mod_becomes_a_percent PASS",
+    "inverse": "hue, hueOff, lin/@ang, hslClr/@hue and empty comp/gamma are not percentage carriers"
+  },
+  "protection": {
+    "input": "docs/audit-rework-review-2026-10-05/evidence/unknown-protection.docx",
+    "input_sha256": "abcfc59ce2916aeaec3baddce466815389b153623748ba13ccbcdc1d7733e15f",
+    "command": "strict-ooxml write <fixture> --transitional --out target/audit-rework-return-2026-10-05/D04/unknown-protection-out.docx --report-out target/audit-rework-return-2026-10-05/D04/unknown-protection.pipeline.json",
+    "outcome": "degraded",
+    "issue": "w:documentProtection/@w:cryptAlgorithmSid",
+    "detail": "cryptAlgorithmSid 9999 is not a supported hash algorithm; algorithmName is omitted and password verification is not preserved"
+  },
+  "limits": "27 Strict / 121 local / 100 CC0 XSD and OPC gates were not repeated. Schema-valid output is not treated as semantic acceptance. Password verification in Word was not measured."
+}

@@ -15,9 +15,7 @@
 //! bytes is the difference between the page the producer designed and a page we
 //! approximated.
 //!
-//! # What the model does and does not keep
-//!
-//! Kept, because each of them changes what the bytes mean:
+//! # What the model keeps
 //!
 //! - the family `w:font/@w:name`, the key the whole entry hangs on;
 //! - the **resolved part** behind each `w:embed*`, not the relationship id — the
@@ -28,15 +26,11 @@
 //!   with the key from the file. Dropping it while keeping the bytes would
 //!   produce a font that renders as garbage, which is worse than no font;
 //! - `w:subsetted`, which tells a consumer whether the bytes are the whole face
-//!   or a subset, and therefore whether to fall back for a missing glyph.
-//!
-//! Not kept, and named: `w:panose1`, `w:charset`, `w:family`, `w:pitch`,
-//! `w:sig` and `w:notTrueType`. They are hints about a face, none of them is
-//! required by `CT_Font`, and this project does not lay out by them. An entry
-//! that carries only a name and its embeds is conformant; the earlier writer
-//! wrote the `w:family` and `w:pitch` children as EMPTY elements, which made
-//! every package with a font table carry two violations per face (`XS-01`), and
-//! nothing was expressed by those empties.
+//!   or a subset, and therefore whether to fall back for a missing glyph;
+//! - face hints (`w:altName`, `w:panose1`, `w:charset`/`w:characterSet`,
+//!   `w:family`, `w:pitch`, `w:sig`, `w:notTrueType`). Layout does not read them,
+//!   but Stage-5C packages carry them and round-tripping must not report them as
+//!   unsupported critical losses or drop them silently.
 
 use std::sync::Arc;
 
@@ -106,11 +100,52 @@ pub struct EmbeddedFont {
     pub subsetted: bool,
 }
 
+/// `w:sig` Unicode/code-page coverage bits (`CT_FontSig`).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct FontSig {
+    /// `w:usb0`.
+    pub usb0: Option<Arc<str>>,
+    /// `w:usb1`.
+    pub usb1: Option<Arc<str>>,
+    /// `w:usb2`.
+    pub usb2: Option<Arc<str>>,
+    /// `w:usb3`.
+    pub usb3: Option<Arc<str>>,
+    /// `w:csb0`.
+    pub csb0: Option<Arc<str>>,
+    /// `w:csb1`.
+    pub csb1: Option<Arc<str>>,
+}
+
+/// Face hints under `w:font` that are not embeds.
+///
+/// Kept for round-trip fidelity. Values are the attribute strings as carried by
+/// the source (after Strict attribute renames such as `characterSet`).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct FontHints {
+    /// `w:altName/@w:val`.
+    pub alt_name: Option<Arc<str>>,
+    /// `w:panose1/@w:val`.
+    pub panose1: Option<Arc<str>>,
+    /// `w:charset/@w:val` or Strict `w:charset/@w:characterSet`.
+    pub charset: Option<Arc<str>>,
+    /// `w:family/@w:val`.
+    pub family: Option<Arc<str>>,
+    /// `w:pitch/@w:val`.
+    pub pitch: Option<Arc<str>>,
+    /// `w:sig` coverage attributes.
+    pub sig: Option<FontSig>,
+    /// `w:notTrueType` present and on.
+    pub not_true_type: bool,
+}
+
 /// One `w:font` entry: a family and the faces embedded for it.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct FontEntry {
     /// `w:font/@w:name` — the family name, and the only required attribute.
     pub name: Arc<str>,
+    /// Face hints preserved for round trip.
+    pub hints: FontHints,
     /// The embedded faces, keyed by [`EmbedKind`] and in that enum's order.
     ///
     /// A `BTreeMap` rather than four `Option`s so that "no `w:embedBold`" and

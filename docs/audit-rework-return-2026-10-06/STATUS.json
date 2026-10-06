@@ -1,0 +1,32 @@
+{
+  "return": "audit-rework-return-2026-10-06",
+  "order": "docs/AUDIT_REWORK_RETURN_2026-10-06.md",
+  "code_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "source_content_fingerprint": "1f4e1b028706046f4aadf41deba41a195e17cda2436ebab518647220d4a089ad",
+  "full_audit": false,
+  "cards": {
+    "D01": "PASS",
+    "D02": "NOT_RERUN_THIS_RETURN (prior ACCEPTED_MEASURED_WITNESSES kept; not re-timed)",
+    "D03": "PASS_WITH_EXPLICIT_GEOMETRY",
+    "D04": "NOT_RERUN (angle/protection prior PARTIAL; XSD/OPC 27+121+100 not repeated)",
+    "D05": "PARTIAL (font-hints/Stage-5C closed; 1568 inventory groups open)",
+    "D06": "OPEN (known WPS geometry defects unchanged; text-class gates remain green)",
+    "D07": "OPEN",
+    "D08": "NOT_RUN (coverage/fuzz/CI)",
+    "D09": "OPEN (workspace gates fmt/clippy/MSRV green; full corpus/hostile/census pending)"
+  },
+  "word": {
+    "WORD_COMPAT": "NOT_RUN",
+    "accepted_without_word": [
+      "structural/roundtrip gates exercised locally",
+      "SVG/PDF WPS text-class controls for D03",
+      "Stage-5C support-report contract after hint preservation"
+    ],
+    "word_only_debt": [
+      "full Word PASS",
+      "password verification for unknown protection",
+      "D06 Word-export geometry"
+    ]
+  },
+  "commits": "none; owner approval required"
+}

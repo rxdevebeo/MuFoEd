@@ -501,7 +501,7 @@ pub fn decimal_or_percent(value: &str) -> Option<String> {
     text_scale_percent(value)
 }
 
-/// DrawingML `ST_Percentage` / `ST_PositiveFixedPercentage` as Transitional
+/// `DrawingML` `ST_Percentage` / `ST_PositiveFixedPercentage` as Transitional
 /// thousandths of a percent → Strict percentage with a `%` sign.
 ///
 /// `65000` becomes `65%`, `10` becomes `0.010%`, `0` becomes `0%`. Values that
@@ -526,22 +526,40 @@ pub fn drawingml_thousandths_percent(value: &str) -> Option<String> {
     }
 }
 
-/// Whether `(element, attribute)` carries a DrawingML percentage stored as
+/// `EG_ColorTransform` members whose schema type has required `@val` of a
+/// percentage (`CT_Percentage` / `CT_PositivePercentage` /
+/// `CT_FixedPercentage` / `CT_PositiveFixedPercentage`).
+///
+/// `a:hue` is `CT_PositiveFixedAngle` and `a:hueOff` is `CT_Angle`: those
+/// stay integers in 60,000ths of a degree. `comp` / `inv` / `gray` / `gamma` /
+/// `invGamma` are empty types and have no `@val`.
+const COLOR_TRANSFORM_PERCENT_VAL: &[&str] = &[
+    "tint", "shade", "alpha", "alphaOff", "alphaMod", "hueMod", "sat", "satOff", "satMod", "lum",
+    "lumOff", "lumMod", "red", "redOff", "redMod", "green", "greenOff", "greenMod", "blue",
+    "blueOff", "blueMod",
+];
+
+/// Whether `(element, attribute)` carries a `DrawingML` percentage stored as
 /// thousandths in Transitional packages.
+///
+/// The decision is the schema type of that pair, not a shared name. `a:hue/@val`
+/// and `a:lin/@ang` are angles even though the digits look like thousandths.
 #[must_use]
 pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
-    match (element, attribute) {
-        (
-            "tint" | "shade" | "satMod" | "lumMod" | "lumOff" | "alpha" | "alphaMod"
-            | "alphaOff" | "hue" | "hueOff" | "hueMod" | "comp" | "inv" | "gray" | "gamma"
-            | "invGamma",
-            "val",
-        ) => true,
-        ("gs", "pos") => true,
-        ("fillToRect" | "fillRect" | "srcRect", "l" | "t" | "r" | "b") => true,
-        ("defRPr" | "rPr" | "endParaRPr", "baseline") => true,
-        _ => false,
+    if attribute == "val" && COLOR_TRANSFORM_PERCENT_VAL.contains(&element) {
+        return true;
     }
+    if element == "gs" && attribute == "pos" {
+        return true;
+    }
+    // `CT_RelativeRect`: fillToRect, fillRect, srcRect, tileRect.
+    if matches!(element, "fillToRect" | "fillRect" | "srcRect" | "tileRect")
+        && matches!(attribute, "l" | "t" | "r" | "b")
+    {
+        return true;
+    }
+    // `CT_TextCharacterProperties/@baseline` is `ST_Percentage`.
+    matches!(element, "defRPr" | "rPr" | "endParaRPr") && attribute == "baseline"
 }
 
 /// Whether an element/parent pair carries a bare `ST_MeasurementOrPercent`.
@@ -742,15 +760,42 @@ mod tests {
     #[test]
     fn drawingml_thousandths_percent_converts_bare_thousandths() {
         assert_eq!(drawingml_thousandths_percent("0").as_deref(), Some("0%"));
-        assert_eq!(drawingml_thousandths_percent("65000").as_deref(), Some("65%"));
+        assert_eq!(
+            drawingml_thousandths_percent("65000").as_deref(),
+            Some("65%")
+        );
         assert_eq!(
             drawingml_thousandths_percent("1253").as_deref(),
             Some("1.253%")
         );
         assert_eq!(drawingml_thousandths_percent("65%"), None);
+        assert_eq!(
+            drawingml_thousandths_percent("-65000").as_deref(),
+            Some("-65%")
+        );
+        assert_eq!(drawingml_thousandths_percent("nope"), None);
+        assert_eq!(drawingml_thousandths_percent("999999999999999999999"), None);
         assert!(is_drawingml_percentage_attr("lumMod", "val"));
+        assert!(is_drawingml_percentage_attr("sat", "val"));
+        assert!(is_drawingml_percentage_attr("hueMod", "val"));
         assert!(is_drawingml_percentage_attr("gs", "pos"));
+        assert!(is_drawingml_percentage_attr("tileRect", "l"));
         assert!(is_drawingml_percentage_attr("defRPr", "baseline"));
         assert!(!is_drawingml_percentage_attr("defRPr", "sz"));
+        assert!(
+            !is_drawingml_percentage_attr("hue", "val"),
+            "a:hue/@val is ST_PositiveFixedAngle"
+        );
+        assert!(
+            !is_drawingml_percentage_attr("hueOff", "val"),
+            "a:hueOff/@val is ST_Angle"
+        );
+        assert!(!is_drawingml_percentage_attr("comp", "val"));
+        assert!(!is_drawingml_percentage_attr("gamma", "val"));
+        assert!(
+            !is_drawingml_percentage_attr("lin", "ang"),
+            "a:lin/@ang is an angle, not a percentage"
+        );
+        assert!(!is_drawingml_percentage_attr("hslClr", "hue"));
     }
 }

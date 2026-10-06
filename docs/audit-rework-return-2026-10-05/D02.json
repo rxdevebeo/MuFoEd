@@ -1,0 +1,41 @@
+{
+  "card": "D02",
+  "status": "PASS_MEASURED_WITNESSES",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "toolchain": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+  "cause": "apply_page_regions laid out a static 1000-paragraph footer on every page. resolve_face also SHA-256-hashed and Face::from_slice reparsed the font program on every shape.",
+  "fix": "Cache static header/footer height by part and content box. Cache ResolvedFace by family/style. Cache the parsed face and shaped run by style, variation bits, and text. Dynamic PAGE/NUMPAGES/SECTIONPAGES parts are not height-cached.",
+  "hostile": {
+    "budget_seconds": 10,
+    "stack_bytes": 1048576,
+    "debug_seconds": 1.75,
+    "release_seconds": 0.47,
+    "command": "cargo +1.92.0 test -p strict-ooxml --test hostile --all-features --locked a_heavy_footer_on_many_pages",
+    "result": "expected render-items limit, exit 0"
+  },
+  "f13_regions": "7/7 pass, including NUMPAGES digit rollover",
+  "cc0_first_page": {
+    "cli": "target/release/strict-ooxml.exe",
+    "flags": "write --transitional, then render <written> --pages 1",
+    "budget_seconds": 90,
+    "017": {
+      "input_sha256": "1b1e4104dfb5d617f4a6d938a94a1f9258c3dc4fc5f4b887636000cdd89464fc",
+      "write_exit": 1,
+      "write_seconds": 2.186,
+      "cold_seconds": 1.021,
+      "warm_seconds": 1.022,
+      "cold_exit": 0,
+      "svg": "page-1.svg sha256 febd3374960813ed7f552014ffaa5ead4f2b6b096e1e3c96d19343cbf730e7a4"
+    },
+    "035": {
+      "input_sha256": "3ce7e77255123062caf9583b42ac747fdba456d2b5aed5d8371ae962ff779084",
+      "write_exit": 1,
+      "write_seconds": 0.681,
+      "cold_seconds": 0.771,
+      "warm_seconds": 0.794,
+      "cold_exit": 0,
+      "svg": "page-1.svg sha256 175702edece4f3d620c3acde9568e0e95ef6b2306362a6502d1f08279afb27b7"
+    }
+  },
+  "limits": "Historical 0.885s/0.539s and the 90s timeouts are the review's measurements, not a re-run of the old commit on this machine. The other 98 CC0 first pages were not re-timed. write exit 1 is the CLI degraded code, and render still produced SVG."
+}

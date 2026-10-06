@@ -438,6 +438,9 @@ pub(crate) fn plan(
         };
         match source.read_part(&target) {
             Ok(bytes) => {
+                if target.as_str() == APP_PROPERTIES_PART {
+                    report_removed_rendering_counters(ctx, &bytes);
+                }
                 let mut copied = copied_property_part(&target, &bytes, transform, source);
                 // A property part's own relationships, and the parts they reach.
                 // `docProps/app.xml` references `docProps/thumbnail.jpeg` through
@@ -746,6 +749,22 @@ fn custom_properties_type_uri() -> String {
 /// The value of what stays is *not* touched, so `Company`, `Template`,
 /// `DocSecurity`, `Application`, `AppVersion`, `HeadingPairs` and `TitlesOfParts`
 /// come through exactly as the producer wrote them.
+fn report_removed_rendering_counters(ctx: &mut Ctx<'_>, bytes: &[u8]) {
+    for name in APP_RENDERING_COUNTERS {
+        let open = format!("<{name}");
+        if bytes
+            .windows(open.len())
+            .any(|window| window == open.as_bytes())
+        {
+            ctx.report_lossy(
+                &format!("ep:{name}"),
+                "rendering counter is omitted; this writer does not paginate",
+                &SourceLocation::unknown(),
+            );
+        }
+    }
+}
+
 fn without_rendering_counters(bytes: &[u8]) -> Vec<u8> {
     let mut out = replace_all(
         bytes,

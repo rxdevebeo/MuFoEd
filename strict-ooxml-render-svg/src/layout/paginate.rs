@@ -462,8 +462,7 @@ fn place_body_paragraph(
         }
     }
     for anchor in flow.anchors {
-        if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y)
-        {
+        if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y) {
             paginator.wrap_exclusions.push(exclusion);
         }
         paginator.anchors.push(PendingAnchor {

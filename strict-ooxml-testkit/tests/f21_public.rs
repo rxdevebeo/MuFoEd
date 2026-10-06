@@ -45,8 +45,8 @@ fn f21_public_manifest_metadata() {
         assert!(manifest.contains(&format!("\"{id}\"")), "{id} has no card");
     }
 
-    let matrix = std::fs::read_to_string(root.join("xtool/audit-fixes/matrix.toml"))
-        .expect("public matrix");
+    let matrix =
+        std::fs::read_to_string(root.join("xtool/audit-fixes/matrix.toml")).expect("public matrix");
     assert!(
         matrix.contains("status = \"blocked\""),
         "matrix must keep honest blocked rows; empty blockers would fake completeness"

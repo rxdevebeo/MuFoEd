@@ -3,6 +3,13 @@
 //! Layout, SVG `@font-face`, and PDF embedding must share one face program.
 //! Identity is the SHA-256 of those bytes; the mapped family name alone is not
 //! enough when a browser or PDF writer could pick a different installed face.
+//!
+//! The hash is a property of the static program, so it is computed once per
+//! `(family, bold, italic)` and reused. A later call returns the same bytes
+//! pointer and the same digest.
+
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 use sha2::{Digest, Sha256};
 
@@ -65,11 +72,42 @@ pub fn hash_face_bytes_hex(bytes: &[u8]) -> String {
     hex
 }
 
+/// Style key for the resolved-face cache. Weight is determined by the source.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct FaceKey {
+    family: &'static str,
+    bold: bool,
+    italic: bool,
+}
+
 /// Resolves `(family, bold, italic)` to the bundled face layout and paint share.
+///
+/// Repeated calls reuse the cached [`ResolvedFace`], including its SHA-256.
+/// The cache key is the mapped family plus style; variation is part of that
+/// source, so a different style is a different entry.
 #[must_use]
 pub fn resolve_face(family: &str, bold: bool, italic: bool) -> Option<ResolvedFace> {
     let source = face_source(family, bold, italic)?;
-    Some(resolved_from_source(source, bold, italic))
+    Some(cached_resolved_face(source, bold, italic))
+}
+
+fn cached_resolved_face(source: FaceSource, bold: bool, italic: bool) -> ResolvedFace {
+    static CACHE: OnceLock<Mutex<HashMap<FaceKey, ResolvedFace>>> = OnceLock::new();
+    let key = FaceKey {
+        family: source.family,
+        bold,
+        italic,
+    };
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(hit) = guard.get(&key) {
+        return *hit;
+    }
+    let resolved = resolved_from_source(source, bold, italic);
+    guard.insert(key, resolved);
+    resolved
 }
 
 /// Builds a [`ResolvedFace`] from an already-looked-up [`FaceSource`].
@@ -144,5 +182,16 @@ mod tests {
         let regular = resolve_face("Calibri", false, false).expect("regular");
         let bold = resolve_face("Calibri", true, false).expect("bold");
         assert_ne!(regular.resource_hash, bold.resource_hash);
+    }
+
+    #[test]
+    fn repeated_resolve_keeps_bytes_pointer_and_hash() {
+        let first = resolve_face("Calibri", false, false).expect("first");
+        let second = resolve_face("Times New Roman", false, false).expect("other");
+        let again = resolve_face("Calibri", false, false).expect("again");
+        assert_eq!(again.bytes.as_ptr(), first.bytes.as_ptr());
+        assert_eq!(again.resource_hash, first.resource_hash);
+        assert_eq!(again.resource_hash, hash_face_bytes(again.bytes));
+        assert_ne!(again.resource_hash, second.resource_hash);
     }
 }

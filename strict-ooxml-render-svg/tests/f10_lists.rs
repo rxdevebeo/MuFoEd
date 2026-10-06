@@ -36,6 +36,23 @@ fn render_list(body: &str) -> String {
     pages.into_iter().map(|page| page.svg).collect()
 }
 
+fn parse_coord_list(value: &str) -> Result<Vec<f64>, String> {
+    let mut numbers = Vec::new();
+    for token in value.split_whitespace() {
+        let number: f64 = token
+            .parse()
+            .map_err(|_| format!("bad x token {token} in {value}"))?;
+        if !number.is_finite() {
+            return Err(format!("non-finite x token {token}"));
+        }
+        numbers.push(number);
+    }
+    if numbers.is_empty() {
+        return Err(format!("empty x list {value}"));
+    }
+    Ok(numbers)
+}
+
 fn texts(svg: &str) -> Vec<(String, f64)> {
     let document = roxmltree::Document::parse(svg).expect("svg");
     document
@@ -44,12 +61,19 @@ fn texts(svg: &str) -> Vec<(String, f64)> {
         .map(|node| {
             // F07 emits a space-separated cluster `x` list; the first value is
             // the run origin used by list indent oracles.
-            let x = node
+            let text = node.text().unwrap_or_default().to_owned();
+            let xs = node
                 .attribute("x")
-                .and_then(|value| value.split_whitespace().next())
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(0.0);
-            (node.text().unwrap_or_default().to_owned(), x)
+                .map(parse_coord_list)
+                .transpose()
+                .expect("x list")
+                .unwrap_or_default();
+            assert!(
+                xs.iter().all(|value| value.is_finite()),
+                "non-finite x in {text:?}: {xs:?}"
+            );
+            let x = xs.first().copied().expect("x origin");
+            (text, x)
         })
         .collect()
 }

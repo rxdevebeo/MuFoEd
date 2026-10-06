@@ -16,6 +16,25 @@ mod common;
 
 use common::render_body;
 
+/// Parses one coordinate or a shaped cluster list. Every token is checked.
+/// A missing number is an error; nothing is replaced with zero.
+fn parse_coord_list(attribute: &str, value: &str) -> Result<Vec<f64>, String> {
+    let mut numbers = Vec::new();
+    for token in value.split_whitespace() {
+        let number: f64 = token
+            .parse()
+            .map_err(|_| format!("bad coordinate {attribute}={value}"))?;
+        if !number.is_finite() {
+            return Err(format!("non-finite {attribute}={value}"));
+        }
+        numbers.push(number);
+    }
+    if numbers.is_empty() {
+        return Err(format!("empty coordinate {attribute}"));
+    }
+    Ok(numbers)
+}
+
 /// Checks one SVG document against the page geometry.
 fn check_svg(svg: &str, width: f64, height: f64) -> Result<(), String> {
     let document =
@@ -46,15 +65,12 @@ fn check_svg(svg: &str, width: f64, height: f64) -> Result<(), String> {
         }
         for attribute in ["x", "y", "x1", "y1", "x2", "y2"] {
             if let Some(value) = node.attribute(attribute) {
-                let number: f64 = value
-                    .parse()
-                    .map_err(|_| format!("bad coordinate {attribute}={value}"))?;
-                if !number.is_finite() {
-                    return Err(format!("non-finite {attribute}"));
-                }
+                let numbers = parse_coord_list(attribute, value)?;
                 let limit = width.max(height) * 4.0 + tolerance;
-                if number < -tolerance || number > limit {
-                    return Err(format!("coordinate out of bounds: {attribute}={value}"));
+                for number in numbers {
+                    if number < -tolerance || number > limit {
+                        return Err(format!("coordinate out of bounds: {attribute}={value}"));
+                    }
                 }
             }
         }
@@ -97,6 +113,8 @@ fn oracle_rejects_corrupted_svg() {
 
     // Non-finite coordinate.
     assert!(check_svg(&svg("<text x=\"NaN\" y=\"1\">x</text>"), 100.0, 100.0).is_err());
+    assert!(check_svg(&svg("<text x=\"1 NaN\" y=\"1\">x</text>"), 100.0, 100.0).is_err());
+    assert!(check_svg(&svg("<text x=\"1 999999\" y=\"1\">x</text>"), 100.0, 100.0).is_err());
     // Out-of-bounds coordinate.
     assert!(check_svg(&svg("<text x=\"999999\" y=\"1\">x</text>"), 100.0, 100.0).is_err());
     // Missing viewBox.

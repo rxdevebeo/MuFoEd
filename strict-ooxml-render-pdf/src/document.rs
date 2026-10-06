@@ -17,8 +17,8 @@ use pdf_writer::types::FontFlags;
 use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str};
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::part::PartId;
-use strict_ooxml_render_svg::layout::{Item, PathItem, PlacedPage, TextItem};
-use strict_ooxml_render_svg::{MediaSource, RenderOptions};
+use strict_ooxml_render_svg::layout::{Item, PathItem, PlacedPage, TextAdvanceKind, TextItem};
+use strict_ooxml_render_svg::{FontProvider, MediaSource, RenderOptions};
 
 use crate::font::{EmbeddedFont, FaceCollector, FaceKey};
 use crate::image::{encode_with_limit, Encoded};
@@ -307,16 +307,48 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
             let Item::Text(text) = item else {
                 continue;
             };
-            for ch in text.text.chars() {
-                match strict_ooxml_render_svg::font::face_source(
-                    &text.run.family,
-                    text.run.bold,
-                    text.run.italic,
-                ) {
-                    Some(source) => {
+            let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
+            let Some(source) = strict_ooxml_render_svg::font::face_source(
+                &text.run.family,
+                text.run.bold,
+                text.run.italic,
+            ) else {
+                report.record_missing_face(&text.run.family);
+                continue;
+            };
+            if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
+                &shown,
+                &text.run.family,
+                text.run.bold,
+                text.run.italic,
+            ) {
+                if shaped.glyphs.is_empty() {
+                    for ch in shown.chars() {
                         collector.add(&source, text.run.bold, text.run.italic, ch);
                     }
-                    None => report.record_missing_face(&text.run.family),
+                }
+                for cluster in &shaped.clusters {
+                    let unicode = shown
+                        .get(cluster.byte_start..cluster.byte_end)
+                        .unwrap_or("");
+                    let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
+                    let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
+                        continue;
+                    };
+                    for (index, glyph) in glyphs.iter().enumerate() {
+                        let label = if index == 0 { unicode } else { "" };
+                        collector.add_cluster(
+                            &source,
+                            text.run.bold,
+                            text.run.italic,
+                            glyph.glyph_id,
+                            label,
+                        );
+                    }
+                }
+            } else {
+                for ch in shown.chars() {
+                    collector.add(&source, text.run.bold, text.run.italic, ch);
                 }
             }
         }
@@ -564,6 +596,26 @@ impl PageWriter<'_> {
         // A character with no glyph in this face is dropped rather than drawn as
         // a box: the SVG shows the fallback, and inventing a different glyph here
         // would make the two backends disagree.
+        let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
+        match text.advance {
+            TextAdvanceKind::Metric => {
+                if self.show_metric(text, &font, &name, &shown) {
+                    return;
+                }
+            }
+            TextAdvanceKind::Shaped => {
+                if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
+                    &shown,
+                    &text.run.family,
+                    text.run.bold,
+                    text.run.italic,
+                ) {
+                    if self.show_shaped(text, &font, &name, &shown, &shaped) {
+                        return;
+                    }
+                }
+            }
+        }
         let mut encoded: Vec<u8> = Vec::with_capacity(text.text.len() * 2);
         let mut missing: Vec<char> = Vec::new();
         for ch in text.text.chars() {
@@ -588,6 +640,110 @@ impl PageWriter<'_> {
         self.content.set_text_matrix([1.0, 0.0, 0.0, 1.0, x, y]);
         self.content.show(Str(&encoded));
         self.content.end_text();
+    }
+
+    /// Draws one CID per scalar at cumulative `hmtx` origins ([`TextAdvanceKind::Metric`]).
+    fn show_metric(
+        &mut self,
+        text: &TextItem,
+        font: &Arc<EmbeddedFont>,
+        name: &str,
+        shown: &str,
+    ) -> bool {
+        if shown.is_empty() {
+            return false;
+        }
+        let provider = strict_ooxml_render_svg::font::BuiltinFontProvider::new();
+        let family = strict_ooxml_render_svg::style::chosen_family(&text.run, shown);
+        let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
+        let size = px_to_pt(text.size_px, self.scale) as f32;
+        let mut cursor = 0.0;
+        let mut drew = false;
+        self.content.begin_text();
+        self.content.set_fill_rgb(red, green, blue);
+        self.content.set_font(Name(name.as_bytes()), size);
+        for ch in shown.chars() {
+            match font.chars.get(&ch) {
+                Some(cid) => {
+                    let x_px = text.x + cursor;
+                    self.content.set_text_matrix([
+                        1.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        self.x(x_px),
+                        self.y(text.baseline),
+                    ]);
+                    self.content.show(Str(&cid.to_be_bytes()));
+                    drew = true;
+                }
+                None => self.report.record_missing_glyph(&text.run.family, ch),
+            }
+            cursor +=
+                provider.advance_em(&family, ch, text.run.bold, text.run.italic) * text.size_px;
+        }
+        self.content.end_text();
+        drew
+    }
+
+    /// Draws shaped glyph ids at their visual origins. Returns false when no CID matched.
+    fn show_shaped(
+        &mut self,
+        text: &TextItem,
+        font: &Arc<EmbeddedFont>,
+        name: &str,
+        shown: &str,
+        shaped: &strict_ooxml_render_svg::font::ShapedText,
+    ) -> bool {
+        if shaped.glyphs.is_empty() {
+            return false;
+        }
+        let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
+        let size = px_to_pt(text.size_px, self.scale) as f32;
+        let mut drew = false;
+        self.content.begin_text();
+        self.content.set_fill_rgb(red, green, blue);
+        self.content.set_font(Name(name.as_bytes()), size);
+        for cluster in &shaped.clusters {
+            let unicode = shown
+                .get(cluster.byte_start..cluster.byte_end)
+                .unwrap_or("");
+            let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
+            let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
+                continue;
+            };
+            for (index, glyph) in glyphs.iter().enumerate() {
+                if glyph.glyph_id == 0 {
+                    if let Some(ch) = unicode.chars().next() {
+                        self.report.record_missing_glyph(&text.run.family, ch);
+                    }
+                    continue;
+                }
+                let label = if index == 0 { unicode } else { "" };
+                let cid = font
+                    .cluster_cids
+                    .get(&(glyph.glyph_id, label.to_owned()))
+                    .copied()
+                    .or_else(|| {
+                        unicode
+                            .chars()
+                            .next()
+                            .and_then(|ch| font.chars.get(&ch).copied())
+                    });
+                let Some(cid) = cid else {
+                    continue;
+                };
+                let x_px = text.x + glyph.x_em * text.size_px;
+                let y_px = text.baseline - glyph.y_offset_em * text.size_px;
+                self.content
+                    .set_text_matrix([1.0, 0.0, 0.0, 1.0, self.x(x_px), self.y(y_px)]);
+                let bytes = cid.to_be_bytes();
+                self.content.show(Str(&bytes));
+                drew = true;
+            }
+        }
+        self.content.end_text();
+        drew
     }
 }
 

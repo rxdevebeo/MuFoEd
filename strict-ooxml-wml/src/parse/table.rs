@@ -93,7 +93,18 @@ impl PartParser<'_> {
     }
 
     /// Parses a table row (`w:tr`).
-    pub(crate) fn parse_table_row(&mut self, _attrs: &[Attr]) -> Result<TableRow> {
+    pub(crate) fn parse_table_row(&mut self, attrs: &[Attr]) -> Result<TableRow> {
+        for attr in attrs {
+            let local = attr.name.local();
+            if local.starts_with("rsid") {
+                self.record(
+                    &format!("w:tr@{local}"),
+                    crate::model::support::SupportStatus::Partial,
+                    Some("row revision id is not written back".to_owned()),
+                    Some(self.location()),
+                );
+            }
+        }
         let location = self.location();
         self.nested(|parser| {
             let mut props = RowProperties::default();

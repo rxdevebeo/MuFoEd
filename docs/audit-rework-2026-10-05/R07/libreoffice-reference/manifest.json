@@ -1,0 +1,96 @@
+{
+  "title": "Page capture: Clio Der Sarkissian - Mitochondrial DNA in Ancient Human Populations of Europe (2011)",
+  "source_filename": "Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+  "source_path": "/home/box/agent-data/agents/78f4ecd3-84df-4c7f-a7c2-9210415d05ba/attachments/4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462.docx",
+  "source_sha256": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+  "producer": {
+    "name": "LibreOffice",
+    "version": "LibreOffice 25.2.3.2 520(Build:2)",
+    "not_microsoft_word": true,
+    "pdf_creator_metadata": "Writer",
+    "pdf_producer_metadata": "LibreOffice 25.2.3.2 (X86_64) / LibreOffice Community"
+  },
+  "export_method": "soffice --headless --convert-to pdf source.docx → pymupdf insert_pdf extracting printed pages 54,56,104 (source PDF indices 53,54,100) into pages_54_56_104.pdf and per-page PDFs; page size preserved as A4 from LibreOffice (595.304×841.89 pt ≈ 210×297 mm)",
+  "pages_captured": {
+    "printed": [
+      54,
+      56,
+      104
+    ],
+    "source_pdf_indices_1based": [
+      53,
+      54,
+      100
+    ],
+    "extract_page_count": 3
+  },
+  "page_size": {
+    "paper": "A4",
+    "width_pt": 595.304,
+    "height_pt": 841.89,
+    "width_mm": 210.0,
+    "height_mm": 297.0,
+    "unit": "pt",
+    "scale": "1:1 from LibreOffice PDF export (no rescale)"
+  },
+  "coordinates": {
+    "unit": "pt",
+    "unit_definition": "1 pt = 1/72 inch",
+    "origin": "top-left",
+    "y_from": "TOP of page",
+    "extractor": "pymupdf (fitz)"
+  },
+  "artifacts": {
+    "pages_54_56_104.pdf": {
+      "sha256": "fb49ee2d691051619863470916b3ca22c8287c18d6ce361b427ca3b54366921b",
+      "bytes": 1677150
+    },
+    "pages_54_56_104_text_images.json": {
+      "sha256": "55b214027e35728686723084b2b995b833f52f0869271a8c0b9a9054bf1b4b58",
+      "bytes": 64907
+    },
+    "page_54.pdf": {
+      "sha256": "24bd22aa8ab3a02a7378be2a6e075b583585f368bf0da45e236a872192cb377f",
+      "bytes": 1667087
+    },
+    "page_56.pdf": {
+      "sha256": "d633d933dee7658b4e58cc639f47654bb78bc379208c4300aa6bafac9df9cdd2",
+      "bytes": 1667949
+    },
+    "page_104.pdf": {
+      "sha256": "c34d76882b0a9d47869ef5cd8fdcb848d4ea4c96b9a96aa9a2003e759020a6b9",
+      "bytes": 1669260
+    }
+  },
+  "timestamps": {
+    "generated_at": "2026-10-05T17:30:17.864318+02:00",
+    "timezone": "Europe/Belgrade (CEST, UTC+2)"
+  },
+  "verification": {
+    "pdf_page_count": 3,
+    "pdfinfo_excerpt": "Title:           Clio Der Sarkissian - Mitochondrial DNA in Ancient Human Populations of Europe - printed pages 54,56,104\nSubject:         Extracted via LibreOffice PDF export; pages selected by printed page number (PDF indices 53,54,100)\nCreator:         Writer\nProducer:        LibreOffice 25.2.3.2 (X86_64) / LibreOffice Community\nCustom Metadata: no\nMetadata Stream: no\nTagged:          no\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           3\nEncrypted:       no\nPage size:       595.304 x 841.89 pts (A4)\nPage rot:        0\nFile size:       1677150 bytes\nOptimized:       no\nPDF version:     1.7\n",
+    "per_page_counts": {
+      "54": {
+        "texts": 59,
+        "images": 1,
+        "raster_images": 0,
+        "vector_figure_unions": 1,
+        "drawing_paths": 12
+      },
+      "56": {
+        "texts": 63,
+        "images": 1,
+        "raster_images": 0,
+        "vector_figure_unions": 1,
+        "drawing_paths": 20
+      },
+      "104": {
+        "texts": 151,
+        "images": 3,
+        "raster_images": 2,
+        "vector_figure_unions": 1,
+        "drawing_paths": 20
+      }
+    }
+  }
+}

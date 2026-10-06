@@ -1,0 +1,70 @@
+{
+  "counts": {
+    "TZ-01": 0,
+    "TZ-02": 0,
+    "TZ-03": 0,
+    "TZ-04": 0,
+    "TZ-05": 0,
+    "TZ-06": 0,
+    "TZ-07": 0,
+    "TZ-08": 0,
+    "TZ-09": 0,
+    "TZ-10": 0,
+    "TZ-11": 0,
+    "TZ-12": 0,
+    "TZ-13": 0,
+    "TZ-14": 0,
+    "TZ-15": 0,
+    "TZ-16": 0,
+    "TZ-17": 0,
+    "TZ-18": 0,
+    "TZ-19": 0,
+    "TZ-20": 0,
+    "TZ-21": 0,
+    "TZ-22": 0,
+    "TZ-23": 1,
+    "TZ-24": 0,
+    "TZ-25": 0,
+    "TZ-26": 0,
+    "TZ-27": 0,
+    "TZ-28": 0,
+    "TZ-29": 0,
+    "TZ-30": 0,
+    "TZ-31": 0,
+    "TZ-32": 0,
+    "TZ-33": 0,
+    "TZ-34": 0,
+    "TZ-35": 1,
+    "TZ-36": 0,
+    "TZ-37": 0,
+    "TZ-38": 0,
+    "TZ-39": 0,
+    "TZ-40": 0,
+    "TZ-41": 0,
+    "TZ-42": 1,
+    "TZ-43": 0
+  },
+  "unmatched_schema": [],
+  "unclassified_element_changes": [],
+  "unmatched": [],
+  "controls": {
+    "element": [
+      [
+        "fake.docx: word/settings.xml",
+        "w:trackRevisions",
+        "parent=settings|namespace=w"
+      ],
+      [
+        "fake.docx: word/document.xml",
+        "a:blipFill",
+        "parent=graphic|namespace=a"
+      ],
+      [
+        "fake.docx: word/document.xml",
+        "a:left",
+        "parent=tblBorders|namespace=a"
+      ]
+    ]
+  },
+  "note": "Classifier-level negative controls: legal semantic property/resource names hypothetically removed without an associated report; no schema input acceptance claimed."
+}

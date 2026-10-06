@@ -37,6 +37,22 @@ const R_ID: &str = "id";
 const REL_DM: &str = "dm";
 /// `r:lo` on a `dgm:relIds` - the diagram layout part.
 const REL_LO: &str = "lo";
+/// `wp14:anchorId` / `wp14:editId` are editor bookmarks. Strict does not
+/// declare them, and dropping them without a feature id hides the change.
+fn record_editor_ids(parser: &mut PartParser<'_>, element: &str, attrs: &[Attr]) {
+    for attr in attrs {
+        let local = attr.name.local();
+        if local == "anchorId" || local == "editId" {
+            parser.record(
+                &format!("{element}@{local}"),
+                SupportStatus::Ignored,
+                Some("editor id is not part of Strict".to_owned()),
+                Some(parser.location()),
+            );
+        }
+    }
+}
+
 /// `r:qs` on a `dgm:relIds` - the diagram quick-style part.
 const REL_QS: &str = "qs";
 /// `r:cs` on a `dgm:relIds` - the diagram colour part.
@@ -59,11 +75,13 @@ impl PartParser<'_> {
                         if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "inline"
                         {
+                            record_editor_ids(parser, "wp:inline", &attrs);
                             let inline = parser.parse_inline_drawing()?;
                             kind = DrawingKind::Inline(inline);
                         } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "anchor"
                         {
+                            record_editor_ids(parser, "wp:anchor", &attrs);
                             let anchor = parser.parse_anchor(&attrs)?;
                             kind = DrawingKind::Anchor(anchor);
                         } else {
@@ -463,7 +481,7 @@ impl PartParser<'_> {
         if is_ns(name, PICTURE_STRICT_NS) && name.local() == "pic" {
             return Ok(Some(Graphic::Picture(self.parse_picture()?)));
         }
-        if name.local() == "wgp" && is_group_ns(name) {
+        if matches!(name.local(), "wgp" | "grpSp") && is_group_ns(name) {
             if !is_ns(name, WORD_PROCESSING_GROUP_STRICT_NS) {
                 self.record(
                     "wpg:wgp",
@@ -763,9 +781,13 @@ impl PartParser<'_> {
                                     let parts = parser.parse_xfrm_parts(&attrs)?;
                                     shape.offset = parts.offset;
                                     shape.extent = parts.extent;
-                                    if parts.rot.is_some() || parts.flip_h || parts.flip_v {
+                                    if parts.offset.is_some()
+                                        || parts.rot.is_some()
+                                        || parts.flip_h
+                                        || parts.flip_v
+                                    {
                                         shape.xfrm = Some(Xfrm {
-                                            offset: None,
+                                            offset: parts.offset,
                                             rot: parts.rot,
                                             flip_h: parts.flip_h,
                                             flip_v: parts.flip_v,
@@ -1390,7 +1412,7 @@ impl PartParser<'_> {
                             }
                         } else if name.local() == "wsp" && is_shape_ns(&name) {
                             group.children.push(Graphic::Shape(parser.parse_shape()?));
-                        } else if name.local() == "wgp" && is_group_ns(&name) {
+                        } else if matches!(name.local(), "wgp" | "grpSp") && is_group_ns(&name) {
                             group.children.push(Graphic::Group(parser.parse_group()?));
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {
                             group

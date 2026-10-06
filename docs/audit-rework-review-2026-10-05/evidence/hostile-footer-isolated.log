@@ -1,0 +1,18 @@
+    Finished `release` profile [optimized] target(s) in 1.00s
+     Running tests\hostile.rs (target\release\deps\hostile-e51a897d2fabcf4a.exe)
+
+running 1 test
+
+thread 'render::a_heavy_footer_on_many_pages_hits_the_render_item_budget' (26180) panicked at D:\projects\StrictLib\strict-ooxml-testkit\src\harness.rs:78:30:
+render heavy footer: did not return within 10s
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test render::a_heavy_footer_on_many_pages_hits_the_render_item_budget ... FAILED
+
+failures:
+
+failures:
+    render::a_heavy_footer_on_many_pages_hits_the_render_item_budget
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 42 filtered out; finished in 10.00s
+
+error: test failed, to rerun pass `-p strict-ooxml --test hostile`

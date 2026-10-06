@@ -593,9 +593,7 @@ mod tests {
     use strict_ooxml_core::error::SourceLocation;
     use strict_ooxml_core::normalize::report::NormalizationReport;
     use strict_ooxml_core::part::PartId;
-    use strict_ooxml_wml::model::block::{
-        Block, GridCol, Paragraph, Table, TableCell, TableRow,
-    };
+    use strict_ooxml_wml::model::block::{Block, GridCol, Paragraph, Table, TableCell, TableRow};
     use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
     use strict_ooxml_wml::model::props::{
         CellProperties, ParagraphProperties, RowProperties, TableProperties,
@@ -742,7 +740,9 @@ mod tests {
         crate::body::block_item(&mut ctx, &mut xml, &Block::SdtBlock(sdt));
         let text = xml.finish().expect("balanced");
         assert!(
-            text.contains(r#"<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>"#),
+            text.contains(
+                r#"<w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder>"#
+            ),
             "{text}"
         );
         assert!(!text.contains("<w:placeholder/>"), "{text}");
@@ -782,7 +782,10 @@ mod tests {
             props: TableProperties::default(),
             grid: Vec::new(),
             rows: vec![
-                row(vec![cell_with_span(Some(2), None), cell_with_span(None, None)]),
+                row(vec![
+                    cell_with_span(Some(2), None),
+                    cell_with_span(None, None),
+                ]),
                 row(vec![
                     cell_with_span(None, None),
                     cell_with_span(None, None),
@@ -828,9 +831,7 @@ mod tests {
             grid: vec![GridCol {
                 width: Some(Twips(720)),
             }],
-            rows: vec![row(vec![
-                cell_with_span(Some(5), None),
-            ])],
+            rows: vec![row(vec![cell_with_span(Some(5), None)])],
             location: location(),
         };
         assert_eq!(synthesize_grid(&table), vec![Some(Twips(720))]);

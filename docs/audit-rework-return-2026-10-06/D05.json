@@ -1,0 +1,36 @@
+{
+  "card": "D05",
+  "status": "PARTIAL",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "font_hints": {
+    "decision": "preserve in model and write back",
+    "model": "FontHints { alt_name, panose1, charset, family, pitch, sig, not_true_type }",
+    "parse": "no longer SupportStatus::Unsupported for known hints",
+    "write": "CT_Font sequence; Strict charset uses @w:characterSet; never empty family/pitch",
+    "census": "TZ-24 becomes charset @val→@characterSet declared_transform; census_gate equates val/characterSet when values match"
+  },
+  "commands": [
+    {
+      "command": "cargo +1.92.0 test -p strict-ooxml --features report --test stage5c_corpus --locked",
+      "exit": 0,
+      "note": "no_repro_fixture_reports_an_unsupported_mechanism PASS; 05-strict-math-simple no longer critical Unsupported on panose/charset/family/pitch/sig"
+    },
+    {
+      "command": "cargo +1.92.0 test -p strict-ooxml-write --test fonts --locked font_hint",
+      "exit": 0,
+      "tests": [
+        "font_hints_round_trip_without_unsupported",
+        "dropping_a_font_hint_is_visible_in_the_model"
+      ]
+    },
+    {
+      "command": "python xtool/xsd-gate/census_gate_selftest.py",
+      "exit": 0
+    }
+  ],
+  "still_open": {
+    "unclassified_inventory": "1568 groups / 16225 rows from prior inventory remain for disposition (off/blip/rsidP/hyperlink first)",
+    "corpus_census_gate": "NOT_RUN on full 221 documents in this return"
+  },
+  "limits": "Wildcard removal from prior return kept. No blanket dispositions. Word NOT_RUN."
+}

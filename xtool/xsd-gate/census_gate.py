@@ -66,6 +66,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import zipfile
 
@@ -188,26 +189,208 @@ def vanished_elements(
                 new = etree.fromstring(after.read(part))
             except etree.XMLSyntaxError:
                 continue
-            old_ctx = _element_contexts(old)
-            new_locals = {local for local, _parent, _ns in _element_contexts(new)}
-            seen: set[tuple[str, str, str]] = set()
-            for local, parent, namespace in old_ctx:
-                if local in ("AlternateContent", "Choice", "Fallback"):
-                    continue
-                if local in new_locals:
+            old_rows = [
+                (local, parent, namespace)
+                for local, parent, namespace in _element_contexts(old)
+                if local not in ("AlternateContent", "Choice", "Fallback")
+            ]
+            new_rows = [
+                (local, parent, namespace)
+                for local, parent, namespace in _element_contexts(new)
+                if local not in ("AlternateContent", "Choice", "Fallback")
+            ]
+            # Identity is local name plus parent, not the namespace URI.
+            # Transitional and Strict spell the same WML element with different
+            # URIs; counting those as a deletion hides nothing and reports
+            # everything. Multiplicity still notices when one of two siblings
+            # with the same local name and parent disappears.
+            old_counts = collections.Counter((local, parent) for local, parent, _ns in old_rows)
+            new_counts = collections.Counter((local, parent) for local, parent, _ns in new_rows)
+            namespace_of: dict[tuple[str, str | None], str | None] = {}
+            for local, parent, namespace in old_rows:
+                namespace_of.setdefault((local, parent), namespace)
+            for local, parent in sorted(old_counts):
+                removed = old_counts[(local, parent)] - new_counts[(local, parent)]
+                if removed <= 0:
                     continue
                 if local not in oracle.declared:
                     continue
-                if local in named or _qualified(local, namespace) in named:
-                    continue
+                namespace = namespace_of[(local, parent)]
                 label = _qualified(local, namespace)
-                detail = f"parent={parent or ''}"
-                key = (part, label, detail)
-                if key in seen:
-                    continue
-                seen.add(key)
+                # A report that names this element is evidence for a named loss.
+                # It is not a reason to hide the row: a registry item titled
+                # named_loss still has to see `named=1` for this input.
+                named_flag = 1 if local in named or label in named else 0
+                detail = (
+                    f"parent={parent or ''}|namespace={_prefix_or_uri(namespace)}"
+                    f"|removed={removed}|named={named_flag}|{_cited_field(named)}"
+                )
                 found.append((part, label, detail))
+            found.extend(
+                _changed_attributes(old, new, oracle, named, part, new_counts, before, after)
+            )
+        found.extend(_changed_resources(before, after, named))
     return found
+
+
+def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, str]:
+    """`Id` → `Target` for the relationships of `part`."""
+    directory, _, file = part.rpartition("/")
+    rels = f"{directory}/_rels/{file}.rels" if directory else f"_rels/{file}.rels"
+    try:
+        root = etree.fromstring(archive.read(rels))
+    except (KeyError, etree.XMLSyntaxError):
+        return {}
+    found: dict[str, str] = {}
+    for element in root:
+        if not isinstance(element.tag, str):
+            continue
+        rid = element.get("Id")
+        target = element.get("Target")
+        if rid and target:
+            found[rid] = target
+    return found
+
+
+def _changed_attributes(
+    old: etree._Element,
+    new: etree._Element,
+    oracle,
+    named: set[str],
+    part: str,
+    new_elements: collections.Counter,
+    before: zipfile.ZipFile,
+    after: zipfile.ZipFile,
+) -> list[tuple[str, str, str]]:
+    """Attribute values that left a surviving element.
+
+    A node that disappeared entirely is already an element row. This signal is
+    the other half: the element is still there, and one of its properties or
+    values is not. Identity is the attribute local name plus its value, so a
+    Transitional-to-Strict namespace rewrite of the same value is not a change.
+    """
+    old_bag, namespace_of = _attribute_bag(old)
+    new_bag, _new_ns = _attribute_bag(new)
+    old_rels = _load_rels(before, part)
+    new_rels = _load_rels(after, part)
+    appeared = collections.Counter(
+        {
+            key: count
+            for key, count in (new_bag - old_bag).items()
+            if count > 0
+        }
+    )
+    rows: list[tuple[str, str, str]] = []
+    for key, old_count in sorted(old_bag.items()):
+        elem_local, parent, attr_local, value = key
+        if elem_local not in oracle.declared:
+            continue
+        if new_elements[(elem_local, parent)] <= 0:
+            continue
+        removed = old_count - new_bag[key]
+        if removed <= 0:
+            continue
+        # T3 renames left/right to start/end. T2 rewrites a twip count as the
+        # same length in points. Either one, on the same element, is that
+        # transform. A different length stays a change. Strict CT_Charset also
+        # renames @val to @characterSet while keeping the same code-page value.
+        candidates = [attr_local]
+        renamed = {"left": "start", "right": "end"}.get(attr_local)
+        if renamed is not None:
+            candidates.append(renamed)
+        if elem_local == "charset" and attr_local == "val":
+            candidates.append("characterSet")
+        for candidate in candidates:
+            if removed <= 0:
+                break
+            for (other_elem, other_parent, other_attr, other_value), spare in list(appeared.items()):
+                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate:
+                    continue
+                same_value = _same_attr_value(candidate, value, other_value)
+                same_target = (
+                    attr_local in {"id", "embed"}
+                    and old_rels.get(value)
+                    and old_rels.get(value) == new_rels.get(other_value)
+                )
+                if not same_value and not same_target:
+                    continue
+                take = min(removed, spare)
+                appeared[(other_elem, other_parent, other_attr, other_value)] -= take
+                removed -= take
+        if removed <= 0:
+            continue
+        namespace = namespace_of.get((elem_local, parent))
+        label = f"{_qualified(elem_local, namespace)}@{attr_local}"
+        named_flag = 1 if attr_local in named or label in named or elem_local in named else 0
+        detail = (
+            f"parent={parent or ''}|namespace={_prefix_or_uri(namespace)}"
+            f"|attr={attr_local}|was={value}|removed={removed}|named={named_flag}"
+            f"|{_cited_field(named)}"
+        )
+        rows.append((part, label, detail))
+    return rows
+
+
+def _attribute_bag(
+    root: etree._Element,
+) -> tuple[collections.Counter, dict[tuple[str, str | None], str | None]]:
+    """Multiset of `(element, parent, attr, value)` plus element namespace."""
+    bag: collections.Counter = collections.Counter()
+    namespace_of: dict[tuple[str, str | None], str | None] = {}
+    copy = etree.fromstring(etree.tostring(root))
+    _strip_mce(copy)
+    for element in copy.iter():
+        if not isinstance(element.tag, str):
+            continue
+        qname = etree.QName(element)
+        parent = element.getparent()
+        parent_local = (
+            etree.QName(parent).localname
+            if parent is not None and isinstance(parent.tag, str)
+            else None
+        )
+        namespace_of.setdefault((qname.localname, parent_local), qname.namespace)
+        for key, value in element.attrib.items():
+            attr = etree.QName(key).localname if key.startswith("{") else key
+            bag[(qname.localname, parent_local, attr, value)] += 1
+    return bag, namespace_of
+
+
+def _changed_resources(
+    before: zipfile.ZipFile, after: zipfile.ZipFile, named: set[str]
+) -> list[tuple[str, str, str]]:
+    """Non-XML parts present on both sides whose bytes are not the same.
+
+    A missing part is the `dropped` signal. A part that is still there but no
+    longer the same resource is an inventory change a schema cannot see.
+    """
+    def hashes(archive: zipfile.ZipFile) -> tuple[collections.Counter, dict[str, str]]:
+        bag: collections.Counter = collections.Counter()
+        names: dict[str, str] = {}
+        for name in archive.namelist():
+            if name.endswith((".xml", ".rels", ".vml")):
+                continue
+            digest = hashlib.sha256(archive.read(name)).hexdigest()
+            bag[digest] += 1
+            names.setdefault(digest, name)
+        return bag, names
+
+    old_bag, old_names = hashes(before)
+    new_bag, _new_names = hashes(after)
+    rows: list[tuple[str, str, str]] = []
+    for digest, old_count in sorted(old_bag.items()):
+        removed = old_count - new_bag[digest]
+        if removed <= 0:
+            continue
+        # Same bytes under a new part name are a rename, not a new resource.
+        # A hash that is gone is a resource the written package no longer has.
+        name = old_names[digest]
+        label = f"resource:{normalize_part(name)}"
+        file_name = name.rsplit("/", 1)[-1]
+        named_flag = 1 if name in named or file_name in named or label in named else 0
+        detail = f"parent=|namespace=|sha256={digest}|named={named_flag}|removed={removed}"
+        rows.append((name, label, detail))
+    return rows
 
 
 def _element_contexts(root: etree._Element) -> list[tuple[str, str | None, str | None]]:
@@ -223,6 +406,12 @@ def _element_contexts(root: etree._Element) -> list[tuple[str, str | None, str |
         parent_local = etree.QName(parent).localname if parent is not None and isinstance(parent.tag, str) else None
         rows.append((qname.localname, parent_local, qname.namespace))
     return rows
+
+
+def _prefix_or_uri(namespace: str | None) -> str:
+    if not namespace:
+        return ""
+    return NS_PREFIX.get(namespace) or namespace
 
 
 def _qualified(local: str, namespace: str | None) -> str:
@@ -328,6 +517,71 @@ def census_hits(
     }
 
 
+def _twips(text: str) -> float | None:
+    if text.endswith("pt"):
+        try:
+            return float(text[:-2]) * 20.0
+        except ValueError:
+            return None
+    if re.fullmatch(r"-?\d+", text):
+        return float(text)
+    return None
+
+
+def _same_measure(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    a, b = _twips(left), _twips(right)
+    return a is not None and b is not None and abs(a - b) < 0.051
+
+
+def _same_hex(left: str, right: str) -> bool:
+    """`44546A` and `44546a` are one DrawingML sRGB value."""
+    if len(left) != len(right) or len(left) not in (3, 6, 8):
+        return False
+    return (
+        all(c in "0123456789abcdefABCDEF" for c in left + right)
+        and left.lower() == right.lower()
+    )
+
+
+def _same_attr_value(attr: str, left: str, right: str) -> bool:
+    """Lengths, T3/T4 direction words, and on/off spellings of `val`."""
+    if _same_measure(left, right):
+        return True
+    if _same_hex(left, right):
+        return True
+    if attr != "val":
+        return False
+    groups = (
+        {"left", "start"},
+        {"right", "end"},
+        {"1", "true", "on"},
+        {"0", "false", "off"},
+    )
+    return any(left in group and right in group for group in groups)
+
+
+def _cited_field(named: set[str]) -> str:
+    """Qualified feature ids this input's report actually printed."""
+    cited = sorted(token for token in named if ":" in token)
+    return "cited=" + ",".join(cited)
+
+
+def _element_pattern_matches(pattern: str, label: str) -> bool:
+    """Qualified patterns match only that qualified name.
+
+    `w:left` does not accept `a:left`. A bare local pattern accepts only an
+    unqualified label. `*` and `a:*` are not dispositions: they used to hide
+    every change in a regenerated part.
+    """
+    if not pattern or pattern == "*" or pattern.endswith(":*"):
+        return False
+    if ":" in pattern:
+        return pattern == label
+    return ":" not in label and pattern == label
+
+
 def _message_matches(item: dict, label: str, detail: str) -> bool:
     locals_or_labels = set(item["elements"]) | {_local_of(x) for x in item["elements"]}
     if label not in locals_or_labels and _local_of(label) not in locals_or_labels:
@@ -344,21 +598,23 @@ def element_item_matches(item: dict, where: str, label: str, detail: str) -> boo
     working; new dispositions should set `parents` and/or `parts`.
     """
     patterns = item.get("elements") or []
-    local = _local_of(label)
-    name_hit = any(
-        pattern == "*"
-        or pattern == label
-        or pattern == local
-        or _local_of(pattern) == local
-        or (
-            pattern.endswith(":*")
-            and ":" in label
-            and label.startswith(pattern[:-1])
-        )
-        for pattern in patterns
-    )
+    name_hit = any(_element_pattern_matches(pattern, label) for pattern in patterns)
     if not name_hit:
         return False
+    # `named_loss` in the registry is not itself a loss report. The row is a
+    # named loss only when this input's write report named the element.
+    if item.get("disposition") == "named_loss" and "named=1" not in detail.split("|"):
+        return False
+    required = item.get("requires_cited") or []
+    if required:
+        cited = ""
+        for piece in detail.split("|"):
+            if piece.startswith("cited="):
+                cited = piece[len("cited=") :]
+                break
+        cited_names = set(cited.split(",")) if cited else set()
+        if not any(token in cited_names for token in required):
+            return False
 
     parents = item.get("parents") or []
     if parents:
@@ -690,7 +946,14 @@ def write_transitional(corpus: str, destination: str, cli: str) -> tuple[int, li
             continue
         out = os.path.join(destination, name)
         if os.path.exists(out):
-            os.remove(out)
+            for attempt in range(6):
+                try:
+                    os.remove(out)
+                    break
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.4)
         result = subprocess.run(
             [cli, "write", os.path.join(corpus, name), "--out", out, "--transitional"],
             **WRITER_IO,

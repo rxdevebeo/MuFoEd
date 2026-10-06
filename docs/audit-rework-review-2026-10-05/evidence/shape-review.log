@@ -1,0 +1,22 @@
+   Compiling strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.89s
+     Running tests\acceptance_shape_review.rs (target\debug\deps\acceptance_shape_review-816ba83ffabecae0.exe)
+
+running 1 test
+"office": chars=6 map=6 xs=6 clusters=[ShapedCluster { byte_start: 0, byte_end: 1, advance_em: 0.52734375, glyph_ids: [111] }, ShapedCluster { byte_start: 1, byte_end: 4, advance_em: 0.8076171875, glyph_ids: [76] }, ShapedCluster { byte_start: 4, byte_end: 5, advance_em: 0.4228515625, glyph_ids: [49] }, ShapedCluster { byte_start: 5, byte_end: 6, advance_em: 0.49755859375, glyph_ids: [59] }]
+"e\u{301}": chars=2 map=2 xs=2 clusters=[ShapedCluster { byte_start: 0, byte_end: 3, advance_em: 0.49755859375, glyph_ids: [2007] }]
+"سلام": chars=4 map=4 xs=4 clusters=[ShapedCluster { byte_start: 0, byte_end: 8, advance_em: 0.5068359375, glyph_ids: [0] }, ShapedCluster { byte_start: 2, byte_end: 0, advance_em: 0.5068359375, glyph_ids: [0] }, ShapedCluster { byte_start: 4, byte_end: 2, advance_em: 0.5068359375, glyph_ids: [0] }, ShapedCluster { byte_start: 6, byte_end: 4, advance_em: 0.5068359375, glyph_ids: [0] }]
+
+thread 'acceptance_shaping_maps_every_scalar_even_when_degraded' (40128) panicked at strict-ooxml-render-svg\tests\acceptance_shape_review.rs:11:9:
+invalid Unicode cluster interval "سلام"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test acceptance_shaping_maps_every_scalar_even_when_degraded ... FAILED
+
+failures:
+
+failures:
+    acceptance_shaping_maps_every_scalar_even_when_degraded
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p strict-ooxml-render-svg --test acceptance_shape_review`

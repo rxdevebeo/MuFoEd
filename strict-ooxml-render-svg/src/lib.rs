@@ -52,7 +52,9 @@ mod notes;
 mod numbering;
 mod paint;
 
-pub use layout::{ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextItem};
+pub use layout::{
+    ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,
+};
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_core::part::PartId;
@@ -266,6 +268,8 @@ pub fn place_pages(
         render_items: std::cell::Cell::new(0),
         frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0)),
         frame_cursors: std::cell::RefCell::new(Vec::new()),
+        region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
+        metric_advances: std::cell::Cell::new(false),
     };
     Ok(layout::paginate::layout_document(&context)?.pages)
 }
@@ -307,6 +311,8 @@ pub fn render_with_media(
         render_items: std::cell::Cell::new(0),
         frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0)),
         frame_cursors: std::cell::RefCell::new(Vec::new()),
+        region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
+        metric_advances: std::cell::Cell::new(false),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
     let layout_warnings = laid_out.warnings.clone();

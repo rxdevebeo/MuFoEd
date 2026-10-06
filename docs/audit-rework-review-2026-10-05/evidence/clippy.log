@@ -1,0 +1,105 @@
+    Checking strict-ooxml-testkit v0.1.0 (D:\projects\StrictLib\strict-ooxml-testkit)
+    Checking rustybuzz v0.20.1
+    Checking strict-ooxml-core v0.1.0 (D:\projects\StrictLib\strict-ooxml-core)
+    Checking strict-ooxml-fidelity v0.1.0 (D:\projects\StrictLib\strict-ooxml-fidelity)
+    Checking strict-ooxml-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-pdf)
+    Checking strict-ooxml-ocr v0.1.0 (D:\projects\StrictLib\strict-ooxml-ocr)
+error: item in documentation is missing backticks
+   --> strict-ooxml-core\src\normalize\tables.rs:504:5
+    |
+504 | /// DrawingML `ST_Percentage` / `ST_PositiveFixedPercentage` as Transitional
+    |     ^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#doc_markdown
+    = note: `-D clippy::doc-markdown` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::doc_markdown)]`
+help: try
+    |
+504 - /// DrawingML `ST_Percentage` / `ST_PositiveFixedPercentage` as Transitional
+504 + /// `DrawingML` `ST_Percentage` / `ST_PositiveFixedPercentage` as Transitional
+    |
+
+error: item in documentation is missing backticks
+   --> strict-ooxml-core\src\normalize\tables.rs:529:46
+    |
+529 | /// Whether `(element, attribute)` carries a DrawingML percentage stored as
+    |                                              ^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#doc_markdown
+help: try
+    |
+529 - /// Whether `(element, attribute)` carries a DrawingML percentage stored as
+529 + /// Whether `(element, attribute)` carries a `DrawingML` percentage stored as
+    |
+
+error: match expression looks like `matches!` macro
+   --> strict-ooxml-core\src\normalize\tables.rs:533:5
+    |
+533 | /     match (element, attribute) {
+534 | |         (
+535 | |             "tint" | "shade" | "satMod" | "lumMod" | "lumOff" | "alpha" | "alphaMod"
+536 | |             | "alphaOff" | "hue" | "hueOff" | "hueMod" | "comp" | "inv" | "gray" | "gamma"
+...   |
+543 | |         _ => false,
+544 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#match_like_matches_macro
+    = note: `-D clippy::match-like-matches-macro` implied by `-D clippy::all`
+    = help: to override `-D clippy::all` add `#[allow(clippy::match_like_matches_macro)]`
+help: try
+    |
+533 ~     matches!((element, attribute), (
+534 +             "tint" | "shade" | "satMod" | "lumMod" | "lumOff" | "alpha" | "alphaMod"
+535 +             | "alphaOff" | "hue" | "hueOff" | "hueMod" | "comp" | "inv" | "gray" | "gamma"
+536 +             | "invGamma",
+537 +             "val",
+538 +         ) | ("gs", "pos") | ("fillToRect" | "fillRect" | "srcRect", "l" | "t" | "r" | "b") | ("defRPr" | "rPr" | "endParaRPr", "baseline"))
+    |
+
+error: this function has too many lines (122/100)
+   --> strict-ooxml-core\src\normalize\transitional.rs:731:5
+    |
+731 | /     fn rewrite_start(
+732 | |         start: &BytesStart<'_>,
+733 | |         empty: bool,
+734 | |         context: &mut PartContext,
+735 | |         report: &mut NormalizationReport,
+736 | |     ) -> Rewritten {
+    | |__________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#too_many_lines
+    = note: `-D clippy::too-many-lines` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::too_many_lines)]`
+
+error: could not compile `strict-ooxml-core` (lib) due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: redundant closure
+    --> strict-ooxml-core\src\xml\mod.rs:1020:49
+     |
+1020 |                     out.extend(text.chars().map(|ch| u32::from(ch)));
+     |                                                 ^^^^^^^^^^^^^^^^^^ help: replace the closure with the associated function itself: `u32::from`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure
+     = note: `-D clippy::redundant-closure` implied by `-D clippy::all`
+     = help: to override `-D clippy::all` add `#[allow(clippy::redundant_closure)]`
+
+error: these match arms have identical bodies
+    --> strict-ooxml-core\src\xml\mod.rs:1096:17
+     |
+1096 |                 Event::End(_) => break,
+     |                 ^^^^^^^^^^^^^^^^^^^^^^
+1097 |                 Event::Eof => break,
+     |                 ^^^^^^^^^^^^^^^^^^^
+     |
+     = help: if this is unintentional make the arms return different values
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#match_same_arms
+     = note: `-D clippy::match-same-arms` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::match_same_arms)]`
+help: otherwise merge the patterns into a single arm
+     |
+1096 ~                 Event::End(_) | Event::Eof => break,
+1097 ~                 _ => {}
+     |
+
+error: could not compile `strict-ooxml-core` (lib test) due to 6 previous errors

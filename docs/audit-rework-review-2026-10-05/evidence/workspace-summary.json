@@ -1,0 +1,24 @@
+{
+  "harness_totals": {
+    "passed": 1414,
+    "failed": 14,
+    "ignored": 0
+  },
+  "failure_names": [
+    "render::a_heavy_footer_on_many_pages_hits_the_render_item_budget",
+    "a_grid_becomes_a_table",
+    "the_visual_mode_makes_no_structural_claim",
+    "the_table_rules_are_load_bearing",
+    "the_table_sits_where_its_text_was",
+    "caret_matches_renderer_and_hits_exact_unicode_boundaries",
+    "the_pdf_gate_can_fail_on_a_page_it_passes",
+    "our_pdf_matches_the_wps_references",
+    "level_indentation_offsets_the_marker",
+    "zero_default_tab_stop_advances_text",
+    "structural_extent_ratchet_pins_the_known_drift",
+    "structural_check_rejects_real_horizontal_shift",
+    "matches_wps_references",
+    "every_rendered_page_is_valid_and_within_bounds"
+  ],
+  "failed_targets": "error: 8 targets failed:\n    `-p strict-ooxml --test hostile`\n    `-p strict-ooxml-convert --test tables`\n    `-p strict-ooxml-edit --test visual`\n    `-p strict-ooxml-pdf --test pdf_pixels`\n    `-p strict-ooxml-render-svg --test numbering`\n    `-p strict-ooxml-render-svg --test render`\n    `-p strict-ooxml-render-svg --test ssim`\n    `-p strict-ooxml-render-svg --test svg_oracle`"
+}

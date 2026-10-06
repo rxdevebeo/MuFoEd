@@ -33,7 +33,7 @@ pub use drawing::{
     ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap,
     WrapKind, Xfrm,
 };
-pub use fonts::{EmbedKind, EmbeddedFont, FontEntry, FontTable};
+pub use fonts::{EmbedKind, EmbeddedFont, FontEntry, FontHints, FontSig, FontTable};
 pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
 pub use inline::{
     Bookmark, BookmarkId, CommentId, Directional, DirectionalKind, DirectionalVal, Field,

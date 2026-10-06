@@ -1,0 +1,42 @@
+{
+  "card": "D05",
+  "status": "PARTIAL",
+  "base_sha": "63be263497fa293d27734c0868c68c8540ff7f9f",
+  "controls": {
+    "wildcard_star_and_prefix_star": "do not match",
+    "w_left_does_not_accept_a_left": true,
+    "unknown_settings_and_drawingml_stay_unclassified": true,
+    "named_loss_requires_named_1_on_this_input": true,
+    "one_of_two_same_local_parent_nodes_is_visible": true,
+    "attribute_value_and_resource_hash_are_separate_rows": true,
+    "selftest_fast": "test_review_negative_controls_stay_unclassified and named_loss PASS",
+    "selftest_full": "python xtool/xsd-gate/census_gate_selftest.py PASS after the relationship, resource-hash, and editor-id edits"
+  },
+  "dispositions_removed": ["TZ-24 *", "TZ-25 *", "TZ-35 *", "TZ-36 *", "TZ-37 *", "TZ-39 *", "TZ-42 a:* wp:* c:* m:*"],
+  "named_only_when_reported": [
+    "font hints TZ-24",
+    "rendering counters TZ-22 via ep:Pages in the write report",
+    "revision attributes TZ-44",
+    "T5 extension attributes TZ-45",
+    "wp14 editor ids recorded as wp:inline@anchorId / wp:anchor@editId"
+  ],
+  "transforms_credited_only_when_the_value_matches": [
+    "left/right to start/end",
+    "twips integer to the same length in pt",
+    "val left/start, right/end, and on/off spellings",
+    "rId/embed when the relationship Target is unchanged",
+    "media bytes compared by sha256 multiset, so a rename is not a new resource"
+  ],
+  "measurement": {
+    "command": "python target/audit-rework-return-2026-10-05/D05/inventory_probe.py",
+    "documents": 221,
+    "corpora": ["strict-ooxml-core/tests/docx", "strict-ooxml-core/tests/samples", "testdata/CC0_DOCX"],
+    "groups": 1568,
+    "rows": 16225,
+    "by_kind": {"attribute": 912, "element": 647, "resource": 9},
+    "artifact": "target/audit-rework-return-2026-10-05/D05/unclassified-groups.json",
+    "largest": ["a:off@y 640", "a:blip@embed 551", "a:off@x 517", "w:p@rsidP 505", "w:hyperlink@id 478", "w:p@rsidRDefault 466"],
+    "note": "Includes the cid:durableId report. That attribute left the top groups. Remaining leaders are drawing offsets, blip relationship targets, and text-box revision ids."
+  },
+  "limits": "Unclassified inventory is still non-zero, so the census gate is not PASS. Schema and inventory stay separate. 27 Strict XSD was not part of this card. Word was not used."
+}

@@ -464,10 +464,31 @@ pub fn scalar_to_utf16(text: &str, offset: usize) -> Result<usize, EditError> {
     Ok(text.chars().take(offset).map(char::len_utf16).sum())
 }
 fn measure(text: &str, item: &TextItem, font: &dyn strict_ooxml_render_svg::FontProvider) -> f64 {
+    if text.is_empty() {
+        return 0.0;
+    }
     let family = chosen_family(&item.run, &item.text);
-    text.chars()
-        .map(|ch| font.advance_em(&family, ch, item.run.bold, item.run.italic) * item.size_px)
-        .sum()
+    let shown = strict_ooxml_render_svg::font::present_text(&item.run.family, text);
+    match item.advance {
+        strict_ooxml_render_svg::TextAdvanceKind::Metric => {
+            shown
+                .chars()
+                .map(|ch| font.advance_em(&family, ch, item.run.bold, item.run.italic))
+                .sum::<f64>()
+                * item.size_px
+        }
+        strict_ooxml_render_svg::TextAdvanceKind::Shaped => {
+            strict_ooxml_render_svg::font::shape_text(
+                &shown,
+                &family,
+                item.run.bold,
+                item.run.italic,
+                font,
+            )
+            .total_advance_em
+                * item.size_px
+        }
+    }
 }
 // Exact equality is intentional: attribution must reproduce the same layout.
 #[allow(clippy::float_cmp)]

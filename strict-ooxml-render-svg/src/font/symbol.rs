@@ -153,7 +153,7 @@ const WINGDINGS: &[(char, char)] = &[
 /// `family` is the requested face, before it is mapped onto a bundled family.
 /// Measurement and painting must both use this string, so the marker width
 /// matches the ink.
-pub(crate) fn present_text<'a>(family: &str, text: &'a str) -> Cow<'a, str> {
+pub fn present_text<'a>(family: &str, text: &'a str) -> Cow<'a, str> {
     let Some(table) = symbol_table(family) else {
         return Cow::Borrowed(text);
     };

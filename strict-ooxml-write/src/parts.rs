@@ -6,6 +6,8 @@
 //! that had no `numbering.xml` does not acquire one — that is what keeps a
 //! round trip from growing parts it did not have (SC-3).
 
+use strict_ooxml_core::error::SourceLocation;
+use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::{Block, Paragraph};
 use strict_ooxml_wml::model::document::HeaderFooter;
 use strict_ooxml_wml::model::ids::Ilvl;
@@ -21,7 +23,7 @@ use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
 use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
 use crate::xml::{WriteError, XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
-use strict_ooxml_wml::model::fonts::{EmbedKind, FontTable};
+use strict_ooxml_wml::model::fonts::{EmbedKind, FontEntry, FontTable};
 use strict_ooxml_wml::parse::LOST_FONT_PART;
 
 /// The namespace declarations a `w:` part carries.
@@ -553,6 +555,58 @@ fn strict_document_protection_attrs(
     out
 }
 
+/// Transitional protection attributes that `CT_DocProtect` cannot carry.
+///
+/// Dropping them keeps the element schema-valid. Each one is still a named
+/// loss: a clean report would claim the parameter survived.
+const UNMAPPED_PROTECTION_ATTRS: &[&str] = &[
+    "cryptProviderType",
+    "cryptAlgorithmClass",
+    "cryptAlgorithmType",
+    "cryptProvider",
+    "algIdExt",
+    "algIdExtSource",
+    "cryptProviderTypeExt",
+    "cryptProviderTypeExtSource",
+];
+
+fn report_unmapped_protection(
+    ctx: &mut Ctx<'_>,
+    pairs: &[(std::sync::Arc<str>, std::sync::Arc<str>)],
+) {
+    let mut location = SourceLocation::unknown();
+    location.part = PartId::new(crate::package::SETTINGS_PART);
+    for (name, value) in pairs {
+        if UNMAPPED_PROTECTION_ATTRS.contains(&name.as_ref()) {
+            ctx.report_lossy(
+                &format!("w:documentProtection/@w:{name}"),
+                &format!(
+                    "w:{name} has no CT_DocProtect attribute; the value {value:?} is dropped \
+                     and password-provider identity is not preserved"
+                ),
+                &location,
+            );
+        }
+        if name.as_ref() == "cryptAlgorithmSid"
+            && value
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .and_then(hash_algorithm_name)
+                .is_none()
+        {
+            ctx.report_lossy(
+                "w:documentProtection/@w:cryptAlgorithmSid",
+                &format!(
+                    "cryptAlgorithmSid {value:?} is not a supported hash algorithm; \
+                     algorithmName is omitted and password verification is not preserved"
+                ),
+                &location,
+            );
+        }
+    }
+}
+
 /// `w:cryptAlgorithmSid`'s hash-algorithm SIDs, mapped to the lexical value
 /// Strict's `w:algorithmName` takes for the same algorithm.
 ///
@@ -629,6 +683,7 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             // group - writing them back made the element invalid outright. An
             // element with nothing left to say is not written, but `edit` or
             // `enforcement` alone is still reason enough to keep it.
+            report_unmapped_protection(ctx, &settings.document_protection_attributes);
             let strict_attrs =
                 strict_document_protection_attrs(&settings.document_protection_attributes);
             let has_edit = settings.document_protection.is_some();
@@ -849,16 +904,11 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
 /// `word/fonts/*.ttf` behind one went missing — sixteen binaries in two corpus
 /// documents, named by nothing (`W7-DROPPED`).
 ///
-/// Two things the earlier version got wrong are fixed here rather than repeated:
-///
-/// - it wrote `w:family` and `w:pitch` as EMPTY elements. `CT_String` requires
-///   `w:val`, so `<w:family/>` was worse than no element at all, and nothing was
-///   expressed by those empties (`XS-01`). This version writes only what the model
-///   knows: `@w:name`, which is the one attribute `CT_Font` requires;
-/// - it could not express an embedded face at all. `ctx.font_rel` gives the id
-///   **this part's own** `.rels` will carry, which is the whole difficulty: the
-///   source's ids belong to `word/_rels/fontTable.xml.rels` and mean nothing
-///   here.
+/// Children follow `CT_Font`'s sequence: hints (`altName`…`sig`), then embeds,
+/// then `notTrueType`. Hint elements are written only with their required
+/// attributes — never as empty tags (`XS-01`). `w:charset` uses Strict
+/// `@w:characterSet`. `ctx.font_rel` gives the id **this part's own** `.rels`
+/// will carry.
 pub fn font_table_part(
     ctx: &mut Ctx<'_>,
     table: &FontTable,
@@ -873,37 +923,7 @@ pub fn font_table_part(
     let mut seen: Vec<&str> = Vec::new();
     for entry in &table.fonts {
         seen.push(&entry.name);
-        xml.start("w:font");
-        xml.attr_w("name", entry.name.as_ref());
-        for kind in EmbedKind::all() {
-            let Some(font) = entry.embeds.get(&kind) else {
-                continue;
-            };
-            if font.part.as_str() == LOST_FONT_PART {
-                ctx.report_unsupported(
-                    kind.element(),
-                    &format!(
-                        "the embedded {} of {} could not be resolved when the document was read, \
-                         so the face is named without its bytes",
-                        face_name(kind),
-                        entry.name
-                    ),
-                    &strict_ooxml_core::error::SourceLocation::unknown(),
-                );
-                continue;
-            }
-            let Some(rel) = ctx.font_rel(&font.part) else {
-                continue;
-            };
-            xml.start(kind.element());
-            xml.attr_r_opt("id", Some(rel));
-            xml.attr_w_opt("fontKey", font.font_key.as_deref());
-            if font.subsetted {
-                xml.attr_w("subsetted", "true");
-            }
-            xml.end();
-        }
-        xml.end();
+        write_font_entry(ctx, &mut xml, entry);
     }
     for family in families {
         if seen.contains(&family.as_str()) {
@@ -914,6 +934,71 @@ pub fn font_table_part(
     xml.end();
     let _ = ctx;
     ctx.finish_xml(xml)
+}
+
+/// One `w:font` with hints and embeds in schema order.
+fn write_font_entry(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, entry: &FontEntry) {
+    xml.start("w:font");
+    xml.attr_w("name", entry.name.as_ref());
+    let hints = &entry.hints;
+    if let Some(alt) = hints.alt_name.as_deref() {
+        xml.empty_attr_w("w:altName", "val", alt);
+    }
+    if let Some(panose) = hints.panose1.as_deref() {
+        xml.empty_attr_w("w:panose1", "val", panose);
+    }
+    if let Some(charset) = hints.charset.as_deref() {
+        // Strict `CT_Charset` names the attribute `characterSet`, not `val`.
+        xml.empty_attr_w("w:charset", "characterSet", charset);
+    }
+    if let Some(family) = hints.family.as_deref() {
+        xml.empty_attr_w("w:family", "val", family);
+    }
+    if let Some(pitch) = hints.pitch.as_deref() {
+        xml.empty_attr_w("w:pitch", "val", pitch);
+    }
+    if let Some(sig) = &hints.sig {
+        xml.start("w:sig");
+        xml.attr_w_opt("usb0", sig.usb0.as_deref());
+        xml.attr_w_opt("usb1", sig.usb1.as_deref());
+        xml.attr_w_opt("usb2", sig.usb2.as_deref());
+        xml.attr_w_opt("usb3", sig.usb3.as_deref());
+        xml.attr_w_opt("csb0", sig.csb0.as_deref());
+        xml.attr_w_opt("csb1", sig.csb1.as_deref());
+        xml.end();
+    }
+    for kind in EmbedKind::all() {
+        let Some(font) = entry.embeds.get(&kind) else {
+            continue;
+        };
+        if font.part.as_str() == LOST_FONT_PART {
+            ctx.report_unsupported(
+                kind.element(),
+                &format!(
+                    "the embedded {} of {} could not be resolved when the document was read, \
+                     so the face is named without its bytes",
+                    face_name(kind),
+                    entry.name
+                ),
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+            continue;
+        }
+        let Some(rel) = ctx.font_rel(&font.part) else {
+            continue;
+        };
+        xml.start(kind.element());
+        xml.attr_r_opt("id", Some(rel));
+        xml.attr_w_opt("fontKey", font.font_key.as_deref());
+        if font.subsetted {
+            xml.attr_w("subsetted", "true");
+        }
+        xml.end();
+    }
+    if hints.not_true_type {
+        xml.empty_attr_w("w:notTrueType", "val", "true");
+    }
+    xml.end();
 }
 
 /// The English name of a face, for a report line a person reads.
@@ -948,9 +1033,19 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
     );
     let mut xml = XmlWriter::new();
     xml.start_root("a:theme", &THEME_NAMESPACES);
+    ctx.report_partial(
+        "a:theme@name",
+        "theme name is rewritten to strict-ooxml",
+        &theme.location,
+    );
     xml.attr("name", "strict-ooxml");
     xml.start("a:themeElements");
     xml.start("a:clrScheme");
+    ctx.report_partial(
+        "a:clrScheme@name",
+        "color scheme name is rewritten to strict-ooxml",
+        &theme.location,
+    );
     xml.attr("name", "strict-ooxml");
     for slot in [
         "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5",
@@ -975,6 +1070,11 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
     }
     xml.end();
     xml.start("a:fontScheme");
+    ctx.report_partial(
+        "a:fontScheme@name",
+        "font scheme name is rewritten to strict-ooxml",
+        &theme.location,
+    );
     xml.attr("name", "strict-ooxml");
     for (name, set) in [
         ("a:majorFont", &theme.fonts.major),
@@ -1303,11 +1403,11 @@ pub fn font_families(styles: &StyleTable) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use strict_ooxml_core::normalize::report::NormalizationReport;
+    use strict_ooxml_core::normalize::report::{NormalizationReport, Severity};
     use strict_ooxml_wml::model::ids::StyleId;
     use strict_ooxml_wml::model::props::RunProperties;
-    use strict_ooxml_wml::model::styles::{Style, StyleTable};
     use strict_ooxml_wml::model::settings::Settings;
+    use strict_ooxml_wml::model::styles::{Style, StyleTable};
     use strict_ooxml_wml::model::values::{StyleType, TriState};
 
     use super::{font_families, settings_part, strict_document_protection_attrs, styles_part, Ctx};
@@ -1435,7 +1535,12 @@ mod tests {
             ("salt".into(), "ef01".into()),
         ];
         let attrs = strict_document_protection_attrs(&pairs);
-        let find = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.as_ref());
+        let find = |name: &str| {
+            attrs
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| v.as_ref())
+        };
         assert_eq!(find("enforcement"), Some("1"));
         assert_eq!(find("spinCount"), Some("100000"));
         assert_eq!(find("hashValue"), Some("abcd"));
@@ -1452,13 +1557,34 @@ mod tests {
     }
 
     /// An unrecognised SID has no Strict spelling and is skipped rather than
-    /// guessed at.
+    /// guessed at. The skip is a named loss: the write is not Clean.
     #[test]
     fn document_protection_skips_algorithm_name_for_unknown_sid() {
         let pairs: Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> =
             vec![("cryptAlgorithmSid".into(), "9999".into())];
         let attrs = strict_document_protection_attrs(&pairs);
         assert!(attrs.iter().all(|(name, _)| *name != "algorithmName"));
+
+        let settings = Settings {
+            document_protection_attributes: pairs,
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(!xml.contains("algorithmName"), "{xml}");
+        assert!(!xml.contains("9999"), "{xml}");
+        let losses = report.losses();
+        assert!(
+            losses.iter().any(|loss| {
+                loss.feature_id == "w:documentProtection/@w:cryptAlgorithmSid"
+                    && loss.severity == Severity::Lossy
+                    && loss
+                        .reason
+                        .contains("password verification is not preserved")
+            }),
+            "{losses:?}"
+        );
     }
 
     /// A Strict source's own attribute names pass through unchanged.
@@ -1470,7 +1596,12 @@ mod tests {
             ("algorithmName".into(), "SHA-512".into()),
         ];
         let attrs = strict_document_protection_attrs(&pairs);
-        let find = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| v.as_ref());
+        let find = |name: &str| {
+            attrs
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| v.as_ref())
+        };
         assert_eq!(find("formatting"), Some("1"));
         assert_eq!(find("spinCount"), Some("50"));
         assert_eq!(find("algorithmName"), Some("SHA-512"));
@@ -1494,5 +1625,12 @@ mod tests {
         assert!(xml.contains("<w:documentProtection"), "{xml}");
         assert!(xml.contains(r#"w:enforcement="1""#), "{xml}");
         assert!(!xml.contains("cryptProviderType"), "{xml}");
+        assert!(
+            report.losses().iter().any(|loss| {
+                loss.feature_id == "w:documentProtection/@w:cryptProviderType"
+                    && loss.severity == Severity::Lossy
+            }),
+            "{report:?}"
+        );
     }
 }

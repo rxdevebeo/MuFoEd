@@ -1,0 +1,202 @@
+D:\projects\StrictLib\xtool\xsd-gate\xsd_gate.py:811: FutureWarning: Truth-testing of elements was a source of confusion and will always return True in future versions. Use specific 'len(elem)' or 'elem is not None' test instead.
+  node = types.get(name) or groups.get(name)
+==============================================================================
+xsd-gate 1.0.0
+schema:  ECMA-376-1 5th edition, OfficeOpenXML-XMLSchema-Strict (5th edition, December 2016)
+         sha256 9d0bcad9cf06054785b03762fcfadbf6bab7e54a5f9d69434e34b7fd464d4129  (43501721 bytes)
+oracle:  lxml (6, 0, 1, 0), libxml2 (2, 11, 9), python 3.13.5
+corpus:  testdata/CC0_DOCX
+schemas: cache C:\Users\gamer\AppData\Local\cache\strict-ooxml\xsd-gate\fixed
+schemas: 2133 drivers compiled, 0 failures
+roots:   0 declared UNCOVERED (prefixed root type, G12)
+control: ok   valid: 0 schema violation(s) - a minimal w:document, which must come out clean
+control: ok   invalid: 1 schema violation(s) - a w:pPr with w:pBdr before w:tabs, which xsd:sequence forbids - the defect this gate exists to find, and the one the project made most of
+control: ok   extension: 0 schema violation(s) - a w:p carrying w14:paraId with mc:Ignorable declared, which an MCE processor removes and the gate must therefore NOT count as a schema violation
+control: ok   no-mce-declared: 0 schema violation(s) - the same w:p with w14:paraId and NO mc:Ignorable: still an extension, because conformance is defined after MCE and the declaration changes nothing about the namespace. If this one ever counted as ours, the basket would be deciding on politeness rather than on the standard
+control: ok   prefixed-valid: 0 schema violation(s) - a cx:cNvSpPr carrying the a:spLocks its type requires - a root whose TYPE is a prefixed QName, which is the case 13 roots were wrongly excused on
+control: ok   prefixed-invalid: 1 schema violation(s) - the same root with a child that is not in its type: drop the driver's import and this is accepted, so this is the control that would have caught it
+
+=== the writer's order tables against the schema (G21)
+  PPR       CT_PPr       schema 36 child(ren), table 36
+  SETTINGS  CT_Settings  schema 96 child(ren), table 96
+  SECTPR    EG_SectPrContents schema 22 child(ren), table 22
+  TBLPR     CT_TblPr     schema 18 child(ren), table 18
+  TCPR      CT_TcPr      schema 14 child(ren), table 14
+  TRPR      CT_TrPr      schema 15 child(ren), table 15
+  STYLE     CT_Style     schema 22 child(ren), table 22
+  LVL       CT_Lvl       schema 11 child(ren), table 11
+  ok: the order is stated once and matches
+
+document                                        IN   OUT   delta
+  001_wajiz.docx                                 0     0      +0
+  002_Bloggen_Forest_Man_del_3.docx              0     0      +0
+  003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx     0     0      +0
+  004_Elementary_English_Worksheets.docx         0     0      +0
+  005_De_Thi_Van_Dgnl.docx                       0     0      +0
+  006_Forest_Man_bloggen_del_4.docx              0     0      +0
+  007_Sinteze_Corint.docx                        0     0      +0
+  008_seyyid_ahmed_husameddin_hayati_ve_eserleri.docx     0     0      +0
+  009_stratigrafi_regional_daerah_kulon_progo_diy.docx     0     0      +0
+  010_SAC_AGIZhi_Neng_Yi_Shi_Ti_She_Ji_Yu_Bian_Ma_Ji_Luo.docx     0     0      +0
+  011_letters_of_peraringar_anna_6.docx          0     0      +0
+  012_Diagnostic_Test_AP.docx                    0     0      +0
+  013_woord.docx                                 0     0      +0
+  014_BG_Slokas_With_Transliteration_1_18.docx     0     0      +0
+  015_Garizumarako_abesti_eta_antifonak.docx     0     0      +0
+  016_Lutja_Kur_Mediton_Njeriu_Per_Allahun_Dhe_Krijimin.docx     0     0      +0
+  017_Catalogue_Of_Books_At_J_C_Collage_Library_Mysore.docx     0     0      +0
+  018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx     0     0      +0
+  019_Siirt_te_yabanci_Iliskleri.docx            0     0      +0
+  020_Nghien_cuu_cac_roi_loan_giao_tiep_cua_tre_tu_ki_ng.docx     0     1      +1
+  021_Ljudi_Vole_SliAne_Sebi_RAPORT.docx         0     0      +0
+  022_S_301.docx                                 0     0      +0
+  023_VCA_BASIS_4.docx                           0     0      +0
+  024_Koumudi_Kiranalu_Kiran_prabha_kaumudi_kirnnaalu.docx     0     0      +0
+  025_iyothee_dass_thoughts_religion.docx        0     0      +0
+  026_hafizi_sirazi_divani_ve_tezler.docx        0     0      +0
+  027_Cokovic_Rusmir_Vjerovanje_imama_ebu_hanife_u_pogle.docx     0     0      +0
+  028_nbhvv.docx                                 0     0      +0
+  029_For_Naturens_Skull_bloggen.docx            0     0      +0
+  030_Kaafarun_Kithamme_Nuruhunas.docx           0     0      +0
+  031_toki_soweli_tan_jan_Beatrix_Potter.docx     0     0      +0
+  032_lqT_lfwy_d_fy_wrq_t_lq_l_lHy_T_j_1.docx     0     0      +0
+  033_Nghiep_cam_but_chi.docx                    0     0      +0
+  034_CCOO_Cat_Comunicat_PRESTACIO_DESOCUPACIO_19_03_202.docx     0     0      +0
+  035_Scarlat_Demetrescu_Din_Tainele_Vieii_Si_Ale_Univer.docx     0     0      +0
+  036_SM_401_USER_MANUAL.docx                    0     0      +0
+  037_TIPE_SISIK_IKAN.docx                       0     0      +0
+  038_4_Stotras.docx                             0     0      +0
+  039_DIVAN_I_SAMI_Abdurrahman_Sami_Niyazi_Saruhani_kadd.docx     0     0      +0
+  040_aNbriissaakhyaanN_AMBARISHAKHYANAM.docx     0     0      +0
+  041_l_lm_l_qyd.docx                            0     0      +0
+  042_1_DS_Starting.docx                         0     0      +0
+  043_old_openyogaclass_com_av_yoga_Anandalahari_Kurs_yo.docx     0     0      +0
+  044_Yekuana_Prayers.docx                       0     0      +0
+  045_Ekoteologins_historia.docx                 0     0      +0
+  046_praise_and_guide_bn_doc.docx               0     0      +0
+  047_uz25a.docx                                 0     0      +0
+  048_HTyn_mwln_khbyb_syd_shhyd_khy_qfly_kh_ykh_rhy_z_mw.docx     0     0      +0
+  049_FInal_DISERTATIE.docx                      0     0      +0
+  050_letters_of_peraringar_anna.docx            0     0      +0
+  051_E_Glossa_Tes_Astheneias_27_Pules_Pros_Ton_Eauto.docx     0     0      +0
+  052_Laporan_Hasil_Praktikum_Kecambah.docx      0     0      +0
+  053_Cokovic_Rusmir_Post_16.docx                0     0      +0
+  054_Zydzi_W_Woj_Wielkopolskim_1.docx           0     0      +0
+  055_Matematiques_2n_Batxillerat_Col_leccio_completa.docx     0     0      +0
+  056_Ask_Semiha_Cemal.docx                      0     0      +0
+  057_Wen_Xue_Ge_Ming_Xi_Lie_Quan_Ji_Version_3_1_Di_Zao.docx     0     0      +0
+  058_Apostila_Completa_C_E_Estruturas_De_Dados.docx     0     0      +0
+  059_ISE217_PowerShell_Programming_Syllabus.docx     0     0      +0
+  060_Ekoteologins_historia_2nd_Ed.docx          0     0      +0
+  061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx     0     0      +0
+  062_ISE102_Implementing_And_Troubleshooting_Operating.docx     0     0      +0
+  063_ISE101_Implementing_And_Troubleshooting_Operating.docx     0     0      +0
+  064_40_Islamic_Books.docx                      0     0      +0
+  065_ldny.docx                                  0     0      +0
+  066_Gajendra_Mokshana_24_02_2021.docx          0     0      +0
+  067_N_3_ACT_4_Ha_Tuan_Kiet.docx                0     0      +0
+  068_Madhurya_Kadambini_Roman_Sanskrit.docx     0     0      +0
+  069_Puasa_01_Pengantar_Mauizhah.docx           0     0      +0
+  070_Innovations_and_New_Technologies.docx      0     0      +0
+  071_Repubblicanesimo_Geopolitico_Anticipating_Future_T.docx     0     0      +0
+  072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx     0     0      +0
+  073_Global_uppvarming_och_mansklighetens_undergang.docx     0     0      +0
+  074_hmy_T_m_lT_m_fy_lslm.docx                  0     0      +0
+  075_Hindi_Rashtra_Bhasha.docx                  0     0      +0
+  076_Selefus_Salih.docx                         0     0      +0
+  077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx     0     6      +6
+  078_For_mentalpatienters_manskliga_rattigheter.docx     0     0      +0
+  079_MALAS_PRACTICAS_REGISTRALES.docx           0     0      +0
+  080_makkal_sattam_1.docx                       0     0      +0
+  081_Lab_De_Uniones.docx                        0     0      +0
+  082_Empaquetado_De_Instrumental.docx           0     0      +0
+  083_MafiaCon_Tutorial_Russian_language.docx     0     0      +0
+  084_Iblisee_Mazhab_Deobandi_wahabi_mazhab_urdu_islami.docx     0     0      +0
+  085_Fu_Ben_2Yue_2Ri_Xiu_Gai_Zhong_Yang_She_Luvme_HairG.docx     0     0      +0
+  086_Oberon_La_citta_proibita.docx              0     0      +0
+  087_zakkum_gercegi_ziya_ozel.docx              0     0      +0
+  088_Bloggen_Mot_en_ny_romantik.docx            0     0      +0
+  089_Greer_Steven_M_Adevarul_ascuns_informatii_interzis.docx     0     0      +0
+  090_Gritos_Chutes_E_Pontapes.docx              0     0      +0
+  091_MTD_A1_Ma_Thoi_Den_Thanh_Co_Tinh_Tuyet.docx     0     0      +0
+  092_Vamana_Vijayam.docx                        0     0      +0
+  093_lmbdr_lyjby_mn_khll_syr_by_TlH_l_nSry_rDy_llh_nh.docx     0     0      +0
+  094_Exp_doc.docx                               0     0      +0
+  095_Door_Prize_Kajian_Islam.docx               0     0      +0
+  096_old_openyogaclass_com_av_yoga_108_aforizmov_Kurs_y.docx     0     0      +0
+  097_2_DS_Ancient_Text.docx                     0     0      +0
+  098_nenjai_allum_thanjai.docx                  0     0      +0
+  099_A_HistA3ria_Ambiental_e_a_EducaASSAPSo_Ambiental_c.docx     0     0      +0
+  100_SEC_MELI_TARI_H_11_SINIF_2_DO_NEM_1_YAZILI_CEVAP_A.docx     0     0      +0
+  TOTAL                                          0     7      +7
+
+parts not covered by the ECMA set (G10): 2455 part(s), and 0 root(s) with no driver - both listed, never counted green
+
+=== skipped parts, by the reason there is no validator for them
+    800  OPC, not ECMA-376 Part 1
+    194  coreProperties: namespace not in the ECMA set (http://schemas.openxmlformats.org/package/2006/metadata/core-properties)
+    139  styles: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+    136  datastoreItem: namespace not in the ECMA set (http://schemas.openxmlformats.org/officeDocument/2006/customXml)
+    110  hdr: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+    106  fonts: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+    106  settings: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+    104  Sources: namespace not in the ECMA set (http://schemas.openxmlformats.org/officeDocument/2006/bibliography)
+    100  document: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+     99  theme: namespace not in the ECMA set (http://schemas.openxmlformats.org/drawingml/2006/main)
+     98  webSettings: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+     96  Properties: namespace not in the ECMA set (http://schemas.openxmlformats.org/officeDocument/2006/extended-properties)
+     84  ftr: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+     74  numbering: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+     72  footnotes: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+     65  endnotes: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+     19  Properties: namespace not in the ECMA set (http://schemas.openxmlformats.org/officeDocument/2006/custom-properties)
+      8  contentTypeSchema: namespace not in the ECMA set (http://schemas.microsoft.com/office/2006/metadata/contentType)
+      8  properties: namespace not in the ECMA set (http://schemas.microsoft.com/office/2006/metadata/properties)
+      8  FormTemplates: namespace not in the ECMA set (http://schemas.microsoft.com/sharepoint/v3/contenttype/forms)
+      6  glossaryDocument: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+      6  chartSpace: namespace not in the ECMA set (http://schemas.openxmlformats.org/drawingml/2006/chart)
+      5  comments: namespace not in the ECMA set (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+      4  gDocsCustomXmlDataStorage: namespace not in the ECMA set (http://customooxmlschemas.google.com/)
+      2  CoverPageProperties: namespace not in the ECMA set (http://schemas.microsoft.com/office/2006/coverPageProps)
+      2  customPropertyEditors: namespace not in the ECMA set (http://schemas.microsoft.com/office/2006/customDocumentInformationPanel)
+      1  userShapes: namespace not in the ECMA set (http://schemas.openxmlformats.org/drawingml/2006/chart)
+      1  themeOverride: namespace not in the ECMA set (http://schemas.openxmlformats.org/drawingml/2006/main)
+      1  people: namespace not in the ECMA set (http://schemas.microsoft.com/office/word/2012/wordml)
+      1  not well-formed: expected, '<' not found, line 2, column 1 (<string>, line 2)
+
+=== our output, by element: 7 violation(s), 3 distinct element(s)
+  lblOffset            5
+  gapWidth             1
+  overlap              1
+
+=== registry (`XS-nn` closes on a measured zero, never on a code review)
+  XS-01   ours      NOT_EXERCISED w:fontTable: w:family and w:pitch written without their required w:val
+  XS-02   ours      NOT_EXERCISED a:fmtScheme: four style lists written empty, and each list requires content
+  XS-03   ours      NOT_EXERCISED a:fontScheme: majorFont/minorFont without the mandatory a:ea
+  XS-04   ours      NOT_EXERCISED wp:wrapNone/wrapTopAndBottom carry @distL/@distR, which Strict's empty CT_WrapNone forbids
+  XS-08   ours      NOT_EXERCISED w:pgMar without w:gutter/w:header/w:footer, all three use="required"
+  XS-09   ours      NOT_EXERCISED CT_TblWidth/@w written as bare twips; the union accepts only a percentage or a universal measure
+  XS-06   ours      NOT_EXERCISED w:settings: children out of CT_Settings' xsd:sequence order
+  XS-07   ours      NOT_EXERCISED w:pPr, w:tblPr and w:style children out of xsd:sequence order
+  XS-23   ours      NOT_EXERCISED border and margin edges under two names: Strict keeps left/right in CT_PBdr and renames them start/end in CT_TblBorders/CT_TcBorders/CT_TcMar
+  XS-05   ours      NOT_EXERCISED ST_DecimalNumberOrPercent written without the % sign
+  XS-11   ours      NOT_EXERCISED a:srcRect edges written without the % sign
+  XS-26   ours      NOT_EXERCISED enumeration written with its Transitional spelling (w:textDirection 'tbRl' where Strict has 'lrV')
+  XS-20   ours      NOT_EXERCISED w:bookmarkStart without its mandatory w:name
+  XS-21   ours      NOT_EXERCISED wp:positionH/V without @relativeFrom and without an align or posOffset child
+  XS-22   ours      NOT_EXERCISED wp:wrapSquare without @wrapText, and with it written in the WML namespace
+  XS-12   ours      NOT_EXERCISED OMML enumeration written with a value outside the schema's set ('skew' for 'skw', 'ctr' for 'center')
+  XS-13   ours      NOT_EXERCISED m:chr longer than maxLength 1 (a combining sequence)
+  XS-14   ours      NOT_EXERCISED text directly inside an element-only OMML argument; it belongs in m:r/m:t
+  XS-15   ours      NOT_EXERCISED OMML children out of their CT_* xsd:sequence order
+  XS-16   source    CARRIED 7    chart parts: c:gapWidth/c:overlap/c:lblOffset rejected by ST_GapAmount/ST_Overlap/ST_LblOffset, invalid in the INPUT and carried verbatim
+  XS-17   extension NOT_EXERCISED w14:paraId/w14:textId in a Strict package - ADR-0014; the gate files these in the extension basket, and `strict-ooxml-write/tests/strict_conformance.rs` is the gate that holds the zero
+  XS-18   extension NOT_EXERCISED wps:wsp inside a:graphicData, whose Strict wildcard is processContents="strict" - ADR-0014
+  XS-19   extension NOT_EXERCISED wp14:anchorId/@editId and w:txbxContent in a vendor namespace - ADR-0014
+
+uncovered roots (0), by schema:
+
+measured: documents=100 validated=100 missing=0 refused=0 unmatched=0 ours=0 source=7
+
+PASS: no schema violation of ours; 7 source violation(s) are carried and the output is not schema-clean
+      (source violations are carried from the producer's own markup and are not schema-clean. XS-16 is that mark, not a repair.)
