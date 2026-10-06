@@ -316,6 +316,14 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                 report.record_missing_face(&text.run.family);
                 continue;
             };
+            if text.advance == TextAdvanceKind::Metric {
+                // Metric paint addresses scalar CIDs, not shaped clusters. A
+                // ligature-only subset cannot serve its individual characters.
+                for ch in shown.chars() {
+                    collector.add(&source, text.run.bold, text.run.italic, ch);
+                }
+                continue;
+            }
             if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
                 &shown,
                 &text.run.family,

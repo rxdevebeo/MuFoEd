@@ -1,0 +1,34 @@
+[
+  {
+    "command": [
+      "cargo",
+      "run",
+      "-p",
+      "xtool",
+      "--locked",
+      "--",
+      "coverage",
+      "--file",
+      "coverage/wml-elements.toml",
+      "--min",
+      "89"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "run",
+      "-p",
+      "xtool",
+      "--locked",
+      "--",
+      "coverage",
+      "--file",
+      "coverage/stage5-scenarios.toml",
+      "--min",
+      "85"
+    ],
+    "exit": 0
+  }
+]

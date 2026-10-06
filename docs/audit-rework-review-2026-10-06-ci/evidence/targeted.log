@@ -1,0 +1,50 @@
+   Compiling font-types v0.11.3
+   Compiling strict-ooxml-wml v0.1.0 (D:\projects\StrictLib\strict-ooxml-wml)
+   Compiling lopdf v0.45.0
+   Compiling proptest v1.11.0
+   Compiling read-fonts v0.39.2
+   Compiling strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-svg)
+   Compiling strict-ooxml-write v0.1.0 (D:\projects\StrictLib\strict-ooxml-write)
+   Compiling strict-ooxml-report v0.1.0 (D:\projects\StrictLib\strict-ooxml-report)
+   Compiling strict-ooxml-edit v0.1.0 (D:\projects\StrictLib\strict-ooxml-edit)
+   Compiling strict-ooxml-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-pdf)
+   Compiling strict-ooxml-convert v0.1.0 (D:\projects\StrictLib\strict-ooxml-convert)
+   Compiling write-fonts v0.48.1
+   Compiling skrifa v0.42.1
+   Compiling subsetter v0.2.6
+   Compiling strict-ooxml-render-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-pdf)
+   Compiling strict-ooxml v0.1.0 (D:\projects\StrictLib\strict-ooxml)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.29s
+     Running tests\stage5c_corpus.rs (target\debug\deps\stage5c_corpus-061787dff1834101.exe)
+
+running 4 tests
+test every_repro_fixture_is_present_and_parses ... ok
+test no_repro_fixture_reports_an_unsupported_mechanism ... ok
+test the_math_repros_carry_formula_ink ... ok
+test every_repro_fixture_renders_with_the_reference_page_count ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests\d03_geometry_probe.rs (target\debug\deps\d03_geometry_probe-4cde80a77e420213.exe)
+
+running 1 test
+test justified_layout_matches_declared_advance_geometry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\fonts.rs (target\debug\deps\fonts-7d9e5ab1e34579dd.exe)
+
+running 10 tests
+test an_obfuscated_font_is_declared_as_one ... ok
+test an_unresolvable_embed_loses_the_face_and_keeps_the_family ... ok
+test the_four_faces_are_four_named_cases_in_the_schemas_order ... ok
+test a_font_table_with_no_embedded_face_gets_no_relationship_part ... ok
+test dropping_a_font_hint_is_visible_in_the_model ... ok
+test font_hints_round_trip_without_unsupported ... ok
+test the_font_table_is_read_and_every_embedded_face_is_resolved_to_a_part ... ok
+test the_font_key_travels_with_the_bytes_it_describes ... ok
+test every_embedded_font_reaches_the_written_package_with_its_bytes ... ok
+test the_written_package_settles_with_its_fonts ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+

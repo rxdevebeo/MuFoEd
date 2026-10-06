@@ -60,7 +60,9 @@ import argparse
 import collections
 import fnmatch
 import hashlib
+import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -68,6 +70,7 @@ import sys
 import tempfile
 import time
 import tomllib
+import urllib.parse
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -170,9 +173,9 @@ def vanished_elements(
     which no part-level signal can notice because a present part is not a lost
     part.
 
-    Detection still compares LOCAL names across namespaces: the input is
-    Transitional and the output is Strict, so a qualified comparison finds
-    nothing. Each finding then carries a qualified label plus parent context in
+    Identity includes canonical namespaces of the element and parent. Known
+    Transitional and Strict namespaces map to the same prefix; unrelated
+    namespaces cannot cancel each other. Each finding carries a qualified label plus parent context in
     `detail`, because `w:left` under `w:tblBorders` (a declared T3 rename) is not
     the same change as an unexpected `w:left` elsewhere.
 
@@ -191,32 +194,28 @@ def vanished_elements(
             except etree.XMLSyntaxError:
                 continue
             old_rows = [
-                (local, parent, namespace)
-                for local, parent, namespace in _element_contexts(old)
+                (local, parent, namespace, parent_namespace)
+                for local, parent, namespace, parent_namespace in _element_contexts(old)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
             new_rows = [
-                (local, parent, namespace)
-                for local, parent, namespace in _element_contexts(new)
+                (local, parent, namespace, parent_namespace)
+                for local, parent, namespace, parent_namespace in _element_contexts(new)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
-            # Identity is local name plus parent, not the namespace URI.
-            # Transitional and Strict spell the same WML element with different
-            # URIs; counting those as a deletion hides nothing and reports
-            # everything. Multiplicity still notices when one of two siblings
-            # with the same local name and parent disappears.
-            old_counts = collections.Counter((local, parent) for local, parent, _ns in old_rows)
-            new_counts = collections.Counter((local, parent) for local, parent, _ns in new_rows)
-            namespace_of: dict[tuple[str, str | None], str | None] = {}
-            for local, parent, namespace in old_rows:
-                namespace_of.setdefault((local, parent), namespace)
-            for local, parent in sorted(old_counts):
-                removed = old_counts[(local, parent)] - new_counts[(local, parent)]
+            old_counts = collections.Counter((local, parent, _prefix_or_uri(ns), _prefix_or_uri(pns)) for local, parent, ns, pns in old_rows)
+            new_counts = collections.Counter((local, parent, _prefix_or_uri(ns), _prefix_or_uri(pns)) for local, parent, ns, pns in new_rows)
+            namespace_of = {}
+            for local, parent, namespace, parent_namespace in old_rows:
+                namespace_of.setdefault((local, parent, _prefix_or_uri(namespace), _prefix_or_uri(parent_namespace)), namespace)
+            for key in sorted(old_counts, key=lambda k: tuple(value or "" for value in k)):
+                local, parent, _ns, _parent_ns = key
+                removed = old_counts[key] - new_counts[key]
                 if removed <= 0:
                     continue
                 if local not in oracle.declared:
                     continue
-                namespace = namespace_of[(local, parent)]
+                namespace = namespace_of[key]
                 label = _qualified(local, namespace)
                 # A report that names this element is evidence for a named loss.
                 # It is not a reason to hide the row: a registry item titled
@@ -224,6 +223,7 @@ def vanished_elements(
                 named_flag = 1 if _is_named(named, local, label) else 0
                 detail = (
                     f"parent={parent or ''}|namespace={_prefix_or_uri(namespace)}"
+                    f"|parent_namespace={_parent_ns}"
                     f"|removed={removed}|named={named_flag}|{_cited_field(named)}"
                 )
                 found.append((part, label, detail))
@@ -234,22 +234,46 @@ def vanished_elements(
     return found
 
 
-def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, str]:
-    """`Id` → `Target` for the relationships of `part`."""
+def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
+    """Relationship identity survives id/part renaming, but not changed bytes.
+
+    A raw Target comparison calls identical image bytes under img0.png a loss
+    of image12.png. Resolve internal resources before comparing them. External
+    targets stay exact, and relationship type/mode are part of the identity.
+    """
     directory, _, file = part.rpartition("/")
     rels = f"{directory}/_rels/{file}.rels" if directory else f"_rels/{file}.rels"
     try:
         root = etree.fromstring(archive.read(rels))
     except (KeyError, etree.XMLSyntaxError):
         return {}
-    found: dict[str, str] = {}
+    found: dict[str, tuple] = {}
     for element in root:
         if not isinstance(element.tag, str):
             continue
         rid = element.get("Id")
         target = element.get("Target")
         if rid and target:
-            found[rid] = target
+            kind = (element.get("Type") or "").replace(
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/",
+                "http://purl.oclc.org/ooxml/officeDocument/relationships/",
+            )
+            mode = element.get("TargetMode") or "Internal"
+            if mode == "External":
+                found[rid] = (kind, mode, target)
+                continue
+            path, separator, fragment = target.partition("#")
+            path = urllib.parse.unquote(path)
+            resolved = posixpath.normpath(
+                path.lstrip("/") if path.startswith("/")
+                else posixpath.join(directory, path)
+            )
+            try:
+                digest = hashlib.sha256(archive.read(resolved)).hexdigest()
+            except KeyError:
+                # An unresolved target is not evidence for equivalence.
+                continue
+            found[rid] = (kind, mode, digest, fragment if separator else "")
     return found
 
 
@@ -270,10 +294,13 @@ def _changed_attributes(
     values is not. Identity is the attribute local name plus its value, so a
     Transitional-to-Strict namespace rewrite of the same value is not a change.
     """
-    old_bag, namespace_of = _attribute_bag(old)
-    new_bag, _new_ns = _attribute_bag(new)
     old_rels = _load_rels(before, part)
     new_rels = _load_rels(after, part)
+    # Normalize before subtracting multisets: an old rId1 may have become
+    # rId2 while the writer reused rId1 for a different resource. Cancelling
+    # raw ids first loses both the equivalence and the target change.
+    old_bag, namespace_of = _attribute_bag(old, old_rels)
+    new_bag, _new_ns = _attribute_bag(new, new_rels)
     appeared = collections.Counter(
         {
             key: count
@@ -282,11 +309,11 @@ def _changed_attributes(
         }
     )
     rows: list[tuple[str, str, str]] = []
-    for key, old_count in sorted(old_bag.items()):
-        elem_local, parent, attr_local, value = key
+    for key, old_count in sorted(old_bag.items(), key=lambda row: tuple(value or "" for value in row[0])):
+        elem_local, parent, attr_local, value, elem_ns, parent_ns, attr_ns = key
         if elem_local not in oracle.declared:
             continue
-        if new_elements[(elem_local, parent)] <= 0:
+        if new_elements[(elem_local, parent, elem_ns, parent_ns)] <= 0:
             continue
         removed = old_count - new_bag[key]
         if removed <= 0:
@@ -304,27 +331,27 @@ def _changed_attributes(
         for candidate in candidates:
             if removed <= 0:
                 break
-            for (other_elem, other_parent, other_attr, other_value), spare in list(appeared.items()):
-                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate:
+            for other_key, spare in list(appeared.items()):
+                other_elem, other_parent, other_attr, other_value, other_ns, other_parent_ns, other_attr_ns = other_key
+                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate or (other_ns, other_parent_ns, other_attr_ns) != (elem_ns, parent_ns, attr_ns):
                     continue
-                same_value = _same_attr_value(candidate, value, other_value)
-                same_target = (
-                    attr_local in {"id", "embed"}
-                    and old_rels.get(value)
-                    and old_rels.get(value) == new_rels.get(other_value)
+                same_value = _same_attr_value(
+                    candidate, value, other_value, elem_local,
+                    elem_ns,
                 )
-                if not same_value and not same_target:
+                if not same_value:
                     continue
                 take = min(removed, spare)
-                appeared[(other_elem, other_parent, other_attr, other_value)] -= take
+                appeared[other_key] -= take
                 removed -= take
         if removed <= 0:
             continue
-        namespace = namespace_of.get((elem_local, parent))
+        namespace = namespace_of.get((elem_local, parent, elem_ns, parent_ns))
         label = f"{_qualified(elem_local, namespace)}@{attr_local}"
         named_flag = 1 if _is_named(named, attr_local, label, elem_local) else 0
         detail = (
             f"parent={parent or ''}|namespace={_prefix_or_uri(namespace)}"
+            f"|parent_namespace={parent_ns}|attribute_namespace={attr_ns}"
             f"|attr={attr_local}|was={value}|removed={removed}|named={named_flag}"
             f"|{_cited_field(named)}"
         )
@@ -334,10 +361,11 @@ def _changed_attributes(
 
 def _attribute_bag(
     root: etree._Element,
-) -> tuple[collections.Counter, dict[tuple[str, str | None], str | None]]:
-    """Multiset of `(element, parent, attr, value)` plus element namespace."""
+    relationships: dict[str, tuple] | None = None,
+) -> tuple[collections.Counter, dict[tuple[str, str | None, str, str], str | None]]:
+    """Multiset of attributes with canonical element/parent/attribute namespaces."""
     bag: collections.Counter = collections.Counter()
-    namespace_of: dict[tuple[str, str | None], str | None] = {}
+    namespace_of = {}
     copy = etree.fromstring(etree.tostring(root))
     _strip_mce(copy)
     for element in copy.iter():
@@ -350,10 +378,20 @@ def _attribute_bag(
             if parent is not None and isinstance(parent.tag, str)
             else None
         )
-        namespace_of.setdefault((qname.localname, parent_local), qname.namespace)
+        parent_ns = etree.QName(parent).namespace if parent is not None and isinstance(parent.tag, str) else None
+        elem_key = (qname.localname, parent_local, _prefix_or_uri(qname.namespace), _prefix_or_uri(parent_ns))
+        namespace_of.setdefault(elem_key, qname.namespace)
         for key, value in element.attrib.items():
             attr = etree.QName(key).localname if key.startswith("{") else key
-            bag[(qname.localname, parent_local, attr, value)] += 1
+            namespace = etree.QName(key).namespace if key.startswith("{") else None
+            if (
+                relationships is not None
+                and NS_PREFIX.get(namespace or "") == "r"
+                and attr in {"id", "embed", "link"}
+                and value in relationships
+            ):
+                value = "relationship:" + json.dumps(relationships[value], ensure_ascii=True)
+            bag[(qname.localname, parent_local, attr, value, elem_key[2], elem_key[3], _prefix_or_uri(namespace))] += 1
     return bag, namespace_of
 
 
@@ -394,18 +432,19 @@ def _changed_resources(
     return rows
 
 
-def _element_contexts(root: etree._Element) -> list[tuple[str, str | None, str | None]]:
-    """`(local, parent_local, namespace_uri)` for every element after MCE strip."""
+def _element_contexts(root: etree._Element) -> list[tuple[str, str | None, str | None, str | None]]:
+    """Element and parent QNames for every element after MCE strip."""
     copy = etree.fromstring(etree.tostring(root))
     _strip_mce(copy)
-    rows: list[tuple[str, str | None, str | None]] = []
+    rows: list[tuple[str, str | None, str | None, str | None]] = []
     for element in copy.iter():
         if not isinstance(element.tag, str):
             continue
         qname = etree.QName(element)
         parent = element.getparent()
         parent_local = etree.QName(parent).localname if parent is not None and isinstance(parent.tag, str) else None
-        rows.append((qname.localname, parent_local, qname.namespace))
+        parent_namespace = etree.QName(parent).namespace if parent is not None and isinstance(parent.tag, str) else None
+        rows.append((qname.localname, parent_local, qname.namespace, parent_namespace))
     return rows
 
 
@@ -427,7 +466,7 @@ def _local_of(label: str) -> str:
 
 def _local_names(root: etree._Element) -> set[str]:
     """Every local name in a part, counting neither namespaces nor branches."""
-    return {local for local, _parent, _ns in _element_contexts(root)}
+    return {local for local, _parent, _ns, _parent_ns in _element_contexts(root)}
 
 
 def _strip_mce(root: etree._Element) -> None:
@@ -557,12 +596,35 @@ def _percent_number(text: str) -> float | None:
         return None
 
 
-def _same_attr_value(attr: str, left: str, right: str) -> bool:
+def _same_attr_value(
+    attr: str, left: str, right: str,
+    element: str | None = None, namespace: str | None = None,
+) -> bool:
     """Lengths, T3/T4 direction words, and on/off spellings."""
     if _same_measure(left, right):
         return True
     if _same_hex(left, right):
         return True
+    # DrawingML ST_Percentage uses thousandths in Transitional and a percent
+    # suffix in Strict. Angles/coordinates must never use this conversion.
+    color_percent = {
+        "tint", "shade", "alpha", "alphaOff", "alphaMod", "hueMod",
+        "sat", "satOff", "satMod", "lum", "lumOff", "lumMod",
+        "red", "redOff", "redMod", "green", "greenOff", "greenMod",
+        "blue", "blueOff", "blueMod",
+    }
+    drawing_percent = namespace == "a" and (
+        (attr == "val" and element in color_percent)
+        or (element == "gs" and attr == "pos")
+        or (element in {"fillToRect", "fillRect", "srcRect", "tileRect"} and attr in {"l", "t", "r", "b"})
+        or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
+    )
+    if drawing_percent:
+        a, b = _percent_number(left), _percent_number(right)
+        if a is not None and b is not None:
+            a = a if left.endswith("%") else a / 1000.0
+            b = b if right.endswith("%") else b / 1000.0
+            return abs(a - b) < 1e-9
     if attr == "percent":
         a, b = _percent_number(left), _percent_number(right)
         if a is not None and b is not None and abs(a - b) < 0.051:
@@ -1047,6 +1109,7 @@ def main(argv: list[str]) -> int:
         help="keep the normalizer's loss reports in this directory",
     )
     parser.add_argument("--quiet-messages", action="store_true")
+    parser.add_argument("--inventory-out", help="save exact unclassified inventory rows as JSON")
     parser.add_argument(
         "--keep-written",
         help="write the Transitional corpus into this directory and keep it",
@@ -1331,6 +1394,13 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     our_total = sum(open_items.values())
     unmatched_schema_n = len(hits["unmatched_schema"])
     unclassified_n = len(hits["unclassified_element_changes"])
+    if args.inventory_out:
+        with open(args.inventory_out, "w", encoding="utf-8") as output:
+            json.dump({
+                "documents": documents, "validated": validated, "missing": missing,
+                "unmatched_schema": unmatched_schema_n, "ours": our_total,
+                "unclassified_element_changes": hits["unclassified_element_changes"],
+            }, output, ensure_ascii=False, indent=2)
     print(
         f"\nmeasured: documents={documents} validated={validated} "
         f"missing={missing} unmatched_schema={unmatched_schema_n} "

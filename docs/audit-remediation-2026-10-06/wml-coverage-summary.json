@@ -1,0 +1,1445 @@
+{
+  "totals": {
+    "branches": {
+      "count": 1042,
+      "covered": 736,
+      "notcovered": 306,
+      "percent": 70.63339731285988
+    },
+    "functions": {
+      "count": 940,
+      "covered": 890,
+      "percent": 94.68085106382979
+    },
+    "instantiations": {
+      "count": 2219,
+      "covered": 1694,
+      "percent": 76.34069400630915
+    },
+    "lines": {
+      "count": 9167,
+      "covered": 8007,
+      "percent": 87.34591469401114
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 10481,
+      "covered": 8487,
+      "notcovered": 1994,
+      "percent": 80.97509779601182
+    }
+  },
+  "files": [
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/block.rs",
+      "summary": {
+        "branches": {
+          "count": 2,
+          "covered": 2,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 4,
+          "covered": 3,
+          "percent": 75.0
+        },
+        "instantiations": {
+          "count": 8,
+          "covered": 3,
+          "percent": 37.5
+        },
+        "lines": {
+          "count": 25,
+          "covered": 15,
+          "percent": 60.0
+        },
+        "regions": {
+          "count": 23,
+          "covered": 16,
+          "notcovered": 7,
+          "percent": 69.56521739130434
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/document.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 5,
+          "covered": 3,
+          "percent": 60.0
+        },
+        "instantiations": {
+          "count": 10,
+          "covered": 3,
+          "percent": 30.0
+        },
+        "lines": {
+          "count": 14,
+          "covered": 9,
+          "percent": 64.28571428571429
+        },
+        "regions": {
+          "count": 14,
+          "covered": 9,
+          "notcovered": 5,
+          "percent": 64.28571428571429
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/drawing.rs",
+      "summary": {
+        "branches": {
+          "count": 22,
+          "covered": 20,
+          "notcovered": 2,
+          "percent": 90.9090909090909
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 13,
+          "covered": 12,
+          "percent": 92.3076923076923
+        },
+        "instantiations": {
+          "count": 26,
+          "covered": 15,
+          "percent": 57.692307692307686
+        },
+        "lines": {
+          "count": 82,
+          "covered": 76,
+          "percent": 92.68292682926831
+        },
+        "regions": {
+          "count": 85,
+          "covered": 79,
+          "notcovered": 6,
+          "percent": 92.94117647058822
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/fonts.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 6,
+          "covered": 6,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 12,
+          "covered": 6,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 22,
+          "covered": 22,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 22,
+          "covered": 22,
+          "notcovered": 0,
+          "percent": 100.0
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/ids.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 9,
+          "covered": 8,
+          "percent": 88.88888888888889
+        },
+        "instantiations": {
+          "count": 19,
+          "covered": 12,
+          "percent": 63.1578947368421
+        },
+        "lines": {
+          "count": 27,
+          "covered": 24,
+          "percent": 88.88888888888889
+        },
+        "regions": {
+          "count": 29,
+          "covered": 26,
+          "notcovered": 3,
+          "percent": 89.65517241379311
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/inline.rs",
+      "summary": {
+        "branches": {
+          "count": 2,
+          "covered": 1,
+          "notcovered": 1,
+          "percent": 50.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 11,
+          "covered": 10,
+          "percent": 90.9090909090909
+        },
+        "instantiations": {
+          "count": 22,
+          "covered": 13,
+          "percent": 59.09090909090909
+        },
+        "lines": {
+          "count": 49,
+          "covered": 40,
+          "percent": 81.63265306122447
+        },
+        "regions": {
+          "count": 47,
+          "covered": 38,
+          "notcovered": 9,
+          "percent": 80.85106382978722
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/math.rs",
+      "summary": {
+        "branches": {
+          "count": 12,
+          "covered": 7,
+          "notcovered": 5,
+          "percent": 58.333333333333336
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 29,
+          "covered": 26,
+          "percent": 89.65517241379311
+        },
+        "instantiations": {
+          "count": 56,
+          "covered": 44,
+          "percent": 78.57142857142857
+        },
+        "lines": {
+          "count": 310,
+          "covered": 255,
+          "percent": 82.25806451612904
+        },
+        "regions": {
+          "count": 345,
+          "covered": 290,
+          "notcovered": 55,
+          "percent": 84.05797101449275
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/notes.rs",
+      "summary": {
+        "branches": {
+          "count": 18,
+          "covered": 11,
+          "notcovered": 7,
+          "percent": 61.111111111111114
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 22,
+          "covered": 22,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 39,
+          "covered": 32,
+          "percent": 82.05128205128204
+        },
+        "lines": {
+          "count": 126,
+          "covered": 122,
+          "percent": 96.82539682539682
+        },
+        "regions": {
+          "count": 152,
+          "covered": 148,
+          "notcovered": 4,
+          "percent": 97.36842105263156
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/numbering.rs",
+      "summary": {
+        "branches": {
+          "count": 8,
+          "covered": 8,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 17,
+          "covered": 16,
+          "percent": 94.11764705882352
+        },
+        "instantiations": {
+          "count": 34,
+          "covered": 16,
+          "percent": 47.05882352941176
+        },
+        "lines": {
+          "count": 65,
+          "covered": 64,
+          "percent": 98.46153846153847
+        },
+        "regions": {
+          "count": 69,
+          "covered": 67,
+          "notcovered": 2,
+          "percent": 97.10144927536231
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/props.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 4,
+          "covered": 4,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 8,
+          "covered": 5,
+          "percent": 62.5
+        },
+        "lines": {
+          "count": 22,
+          "covered": 19,
+          "percent": 86.36363636363636
+        },
+        "regions": {
+          "count": 22,
+          "covered": 19,
+          "notcovered": 3,
+          "percent": 86.36363636363636
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/revision.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 6,
+          "covered": 6,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 12,
+          "covered": 8,
+          "percent": 66.66666666666666
+        },
+        "lines": {
+          "count": 36,
+          "covered": 36,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 35,
+          "covered": 35,
+          "notcovered": 0,
+          "percent": 100.0
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/settings.rs",
+      "summary": {
+        "branches": {
+          "count": 2,
+          "covered": 2,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 5,
+          "covered": 4,
+          "percent": 80.0
+        },
+        "instantiations": {
+          "count": 10,
+          "covered": 4,
+          "percent": 40.0
+        },
+        "lines": {
+          "count": 60,
+          "covered": 52,
+          "percent": 86.66666666666667
+        },
+        "regions": {
+          "count": 47,
+          "covered": 39,
+          "notcovered": 8,
+          "percent": 82.9787234042553
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/styles.rs",
+      "summary": {
+        "branches": {
+          "count": 6,
+          "covered": 4,
+          "notcovered": 2,
+          "percent": 66.66666666666666
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 16,
+          "covered": 16,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 32,
+          "covered": 16,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 51,
+          "covered": 50,
+          "percent": 98.0392156862745
+        },
+        "regions": {
+          "count": 54,
+          "covered": 53,
+          "notcovered": 1,
+          "percent": 98.14814814814817
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/support.rs",
+      "summary": {
+        "branches": {
+          "count": 26,
+          "covered": 22,
+          "notcovered": 4,
+          "percent": 84.61538461538461
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 22,
+          "covered": 21,
+          "percent": 95.45454545454545
+        },
+        "instantiations": {
+          "count": 47,
+          "covered": 34,
+          "percent": 72.3404255319149
+        },
+        "lines": {
+          "count": 146,
+          "covered": 141,
+          "percent": 96.57534246575342
+        },
+        "regions": {
+          "count": 136,
+          "covered": 131,
+          "notcovered": 5,
+          "percent": 96.32352941176472
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/theme.rs",
+      "summary": {
+        "branches": {
+          "count": 8,
+          "covered": 8,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 8,
+          "covered": 8,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 14,
+          "covered": 12,
+          "percent": 85.71428571428571
+        },
+        "lines": {
+          "count": 76,
+          "covered": 68,
+          "percent": 89.47368421052632
+        },
+        "regions": {
+          "count": 92,
+          "covered": 84,
+          "notcovered": 8,
+          "percent": 91.30434782608695
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/model/values.rs",
+      "summary": {
+        "branches": {
+          "count": 4,
+          "covered": 4,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 20,
+          "covered": 19,
+          "percent": 95.0
+        },
+        "instantiations": {
+          "count": 121,
+          "covered": 84,
+          "percent": 69.42148760330579
+        },
+        "lines": {
+          "count": 91,
+          "covered": 85,
+          "percent": 93.4065934065934
+        },
+        "regions": {
+          "count": 107,
+          "covered": 100,
+          "notcovered": 7,
+          "percent": 93.45794392523364
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/nesting.rs",
+      "summary": {
+        "branches": {
+          "count": 6,
+          "covered": 4,
+          "notcovered": 2,
+          "percent": 66.66666666666666
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 19,
+          "covered": 16,
+          "percent": 84.21052631578947
+        },
+        "instantiations": {
+          "count": 28,
+          "covered": 16,
+          "percent": 57.14285714285714
+        },
+        "lines": {
+          "count": 260,
+          "covered": 226,
+          "percent": 86.92307692307692
+        },
+        "regions": {
+          "count": 278,
+          "covered": 232,
+          "notcovered": 46,
+          "percent": 83.45323741007195
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/depth.rs",
+      "summary": {
+        "branches": {
+          "count": 2,
+          "covered": 2,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 7,
+          "covered": 7,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 203,
+          "covered": 188,
+          "percent": 92.61083743842364
+        },
+        "lines": {
+          "count": 49,
+          "covered": 49,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 59,
+          "covered": 58,
+          "notcovered": 1,
+          "percent": 98.30508474576273
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/dispatch.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 10,
+          "covered": 10,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 19,
+          "covered": 19,
+          "percent": 100.0
+        },
+        "lines": {
+          "count": 30,
+          "covered": 30,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 44,
+          "covered": 44,
+          "notcovered": 0,
+          "percent": 100.0
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/document.rs",
+      "summary": {
+        "branches": {
+          "count": 138,
+          "covered": 79,
+          "notcovered": 59,
+          "percent": 57.2463768115942
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 77,
+          "covered": 75,
+          "percent": 97.40259740259741
+        },
+        "instantiations": {
+          "count": 170,
+          "covered": 130,
+          "percent": 76.47058823529412
+        },
+        "lines": {
+          "count": 984,
+          "covered": 785,
+          "percent": 79.77642276422763
+        },
+        "regions": {
+          "count": 1109,
+          "covered": 805,
+          "notcovered": 304,
+          "percent": 72.58791704238052
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/drawing.rs",
+      "summary": {
+        "branches": {
+          "count": 264,
+          "covered": 171,
+          "notcovered": 93,
+          "percent": 64.77272727272727
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 132,
+          "covered": 123,
+          "percent": 93.18181818181817
+        },
+        "instantiations": {
+          "count": 264,
+          "covered": 218,
+          "percent": 82.57575757575758
+        },
+        "lines": {
+          "count": 1157,
+          "covered": 994,
+          "percent": 85.91184096802074
+        },
+        "regions": {
+          "count": 1480,
+          "covered": 1149,
+          "notcovered": 331,
+          "percent": 77.63513513513513
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/fonts.rs",
+      "summary": {
+        "branches": {
+          "count": 16,
+          "covered": 14,
+          "notcovered": 2,
+          "percent": 87.5
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 25,
+          "covered": 23,
+          "percent": 92.0
+        },
+        "instantiations": {
+          "count": 50,
+          "covered": 23,
+          "percent": 46.0
+        },
+        "lines": {
+          "count": 161,
+          "covered": 137,
+          "percent": 85.09316770186336
+        },
+        "regions": {
+          "count": 197,
+          "covered": 152,
+          "notcovered": 45,
+          "percent": 77.15736040609137
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/headerfooter.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 4,
+          "covered": 4,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 8,
+          "covered": 4,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 26,
+          "covered": 26,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 25,
+          "covered": 22,
+          "notcovered": 3,
+          "percent": 88.0
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/interner.rs",
+      "summary": {
+        "branches": {
+          "count": 2,
+          "covered": 2,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 5,
+          "covered": 4,
+          "percent": 80.0
+        },
+        "instantiations": {
+          "count": 9,
+          "covered": 6,
+          "percent": 66.66666666666666
+        },
+        "lines": {
+          "count": 26,
+          "covered": 23,
+          "percent": 88.46153846153845
+        },
+        "regions": {
+          "count": 33,
+          "covered": 30,
+          "notcovered": 3,
+          "percent": 90.9090909090909
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/math.rs",
+      "summary": {
+        "branches": {
+          "count": 128,
+          "covered": 97,
+          "notcovered": 31,
+          "percent": 75.78125
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 137,
+          "covered": 129,
+          "percent": 94.16058394160584
+        },
+        "instantiations": {
+          "count": 330,
+          "covered": 311,
+          "percent": 94.24242424242424
+        },
+        "lines": {
+          "count": 1863,
+          "covered": 1612,
+          "percent": 86.52710681696189
+        },
+        "regions": {
+          "count": 2025,
+          "covered": 1524,
+          "notcovered": 501,
+          "percent": 75.25925925925925
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/mod.rs",
+      "summary": {
+        "branches": {
+          "count": 110,
+          "covered": 84,
+          "notcovered": 26,
+          "percent": 76.36363636363637
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 104,
+          "covered": 102,
+          "percent": 98.07692307692307
+        },
+        "instantiations": {
+          "count": 205,
+          "covered": 157,
+          "percent": 76.58536585365854
+        },
+        "lines": {
+          "count": 955,
+          "covered": 913,
+          "percent": 95.6020942408377
+        },
+        "regions": {
+          "count": 952,
+          "covered": 884,
+          "notcovered": 68,
+          "percent": 92.85714285714286
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/notes.rs",
+      "summary": {
+        "branches": {
+          "count": 14,
+          "covered": 7,
+          "notcovered": 7,
+          "percent": 50.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 10,
+          "covered": 10,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 20,
+          "covered": 10,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 94,
+          "covered": 81,
+          "percent": 86.17021276595744
+        },
+        "regions": {
+          "count": 104,
+          "covered": 81,
+          "notcovered": 23,
+          "percent": 77.88461538461539
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/numbering.rs",
+      "summary": {
+        "branches": {
+          "count": 28,
+          "covered": 20,
+          "notcovered": 8,
+          "percent": 71.42857142857143
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 16,
+          "covered": 16,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 32,
+          "covered": 16,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 233,
+          "covered": 190,
+          "percent": 81.5450643776824
+        },
+        "regions": {
+          "count": 271,
+          "covered": 192,
+          "notcovered": 79,
+          "percent": 70.84870848708486
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/props.rs",
+      "summary": {
+        "branches": {
+          "count": 78,
+          "covered": 54,
+          "notcovered": 24,
+          "percent": 69.23076923076923
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 106,
+          "covered": 96,
+          "percent": 90.56603773584906
+        },
+        "instantiations": {
+          "count": 230,
+          "covered": 184,
+          "percent": 80.0
+        },
+        "lines": {
+          "count": 1019,
+          "covered": 899,
+          "percent": 88.22374877330716
+        },
+        "regions": {
+          "count": 1391,
+          "covered": 1173,
+          "notcovered": 218,
+          "percent": 84.3278217109993
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/settings.rs",
+      "summary": {
+        "branches": {
+          "count": 42,
+          "covered": 39,
+          "notcovered": 3,
+          "percent": 92.85714285714286
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 32,
+          "covered": 32,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 64,
+          "covered": 32,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 321,
+          "covered": 301,
+          "percent": 93.76947040498442
+        },
+        "regions": {
+          "count": 381,
+          "covered": 329,
+          "notcovered": 52,
+          "percent": 86.3517060367454
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/styles.rs",
+      "summary": {
+        "branches": {
+          "count": 22,
+          "covered": 13,
+          "notcovered": 9,
+          "percent": 59.09090909090909
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 13,
+          "covered": 13,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 26,
+          "covered": 13,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 212,
+          "covered": 168,
+          "percent": 79.24528301886792
+        },
+        "regions": {
+          "count": 247,
+          "covered": 170,
+          "notcovered": 77,
+          "percent": 68.82591093117408
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/table.rs",
+      "summary": {
+        "branches": {
+          "count": 30,
+          "covered": 26,
+          "notcovered": 4,
+          "percent": 86.66666666666667
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 16,
+          "covered": 16,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 32,
+          "covered": 28,
+          "percent": 87.5
+        },
+        "lines": {
+          "count": 268,
+          "covered": 227,
+          "percent": 84.70149253731343
+        },
+        "regions": {
+          "count": 296,
+          "covered": 223,
+          "notcovered": 73,
+          "percent": 75.33783783783784
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/parse/theme.rs",
+      "summary": {
+        "branches": {
+          "count": 22,
+          "covered": 13,
+          "notcovered": 9,
+          "percent": 59.09090909090909
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 16,
+          "covered": 16,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 31,
+          "covered": 18,
+          "percent": 58.06451612903226
+        },
+        "lines": {
+          "count": 151,
+          "covered": 132,
+          "percent": 87.41721854304636
+        },
+        "regions": {
+          "count": 188,
+          "covered": 149,
+          "notcovered": 39,
+          "percent": 79.25531914893617
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/resolve/mod.rs",
+      "summary": {
+        "branches": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 1,
+          "covered": 1,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 2,
+          "covered": 1,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 6,
+          "covered": 6,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 7,
+          "covered": 7,
+          "notcovered": 0,
+          "percent": 100.0
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/resolve/numbering.rs",
+      "summary": {
+        "branches": {
+          "count": 16,
+          "covered": 11,
+          "notcovered": 5,
+          "percent": 68.75
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 9,
+          "covered": 9,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 18,
+          "covered": 9,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 94,
+          "covered": 75,
+          "percent": 79.7872340425532
+        },
+        "regions": {
+          "count": 68,
+          "covered": 61,
+          "notcovered": 7,
+          "percent": 89.70588235294117
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/resolve/rels.rs",
+      "summary": {
+        "branches": {
+          "count": 2,
+          "covered": 2,
+          "notcovered": 0,
+          "percent": 100.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 1,
+          "covered": 1,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 2,
+          "covered": 1,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 25,
+          "covered": 25,
+          "percent": 100.0
+        },
+        "regions": {
+          "count": 18,
+          "covered": 18,
+          "notcovered": 0,
+          "percent": 100.0
+        }
+      }
+    },
+    {
+      "filename": "/mnt/d/projects/StrictLib/strict-ooxml-wml/src/resolve/styles.rs",
+      "summary": {
+        "branches": {
+          "count": 12,
+          "covered": 9,
+          "notcovered": 3,
+          "percent": 75.0
+        },
+        "mcdc": {
+          "count": 0,
+          "covered": 0,
+          "notcovered": 0,
+          "percent": 0.0
+        },
+        "functions": {
+          "count": 3,
+          "covered": 3,
+          "percent": 100.0
+        },
+        "instantiations": {
+          "count": 6,
+          "covered": 3,
+          "percent": 50.0
+        },
+        "lines": {
+          "count": 31,
+          "covered": 30,
+          "percent": 96.7741935483871
+        },
+        "regions": {
+          "count": 29,
+          "covered": 28,
+          "notcovered": 1,
+          "percent": 96.55172413793105
+        }
+      }
+    }
+  ]
+}

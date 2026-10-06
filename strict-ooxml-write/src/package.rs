@@ -387,6 +387,7 @@ pub struct WriteOutput {
 pub(crate) struct RelBuilder {
     next: u32,
     relationships: Vec<Relationship>,
+    by_target: BTreeMap<(bool, String, String), String>,
 }
 
 impl RelBuilder {
@@ -395,25 +396,33 @@ impl RelBuilder {
         Self {
             next: 1,
             relationships: Vec::new(),
+            by_target: BTreeMap::new(),
         }
     }
 
     /// Adds a relationship and returns its id.
     pub(crate) fn add(&mut self, rel_type: &RelType, target: String, external: bool) -> String {
+        let type_uri = strict_type_uri(rel_type);
+        let key = (external, type_uri.clone(), target.clone());
+        if let Some(id) = self.by_target.get(&key) {
+            return id.clone();
+        }
+        let target_mode = if external {
+            TargetMode::External
+        } else {
+            TargetMode::Internal
+        };
         let id = format!("rId{}", self.next);
         self.next += 1;
         self.relationships.push(Relationship {
             id: id.clone(),
             rel_type: rel_type.clone(),
-            raw_type: strict_type_uri(rel_type),
+            raw_type: type_uri,
             target,
-            target_mode: if external {
-                TargetMode::External
-            } else {
-                TargetMode::Internal
-            },
+            target_mode,
             resolved: None,
         });
+        self.by_target.insert(key, id.clone());
         id
     }
 
@@ -425,12 +434,12 @@ impl RelBuilder {
 
 /// Per-part relationship allocator (AUD-61).
 ///
-/// Deduplicates by `(external, target)` so two pictures of the same media part
+/// Deduplicates by `(external, type, target)` so two pictures of the same media part
 /// share one id inside the part being written.
 #[derive(Debug, Default)]
 pub(crate) struct RelAllocator {
     builder: RelBuilder,
-    by_target: BTreeMap<(bool, String), String>,
+    by_target: BTreeMap<(bool, String, String), String>,
 }
 
 impl RelAllocator {
@@ -446,7 +455,7 @@ impl RelAllocator {
 
     /// Ensures a relationship for `target` and returns its id.
     pub(crate) fn ensure(&mut self, rel_type: &RelType, target: String, external: bool) -> String {
-        let key = (external, target.clone());
+        let key = (external, strict_type_uri(rel_type), target.clone());
         if let Some(id) = self.by_target.get(&key) {
             return id.clone();
         }
@@ -1415,6 +1424,37 @@ pub fn media_content_type(kind: MediaKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{PartNameAllocator, RelAllocator, RelBuilder};
+
+    #[test]
+    fn relationships_reuse_only_the_same_type_target_and_mode() {
+        use strict_ooxml_core::opc::rels::RelType;
+        let mut builder = RelBuilder::new();
+        let image = builder.add(&RelType::Image, "shared".to_owned(), false);
+        assert_eq!(
+            builder.add(&RelType::Image, "shared".to_owned(), false),
+            image
+        );
+        let link = builder.add(&RelType::Hyperlink, "shared".to_owned(), false);
+        let external = builder.add(&RelType::Image, "shared".to_owned(), true);
+        assert_ne!(image, link);
+        assert_ne!(image, external);
+        assert_eq!(builder.relationships().len(), 3);
+        let mut allocator = RelAllocator::new();
+        let image = allocator.ensure(&RelType::Image, "shared".to_owned(), false);
+        assert_eq!(
+            allocator.ensure(&RelType::Image, "shared".to_owned(), false),
+            image
+        );
+        assert_ne!(
+            allocator.ensure(&RelType::Hyperlink, "shared".to_owned(), false),
+            image
+        );
+        assert_ne!(
+            allocator.ensure(&RelType::Image, "shared".to_owned(), true),
+            image
+        );
+        assert_eq!(allocator.relationships().len(), 3);
+    }
 
     #[test]
     fn rel_allocator_starts_at_rid1() {

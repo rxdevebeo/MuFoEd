@@ -1,0 +1,21 @@
+   Compiling strict-ooxml-render-pdf v0.1.0 (D:\projects\StrictLib\strict-ooxml-render-pdf)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.58s
+     Running tests\acceptance_metric_probe.rs (target\debug\deps\acceptance_metric_probe-4cbc2a2755908807.exe)
+
+running 1 test
+kind=Shaped extracted="\n" losses=[]
+kind=Metric extracted="\n" losses=[PdfLoss { id: "pdf.font.no_glyph", detail: "'f' is not in the bundled face for 'Carlito' and was not drawn", severity: Text }, PdfLoss { id: "pdf.font.no_glyph", detail: "'i' is not in the bundled face for 'Carlito' and was not drawn", severity: Text }]
+
+thread 'metric_and_shaped_pdf_preserve_office' (72820) panicked at strict-ooxml-render-pdf\tests\acceptance_metric_probe.rs:25:9:
+unexpected PDF loss for Metric
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test metric_and_shaped_pdf_preserve_office ... FAILED
+
+failures:
+
+failures:
+    metric_and_shaped_pdf_preserve_office
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p strict-ooxml-render-pdf --test acceptance_metric_probe`

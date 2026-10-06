@@ -1,0 +1,11 @@
+same status and untracked byte changes alter content fingerprint
+deleted file: exit 2
+missing tool: exit 2
+empty test list: exit 2
+zero denominator: exit 2
+missing corpus: exit 3
+quotient 0/3 = 0
+valid zip/xml accepted
+damaged xml rejected
+receipt without dirty_tree_hash: exit 1
+full_audit claim without flag: exit 1

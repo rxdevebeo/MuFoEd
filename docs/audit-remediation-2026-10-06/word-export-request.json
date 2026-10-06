@@ -1,0 +1,75 @@
+{
+  "status": "NOT_RUN_NO_WORD_REFERENCE",
+  "matrix_row": "F16-complex-word-schemes",
+  "source": "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+  "source_sha256": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+  "source_bytes": 1742116,
+  "pages": [
+    54,
+    56,
+    104
+  ],
+  "source_xml_parts_sha256": {
+    "word/document.xml": "3b2fa7b57d51a30ccead07df9f2d77930d64556bbfb2452c4b981a8cd56577a6",
+    "word/footnotes.xml": "da8204324cfa942a79ff345fcb93714afd880ab56e394ed526f34df8730738fe",
+    "word/endnotes.xml": "be7e8cabca78ddc95fa2a905be7a97e8d7af4a03e13c11fb5a4f4f4dc398d72d",
+    "word/theme/theme1.xml": "774eb91201717128f51f462a6bc1dbefe18948f3efabfedd32edc94cda8ae754",
+    "word/settings.xml": "bf78d0d63878f1acad1f36ae605dd16fca5b65e15e4443abc08a7cbf34139968",
+    "word/fontTable.xml": "0e5131e451ba64811e34214a3b8ebfd1cd48994b45e4ba265b12d94db1553259",
+    "word/styles.xml": "20d60dfc494121ad548000313cb2e70e1d5603ed8c0dbef314d34f083d6ab832",
+    "word/stylesWithEffects.xml": "4496c14b885a60236956f836bcc31288d80f11e45db5c93bdd4e2e164f235c20",
+    "word/webSettings.xml": "e68ec37916810b6c0bfb3f697842ef942569e1792cb3fc0bdb974576649a0737",
+    "word/numbering.xml": "aa9bbb08f7824ea0332a7172a304f9974df2de1368799701d15789a21a1d403d"
+  },
+  "declared_font_families": [
+    "Arial",
+    "Arial Narrow",
+    "Calibri",
+    "Candara",
+    "Century Schoolbook",
+    "Consolas",
+    "Constantia",
+    "Courier New",
+    "Franklin Gothic Book",
+    "Franklin Gothic Heavy",
+    "Georgia",
+    "Lucida Sans Unicode",
+    "MS Mincho",
+    "Palatino Linotype",
+    "Tahoma",
+    "Times New Roman"
+  ],
+  "reference_requirements": {
+    "application": "Microsoft Word",
+    "version_build": null,
+    "host_os": null,
+    "export_method": null,
+    "export_settings": null,
+    "font_file_versions_and_sha256": null,
+    "source_sha256_must_equal": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+    "pdf_sha256": null,
+    "page_dimensions_pt": null,
+    "page_mapping": "physical document pages 54,56,104; record PDF page indices and displayed page numbers separately",
+    "page_selection": "prefer full-document PDF; selected-page export must retain document page identity",
+    "scale": "unscaled page coordinates; pt to px uses 96/72",
+    "reference_geometry": "absolute glyph baselines/origins and component topology; bbox top is not baseline"
+  },
+  "acceptance": {
+    "complete_ledger_required": true,
+    "tolerance_px": 0.25,
+    "fonts_must_be_identified": true,
+    "missing_components_allowed": 0,
+    "ambiguous_matches": "UNMEASURABLE, not PASS",
+    "word_gate_cannot_be_substituted_by": [
+      "WPS",
+      "LibreOffice",
+      "unproven screenshot"
+    ]
+  },
+  "after_reference": [
+    "Verify matching DOCX byte hash and export provenance.",
+    "Map pages by content plus physical page identity.",
+    "Measure every required component against the frozen implementation.",
+    "Record new differences as Word-specific failures; preserve previous WPS receipts."
+  ]
+}

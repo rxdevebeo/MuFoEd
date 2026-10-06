@@ -260,62 +260,83 @@ fn parse_math_node(
 
     // `<m:r>` is the only construct whose text we read directly.
     let node = match name.local() {
-        "r" => Some(MathNode::Run(parse_math_run(parser)?)),
-        "f" => Some(MathNode::Fraction(Box::new(parse_fraction(
-            parser, scope, location,
-        )?))),
-        "rad" => Some(MathNode::Radical(Box::new(parse_radical(
-            parser, scope, location,
-        )?))),
-        "sSup" => Some(MathNode::Superscript(Box::new(parse_superscript(
-            parser, scope, location,
-        )?))),
-        "sSub" => Some(MathNode::Subscript(Box::new(parse_subscript(
-            parser, scope, location,
-        )?))),
-        "sSubSup" => Some(MathNode::SubSuperscript(Box::new(parse_sub_superscript(
-            parser, scope, location,
-        )?))),
-        "sPre" => Some(MathNode::PreScript(Box::new(parse_pre_script(
-            parser, scope, location,
-        )?))),
-        "nary" => Some(MathNode::NaryOperator(Box::new(parse_nary(
-            parser, scope, location,
-        )?))),
-        "d" => Some(MathNode::Delimiter(Box::new(parse_delimiter(
-            parser, scope, location,
-        )?))),
-        "func" => Some(MathNode::Function(Box::new(parse_function(
-            parser, scope, location,
-        )?))),
-        "limLow" => Some(MathNode::Limit(Box::new(parse_limit(
-            parser, false, scope, location,
-        )?))),
-        "limUpp" => Some(MathNode::Limit(Box::new(parse_limit(
-            parser, true, scope, location,
-        )?))),
-        "m" => Some(MathNode::Matrix(Box::new(parse_matrix(
-            parser, scope, location,
-        )?))),
-        "eqArr" => Some(MathNode::EquationArray(Box::new(parse_eq_array(
-            parser, scope, location,
-        )?))),
-        "acc" => Some(MathNode::Accent(Box::new(parse_accent(
-            parser, scope, location,
-        )?))),
-        "bar" => Some(MathNode::Bar(Box::new(parse_bar(parser, scope, location)?))),
-        "groupChr" => Some(MathNode::GroupCharacter(Box::new(parse_group_chr(
-            parser, scope, location,
-        )?))),
-        "box" => Some(MathNode::Boxed(Box::new(parse_box(
-            parser, scope, location,
-        )?))),
-        "borderBox" => Some(MathNode::BorderBox(Box::new(parse_border_box(
-            parser, scope, location,
-        )?))),
-        "phant" => Some(MathNode::Phantom(Box::new(parse_phantom(
-            parser, scope, location,
-        )?))),
+        "r" => build_math_node(|| parse_math_run(parser), MathNode::Run)?,
+        "f" => build_math_node(
+            || parse_fraction(parser, scope, location),
+            |value| MathNode::Fraction(Box::new(value)),
+        )?,
+        "rad" => build_math_node(
+            || parse_radical(parser, scope, location),
+            |value| MathNode::Radical(Box::new(value)),
+        )?,
+        "sSup" => build_math_node(
+            || parse_superscript(parser, scope, location),
+            |value| MathNode::Superscript(Box::new(value)),
+        )?,
+        "sSub" => build_math_node(
+            || parse_subscript(parser, scope, location),
+            |value| MathNode::Subscript(Box::new(value)),
+        )?,
+        "sSubSup" => build_math_node(
+            || parse_sub_superscript(parser, scope, location),
+            |value| MathNode::SubSuperscript(Box::new(value)),
+        )?,
+        "sPre" => build_math_node(
+            || parse_pre_script(parser, scope, location),
+            |value| MathNode::PreScript(Box::new(value)),
+        )?,
+        "nary" => build_math_node(
+            || parse_nary(parser, scope, location),
+            |value| MathNode::NaryOperator(Box::new(value)),
+        )?,
+        "d" => build_math_node(
+            || parse_delimiter(parser, scope, location),
+            |value| MathNode::Delimiter(Box::new(value)),
+        )?,
+        "func" => build_math_node(
+            || parse_function(parser, scope, location),
+            |value| MathNode::Function(Box::new(value)),
+        )?,
+        "limLow" => build_math_node(
+            || parse_limit(parser, false, scope, location),
+            |value| MathNode::Limit(Box::new(value)),
+        )?,
+        "limUpp" => build_math_node(
+            || parse_limit(parser, true, scope, location),
+            |value| MathNode::Limit(Box::new(value)),
+        )?,
+        "m" => build_math_node(
+            || parse_matrix(parser, scope, location),
+            |value| MathNode::Matrix(Box::new(value)),
+        )?,
+        "eqArr" => build_math_node(
+            || parse_eq_array(parser, scope, location),
+            |value| MathNode::EquationArray(Box::new(value)),
+        )?,
+        "acc" => build_math_node(
+            || parse_accent(parser, scope, location),
+            |value| MathNode::Accent(Box::new(value)),
+        )?,
+        "bar" => build_math_node(
+            || parse_bar(parser, scope, location),
+            |value| MathNode::Bar(Box::new(value)),
+        )?,
+        "groupChr" => build_math_node(
+            || parse_group_chr(parser, scope, location),
+            |value| MathNode::GroupCharacter(Box::new(value)),
+        )?,
+        "box" => build_math_node(
+            || parse_box(parser, scope, location),
+            |value| MathNode::Boxed(Box::new(value)),
+        )?,
+        "borderBox" => build_math_node(
+            || parse_border_box(parser, scope, location),
+            |value| MathNode::BorderBox(Box::new(value)),
+        )?,
+        "phant" => build_math_node(
+            || parse_phantom(parser, scope, location),
+            |value| MathNode::Phantom(Box::new(value)),
+        )?,
         other => {
             let local = parser.intern(other);
             parser.record(
@@ -333,6 +354,17 @@ fn parse_math_node(
     };
     scope.leave();
     Ok(node)
+}
+
+// Construct only the selected variant in its own stack frame. Keeping all
+// variant temporaries in the recursive dispatcher exhausts a 1 MiB stack in
+// debug builds before the configured math-depth budget can reject the formula.
+#[inline(never)]
+fn build_math_node<T>(
+    parse: impl FnOnce() -> Result<T>,
+    wrap: impl FnOnce(T) -> MathNode,
+) -> Result<Option<MathNode>> {
+    Ok(Some(wrap(parse()?)))
 }
 
 /// Parses `m:r` (its start element has been consumed).

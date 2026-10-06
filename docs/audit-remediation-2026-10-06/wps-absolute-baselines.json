@@ -1,0 +1,221 @@
+{
+  "reference": "WPS, not Word",
+  "coordinates": "absolute glyph origin, top-left, 96 dpi",
+  "tolerance_px": 0.25,
+  "pages": {
+    "54": {
+      "pdf_sha256": "fc58febe9187b112ef7b7f5c79e8183d108bd45e3df11adf2b48774eec0d9d1b",
+      "svg_sha256": "2a24f5e1b51e7410de62de6bd8c52f4a54de8ac1894d3a67a7d68b8b6c6dd1f9",
+      "points": [
+        {
+          "key": "HVR-I",
+          "reference_occurrences": 3,
+          "actual_occurrences": 3,
+          "status": "AMBIGUOUS_OR_MISSING"
+        },
+        {
+          "key": "L15996",
+          "reference_occurrences": 2,
+          "actual_occurrences": 2,
+          "status": "AMBIGUOUS_OR_MISSING"
+        },
+        {
+          "key": "H16142",
+          "reference_occurrences": 2,
+          "actual_occurrences": 2,
+          "status": "AMBIGUOUS_OR_MISSING"
+        },
+        {
+          "key": "L16055",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            211.04,
+            154.94533333333325
+          ],
+          "actual_px": [
+            211.133,
+            151.067
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -3.878333333333245,
+          "status": "FAIL"
+        },
+        {
+          "key": "L16117",
+          "reference_occurrences": 2,
+          "actual_occurrences": 2,
+          "status": "AMBIGUOUS_OR_MISSING"
+        },
+        {
+          "key": "H16233",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            378.24,
+            204.38666666666663
+          ],
+          "actual_px": [
+            378.351,
+            200.453
+          ],
+          "dx": 0.11099999999999,
+          "dy": -3.9336666666666247,
+          "status": "FAIL"
+        }
+      ]
+    },
+    "56": {
+      "pdf_sha256": "01fb7af779291bfdcff400ecc5c164e5b5c9170afae60ca00b393913f95dadba",
+      "svg_sha256": "475f896824739c6a0f89026ea63bdf78d90041080983bd4ca90f1ca8aa66a109",
+      "points": [
+        {
+          "key": "-M",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            582.24,
+            325.6666666666667
+          ],
+          "actual_px": [
+            582.333,
+            289.96
+          ],
+          "dx": 0.09299999999996089,
+          "dy": -35.706666666666706,
+          "status": "FAIL"
+        },
+        {
+          "key": "H",
+          "reference_occurrences": 2,
+          "actual_occurrences": 2,
+          "status": "AMBIGUOUS_OR_MISSING"
+        },
+        {
+          "key": "8994",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            362.24,
+            429.9866666666667
+          ],
+          "actual_px": [
+            362.333,
+            429.467
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -0.5196666666666943,
+          "status": "FAIL"
+        },
+        {
+          "key": "6371",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            362.24,
+            467.26666666666665
+          ],
+          "actual_px": [
+            362.333,
+            466.6
+          ],
+          "dx": 0.09300000000001774,
+          "dy": -0.6666666666666288,
+          "status": "FAIL"
+        },
+        {
+          "key": "11719",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            424.0,
+            539.2666666666667
+          ],
+          "actual_px": [
+            424.067,
+            538.6
+          ],
+          "dx": 0.06700000000000728,
+          "dy": -0.6666666666666288,
+          "status": "FAIL"
+        },
+        {
+          "key": "14766",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            455.2,
+            575.1066666666667
+          ],
+          "actual_px": [
+            455.4,
+            574.467
+          ],
+          "dx": 0.19999999999998863,
+          "dy": -0.6396666666666988,
+          "status": "FAIL"
+        },
+        {
+          "key": "7028",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            517.2786666666667,
+            610.9453333333333
+          ],
+          "actual_px": [
+            517.467,
+            610.333
+          ],
+          "dx": 0.18833333333327573,
+          "dy": -0.6123333333333676,
+          "status": "FAIL"
+        }
+      ]
+    },
+    "104": {
+      "pdf_sha256": "f57b2818673c298be46d5dcda27c22a2e7d95128d78e293614072a312cce9d30",
+      "svg_sha256": "f5593fa3b6f015cdbbc8ece1fb93f07624da19d858bd26128e66803c61d2589f",
+      "points": [
+        {
+          "key": "A,C",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            128.64000000000001,
+            103.42666666666673
+          ],
+          "actual_px": [
+            131.703,
+            103.493
+          ],
+          "dx": 3.062999999999988,
+          "dy": 0.06633333333326163,
+          "status": "FAIL"
+        },
+        {
+          "key": "B,D",
+          "reference_occurrences": 1,
+          "actual_occurrences": 1,
+          "reference_px": [
+            120.8,
+            335.7453333333333
+          ],
+          "actual_px": [
+            125.939,
+            335.867
+          ],
+          "dx": 5.138999999999996,
+          "dy": 0.12166666666672654,
+          "status": "FAIL"
+        },
+        {
+          "key": "modern",
+          "reference_occurrences": 6,
+          "actual_occurrences": 6,
+          "status": "AMBIGUOUS_OR_MISSING"
+        }
+      ]
+    }
+  }
+}

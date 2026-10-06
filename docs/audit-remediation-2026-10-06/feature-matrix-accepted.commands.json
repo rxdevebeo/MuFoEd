@@ -1,0 +1,163 @@
+[
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "svg"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "pdf"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "write"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "convert"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--all-features"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "run",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "pdf",
+      "--example",
+      "render_pdf"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "strict-ooxml-cli",
+      "--locked"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "strict-ooxml-edit",
+      "--locked",
+      "--no-default-features"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "strict-ooxml-edit",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "save"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "strict-ooxml-edit",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "visual"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "strict-ooxml",
+      "--locked",
+      "--no-default-features",
+      "--features",
+      "edit",
+      "--test",
+      "editing"
+    ],
+    "exit": 0
+  }
+]

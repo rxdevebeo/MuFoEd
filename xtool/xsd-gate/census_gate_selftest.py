@@ -446,6 +446,16 @@ def test_unnamed_element_loss_fails_as_ours() -> None:
 
 
 def test_twip_and_point_are_one_measure() -> None:
+    if not census_gate._same_attr_value("b", "5893", "5.893%", "srcRect", "a"):
+        raise SystemExit("DrawingML percentage rewrite was treated as a loss")
+    for attr, raw, percent, element, ns in [
+        ("b", "5893", "5.894%", "srcRect", "a"),
+        ("val", "60000", "60%", "hue", "a"),
+        ("x", "10000", "10%", "off", "a"),
+        ("b", "5893", "5.893%", "srcRect", "w"),
+    ]:
+        if census_gate._same_attr_value(attr, raw, percent, element, ns):
+            raise SystemExit(f"wrong percentage value/type was hidden: {element}@{attr}")
     if not census_gate._same_measure("619", "30.95pt"):
         raise SystemExit("619 twips must equal 30.95pt")
     if census_gate._same_measure("619", "31pt"):
@@ -460,7 +470,40 @@ def test_twip_and_point_are_one_measure() -> None:
         raise SystemExit("direction words are not a width")
 
 
+def test_relationship_rename_requires_identical_resource_and_type() -> None:
+    from types import SimpleNamespace
+
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    oracle = SimpleNamespace(declared={"blip"})
+    with tempfile.TemporaryDirectory() as tmp:
+        source, output = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        def package(path, rid, target, data, kind):
+            _docx(path, {
+                "word/document.xml": f'<a:blip xmlns:a="{a}" xmlns:r="{r}" r:embed="{rid}"/>',
+                "word/_rels/document.xml.rels": f'<Relationships xmlns="{rel_ns}"><Relationship Id="{rid}" Target="{target}" Type="{kind}"/></Relationships>',
+                "word/" + target: data,
+            })
+        package(source, "rId5", "media/old.png", "same", r + "/image")
+        package(output, "rId1", "media/new.png", "same", "http://purl.oclc.org/ooxml/officeDocument/relationships/image")
+        if census_gate.vanished_elements(str(source), str(output), oracle, set()):
+            raise SystemExit("resource rename was treated as a loss")
+        for data, kind in [("changed", r + "/image"), ("same", r + "/hyperlink")]:
+            package(output, "rId1", "media/new.png", data, kind)
+            rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+            if not any(label == "a:blip@embed" for _, label, _ in rows):
+                raise SystemExit(f"changed resource/type was hidden: {rows}")
+        # Equal lexical IDs must not cancel before resolving their targets.
+        package(output, "rId5", "media/new.png", "changed", r + "/image")
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        if not any(label == "a:blip@embed" for _, label, _ in rows):
+            raise SystemExit("same rId hid changed resource bytes")
+
+
 def main() -> int:
+    test_namespace_identity_cannot_hide_a_change()
+    test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
     test_schema_and_inventory_are_split()
     test_decide_census_gate_matrix()
@@ -474,6 +517,27 @@ def main() -> int:
     test_unnamed_element_loss_fails_as_ours()
     print("census_gate_selftest: pass")
     return 0
+
+
+def test_namespace_identity_cannot_hide_a_change() -> None:
+    from types import SimpleNamespace
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    strict_a = "http://purl.oclc.org/ooxml/drawingml/main"
+    oracle = SimpleNamespace(declared={"xfrm", "off"})
+    with tempfile.TemporaryDirectory() as tmp:
+        source, output = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        _docx(source, {"word/document.xml": f'<a:xfrm xmlns:a="{a}"><a:off x="42"/></a:xfrm>'})
+        _docx(output, {"word/document.xml": f'<a:xfrm xmlns:a="{strict_a}"><a:off x="42"/></a:xfrm>'})
+        if census_gate.vanished_elements(str(source), str(output), oracle, set()):
+            raise SystemExit("known namespace transition was treated as loss")
+        for text in [
+            f'<a:xfrm xmlns:a="{strict_a}" xmlns:f="urn:foreign"><f:off x="42"/></a:xfrm>',
+            f'<a:xfrm xmlns:a="{strict_a}" xmlns:f="urn:foreign"><a:off f:x="42"/></a:xfrm>',
+            f'<f:xfrm xmlns:a="{strict_a}" xmlns:f="urn:foreign"><a:off x="42"/></f:xfrm>',
+        ]:
+            _docx(output, {"word/document.xml": text})
+            if not census_gate.vanished_elements(str(source), str(output), oracle, set()):
+                raise SystemExit("element/parent/attribute namespace change was hidden")
 
 
 if __name__ == "__main__":

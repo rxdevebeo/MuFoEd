@@ -1,0 +1,9 @@
+[
+  {
+    "command": [
+      "C:\\Users\\gamer\\miniconda3\\python.exe",
+      "xtool/audit-fixes/text_metric.py"
+    ],
+    "exit": 0
+  }
+]

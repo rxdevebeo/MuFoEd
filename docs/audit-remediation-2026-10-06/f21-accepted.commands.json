@@ -1,0 +1,15 @@
+[
+  {
+    "command": [
+      "C:\\Users\\gamer\\miniconda3\\python.exe",
+      "xtool/audit-fixes/run.py",
+      "--task",
+      "F21",
+      "--phase",
+      "green",
+      "--receipt-dir",
+      "D:\\projects\\StrictLib\\target\\remediation-2026-10-06\\f21-accepted"
+    ],
+    "exit": 0
+  }
+]

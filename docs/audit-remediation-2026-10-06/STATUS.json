@@ -1,0 +1,371 @@
+{
+  "date_utc": "2026-10-06T13:56:53.730285+00:00",
+  "status": "PARTIAL",
+  "full_audit": false,
+  "base_head": "9fec5cbe45d32f484e4d71e891d796920df1a585",
+  "code_content_sha256": "eae206535acf3ee6862d20cde5c6fe4a340607039a9746dbb311fe2f67550974",
+  "rust_input_sha256": "a22796e35878f2a33c7bca58f520d41748aae0a3f8c4e95b4f34e05acafbf6ef",
+  "commits": "none; owner review/authorization pending",
+  "cards": {
+    "D01": "PASS_PINNED_1.92",
+    "D02": "PRIOR_ACCEPTED_MEASURED_WITNESSES_NOT_RETIMED",
+    "D03": "PASS_REGRESSION_FIXED",
+    "D04": "PASS_NO_INTRODUCED_SCHEMA_OPC_VIOLATIONS",
+    "D05": "PARTIAL_CENSUS_FAIL",
+    "D06": "OPEN_WPS_GEOMETRY",
+    "D07": "PARTIAL_WORD_BLOCKED",
+    "D08": "PASS_LOCAL_COVERAGE_AND_8_HOUR_FUZZ; EXACT_SHA_CI_NOT_RUN",
+    "D09": "PASS_LOCAL_GATES; OVERALL_ACCEPTANCE_PARTIAL"
+  },
+  "word": {
+    "WORD_COMPAT": "NOT_RUN",
+    "F16-complex-word-schemes": "BLOCKED",
+    "private_corpus": "NOT_RUN_NOT_PROVIDED"
+  },
+  "ci": {
+    "baseline_status": "SUCCESS",
+    "baseline_sha": "9fec5cbe45d32f484e4d71e891d796920df1a585",
+    "baseline_url": "https://github.com/rxdevebeo/MuFoEd/actions/runs/37454090543",
+    "baseline_nightly": "SKIPPED",
+    "remediation_status": "NOT_RUN_UNCOMMITTED"
+  },
+  "checks": {
+    "workspace-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "workspace-accepted.log.gz"
+    },
+    "clippy-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "clippy-accepted.log.gz"
+    },
+    "default-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "default-accepted.log.gz"
+    },
+    "fmt-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "fmt-accepted.log.gz"
+    },
+    "deny-final": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "deny-final.log.gz"
+    },
+    "pdf-fix": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "pdf-fix.log.gz"
+    },
+    "relationship-identity": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "relationship-identity.log.gz"
+    },
+    "writer-relations": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "writer-relations.log.gz"
+    },
+    "parser-recovery": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "parser-recovery.log.gz"
+    },
+    "hostile-accepted-debug": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "hostile-accepted-debug.log.gz"
+    },
+    "hostile-accepted-release": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "hostile-accepted-release.log.gz"
+    },
+    "census-selftest-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "census-selftest-accepted.log.gz"
+    },
+    "xsd-strict-final": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "xsd-strict-final.log.gz"
+    },
+    "opc-strict-final": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "opc-strict-final.log.gz"
+    },
+    "feature-matrix-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "feature-matrix-accepted.log.gz"
+    },
+    "f21-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "f21-accepted.log.gz"
+    },
+    "text-metric-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "text-metric-accepted.log.gz"
+    },
+    "element-coverage-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "element-coverage-accepted.log.gz"
+    },
+    "lint-eof-accepted": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "lint-eof-accepted.log.gz"
+    },
+    "fingerprint-selftest": {
+      "status": "PASS",
+      "exit": 0,
+      "log": "fingerprint-selftest.log"
+    }
+  },
+  "workspace": {
+    "test_result_blocks": 165,
+    "passed": 1461,
+    "failed": 0,
+    "ignored": 0
+  },
+  "coverage": {
+    "toolchain": "Linux nightly; cargo-llvm-cov 0.9.1; codegen-units=1",
+    "wml": {
+      "branches": {
+        "count": 1042,
+        "covered": 736,
+        "notcovered": 306,
+        "percent": 70.63339731285988
+      },
+      "functions": {
+        "count": 940,
+        "covered": 890,
+        "percent": 94.68085106382979
+      },
+      "instantiations": {
+        "count": 2219,
+        "covered": 1694,
+        "percent": 76.34069400630915
+      },
+      "lines": {
+        "count": 9167,
+        "covered": 8007,
+        "percent": 87.34591469401114
+      },
+      "mcdc": {
+        "count": 0,
+        "covered": 0,
+        "notcovered": 0,
+        "percent": 0
+      },
+      "regions": {
+        "count": 10481,
+        "covered": 8487,
+        "notcovered": 1994,
+        "percent": 80.97509779601182
+      }
+    },
+    "lines": {
+      "write": {
+        "count": 6364,
+        "covered": 5428,
+        "percent": 85.29226901319925
+      },
+      "pdf": {
+        "count": 3711,
+        "covered": 2911,
+        "percent": 78.44246833737537
+      },
+      "render-pdf": {
+        "count": 2077,
+        "covered": 1830,
+        "percent": 88.10784785748676
+      }
+    }
+  },
+  "fuzz": [
+    {
+      "target": "fuzz_zip",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3601.7622776420003,
+      "runs": 5424082,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "defb45be8e6c712799b5ce3ace6b3704266feb728d533316bf60897b69d8879a",
+      "receipt": "fuzz/fuzz_zip/receipt.json",
+      "log": "fuzz/fuzz_zip/run.log.gz"
+    },
+    {
+      "target": "fuzz_xml",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3616.803406936,
+      "runs": 3955133,
+      "libfuzzer_seconds": 3612,
+      "binary_sha256": "b5df3bcb1c60925075f40146b53e14679971817a3a2bf92787ae0d426cd28a6c",
+      "receipt": "fuzz/fuzz_xml/receipt.json",
+      "log": "fuzz/fuzz_xml/run.log.gz"
+    },
+    {
+      "target": "fuzz_relpath",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3604.4004257860006,
+      "runs": 368716084,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "d68ba232ce11f5403f54f73d6f60e636efa684245065784c52eeb4385c79a412",
+      "receipt": "fuzz/fuzz_relpath/receipt.json",
+      "log": "fuzz/fuzz_relpath/run.log.gz"
+    },
+    {
+      "target": "fuzz_wml",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3604.395818461,
+      "runs": 1137289,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "e8114189f8d05133123e639f2612c63e5d9b3091afa81e696e9cb109f7befa7c",
+      "receipt": "fuzz/fuzz_wml/receipt.json",
+      "log": "fuzz/fuzz_wml/run.log.gz"
+    },
+    {
+      "target": "fuzz_normalize",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3601.912612377,
+      "runs": 495158579,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "a352c1aa5097943a2173dc8bdfac72c527b7722f9209c3b561cfe73beb798e7d",
+      "receipt": "fuzz/fuzz_normalize/receipt.json",
+      "log": "fuzz/fuzz_normalize/run.log.gz"
+    },
+    {
+      "target": "fuzz_docx_full",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3605.742498517,
+      "runs": 380042,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "cf37c445cb4c4abd70c56f82b33cf023bab2b8d1b1d5a1d2db4d289269223b96",
+      "receipt": "fuzz/fuzz_docx_full/receipt.json",
+      "log": "fuzz/fuzz_docx_full/run.log.gz"
+    },
+    {
+      "target": "fuzz_pdf",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3603.1301721190002,
+      "runs": 19554,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "afa6dd8231f3baa12c5257f518fa45177f90cd130148fa509398015608721e1c",
+      "receipt": "fuzz/fuzz_pdf/receipt.json",
+      "log": "fuzz/fuzz_pdf/run.log.gz"
+    },
+    {
+      "target": "fuzz_convert",
+      "status": "PASS",
+      "exit": 0,
+      "seconds": 3605.7306831829997,
+      "runs": 17309,
+      "libfuzzer_seconds": 3601,
+      "binary_sha256": "adcc70751225fa361d875f1d3c83d9718371318a8b5328956601666c84323b1f",
+      "receipt": "fuzz/fuzz_convert/receipt.json",
+      "log": "fuzz/fuzz_convert/run.log.gz"
+    }
+  ],
+  "corpora": {
+    "inputs": {
+      "docx": 99,
+      "samples": 22,
+      "cc0": 100,
+      "strict": 27
+    },
+    "strict": {
+      "documents": 27,
+      "validated": 26,
+      "expected_refusals": 1,
+      "missing": 0,
+      "unmatched": 0,
+      "ours": 0,
+      "source_violations": 11,
+      "opc_violations": 0
+    },
+    "census": {
+      "documents": 221,
+      "validated": 221,
+      "missing": 0,
+      "unmatched_schema": 0,
+      "ours": 0
+    },
+    "census_status": "FAIL",
+    "census_exit": 1,
+    "unclassified_rows": 10486,
+    "distinct_labels": 537,
+    "opc": {
+      "documents": 221,
+      "missing": [],
+      "source_violations": 5,
+      "output_violations": 5,
+      "introduced_violations": 0,
+      "documents_with_violations": [
+        {
+          "document": "2. Simple-Calculation.docx",
+          "source": {
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://judge.softuni.org/Contests/Practice/Index/504' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1
+          },
+          "output": {
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://judge.softuni.org/Contests/Practice/Index/504' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1
+          },
+          "introduced": {}
+        },
+        {
+          "document": "Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+          "source": {
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1
+          },
+          "output": {
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+            "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1
+          },
+          "introduced": {}
+        }
+      ],
+      "status": "PASS_NO_INTRODUCED_VIOLATIONS"
+    }
+  },
+  "wps": {
+    "status": "OPEN",
+    "tolerance_px": 0.25,
+    "diagnostic": "wps-absolute-baselines.json",
+    "complete_ledger": false
+  },
+  "unsupported_vectors": [
+    "cubic",
+    "clip",
+    "pattern",
+    "tight-contour",
+    "through-contour"
+  ],
+  "api_change": "Reject::UnsupportedFilter owns String; Reject no longer Copy; Clone retained",
+  "remaining_order": "../AUDIT_REMAINING_WORK_2026-10-06.md",
+  "limitations": [
+    "Pre-fix and interrupted fuzz sessions are excluded from accepted receipts.",
+    "A clean local test run is not Word compatibility evidence or exact-SHA remediation CI.",
+    "Census inventory remains incomplete; inherited producer violations do not imply schema-clean output.",
+    "D02 timing witnesses retained without a new timing measurement."
+  ]
+}

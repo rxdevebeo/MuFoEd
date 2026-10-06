@@ -137,10 +137,10 @@ impl Encoded {
 }
 
 /// Why an image could not be carried.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reject {
     /// The filter is a codec this crate does not carry.
-    UnsupportedFilter(&'static str),
+    UnsupportedFilter(String),
     /// The samples are a palette, an image mask, 16-bit, or otherwise not laid
     /// out as components this reader will expand, and converting them is a
     /// decision not made here. (1-bit DeviceGray is expanded to 8-bit.)
@@ -448,9 +448,9 @@ fn decode_inner(
         )?,
         Some(other) => {
             // The filter name comes from the file, so the reason has to own it.
-            let leaked: &'static str =
-                Box::leak(String::from_utf8_lossy(other).into_owned().into_boxed_str());
-            return Err(Reject::UnsupportedFilter(leaked));
+            return Err(Reject::UnsupportedFilter(
+                String::from_utf8_lossy(other).into_owned(),
+            ));
         }
     };
 
@@ -995,6 +995,26 @@ mod tests {
         bytes.extend_from_slice(&[0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
         bytes.extend_from_slice(&[0xFF, 0xD9]);
         bytes
+    }
+
+    #[test]
+    fn unknown_filter_rejection_owns_the_input_name() {
+        let mut dictionary = lopdf::Dictionary::new();
+        dictionary.set("Width", 1);
+        dictionary.set("Height", 1);
+        dictionary.set("BitsPerComponent", 8);
+        dictionary.set("ColorSpace", lopdf::Object::Name(b"DeviceGray".to_vec()));
+        dictionary.set("Filter", lopdf::Object::Name(b"UnknownCodec".to_vec()));
+        let mut document = lopdf::Document::new();
+        let id = document.add_object(lopdf::Stream::new(dictionary, vec![0]));
+        let rejection =
+            super::decode_from(id, &document, &PdfLimits::default()).expect_err("unknown codec");
+        drop(document);
+        assert_eq!(
+            rejection,
+            Reject::UnsupportedFilter("UnknownCodec".to_owned())
+        );
+        assert!(rejection.to_string().contains("UnknownCodec"));
     }
 
     #[test]

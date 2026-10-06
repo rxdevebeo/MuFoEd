@@ -1,0 +1,1738 @@
+[
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/--exercises-table.docx",
+    "source_sha256": "7ee71b55fd95bfb0a14476e92cd5f3c0d2da9f70a94e958dd8340cf4f86ccc76",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/--exercises-table.docx",
+    "written_sha256": "bf3a13763ab893e7b8c5a41d621ca33afb2be471779d3ff06e1d4e6f09877cb3"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+    "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/1. First-Steps-in-Programming.docx",
+    "written_sha256": "b815cb02d2a79997b29575f503bc725b9ff2d28803b9fbae8b6ca8cb6c5ee5c4"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/1_\u0412\u0441\u0442\u0443\u043f\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439_\u043a\u0443\u0440\u0441_\u043f\u0440\u0438_\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438_\u043d\u0430_\u041f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u0435.docx",
+    "source_sha256": "e24477cb33a850c238168caf95ff828c3b96e0461e0d8df4e183ef52e0895898",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/1_\u0412\u0441\u0442\u0443\u043f\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439_\u043a\u0443\u0440\u0441_\u043f\u0440\u0438_\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438_\u043d\u0430_\u041f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u0435.docx",
+    "written_sha256": "a84e11c4519d2acde398a6ce33adfcb01abd3a4034036ca9a11d6f9832247720"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/2. Simple-Calculation.docx",
+    "source_sha256": "a1eac8b9cba0231187e1ee67ebade3717fd5c61cfd0ed94b2d5e3de330c3c2bf",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/2. Simple-Calculation.docx",
+    "written_sha256": "0ca223da4dd60128e8568faa8a45d129465ac09682b0cdd77d0882602d902b2d"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/2. \u041c\u0435\u0440\u043e\u043f\u0440\u0438\u044f\u0442\u0438\u044f \u043f\u043e \u041b\u0430\u0439\u043c\u0443.docx",
+    "source_sha256": "8035ff6125e082dd6b5285b73bc35fdf61439e0b4f1316a5afdac3b7ea859771",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/2. \u041c\u0435\u0440\u043e\u043f\u0440\u0438\u044f\u0442\u0438\u044f \u043f\u043e \u041b\u0430\u0439\u043c\u0443.docx",
+    "written_sha256": "cc7bf4194ad0e6d79eb31a14afa3e05db758cd2ac65da27d244aeeca56e59e84"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/2024_application_form_ en.docx",
+    "source_sha256": "3c833954abd243c1f742206a7a2fcbfd5b6355e63815647e6d8254405b8d1a12",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/2024_application_form_ en.docx",
+    "written_sha256": "6ec2de37bb3856b66669892e5d64d52686d2e2e7b6040915e49d73c28ae68051"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/3. Simple-Conditions.docx",
+    "source_sha256": "d5e2b824cf9a1d42d5c2ee366e1cdc70e3e9d48ec99306df0222bb17f19c8329",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/3. Simple-Conditions.docx",
+    "written_sha256": "e4d7b1f0036dbeb9eb45c7050f83c34a7e6574c41596d229a450bf35a4b536e6"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/4. Complex-Conditions.docx",
+    "source_sha256": "3bc59ab7746a0dc24253c1ea59683ecad6a925d5f0ad85f9326307c0f771d1a6",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/4. Complex-Conditions.docx",
+    "written_sha256": "ecc98b6592e4e901308d11161e4f12f20509fec74aac1dc6a2f5d4c8c936f128"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/5. Loops.docx",
+    "source_sha256": "d57989e414fdd38fd816a5799c047b8e7516a21ec28f76ef492e1f375f469ff0",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/5. Loops.docx",
+    "written_sha256": "55f055c1abaf745f7365a888c1493ff1b48572f9983110ff876b2718b76c1d47"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/6. Nested-Loops.docx",
+    "source_sha256": "a6a4fd73cf9a374b8a3e5daa279657e335b0da1ae8d1a63dd246d38ffcd08e6b",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/6. Nested-Loops.docx",
+    "written_sha256": "2568f2e3125363769c2c8f47d9ded76b61b975b70a1798b89dfdac84ae564433"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/7. More-Complex-Loops.docx",
+    "source_sha256": "0abdf0a845af4b58691224f8c9f94febf426c1e991412fcff7e75a1218507d11",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/7. More-Complex-Loops.docx",
+    "written_sha256": "3f276ade6716d2a29d252de22a8617efa4f55b324b6a4cee203f5edbb3b5f4ae"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/8. Become-a-Software-Engineer.docx",
+    "source_sha256": "9dcc666b75f63a1c93c8189e7d79525cfc2460866bfdc149e09253b29093367a",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/8. Become-a-Software-Engineer.docx",
+    "written_sha256": "1a720c7df5fbce9231dc65e3a6216feffec48f13821ad94904302503f166533a"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/add-separators.docx",
+    "source_sha256": "6aa2e03390ba5b8b82029f6a0b34b2bab77eccd55f1483aba1d45d0038e20e29",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/add-separators.docx",
+    "written_sha256": "80160afab54a8c2dd98e26d54799a742ae4226c8d5e031b85c5241b2ee8ea6e7"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Agreement_To_Transfer.docx",
+    "source_sha256": "765f78eedac6f8654975968f309c709b61ea4a41c6cb32b9a771f8de9668e8c6",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Agreement_To_Transfer.docx",
+    "written_sha256": "eced7018730437783f686b9235460541c53c1ca160e90c8803f147b9327bf260"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Algorithmics_Test_v4.docx",
+    "source_sha256": "9be0ecf2f4b748c85cbe59ddfc41f7c47b1779c418aa02a5197728a4ab8960cd",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Algorithmics_Test_v4.docx",
+    "written_sha256": "bc60b9703d33149de7ffa7b60b625d467f3e9178ebd521ae8a8eb921f2073b85"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/APPLICATION FOR VISA.docx",
+    "source_sha256": "a884954254639b781a9188a6156a5937a3bb1758fa87e9d3ba5bb6d010d60452",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/APPLICATION FOR VISA.docx",
+    "written_sha256": "1d150fcfefa087b0edec323f5248c98b0aa64276afcbb4a72989b123a814e937"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Billing_Integration_Guide.docx",
+    "source_sha256": "3c4ee2a7d41a8ef6b809dff5ff80f8d58c70bb3f7ba4b9e003918302373db304",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Billing_Integration_Guide.docx",
+    "written_sha256": "49e9b2ba923d1c824040355c4c0012fdace257258cc249b9daf280495db3fe81"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Certificate Incumbency -.docx",
+    "source_sha256": "3b64ec769986fb3b32eed6a5bd15384782ce4cbe0f5c5e3a0e2df28fb61b20cc",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Certificate Incumbency -.docx",
+    "written_sha256": "cbaf24fc2a0bf4ed60e7637994a7a3fe8ce1fee3b1ac852c8b5b6bea15bccf6b"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+    "source_sha256": "4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx",
+    "written_sha256": "37e88d5c7125b3974fea9a0e2bcf7c630cec330cc7b80fd03dfa5dac0f0a197e"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/context.docx",
+    "source_sha256": "7fde0d9f1e158a11a98da5be37186a03d33f34cc69060e16ab3a008243738e6d",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/context.docx",
+    "written_sha256": "02f4ba4d1f6742dacc51ddf3c7babd85f34d4f07b4c9f757d92145605ddc8bda"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx",
+    "source_sha256": "a7048f7c56aa5d52f1720b2fd2cd4a15ba8a50ebd61ccf27f88efa8e5fdfaa20",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Contoso_Guest_WiFi_Connection_Guide.docx",
+    "written_sha256": "cfdf2240ed9b11b66d60176ee2343c001f8d5763e1e4423d5c93982deb8c48cc"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/contract.docx",
+    "source_sha256": "1e00b1d91f37008c020dc45d116d6a8277175be7b3bc0ae011ceaed0e8d65502",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/contract.docx",
+    "written_sha256": "93a66282b40a96b41fa954d14be4c3b930fc442a865dd7f3b8a74d4756734a38"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/COOKIE POLICY.docx",
+    "source_sha256": "6bc9a7d24d5c1acdf7af1fadb55311626c9481515899332d2a140b6733b9b7e7",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/COOKIE POLICY.docx",
+    "written_sha256": "9ff85908ff04085b6ce2c849259976b73c5239cfb7564c6ceb10a0cce56997ac"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/curso_comunicacion_masas_ES.docx",
+    "source_sha256": "dcf63564fbda2a1e29040ca0f52cde45c9da2be88f1b9987337968837f1bda3b",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/curso_comunicacion_masas_ES.docx",
+    "written_sha256": "b0ab747a9350f8b6561d0baed69e38d1d0ea8a6f9c831e222327b8d396795791"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/curso_mentoria_coaching_ES.docx",
+    "source_sha256": "ae1561d06c18e4a9063bd8334cf4af1c2de1cbdf6184e18d3cb191fbfe07e98c",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/curso_mentoria_coaching_ES.docx",
+    "written_sha256": "f1309dce840302455ca982f09d245244a9ac3d30265f904e11468a49193d3abe"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/dalink.docx",
+    "source_sha256": "69d9f6cc7702a22d3af715225dedbef8e7bd204dfc521a9c45180725d979ec98",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/dalink.docx",
+    "written_sha256": "8c252adac13d85ea4cb6f8a03a282f07d55cba516156240e82346311171ae2b0"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/declaration_certificate_service.docx",
+    "source_sha256": "b36bc572598ef2c0a07d0abe912339ce41f917ab8086ab2ef0c2a51fa078bd29",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/declaration_certificate_service.docx",
+    "written_sha256": "4b75247fc259d903f7f49c19e9ea3a94db456d3495a9be83875f2721b272dcc1"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/declaration_of_favorite_fruit.docx",
+    "source_sha256": "40fd344ceeedb5046bf5b4d7bc51cbfd620a851a24f8ca222fda41b589c9687f",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/declaration_of_favorite_fruit.docx",
+    "written_sha256": "e1e6264ab0d931e35c69ebd930e22d0dbd2537c29ed9916aa2a2f29cf5945cde"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Design for Rectilinear Edge Routing.docx",
+    "source_sha256": "1221c59b365784b6275874cf6d1c30ec4dd030182567aca1ecf72fb871c13d2c",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Design for Rectilinear Edge Routing.docx",
+    "written_sha256": "176e3100c8b91d3eef91ea427ddec072e77dd199581f20db2ff7f419bab9e152"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Digital_Marketing_Service_Agreement.docx",
+    "source_sha256": "72a8f06f7ec0531626b8f1c68befa6a445d1aa8a151a2521b767e49195661722",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Digital_Marketing_Service_Agreement.docx",
+    "written_sha256": "df2b09890ef937b8aa49db41ad637f7e9bdb2eb241369fbfbbc96f3bc57d920d"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/django-admin-otp_security_audit.docx",
+    "source_sha256": "88946d92713f289724b81de7ac9d6062234980870ac8796cd353686472e121a4",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/django-admin-otp_security_audit.docx",
+    "written_sha256": "13feb1353c80e63abdbc1657ec84a1ee6beeb002146ee4907c7d08f3a9731425"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/doc-with-toc.docx",
+    "source_sha256": "4e60a86cabf5356d6fa4855832d1a4a3fdf8174859bd40f95be671db29966ba0",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/doc-with-toc.docx",
+    "written_sha256": "42bec3baedc45bfba2d9180d360e18825ef3611e32e61695f3fb91996d9644d6"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/document-language.docx",
+    "source_sha256": "a59df7f8c7e7edacbbb3be071b86d6ced4eb2a2756340d6677b58da706042064",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/document-language.docx",
+    "written_sha256": "4e816767ac418dfc8169c72af529c409375de4cb934e480654ee574e9b6eb9dd"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/docx-jinja2-demo.docx",
+    "source_sha256": "e889890e7a5aec1a555a708a512d52ec01d4b8bcd3e9b0430fd0d91febf9dc07",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/docx-jinja2-demo.docx",
+    "written_sha256": "2064dc8172bbf49f4251510948c0db021ed4bd40ad22ead4bb40ba92ba1b9ef7"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/docx-table-columns.docx",
+    "source_sha256": "ead7dd5b6ecd1354f00bb557de49b5a5499e283bc046abd365f9947b7604a354",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/docx-table-columns.docx",
+    "written_sha256": "0697df5b2c3cc009b1db287ddf06e060b8fe731a3c9f0fce9d1e12a2651b676d"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/docx-template-auto.docx",
+    "source_sha256": "9ea16f7496d8d621083a287e23a7b354dc484f5b555e584da1ad91e842faa4a8",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/docx-template-auto.docx",
+    "written_sha256": "cc124acf68c88afda42c00042ed5c5f6f9df39dea2f474412bb2644badee438c"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/docx-with-metadata.docx",
+    "source_sha256": "6ec3da4a11d45a92f5df03afdf7f8edb72da975a9933ab25c97e86c242aae9b4",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/docx-with-metadata.docx",
+    "written_sha256": "5ffe29e13dac5a22a27b67e3270f62f6c76b71433e5f8fb79e057363af58ffc1"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/docx_document.docx",
+    "source_sha256": "a266c0cff4339b16629eab7a9b4bc07d393585bd07742c896e6078e8bf4b13a5",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/docx_document.docx",
+    "written_sha256": "a3d24c73c303fa0fed9f905466a72688f7a4e7578811faa42a4e0a5938720b68"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/exhibit_insert.docx",
+    "source_sha256": "e12606c9f558cd2264bb518b0cd053e48c1cc11a7b14570e63c852c9cd567bd4",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/exhibit_insert.docx",
+    "written_sha256": "9147d1348dd76a10d64316fba6c6044bf55a3378be8ea389d222ee626f105629"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/food_template.docx",
+    "source_sha256": "b03b491e238bffe04ccc0eb8bdda109f0178d2c1703ed22d6ebc7db005c9ebed",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/food_template.docx",
+    "written_sha256": "2f1633e2820af9c7574d12a439878b6864078ad177f51baae75720e8a487f51b"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/fruit_declaration.docx",
+    "source_sha256": "57c4b268d7692fda8f415568160e8993857550f80dd6213b96c236b63dfa8ea7",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/fruit_declaration.docx",
+    "written_sha256": "531cb12455daa33fe3b69837bccc78391fe2421d3252993c6197b1663607042c"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/fruit_template.docx",
+    "source_sha256": "99becf2ea7baa15fd6278e0d602fef6af58cce8656b932c06c9a1af443d52e8f",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/fruit_template.docx",
+    "written_sha256": "5832de84a4515903fe40ede642dc75c43f4e493ec87021b5c873c105619bd21a"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/generic-document.docx",
+    "source_sha256": "10e376823ecbb8ad4167c7a7d60eac95cec409760e95d4a36dbd332a1e936f64",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/generic-document.docx",
+    "written_sha256": "e9c725e5bfd06efd128781bc79721b76ba0542863d237562f20e3a5404f3a793"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/graph.docx",
+    "source_sha256": "ed8e238f60c5dd5df055524a46b437af48fb61cc51fe663c1747d41c7f48c3d2",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/graph.docx",
+    "written_sha256": "90f721ec28becc0df41b9a866591cb971a0f84fda6db69794d2d73b0cc763439"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/life_story.docx",
+    "source_sha256": "ec4792d74bcdcfa49df87707682e3eecc38327bade430bf51f5263c7d17f5f59",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/life_story.docx",
+    "written_sha256": "23ce8fc15851bd204d353be937d078769124d094b6e21bc5c6c52ebb29577972"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/logo_template.docx",
+    "source_sha256": "4ce8d2963cf7f3421d62f199acc475bb5f4bfbeca125a025387a8ab278f987c5",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/logo_template.docx",
+    "written_sha256": "e3337d93dcdfc3fcba3d0d427f9a77d9b9dbf9283cd3140abaaf098519c8eaa4"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/main_doc_params.docx",
+    "source_sha256": "0e0dab9ddf4aa326cd53f4157e9b2ff18f21c30d3e884e45d0f9861ccb72bf21",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/main_doc_params.docx",
+    "written_sha256": "0e5342f361deb094009143c7597f5cfab126b2ca693745a74b12a1a11b34d8f8"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/main_document.docx",
+    "source_sha256": "5cba7c22e38cdaea25da1d4d5186fb911d4b1dfccd9feeb37093b26ba11b454b",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/main_document.docx",
+    "written_sha256": "4d65103b0647bb91e50629ab58ffc12be8a80e3628ebdda3c92d22237d1223f9"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Manual.docx",
+    "source_sha256": "9099dc25315a77fd95a66c08ee54446f77626fab044c90e99d9cf015814a317b",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Manual.docx",
+    "written_sha256": "41abd3236a4149f09bde03193f51c81964e88c390415cfa94e11a75cb20573d3"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/markdown_template_demo.docx",
+    "source_sha256": "f906d04f507d39398f98423acfd723d9ceef152722b4e8753993096acf314a6c",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/markdown_template_demo.docx",
+    "written_sha256": "21ff855dd607212d7f689a0003e81792a8f7bf99b7f61ea207e3832e6da24309"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/nested_list_table.docx",
+    "source_sha256": "2bac3e6e20902ba2e1ba8fe7964ee75fa3ce2c96cd7c445d94966b2301c697bd",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/nested_list_table.docx",
+    "written_sha256": "437095980d7de7ab50323a4f93f10e4a286b42477ab82892320572a450e5f714"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/numbering_template.docx",
+    "source_sha256": "42d873da6a0b786d6daff4cf3dfcfa75bf28ac54b3016174c16c13eac438cdee",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/numbering_template.docx",
+    "written_sha256": "2f9c7f4f966efa9a5380e4961e5fc9028729a5850563d61e88b382c19dd475aa"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/NvidiaGameworks_License.docx",
+    "source_sha256": "42d9ba3a6a4b8370d42f5742f7212c5d5eaba7d2fda02969b5a6d59d4d93dfcf",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/NvidiaGameworks_License.docx",
+    "written_sha256": "1b1661e9f14ebf7bac8c31416b60ec01ed53a7ad40da48d2b5d3ac8ac9f8939c"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/OBRAZAC.docx",
+    "source_sha256": "dc93360792f0bdfd83495733baabdbffeefe88fd23d983cfab1c78fde49685e2",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/OBRAZAC.docx",
+    "written_sha256": "c4b95de6099e13bb6d0af4b072cd538cb326461440a3d786cf482210f1cc79a7"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/OverlapRemoval Design.docx",
+    "source_sha256": "6f8be554d600b17c5dfb116468521c115f411978a7a152a22bbe3f5590931b48",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/OverlapRemoval Design.docx",
+    "written_sha256": "950d7a0110d9859b4a843c7974260b3f08c9771ffe4e86aeaf2c78b5ff9ad291"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/PEP - DVOJEZI\u010cNI -IZJAVA KLIJENTA RADI UTVR\u0110IVANJA STATUSA FUNKCIONERA.docx",
+    "source_sha256": "ada040fd6593889b116a3830908074562330804d3531d495720de4076ac421eb",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/PEP - DVOJEZI\u010cNI -IZJAVA KLIJENTA RADI UTVR\u0110IVANJA STATUSA FUNKCIONERA.docx",
+    "written_sha256": "0af0d87717d1cd9ad84717ffad349e0a57910c595266f1ec63802d36033a2e65"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Plataforma_manual_ES.docx",
+    "source_sha256": "ee0a4f8bb4334b27c2ea0e5db762401843dc5492c84693ca02e255d3a95c1efe",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Plataforma_manual_ES.docx",
+    "written_sha256": "50d6188a50b3dda673fff8b4f50f032a77e1223c3e88cae56b4e05f0da059fc2"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/praecipe_discontinue.docx",
+    "source_sha256": "3f3f0ec8d221a865f3440eaecf5dfa782efa0dc9734315f9ca0d2b456c3e146f",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/praecipe_discontinue.docx",
+    "written_sha256": "617bcb126f410c33d57286a079d10f49c457d2f48149d04557ea66ab68a9f032"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+    "source_sha256": "41eab2bf28fce5901104e15f7e57f93f2981f347c6b53e6ae3d970ad023262ff",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+    "written_sha256": "064c1ccd2bc7b84c1a2f9967f7d61bdbe1f74ebddbd45d3c71b9022507195fe3"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/ProjectionSolver Design.docx",
+    "source_sha256": "97df07b29b860ce47380c13db18844903c1230843c87d9e92441ab440a987adf",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/ProjectionSolver Design.docx",
+    "written_sha256": "c5a0d0f64fbecb921ec878917ad3a885e17c6912d132ab6b4444d34fd41f8437"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Proxy for RTBF 260408.docx",
+    "source_sha256": "0ee4b3898e0795265e799ff6722ce413cd4d4c65602ca1bf270d2cb28da4376f",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Proxy for RTBF 260408.docx",
+    "written_sha256": "1993817370a260ba036db4505a93d8d9ca3ed0fc7679c26ff57c5e04ad5e572b"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/quotes-in-code.docx",
+    "source_sha256": "204d0e5386ced4cf038b11d1e55bd9b21724d12870e4a5106f84da1ce1e5c47b",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/quotes-in-code.docx",
+    "written_sha256": "9aa12a4101027a3fae1750740b8e90325f3ad291b57aaf44a8f1cd36174cfbb8"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/recipe_template.docx",
+    "source_sha256": "757c13c932cb6e64dff55627287fd395d1f04d1b9b2c428e1cdeebf5ca57728b",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/recipe_template.docx",
+    "written_sha256": "20b0018298aca98c06d97235bab408179c0b886779be09db4e705b7e99af612b"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/redact_demo.docx",
+    "source_sha256": "15d4eeb6d1b3be00c25534f94ca05d97e24d78d1adf14a6eddb94579e66399d9",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/redact_demo.docx",
+    "written_sha256": "337be5649d667b98cba908b85ae8ef40e08f3296c9d8ffd0f3581691ebaf9d07"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/resource_guide.docx",
+    "source_sha256": "befabbf8c2790dee855d569fb763864948aa360feb787a14a4f4f527bb2016e1",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/resource_guide.docx",
+    "written_sha256": "b32149e7d7c061a5c88f36749d3dce73c8fb4b680899e7750255a1263c5aeedd"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/RM0090 16-23 \u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u043e\u0435 \u0440\u0443\u043a\u043e\u0432\u043e\u0434\u0441\u0442\u0432\u043e \u043f\u043e STM32F4xx.docx",
+    "source_sha256": "e51a270c10ff4422f022d205e20cdc5c1ad90155bf678f411579ec6bc2e36d67",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/RM0090 16-23 \u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u043e\u0435 \u0440\u0443\u043a\u043e\u0432\u043e\u0434\u0441\u0442\u0432\u043e \u043f\u043e STM32F4xx.docx",
+    "written_sha256": "e5078e011a46ba082f314195969a2daab8f0f1daffd1084ad07f1d0303de6ce4"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/SampleEmploymentAgreement.docx",
+    "source_sha256": "fe83cfd2d87c974357915c2da5335d83564d2beb167ba63da273fc2d6977da85",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/SampleEmploymentAgreement.docx",
+    "written_sha256": "753c9b706308af752ed9a23ee2ff88c52acd2791b808b5f4db85c0f414f470b4"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/SampleOfferLetter.docx",
+    "source_sha256": "284e573e82003d06676f9ec33a407c17c2609c6963db47ae098f108d871e0cdd",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/SampleOfferLetter.docx",
+    "written_sha256": "6d28ae6a0d92170ddae05c1c166b35e7403a2d775a839a09077b7972fb254036"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Service_Agreement_Technical_Support.docx",
+    "source_sha256": "42d34ec4c56a2519e740a95314dd4fd86fa45f5a787d191e5fd9ef32e3c3f627",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Service_Agreement_Technical_Support.docx",
+    "written_sha256": "eb08ee56df06977891fcb7978842f0cb4eac087f7b29eb89035874cc02194b11"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/signature_template.docx",
+    "source_sha256": "c036566d4d9d358f5f5fa564f53682a2a84877e7dcb947e87f1123c49448e4d0",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/signature_template.docx",
+    "written_sha256": "fd836cb57423db513d81326fe29b5f7a79fb51fc8fc097178cf50b5cd9a5bb2e"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/SOKOBANJA_Nikita_Bakulin.docx",
+    "source_sha256": "19eb3384e9dce13714d1cc761f1b69080b9be1abed19ecb74a9d3b555c67c4a6",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/SOKOBANJA_Nikita_Bakulin.docx",
+    "written_sha256": "61c45eaaf75315de638fcdd1e424071236d4dc950b51cc2232eebd824756cc80"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/Spanner visibility graph.docx",
+    "source_sha256": "62921b9dea8f0a1ef39670417c90bf64172f0fcaf244d90e0d0755b1882776ea",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/Spanner visibility graph.docx",
+    "written_sha256": "6c02fe7f712bb70644e32c3079f93055d5f72e4ed60152e6b3718d6c9da1c4a6"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/SpellSimmer_Privacy_Policy_EN.docx",
+    "source_sha256": "15e3bd58258cddd3070bc8f6b6780e8280acfd8688825e68f9da069f61e0f418",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/SpellSimmer_Privacy_Policy_EN.docx",
+    "written_sha256": "f05f713f358b68891d149c06700a1b4ca5ef874140b3c67b5ec5dec548e2cf65"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/sub_doc_params.docx",
+    "source_sha256": "ec79214d3a7f94c2fda72c26734096ae07d4ff3d536ef5765cd494a9ca5c1508",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/sub_doc_params.docx",
+    "written_sha256": "22aa177afc7c157dda77e0f2740a3cd1a85116fdbe945996b03dd9893e2e99f2"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/sub_document.docx",
+    "source_sha256": "30e616e6e3f615cc88fab82794f4eb5f3c7b38fcdcd6459b60a46994debd91eb",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/sub_document.docx",
+    "written_sha256": "25d56ce77609952eabf71b3fff0a5c92efe804eb60b2fc931f0075da1d69d33e"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/table_template.docx",
+    "source_sha256": "7b3e29ed52dbae28f19d65fdc851d001a432d8c2bf79922470097695bdbb4b5f",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/table_template.docx",
+    "written_sha256": "3c469fb9b207ca8a404c7457ff4fc5dc09fa108b171f8d3db3b7f898df8d90f2"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/tagged.docx",
+    "source_sha256": "21f3b70f6c8d7fc5e144c19563f720242763433b3186efda4ec2bedef2381cb3",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/tagged.docx",
+    "written_sha256": "0f2c581c00cb0f2dd16ef5b9d4312dbd6ee502e7c52cde5bb95476cf27f18658"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/team.docx",
+    "source_sha256": "b0ca9c7a930f0a9a82fdc50a391e4b66b987eb2632bb1fcc1d452f334a6411bf",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/team.docx",
+    "written_sha256": "a0e84c8f0ad148a613410d8e93da67ec93a4ea4cd5b35e132ae65b58d75371fd"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/template_test.docx",
+    "source_sha256": "04a8373a619587c9f002580b775e875e8691e1010f5251ca80a48993ab4694f3",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/template_test.docx",
+    "written_sha256": "6d44f40484b74c0317f8c52aef3f263ac972f8313def525640cd62bf8d310269"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/test-document.docx",
+    "source_sha256": "4a6b9f8fd2b4a7113254cb53605bd0d4b0a527955a95e5809665cb3467bb184c",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/test-document.docx",
+    "written_sha256": "0bae6798a260f07d8bc8fae0c93cd797c8bc6c9b4d89041579b76e606f94ef52"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/twostage.docx",
+    "source_sha256": "0058068afa65617c7473eb44255a765613a80a0c94a127e03deff38a053fa0fe",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/twostage.docx",
+    "written_sha256": "9ce5208841f8fd3588c5cf55643a4dfbab760da536bd5572884dd819d67dfb20"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/universal-test.docx",
+    "source_sha256": "641055f4a82985ad42abb43fd2ca07d5ce066f84e531bfd9157eda0ff1d9215a",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/universal-test.docx",
+    "written_sha256": "19519f657eb9a9d9b06ae154c5e87eb157cc78f7e1de00c7f29015ee44368844"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/zahtev+za+odobrenje+SNS+Obrazac_2.docx",
+    "source_sha256": "90ac6e954af762c073f392027d2c907e333b0e28ef82166e94f59f98fdeb9544",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/zahtev+za+odobrenje+SNS+Obrazac_2.docx",
+    "written_sha256": "2fdf1d1b65bcd80109bb3e16fed68462ef8b0231121ee0c4b5069a79a12d5447"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u0412\u043e\u043b\u044c\u0442\u043c\u0430\u043d \u041b. - \u0423\u0447\u0435\u043d\u0438\u0435 \u043e \u0440\u0430\u0441\u0430\u0445. - 1905.docx",
+    "source_sha256": "c127f1cae78c47f2759c111359f3b3261adc7eebb5e7a2312293394f44b14910",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u0412\u043e\u043b\u044c\u0442\u043c\u0430\u043d \u041b. - \u0423\u0447\u0435\u043d\u0438\u0435 \u043e \u0440\u0430\u0441\u0430\u0445. - 1905.docx",
+    "written_sha256": "1c528737b3f6199db1499869268567c26b886ac5d8f374ceeca4b9c12c4587aa"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u0418\u043d\u0442\u0435\u0433\u0440\u0430\u043b\u044b (2).docx",
+    "source_sha256": "022e9110adc9e89797ea3d8763c44ecc1f97ae4b3b64ce90a9bcea3d0b58d3bf",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u0418\u043d\u0442\u0435\u0433\u0440\u0430\u043b\u044b (2).docx",
+    "written_sha256": "1f67e0b8a4e93093d95efd83c503aa0e0c4dc5f77dd66a3d0ee2b71fffc55dba"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u0418\u043d\u0442\u0435\u0433\u0440\u0430\u043b\u044b \u0438\u0441\u0445..docx",
+    "source_sha256": "02f90f3ab71ab785d9073dd1ad39b544df9d865d22e11fc47484ea0d68d397a8",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u0418\u043d\u0442\u0435\u0433\u0440\u0430\u043b\u044b \u0438\u0441\u0445..docx",
+    "written_sha256": "bffa01c781fa7471a1adbd81a4ee109b1aa821ece16459a90eefaae34b4ca7e1"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u0418\u043d\u0442\u0435\u0433\u0440\u0430\u043b\u044b.docx",
+    "source_sha256": "1675308594dbfbde6c88c08962b0229f7a1e5eda917926bc2acf9b6028841274",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u0418\u043d\u0442\u0435\u0433\u0440\u0430\u043b\u044b.docx",
+    "written_sha256": "78b85db2cbdadf22f2a7f89134492a54fac5bd04b554d63972403d9042cf2754"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041c\u041a-2503 \u041b\u0435\u043d\u043d\u0438\u043a\u043e\u0432 \u0421\u0442\u0430\u0442\u044c\u044f.docx",
+    "source_sha256": "660619ddb954b6c1d2952ed6f30b4d0c491581ca5d63cd8bcd70987029680f6f",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041c\u041a-2503 \u041b\u0435\u043d\u043d\u0438\u043a\u043e\u0432 \u0421\u0442\u0430\u0442\u044c\u044f.docx",
+    "written_sha256": "86f7d8075c7a18ff54b9d78610a7d29ddc48ce5e93eef2750bf424875197b768"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435_\u0440\u0430\u0431\u043e\u0442\u044b_\u043f\u0440\u043e\u0435\u043a\u0442\u0430_\u041b\u041a_\u041a\u043b\u0438\u0435\u043d\u0442\u0430.docx",
+    "source_sha256": "fb9fbf464cf3ee87b1726d2cab3516bb3fa17944f26fb5f5a09c625275844be0",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435_\u0440\u0430\u0431\u043e\u0442\u044b_\u043f\u0440\u043e\u0435\u043a\u0442\u0430_\u041b\u041a_\u041a\u043b\u0438\u0435\u043d\u0442\u0430.docx",
+    "written_sha256": "afbe714ae897e9f8522955e7c628ecac005876a908ec3f69dd1ab91c2343df91"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u043e\u0435_\u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435_Lime_City.docx",
+    "source_sha256": "bee0eb088306cd0543bfd541b5f99a9ffb848cea879c64e02ad50865616f801a",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u043e\u0435_\u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435_Lime_City.docx",
+    "written_sha256": "5b223534d3e8a8d96a8a8252c266d22b7730937428c08ad835f933abe107d574"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u043e\u0435_\u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435_Majestic_Lime_International_Hub_Ltd.docx",
+    "source_sha256": "ebac7f500e3afd3c73c34630843dcc0f4afdc5d1562eae0b36df9dd7627791b8",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u043e\u0435_\u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435_Majestic_Lime_International_Hub_Ltd.docx",
+    "written_sha256": "48b1f9171f0d50347a993db0f5ba01e4c1f4c74fea95ef7c34770294d66c0d30"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043e\u0444\u043e\u0440\u043c\u043b. \u0442\u0435\u043a\u0441\u0442\u0430.docx",
+    "source_sha256": "52e063d2f60a9feb1ff6abe8d2723f0ca15390fc1f6686765f8b0dd4e9ca6116",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043e\u0444\u043e\u0440\u043c\u043b. \u0442\u0435\u043a\u0441\u0442\u0430.docx",
+    "written_sha256": "0b43d6057646d65b2ec9386f58115a54cf20941a4f8f35d57ac1891d82e1e68c"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u21161_\u00abLime_City\u00bb_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0438_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0443\u0447\u0430\u0441\u0442\u0438\u044f_\u0432_\u0431\u043e\u043d\u0443\u0441\u043d\u043e\u0438\u0306.docx",
+    "source_sha256": "33a36ca833a7d0e76e402901f08c00bd64510221f4ba0ab3f2a3e1d5fe0b6dc6",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u21161_\u00abLime_City\u00bb_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0438_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0443\u0447\u0430\u0441\u0442\u0438\u044f_\u0432_\u0431\u043e\u043d\u0443\u0441\u043d\u043e\u0438\u0306.docx",
+    "written_sha256": "0f79890c9179c33839badd65f13f316283c81d52c2ec10fbb3a9dfb1c8efac20"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u21165_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0438_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0440\u0430\u0437\u043c\u0435\u0449\u0435\u043d\u0438\u044f_\u0420\u0415\u041a\u041b\u0410\u041c\u042b_20_08_2025.docx",
+    "source_sha256": "d37cd3f516ff4f632942e82d9b9b9ab55f59dd5d87c2f6f3932eabfe2532c7da",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u21165_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0438_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0440\u0430\u0437\u043c\u0435\u0449\u0435\u043d\u0438\u044f_\u0420\u0415\u041a\u041b\u0410\u041c\u042b_20_08_2025.docx",
+    "written_sha256": "ebfafbf405c2bfd2195d2b5bf32997164d953a0aaa21f9acfb78cf88f175463d"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u2116_1_\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435_\u0440\u0430\u0431\u043e\u0442\u044b_\u041f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b_20_08_2025.docx",
+    "source_sha256": "4a7252cae060125079abebb989f7a37ea5cd695086b8c1def616582b5a49116e",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u2116_1_\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435_\u0440\u0430\u0431\u043e\u0442\u044b_\u041f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b_20_08_2025.docx",
+    "written_sha256": "b16158b0e78c0617f43a3a7cd7a03ce73d4bfa779b70f394ee10688c78480648"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u2116_3_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0438_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0438\u044f_\u041a\u0420\u0418\u041f\u0422\u041e\u0412\u0410\u041b\u042e\u0422\u042b_20_08.docx",
+    "source_sha256": "492848514437d1e4ec0aa29a16a0f820a33951113a67c1054951e4fb0aca29fb",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u2116_3_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0438_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0438\u044f_\u041a\u0420\u0418\u041f\u0422\u041e\u0412\u0410\u041b\u042e\u0422\u042b_20_08.docx",
+    "written_sha256": "f7c5d541ea12f7ecf75317562be7ce9e3edce4ebaaee4ab43db4b548f627a6c2"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u2116_4_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0438_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f_\u041e\u0411\u0420\u0410\u0417\u041e\u0412\u0410\u0422\u0415\u041b\u042c\u041d\u042b\u0425_\u041a\u0423\u0420\u0421\u041e\u0412.docx",
+    "source_sha256": "1cb0fdca71085d135178ef11335046a6bbb7903c36533c79e4328bb930b0a3d6",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435_\u2116_4_\u043f\u043e\u0440\u044f\u0434\u043e\u043a_\u0438_\u0443\u0441\u043b\u043e\u0432\u0438\u044f_\u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f_\u041e\u0411\u0420\u0410\u0417\u041e\u0412\u0410\u0422\u0415\u041b\u042c\u041d\u042b\u0425_\u041a\u0423\u0420\u0421\u041e\u0412.docx",
+    "written_sha256": "1c54071e09f0a4fa83e038f01801354ef410ed76c13655664a015c6361902e54"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u0420\u0435\u043c\u0430\u0441\u0442\u0435\u0440 \u00ab\u0412\u0435\u0434\u044c\u043c\u0430\u043a\u0430 3\u00bb.docx",
+    "source_sha256": "8866e42bde9f8c47e9de745db4b05002c37c0b8bf284670f2f1318e1517d05fe",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u0420\u0435\u043c\u0430\u0441\u0442\u0435\u0440 \u00ab\u0412\u0435\u0434\u044c\u043c\u0430\u043a\u0430 3\u00bb.docx",
+    "written_sha256": "b978e8f78fc33d3657ade0a74a3e871d1059dfcb1f0de2fb139aa0abc9719581"
+  },
+  {
+    "corpus": "docx",
+    "source": "strict-ooxml-core/tests/docx/\u0421\u0432\u0430\u043c\u0438 \u0412\u0438\u0434\u044c\u044f\u043d\u0430\u043d\u0434\u0430 \u0421\u0430\u0440\u0430\u0441\u0432\u0430\u0442\u0438 - \u0423\u043f\u0430\u0434\u0435\u0448\u0430 \u0421\u0430\u0440\u0430 \u0428\u0440\u0438 \u0411\u0445\u0430\u0433\u0430\u0432\u0430\u043d\u0430 \u0420\u0430\u043c\u0430\u043d\u044b \u041c\u0430\u0445\u0430\u0440\u0448\u0438 - 2011.docx",
+    "source_sha256": "0713da30e15ccdec287480a03907bacfaf8e01b4804ec1a71bed9901ae216477",
+    "written": "target/remediation-2026-10-06/census-qname-written/docx/\u0421\u0432\u0430\u043c\u0438 \u0412\u0438\u0434\u044c\u044f\u043d\u0430\u043d\u0434\u0430 \u0421\u0430\u0440\u0430\u0441\u0432\u0430\u0442\u0438 - \u0423\u043f\u0430\u0434\u0435\u0448\u0430 \u0421\u0430\u0440\u0430 \u0428\u0440\u0438 \u0411\u0445\u0430\u0433\u0430\u0432\u0430\u043d\u0430 \u0420\u0430\u043c\u0430\u043d\u044b \u041c\u0430\u0445\u0430\u0440\u0448\u0438 - 2011.docx",
+    "written_sha256": "525017766bfa8eadf0e53efbcd9cd1da5ef57174eb2fcf08ac5b95ed27bfe82f"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_13_Pages_Medium_2cdcf0763c.docx",
+    "source_sha256": "5b5bf5dd8b7ddce0b9a59e3f89e23e476ebca52bbf295f8147b6de3adf4c767f",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_13_Pages_Medium_2cdcf0763c.docx",
+    "written_sha256": "922804bbce874eb04c661837560e902ee6a9c66e75c2690edd2ac6ad79c2af6a"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_46_Pages_Large_4b2b5238a0.docx",
+    "source_sha256": "ebc26b6947ea3e0d4ecc2b454e4123c77aff525c77f27d5c074946bc9b06393f",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_46_Pages_Large_4b2b5238a0.docx",
+    "written_sha256": "96cec9513e8a7ec75a478acad7903f76eb152fc7a746c91b9a6b76d36e1866eb"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_73_Pages_Extra_Large_9d440610aa.docx",
+    "source_sha256": "16e75003b7d6dca25e5019edb6d5f6839e731d7ffda4c52846c0b619076dcfab",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_73_Pages_Extra_Large_9d440610aa.docx",
+    "written_sha256": "051f0764397be7370787951ac07b7ca6f0e21374ceef16a3ab9f95bf7dfacc82"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_Charts_and_Graphs_Special_characters_a28ab89944.docx",
+    "source_sha256": "e2654ba9d2a49c21c493cb0ecabb2d6354ab1ee3edc6c37a51732a3d2d59f39f",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_Charts_and_Graphs_Special_characters_a28ab89944.docx",
+    "written_sha256": "23578332f34aba2fc8cfa15288aaf89485e9b55f216a5f826a64cc3df8bd89e1"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_Mathematical_Equations_2fd0caa825.docx",
+    "source_sha256": "5bb31c916d957c2ab5b6c174059482ea4be512a55c0c66c009103a8a8aa0092d",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_Mathematical_Equations_2fd0caa825.docx",
+    "written_sha256": "ea98fff6b6030329c931c3c4545d844aa67ecd684879766739039647a77c3dd5"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_Non_Latin_Text_Chinese_Japanese_Arabic_67e061eacf.docx",
+    "source_sha256": "19ce0f02482a4c205deb626d11c361c8e8c1e53be1190d5be2ee8197cbf8736b",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_Non_Latin_Text_Chinese_Japanese_Arabic_67e061eacf.docx",
+    "written_sha256": "04709cba7dc7f964bc862d67e1be800878042eaa5d3108f406ce9d79fe906e2f"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_Watermark_691b4503e0.docx",
+    "source_sha256": "0d5d9f24d8a565a831d6fb60e12130052659b98d9f2d53524666b2995d4c39ee",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_Watermark_691b4503e0.docx",
+    "written_sha256": "e4e362e219a83924f3156918dcacfc4d8d4b8c421e2d6248f2fe6fc10a637c89"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/DOCX_With_comments_54baf34ad8.docx",
+    "source_sha256": "69b9ff32d4bca40527cd12d71c591b5a0d60b86a8ba8a55bdda838c6ec2eb442",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/DOCX_With_comments_54baf34ad8.docx",
+    "written_sha256": "d8d110313f58786120562088b05718f5559f04a92d69cb5265cf0e5e651d6a67"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-docx-1mb.docx",
+    "source_sha256": "931d4852cd1b661b9081216bbd817f5636d32fc2f1e1605cd357b20be0f51be0",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-docx-1mb.docx",
+    "written_sha256": "1eaedec2ecfe5af8b4ac1bee6f413073505976e4e1059ef783dca1cc83ba82e8"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-docx-200kb.docx",
+    "source_sha256": "0abf62fa5470ab50d0df77b013071dd71a4adc33fdbefb25bad469b23e78284a",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-docx-200kb.docx",
+    "written_sha256": "b31a13d33a41c15e0c9b21e78b1593b17790eac76a1a4dbe53c9eca87a617e0c"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-docx-500kb.docx",
+    "source_sha256": "ec830db282f1e2f1e7f2e997ee4e006be392f56af1d6d4b325e02dd769d399e8",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-docx-500kb.docx",
+    "written_sha256": "421570211c7e891cbb9d23b5f672093e4a5cc7d6011b8e9db884007bf076d3ba"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-files.com-large-document.docx",
+    "source_sha256": "94d1e6bc3fcef399e69d49543fcabbf62ee9dad4873c1c0958a5d46cdf6654ea",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-files.com-large-document.docx",
+    "written_sha256": "acc1e1dd75d314322ba5d883b056aec8b823e7c18c4807af8a670da244945676"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-files.com-lists.docx",
+    "source_sha256": "fa458becb212f0970211ead57726a1b457d706be07f2b635f40ca419a794ff0f",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-files.com-lists.docx",
+    "written_sha256": "0f8b8973fed1e23bc3e668056941b319ec30611082a7babfe130f1c6f17861c7"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-files.com-multi-column.docx",
+    "source_sha256": "a4b4a8a7e6ecdc31f90cab6e2fb53fb50c72b94232593747dbc1d023bdbc4d6c",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-files.com-multi-column.docx",
+    "written_sha256": "8298f0f1fb5d5ec232030973d7f570f3512afcec7788267ca7c93f466ca6ddb5"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-files.com-table-document.docx",
+    "source_sha256": "f11873de3cb3f1f2424806b21aab6e6c95e5a54bf05875a62fd7ac0420d33189",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-files.com-table-document.docx",
+    "written_sha256": "1759d15d3826c7d2e85bfdf4aed28aaf79eea9ee75f9e92699f435cb4362ebb2"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-files.com-tracked-changes.docx",
+    "source_sha256": "56d880c6099dbf982d8a4ad1da71e482440171cb8a456a804bfa3c0010001076",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-files.com-tracked-changes.docx",
+    "written_sha256": "f815d6cbd2665f9f1fd5a9c399daf9b25836ce95dcea9b324f3e12eb9de20ae9"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-long.docx",
+    "source_sha256": "2bdc6318e9dd8432669b6924f21cd377ce0b0230ae523ed3a6672e498f8bad12",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-long.docx",
+    "written_sha256": "e1f090fc7ac3db13a1cba9b50dc3545dece822f29b718616a62d14e35aa3d206"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-resume.docx",
+    "source_sha256": "96d847f22db0002f4976b941eddf0bd70d5b05146e3088dcfcfa88f58347d422",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-resume.docx",
+    "written_sha256": "09cc67fdde95aca208b5fa3dc03a98aa98c61289c7a3054fd322b3c8acd97d35"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample-simple.docx",
+    "source_sha256": "bd8d8f3cd62f4910257f7567743a58291d17ac2ee3383b7fd8b4a813237391d6",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample-simple.docx",
+    "written_sha256": "32da809d9943769a88d04c085f4544d1c840a095e83182ab3febf27acc96f8ee"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample2.docx",
+    "source_sha256": "40258ea32f3175c3a91cab65dd6a7eddeb94180edd186ad882ca51b8b0dfa7b4",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample2.docx",
+    "written_sha256": "ecfd0d6931ed16544c0eadc163a8b84b742fd8ed2ba324b21680410023d6fbd8"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample_report.docx",
+    "source_sha256": "b29e16c09a8ee62b6e849677089a08583ec67cfe1f2aa7f17712d1c473b74ad9",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample_report.docx",
+    "written_sha256": "a4826db8e0bc29e2477bbc90f7d9d4f6657d11c1118922ffda71697cbd4d814e"
+  },
+  {
+    "corpus": "samples",
+    "source": "strict-ooxml-core/tests/samples/sample_tables.docx",
+    "source_sha256": "7da733b3d17809386db629d47361c38de5d23a0e7e77ecfebb1d266721223411",
+    "written": "target/remediation-2026-10-06/census-qname-written/samples/sample_tables.docx",
+    "written_sha256": "d8b817feb6e861f6b608a07f3c7e15d85035da88fc04a9f27119bb67d1217d85"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/001_wajiz.docx",
+    "source_sha256": "5a33e8041a0e706acc4ca6a476d71030f20210464e1b5f3d163378b50be761b3",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/001_wajiz.docx",
+    "written_sha256": "db2c03f595c01f11a470bf803abbdc50a927f22bd739a49e71c97f3660fc8d8a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/002_Bloggen_Forest_Man_del_3.docx",
+    "source_sha256": "5cfa409cdc7588e1efc8078e01ad3119728b8fc3c68aa1f3bbb6b97b826e2921",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/002_Bloggen_Forest_Man_del_3.docx",
+    "written_sha256": "0ad610f7faa3da04375c3eff5f5d6e0e1d47b9c62fd4b8d2d6c7b62160407c55"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+    "source_sha256": "222d8f388f02aae34b3a2548689c32f4468a64a9210c070ddd947bc855791867",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+    "written_sha256": "f3bedbeaa3503adf23b7fb3a613b22b18ba13788b28d8447e06894c0783e6e13"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/004_Elementary_English_Worksheets.docx",
+    "source_sha256": "68cd0957d8f47b9e4b41e04145715b248547744488a20224362187304eeda150",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/004_Elementary_English_Worksheets.docx",
+    "written_sha256": "6611b549f858bfbc30c3e4f6c45020702982d4baf5899b5606289f2c0195cae8"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/005_De_Thi_Van_Dgnl.docx",
+    "source_sha256": "770777cdda4caf0ac8a4a863928b5a5aee3156e8f41e8b32dcabd63c99b9270f",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/005_De_Thi_Van_Dgnl.docx",
+    "written_sha256": "a5c20bb19553524538808bd1409ef09be90f25848bc1bbc8ed4a7e8b7a3a21f2"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/006_Forest_Man_bloggen_del_4.docx",
+    "source_sha256": "a0a36a92a146a44a52144ea4a92f721625d3d2086a5a3f1435d2657d9f3efa4f",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/006_Forest_Man_bloggen_del_4.docx",
+    "written_sha256": "e804553bc40c3fd66ab3c1254c77ff7f0f631ab60e79b5888ff3abb233e9d64d"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/007_Sinteze_Corint.docx",
+    "source_sha256": "0136c20b2160fdeaff8f31a4e5f47a1d5f9e22adb170ad5679c55e12973f4feb",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/007_Sinteze_Corint.docx",
+    "written_sha256": "400917f4fc4333a822bd070e38246b88236af98826428041651604301aa7c02c"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/008_seyyid_ahmed_husameddin_hayati_ve_eserleri.docx",
+    "source_sha256": "890cb6adda7b98ce06a00d5cd5987b3a78760388db160fd9f601ead52d1cf7a4",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/008_seyyid_ahmed_husameddin_hayati_ve_eserleri.docx",
+    "written_sha256": "8786217886b5d5a2ad093ce17696f311b9d35de5ade73a8c65496dc941c6b44d"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+    "source_sha256": "68a0a6470178ab6158d22ecddf9f1c26ff0bc0809c550d8d9bb62c1a9ccfd964",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+    "written_sha256": "69fa959bdfe52d4d35d7bf09234e784ec416d9ac3ef1c17fd57ca4054b48cde6"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/010_SAC_AGIZhi_Neng_Yi_Shi_Ti_She_Ji_Yu_Bian_Ma_Ji_Luo.docx",
+    "source_sha256": "6872af5a2b930cc97a386829961087fc859249194dc316fceef130793101d243",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/010_SAC_AGIZhi_Neng_Yi_Shi_Ti_She_Ji_Yu_Bian_Ma_Ji_Luo.docx",
+    "written_sha256": "be6fa80a090c43c9c477e6ec8e0241f71bd1684a24bf9182e1bf1ddab40a3a22"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/011_letters_of_peraringar_anna_6.docx",
+    "source_sha256": "928b5de253055b5551cb0434a240b294f92b8e62f01c1c7fda6c4eb6e3188784",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/011_letters_of_peraringar_anna_6.docx",
+    "written_sha256": "79344448725fc11e9d9e264a5863270901bf85c4b552a11236ae018a0d5bc83e"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/012_Diagnostic_Test_AP.docx",
+    "source_sha256": "808db2c759fde5a5a01527f751f7a722d54fa308819268dbf10995566ca87a52",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/012_Diagnostic_Test_AP.docx",
+    "written_sha256": "463151dc1b4801d61103b49acbe402af68c7ea3839871be45faa5f4a3c8f6e61"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/013_woord.docx",
+    "source_sha256": "37724ef92d6190cde15d6a9bccbed82dd6725b6eb657c69d20fb6653cdf5f5bc",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/013_woord.docx",
+    "written_sha256": "a9ffe993e9649fce3dab943b59f3694978ab44035ba525dd2723cfacc09e58ab"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/014_BG_Slokas_With_Transliteration_1_18.docx",
+    "source_sha256": "c0c7e8cbf38d26ccfea6c8103f6877955203be1238d6569cbba44206502ceebf",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/014_BG_Slokas_With_Transliteration_1_18.docx",
+    "written_sha256": "fd9d2e88403c43baa4caa980dffc234f1c7af62c9233473e6ae0d828f4938c29"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/015_Garizumarako_abesti_eta_antifonak.docx",
+    "source_sha256": "2165f99ab65794b75a1455a59e9637ef2298ab908edfd175b47c17bf97d0a050",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/015_Garizumarako_abesti_eta_antifonak.docx",
+    "written_sha256": "281d8ccadbb0316e0d6e29f91eecf648ee19faf83c360583af4e6ef4e7304351"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/016_Lutja_Kur_Mediton_Njeriu_Per_Allahun_Dhe_Krijimin.docx",
+    "source_sha256": "1907a22de767513a564aba4d4874216930a71e9325b936337715677b0b3de82a",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/016_Lutja_Kur_Mediton_Njeriu_Per_Allahun_Dhe_Krijimin.docx",
+    "written_sha256": "43f74470fbed8c600b1945f05b42d9518726901e53bd526c1fa7764010b9cedf"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/017_Catalogue_Of_Books_At_J_C_Collage_Library_Mysore.docx",
+    "source_sha256": "1b1e4104dfb5d617f4a6d938a94a1f9258c3dc4fc5f4b887636000cdd89464fc",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/017_Catalogue_Of_Books_At_J_C_Collage_Library_Mysore.docx",
+    "written_sha256": "732414aca6e797970668407f2d0310642ad3ecb9d31a5f1aab5e5a4f56564de8"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+    "source_sha256": "d0bbb44d604b2c18b744cfa9085da3d2a2a2428ad81cfea19d1de0e11c884583",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+    "written_sha256": "5f03ed5827f787fcd784eb3840a43ddaaf08df4e8ac38bb0db3d39585c085036"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/019_Siirt_te_yabanci_Iliskleri.docx",
+    "source_sha256": "85fdd90c275223627dbb90c3df51831f4b7abe4b61b7608cdf36e37882ce54ab",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/019_Siirt_te_yabanci_Iliskleri.docx",
+    "written_sha256": "873ac36b993f874383661b103e27902cb60af10b4e5e885810684d066ae90c7a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/020_Nghien_cuu_cac_roi_loan_giao_tiep_cua_tre_tu_ki_ng.docx",
+    "source_sha256": "8056f677b0e5feb8e863192456068d0272ba3e258880d695721eedcb11e24122",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/020_Nghien_cuu_cac_roi_loan_giao_tiep_cua_tre_tu_ki_ng.docx",
+    "written_sha256": "c8e13a53255912d7fbd9d4a995d4d069734126d74ea15f7fbb3c088a5b560dec"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/021_Ljudi_Vole_SliAne_Sebi_RAPORT.docx",
+    "source_sha256": "98e536d94081b2703c87e4a74f750483ba3c92d51cd35dfeee42fcb48703fd8e",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/021_Ljudi_Vole_SliAne_Sebi_RAPORT.docx",
+    "written_sha256": "90928d53c76e97e5df5b5b8fa1197236004e7f3e6aba1cda706d803711f0b3dc"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/022_S_301.docx",
+    "source_sha256": "5e8bd58b2800a03b4e20fb51f93cf363a58c866d7abdc938415633fbaa6c6f9e",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/022_S_301.docx",
+    "written_sha256": "e19ad836bb1830732fd2340da88dd1b023b5cad0834863caa0a32bcc77971f5a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/023_VCA_BASIS_4.docx",
+    "source_sha256": "73c0015330e186864a3d5130f42a0bcf62c27048ee349944bccc036b03504e94",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/023_VCA_BASIS_4.docx",
+    "written_sha256": "bd346d11a994f1e5f6aa5db79279f192d99075e754fdd985030d585251451bbe"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/024_Koumudi_Kiranalu_Kiran_prabha_kaumudi_kirnnaalu.docx",
+    "source_sha256": "e4b6a94094e0cff6cb7afac1e393fb4b7c037d9bd342ecceb3e6ac6f8f38ac39",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/024_Koumudi_Kiranalu_Kiran_prabha_kaumudi_kirnnaalu.docx",
+    "written_sha256": "8c8d87aca6461d52e3c117d73704d3ac9e210c202f363c3bdd62a238964b2cfe"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/025_iyothee_dass_thoughts_religion.docx",
+    "source_sha256": "3f161899700c911fdaa653fde9aca33c9891157035c7bc16320a256bea4de3dc",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/025_iyothee_dass_thoughts_religion.docx",
+    "written_sha256": "c1d91f46bb89d6522d2899b0435b125d7b101bedb86659dcd062b2e67fe2795f"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/026_hafizi_sirazi_divani_ve_tezler.docx",
+    "source_sha256": "4f034d65f636849adc71321536d577b978fad4ffd9f8ae916aa32379e003f431",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/026_hafizi_sirazi_divani_ve_tezler.docx",
+    "written_sha256": "802e96d4ec50cfe7b04c444795f0ccc1709c7753de27e5c78607be75ac4748bb"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/027_Cokovic_Rusmir_Vjerovanje_imama_ebu_hanife_u_pogle.docx",
+    "source_sha256": "21a8a1a86f88a279a026c588dc2cdc937d1ade83cc17834d487f1dc6cfad864d",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/027_Cokovic_Rusmir_Vjerovanje_imama_ebu_hanife_u_pogle.docx",
+    "written_sha256": "8dac7cf565cbab9d2bc5fc46ec63aa04ec878f04a5c5b8ffeedb140ebf8c60af"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/028_nbhvv.docx",
+    "source_sha256": "58ae8f81c5a410b1cea6652cbe16c26be63f542a8153a768e6f2a7ade49b351d",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/028_nbhvv.docx",
+    "written_sha256": "280f7eacea48ae2ef386636a302d69ba3b89e16130c5f35a9e02934c6c592f2f"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/029_For_Naturens_Skull_bloggen.docx",
+    "source_sha256": "079825c953573470a6bc0c29c50fcc220fb898f2fdeb4b4fc708f39f017efa41",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/029_For_Naturens_Skull_bloggen.docx",
+    "written_sha256": "59a7d684a3be56baa29c94e91687e315c900838fe10f1e59b524ee19bccbea26"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/030_Kaafarun_Kithamme_Nuruhunas.docx",
+    "source_sha256": "7915f8df1566d599cf90f76e2467d738b5a00c4730a45233bc094cebb8d386f6",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/030_Kaafarun_Kithamme_Nuruhunas.docx",
+    "written_sha256": "ccaec50618a2ef2950e7bd799ddc6e4a0f4edfa70ba567eb4d1b6067a657eb44"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+    "source_sha256": "7297fa8bf6c75462d3108226b18f5b25562414e3e96c800dc4b48633597b0f77",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+    "written_sha256": "161622f004954d349850eacb9a23e390887bd9772adcbb50e3445726c69f7ffa"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/032_lqT_lfwy_d_fy_wrq_t_lq_l_lHy_T_j_1.docx",
+    "source_sha256": "ae3ebdab9c820a7e9dd3628e3d7b45a4de009b223a9b11e579a5030fc4ca328b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/032_lqT_lfwy_d_fy_wrq_t_lq_l_lHy_T_j_1.docx",
+    "written_sha256": "d73bdaaa1ff9dd988f7396fc5c3c552ba237f06a8e1040b265295dc0913362c4"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/033_Nghiep_cam_but_chi.docx",
+    "source_sha256": "dc6d69c66dbd513af3ff531a1a18176b87fa5e7e8f758e4960a087c11f9f602d",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/033_Nghiep_cam_but_chi.docx",
+    "written_sha256": "7e3c29b15c84b57ff1001479cc95fdc2f1071592b4c3b5f1bfcab66571968eac"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/034_CCOO_Cat_Comunicat_PRESTACIO_DESOCUPACIO_19_03_202.docx",
+    "source_sha256": "f7fdbe4513e78cd1b6a88980f54d15fba47c3676ced536280e0e099bb136027a",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/034_CCOO_Cat_Comunicat_PRESTACIO_DESOCUPACIO_19_03_202.docx",
+    "written_sha256": "a06f81c366ed54e24f79121394ffa19568c9c9e85fa7322fe633a974188c6a6d"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/035_Scarlat_Demetrescu_Din_Tainele_Vieii_Si_Ale_Univer.docx",
+    "source_sha256": "3ce7e77255123062caf9583b42ac747fdba456d2b5aed5d8371ae962ff779084",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/035_Scarlat_Demetrescu_Din_Tainele_Vieii_Si_Ale_Univer.docx",
+    "written_sha256": "df8ea77677d465d83eef6b42c1aa4e94fea58e88d83f739087418a22bf1cda8f"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/036_SM_401_USER_MANUAL.docx",
+    "source_sha256": "b4ef9a8f9a28c6c0b6d6b9e1c23aac62ce205276c1fd11361df60bfc02bc6a07",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/036_SM_401_USER_MANUAL.docx",
+    "written_sha256": "5128093a5da6db14240f0ea2786373040c190dc1262d2ea3a4f03c04d799ebe4"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/037_TIPE_SISIK_IKAN.docx",
+    "source_sha256": "086dffefd0d0b2ead153a081f6e120b34e30d996b32bb0d1c538bc92b85a9ff4",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/037_TIPE_SISIK_IKAN.docx",
+    "written_sha256": "0e2ca49380d6c473aada56c8c88695db988c53a78e9864491d692a7a66cb648d"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/038_4_Stotras.docx",
+    "source_sha256": "8b8d1496601101404171ce63bce1c3aea3d2eef651abd31f7bd3961118e98b4b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/038_4_Stotras.docx",
+    "written_sha256": "0189186f4e05582cf46c88fc861b9ab6c367f1ee7f22bef72bb905394dc38a1e"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/039_DIVAN_I_SAMI_Abdurrahman_Sami_Niyazi_Saruhani_kadd.docx",
+    "source_sha256": "d8df8d734d5dfe1fc20893358e4370b54dcabad3c8b740975fb65cc93eeeb2fb",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/039_DIVAN_I_SAMI_Abdurrahman_Sami_Niyazi_Saruhani_kadd.docx",
+    "written_sha256": "b0b5c5a36a35f75c77fdcdb86339f28bdb32819394915c49ad50c3ee70535841"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/040_aNbriissaakhyaanN_AMBARISHAKHYANAM.docx",
+    "source_sha256": "879a65fffe01da1f13886aa9065e77a63e1c56210705d15f69fba587194fd4d5",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/040_aNbriissaakhyaanN_AMBARISHAKHYANAM.docx",
+    "written_sha256": "4d1fc4e79ee5b19cc00cfa934fb8b4c476ef4a44bd2b6739aed408f56cdf6694"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/041_l_lm_l_qyd.docx",
+    "source_sha256": "ab5cae9553a5b753931d309284b3f0bcfe38fdac8845d5ec32763a50359b679e",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/041_l_lm_l_qyd.docx",
+    "written_sha256": "13c85219a83faf191f0021e0869c6e3418e9e83f5c7a7891184de260bb298601"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/042_1_DS_Starting.docx",
+    "source_sha256": "073f3371a1c6eceae1fbad26623f364d861c40fb12e4fefc7b7ab6cb2765f5ad",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/042_1_DS_Starting.docx",
+    "written_sha256": "71b410e45297456f2b561f898d80d394444d052921ee85573357131ecaf38ab9"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/043_old_openyogaclass_com_av_yoga_Anandalahari_Kurs_yo.docx",
+    "source_sha256": "f40943d5220882f826d7914334445cf38e511ee828f287c3cac71fad1fb074d3",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/043_old_openyogaclass_com_av_yoga_Anandalahari_Kurs_yo.docx",
+    "written_sha256": "9068cf7a40bf6829e0c91167199511808d9cb56575e6fc1df8a7dbdc006d6f78"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/044_Yekuana_Prayers.docx",
+    "source_sha256": "0ad5f4ecaac5d7573773334453675253260547d0ecfded76404117c7ef977453",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/044_Yekuana_Prayers.docx",
+    "written_sha256": "b422a3be010dd6551b5fcc1370d1274403500b4f4dd8973385de819884da2b47"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/045_Ekoteologins_historia.docx",
+    "source_sha256": "feb0d68d0dad66dbf55d8cf9c5d92d7ba6a4918374fe3be7e04af120662379af",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/045_Ekoteologins_historia.docx",
+    "written_sha256": "402fe62275a3800d37aed79c4cb9e9daf5b4b72a2a7832e5fce5e4d7f31bee87"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/046_praise_and_guide_bn_doc.docx",
+    "source_sha256": "7640f2ecf97f78ad23d001e61705745f66c7776963423ba71b14c8a33930c79b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/046_praise_and_guide_bn_doc.docx",
+    "written_sha256": "9ed6674fb15f73f0c55d8eb047770356ac30e45f6dd301b74e60e6057c538961"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/047_uz25a.docx",
+    "source_sha256": "0c8e3456cd9662731633205197f4dba3513cada1e3b1e8c5fe87a3521b82ff75",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/047_uz25a.docx",
+    "written_sha256": "3de95acdd6749b84c932225d950da69cfe6b2b84062cc3a57a2da82a6e686511"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/048_HTyn_mwln_khbyb_syd_shhyd_khy_qfly_kh_ykh_rhy_z_mw.docx",
+    "source_sha256": "1dea41a98b2e84c3256c039e6a9f5b89ff8b883bfa7216b56c81475c28135b41",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/048_HTyn_mwln_khbyb_syd_shhyd_khy_qfly_kh_ykh_rhy_z_mw.docx",
+    "written_sha256": "94caef35c5e0854e397c723678fd45705611f9adccb69bb1ffbee46ddda3fc44"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/049_FInal_DISERTATIE.docx",
+    "source_sha256": "7bbd11e97c06a1bdf4a0a0c62630767ea4abe208f327b22fefddbf187099593a",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/049_FInal_DISERTATIE.docx",
+    "written_sha256": "0dff961f5cf73e4b4ea76c84ce752a06b4d6f0de3cfc23de008b6d1d50c1d8ab"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/050_letters_of_peraringar_anna.docx",
+    "source_sha256": "1a148cb5480eb4b3bfb030b453aeb3d1d8912d67cc8217b29bf70ef54f7c976d",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/050_letters_of_peraringar_anna.docx",
+    "written_sha256": "ef5af311490fa90f429c1cc4ecc74bc625b954239e7ce619d0f98835c4560fbc"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/051_E_Glossa_Tes_Astheneias_27_Pules_Pros_Ton_Eauto.docx",
+    "source_sha256": "f57cedac9b4df4201bfbb10e0fb2ef684b70000b17d007380e606c04ba0cfd15",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/051_E_Glossa_Tes_Astheneias_27_Pules_Pros_Ton_Eauto.docx",
+    "written_sha256": "f8c460d9f366ecc1cb3e7b0f5ec3315aba8f4726437b09c31ade5877fd964d60"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/052_Laporan_Hasil_Praktikum_Kecambah.docx",
+    "source_sha256": "7cdd7196d77c8a1db063705a8db5792c115e3669248220270a5967ebe7585d9b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/052_Laporan_Hasil_Praktikum_Kecambah.docx",
+    "written_sha256": "fedac0d66f4e49a1b645ebc4f1819876d1f2b093de0eae7152ba74df180fb519"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/053_Cokovic_Rusmir_Post_16.docx",
+    "source_sha256": "59de187f129ba08f6e297fa35a66bb9338beebcaad1a4b09f1384d01938ac962",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/053_Cokovic_Rusmir_Post_16.docx",
+    "written_sha256": "1c03d5a5faf1b54181e2ece638047403be5dd989d46db9e4dce1a7e3d781970c"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/054_Zydzi_W_Woj_Wielkopolskim_1.docx",
+    "source_sha256": "22e2aca345ef39a738395d767fbc097e287003f699feefbe8341dd1e622ca54b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/054_Zydzi_W_Woj_Wielkopolskim_1.docx",
+    "written_sha256": "0b965806a0c267479107c138d63beea6b0deba983bc1e381c844b96380f1d59b"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/055_Matematiques_2n_Batxillerat_Col_leccio_completa.docx",
+    "source_sha256": "3d31b3ed4ed07c9218d7ae2c273f476715099e8203128d8efc84e3e5f8d4e449",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/055_Matematiques_2n_Batxillerat_Col_leccio_completa.docx",
+    "written_sha256": "cb403c4a1997d1033681a166e929b58fc656503d9559168d90b8bbf61d48adcb"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/056_Ask_Semiha_Cemal.docx",
+    "source_sha256": "a1d87dcf5229e39cec336fb10c308d2e3ef145bab425e9ea7b008918ad9892a8",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/056_Ask_Semiha_Cemal.docx",
+    "written_sha256": "4486660d8ba6cbe053ceefec3031aa5be6178b15682735b6dacc7dde8eea4dba"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/057_Wen_Xue_Ge_Ming_Xi_Lie_Quan_Ji_Version_3_1_Di_Zao.docx",
+    "source_sha256": "5b4a59eab4014fe953612fbe94b2ddd441326569dc6343d9ae3b5137db550e3c",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/057_Wen_Xue_Ge_Ming_Xi_Lie_Quan_Ji_Version_3_1_Di_Zao.docx",
+    "written_sha256": "5b283abbbe306f9dfdb1d7e5766df95cbb37eca94b83732191ee68ff14e86429"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/058_Apostila_Completa_C_E_Estruturas_De_Dados.docx",
+    "source_sha256": "9b193e7f85f6e95d3c6e2ef92328e2e9cfd1924560ff727024a226a30c519dcc",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/058_Apostila_Completa_C_E_Estruturas_De_Dados.docx",
+    "written_sha256": "39ca10abf4accd06f0ba02d98d32022df4458c8c96f76a45d6ea25bd157e697e"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/059_ISE217_PowerShell_Programming_Syllabus.docx",
+    "source_sha256": "debe6494d69d7c156ba0bb07e920eeeee4d5035a242fd6249902d59b41b8b0c2",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/059_ISE217_PowerShell_Programming_Syllabus.docx",
+    "written_sha256": "3f7da0c30f40dfa124be51a9dca61250e8d368e2a396d6744625244c7e7b675c"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/060_Ekoteologins_historia_2nd_Ed.docx",
+    "source_sha256": "9b451ccb8d4c79c8fd39888726c58263bca333dc60f98ee5af2babb8b9d1db81",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/060_Ekoteologins_historia_2nd_Ed.docx",
+    "written_sha256": "d0d167e3b6b49a9b3cd7c48a69b043d4edc0faf8ba576ece901ddefae63cda8a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx",
+    "source_sha256": "c5287bfec03334dae54e12c8e52a055db3b87669a2f0422a2e13b4b85053e96b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/061_COM235_Advanced_Spreadsheet_Applications_Syllabus.docx",
+    "written_sha256": "23bf5215078c4ddc8246c7bff39a55d8b93aad40e79f5b24aba2eb0cb1508d2a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/062_ISE102_Implementing_And_Troubleshooting_Operating.docx",
+    "source_sha256": "e0b3ced99858b366a50e238bcbb8bc15f5c4ee8eddaa1ca47c81814b39a080e9",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/062_ISE102_Implementing_And_Troubleshooting_Operating.docx",
+    "written_sha256": "663db5caf92027e444be3067a83e19f50757ea61f7bb5e60d903ac01aa66cd55"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/063_ISE101_Implementing_And_Troubleshooting_Operating.docx",
+    "source_sha256": "18ef07ca5019dc3bb79f883b35dc424a573e4e74cc59ece3a427d8b65a26c9fc",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/063_ISE101_Implementing_And_Troubleshooting_Operating.docx",
+    "written_sha256": "cfc2cc19a12a14984fb76966850e0b70157e028abfa8e3487b6e2bf0ad4da46d"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/064_40_Islamic_Books.docx",
+    "source_sha256": "26acb9dcce6543760106048cf071e7b4ab704f667f5aec31ea11f9fa897442f2",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/064_40_Islamic_Books.docx",
+    "written_sha256": "112f22f0df90b2d30d0d312730c84f12fcfbf2c9eb13ccf7051a8fa59a78bb1c"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/065_ldny.docx",
+    "source_sha256": "ce2993da0a5b2b7b3bad4e62fb546bc19fcba25f2ea621188458e80b98a5840f",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/065_ldny.docx",
+    "written_sha256": "db1ea5f922fdb7f938dba8dd5d14b6f85b773344f1545b6fcd40abf4184163a9"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/066_Gajendra_Mokshana_24_02_2021.docx",
+    "source_sha256": "aa99410b4cef82298c431c336e6800c679da2ece2d9a53a3614fa8a466a4a5b0",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/066_Gajendra_Mokshana_24_02_2021.docx",
+    "written_sha256": "0131a05b7b9ee8a21070c364217cb5c9329b06229f515a30a6ae25283bf55da4"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/067_N_3_ACT_4_Ha_Tuan_Kiet.docx",
+    "source_sha256": "5f86192269f27af6ed3fb3c2740e0a16eabc26578c1bf691f05565d7dd592dee",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/067_N_3_ACT_4_Ha_Tuan_Kiet.docx",
+    "written_sha256": "516befcd4a73503f95c9f95b8e3f9984a77a56677fac957cd3444e3dbe48d69b"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/068_Madhurya_Kadambini_Roman_Sanskrit.docx",
+    "source_sha256": "7631da9ac0dd358a9092f491f29fc29b8e137a85d12617a7609b2f3f25b53f07",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/068_Madhurya_Kadambini_Roman_Sanskrit.docx",
+    "written_sha256": "fffb1ca173e477ba6fddbecbadb21c9482b457ab8bc487a8e4d981fa3b9978ce"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/069_Puasa_01_Pengantar_Mauizhah.docx",
+    "source_sha256": "a37aeb6fb03ad76b3d69f422b0b23454030a5ba212bf8f5f5009d6f4f9b865ea",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/069_Puasa_01_Pengantar_Mauizhah.docx",
+    "written_sha256": "75245af9f90b2950ca76ba6e1f1140f4c2f3f72b73c6ec43d558029f91d19b56"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
+    "source_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/070_Innovations_and_New_Technologies.docx",
+    "written_sha256": "056ac115a3c36fe9f49bedc609be601722894b76e214eb3a1f58ab983a5d74e8"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/071_Repubblicanesimo_Geopolitico_Anticipating_Future_T.docx",
+    "source_sha256": "07ab0ab4b6fe85844cdbc173379ff28fc2312e191510a5ddd559c32740696652",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/071_Repubblicanesimo_Geopolitico_Anticipating_Future_T.docx",
+    "written_sha256": "40652c90c18f8817b9da048c538c34cdb72b0cb404a8f533d2c5b0edcf111c21"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx",
+    "source_sha256": "0a87021279265df19eeafadbb4ab1fa67a1c1acd4eadb5ecf2b1e80e0db0cb44",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/072_NAMDAR_RAHMI_KARATAY_GECTI_BORaUN_PAZARI.docx",
+    "written_sha256": "2a98c34323903dcd8316d5b551a69dd7808abfbd7c175a5ca2474545bb18d2e0"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/073_Global_uppvarming_och_mansklighetens_undergang.docx",
+    "source_sha256": "1cdef5812af876f8cb8fd968d3d8ef25280a289541afc665d90d756a560f4387",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/073_Global_uppvarming_och_mansklighetens_undergang.docx",
+    "written_sha256": "0329c8c906f158a11a17196c48e9aef55f1188d8c82e1d3d4a58559afe36013b"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/074_hmy_T_m_lT_m_fy_lslm.docx",
+    "source_sha256": "0f39c23d076b06757e1edc1c4aa04d9bc5c7008bde1316bd687299b8b18f0c56",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/074_hmy_T_m_lT_m_fy_lslm.docx",
+    "written_sha256": "5dbb797db2b60b72d3b3cd4633286a55abcad49971839ea2a0bd90f8c876d5e7"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/075_Hindi_Rashtra_Bhasha.docx",
+    "source_sha256": "8995db62b1c3858a4835903c5334df66606ce5c2beebee4ed1a9a16e841c419c",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/075_Hindi_Rashtra_Bhasha.docx",
+    "written_sha256": "527da932dbaca8e2116b6f39482d41892b2171b12226513ad829109707e57fe1"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/076_Selefus_Salih.docx",
+    "source_sha256": "638fff73cb6f477b2d19ed254bb2e7ac3d2d40728736e40fc45612c0b45f5dad",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/076_Selefus_Salih.docx",
+    "written_sha256": "6e3711e7bd1ad8eff0c5211c6478a76d24d75db51bb4a997527727a1a9f0bc71"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+    "source_sha256": "0a9964e7cdf2e23bd8f40729f1a2f06daaa8e0c98c8b365c15107e495b1d0327",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/077_2016_Greater_Launceston_Metropolitan_Passenger_Tra.docx",
+    "written_sha256": "a12d878e558d6aa1ca1f002884215440240825f20e9e1783f973d99862b508d1"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/078_For_mentalpatienters_manskliga_rattigheter.docx",
+    "source_sha256": "64cb2c6b0e6760237ef1d46c70967f1665297438c93c528d17de701367fec418",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/078_For_mentalpatienters_manskliga_rattigheter.docx",
+    "written_sha256": "2978a318e8cf0279722dd95f9cda8d7e9115fde739e9b04dd7c5afca89165230"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/079_MALAS_PRACTICAS_REGISTRALES.docx",
+    "source_sha256": "94a3df321b882a6a89619c8275e08936b4974d9c052da5f576939972693dd04c",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/079_MALAS_PRACTICAS_REGISTRALES.docx",
+    "written_sha256": "512c6ebc4fa62372a48b35c29b0745f66bcdf31aa6d4d9873f3d39216f0dbaf8"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/080_makkal_sattam_1.docx",
+    "source_sha256": "9d143ddd9328754985effb258c221760935dbf2626d0bace3300fe0234f9892c",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/080_makkal_sattam_1.docx",
+    "written_sha256": "7ba5a7c276f42c1c069864384593a009ec20be24829b7df8ce14116aded87ae8"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/081_Lab_De_Uniones.docx",
+    "source_sha256": "dae53123559b0f676b6f6f7533b31770aac192e571ac2a916340cb7c85dc8e35",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/081_Lab_De_Uniones.docx",
+    "written_sha256": "f327c8d540d3e4ece20e5116c4df49a720e011366bb797537244253720143e87"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/082_Empaquetado_De_Instrumental.docx",
+    "source_sha256": "70ef8d2c21dfeb02769edcf35dd9f59543f9976589ce2685b44de92adb9d1b64",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/082_Empaquetado_De_Instrumental.docx",
+    "written_sha256": "a519cee32df620bc3c08c5870ad004ce8e34f25f0fd53fa6df04a0574552aa0f"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/083_MafiaCon_Tutorial_Russian_language.docx",
+    "source_sha256": "4f6cc61f744d62c4364430b9bb88387937c816644a7d00476edd1f44f82f18b2",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/083_MafiaCon_Tutorial_Russian_language.docx",
+    "written_sha256": "3a259b18b12f05ed2074e06667a976d37ef70ee82d9104e5a3cc6877ca89fb15"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/084_Iblisee_Mazhab_Deobandi_wahabi_mazhab_urdu_islami.docx",
+    "source_sha256": "12f5df1faed358f596f3ebe127021a97f666406e88dd95d54e688f14babab5fd",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/084_Iblisee_Mazhab_Deobandi_wahabi_mazhab_urdu_islami.docx",
+    "written_sha256": "7a1847f006fb10fa74a1e6c95ee9c29bb0059feee12b203f5bb1d193ae147a15"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/085_Fu_Ben_2Yue_2Ri_Xiu_Gai_Zhong_Yang_She_Luvme_HairG.docx",
+    "source_sha256": "f0675805993972c81457c6f1c110fa315696b4bef34a6cf534b0f569b1e85acc",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/085_Fu_Ben_2Yue_2Ri_Xiu_Gai_Zhong_Yang_She_Luvme_HairG.docx",
+    "written_sha256": "12a95d7506e00625d4536443f0167e15a855e30b62346c7b077ac86003e976f2"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/086_Oberon_La_citta_proibita.docx",
+    "source_sha256": "273565d1c55f08d595ef8e111a9cf94c4cc65e9a469b4f54517f779d7f7fce12",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/086_Oberon_La_citta_proibita.docx",
+    "written_sha256": "53da84d3106579037d4f526912e9156ee1ff0fca1c21f66c4e7cf06a3c28788a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/087_zakkum_gercegi_ziya_ozel.docx",
+    "source_sha256": "71a4cd792f7373cd185513079a96734cf60d4b1481d15069eccea30347c0fd6b",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/087_zakkum_gercegi_ziya_ozel.docx",
+    "written_sha256": "12ded0dbe88b08435c52ac92f3ba428033e48052240efd4d02f823bf23a8fa49"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/088_Bloggen_Mot_en_ny_romantik.docx",
+    "source_sha256": "26cb9d9e485944f910cd75fbb7b8abbee94921e60a6a765b393205a5ede5d41c",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/088_Bloggen_Mot_en_ny_romantik.docx",
+    "written_sha256": "630f78f2d39753c838215605978357201af55f7d2925ed5d7d7fb19e152bbf35"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/089_Greer_Steven_M_Adevarul_ascuns_informatii_interzis.docx",
+    "source_sha256": "d0fb91f744e716ee284d45f62cccc35bbf91ecdb974b72ac39f854e3947a2419",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/089_Greer_Steven_M_Adevarul_ascuns_informatii_interzis.docx",
+    "written_sha256": "64bb2a1c22f8ed8333710692026e5e32f0c9bba0bda436fa8006047a7460f464"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/090_Gritos_Chutes_E_Pontapes.docx",
+    "source_sha256": "353eed9a972753b42ce9123db33c0e2f58b083dc19d4b978948105f46f79bde9",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/090_Gritos_Chutes_E_Pontapes.docx",
+    "written_sha256": "f1e5acd2af922a6efbbad2944a9193749d31402c2241346f3c6b67a1604e08cd"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/091_MTD_A1_Ma_Thoi_Den_Thanh_Co_Tinh_Tuyet.docx",
+    "source_sha256": "7bd7ce5416b474c7f2e2b13486b65ee94d9d5c6e0a2699fb23e7f382db9c541a",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/091_MTD_A1_Ma_Thoi_Den_Thanh_Co_Tinh_Tuyet.docx",
+    "written_sha256": "48c0557c43de89d840f59e4ecf8b43f32410fd3a0fec703ae8da247d681b72bd"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/092_Vamana_Vijayam.docx",
+    "source_sha256": "b96617118db3fc2514073e3a75003ffaaaab2a273a9663485cbcf3fe1a978e2d",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/092_Vamana_Vijayam.docx",
+    "written_sha256": "7a87255b98aa35355b2079b75addb755cb7804e575f02e4c8cda78a31abd148d"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/093_lmbdr_lyjby_mn_khll_syr_by_TlH_l_nSry_rDy_llh_nh.docx",
+    "source_sha256": "b07014a2f0d73bac31384ff7a47e1b34f6ae98ff802aa228c7f7824fcfcc56d9",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/093_lmbdr_lyjby_mn_khll_syr_by_TlH_l_nSry_rDy_llh_nh.docx",
+    "written_sha256": "881da98a433d2daf04148a7369f0051cfb8713d9e46b4626b7fdc8d4c0c833b1"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/094_Exp_doc.docx",
+    "source_sha256": "756e602216f54330b2c097fb2e0c65f350f630dad0f7f31d308ca2cdb35a0d28",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/094_Exp_doc.docx",
+    "written_sha256": "f29470583e1ffff663921410214873c5ee428e849eec360be6b1cc58e870f426"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/095_Door_Prize_Kajian_Islam.docx",
+    "source_sha256": "f4a1435f1acfb4946f045d7eca53421f22e243e9c50d65bea05909ced78d8cae",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/095_Door_Prize_Kajian_Islam.docx",
+    "written_sha256": "b2bc14789f831b39fce38d1102cbf76fc6cf2499336599da906dc7036b7218f7"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/096_old_openyogaclass_com_av_yoga_108_aforizmov_Kurs_y.docx",
+    "source_sha256": "21fcdc71ce4a40cca83d6b0df1dd996bcad80d6017eb4bb30282b93aede83ba9",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/096_old_openyogaclass_com_av_yoga_108_aforizmov_Kurs_y.docx",
+    "written_sha256": "8d76974841cbadefacc6f33754c95be336343ff546cbd3b63cc6dfa42f6be208"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/097_2_DS_Ancient_Text.docx",
+    "source_sha256": "37334f8c64da0ab253ba7730f0544c29cf1898aa6248db58c38aa8ba356dc822",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/097_2_DS_Ancient_Text.docx",
+    "written_sha256": "6783904ce80d5b338391e85997e6dd2f9e1a85b71b25f021cadd598afb1c7dd5"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/098_nenjai_allum_thanjai.docx",
+    "source_sha256": "c9a0f097936d2a9a89764e57fafb97fa931cb7e20de7cc4c55ce0531fa8736ae",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/098_nenjai_allum_thanjai.docx",
+    "written_sha256": "74ee94b1c23c0d1bb43687525cfb719fce8e2375504be251c539e3489bf51316"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/099_A_HistA3ria_Ambiental_e_a_EducaASSAPSo_Ambiental_c.docx",
+    "source_sha256": "d6d811353cc89780a92253f5b38604e97ffa20b90eb36e260ce91b332aac63d1",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/099_A_HistA3ria_Ambiental_e_a_EducaASSAPSo_Ambiental_c.docx",
+    "written_sha256": "2a2a1d1ff95f1be83e5b8a5100c15110831ad9dffac1bd3cfc8b14595493291a"
+  },
+  {
+    "corpus": "cc0",
+    "source": "testdata/CC0_DOCX/100_SEC_MELI_TARI_H_11_SINIF_2_DO_NEM_1_YAZILI_CEVAP_A.docx",
+    "source_sha256": "3d962073de6682091e245d359224dde392791bf64cc54bd82767fbe8d88209d0",
+    "written": "target/remediation-2026-10-06/census-qname-written/cc0/100_SEC_MELI_TARI_H_11_SINIF_2_DO_NEM_1_YAZILI_CEVAP_A.docx",
+    "written_sha256": "9b5f72a549bfd28c288f2d556e6607570da1f77d344584fe6d24e6563e80360a"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/05-strict-math-simple.docx",
+    "source_sha256": "8acaac4c050381f3e412bf6678641814a182719f7d5acd2c5898908bdeccf6c2",
+    "written": "target/remediation-2026-10-06/strict-final-written/05-strict-math-simple.docx",
+    "written_sha256": "e0b05d252f7a6b6d17cc1875023a142aa526bfafcf48d3450288ce21e5d583fe"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/06-strict-math-display.docx",
+    "source_sha256": "edadd4640bba27d2ada113f4aed624e315fff7a9cbabd8f9d5089dc1e5382370",
+    "written": "target/remediation-2026-10-06/strict-final-written/06-strict-math-display.docx",
+    "written_sha256": "729b13425c90516dd630dd5b56abe926810b147b84fd11d33fe4324ff28a153e"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/07-strict-drawingml-shapes.docx",
+    "source_sha256": "7509a0d4e59816167b77b82310e3c5f445ede64d435a827d3a20ad10cb451d44",
+    "written": "target/remediation-2026-10-06/strict-final-written/07-strict-drawingml-shapes.docx",
+    "written_sha256": "a36860602681f7f57b8cb3c5fcc13ab9350821a6d2a383dbd6c55fcc719d6918"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/09-strict-math-drawing-chart.docx",
+    "source_sha256": "4351054731c5a8b9c1ca086d18bd10d32866469892d8552ff54405a9afdfa71f",
+    "written": "target/remediation-2026-10-06/strict-final-written/09-strict-math-drawing-chart.docx",
+    "written_sha256": "9e14ee79202e1697df37e61a34c5d4c723312839036b6a35897643b35faec205"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/10-strict-math-eqarr.docx",
+    "source_sha256": "dd4fba6bc9b07b5a63328abc9d5ba99470da85c3c7d39b3f74b66b9901f63b57",
+    "written": "target/remediation-2026-10-06/strict-final-written/10-strict-math-eqarr.docx",
+    "written_sha256": "b0e30d1e986b8fc6425e8842609b59450c9d6144aa8dc4f89cb800df33c43e76"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/annotation-ref-sdk-mixed-rels.docx",
+    "source_sha256": "8aef4a168cf1bfe55ad2a84c5787d1085b200b760e3d77ff4c2e677cd3bc94dd",
+    "written": "target/remediation-2026-10-06/strict-final-written/annotation-ref-sdk-mixed-rels.docx",
+    "written_sha256": null
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/lo-strict.docx",
+    "source_sha256": "6e71a4d554ea90df1ddcc9b6fbbcc677a94c6617cb35f9e5b7d4ccab46f1a79e",
+    "written": "target/remediation-2026-10-06/strict-final-written/lo-strict.docx",
+    "written_sha256": "22c870b1236a332714e38d32cec5fb10970ad65828c53cc7da39d832a49ade54"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/lo-tdf116410.docx",
+    "source_sha256": "d8c308dbf33d765f66d46fc6617a378187075d2878623fa882a7c467fd4cb3d0",
+    "written": "target/remediation-2026-10-06/strict-final-written/lo-tdf116410.docx",
+    "written_sha256": "e18ba90af62864b7dbd3f460d0b47147b8890be50328dadf20183e6f14601713"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/lo-tdf79272-strictdxa.docx",
+    "source_sha256": "b35c1eb6460e91be99a61c602f9dec96b94efc039a454dd48018eef51a198a20",
+    "written": "target/remediation-2026-10-06/strict-final-written/lo-tdf79272-strictdxa.docx",
+    "written_sha256": "aead38470187f224f3a65260b5167a98bfd52d59c1c2d7eebb2092d89d7afd4a"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-customxml-special-chars.docx",
+    "source_sha256": "86b577be2f13a86b52b765252dd1b5f32877e7740184d9ec2126f3f46326ec31",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-customxml-special-chars.docx",
+    "written_sha256": "10c1a8bc2f6c5c4c4b07d4bd212564448e9eb024d970f507567ce68947bbf22e"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-ftr-bookmark.docx",
+    "source_sha256": "684a22354f17b735872bf13b0823a4412a75c10ff13f602510895f6708152ba6",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-ftr-bookmark.docx",
+    "written_sha256": "531b640c8dd3f723e5e8e74fb1d6ff70a25c3c931cb83f97e56d8a748ba94fbb"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-instrtext-eq-array.docx",
+    "source_sha256": "86c616f878809d733a341f1337a2be3a8ce71f5555ef6b86964e4a799c0ab7b7",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-instrtext-eq-array.docx",
+    "written_sha256": "7af7fa32b0ac0dbf1c978f5976bef1fcb3ca6bf09636686bb342e6fe478b242f"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-numfmt-decimalfullstop.docx",
+    "source_sha256": "8cd3ebbea1fda2b990d82f9d4fcfd9faab4066a685b4fa203ca213094273ffc3",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-numfmt-decimalfullstop.docx",
+    "written_sha256": "d1b189015911fe30a924455799bac325316dfb302a3d053ad38942bd8e908689"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-sectpr-rsid.docx",
+    "source_sha256": "ffd9bbadb66fd764e08477e4f9590f89c993b8e855133e0fcf276be4b006cbc3",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-sectpr-rsid.docx",
+    "written_sha256": "4c18ee94a079eadc70e287b2acd83e6517f935cfd094a222ff933755f390332a"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-shd-tbl-pct5.docx",
+    "source_sha256": "1909c8b69cf3cb75cc9e376e224321d76a4d19d68954d6a9a49fc03b76d6dd4b",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-shd-tbl-pct5.docx",
+    "written_sha256": "881c743cf5f3369d477ac54adb693e930aca556d4e553c3d991e21bcb31cc35c"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-tbllayout.docx",
+    "source_sha256": "06972c3075524f5a8246982cf85a8562a81ee45a9f7291f6def7ae0a56b2ecb6",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-tbllayout.docx",
+    "written_sha256": "b209e472ca2d051bbf7aa5bc42b5ceb8dc04edf7bdbf315bfa9f853f62053d92"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/sdk-text-direction-tbrl.docx",
+    "source_sha256": "33838ccca768e052259790e1035ce0b9871990a4e9b7c9fceb720463d65cd75f",
+    "written": "target/remediation-2026-10-06/strict-final-written/sdk-text-direction-tbrl.docx",
+    "written_sha256": "3bc7313427038c4f1dfd3abc8d64d48d4c9cdd7d9ed69c946852235a93817988"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-math.docx",
+    "source_sha256": "ab7b91701cfb3b069b287d2ad1c47493b4c0f94820fe79559606d7c555586f35",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-math.docx",
+    "written_sha256": "62509f3c818f6900d59350837b326ce6fd83daf61c41baea6e996640f3b66bb9"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-profile.docx",
+    "source_sha256": "5e25609a5a5dbf83981ac3ad2549121f51aa8448a5b26be21dd3904a1c9c8132",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-profile.docx",
+    "written_sha256": "c19b052164eb593722f5a4007e117abd3977e154afc14201ab55dcf51a32fbca"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-sample-docx.docx",
+    "source_sha256": "b54ddf707f00656da0f6816ac62f40efd18554a601f818bf0cb395f8a5d82249",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-sample-docx.docx",
+    "written_sha256": "57aa4dbe4feaa8785f3d7844acdb68e5f79f74fa99348cc3b83a4107b4ba9e2a"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-smartart.docx",
+    "source_sha256": "773cfbd03e80502ac25a1273522f61f15f5508163151a2286f26781eeb7e2e7a",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-smartart.docx",
+    "written_sha256": "d1abd6dfb8f9d7f979b32c5e8876b4e4cebb833f8f3fbbf4af211e74f943bb9e"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-stage5.docx",
+    "source_sha256": "40c95cf99db6a9dae5244120b232f819a65a176f6096db58e94c373ce54120fa",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-stage5.docx",
+    "written_sha256": "1218e2c0ff7cc39b06d79e81d30bbf44cb10f357b60780edec83a373cb8356c6"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-stage5b.docx",
+    "source_sha256": "31601ed5ced9a8e264215749042c0b1888bac99e61e8220afc868a7d903f0abf",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-stage5b.docx",
+    "written_sha256": "96d3319434c85f8ba4579f83e9f4259f87e79a2a746d9144c0b35fcb7c8a9aa1"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-stage5c.docx",
+    "source_sha256": "64c2529cbba8eac1d19ad4c9bbcb1f3235168add9efdbe42531b863349cc07da",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-stage5c.docx",
+    "written_sha256": "057e046ab1b89b4ab9c56669455e774d940e6f494361f58a6cefe3bbc51c3d85"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-text-grid.docx",
+    "source_sha256": "132cad4155b1edd9f6271602e2845beb245a3835e0560206cba67401900e6e28",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-text-grid.docx",
+    "written_sha256": "16c928fbeb50c1796a404ef6639be1947eabba57e866439bbe43a269dbb0cf51"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict-text.docx",
+    "source_sha256": "d247c3dafba5e1e295e4983c5afbb86a7cb1a636eba4eb5932b3d689f5327e9b",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict-text.docx",
+    "written_sha256": "69ee4f293a8d06665a843785cfbbd0badfcc5f6efcd6b8057013bef206bc4353"
+  },
+  {
+    "corpus": "strict",
+    "source": "strict-ooxml-core/tests/strict/strict01-sdk.docx",
+    "source_sha256": "60697d46b7ec6e23cd50cf63d66d6866c964453cb6962f729cebffca6d0b803f",
+    "written": "target/remediation-2026-10-06/strict-final-written/strict01-sdk.docx",
+    "written_sha256": "cafda2823fc465d23fef2f0436e7a0528d8442ec351846104164af4bf8dc2404"
+  }
+]

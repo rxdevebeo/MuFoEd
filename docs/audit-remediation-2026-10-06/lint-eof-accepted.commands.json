@@ -1,0 +1,14 @@
+[
+  {
+    "command": [
+      "cargo",
+      "run",
+      "-p",
+      "xtool",
+      "--locked",
+      "--",
+      "lint-eof"
+    ],
+    "exit": 0
+  }
+]

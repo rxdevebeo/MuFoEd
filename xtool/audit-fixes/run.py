@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -149,17 +150,35 @@ def git_head() -> str:
         return "unknown"
 
 
-def dirty_tree_hash() -> str:
-    """SHA-256 of `git status --porcelain` (empty tree → hash of empty bytes)."""
+def dirty_tree_hash(repo: Path = REPO) -> str:
+    """Hash status and working bytes of tracked/non-ignored untracked files."""
     try:
         porcelain = subprocess.check_output(
-            ["git", "status", "--porcelain"],
-            cwd=REPO,
+            ["git", "status", "--porcelain", "-z"],
+            cwd=repo,
             text=False,
         )
+        paths = subprocess.check_output(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            cwd=repo,
+        )
+        digest = hashlib.sha256(b"working-tree-content-v2\0" + porcelain)
+        for name in sorted(set(paths.split(b"\0")) - {b""}):
+            path = repo / os.fsdecode(name)
+            digest.update(name + b"\0")
+            if path.is_symlink():
+                digest.update(b"symlink\0" + os.fsencode(os.readlink(path)))
+            elif path.is_file():
+                content = hashlib.sha256()
+                with path.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        content.update(chunk)
+                digest.update(b"file\0" + content.digest())
+            else:
+                digest.update(b"absent-or-gitlink\0")
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
-    return hashlib.sha256(porcelain).hexdigest()
+    return digest.hexdigest()
 
 
 def load_manifest() -> list[dict]:
@@ -224,6 +243,29 @@ def validate_receipt(payload: dict) -> None:
 def infrastructure_self_test() -> list[str]:
     """Prove the failure modes. The proof itself passes only when each one fires."""
     notes: list[str] = []
+    with tempfile.TemporaryDirectory() as folder:
+        repo = Path(folder)
+        subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+        fixture = repo / "fixture.bin"
+        fixture.write_bytes(b"initial")
+        subprocess.run(["git", "add", "fixture.bin"], cwd=repo, check=True)
+        fixture.write_bytes(b"changed-A")
+        status_a = subprocess.check_output(["git", "status", "--porcelain"], cwd=repo)
+        hash_a = dirty_tree_hash(repo)
+        fixture.write_bytes(b"changed-B")
+        status_b = subprocess.check_output(["git", "status", "--porcelain"], cwd=repo)
+        hash_b = dirty_tree_hash(repo)
+        if status_a != status_b or hash_a == hash_b or "unknown" in (hash_a, hash_b):
+            raise RunnerError(EXIT_FAIL, "same git status hid changed working bytes")
+        if dirty_tree_hash(repo) != hash_b:
+            raise RunnerError(EXIT_FAIL, "working content fingerprint is unstable")
+        untracked = repo / "untracked.bin"
+        untracked.write_bytes(b"first")
+        untracked_a = dirty_tree_hash(repo)
+        untracked.write_bytes(b"other")
+        if dirty_tree_hash(repo) == untracked_a:
+            raise RunnerError(EXIT_FAIL, "untracked byte changes were hidden")
+        notes.append("same status and untracked byte changes alter content fingerprint")
 
     def expect(code: int, label: str, action) -> None:
         try:

@@ -1,0 +1,36 @@
+{
+  "documents": 221,
+  "missing": [],
+  "source_violations": 5,
+  "output_violations": 5,
+  "introduced_violations": 0,
+  "documents_with_violations": [
+    {
+      "document": "2. Simple-Calculation.docx",
+      "source": {
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://judge.softuni.org/Contests/Practice/Index/504' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1
+      },
+      "output": {
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://judge.softuni.org/Contests/Practice/Index/504' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1
+      },
+      "introduced": {}
+    },
+    {
+      "document": "Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+      "source": {
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1
+      },
+      "output": {
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20http://bfy.tw/MrFX' is not a valid value of the atomic type 'xs:anyURI'.": 1,
+        "word/_rels/document.xml.rels: Element '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship', attribute 'Target': '%20https://en.wikipedia.org/wiki/Degree_%28angle%29' is not a valid value of the atomic type 'xs:anyURI'.": 1
+      },
+      "introduced": {}
+    }
+  ],
+  "status": "PASS_NO_INTRODUCED_VIOLATIONS"
+}
