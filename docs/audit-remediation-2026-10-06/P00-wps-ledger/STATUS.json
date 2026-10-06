@@ -13,12 +13,14 @@
   "corpus_slice_exit": 0,
   "full_census_exit": "NOT_RUN",
   "p0_measurability": "PASS",
-  "p1_geometry": "FAIL",
+  "p1_geometry": "PASS",
+  "p1_geometry_closed_by": "P01-wps-geometry",
   "tolerance_px": 0.25,
   "notes": [
     "All mandatory Clio keys on pages 54/56/104 are MEASURED.",
     "AMBIGUOUS is never treated as PASS.",
     "Key H is a whole haplogroup token, not a substring of HV or HVR-I.",
-    "Geometry ≤0.25 px remains P1; this package only makes the ledger measurable."
+    "P0 only made the ledger measurable; geometry ≤0.25 px was closed by P1 (see P01-wps-geometry/).",
+    "visual/geometry-summary.json reflects post-P1 PASS; historical pre-P1 FAIL deltas are superseded."
   ]
 }

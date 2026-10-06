@@ -348,10 +348,14 @@
     }
   },
   "wps": {
-    "status": "OPEN",
+    "status": "PASS",
     "tolerance_px": 0.25,
-    "diagnostic": "wps-absolute-baselines.json",
-    "complete_ledger": false
+    "diagnostic": "wps-ledger.json",
+    "complete_ledger": true,
+    "p0_package": "P00-wps-ledger",
+    "p1_package": "P01-wps-geometry",
+    "p1_geometry": "PASS",
+    "note": "Absolute glyph-origin ledger vs WPS PDF; superseded wps-absolute-baselines.json as the live gate."
   },
   "unsupported_vectors": [
     "cubic",

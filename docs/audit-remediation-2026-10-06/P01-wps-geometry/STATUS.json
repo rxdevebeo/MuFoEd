@@ -4,6 +4,18 @@
   "visual_level": "V0",
   "date_utc": "2026-10-06",
   "status": "PASS",
+  "rows_before": null,
+  "rows_after": null,
+  "labels": [
+    "WPS absolute glyph origin ≤0.25 px",
+    "Clio pages 54/56/104 mandatory keys"
+  ],
+  "witness_docs": [
+    "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
+  ],
+  "tests_pass": true,
+  "corpus_slice_exit": 0,
+  "full_census_exit": "NOT_RUN",
   "tolerance_px": 0.25,
   "p0_measurability": "PASS",
   "p1_geometry": "PASS",
@@ -11,6 +23,12 @@
     "56": "PASS — all mandatory MEASURED points ≤0.25 px",
     "54": "PASS — primers + HVR-I (caption and body) ≤0.25 px",
     "104": "PASS — A,C / B,D / all modern neighborhoods ≤0.25 px"
+  },
+  "tightest_margin_px": {
+    "component": "p104.modern.5",
+    "abs_delta_px": 0.248,
+    "margin_to_tolerance_px": 0.002,
+    "note": "Do not raise 0.25; P9 font metrics may widen the margin. Treat as fragility signal."
   },
   "code_changes": [
     "ComputedRun.spacing_pt from w:rPr/w:spacing; measure/paint/PDF apply pitch on non-space scalars",
@@ -22,23 +40,19 @@
     "Post-justify Tinos substitute stretch vs WPS Times: regular 1.008 (distance-blended), bold 0.9833 on justified lines only",
     "wps_ledger: search all SVG pages; prefer size-compatible neighborhood hits"
   ],
-  "tests_pass": [
-    "f06_character_style_size_overrides_based_on",
-    "f06_character_spacing_widens_the_run",
-    "f06_clio_l16055_is_four_point",
-    "f06_empty_b_on_paragraph_style_is_bold",
-    "f06_direct_italic_covers_latin_and_cyrillic_and_cs",
-    "f16_haplogroup_l3_wraps_from_character_spacing",
-    "f16_exact_line_shorter_than_font_uses_font_ascent",
-    "f16_pbdr_collapses_between_bordered_frame_siblings",
-    "f16_style90_primer_stack_matches_wps_offset",
-    "wps_ledger_selftest"
+  "tests_recorded": [
+    "T-P1-1 wps_ledger.py → p1_geometry PASS",
+    "T-P1-2 captions inside page bounds (wps_p1_gate_selftest)",
+    "T-P1-3 f06_toggles + f16_frames regression",
+    "T-P1-4 +1 px SVG layout offset → geometry FAIL (wps_p1_gate_selftest)",
+    "wps_ledger_selftest (matcher negatives)"
   ],
   "open_fails": [],
   "notes": [
     "WPS page-54 L16055 is split runs L + style91 16055 (Arial 8pt), not LucidaSansUnicode4pt0pt0.",
     "Clio has 322 sectPr / ~322 pages in our layout; ledger matches across SVG page numbers.",
-    "WPS reference PDFs embed zero space characters; word gaps are inconsistent (caption keeps gap width, body often does not).",
-    "Do not raise 0.25 px tolerance. P1 closed with all mandatory MEASURED points ≤0.25."
+    "WPS reference PDFs embed zero space characters; word gaps are inconsistent.",
+    "No inventory-before/after: P1 is render geometry, not census disposition.",
+    "Do not raise 0.25 px tolerance."
   ]
 }

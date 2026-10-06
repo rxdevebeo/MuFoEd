@@ -1,0 +1,24 @@
+{
+  "p0_measurability": "PASS",
+  "p1_geometry": "PASS",
+  "tolerance_px": 0.25,
+  "ledger": "docs/audit-remediation-2026-10-06/wps-ledger.json",
+  "closing_commit": "35f346a",
+  "worst_abs_delta_px": {
+    "p104.modern.5": {"dx": -0.248, "dy": 0.135},
+    "p54.HVR_I.2": {"dx": 0.241, "dy": 0.173},
+    "p56.H.0": {"dx": 0.203, "dy": 0.026},
+    "p56.14766.0": {"dx": 0.2, "dy": -0.009},
+    "p54.L15996.0": {"dx": 0.2, "dy": 0.066}
+  },
+  "tightest_margin_px": {
+    "p104.modern.5": 0.002,
+    "p54.HVR_I.2": 0.009
+  },
+  "page_bounds": {
+    "width_px": 793.733,
+    "height_px": 1122.533,
+    "all_mandatory_origins_inside": true
+  },
+  "note": "AMBIGUOUS is never PASS. Absolute glyph origin vs WPS PDF, 96 dpi top-left."
+}

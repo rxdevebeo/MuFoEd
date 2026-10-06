@@ -8,7 +8,7 @@ python xtool/wps-gate/wps_ledger.py --root D:\projects\StrictLib
 
 Result: `p0_measurability PASS`. Output `docs/audit-remediation-2026-10-06/wps-ledger.json`.
 Every mandatory component on Clio pages 54/56/104 has `status=MEASURED`.
-`p1_geometry FAIL` (expected; package P1).
+Geometry ≤0.25 px was **FAIL at P0 close** and is **PASS after P1** — see `P01-wps-geometry/`.
 
 ## T-P0-2 Matcher
 

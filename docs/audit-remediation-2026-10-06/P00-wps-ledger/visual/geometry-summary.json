@@ -1,11 +1,12 @@
 {
   "p0": "All mandatory points MEASURED; no PASS-by-estimate.",
-  "p1_geometry": "FAIL",
-  "worst_abs_delta_px": {
-    "p56.neg_M.0": {"dx": 0.093, "dy": -35.707},
-    "p56.H.0": {"dx": -0.664, "dy": -35.840},
-    "p54.HVR_I.1": {"dx": -9.352, "dy": 0.133},
-    "p104.B_D.0": {"dx": 5.139, "dy": 0.122},
-    "p104.A_C.0": {"dx": 3.063, "dy": 0.066}
+  "p1_geometry": "PASS",
+  "p1_geometry_closed_by": "P01-wps-geometry",
+  "ledger": "docs/audit-remediation-2026-10-06/wps-ledger.json",
+  "note": "Pre-P1 FAIL deltas (H dy≈−35, A,C dx≈+3, …) are superseded by P1. Authoritative numbers live in P01-wps-geometry/visual/geometry-summary.json.",
+  "worst_abs_delta_px_post_p1": {
+    "p104.modern.5": {"dx": -0.248, "dy": 0.135},
+    "p54.HVR_I.2": {"dx": 0.241, "dy": 0.173},
+    "p56.H.0": {"dx": 0.203, "dy": 0.026}
   }
 }
