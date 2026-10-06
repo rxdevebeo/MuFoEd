@@ -367,10 +367,17 @@ def _stage_overlay(source: str, config: dict) -> str:
 
 class Oracle:
     """The compiled schema set: a validator per part root, and an honest account
-    of the roots that have none."""
+    of the roots that have none.
 
-    def __init__(self, directory: str):
+    `compile_locals` limits driver compilation to named roots (A05 settings
+    fixture). The index of every declaration is still built; only `_compile`
+    is skipped, so a single-root run does not load two thousand XMLSchema
+    objects into RAM.
+    """
+
+    def __init__(self, directory: str, compile_locals: set[str] | None = None):
         self.directory = directory
+        self.compile_locals = compile_locals
         self.schemas: dict[tuple[str, str], etree.XMLSchema] = {}
         self.uncovered: list[str] = []
         self.target_namespaces: set[str] = set()
@@ -407,6 +414,8 @@ class Oracle:
         work = tempfile.mkdtemp(prefix="strict-xsd-gate-drivers-")
         for namespace, roots in index.items():
             for local, (kind, source, global_decl) in sorted(roots.items()):
+                if self.compile_locals is not None and local not in self.compile_locals:
+                    continue
                 key = (namespace, local)
                 if not global_decl and ":" in kind:
                     # A driver may declare an element whose type is a prefixed
@@ -1151,6 +1160,43 @@ def registry_hits(registry: list[dict], messages: list[tuple[str, str, str]]) ->
     return {"counts": open_items, "unmatched": unmatched}
 
 
+def _unmeasurable_if_nothing_written(corpus: str, written: str) -> int | None:
+    """Missing output is a result, not a reason to compile two thousand drivers.
+
+    A05's `missing_output` fixture is an empty `--written` directory. Compiling
+    the ECMA set first is how the hosted runner lost the server (47 min, then
+    disconnect) and how the follow-up job was shut down mid-A05.
+    """
+    if not os.path.isdir(corpus):
+        documents: list[str] = []
+    else:
+        documents = sorted(name for name in os.listdir(corpus) if name.endswith(".docx"))
+    present = 0
+    if os.path.isdir(written):
+        present = sum(
+            1
+            for name in documents
+            if os.path.isfile(os.path.join(written, name))
+        )
+    if documents and present:
+        return None
+    missing = len(documents) - present
+    print(
+        f"\nmeasured: documents={len(documents)} validated=0 "
+        f"missing={missing} refused={missing} unmatched=0 ours=0 source=0"
+    )
+    code, summary = decide_gate(
+        documents=len(documents),
+        validated=0,
+        missing=missing,
+        unmatched=0,
+        our_total=0,
+        source_total=0,
+    )
+    print(summary)
+    return code
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Validate written Strict packages against ECMA-376.")
     parser.add_argument("--corpus", default=os.path.join(REPO, "strict-ooxml-core", "tests", "strict"))
@@ -1174,6 +1220,10 @@ def main(argv: list[str]) -> int:
 
 
     directory = locate_schemas(config)
+    if args.written:
+        early = _unmeasurable_if_nothing_written(args.corpus, args.written)
+        if early is not None:
+            return early
     oracle = Oracle(directory)
 
     # G9: an instrument that may not report from a partial run. The first version

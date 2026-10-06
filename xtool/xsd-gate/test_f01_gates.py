@@ -101,7 +101,7 @@ def test_missing_output_command() -> None:
 def test_unknown_settings_violation() -> None:
     config = xsd_gate.load_config()
     directory = xsd_gate.locate_schemas(config)
-    oracle = xsd_gate.Oracle(directory)
+    oracle = xsd_gate.Oracle(directory, compile_locals={"settings"})
     if oracle.failures:
         raise SystemExit("schemas failed to compile")
     with tempfile.TemporaryDirectory() as tmp:
