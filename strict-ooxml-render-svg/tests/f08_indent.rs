@@ -177,3 +177,22 @@ fn f08_exact_line_pitch_is_the_declared_line() {
         "exact 240 twips must separate baselines by 16 px, got {alpha} then {beta}"
     );
 }
+
+#[test]
+fn f08_justify_and_cell_indent_matrix() {
+    let body = format!(
+        "<w:tbl><w:tblGrid><w:gridCol w:w=\"6000\"/></w:tblGrid>\
+<w:tr><w:tc><w:p><w:pPr><w:ind w:start=\"720\"/><w:jc w:val=\"both\"/></w:pPr>\
+<w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>{PAGE}"
+    );
+    let rows = edges(&body);
+    let cell = rows
+        .iter()
+        .find(|(_, _, text)| text.contains("cell"))
+        .expect("cell");
+    assert!(
+        cell.0 >= 48.0 - 0.25,
+        "start indent 720 twips is 48 px, got {}",
+        cell.0
+    );
+}

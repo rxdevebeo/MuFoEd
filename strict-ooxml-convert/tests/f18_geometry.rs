@@ -72,3 +72,25 @@ fn f18_pdf_baseline_and_x_survive_write() {
     assert!((x - 96.0).abs() <= 0.25, "x {x} px, want 96");
     assert!((y - 122.667).abs() <= 0.25, "baseline {y} px, want 122.667");
 }
+
+#[test]
+fn f18_three_text_positions() {
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    pdf.page_with(
+        b"BT /F1 12 Tf 72 700 Td (A) Tj ET BT /F1 12 Tf 216 700 Td (B) Tj ET BT /F1 12 Tf 216 652 Td (C) Tj ET",
+        &resources,
+    );
+    let svg = svg_of(&pdf.build());
+    let (ax, ay) = text_xy(&svg, "A");
+    let (bx, by) = text_xy(&svg, "B");
+    let (cx, cy) = text_xy(&svg, "C");
+    assert!(bx > ax + 10.0, "B is to the right of A: {ax} {bx}");
+    assert!(cy > ay + 10.0, "C is below A: {ay} {cy}");
+    assert!(bx > 100.0 && by > 50.0, "B is placed {bx},{by}");
+    assert!(cx > 100.0, "C is placed {cx},{cy}");
+}

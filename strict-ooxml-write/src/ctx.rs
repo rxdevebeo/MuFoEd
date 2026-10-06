@@ -234,7 +234,7 @@ impl<'a> Ctx<'a> {
     #[must_use]
     pub fn hyperlink_rel(&self, old_id: &str) -> Option<&str> {
         if self.part_rels.is_some() {
-            return None;
+            return self.part_foreign.get(old_id).map(String::as_str);
         }
         self.hyperlinks.get(old_id).map(String::as_str)
     }

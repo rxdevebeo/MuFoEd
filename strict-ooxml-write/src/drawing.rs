@@ -628,7 +628,20 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.empty("a:spLocks");
     xml.end();
     xml.start("wps:spPr");
-    transform(xml, &shape.xfrm, shape.extent.as_ref());
+    let mut xfrm = shape.xfrm;
+    if let Some(xfrm) = xfrm.as_mut() {
+        if xfrm.offset.is_none() {
+            xfrm.offset = shape.offset;
+        }
+    } else if let Some(offset) = shape.offset {
+        xfrm = Some(Xfrm {
+            offset: Some(offset),
+            rot: None,
+            flip_h: false,
+            flip_v: false,
+        });
+    }
+    transform(xml, &xfrm, shape.extent.as_ref());
     geometry_element(xml, &shape.geometry);
     if let Some(fill) = &shape.fill {
         fill_element(xml, fill);
@@ -672,6 +685,8 @@ fn transform(xml: &mut XmlWriter, xfrm: &Option<Xfrm>, extent: Option<&Extent>) 
     // With no explicit `a:xfrm` the element is still written when the caller
     // knows an extent, because a shape without a transform has no placement at
     // all; without one there is nothing to say and nothing is written.
+    // `a:off`/`a:ext` are written only from stored values: inventing `0,0`
+    // created inventory groups the source never carried (D05).
     if xfrm.is_none() && extent.is_none() {
         return;
     }
@@ -685,33 +700,17 @@ fn transform(xml: &mut XmlWriter, xfrm: &Option<Xfrm>, extent: Option<&Extent>) 
         }
         xml.attr_opt("rot", xfrm.rot);
     }
-    match xfrm.and_then(|xfrm| xfrm.offset) {
-        Some((x, y)) => {
-            xml.start("a:off");
-            xml.attr("x", x.0);
-            xml.attr("y", y.0);
-            xml.end();
-        }
-        None => {
-            xml.start("a:off");
-            xml.attr("x", "0");
-            xml.attr("y", "0");
-            xml.end();
-        }
+    if let Some((x, y)) = xfrm.and_then(|xfrm| xfrm.offset) {
+        xml.start("a:off");
+        xml.attr("x", x.0);
+        xml.attr("y", y.0);
+        xml.end();
     }
-    match extent {
-        Some(extent) => {
-            xml.start("a:ext");
-            xml.attr("cx", extent.cx.0);
-            xml.attr("cy", extent.cy.0);
-            xml.end();
-        }
-        None => {
-            xml.start("a:ext");
-            xml.attr("cx", "0");
-            xml.attr("cy", "0");
-            xml.end();
-        }
+    if let Some(extent) = extent {
+        xml.start("a:ext");
+        xml.attr("cx", extent.cx.0);
+        xml.attr("cy", extent.cy.0);
+        xml.end();
     }
     xml.end();
 }
@@ -998,41 +997,30 @@ fn group_transform(xml: &mut XmlWriter, transform: &Option<GroupTransform>) {
         xml.attr("flipV", "true");
     }
     xml.attr_opt("rot", transform.rot);
-    let (offset, extent) = match (transform.offset, transform.extent) {
-        (Some(offset), Some(extent)) => (offset, extent),
-        _ => {
-            xml.start("a:off");
-            xml.attr("x", "0");
-            xml.attr("y", "0");
-            xml.end();
-            xml.start("a:ext");
-            xml.attr("cx", "0");
-            xml.attr("cy", "0");
-            xml.end();
-            xml.end();
-            return;
-        }
-    };
-    xml.start("a:off");
-    xml.attr("x", offset.0 .0);
-    xml.attr("y", offset.1 .0);
-    xml.end();
-    xml.start("a:ext");
-    xml.attr("cx", extent.cx.0);
-    xml.attr("cy", extent.cy.0);
-    xml.end();
-    let (child_offset, child_extent) = match (transform.child_offset, transform.child_extent) {
-        (Some(offset), Some(extent)) => (offset, extent),
-        _ => (offset, extent),
-    };
-    xml.start("a:chOff");
-    xml.attr("x", child_offset.0 .0);
-    xml.attr("y", child_offset.1 .0);
-    xml.end();
-    xml.start("a:chExt");
-    xml.attr("cx", child_extent.cx.0);
-    xml.attr("cy", child_extent.cy.0);
-    xml.end();
+    if let Some(offset) = transform.offset {
+        xml.start("a:off");
+        xml.attr("x", offset.0 .0);
+        xml.attr("y", offset.1 .0);
+        xml.end();
+    }
+    if let Some(extent) = transform.extent {
+        xml.start("a:ext");
+        xml.attr("cx", extent.cx.0);
+        xml.attr("cy", extent.cy.0);
+        xml.end();
+    }
+    if let Some(child_offset) = transform.child_offset {
+        xml.start("a:chOff");
+        xml.attr("x", child_offset.0 .0);
+        xml.attr("y", child_offset.1 .0);
+        xml.end();
+    }
+    if let Some(child_extent) = transform.child_extent {
+        xml.start("a:chExt");
+        xml.attr("cx", child_extent.cx.0);
+        xml.attr("cy", child_extent.cy.0);
+        xml.end();
+    }
     xml.end();
 }
 

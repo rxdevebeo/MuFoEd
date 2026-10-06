@@ -192,3 +192,15 @@ fn f19_supported_rectangle_survives() {
         assert!((ph - 40.0).abs() <= 0.5, "{mode:?} pdf h {ph}");
     }
 }
+
+#[test]
+fn f19_unsupported_cubic_is_named() {
+    let (_svg, report, _pdf) = round_trip(
+        Mode::Visual,
+        "1 0 0 rg 100 100 m 120 140 140 140 160 100 c f 0 0 0 rg",
+    );
+    assert!(
+        report.contains("vector.unsupported"),
+        "cubic is named: {report}"
+    );
+}

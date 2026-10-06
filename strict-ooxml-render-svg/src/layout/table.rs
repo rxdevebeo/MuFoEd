@@ -85,10 +85,23 @@ pub(crate) fn layout_table(
     let widths = fit_to_box(widths, content_width);
     let total_width: f64 = widths.iter().sum();
     let table_x = table_x(ctx, table, content_left, content_width, total_width);
+    // Page-anchored `framePr` tables are a drawing, not a Word cell box.
+    // WPS paints SNP labels from the frame origin plus indent, without
+    // `tblCellMar` start/end (D06: 10 twips ≈ 0.67–0.87 px).
+    let skip_cell_h_margins = table_uniform_frame(table).is_some();
 
     let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
-        let raw = layout_row(ctx, table, row, &widths, table_x, depth, escape_frames);
+        let raw = layout_row(
+            ctx,
+            table,
+            row,
+            &widths,
+            table_x,
+            depth,
+            escape_frames,
+            skip_cell_h_margins,
+        );
         let mut height = raw.height;
         if let Some(declared) = &row.props.height {
             height = height.max(
@@ -181,6 +194,7 @@ struct LaidOutRow {
 }
 
 /// Lays out one row's cells against `widths`.
+#[allow(clippy::too_many_arguments)]
 fn layout_row(
     ctx: &LayoutContext<'_>,
     table: &Table,
@@ -189,6 +203,7 @@ fn layout_row(
     table_x: f64,
     depth: u32,
     escape_frames: bool,
+    skip_cell_h_margins: bool,
 ) -> LaidOutRow {
     let row_columns: usize = row
         .cells
@@ -211,7 +226,11 @@ fn layout_row(
     for cell in &row.cells {
         let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
         let span = span.min(widths.len().saturating_sub(column).max(1));
-        let margins = effective_margins(ctx, table, row, cell);
+        let mut margins = effective_margins(ctx, table, row, cell);
+        if skip_cell_h_margins {
+            margins.0 = 0.0;
+            margins.1 = 0.0;
+        }
         // `get(..)` rather than a slice: `column` is the sum of the spans before
         // `w:gridSpan` of 65535 puts it far past the end, which is where the
         // old index range used to end the process (AUD-08).
@@ -795,13 +814,18 @@ fn push_uniform_framed_table(
     let Some(frame) = table_uniform_frame(table) else {
         return false;
     };
-    let (margin_x, margin_y, content_width) = ctx.frame_anchor.get();
+    let (margin_x, margin_y, content_width, page_width, page_height) = ctx.frame_anchor.get();
     let scale = ctx.options.scale;
-    let origin_x = frame_origin(frame.x, frame.h_anchor.as_deref(), margin_x, scale);
-    let origin_y = frame_origin(frame.y, frame.v_anchor.as_deref(), margin_y, scale);
-    let frame_width = frame.width.map_or(content_width.max(1.0), |width| {
-        crate::units::twips_to_px(width.value(), scale)
-    });
+    let (origin_x, origin_y, frame_width) = frame_placement(
+        frame,
+        margin_x,
+        margin_y,
+        content_width,
+        content_width,
+        page_width,
+        page_height,
+        scale,
+    );
     page_frames.extend(framed_table_items(
         ctx,
         table,
@@ -813,17 +837,76 @@ fn push_uniform_framed_table(
     true
 }
 
+/// Resolves frame origin and width against the current page/margin box.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn frame_placement(
+    frame: &FrameProperties,
+    margin_x: f64,
+    margin_y: f64,
+    content_width: f64,
+    content_height: f64,
+    page_width: f64,
+    page_height: f64,
+    scale: f64,
+) -> (f64, f64, f64) {
+    let frame_width = frame.width.map_or(content_width.max(1.0), |width| {
+        twips_to_px(width.value(), scale)
+    });
+    let frame_height = frame
+        .height
+        .map_or(0.0, |height| twips_to_px(height.value(), scale));
+    let box_w = match frame.h_anchor.as_deref() {
+        Some("margin" | "text") => content_width,
+        _ => page_width,
+    };
+    let box_h = match frame.v_anchor.as_deref() {
+        Some("margin" | "text") => content_height,
+        _ => page_height,
+    };
+    let origin_x = frame_origin(
+        frame.x,
+        frame.x_align.as_deref(),
+        frame.h_anchor.as_deref(),
+        margin_x,
+        box_w,
+        frame_width,
+        scale,
+    );
+    let origin_y = frame_origin(
+        frame.y,
+        frame.y_align.as_deref(),
+        frame.v_anchor.as_deref(),
+        margin_y,
+        box_h,
+        frame_height,
+        scale,
+    );
+    (origin_x, origin_y, frame_width)
+}
+
 /// Page origin of a frame. A missing anchor, and `page`, are the page edge.
+///
+/// `w:xAlign`/`w:yAlign` replace a raw offset: center and right/bottom are
+/// measured in the anchor box (the page, or the margin box).
 pub(crate) fn frame_origin(
     twips: Option<i32>,
+    align: Option<&str>,
     anchor: Option<&str>,
     margin: f64,
+    box_extent: f64,
+    frame_extent: f64,
     scale: f64,
 ) -> f64 {
-    let value = crate::units::twips_to_px(twips.unwrap_or(0), scale);
-    match anchor {
-        Some("margin" | "text") => value + margin,
-        _ => value,
+    let offset = crate::units::twips_to_px(twips.unwrap_or(0), scale);
+    let base = match anchor {
+        Some("margin" | "text") => margin,
+        _ => 0.0,
+    };
+    match align {
+        Some("center") => base + (box_extent - frame_extent) * 0.5 + offset,
+        Some("right" | "outside" | "bottom") => base + box_extent - frame_extent - offset,
+        _ => base + offset,
     }
 }
 
@@ -902,12 +985,17 @@ fn cell_frame_items(ctx: &LayoutContext<'_>, blocks: &[Block]) -> Vec<Item> {
         return Vec::new();
     };
     let scale = ctx.options.scale;
-    let (margin_x, margin_y, content_width) = ctx.frame_anchor.get();
-    let origin_x = frame_origin(frame.x, frame.h_anchor.as_deref(), margin_x, scale);
-    let origin_y = frame_origin(frame.y, frame.v_anchor.as_deref(), margin_y, scale);
-    let frame_width = frame.width.map_or(content_width.max(1.0), |width| {
-        crate::units::twips_to_px(width.value(), scale)
-    });
+    let (margin_x, margin_y, content_width, page_width, page_height) = ctx.frame_anchor.get();
+    let (origin_x, origin_y, frame_width) = frame_placement(
+        frame,
+        margin_x,
+        margin_y,
+        content_width,
+        content_width,
+        page_width,
+        page_height,
+        scale,
+    );
     let resume = ctx.frame_resume(frame);
     let (items, _anchors, height) =
         layout_frame_contents(ctx, blocks, origin_x, origin_y + resume, frame_width);

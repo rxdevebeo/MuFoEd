@@ -40,6 +40,7 @@ package = "strict-ooxml-cli"
 tests = [
     "f03_normalization_loss_changes_exit",
     "f03_writer_loss_changes_pdf_exit",
+    "f03_stage_combination_exits",
 ]
 
 [[task]]
@@ -52,6 +53,7 @@ tests = [
     "f04_crop_percentage_is_strict",
     "f04_level_suffix_order_is_strict",
     "f04_math_onoff_is_strict",
+    "f04_bitflags_crop_and_rewrite_matrix",
 ]
 
 [[task]]
@@ -94,6 +96,7 @@ tests = [
     "f07_font_resource_travels_with_svg",
     "f07_cs_font_does_not_override_cyrillic",
     "f07_unknown_face_has_consistent_fallback",
+    "f07_theme_tab_and_missing_glyph_matrix",
 ]
 inverse_tests = ["inverse_naive_per_char_sum_is_not_shaped_for_kern_pair"]
 # Browser face-load gate lives in strict-ooxml-view (R09); see matrix F07-browser-face-load.
@@ -109,6 +112,7 @@ tests = [
     "f08_exact_line_pitch_is_the_declared_line",
     "f08_indent_past_the_edge_is_reported_not_clipped",
     "f08_long_token_breaks_inside_the_right_edge",
+    "f08_justify_and_cell_indent_matrix",
 ]
 
 [[task]]
@@ -119,6 +123,7 @@ package = "strict-ooxml-render-svg"
 tests = [
     "f09_right_tab_aligns_segment_end",
     "f09_underscore_leader_does_not_move_the_word",
+    "f09_left_center_decimal_tabs_matrix",
 ]
 
 [[task]]
@@ -126,21 +131,30 @@ id = "F10"
 findings = ["A16"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f10_partial_zero_indent_does_not_overlap_marker"]
+tests = [
+    "f10_partial_zero_indent_does_not_overlap_marker",
+    "f10_bullet_and_nothing_suffix_matrix",
+]
 
 [[task]]
 id = "F11"
 findings = ["A12"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f11_zero_table_width_uses_grid"]
+tests = [
+    "f11_zero_table_width_uses_grid",
+    "f11_pct_and_auto_width_modes",
+]
 
 [[task]]
 id = "F12"
 findings = ["A14"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f12_paragraph_shading_reaches_output"]
+tests = [
+    "f12_paragraph_shading_reaches_output",
+    "f12_cell_shading_and_page_break_fragments",
+]
 
 [[task]]
 id = "F13"
@@ -167,6 +181,7 @@ package = "strict-ooxml-render-svg"
 tests = [
     "f14_relative_width_replaces_fallback_extent",
     "f14_image_only_frame_starts_at_the_frame_origin",
+    "f14_margin_align_and_offset_matrix",
 ]
 
 [[task]]
@@ -174,7 +189,10 @@ id = "F15"
 findings = ["A21"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f15_square_changes_line_intervals"]
+tests = [
+    "f15_square_changes_line_intervals",
+    "f15_wrap_sides_and_unsupported_tight",
+]
 
 [[task]]
 id = "F16"
@@ -188,6 +206,8 @@ tests = [
     "f16_right_aligned_frame_ends_on_the_indented_edge",
     "f16_same_frame_in_separate_cells_stacks",
     "f16_inverse_escaped_cell_frames_are_not_the_table_origin",
+    "f16_xalign_right_keeps_the_frame_on_the_page",
+    "f16_xalign_center_is_the_page_midpoint",
 ]
 inverse_tests = ["f16_inverse_escaped_cell_frames_are_not_the_table_origin"]
 
@@ -196,14 +216,20 @@ id = "F17"
 findings = ["A17"]
 kind = "cargo"
 package = "strict-ooxml-render-svg"
-tests = ["f17_vmerge_has_continuation_on_next_page"]
+tests = [
+    "f17_vmerge_has_continuation_on_next_page",
+    "f17_gridspan_vmerge_and_header_repeat",
+]
 
 [[task]]
 id = "F18"
 findings = ["A03"]
 kind = "cargo"
 package = "strict-ooxml-convert"
-tests = ["f18_pdf_baseline_and_x_survive_write"]
+tests = [
+    "f18_pdf_baseline_and_x_survive_write",
+    "f18_three_text_positions",
+]
 
 [[task]]
 id = "F19"
@@ -213,6 +239,7 @@ package = "strict-ooxml-convert"
 tests = [
     "f19_text_and_vector_is_not_lossless_when_vector_missing",
     "f19_supported_rectangle_survives",
+    "f19_unsupported_cubic_is_named",
 ]
 
 [[task]]

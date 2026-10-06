@@ -1027,7 +1027,12 @@ fn inlines(items: &[Inline], out: &mut Vec<String>) {
                     }
                 }
             }
-            Inline::Hyperlink(link) => inlines(&link.inlines, out),
+            Inline::Hyperlink(link) => {
+                if let Some(id) = &link.rel_id {
+                    push(out, id.as_str().to_owned());
+                }
+                inlines(&link.inlines, out);
+            }
             Inline::Field(field) => inlines(&field.inlines, out),
             Inline::SdtInline(sdt) => inlines(&sdt.inlines, out),
             Inline::Directional(dir) => inlines(&dir.inlines, out),
@@ -1044,6 +1049,10 @@ fn drawing_refs(item: &Drawing, out: &mut Vec<String>) {
         // no reference to re-point; the writer records it as unserializable.
         DrawingKind::Opaque(_) => return,
     };
+    graphic_refs(payload, out);
+}
+
+fn graphic_refs(payload: &Graphic, out: &mut Vec<String>) {
     match payload {
         Graphic::Chart(refs) | Graphic::Diagram(refs) => {
             for id in refs.ids() {
@@ -1053,9 +1062,7 @@ fn drawing_refs(item: &Drawing, out: &mut Vec<String>) {
         Graphic::Shape(shape) => text_box(&shape.text, out),
         Graphic::Group(group) => {
             for child in &group.children {
-                if let Graphic::Shape(shape) = child {
-                    text_box(&shape.text, out);
-                }
+                graphic_refs(child, out);
             }
         }
         Graphic::None | Graphic::Picture(_) | Graphic::Other => {}

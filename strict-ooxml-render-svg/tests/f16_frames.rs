@@ -262,14 +262,15 @@ fn f16_shared_page_frame_table_keeps_column_offsets() {
     };
     let left = x_of("8994");
     let right = x_of("11719");
-    // 5395 twips + 10 twips cell margin + 40 twips indent = 363 px.
+    // 5395 twips + 40 twips indent = 362.333 px. Page-framed tables do not add
+    // tblCellMar start (WPS SNP origin).
     assert!(
-        (left - 363.0).abs() <= 0.25,
+        (left - 362.333).abs() <= 0.25,
         "8994 x {left} must sit in column 0 of the framed table"
     );
-    // Column 1 starts 946 twips later; indent 20 twips + margin 10 twips → 424.733 px.
+    // Column 1 starts 946 twips later; indent 20 twips → 424.067 px.
     assert!(
-        (right - 424.733).abs() <= 0.25,
+        (right - 424.067).abs() <= 0.25,
         "11719 x {right} must keep the column offset, not stack on 8994 at {left}"
     );
     let first_y = y_of("8994");
@@ -331,5 +332,70 @@ fn f16_inverse_escaped_cell_frames_are_not_the_table_origin() {
     assert!(
         right - left > 50.0,
         "inverse: collapsing onto one frame x would leave Δx≈0, got {left} and {right}"
+    );
+}
+
+#[test]
+fn f16_xalign_right_keeps_the_frame_on_the_page() {
+    let body = "\
+<w:p><w:pPr><w:framePr w:w=\"3000\" w:h=\"400\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:xAlign=\"right\" w:y=\"1500\"/>\
+<w:jc w:val=\"end\"/></w:pPr>\
+<w:r><w:t>edge</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let (_package, parsed) = open_body(body);
+    let pages = strict_ooxml_render_svg::place_pages(&parsed, &RenderOptions::default(), None)
+        .expect("place");
+    let (x, width) = pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .find_map(|item| {
+            let strict_ooxml_render_svg::Item::Text(text) = item else {
+                return None;
+            };
+            text.text.contains("edge").then_some((text.x, text.width))
+        })
+        .expect("caption");
+    // Page 816 px, frame 200 px, right-aligned: origin 616. Right-aligned text
+    // ends at the frame edge.
+    assert!(
+        x + width <= 816.0 + 0.25,
+        "right-aligned frame text must stay on the page, got end {}",
+        x + width
+    );
+    assert!(
+        (x + width - 816.0).abs() <= 20.0,
+        "ink should sit at the right frame edge, got end {}",
+        x + width
+    );
+}
+
+#[test]
+fn f16_xalign_center_is_the_page_midpoint() {
+    let body = "\
+<w:p><w:pPr><w:framePr w:w=\"3000\" w:h=\"400\" w:hAnchor=\"page\" w:vAnchor=\"page\" w:xAlign=\"center\" w:y=\"1500\"/>\
+<w:jc w:val=\"center\"/></w:pPr>\
+<w:r><w:t>HVR-I</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let (_package, parsed) = open_body(body);
+    let pages = strict_ooxml_render_svg::place_pages(&parsed, &RenderOptions::default(), None)
+        .expect("place");
+    let (x, width) = pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .find_map(|item| {
+            let strict_ooxml_render_svg::Item::Text(text) = item else {
+                return None;
+            };
+            text.text.contains("HVR-I").then_some((text.x, text.width))
+        })
+        .expect("label");
+    let midpoint = x + width / 2.0;
+    assert!(
+        (midpoint - 408.0).abs() <= 0.25,
+        "centered frame text midpoint {midpoint} must be page center 408"
     );
 }

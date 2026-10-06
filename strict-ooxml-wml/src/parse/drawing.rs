@@ -676,18 +676,12 @@ impl PartParser<'_> {
                             if parts.extent.is_some() {
                                 extent = parts.extent;
                             }
-                            if parts.offset.is_some()
-                                || parts.rot.is_some()
-                                || parts.flip_h
-                                || parts.flip_v
-                            {
-                                xfrm = Some(Xfrm {
-                                    offset: parts.offset,
-                                    rot: parts.rot,
-                                    flip_h: parts.flip_h,
-                                    flip_v: parts.flip_v,
-                                });
-                            }
+                            xfrm = Some(Xfrm {
+                                offset: parts.offset,
+                                rot: parts.rot,
+                                flip_h: parts.flip_h,
+                                flip_v: parts.flip_v,
+                            });
                         } else {
                             parser.skip_element()?;
                         }
@@ -781,18 +775,12 @@ impl PartParser<'_> {
                                     let parts = parser.parse_xfrm_parts(&attrs)?;
                                     shape.offset = parts.offset;
                                     shape.extent = parts.extent;
-                                    if parts.offset.is_some()
-                                        || parts.rot.is_some()
-                                        || parts.flip_h
-                                        || parts.flip_v
-                                    {
-                                        shape.xfrm = Some(Xfrm {
-                                            offset: parts.offset,
-                                            rot: parts.rot,
-                                            flip_h: parts.flip_h,
-                                            flip_v: parts.flip_v,
-                                        });
-                                    }
+                                    shape.xfrm = Some(Xfrm {
+                                        offset: parts.offset,
+                                        rot: parts.rot,
+                                        flip_h: parts.flip_h,
+                                        flip_v: parts.flip_v,
+                                    });
                                 }
                                 "prstGeom" => {
                                     let preset = plain_attr(&attrs, "prst")

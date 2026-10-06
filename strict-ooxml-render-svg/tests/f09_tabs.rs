@@ -96,3 +96,36 @@ fn f09_underscore_leader_does_not_move_the_word() {
         "the leader is not painted as characters: {words}"
     );
 }
+
+#[test]
+fn f09_left_center_decimal_tabs_matrix() {
+    let body = "<w:p><w:pPr><w:tabs>\
+<w:tab w:val=\"left\" w:pos=\"1440\"/>\
+<w:tab w:val=\"center\" w:pos=\"2880\"/>\
+<w:tab w:val=\"decimal\" w:pos=\"4320\"/>\
+</w:tabs></w:pPr>\
+<w:r><w:tab/></w:r><w:r><w:t>L</w:t></w:r>\
+<w:r><w:tab/></w:r><w:r><w:t>C</w:t></w:r>\
+<w:r><w:tab/></w:r><w:r><w:t>1.5</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"10800\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let items = placed(body);
+    let x_of = |needle: &str| {
+        items.iter().find_map(|item| {
+            let Item::Text(text) = item else {
+                return None;
+            };
+            text.text.contains(needle).then_some(text.x)
+        })
+    };
+    let left = x_of("L").expect("L");
+    let center = x_of("C").expect("C");
+    let decimal = x_of("1.5").expect("1.5");
+    assert!((left - 96.0).abs() <= 1.0, "left tab {left}");
+    assert!(center > left, "center tab {center} after left {left}");
+    assert!(
+        decimal > center,
+        "decimal tab {decimal} after center {center}"
+    );
+}

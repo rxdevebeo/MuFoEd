@@ -16,9 +16,9 @@ use strict_ooxml_core::opc::rels::{
 use strict_ooxml_core::opc::zip::write::ZipWriter;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::Block;
-use strict_ooxml_wml::model::drawing::MediaKind;
+use strict_ooxml_wml::model::drawing::{Drawing, DrawingKind, Graphic, MediaKind};
 use strict_ooxml_wml::model::fonts::FontTable;
-use strict_ooxml_wml::model::inline::Inline;
+use strict_ooxml_wml::model::inline::{Inline, RunContent};
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_wml::parse::LOST_FONT_PART;
 
@@ -1221,7 +1221,10 @@ fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
                     }
                 }
             }
-            Block::SdtBlock(sdt) => collect_hyperlink_ids_in(&sdt.blocks, out),
+            Block::SdtBlock(sdt) => {
+                collect_hyperlink_ids_in(&sdt.blocks, out);
+                collect_hyperlink_ids_inline(&sdt.inlines, out);
+            }
             _ => {}
         }
     }
@@ -1240,10 +1243,50 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
                 collect_hyperlink_ids_inline(&link.inlines, out);
             }
             Inline::Field(field) => collect_hyperlink_ids_inline(&field.inlines, out),
-            Inline::SdtInline(sdt) => collect_hyperlink_ids_inline(&sdt.inlines, out),
+            Inline::SdtInline(sdt) => {
+                collect_hyperlink_ids_in(&sdt.blocks, out);
+                collect_hyperlink_ids_inline(&sdt.inlines, out);
+            }
             Inline::Directional(dir) => collect_hyperlink_ids_inline(&dir.inlines, out),
+            Inline::Drawing(drawing) => collect_hyperlink_ids_drawing(drawing, out),
+            Inline::Run(run) => {
+                for content in &run.content {
+                    if let RunContent::Drawing(drawing) = content {
+                        collect_hyperlink_ids_drawing(drawing, out);
+                    }
+                }
+            }
             _ => {}
         }
+    }
+}
+
+fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
+    let graphic = match &drawing.kind {
+        DrawingKind::Inline(inline) => inline.graphic.as_ref(),
+        DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
+        DrawingKind::Opaque(_) => return,
+    };
+    collect_hyperlink_ids_graphic(graphic, out);
+}
+
+fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut Vec<String>) {
+    match graphic {
+        Graphic::Shape(shape) => {
+            if let Some(text) = &shape.text {
+                collect_hyperlink_ids_in(&text.blocks, out);
+            }
+        }
+        Graphic::Group(group) => {
+            for child in &group.children {
+                collect_hyperlink_ids_graphic(child, out);
+            }
+        }
+        Graphic::None
+        | Graphic::Picture(_)
+        | Graphic::Chart(_)
+        | Graphic::Diagram(_)
+        | Graphic::Other => {}
     }
 }
 

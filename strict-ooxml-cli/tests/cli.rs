@@ -554,6 +554,50 @@ fn f03_writer_loss_changes_pdf_exit() {
     let _ = std::fs::remove_file(&media_report);
 }
 
+#[test]
+fn f03_stage_combination_exits() {
+    let clean = write_temp("f03-clean.docx", &strict_docx());
+    let out = temp_named("f03-clean-out.docx");
+    let (code, stdout, stderr) = run(&[
+        "write",
+        clean.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "clean write\nstdout: {stdout}\nstderr: {stderr}");
+
+    let vml = write_temp(
+        "f03-vml-combo.docx",
+        &strict_ooxml_testkit::audit::vml_loss_docx(),
+    );
+    let vml_out = temp_named("f03-vml-combo-out.docx");
+    let (code, stdout, stderr) = run(&[
+        "write",
+        vml.to_str().unwrap(),
+        "--transitional",
+        "--out",
+        vml_out.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        code, 1,
+        "normalize-only loss\nstdout: {stdout}\nstderr: {stderr}"
+    );
+
+    let missing = temp_named("f03-does-not-exist.docx");
+    let (code, stdout, stderr) = run(&[
+        "write",
+        missing.to_str().unwrap(),
+        "--out",
+        temp_named("f03-missing-out.docx").to_str().unwrap(),
+    ]);
+    assert_eq!(code, 2, "missing input\nstdout: {stdout}\nstderr: {stderr}");
+
+    let _ = std::fs::remove_file(&clean);
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&vml);
+    let _ = std::fs::remove_file(&vml_out);
+}
+
 fn text_pdf() -> Vec<u8> {
     let mut pdf = strict_ooxml_testkit::PdfBuilder::new();
     let font = pdf.object(

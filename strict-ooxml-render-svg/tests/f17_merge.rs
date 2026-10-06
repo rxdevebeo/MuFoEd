@@ -91,3 +91,32 @@ fn f17_vmerge_has_continuation_on_next_page() {
     assert!(!pages[1].contains("merged"), "restart text is not repeated");
     assert!(pages[0].contains("side") && pages[1].contains("side"));
 }
+
+#[test]
+fn f17_gridspan_vmerge_and_header_repeat() {
+    let body = "<w:tbl>\
+<w:tblPr><w:tblW w:w=\"5000\" w:type=\"dxa\"/></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"2500\"/><w:gridCol w:w=\"2500\"/></w:tblGrid>\
+<w:tr><w:trPr><w:tblHeader/></w:trPr>\
+<w:tc><w:p><w:r><w:t>head</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>col</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:tcPr><w:gridSpan w:val=\"2\"/><w:vMerge w:val=\"restart\"/></w:tcPr>\
+<w:p><w:r><w:t>span</w:t></w:r></w:p></w:tc></w:tr>\
+</w:tbl>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"1440\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+    ]);
+    let (_package, parsed) = open_bytes(bytes);
+    let pages: Vec<_> = render(&parsed, &RenderOptions::default())
+        .expect("render")
+        .into_iter()
+        .map(|page| page.svg)
+        .collect();
+    assert!(pages.iter().any(|svg| svg.contains("span")), "{pages:?}");
+    assert!(pages.iter().any(|svg| svg.contains("head")), "{pages:?}");
+}

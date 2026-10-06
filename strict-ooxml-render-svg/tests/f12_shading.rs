@@ -78,3 +78,21 @@ fn f12_paragraph_shading_reaches_output() {
         assert!(covered, "text at ({x}, {baseline}) is outside the shading");
     }
 }
+
+#[test]
+fn f12_cell_shading_and_page_break_fragments() {
+    let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"3000\"/></w:tblGrid>\
+<w:tr><w:tc><w:tcPr><w:shd w:val=\"clear\" w:fill=\"F7F7F7\"/></w:tcPr>\
+<w:p><w:r><w:t>shade</w:t></w:r></w:p></w:tc></w:tr></w:tbl>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/></w:sectPr>";
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+    ]);
+    let (_package, doc) = open_bytes(bytes);
+    let svg = &render(&doc, &RenderOptions::default()).expect("render")[0].svg;
+    assert!(svg.contains("#f7f7f7"), "cell shading is painted: {svg}");
+    assert!(svg.contains("shade"), "{svg}");
+}

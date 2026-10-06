@@ -10,8 +10,8 @@ use crate::layout::exclusions::PageExclusion;
 use crate::layout::floating::{page_exclusion, PendingAnchor};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::table::{
-    frame_group_end, frame_origin, framed_table_items, layout_blocks_inline, layout_frame_contents,
-    layout_table, offset_item, table_uniform_frame,
+    frame_group_end, frame_placement, framed_table_items, layout_blocks_inline,
+    layout_frame_contents, layout_table, offset_item, table_uniform_frame,
 };
 use crate::layout::{
     geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
@@ -369,6 +369,8 @@ fn layout_blocks(
                     paginator.geometry.left,
                     paginator.geometry.top,
                     paginator.geometry.content_width(),
+                    paginator.geometry.width,
+                    paginator.geometry.height,
                 ));
                 if let Some(frame) = table_uniform_frame(table) {
                     place_framed_table(ctx, table, frame, paginator, depth)?;
@@ -488,23 +490,16 @@ fn place_frame_group(
         return Ok(());
     };
     let scale = ctx.options.scale;
-    let origin_x = frame_origin(
-        frame.x,
-        frame.h_anchor.as_deref(),
+    let (origin_x, origin_y, frame_width) = frame_placement(
+        frame,
         paginator.geometry.left,
-        scale,
-    );
-    let origin_y = frame_origin(
-        frame.y,
-        frame.v_anchor.as_deref(),
         paginator.geometry.top,
+        paginator.geometry.content_width(),
+        paginator.geometry.content_height(),
+        paginator.geometry.width,
+        paginator.geometry.height,
         scale,
     );
-    let frame_width = frame
-        .width
-        .map_or(paginator.geometry.content_width(), |width| {
-            crate::units::twips_to_px(width.value(), scale)
-        });
     paginator.started = true;
     let page = paginator.pages.len();
     let resume = ctx.frame_resume(frame);
@@ -534,23 +529,16 @@ fn place_framed_table(
     depth: u32,
 ) -> Result<()> {
     let scale = ctx.options.scale;
-    let origin_x = frame_origin(
-        frame.x,
-        frame.h_anchor.as_deref(),
+    let (origin_x, origin_y, frame_width) = frame_placement(
+        frame,
         paginator.geometry.left,
-        scale,
-    );
-    let origin_y = frame_origin(
-        frame.y,
-        frame.v_anchor.as_deref(),
         paginator.geometry.top,
+        paginator.geometry.content_width(),
+        paginator.geometry.content_height(),
+        paginator.geometry.width,
+        paginator.geometry.height,
         scale,
     );
-    let frame_width = frame
-        .width
-        .map_or(paginator.geometry.content_width(), |width| {
-            crate::units::twips_to_px(width.value(), scale)
-        });
     paginator.started = true;
     for item in framed_table_items(ctx, table, origin_x, origin_y, frame_width, depth) {
         paginator.push_item(item)?;
@@ -670,6 +658,8 @@ fn append_note_blocks(
                     paginator.geometry.left,
                     paginator.geometry.top,
                     paginator.geometry.content_width(),
+                    paginator.geometry.width,
+                    paginator.geometry.height,
                 ));
                 for flow in layout_table(ctx, table, left, width, depth, true) {
                     paginator.place(flow)?;

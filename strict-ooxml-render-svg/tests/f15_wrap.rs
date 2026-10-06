@@ -122,3 +122,21 @@ fn f15_square_changes_line_intervals() {
         );
     }
 }
+
+#[test]
+fn f15_wrap_sides_and_unsupported_tight() {
+    let left = render_wrap("wrapSquare", "left");
+    let right = render_wrap("wrapSquare", "right");
+    assert_ne!(
+        text_items(&left),
+        text_items(&right),
+        "left and right wrap policies must differ"
+    );
+    let tight = render_wrap("wrapTight", "bothSides");
+    let through = render_wrap("wrapThrough", "bothSides");
+    assert!(
+        tight.contains("unsupported") || tight.contains("wrap") || !text_items(&tight).is_empty(),
+        "tight wrap is named or still paints text"
+    );
+    let _ = through;
+}

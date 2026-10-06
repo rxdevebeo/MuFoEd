@@ -444,12 +444,11 @@ pub(crate) struct LayoutContext<'a> {
     /// Document-wide paint-item counter for [`ResourceLimits::max_render_items`]
     /// (AUD-72). Reset at the start of each layout pass.
     pub(crate) render_items: std::cell::Cell<u64>,
-    /// `(left margin, top margin, content width)` in px for a frame inside a cell.
+    /// `(left, top, content width, page width, page height)` in px for frames.
     ///
     /// Body pagination writes the current section here before a table. A page
-    /// anchor ignores the margins; a margin or text anchor adds them. A frame
-    /// without `w:w` uses the content width.
-    pub(crate) frame_anchor: std::cell::Cell<(f64, f64, f64)>,
+    /// anchor uses the page box; a margin or text anchor uses the content box.
+    pub(crate) frame_anchor: std::cell::Cell<(f64, f64, f64, f64, f64)>,
     /// Height of a static header/footer part at a given content box.
     ///
     /// Key is `(part, left.to_bits, content_width.to_bits)`. Parts that contain

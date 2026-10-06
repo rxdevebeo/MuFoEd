@@ -121,3 +121,16 @@ fn f10_partial_zero_indent_does_not_overlap_marker() {
         );
     }
 }
+
+#[test]
+fn f10_bullet_and_nothing_suffix_matrix() {
+    let svg = render_list(
+        "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>\
+<w:ind w:start=\"0\"/></w:pPr><w:r><w:t>item</w:t></w:r></w:p>",
+    );
+    assert!(svg.contains("item"), "{svg}");
+    assert!(
+        svg.contains(">1.<") || svg.contains(">1<"),
+        "decimal marker is painted: {svg}"
+    );
+}

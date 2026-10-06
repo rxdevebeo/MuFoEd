@@ -49,3 +49,23 @@ fn f11_zero_table_width_uses_grid() {
         "columns keep the grid proportions: {widths:?}"
     );
 }
+
+#[test]
+fn f11_pct_and_auto_width_modes() {
+    let body = "<w:tbl>\
+<w:tblPr><w:tblW w:w=\"5000\" w:type=\"pct\"/></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"4000\"/><w:gridCol w:w=\"4000\"/></w:tblGrid>\
+<w:tr><w:tc><w:tcPr><w:shd w:val=\"clear\" w:fill=\"FF0000\"/></w:tcPr><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>\
+<w:tc><w:tcPr><w:shd w:val=\"clear\" w:fill=\"00FF00\"/></w:tcPr><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr>\
+</w:tbl>\
+<w:sectPr><w:pgSz w:w=\"14400\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/></w:sectPr>";
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+    ]);
+    let (_package, doc) = open_bytes(bytes);
+    let svg = &render(&doc, &RenderOptions::default()).expect("render")[0].svg;
+    assert!(svg.contains("#ff0000") && svg.contains("#00ff00"), "{svg}");
+}

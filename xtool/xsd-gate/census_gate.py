@@ -146,6 +146,7 @@ EXIT_UNMEASURABLE = xsd_gate.EXIT_UNMEASURABLE
 CORPORA = {
     "docx": os.path.join(REPO, "strict-ooxml-core", "tests", "docx"),
     "samples": os.path.join(REPO, "strict-ooxml-core", "tests", "samples"),
+    "cc0": os.path.join(REPO, "testdata", "CC0_DOCX"),
 }
 
 

@@ -129,3 +129,46 @@ w:x=\"6708\" w:y=\"1827\"/><w:rPr><w:sz w:val=\"0\"/><w:szCs w:val=\"0\"/></w:rP
     assert!((image.w - 182.4).abs() <= 0.25, "width {}", image.w);
     assert!((image.h - 153.6).abs() <= 0.25, "height {}", image.h);
 }
+
+#[test]
+fn f14_margin_align_and_offset_matrix() {
+    let body = format!(
+        "<w:p><w:r><w:drawing>\
+<wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"1\" \
+behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"page\"><wp:align>center</wp:align></wp:positionH>\
+<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"914400\" cy=\"914400\"/>\
+<wp:wrapNone/>\
+<wp:docPr id=\"1\" name=\"rel\"/>\
+<a:graphic><a:graphicData uri=\"{PIC}\"><pic:pic>\
+<pic:nvPicPr><pic:cNvPr id=\"0\" name=\"rel\"/><pic:cNvPicPr/></pic:nvPicPr>\
+<pic:blipFill><a:blip r:embed=\"rIdImage\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>\
+</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>"
+    );
+    let rels = format!(
+        "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
+<Relationship Id=\"rIdImage\" Type=\"{IMAGE_REL}\" Target=\"media/image1.png\"/></Relationships>"
+    );
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(&body).into_bytes()),
+        ("word/_rels/document.xml.rels", rels.into_bytes()),
+        ("word/media/image1.png", tiny_png()),
+    ]);
+    let (_package, parsed) = open_bytes(bytes);
+    let svg = render(&parsed, &RenderOptions::default())
+        .expect("render")
+        .into_iter()
+        .next()
+        .expect("page")
+        .svg;
+    assert!(svg.contains("<image") || svg.contains("<rect"), "{svg}");
+}

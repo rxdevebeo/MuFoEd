@@ -143,6 +143,26 @@ fn f04_math_onoff_is_strict() {
     assert!(!settings.contains("m:val=\"off\""), "{settings}");
 }
 
+#[test]
+fn f04_bitflags_crop_and_rewrite_matrix() {
+    let custom = rewrite(&settings_docx("<w:stylePaneFormatFilter w:val=\"0002\"/>"));
+    let settings = part_text(&custom, "/word/settings.xml");
+    let filter = element_containing(&settings, "<w:stylePaneFormatFilter");
+    assert!(
+        filter.contains("w:customStyles=\"true\""),
+        "0002 is customStyles: {filter}"
+    );
+    assert!(!filter.contains("w:val"), "{filter}");
+
+    let zero = rewrite(&strict_ooxml_testkit::audit::crop_docx());
+    let first = part_text(&zero, "/word/document.xml");
+    let second = part_text(&rewrite(&zero), "/word/document.xml");
+    assert!(
+        first.contains("a:srcRect") && second.contains("l=\"1.253%\""),
+        "successive writes keep the crop: {second}"
+    );
+}
+
 fn settings_docx(inner: &str) -> Vec<u8> {
     strict_ooxml_testkit::DocxBuilder::transitional()
         .body("<w:p><w:r><w:t>SETTINGS PROBE</w:t></w:r></w:p>")

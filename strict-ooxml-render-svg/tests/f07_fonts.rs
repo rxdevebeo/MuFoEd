@@ -99,3 +99,19 @@ fn f07_unknown_face_has_consistent_fallback() {
         "unknown and Calibri advances differ by {delta} px"
     );
 }
+
+#[test]
+fn f07_theme_tab_and_missing_glyph_matrix() {
+    let tab = "\
+<w:p><w:r><w:t xml:space=\"preserve\">A</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>B</w:t></w:r></w:p>";
+    let svg = svg_of(tab);
+    assert!(svg.contains(">A<") && svg.contains(">B<"), "{svg}");
+    let missing = "\
+<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Carlito\" w:hAnsi=\"Carlito\"/></w:rPr>\
+<w:t>Abc&#xFFFF;</w:t></w:r></w:p>";
+    let with_missing = svg_of(missing);
+    assert!(
+        with_missing.contains("font-family=\"Carlito\""),
+        "missing glyph still uses the measuring face: {with_missing}"
+    );
+}
