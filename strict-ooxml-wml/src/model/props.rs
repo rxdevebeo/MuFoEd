@@ -259,6 +259,8 @@ pub struct PageSize {
     pub height: Option<Twips>,
     /// Orientation.
     pub orientation: Option<PageOrientation>,
+    /// Paper-size code (`w:pgSz/@w:code`).
+    pub code: Option<i32>,
 }
 
 /// Page margins (`w:pgMar`).

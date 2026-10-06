@@ -154,6 +154,7 @@ pub(crate) fn section_for(page: &PdfPage, visual: bool) -> SectionProperties {
             width: Some(Twips(width)),
             height: Some(Twips(height)),
             orientation: None,
+            code: None,
         }),
         page_margins: Some(margins),
         ..SectionProperties::default()

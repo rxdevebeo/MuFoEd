@@ -778,8 +778,9 @@ impl<'a> PartParser<'a> {
     pub(crate) fn expect_root_ns(&mut self, expected_local: &str, namespace: &str) -> Result<()> {
         loop {
             match self.next_event()? {
-                XmlEvent::StartElement { name, .. } if name.local() == expected_local => {
+                XmlEvent::StartElement { name, attrs } if name.local() == expected_local => {
                     if name.ns.as_ref().is_some_and(|ns| ns == namespace) {
+                        self.record_root_ignorable(expected_local, namespace, &attrs);
                         return Ok(());
                     }
                     return Err(self.root_namespace_error());
@@ -800,6 +801,27 @@ impl<'a> PartParser<'a> {
                     return Err(self.invalid(format!("expected '{expected_local}' root element")));
                 }
             }
+        }
+    }
+
+    fn record_root_ignorable(&mut self, local: &str, namespace: &str, attrs: &[Attr]) {
+        for attr in attrs {
+            if attr.name.local() != "Ignorable" {
+                continue;
+            }
+            let prefix = if namespace == crate::WML_STRICT_NS {
+                "w"
+            } else if namespace == crate::DRAWINGML_STRICT_NS {
+                "a"
+            } else {
+                "w"
+            };
+            self.record(
+                &format!("{prefix}:{local}@Ignorable"),
+                SupportStatus::Partial,
+                Some("mc:Ignorable is not rewritten onto Strict roots".to_owned()),
+                Some(self.location()),
+            );
         }
     }
 

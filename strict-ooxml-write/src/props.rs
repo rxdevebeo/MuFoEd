@@ -803,12 +803,14 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
         "tblLook" => {
             if let Some(look) = &props.look {
                 xml.start("w:tblLook");
-                xml.attr_w("firstRow", bool_str(look.first_row));
-                xml.attr_w("lastRow", bool_str(look.last_row));
-                xml.attr_w("firstColumn", bool_str(look.first_column));
-                xml.attr_w("lastColumn", bool_str(look.last_column));
-                xml.attr_w("noHBand", bool_str(look.no_h_band));
-                xml.attr_w("noVBand", bool_str(look.no_v_band));
+                // Corpus producers spell these as `1`/`0`. `true`/`false` is
+                // schema-legal but an inventory identity change.
+                xml.attr_w("firstRow", on_off_bit(look.first_row));
+                xml.attr_w("lastRow", on_off_bit(look.last_row));
+                xml.attr_w("firstColumn", on_off_bit(look.first_column));
+                xml.attr_w("lastColumn", on_off_bit(look.last_column));
+                xml.attr_w("noHBand", on_off_bit(look.no_h_band));
+                xml.attr_w("noVBand", on_off_bit(look.no_v_band));
                 xml.end();
             }
         }
@@ -1132,7 +1134,16 @@ fn page_size(xml: &mut XmlWriter, size: &PageSize) {
     if let Some(orientation) = &size.orientation {
         xml.attr_w("orient", orientation.as_str());
     }
+    xml.attr_w_opt("code", size.code);
     xml.end();
+}
+
+fn on_off_bit(value: bool) -> &'static str {
+    if value {
+        "1"
+    } else {
+        "0"
+    }
 }
 
 fn pg_num_type(xml: &mut XmlWriter, page_number: &PageNumberType) {
@@ -1345,14 +1356,6 @@ pub fn highlight_or_color_value(value: &HighlightOrColor) -> &str {
     match value {
         HighlightOrColor::Highlight(highlight) => highlight.as_str(),
         HighlightOrColor::Color(color) => color.as_str(),
-    }
-}
-
-fn bool_str(value: bool) -> &'static str {
-    if value {
-        "true"
-    } else {
-        "false"
     }
 }
 

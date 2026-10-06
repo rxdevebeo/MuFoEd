@@ -527,8 +527,9 @@ signal = "element"
 disposition = "named_loss"
 elements = [
   "w:r@rsidR", "w:r@rsidRPr", "w:r@rsidDel", "w:r@rsidP", "w:r@rsidRDefault",
-  "w:p@rsidRPr", "w:tr@rsidTr", "w:tr@rsidR", "w:tr@rsidRPr", "w:lvl@tplc",
-  "w:sectPr@rsidR", "w:sectPr@rsidRPr",
+  "w:p@rsidR", "w:p@rsidRDefault", "w:p@rsidP", "w:p@rsidDel", "w:p@rsidRPr",
+  "w:tr@rsidTr", "w:tr@rsidR", "w:tr@rsidRPr", "w:lvl@tplc",
+  "w:sectPr@rsidR", "w:sectPr@rsidRPr", "w:sectPr@rsidSect", "w:tbl@rsidTbl",
 ]
 summary = "revision attributes the model does not write back"
 audit = "D05: parse/document.rs records w:r@rsid* and w:p@rsidRPr. The item matches only when this input's report contains that feature id."
@@ -552,9 +553,10 @@ signal = "element"
 disposition = "named_loss"
 elements = [
   "pic:cNvPr@id",
-  "a:theme@name", "a:clrScheme@name", "a:fontScheme@name",
+  "a:theme@name", "a:clrScheme@name", "a:fontScheme@name", "a:fmtScheme@name",
   "w:num@durableId",
-  "w:document@Ignorable", "w:styles@Ignorable",
+  "w:document@Ignorable", "w:styles@Ignorable", "w:fonts@Ignorable",
+  "w:settings@Ignorable", "w:webSettings@Ignorable", "w:numbering@Ignorable",
 ]
 summary = "replacements the write report names for this input"
 audit = "D05: pic:cNvPr/@id is written as 0, theme scheme names are rewritten to strict-ooxml, numbering durableId is recorded on read, and mc:Ignorable is already in the normalize report. Each label matches only when that feature id is in this input's report."
@@ -577,3 +579,20 @@ elements = [
 ]
 summary = "text-effect, VML/Drawing leftovers and unsupported revision/smartTag/date SDT chrome"
 audit = "R03 CC0 inventory: unprefixed DrawingML/VML locals plus named unsupported WML helpers."
+
+[[item]]
+id = "TZ-47"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = [
+  "w:tblLook@val",
+  "w:compatSetting@uri",
+  "a:latin@panose",
+  "a:ea@panose",
+  "a:cs@panose",
+  "a:ln@w",
+  "a:prstDash@val",
+]
+summary = "T4 tblLook bitmask rewritten as individual Strict flags; compatSetting uri is regenerated"
+audit = "D05: Transitional w:tblLook/@val is the same six bits the writer emits as firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand. The attribute spelling change is a declared T4 rewrite, not a dropped look."

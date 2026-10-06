@@ -152,6 +152,7 @@ impl PartParser<'_> {
             BodyKind::AltChunk => blocks.push(Block::AltChunk(self.parse_alt_chunk(attrs)?)),
             BodyKind::Section => {
                 let location = self.location();
+                record_unmodelled_revision_attrs(self, "w:sectPr", attrs);
                 let properties = self.parse_section_properties()?;
                 // Only a bare `w:sectPr` at body top level is the final section.
                 // Nested block depth covers sdt/table; revisions clear the flag below.

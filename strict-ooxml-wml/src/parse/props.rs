@@ -48,6 +48,22 @@ fn record_unmodelled_property(
     parser.skip_element()
 }
 
+/// Revision attributes on `w:sectPr` are not written back.
+fn record_revision_attrs(parser: &mut PartParser<'_>, element: &str, attrs: &[Attr]) {
+    for attr in attrs {
+        let local = attr.name.local();
+        if !local.starts_with("rsid") {
+            continue;
+        }
+        parser.record(
+            &format!("{element}@{local}"),
+            SupportStatus::Partial,
+            Some("revision id is not written back".to_owned()),
+            Some(parser.location()),
+        );
+    }
+}
+
 /// Records a property-change history element (`*Change`) as `partial` (AUD-46).
 fn record_property_change(parser: &mut PartParser<'_>, feature: &str) -> Result<()> {
     parser.record(
@@ -176,7 +192,10 @@ impl PartParser<'_> {
                                     mark_revision = revision;
                                 }
                             }
-                            "sectPr" => props.section = Some(parser.parse_section_properties()?),
+                            "sectPr" => {
+                                record_revision_attrs(parser, "w:sectPr", &attrs);
+                                props.section = Some(parser.parse_section_properties()?);
+                            }
                             "framePr" => {
                                 props.frame = Some(Self::parse_frame_pr(&attrs, parser));
                                 parser.record(
@@ -873,13 +892,27 @@ impl PartParser<'_> {
 
     /// Parses a `w:tblLook` element.
     fn parse_table_look(attrs: &[Attr]) -> TableLook {
+        let from_val = wml_attr(attrs, "val").and_then(|value| {
+            let trimmed = value
+                .strip_prefix("0x")
+                .or_else(|| value.strip_prefix("0X"))
+                .unwrap_or(value);
+            u32::from_str_radix(trimmed, 16).ok()
+        });
+        let bit = |mask: u32, name: &str| {
+            if wml_attr(attrs, name).is_some() {
+                attr_on(attrs, name)
+            } else {
+                from_val.is_some_and(|value| value & mask != 0)
+            }
+        };
         TableLook {
-            first_row: attr_on(attrs, "firstRow"),
-            last_row: attr_on(attrs, "lastRow"),
-            first_column: attr_on(attrs, "firstColumn"),
-            last_column: attr_on(attrs, "lastColumn"),
-            no_h_band: attr_on(attrs, "noHBand"),
-            no_v_band: attr_on(attrs, "noVBand"),
+            first_row: bit(0x0020, "firstRow"),
+            last_row: bit(0x0040, "lastRow"),
+            first_column: bit(0x0080, "firstColumn"),
+            last_column: bit(0x0100, "lastColumn"),
+            no_h_band: bit(0x0200, "noHBand"),
+            no_v_band: bit(0x0400, "noVBand"),
         }
     }
 
@@ -965,6 +998,8 @@ impl PartParser<'_> {
                                     height,
                                     orientation: wml_attr(&attrs, "orient")
                                         .and_then(PageOrientation::from_strict),
+                                    code: wml_attr(&attrs, "code")
+                                        .and_then(|value| value.parse().ok()),
                                 });
                             }
                             "pgMar" => {

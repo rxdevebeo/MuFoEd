@@ -221,7 +221,7 @@ def vanished_elements(
                 # A report that names this element is evidence for a named loss.
                 # It is not a reason to hide the row: a registry item titled
                 # named_loss still has to see `named=1` for this input.
-                named_flag = 1 if local in named or label in named else 0
+                named_flag = 1 if _is_named(named, local, label) else 0
                 detail = (
                     f"parent={parent or ''}|namespace={_prefix_or_uri(namespace)}"
                     f"|removed={removed}|named={named_flag}|{_cited_field(named)}"
@@ -322,7 +322,7 @@ def _changed_attributes(
             continue
         namespace = namespace_of.get((elem_local, parent))
         label = f"{_qualified(elem_local, namespace)}@{attr_local}"
-        named_flag = 1 if attr_local in named or label in named or elem_local in named else 0
+        named_flag = 1 if _is_named(named, attr_local, label, elem_local) else 0
         detail = (
             f"parent={parent or ''}|namespace={_prefix_or_uri(namespace)}"
             f"|attr={attr_local}|was={value}|removed={removed}|named={named_flag}"
@@ -546,21 +546,46 @@ def _same_hex(left: str, right: str) -> bool:
     )
 
 
+def _percent_number(text: str) -> float | None:
+    """`100` and `100%` are one zoom/percentage spelling after T2."""
+    raw = text[:-1] if text.endswith("%") else text
+    if not re.fullmatch(r"-?\d+(\.\d+)?", raw):
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 def _same_attr_value(attr: str, left: str, right: str) -> bool:
-    """Lengths, T3/T4 direction words, and on/off spellings of `val`."""
+    """Lengths, T3/T4 direction words, and on/off spellings."""
     if _same_measure(left, right):
         return True
     if _same_hex(left, right):
         return True
-    if attr != "val":
-        return False
-    groups = (
-        {"left", "start"},
-        {"right", "end"},
+    if attr == "percent":
+        a, b = _percent_number(left), _percent_number(right)
+        if a is not None and b is not None and abs(a - b) < 0.051:
+            return True
+    on_off = (
         {"1", "true", "on"},
         {"0", "false", "off"},
     )
-    return any(left in group and right in group for group in groups)
+    if any(left in group and right in group for group in on_off):
+        return True
+    if attr != "val":
+        return False
+    direction = (
+        {"left", "start"},
+        {"right", "end"},
+    )
+    return any(left in group and right in group for group in direction)
+
+
+def _is_named(named: set[str], *candidates: str) -> bool:
+    """Whether this inventory row's names appear in the write report tokens."""
+    lowered = {token.lower() for token in named}
+    return any(candidate.lower() in lowered for candidate in candidates if candidate)
 
 
 def _cited_field(named: set[str]) -> str:
@@ -861,6 +886,8 @@ def _names_in(report: str) -> set[str]:
         _, separator, local = token.partition(":")
         if separator:
             found.add(local)
+        if token.lower() == "ignorable":
+            found.add("Ignorable")
     return found
 
 
