@@ -17,7 +17,7 @@ use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, Block, BreakKind, CellProperties, Color, Field, Fonts, GridCol,
     HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl, Inline, Justification,
-    Level, LineSpacingRule, Note, NoteKind, NoteTable, Num, NumId, NumPr, NumberingTable,
+    Language, Level, LineSpacingRule, Note, NoteKind, NoteTable, Num, NumId, NumPr, NumberingTable,
     PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, RowProperties, Rsids,
     Run, RunContent, RunProperties, Section, SectionProperties, SectionType, Space, Style, StyleId,
     StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell,
@@ -971,6 +971,22 @@ impl Parser<'_> {
             .fonts
             .get_or_insert_with(Default::default)
             .east_asia = Some(face);
+        Ok(())
+    }
+    fn set_language(&mut self, id: i32, span: RtfSpan, east_asia: bool) -> Result<(), RtfError> {
+        let Some(tag) = rtf_lcid_tag(id) else {
+            return self.issue(span, Severity::Loss, format!("language:unknown-lcid:{id}"));
+        };
+        let language = self
+            .state
+            .run
+            .language
+            .get_or_insert_with(Language::default);
+        if east_asia {
+            language.east_asia = Some(Arc::from(tag));
+        } else {
+            language.val = Some(Arc::from(tag));
+        }
         Ok(())
     }
     fn issue(
@@ -2019,6 +2035,13 @@ impl Parser<'_> {
                 self.document_codepage = cp;
             }
             "deff" => self.default_font = n,
+            "lang" | "langnp" | "langfe" | "langfenp" => {
+                let id = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing language id",
+                })?;
+                self.set_language(id, span, matches!(name, "langfe" | "langfenp"))?;
+            }
             "af" => {
                 let id = n.ok_or(RtfError::Malformed {
                     offset: span.start,
@@ -2599,6 +2622,40 @@ fn codepage(cp: i32) -> Option<&'static encoding_rs::Encoding> {
     };
     encoding_rs::Encoding::for_label(label.as_bytes())
 }
+fn rtf_lcid_tag(id: i32) -> Option<&'static str> {
+    Some(match id {
+        9 => "en",
+        10 => "es",
+        11 => "fi",
+        22 => "pt",
+        31 => "tr",
+        1025 => "ar-SA",
+        1029 => "cs-CZ",
+        1031 => "de-DE",
+        1033 => "en-US",
+        1034 | 3082 => "es-ES",
+        1035 => "fi-FI",
+        1036 => "fr-FR",
+        1042 => "ko-KR",
+        1045 => "pl-PL",
+        1049 => "ru-RU",
+        1053 => "sv-SE",
+        1055 => "tr-TR",
+        1058 => "uk-UA",
+        1081 => "hi-IN",
+        2052 => "zh-CN",
+        2057 => "en-GB",
+        2070 => "pt-PT",
+        3073 => "ar-EG",
+        4105 => "en-CA",
+        4108 => "fr-CH",
+        7169 => "ar-TN",
+        10241 => "ar-SY",
+        16393 => "en-IN",
+        _ => return None,
+    })
+}
+
 pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, RtfError> {
     bounded(input.len(), options.limits.input_bytes, 0, "input_bytes")?;
     let mut lexer = Lexer {

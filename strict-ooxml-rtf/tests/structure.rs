@@ -466,6 +466,77 @@ fn associated_font_survives_font_switch_and_wml_roundtrip() {
     );
 }
 
+#[test]
+fn lang_and_langnp_map_known_lcids_and_restore_group_state() {
+    let source = br"{\rtf1\lang1033 English {\langnp2057 British}\lang9 Neutral}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let runs = paragraph
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let tag_for = |needle: &str| {
+        runs.iter()
+            .find(|run| {
+                run.content.iter().any(|content| {
+                matches!(content, RunContent::Text(text) if text.text.contains(needle))
+            })
+            })
+            .and_then(|run| run.props.language.as_ref())
+            .and_then(|language| language.val.as_deref())
+    };
+    assert_eq!(tag_for("English"), Some("en-US"));
+    assert_eq!(tag_for("British"), Some("en-GB"));
+    assert_eq!(tag_for("Neutral"), Some("en"));
+}
+
+#[test]
+fn unknown_language_lcid_remains_an_explicit_loss() {
+    let imported = import(br"{\rtf1\lang1024 text}", &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 1);
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "language:unknown-lcid:1024"));
+}
+
+#[test]
+fn langfe_and_langfenp_map_to_east_asia_language_slot() {
+    let source = br"{\rtf1\lang1033 English \langfe1042 Korean {\langfenp2052 Chinese}}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let language_for = |needle: &str| {
+        paragraph.inlines.iter().find_map(|inline| {
+            match inline {
+            Inline::Run(run)
+                if run.content.iter().any(|content| {
+                    matches!(content, RunContent::Text(text) if text.text.contains(needle))
+                }) => run.props.language.as_ref(),
+            _ => None,
+        }
+        })
+    };
+    let korean = language_for("Korean").expect("Korean language properties");
+    assert_eq!(korean.val.as_deref(), Some("en-US"));
+    assert_eq!(korean.east_asia.as_deref(), Some("ko-KR"));
+    let chinese = language_for("Chinese").expect("Chinese language properties");
+    assert_eq!(chinese.val.as_deref(), Some("en-US"));
+    assert_eq!(chinese.east_asia.as_deref(), Some("zh-CN"));
+}
+
 fn reopened(input: &[u8]) -> strict_ooxml_wml::model::Document {
     let imported = import(input, &RtfOptions::default()).unwrap();
     let mut media = strict_ooxml_write::package::MediaBag::new();
