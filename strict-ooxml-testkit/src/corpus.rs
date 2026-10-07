@@ -340,7 +340,7 @@ mod tests {
             .iter()
             .filter(|entry| entry.tiers.iter().any(|t| t == Tier::CiCore.as_str()))
             .count();
-        assert_eq!(core, 26);
+        assert_eq!(core, 27);
         let mut ids: Vec<&str> = all.iter().map(|entry| entry.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();

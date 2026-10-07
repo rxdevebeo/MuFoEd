@@ -58,6 +58,7 @@ CI_CORE = (
     "cc0-docx/005",  # AlternateContent
     "cc0-docx/020",  # ins/del, chart
     "cc0-docx/028",  # m:oMath
+    "cc0-docx/100",  # bwMode=auto, blip cstate=print (p11_graphics)
     "cc0/099",  # bwMode, PNG, WMF
     "cc0/041",  # comments, Cyrillic
     "cc0/025",  # endnotes

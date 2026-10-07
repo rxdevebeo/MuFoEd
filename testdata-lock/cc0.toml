@@ -5,7 +5,7 @@
 # are never committed: `cargo run -p xtool -- corpus fetch --tier ci-core`
 # downloads them into `testdata/` and checks every hash.
 #
-# 300 documents, 254887670 bytes; ci-core: 26 documents, 10850453 bytes.
+# 300 documents, 254887670 bytes; ci-core: 27 documents, 10898674 bytes.
 
 schema = 1
 
@@ -2206,7 +2206,7 @@ bytes = 48221
 url = "https://archive.org/download/sec-meli-tari-h-11.-sinif-2.-do-nem-1.-yazili-cevap-anahtari/SE%C3%87MEL%C4%B0%20TAR%C4%B0H%2011.SINIF%202.D%C3%96NEM%201.YAZILI%20CEVAP%20ANAHTARI.docx"
 license = "CC0-1.0"
 source_manifest = "CC0_DOCX/manifest.json"
-tiers = ["ci-full"]
+tiers = ["ci-core", "ci-full"]
 features = ["blip_cstate", "bw_mode", "character_styles", "cols", "custom_xml", "drawing", "header_ref", "tbl", "theme_color", "v_merge", "vml_pict", "wp_anchor"]
 
 [[doc]]

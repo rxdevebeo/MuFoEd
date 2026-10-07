@@ -67,3 +67,32 @@ fn picture_id_bw_mode_and_cstate_round_trip() {
         "blip compression state was dropped"
     );
 }
+
+/// The same attributes on a CC0 document, so CI runs it: `CC0_DOCX/100` has
+/// one picture with `bwMode="auto"` on its shape properties and
+/// `cstate="print"` on its blip, inside `<wp:docPr id="2">` (read from its
+/// `word/document.xml`).
+#[test]
+fn cc0_picture_bw_mode_and_cstate_round_trip() {
+    let path = strict_ooxml_testkit::corpus_doc!("cc0-docx/100").path;
+    let package = open_transitional(&path);
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written = write_package(&document, Some(&package), &WriteOptions::default())
+        .expect("write")
+        .bytes;
+    let reopened =
+        Package::open_reader(written.as_slice(), &OpenOptions::default()).expect("reopen");
+    let document = reopened
+        .read_part(&PartId::new("/word/document.xml"))
+        .expect("document");
+    let text = String::from_utf8_lossy(&document);
+    assert!(text.contains(r#"docPr id="2""#), "drawing id was rewritten");
+    assert!(
+        text.contains(r#"bwMode="auto""#),
+        "explicit bwMode=auto was dropped"
+    );
+    assert!(
+        text.contains(r#"cstate="print""#),
+        "blip compression state was dropped"
+    );
+}
