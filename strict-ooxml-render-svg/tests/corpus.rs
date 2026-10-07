@@ -45,9 +45,7 @@ fn corpus_renders_or_refuses_without_panics() {
                 assert!(!pages.is_empty());
                 for page in &pages {
                     roxmltree::Document::parse(&page.svg).expect("valid SVG");
-                    let ink = common::without_font_faces(&page.svg);
-                    assert!(!ink.contains("NaN"), "{ink}");
-                    assert!(!ink.contains("inf"), "{ink}");
+                    assert_finite_geometry(&page.svg, &path.display().to_string());
                 }
                 rendered += 1;
             }
@@ -99,11 +97,38 @@ fn cc0_core_corpus_renders() {
             .unwrap_or_else(|error| panic!("{}: render: {error}", doc.id));
         assert!(!pages.is_empty(), "{}: no pages", doc.id);
         for page in &pages {
-            roxmltree::Document::parse(&page.svg)
-                .unwrap_or_else(|error| panic!("{}: invalid SVG: {error}", doc.id));
-            let ink = common::without_font_faces(&page.svg);
-            assert!(!ink.contains("NaN"), "{}: NaN in SVG", doc.id);
-            assert!(!ink.contains("inf"), "{}: inf in SVG", doc.id);
+            assert_finite_geometry(&page.svg, &doc.id);
+        }
+    }
+}
+
+/// The page parses as XML and no attribute carries a non-finite number.
+///
+/// Attribute values only: the page's text is the document's text, and a word
+/// like "information" is not a coordinate.
+fn assert_finite_geometry(svg: &str, what: &str) {
+    let document = roxmltree::Document::parse(svg)
+        .unwrap_or_else(|error| panic!("{what}: invalid SVG: {error}"));
+    for node in document.descendants().filter(roxmltree::Node::is_element) {
+        if node.tag_name().name() == "style" {
+            continue;
+        }
+        // `href` carries data URIs: base64 has no numbers to check.
+        for attribute in node.attributes().filter(|a| a.name() != "href") {
+            let bad = attribute
+                .value()
+                .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '.' || ch == '-'))
+                .any(|token| {
+                    let token = token.trim_start_matches('-').to_ascii_lowercase();
+                    token == "nan" || token == "inf" || token == "infinity"
+                });
+            assert!(
+                !bad,
+                "{what}: <{} {}=\"{}\"> is not finite",
+                node.tag_name().name(),
+                attribute.name(),
+                attribute.value()
+            );
         }
     }
 }
