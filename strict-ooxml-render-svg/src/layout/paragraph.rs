@@ -1687,7 +1687,11 @@ fn resolve_line_metrics(
                 // Clio bold Figure captions (style 50, ≈10.5pt) sit on the 80%
                 // Exact grid in WPS. Small bold SNP labels (4.5pt) and regular
                 // body Exact lines keep natural ascent.
-                let use_grid = ctx.frame_force_exact_grid.get()
+                // Outside a frame every Exact line is on the grid (9fec5cb and
+                // the f18 PDF baseline witness); the natural-ascent rule below
+                // is the WPS frame behaviour only.
+                let use_grid = !ctx.in_frame.get()
+                    || ctx.frame_force_exact_grid.get()
                     || after_taller
                     || (run.bold && run.size_pt >= 9.0);
                 if use_grid {

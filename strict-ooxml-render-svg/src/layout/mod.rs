@@ -484,6 +484,11 @@ pub(crate) struct LayoutContext<'a> {
     /// of the frame so same-size Exact follow-ups (Clio H16142 after L16055)
     /// stay on that pitch.
     pub(crate) frame_force_exact_grid: std::cell::Cell<bool>,
+    /// Whether a frame's contents are being laid out (`layout_frame_contents`).
+    ///
+    /// The WPS first-Exact-line rule (`natural.max(exact*0.8)`) is a frame
+    /// behaviour (Clio SNP labels); body Exact lines stay on the 80% grid.
+    pub(crate) in_frame: std::cell::Cell<bool>,
 }
 
 impl LayoutContext<'_> {

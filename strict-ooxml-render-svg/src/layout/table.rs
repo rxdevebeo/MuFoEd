@@ -926,6 +926,7 @@ pub(crate) fn layout_frame_contents(
     let mut pending_bordered = false;
     ctx.frame_prior_exact.set(None);
     ctx.frame_force_exact_grid.set(false);
+    let was_in_frame = ctx.in_frame.replace(true);
     for block in blocks {
         let Block::Paragraph(para) = block else {
             continue;
@@ -999,6 +1000,7 @@ pub(crate) fn layout_frame_contents(
     }
     ctx.frame_prior_exact.set(None);
     ctx.frame_force_exact_grid.set(false);
+    ctx.in_frame.set(was_in_frame);
     local_y += pending_border_after;
     (items, anchors, local_y)
 }
