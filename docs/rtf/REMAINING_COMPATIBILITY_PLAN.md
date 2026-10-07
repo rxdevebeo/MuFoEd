@@ -1,8 +1,8 @@
 # План оставшейся совместимости RTF
 
 Дата: 7 октября 2026. Историческая база RTF: `a7b3c9f`, ветка `codex/rtf-import`.
-Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `8e612a8`; подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
-Карточки остаются планом; RC00 частично закрыт, RC01 начат. Таблица ниже — только проверенный снимок 5 октября и не описывает новый прогон.
+Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `62dec410`; подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
+Карточки остаются планом; RC00/RC01 частично закрыты, RC02 начат. Таблица ниже — исторический снимок 5 октября и не описывает новый прогон.
 ## Цель и исходное состояние
 
 Цель — закрыть совместимость пользовательского корпуса из 100 RTF по содержимому,
@@ -72,7 +72,7 @@ Runtime строит WML и использует единые writer/renderers. 
 | --- | --- | --- | --- |
 | RC00 | P0 | Интеграция и новый baseline; manifests, shared core/render/write | — |
 | RC01 | P0 | Точная диагностика и ledger; PDF report, RTF harness/oracles | RC00 |
-| RC02 | P0 | Единое разрешение fonts; shared font code и PDF embedding | RC00, RC01 |
+| RC02 | P0 | Единое разрешение fonts; shared font code и PDF embedding; associated-script mapping | RC00, RC01 |
 | RC03 | P1 | Complex shaping, bidi, glyph clusters; renderer + RTF language mapping | RC02 |
 | RC04 | P1 | Styles и paragraph/run geometry; RTF mapping + shared P5 | RC01, RC02 |
 | RC05 | P1 | Numbering/lists; RTF lists, WML numbering, writer/layout | RC04 |
@@ -110,7 +110,7 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 
 Артефакты текущего частичного baseline и команды приведены в [RC00_INTEGRATION.md](RC00_INTEGRATION.md). Public import для 100 источников, точный текст, целостность выходов, resource supervision, Strict XSD и OPC проверены после интеграции. Body/region facts, media roundtrip, render/pagination, pixels и feature matrix по-прежнему требуют повторного прогона. WPS recapture нужен только при изменении oracle contract, а не при изменении кода.
 
-Статус: частично выполнено. Согласованные shared contracts и зафиксированные RTF fixes интегрированы; проверенные gates не показывают регрессий. Полный baseline не собран: старые 39/98 pagination/pixel failures нельзя считать актуальной оценкой интегрированного HEAD до повторного измерения.
+Статус: частично выполнено. Согласованные shared contracts и зафиксированные RTF fixes интегрированы; проверенные gates не показывают регрессий. Повторный visual snapshot текущей ветки: 62/100 pagination Pass, 3/100 pixel Pass; это development measurements, не полный baseline/acceptance.
 ### RC01 — диагностический ledger без ложных причин
 
 Первичная интеграционная ошибка исправлена в `8e612a8`: PDF renderer теперь
@@ -118,10 +118,12 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Повторный прогон
 Добавлен per-feature счётчик с bounded map (4096 имён, до 128 UTF-8 bytes каждое)
 и unattributed overflow totals. Полный повторный прогон 100 файлов записан в
-[rc01-loss-ledger.json](rc01-loss-ledger.json): 1,327,900 Loss, 95 Info, 459
-feature names; их суммы точно сходятся по каждому файлу. У восьми документов
+Текущий [rc01-loss-ledger.json](rc01-loss-ledger.json) обновлён после `62dec410`:
+976,909 Loss, 95 Info, 456 feature names; суммы сходятся по каждому файлу. До
+RC02 было 1,327,900 Loss/459 features; `\\ab`, `\\ai`, `\\afs` сняли ровно
+350,991 событий. У восьми документов
 усечён только retained detail stream; feature counters не усечены. Namespace
-`control:*` даёт 1,284,441 loss events. Подтверждён общий parser fallback для
+`control:*` теперь даёт 933,450 loss events. Подтверждён общий parser fallback для
 unhandled control words (`parser.rs:2494`), но влияние каждого слова на вывод ещё
 не установлено. Ранжирование ledger задаёт triage, а не диагноз. Backlog остаётся
 unreviewed.
@@ -136,7 +138,15 @@ list restarts, tables/merges, regions, custom marks и поля вне inline м
 missing glyph не выдаётся за missing face, mutations каждого нового fact group
 обнаруживаются независимо. Ledger классифицирует работу, но не утверждает exceptions.
 
-### RC02 — реальные fonts и единый resolved face
+### RC02 — associated-script formatting, реальные fonts и единый resolved face
+
+Частично обработаны `\\ab`, `\\ai` и `\\afs`: они хранятся в существующих
+WML run fields `bCs`, `iCs`, `szCs`; import → write → reopen проверен синтетическим
+fixture. В корпусе это сняло 350,991 generic Loss событий, сохранив 100/100 text
+и resource gates. Это подтверждает mapping и roundtrip, но не визуальную идентичность.
+Следующие крупные controls для отдельного triage: `\\af`, `\\loch`, `\\hich`,
+`\\dbch`, `\\lang*`, `\\fcs`. Font registry, единый resolved face и embedding
+остаётся открытой частью RC02.
 
 Использовать shared face/shaping API после RC00. Определить один resolved face
 для measurement, glyph coverage, SVG emission и PDF subset: font SHA-256, face
