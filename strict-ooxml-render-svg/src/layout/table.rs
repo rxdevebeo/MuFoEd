@@ -120,6 +120,17 @@ pub(crate) fn layout_table(
         });
     }
 
+    row_flows(ctx, table, &rows)
+}
+
+/// Paints the laid-out rows (shading, cell content, borders) into row flows.
+///
+/// Kept out of [`layout_table`], which recurses once per nested table: in a
+/// debug build every local of a function occupies its frame, and the
+/// temporaries built here (rect and row-flow values) used to be paid at every
+/// nesting level of a 1 MiB stack (`hostile` `twelve_nested_tables_*`).
+#[inline(never)]
+fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flow> {
     let mut flows = Vec::with_capacity(rows.len());
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
@@ -127,17 +138,17 @@ pub(crate) fn layout_table(
         for cell in &row.cells {
             let (source, paint_text, top_edge, bottom_edge) = match cell.vmerge {
                 VState::Continue => {
-                    let Some(source) = restart_cell(&rows, row_index, cell) else {
+                    let Some(source) = restart_cell(rows, row_index, cell) else {
                         continue;
                     };
                     (
                         source,
                         false,
                         false,
-                        !merge_continues(&rows, row_index, cell),
+                        !merge_continues(rows, row_index, cell),
                     )
                 }
-                VState::Restart => (cell, true, true, !merge_continues(&rows, row_index, cell)),
+                VState::Restart => (cell, true, true, !merge_continues(rows, row_index, cell)),
                 VState::None => (cell, true, true, true),
             };
             if let Some(fill) = shading_fill(&source.properties) {
@@ -255,23 +266,58 @@ fn layout_row(
         );
         let height = content_height + margins.2 + margins.3;
         max_content = max_content.max(height);
-        cells.push(RawCell {
-            col: column,
-            span,
-            x,
-            width,
-            properties: cell.props.clone(),
+        push_raw_cell(
+            &mut cells,
+            cell,
+            CellPlacement {
+                col: column,
+                span,
+                x,
+                width,
+                margin_top: margins.2,
+            },
             items,
             page_frames,
-            margin_top: margins.2,
-            vmerge: VState::from_merge(cell.props.vertical_merge),
-        });
+        );
         column += span;
     }
     LaidOutRow {
         cells,
         height: max_content,
     }
+}
+
+/// Where a laid-out cell sits in its row.
+struct CellPlacement {
+    col: usize,
+    span: usize,
+    x: f64,
+    width: f64,
+    margin_top: f64,
+}
+
+/// Builds a [`RawCell`] in its own frame: the cell's properties are cloned
+/// here, not in [`layout_row`], which recurses once per nesting level (see
+/// [`row_flows`]).
+#[inline(never)]
+fn push_raw_cell(
+    cells: &mut Vec<RawCell>,
+    cell: &strict_ooxml_wml::model::TableCell,
+    placement: CellPlacement,
+    items: Vec<Item>,
+    page_frames: Vec<Item>,
+) {
+    cells.push(RawCell {
+        col: placement.col,
+        span: placement.span,
+        x: placement.x,
+        width: placement.width,
+        properties: cell.props.clone(),
+        items,
+        page_frames,
+        margin_top: placement.margin_top,
+        vmerge: VState::from_merge(cell.props.vertical_merge),
+    });
 }
 
 /// Scales `widths` down so their sum is at most `ceiling`.
@@ -620,70 +666,15 @@ pub(crate) fn layout_blocks_inline(
         }
         match &blocks[index] {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
-                *y += flow.space_before + flow.border_before;
-                for item in flow.flows {
-                    match item {
-                        Flow::Line(line) => {
-                            for mut text in line.items {
-                                text.baseline += *y;
-                                items.push(Item::Text(text));
-                            }
-                            *y += line.height;
-                        }
-                        Flow::Image(image) => {
-                            let mut image = image;
-                            image.y += *y;
-                            *y += image.h;
-                            items.push(Item::Image(image));
-                        }
-                        Flow::Block {
-                            items: block_items,
-                            height,
-                        } => {
-                            for item in block_items {
-                                items.push(offset_item(&item, 0.0, *y));
-                            }
-                            *y += height;
-                        }
-                        Flow::TableRow(row) => {
-                            for item in &row.items {
-                                items.push(offset_item(item, 0.0, *y));
-                            }
-                            page_frames.extend(row.page_frames);
-                            *y += row.height;
-                        }
-                        Flow::PageBreak => {}
-                    }
-                }
-                *y += flow.space_after + flow.border_after;
+                place_cell_paragraph(ctx, para, left, width, y, items, note_marker, page_frames);
             }
             Block::Table(table) => {
                 if push_uniform_framed_table(ctx, table, depth, escape_frames, page_frames) {
                     index += 1;
                     continue;
                 }
-                for flow in layout_table(ctx, table, left, width, depth, escape_frames) {
-                    match flow {
-                        Flow::Block {
-                            items: block_items,
-                            height,
-                        } => {
-                            for item in block_items {
-                                items.push(offset_item(&item, 0.0, *y));
-                            }
-                            *y += height;
-                        }
-                        Flow::TableRow(row) => {
-                            for item in &row.items {
-                                items.push(offset_item(item, 0.0, *y));
-                            }
-                            page_frames.extend(row.page_frames);
-                            *y += row.height;
-                        }
-                        Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
-                    }
-                }
+                let flows = layout_table(ctx, table, left, width, depth, escape_frames);
+                append_table_flows(flows, y, items, page_frames);
             }
             Block::SdtBlock(sdt) => {
                 layout_blocks_inline(
@@ -702,6 +693,92 @@ pub(crate) fn layout_blocks_inline(
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
         index += 1;
+    }
+}
+
+/// Lays out one paragraph of a cell and appends its items at `*y`.
+///
+/// Its own frame, so the paragraph flow and its line items are not part of
+/// [`layout_blocks_inline`], which recurses once per nested table.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn place_cell_paragraph(
+    ctx: &LayoutContext<'_>,
+    para: &strict_ooxml_wml::model::Paragraph,
+    left: f64,
+    width: f64,
+    y: &mut f64,
+    items: &mut Vec<Item>,
+    note_marker: Option<&str>,
+    page_frames: &mut Vec<Item>,
+) {
+    let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
+    *y += flow.space_before + flow.border_before;
+    for item in flow.flows {
+        match item {
+            Flow::Line(line) => {
+                for mut text in line.items {
+                    text.baseline += *y;
+                    items.push(Item::Text(text));
+                }
+                *y += line.height;
+            }
+            Flow::Image(image) => {
+                let mut image = image;
+                image.y += *y;
+                *y += image.h;
+                items.push(Item::Image(image));
+            }
+            Flow::Block {
+                items: block_items,
+                height,
+            } => {
+                for item in block_items {
+                    items.push(offset_item(&item, 0.0, *y));
+                }
+                *y += height;
+            }
+            Flow::TableRow(row) => {
+                for item in &row.items {
+                    items.push(offset_item(item, 0.0, *y));
+                }
+                page_frames.extend(row.page_frames);
+                *y += row.height;
+            }
+            Flow::PageBreak => {}
+        }
+    }
+    *y += flow.space_after + flow.border_after;
+}
+
+/// Appends a nested table's row flows at `*y` (see [`place_cell_paragraph`]).
+#[inline(never)]
+fn append_table_flows(
+    flows: Vec<Flow>,
+    y: &mut f64,
+    items: &mut Vec<Item>,
+    page_frames: &mut Vec<Item>,
+) {
+    for flow in flows {
+        match flow {
+            Flow::Block {
+                items: block_items,
+                height,
+            } => {
+                for item in block_items {
+                    items.push(offset_item(&item, 0.0, *y));
+                }
+                *y += height;
+            }
+            Flow::TableRow(row) => {
+                for item in &row.items {
+                    items.push(offset_item(item, 0.0, *y));
+                }
+                page_frames.extend(row.page_frames);
+                *y += row.height;
+            }
+            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
+        }
     }
 }
 
