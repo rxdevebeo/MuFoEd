@@ -137,7 +137,7 @@ pub(crate) fn layout_paragraph(
     };
     // Numbering supplies the fields the paragraph did not set. An explicit 0
     // stays 0; a missing hanging/firstLine still comes from the level (A16).
-    if let Some(marker) = ctx.numbering.get(&para.location) {
+    if let Some(marker) = ctx.numbering.get(para) {
         let direct = para.props.indentation.as_ref();
         if direct.and_then(|indent| indent.start).is_none() {
             if let Some(start) = marker.indent_start_pt {
@@ -608,7 +608,7 @@ fn build_lines(
         None => DEFAULT_TAB_TWIPS,
     };
 
-    let marker = ctx.numbering.get(&para.location).map(|marker| {
+    let marker = ctx.numbering.get(para).map(|marker| {
         (
             marker.text.clone(),
             marker.run.clone(),

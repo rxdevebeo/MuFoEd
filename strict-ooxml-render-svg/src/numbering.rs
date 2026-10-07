@@ -32,10 +32,19 @@ pub(crate) struct NumberingMarker {
     pub suffix: Option<String>,
 }
 
-/// Markers for every numbered paragraph, keyed by source location.
+/// Markers for every numbered paragraph.
+///
+/// Keyed by the paragraph's address in the document being laid out: the
+/// layout reads the same `&Document` the markers were built from, so the
+/// address is a unique identity even for a document built in code, where every
+/// paragraph has [`SourceLocation::unknown`] and a location key would give all
+/// list items the same marker. The location map is the fallback for a known
+/// location, so a caller that lays out a copy of a parsed paragraph still finds
+/// its marker.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NumberingMarkers {
-    markers: HashMap<SourceLocation, NumberingMarker>,
+    by_address: HashMap<usize, NumberingMarker>,
+    by_location: HashMap<SourceLocation, NumberingMarker>,
 }
 
 impl NumberingMarkers {
@@ -43,20 +52,39 @@ impl NumberingMarkers {
     #[must_use]
     pub(crate) fn build(document: &Document) -> Self {
         let mut engine = Engine::new(&document.numbering, document.theme.as_ref());
-        let mut markers = HashMap::new();
+        let mut out = Self::default();
         collect_blocks(&document.body.blocks, &mut |paragraph| {
             if let Some(marker) = engine.marker_for_paragraph(paragraph) {
-                markers.insert(paragraph.location.clone(), marker);
+                if is_known(&paragraph.location) {
+                    out.by_location
+                        .insert(paragraph.location.clone(), marker.clone());
+                }
+                out.by_address.insert(address(paragraph), marker);
             }
         });
-        Self { markers }
+        out
     }
 
-    /// Returns the marker for a paragraph location.
+    /// Returns the marker for a paragraph of the document the markers were
+    /// built from.
     #[must_use]
-    pub(crate) fn get(&self, location: &SourceLocation) -> Option<&NumberingMarker> {
-        self.markers.get(location)
+    pub(crate) fn get(&self, paragraph: &Paragraph) -> Option<&NumberingMarker> {
+        self.by_address.get(&address(paragraph)).or_else(|| {
+            is_known(&paragraph.location)
+                .then(|| self.by_location.get(&paragraph.location))
+                .flatten()
+        })
     }
+}
+
+fn address(paragraph: &Paragraph) -> usize {
+    std::ptr::from_ref(paragraph).addr()
+}
+
+/// Whether `location` names a real position in a part (not
+/// [`SourceLocation::unknown`], which every code-built paragraph shares).
+fn is_known(location: &SourceLocation) -> bool {
+    *location != SourceLocation::unknown()
 }
 
 /// Stateful numbering evaluator (one per document layout).
@@ -331,6 +359,9 @@ mod tests {
 
     #[test]
     fn markers_default_is_empty() {
-        assert!(NumberingMarkers::default().get(&location()).is_none());
+        let markers = NumberingMarkers::default();
+        assert!(markers.by_address.is_empty() && markers.by_location.is_empty());
+        assert!(!is_known(&SourceLocation::unknown()));
+        assert!(is_known(&location()));
     }
 }

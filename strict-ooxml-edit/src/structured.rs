@@ -1267,7 +1267,6 @@ pub(crate) fn validate(document: &Document) -> Result<(), EditError> {
     for story in stories {
         let mut ids = HashSet::new();
         let mut text_ids = HashSet::new();
-        let mut numbered_locations = HashSet::new();
         for address in addresses(document, &story)? {
             let p = read_paragraph(document, &address)?;
             if p.para_id
@@ -1279,9 +1278,6 @@ pub(crate) fn validate(document: &Document) -> Result<(), EditError> {
             if p.text_id.as_ref().is_some_and(|id| {
                 p.para_id.is_none() || !text_ids.insert(id.as_str().to_ascii_uppercase())
             }) {
-                return Err(EditError::InvalidModel);
-            }
-            if p.props.numbering.is_some() && !numbered_locations.insert(p.location.clone()) {
                 return Err(EditError::InvalidModel);
             }
             if let Some(frame) = &p.props.frame {
