@@ -328,7 +328,7 @@ impl PartParser<'_> {
         self.record(
             "w:tblStylePr",
             SupportStatus::Partial,
-            Some("table style condition preserved; not applied in layout".to_owned()),
+            Some("table style condition applied to cells, paragraphs and runs; its tblPr and trPr are not".to_owned()),
             Some(location),
         );
         self.nested(|parser| {
