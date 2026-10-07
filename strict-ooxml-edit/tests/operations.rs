@@ -522,6 +522,7 @@ fn cell_move_respects_final_paragraph_and_row_merge_rolls_back() {
     assert_eq!(e.revision(), 0);
 }
 #[test]
+#[allow(clippy::too_many_lines)]
 fn shape_textbox_search_replace_and_move_stay_in_scope() {
     use strict_ooxml_core::error::SourceLocation;
     use strict_ooxml_wml::model::*;

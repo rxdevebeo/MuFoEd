@@ -451,6 +451,9 @@ pub(crate) fn images_pub(
     options: &PdfOptions,
 ) -> Vec<Block> {
     images_of(page, media, report, options)
+        .into_iter()
+        .map(|(_, block)| block)
+        .collect()
 }
 
 /// The size most of a page's text is set in.

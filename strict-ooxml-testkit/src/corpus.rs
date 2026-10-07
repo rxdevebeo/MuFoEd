@@ -231,11 +231,11 @@ pub fn tier(tier: Tier) -> Vec<CorpusDoc> {
 
 /// The entry's document under `root`, verified once per process.
 fn present(entry: &LockEntry, root: &Path) -> Option<CorpusDoc> {
+    static VERIFIED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
     let path = root.join(&entry.path);
     if !path.is_file() {
         return None;
     }
-    static VERIFIED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
     let verified = VERIFIED.get_or_init(|| Mutex::new(HashSet::new()));
     let known = verified
         .lock()
