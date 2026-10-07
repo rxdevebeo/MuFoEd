@@ -3960,7 +3960,7 @@ mod tests {
             r#"<Relationship Id="rId1" "#,
             r#"Type="http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties" "#,
             r#"Target="docProps/core.xml"/>"#,
-            r#"</Relationships>"#,
+            "</Relationships>",
         );
         let output = normalizer
             .normalize(&PartId::new("/_rels/.rels"), source.as_bytes())
