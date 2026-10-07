@@ -874,7 +874,7 @@ status = "supported"
 [[elements]]
 name = "w:tblStylePr"
 status = "partial"
-reason = "recorded; conditional table-style formatting deferred (waiver TBL-STYLE-PR)"
+reason = "applied to cells, paragraphs and runs in the render cascade; a condition's own tblPr and trPr are not"
 
 [[elements]]
 name = "w:tblStyleColBandSize"
