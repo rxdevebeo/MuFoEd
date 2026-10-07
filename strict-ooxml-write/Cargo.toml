@@ -20,6 +20,8 @@ strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 # Independent XML parser used only as an oracle by the tests (SC-3).
 roxmltree = "0.20"
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
+# Property test: read -> write -> read keeps every paragraph's text.
+proptest.workspace = true
 # The layout engine, for the one assertion the writer's own crates cannot make:
 # that a written document still occupies as many pages as the original (W7's exit
 # criterion). It is a leaf crate — it depends on `core` and `wml` only — so this

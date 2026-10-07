@@ -2392,6 +2392,7 @@ dependencies = [
 name = "strict-ooxml-write"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "roxmltree 0.20.0",
  "sha2",
  "strict-ooxml-core",
