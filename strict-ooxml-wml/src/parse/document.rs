@@ -189,11 +189,29 @@ impl PartParser<'_> {
         // that a paragraph does not call. Debug builds reserve a slot for every
         // local of a function, and six of those combined frames have to fit in
         // the 1 MiB stack the hostile suite uses.
-        if body_kind(name.local()) == BodyKind::Paragraph {
-            blocks.push(Block::Paragraph(self.parse_paragraph(attrs)?));
-            return Ok(());
+        //
+        // Tables recurse too (a table -> a row -> a cell -> its blocks), so
+        // neither arm keeps its `Paragraph`/`Table`/`Block` values here: each
+        // is built in a helper's frame that returns before the next level.
+        match body_kind(name.local()) {
+            BodyKind::Paragraph => self.push_paragraph(attrs, blocks),
+            BodyKind::Table => self.push_table(blocks),
+            _ => self.dispatch_block_element_rest(name, attrs, blocks),
         }
-        self.dispatch_block_element_rest(name, attrs, blocks)
+    }
+
+    #[inline(never)]
+    fn push_paragraph(&mut self, attrs: &[Attr], blocks: &mut Vec<Block>) -> Result<()> {
+        let paragraph = self.parse_paragraph(attrs)?;
+        blocks.push(Block::Paragraph(paragraph));
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn push_table(&mut self, blocks: &mut Vec<Block>) -> Result<()> {
+        let table = self.parse_table()?;
+        blocks.push(Block::Table(table));
+        Ok(())
     }
 
     /// Block elements other than `w:p`.
@@ -207,10 +225,8 @@ impl PartParser<'_> {
         blocks: &mut Vec<Block>,
     ) -> Result<()> {
         match body_kind(name.local()) {
-            BodyKind::Paragraph => {
-                blocks.push(Block::Paragraph(self.parse_paragraph(attrs)?));
-            }
-            BodyKind::Table => blocks.push(Block::Table(self.parse_table()?)),
+            BodyKind::Paragraph => self.push_paragraph(attrs, blocks)?,
+            BodyKind::Table => self.push_table(blocks)?,
             BodyKind::Sdt => blocks.push(Block::SdtBlock(self.parse_sdt(true)?)),
             BodyKind::AltChunk => blocks.push(Block::AltChunk(self.parse_alt_chunk(attrs)?)),
             BodyKind::Section => {

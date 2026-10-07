@@ -28,33 +28,14 @@ impl PartParser<'_> {
                             continue;
                         }
                         match name.local() {
-                            "tblPr" => props = parser.parse_table_properties()?,
+                            "tblPr" => parser.read_table_properties(&mut props)?,
                             "tblGrid" => {
                                 let parsed = parser.parse_table_grid()?;
                                 grid = parsed.0;
                                 grid_change = parsed.1.or(grid_change);
                             }
                             "tr" => rows.push(parser.parse_table_row(&attrs)?),
-                            "sdt" => {
-                                // AUD-41: row-level content control — unwrap `w:tr`
-                                // children and keep `sdtPr` on each row for the writer.
-                                let (sdt, mut found) = parser.parse_sdt_table_rows()?;
-                                parser.record(
-                                    "w:sdt",
-                                    SupportStatus::Partial,
-                                    Some(
-                                        "row/cell-level content control unwrapped; properties kept"
-                                            .to_owned(),
-                                    ),
-                                    Some(sdt.location.clone()),
-                                );
-                                for row in &mut found {
-                                    if row.sdt.is_none() {
-                                        row.sdt = Some(sdt.clone());
-                                    }
-                                }
-                                rows.append(&mut found);
-                            }
+                            "sdt" => parser.push_sdt_rows(&mut rows)?,
                             _ => parser.skip_element()?,
                         }
                     }
@@ -154,52 +135,10 @@ impl PartParser<'_> {
                             continue;
                         }
                         match name.local() {
-                            "trPr" => {
-                                // `w:tblPrEx` is the preceding sibling. Replacing
-                                // the row properties must keep the exception.
-                                let exception_borders = props.exception_borders.clone();
-                                let exception_spacing = props.cell_spacing;
-                                props = parser.parse_row_properties()?;
-                                props.exception_borders = exception_borders;
-                                if props.cell_spacing.is_none() {
-                                    props.cell_spacing = exception_spacing;
-                                }
-                            }
-                            "tblPrEx" => {
-                                // AUD-46: exception properties may carry cell spacing.
-                                // Borders on the exception are the row's own edges.
-                                let ex = parser.parse_table_properties()?;
-                                if props.cell_spacing.is_none() {
-                                    props.cell_spacing = ex.cell_spacing;
-                                }
-                                props.exception_borders = ex.borders;
-                                parser.record(
-                                    "w:tblPrEx",
-                                    SupportStatus::Partial,
-                                    Some("row exception properties partially modelled".to_owned()),
-                                    Some(parser.location()),
-                                );
-                            }
+                            "trPr" => parser.read_row_properties(&mut props)?,
+                            "tblPrEx" => parser.read_row_exception(&mut props)?,
                             "tc" => cells.push(parser.parse_table_cell(&attrs)?),
-                            "sdt" => {
-                                // AUD-41: cell-level content control.
-                                let (sdt, mut found) = parser.parse_sdt_table_cells()?;
-                                parser.record(
-                                    "w:sdt",
-                                    SupportStatus::Partial,
-                                    Some(
-                                        "row/cell-level content control unwrapped; properties kept"
-                                            .to_owned(),
-                                    ),
-                                    Some(sdt.location.clone()),
-                                );
-                                for cell in &mut found {
-                                    if cell.sdt.is_none() {
-                                        cell.sdt = Some(sdt.clone());
-                                    }
-                                }
-                                cells.append(&mut found);
-                            }
+                            "sdt" => parser.push_sdt_cells(&mut cells)?,
                             _ => parser.skip_element()?,
                         }
                     }
@@ -232,7 +171,7 @@ impl PartParser<'_> {
                             continue;
                         }
                         match name.local() {
-                            "tcPr" => props = parser.parse_cell_properties()?,
+                            "tcPr" => parser.read_cell_properties(&mut props)?,
                             "p" | "tbl" | "sdt" | "altChunk" | "ins" | "del" | "customXml"
                             | "smartTag" => {
                                 parser.parse_block_element_into(&name, &attrs, &mut blocks)?;
@@ -252,6 +191,97 @@ impl PartParser<'_> {
                 location,
             })
         })
+    }
+
+    // The helpers below run work that does not recurse - property bags, and the
+    // row/cell-level content controls whose `SdtProperties` is large - in a frame
+    // of their own. `parse_table` -> `parse_table_row` -> `parse_table_cell` ->
+    // `parse_block_element_into` is entered once per nesting level, and a debug
+    // build reserves every local of a function in its frame whether or not the
+    // arm runs: twelve nested tables needed 1031 KiB to parse, over the 1 MiB the
+    // hostile suite gives a thread (measured with a stack probe, 2026-10-08).
+
+    #[inline(never)]
+    fn read_table_properties(&mut self, props: &mut TableProperties) -> Result<()> {
+        *props = self.parse_table_properties()?;
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn read_cell_properties(&mut self, props: &mut CellProperties) -> Result<()> {
+        *props = self.parse_cell_properties()?;
+        Ok(())
+    }
+
+    /// `w:trPr`. `w:tblPrEx` is the preceding sibling, so replacing the row
+    /// properties must keep the exception.
+    #[inline(never)]
+    fn read_row_properties(&mut self, props: &mut RowProperties) -> Result<()> {
+        let exception_borders = std::mem::take(&mut props.exception_borders);
+        let exception_spacing = props.cell_spacing;
+        *props = self.parse_row_properties()?;
+        props.exception_borders = exception_borders;
+        if props.cell_spacing.is_none() {
+            props.cell_spacing = exception_spacing;
+        }
+        Ok(())
+    }
+
+    /// `w:tblPrEx` (AUD-46): exception properties may carry cell spacing, and
+    /// borders on the exception are the row's own edges.
+    #[inline(never)]
+    fn read_row_exception(&mut self, props: &mut RowProperties) -> Result<()> {
+        let ex = self.parse_table_properties()?;
+        if props.cell_spacing.is_none() {
+            props.cell_spacing = ex.cell_spacing;
+        }
+        props.exception_borders = ex.borders;
+        self.record(
+            "w:tblPrEx",
+            SupportStatus::Partial,
+            Some("row exception properties partially modelled".to_owned()),
+            Some(self.location()),
+        );
+        Ok(())
+    }
+
+    /// AUD-41: a row-level content control - unwrap its `w:tr` children and keep
+    /// `sdtPr` on each row for the writer.
+    #[inline(never)]
+    fn push_sdt_rows(&mut self, rows: &mut Vec<TableRow>) -> Result<()> {
+        let (sdt, mut found) = self.parse_sdt_table_rows()?;
+        self.record(
+            "w:sdt",
+            SupportStatus::Partial,
+            Some("row/cell-level content control unwrapped; properties kept".to_owned()),
+            Some(sdt.location.clone()),
+        );
+        for row in &mut found {
+            if row.sdt.is_none() {
+                row.sdt = Some(sdt.clone());
+            }
+        }
+        rows.append(&mut found);
+        Ok(())
+    }
+
+    /// AUD-41: a cell-level content control (see [`Self::push_sdt_rows`]).
+    #[inline(never)]
+    fn push_sdt_cells(&mut self, cells: &mut Vec<TableCell>) -> Result<()> {
+        let (sdt, mut found) = self.parse_sdt_table_cells()?;
+        self.record(
+            "w:sdt",
+            SupportStatus::Partial,
+            Some("row/cell-level content control unwrapped; properties kept".to_owned()),
+            Some(sdt.location.clone()),
+        );
+        for cell in &mut found {
+            if cell.sdt.is_none() {
+                cell.sdt = Some(sdt.clone());
+            }
+        }
+        cells.append(&mut found);
+        Ok(())
     }
 
     /// Parses a row-level `w:sdt`, returning its properties and the rows inside
