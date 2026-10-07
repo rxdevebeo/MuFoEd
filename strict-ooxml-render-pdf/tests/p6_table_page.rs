@@ -13,18 +13,27 @@ use strict_ooxml_wml::{parse_document, ParseOptions};
 
 #[test]
 fn t_p6_2_rm0090_table_page_is_one_pdf_page() {
+    // The RM0090 witness lives in the gitignored local corpus; a clean
+    // checkout skips loudly, the same as `strict-ooxml-core/tests/docx_corpus.rs`.
     let dir =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
-    let path = std::fs::read_dir(&dir)
-        .expect("docx corpus")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .find(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("RM0090 16-23"))
-        })
-        .expect("RM0090 witness");
+    let witness = std::fs::read_dir(&dir).ok().and_then(|entries| {
+        entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("RM0090 16-23"))
+            })
+    });
+    let Some(path) = witness else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}/RM0090 16-23*",
+            dir.display()
+        );
+        return;
+    };
     let bytes = std::fs::read(&path).expect("read witness");
     let normalizer = Arc::new(TransitionalNormalizer::new());
     let open_options = OpenOptions::default()
@@ -44,6 +53,9 @@ fn t_p6_2_rm0090_table_page_is_one_pdf_page() {
     assert!(output.bytes.starts_with(b"%PDF"));
     let loaded = lopdf::Document::load_mem(&output.bytes).expect("pdf parses");
     assert_eq!(loaded.get_pages().len(), 1);
-    let dest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/rm-table-page.pdf");
+    // Keep the page for inspection. `<manifest>/../target` does not exist when
+    // CARGO_TARGET_DIR points elsewhere, so the copy goes to the temp dir.
+    let dest = std::env::temp_dir().join("strict-ooxml-rm-table-page.pdf");
     std::fs::write(&dest, &output.bytes).expect("write pdf");
+    eprintln!("wrote {}", dest.display());
 }

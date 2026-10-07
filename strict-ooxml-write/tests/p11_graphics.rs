@@ -2,12 +2,27 @@
 //!
 //! T-P11-3: `bwMode="auto"` is written back. It is not treated as an absent default.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
+
+/// A document from the gitignored local corpus, or `None` (with a loud skip
+/// line) when this checkout does not carry it.
+fn local_corpus(relative: &str) -> Option<PathBuf> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}",
+            path.display()
+        );
+        None
+    }
+}
 
 fn open_transitional(path: &Path) -> Package {
     Package::open_reader(
@@ -23,8 +38,11 @@ fn open_transitional(path: &Path) -> Package {
 
 #[test]
 fn picture_id_bw_mode_and_cstate_round_trip() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx");
+    let Some(path) =
+        local_corpus("../strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx")
+    else {
+        return;
+    };
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let written = write_package(&document, Some(&package), &WriteOptions::default())

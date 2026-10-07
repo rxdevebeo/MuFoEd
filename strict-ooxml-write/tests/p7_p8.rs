@@ -5,7 +5,7 @@
 //! change one slot or one hex digit and require the written package to show
 //! that change. Lexical theme drop at the same hex is not equivalence (plan §8).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::normalize::TransitionalNormalizer;
@@ -17,6 +17,21 @@ use strict_ooxml_wml::model::values::{Color, ThemeColor, ThemeColorRef};
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
+
+/// A document from the gitignored local corpus, or `None` (with a loud skip
+/// line) when this checkout does not carry it.
+fn local_corpus(relative: &str) -> Option<PathBuf> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}",
+            path.display()
+        );
+        None
+    }
+}
 
 fn open(bytes: &[u8]) -> Result<Package, StrictError> {
     Package::open_reader(bytes, &OpenOptions::default())
@@ -224,8 +239,11 @@ fn t_p7_3_accent_slot_change_is_visible() {
 /// themeFillTint/Shade), matching the P7 receipt note (1277 / 784).
 #[test]
 fn t_p7_contoso_styles_theme_token_counts_match_source() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx");
+    let Some(path) =
+        local_corpus("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx")
+    else {
+        return;
+    };
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)
         .normalization(TransitionalNormalizer::new());

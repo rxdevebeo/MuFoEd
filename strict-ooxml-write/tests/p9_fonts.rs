@@ -5,7 +5,7 @@
 //! it is visible. `hint="cs"` is the one value Strict `ST_Hint` cannot carry;
 //! the complex-script face stays, and the report cites `w:rFonts@hint`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
@@ -15,6 +15,21 @@ use strict_ooxml_wml::model::support::SupportStatus;
 use strict_ooxml_wml::model::values::Fonts;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
+
+/// A document from the gitignored local corpus, or `None` (with a loud skip
+/// line) when this checkout does not carry it.
+fn local_corpus(relative: &str) -> Option<PathBuf> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}",
+            path.display()
+        );
+        None
+    }
+}
 
 fn open_transitional(path: &Path) -> Package {
     Package::open_reader(
@@ -185,8 +200,9 @@ fn t_p9_round_trip_preserves_fonts_and_names_hint_cs() {
 
 #[test]
 fn t_p9_numbering_symbol_face_survives_the_opensymbol_overlay() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/docx-jinja2-demo.docx");
+    let Some(path) = local_corpus("../strict-ooxml-core/tests/docx/docx-jinja2-demo.docx") else {
+        return;
+    };
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let written =
@@ -203,8 +219,11 @@ fn t_p9_numbering_symbol_face_survives_the_opensymbol_overlay() {
 
 #[test]
 fn t_p9_contoso_theme_font_languages_round_trip() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx");
+    let Some(path) =
+        local_corpus("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx")
+    else {
+        return;
+    };
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let language = document
