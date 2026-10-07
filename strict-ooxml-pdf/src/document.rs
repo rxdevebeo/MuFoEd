@@ -222,7 +222,7 @@ impl PdfDocument {
     ///
     /// Returns [`PdfError::Malformed`] for a file that is not a PDF,
     /// [`PdfError::Encrypted`] for one that is, and
-    /// [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded) when
+    /// [`crate::error::PdfError::LimitExceeded`] when
     /// the input size, the inflated size of its object streams
     /// ([`LimitKind::ObjectStreamBytes`](crate::error::LimitKind::ObjectStreamBytes))
     /// or the page count is over budget.

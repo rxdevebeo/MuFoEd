@@ -609,7 +609,7 @@ pub trait Resources {
 /// form's `/Resources` — and a form that declares no resources of its own
 /// inherits the page's.
 ///
-/// `operations` is an [`Rc`] so a form drawn a thousand times is decoded once
+/// `operations` is an [`Rc`](std::rc::Rc) so a form drawn a thousand times is decoded once
 /// for the document and shared (AUD-13).
 #[derive(Clone)]
 pub struct Form<'a> {
@@ -729,7 +729,7 @@ impl PageGeometry {
 /// Operators, glyphs and path points share one [`PageBudget`]. Exceeding a
 /// page budget stops interpretation and keeps what was already collected; the
 /// caller records `pdf.page.budget` (AUD-13). Form nesting past
-/// [`PdfLimits::max_form_depth`] is still a hard [`PdfError::LimitExceeded`].
+/// [`PdfLimits::max_form_depth`] is still a hard [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded).
 ///
 /// The operator dispatch is one function on purpose: the graphics state it
 /// threads through `q`/`Q` is only correct if every arm sees the same one,

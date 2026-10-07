@@ -580,7 +580,7 @@ features = []
         let text = include_str!("../../testdata-lock/cc0.toml");
         let docs = parse_lock(text).expect("committed lock");
         assert_eq!(docs.len(), 300);
-        assert_eq!(select(docs.clone(), "ci-core").len(), 26);
+        assert_eq!(select(docs.clone(), "ci-core").len(), 27);
         for doc in &docs {
             check_url(&doc.url).expect("every lock URL is on archive.org");
         }

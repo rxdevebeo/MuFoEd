@@ -68,6 +68,7 @@ fn t_p9_overlay_keeps_slots_the_later_rfonts_does_not_set() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn t_p9_round_trip_preserves_fonts_and_names_hint_cs() {
     let theme = "\
 <a:themeElements>\
