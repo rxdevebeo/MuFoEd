@@ -462,65 +462,15 @@ impl TransitionalNormalizer {
 
         // AUD-34: Report/Drop skip conversion and remove the subtree.
         if context.vml != VmlFallback::Convert {
-            let class = vml::classify(subtree, context)
-                .map_or("unknown", |(shape, _)| vml_shape_class(&shape));
-            let reason = match context.vml {
-                VmlFallback::Report => format!(
-                    "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
-                ),
-                VmlFallback::Drop => format!("VML {class} dropped by policy"),
-                VmlFallback::Convert => unreachable!("checked above"),
-            };
-            report.record_loss(LossRecord {
-                transform_id: "T7.vml",
-                feature_id: format!("{element}/{class}"),
-                reason,
-                severity: Severity::Lossy,
-                locations: vec![location],
-            });
-            report.count_reported_removal(1);
+            Self::report_vml_policy_drop(subtree, element, context, report, location);
             return Ok(());
         }
 
         let grouped = vml::grouped_text_boxes(subtree, context);
         if !grouped.is_empty() {
-            if let Some((shape, wrap)) = vml::classify(subtree, context) {
-                if matches!(shape, vml::Shape::Picture(_)) {
-                    let doc_pr_id = context.next_doc_pr_id();
-                    let (head, tail) =
-                        vml::shape_events(&shape, wrap, doc_pr_id, report, &location);
-                    for event in head.into_iter().chain(tail) {
-                        writer
-                            .write_event(event)
-                            .map_err(|error| xml_error(&context.part, error.to_string()))?;
-                    }
-                    report.record("T7.vml-shape", 1);
-                }
-            }
-            let count = Self::write_grouped_text_boxes(writer, grouped, context, report)?;
-            report.record("T7.vml-shape", count);
-            report.record_loss(LossRecord {
-                transform_id: "T7.vml-group",
-                feature_id: "v:group".to_owned(),
-                reason: "a VML group has no DrawingML group here; each of its text boxes is \
-                         converted on its own, and the lines and non-text geometry are dropped"
-                    .to_owned(),
-                severity: Severity::Lossy,
-                locations: vec![location.clone()],
-            });
-            if element == "w:object" {
-                report.record_loss(LossRecord {
-                    transform_id: "T7.ole",
-                    feature_id: "w:object".to_owned(),
-                    reason: "an OLE object is an executable object Strict has no substitute for; \
-                         its preview raster was kept as a picture and the object itself is gone"
-                        .to_owned(),
-                    severity: Severity::Lossy,
-                    locations: vec![location],
-                });
-                report.count_reported_removal(1);
-            }
-            return Ok(());
+            return Self::rewrite_vml_group(
+                writer, subtree, grouped, element, context, report, location,
+            );
         }
 
         let Some((shape, wrap)) = vml::classify(subtree, context) else {
@@ -574,26 +524,14 @@ impl TransitionalNormalizer {
         } else {
             vml::shape_events(&shape, wrap, doc_pr_id, report, &location)
         };
-        for event in head {
-            writer
-                .write_event(event)
-                .map_err(|error| xml_error(&context.part, error.to_string()))?;
-        }
+        Self::write_raw_events(writer, head, context)?;
         if text_box {
             for content in Self::drain_textbox_content(subtree) {
                 Self::rewrite_event(writer, content, context, report)?;
             }
-            for event in vml::text_box_close() {
-                writer
-                    .write_event(event)
-                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
-            }
+            Self::write_raw_events(writer, vml::text_box_close(), context)?;
         }
-        for event in tail {
-            writer
-                .write_event(event)
-                .map_err(|error| xml_error(&context.part, error.to_string()))?;
-        }
+        Self::write_raw_events(writer, tail, context)?;
         report.record("T7.vml-shape", 1);
 
         if element == "w:object" {
@@ -602,18 +540,7 @@ impl TransitionalNormalizer {
             // the report can tell "the picture is here" from "the thing the
             // picture stood for is gone" - they are different and only one of them
             // is recoverable.
-            report.record_loss(LossRecord {
-                transform_id: "T7.ole",
-                feature_id: "w:object".to_owned(),
-                reason: "an OLE object is an executable object Strict has no substitute for; \
-                         its preview raster was kept as a picture and the object itself is gone"
-                    .to_owned(),
-                severity: Severity::Lossy,
-                locations: vec![location.clone()],
-            });
-            // One node removed: the `w:object` the preview replaced. Its VML
-            // children went with it and are inside that node.
-            report.count_reported_removal(1);
+            record_ole_loss(report, location);
         }
         // A converted shape is a **mapping**, not a loss: the image relationship is
         // the same one, the part behind it is carried by the pass-through, and
@@ -623,7 +550,86 @@ impl TransitionalNormalizer {
         Ok(())
     }
 
-    /// Writes every text box of a `v:group` as its own DrawingML shape.
+    /// Writes already-final events straight to `writer`, mapping a write
+    /// failure to an error that names the part.
+    fn write_raw_events(
+        writer: &mut Writer<Vec<u8>>,
+        events: impl IntoIterator<Item = Event<'static>>,
+        context: &PartContext,
+    ) -> Result<()> {
+        for event in events {
+            writer
+                .write_event(event)
+                .map_err(|error| xml_error(&context.part, error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// AUD-34: names the `w:pict`/`w:object` subtree that `VmlFallback::Report`
+    /// or `VmlFallback::Drop` removes instead of converting.
+    fn report_vml_policy_drop(
+        subtree: &[Event<'static>],
+        element: &str,
+        context: &PartContext,
+        report: &mut NormalizationReport,
+        location: SourceLocation,
+    ) {
+        let class =
+            vml::classify(subtree, context).map_or("unknown", |(shape, _)| vml_shape_class(&shape));
+        let reason = match context.vml {
+            VmlFallback::Report => format!(
+                "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
+            ),
+            VmlFallback::Drop => format!("VML {class} dropped by policy"),
+            VmlFallback::Convert => unreachable!("only called when the policy is not Convert"),
+        };
+        report.record_loss(LossRecord {
+            transform_id: "T7.vml",
+            feature_id: format!("{element}/{class}"),
+            reason,
+            severity: Severity::Lossy,
+            locations: vec![location],
+        });
+        report.count_reported_removal(1);
+    }
+
+    /// Rewrites a subtree that holds a `v:group` with text boxes: the group's
+    /// picture (when the first shape is one), then each label on its own.
+    fn rewrite_vml_group(
+        writer: &mut Writer<Vec<u8>>,
+        subtree: &[Event<'static>],
+        grouped: Vec<vml::GroupedTextBox>,
+        element: &str,
+        context: &mut PartContext,
+        report: &mut NormalizationReport,
+        location: SourceLocation,
+    ) -> Result<()> {
+        if let Some((shape, wrap)) = vml::classify(subtree, context) {
+            if matches!(shape, vml::Shape::Picture(_)) {
+                let doc_pr_id = context.next_doc_pr_id();
+                let (head, tail) = vml::shape_events(&shape, wrap, doc_pr_id, report, &location);
+                Self::write_raw_events(writer, head.into_iter().chain(tail), context)?;
+                report.record("T7.vml-shape", 1);
+            }
+        }
+        let count = Self::write_grouped_text_boxes(writer, grouped, context, report)?;
+        report.record("T7.vml-shape", count);
+        report.record_loss(LossRecord {
+            transform_id: "T7.vml-group",
+            feature_id: "v:group".to_owned(),
+            reason: "a VML group has no DrawingML group here; each of its text boxes is \
+                     converted on its own, and the lines and non-text geometry are dropped"
+                .to_owned(),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
+        if element == "w:object" {
+            record_ole_loss(report, location);
+        }
+        Ok(())
+    }
+
+    /// Writes every text box of a `v:group` as its own `DrawingML` shape.
     ///
     /// The caller has already decided this subtree is a group with labels. A
     /// picture in the same group is written separately; these are only the labels.
@@ -644,24 +650,12 @@ impl TransitionalNormalizer {
                 report,
                 &location,
             );
-            for event in head {
-                writer
-                    .write_event(event)
-                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
-            }
+            Self::write_raw_events(writer, head, context)?;
             for content in grouped_box.content {
                 Self::rewrite_event(writer, content, context, report)?;
             }
-            for event in vml::text_box_close() {
-                writer
-                    .write_event(event)
-                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
-            }
-            for event in tail {
-                writer
-                    .write_event(event)
-                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
-            }
+            Self::write_raw_events(writer, vml::text_box_close(), context)?;
+            Self::write_raw_events(writer, tail, context)?;
         }
         Ok(count)
     }
@@ -1397,6 +1391,23 @@ fn is_legacy_graphics(event: &Event<'_>, context: &PartContext) -> bool {
     };
     let raw = String::from_utf8_lossy(start.name().as_ref()).into_owned();
     legacy_graphics_local(&raw, context).is_some()
+}
+
+/// Names the OLE object behind a kept `w:object` preview as lost.
+///
+/// One node removed: the `w:object` the preview replaced. Its VML children went
+/// with it and are inside that node.
+fn record_ole_loss(report: &mut NormalizationReport, location: SourceLocation) {
+    report.record_loss(LossRecord {
+        transform_id: "T7.ole",
+        feature_id: "w:object".to_owned(),
+        reason: "an OLE object is an executable object Strict has no substitute for; \
+                 its preview raster was kept as a picture and the object itself is gone"
+            .to_owned(),
+        severity: Severity::Lossy,
+        locations: vec![location],
+    });
+    report.count_reported_removal(1);
 }
 
 /// The qualified name a buffered subtree is reported under.
