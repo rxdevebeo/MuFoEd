@@ -56,6 +56,19 @@ fn process_exit_codes_and_persisted_report_match_fidelity() {
         )
         .unwrap();
         assert_eq!(report["import"]["loss_count"], loss);
+        if loss == 0 {
+            assert!(report["import"]["feature_counts"]
+                .as_object()
+                .unwrap()
+                .is_empty());
+        } else {
+            assert_eq!(
+                report["import"]["feature_counts"]["control:unsupported"]["loss_count"],
+                loss
+            );
+        }
+        assert_eq!(report["import"]["feature_counts_truncated"], false);
+        assert_eq!(report["import"]["unattributed_loss_count"], 0);
         assert_eq!(report["writer"]["loss_count"], 0);
         let p = strict_ooxml_core::opc::Package::open_path(
             &output,

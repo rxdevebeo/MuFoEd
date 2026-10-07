@@ -966,6 +966,30 @@ impl Parser<'_> {
             Severity::Info => self.report.info_count += 1,
             Severity::Loss => self.report.loss_count += 1,
         }
+        if let Some(counts) = self.report.feature_counts.get_mut(&feature) {
+            match severity {
+                Severity::Info => counts.info_count += 1,
+                Severity::Loss => counts.loss_count += 1,
+            }
+        } else if feature.len() <= super::MAX_FEATURE_NAME_BYTES
+            && self.report.feature_counts.len() < super::MAX_FEATURE_COUNT_KEYS
+        {
+            let counts = self
+                .report
+                .feature_counts
+                .entry(feature.clone())
+                .or_default();
+            match severity {
+                Severity::Info => counts.info_count += 1,
+                Severity::Loss => counts.loss_count += 1,
+            }
+        } else {
+            self.report.feature_counts_truncated = true;
+            match severity {
+                Severity::Info => self.report.unattributed_info_count += 1,
+                Severity::Loss => self.report.unattributed_loss_count += 1,
+            }
+        }
         if self.report.issues.len() < self.options.limits.issues {
             self.report.issues.push(RtfIssue {
                 span,

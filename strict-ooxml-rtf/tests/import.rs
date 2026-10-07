@@ -406,6 +406,48 @@ fn loss_details_cap_does_not_clear_losses() {
     let x = import(br"{\rtf1\unknown a}", &opts).unwrap();
     assert_eq!(x.report.loss_count, 1);
     assert!(x.report.details_truncated);
+    assert_eq!(x.report.feature_counts["control:unknown"].loss_count, 1);
+    assert_eq!(x.report.unattributed_loss_count, 0);
+}
+#[test]
+fn feature_aggregate_cap_is_bounded_and_totals_reconcile() {
+    let mut input = String::from("{\\rtf1 ");
+    for mut value in 0..4097_usize {
+        let mut name = ['a'; 6];
+        for ch in name.iter_mut().rev() {
+            *ch = char::from(b'a' + u8::try_from(value % 26).unwrap());
+            value /= 26;
+        }
+        input.push('\\');
+        input.push('q');
+        input.extend(name);
+        input.push(' ');
+    }
+    input.push('}');
+    let result = import(input.as_bytes(), &RtfOptions::default()).unwrap();
+    let tracked_losses: usize = result
+        .report
+        .feature_counts
+        .values()
+        .map(|c| c.loss_count)
+        .sum();
+    let tracked_info: usize = result
+        .report
+        .feature_counts
+        .values()
+        .map(|c| c.info_count)
+        .sum();
+    assert_eq!(result.report.feature_counts.len(), 4096);
+    assert!(result.report.feature_counts_truncated);
+    assert_eq!(
+        tracked_losses + result.report.unattributed_loss_count,
+        result.report.loss_count
+    );
+    assert_eq!(
+        tracked_info + result.report.unattributed_info_count,
+        result.report.info_count
+    );
+    assert_eq!(result.report.unattributed_loss_count, 1);
 }
 #[test]
 fn depth_limit() {

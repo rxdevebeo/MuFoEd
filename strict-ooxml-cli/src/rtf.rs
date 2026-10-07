@@ -82,7 +82,17 @@ fn convert(args: &[String]) -> Result<RtfStatus, Box<dyn std::error::Error>> {
     let r = &opened.import_report;
     let issues: Vec<_> = r.issues.iter().map(|i| json!({"feature":i.feature,"severity":format!("{:?}",i.severity),"span":{"start":i.span.start,"end":i.span.end}})).collect();
     let writer: Vec<_> = opened.write_report.losses().iter().map(|i|json!({"feature":i.feature_id,"reason":i.reason,"severity":format!("{:?}",i.severity)})).collect();
-    let mut report = json!({"schema":"strictlib.rtf-import.v1","status":format!("{status:?}"),"input":input,"output":output,"options":options_json(&options),"import":{"loss_count":r.loss_count,"info_count":r.info_count,"details_truncated":r.details_truncated,"discarded_nuls":r.discarded_nuls,"tokens":r.tokens,"nodes":r.nodes,"text_scalars":r.text_scalars,"issues":issues},"writer":{"loss_count":writer.len(),"issues":writer}});
+    let feature_counts: serde_json::Map<_, _> = r
+        .feature_counts
+        .iter()
+        .map(|(feature, counts)| {
+            (
+                feature.clone(),
+                json!({"loss_count":counts.loss_count,"info_count":counts.info_count}),
+            )
+        })
+        .collect();
+    let mut report = json!({"schema":"strictlib.rtf-import.v1","status":format!("{status:?}"),"input":input,"output":output,"options":options_json(&options),"import":{"loss_count":r.loss_count,"info_count":r.info_count,"feature_counts":feature_counts,"unattributed_loss_count":r.unattributed_loss_count,"unattributed_info_count":r.unattributed_info_count,"feature_counts_truncated":r.feature_counts_truncated,"details_truncated":r.details_truncated,"discarded_nuls":r.discarded_nuls,"tokens":r.tokens,"nodes":r.nodes,"text_scalars":r.text_scalars,"issues":issues},"writer":{"loss_count":writer.len(),"issues":writer}});
     // A report write failure prevents creation of a success-shaped package.
     std::fs::write(&report_path, serde_json::to_vec_pretty(&report)?)?;
     if let Err(error) = std::fs::write(&output, &opened.strict_bytes) {

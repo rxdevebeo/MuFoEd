@@ -1,8 +1,15 @@
 //! RTF bytes to an owned `WordprocessingML` model, with explicit import losses.
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeMap;
+
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::Document;
+
+/// Maximum distinct, bounded diagnostic feature names retained in aggregate counters.
+const MAX_FEATURE_COUNT_KEYS: usize = 4096;
+/// Feature names longer than this are counted as unattributed to bound report memory.
+const MAX_FEATURE_NAME_BYTES: usize = 128;
 mod lists;
 mod parser;
 mod picture;
@@ -139,6 +146,14 @@ pub struct RtfIssue {
     /// Stable diagnostic category with the original control/destination name.
     pub feature: String,
 }
+/// Counts for one stable import diagnostic feature.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RtfFeatureCount {
+    /// Total loss events for this feature, including events beyond the detail cap.
+    pub loss_count: usize,
+    /// Total informational events for this feature, including events beyond the detail cap.
+    pub info_count: usize,
+}
 /// Import summary. Aggregate counts remain valid when details are truncated.
 #[derive(Clone, Debug, Default)]
 pub struct RtfReport {
@@ -150,6 +165,14 @@ pub struct RtfReport {
     pub loss_count: usize,
     /// Total informational events, including omitted details.
     pub info_count: usize,
+    /// Per-feature totals, including events beyond the retained detail cap.
+    pub feature_counts: BTreeMap<String, RtfFeatureCount>,
+    /// Loss events whose feature name was too long or exceeded the distinct-feature cap.
+    pub unattributed_loss_count: usize,
+    /// Informational events whose feature name was too long or exceeded the distinct-feature cap.
+    pub unattributed_info_count: usize,
+    /// Some feature totals could not be attributed due to their bounded aggregate cap.
+    pub feature_counts_truncated: bool,
     /// Some diagnostic details were omitted by the issue cap.
     pub details_truncated: bool,
     /// Maximum lexical tokens, or consumed tokens in a report.
