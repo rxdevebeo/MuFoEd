@@ -116,12 +116,15 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 Первичная интеграционная ошибка исправлена в `8e612a8`: PDF renderer теперь
 различает отсутствующее семейство и отсутствующий glyph; тест на U+10FFFD
 проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Повторный прогон
-100 файлов собран в [rc01-loss-ledger.json](rc01-loss-ledger.json): 1,327,900
-import loss events по полным totals, 154,626 видимых loss details, 443 видимых
-feature names и 8 отчётов с усечённым detail stream. `control:*` — 142,014 видимых
-срабатываний и 321 имя в 100 документах; подтверждён только общий fallback parser
-для unhandled control words (`parser.rs:2494`), не влияние каждого слова на вывод.
-Топ имён и карточки там — гипотезы triage, не причины. Backlog остаётся unreviewed.
+Добавлен per-feature счётчик с bounded map (4096 имён, до 128 UTF-8 bytes каждое)
+и unattributed overflow totals. Полный повторный прогон 100 файлов записан в
+[rc01-loss-ledger.json](rc01-loss-ledger.json): 1,327,900 Loss, 95 Info, 459
+feature names; их суммы точно сходятся по каждому файлу. У восьми документов
+усечён только retained detail stream; feature counters не усечены. Namespace
+`control:*` даёт 1,284,441 loss events. Подтверждён общий parser fallback для
+unhandled control words (`parser.rs:2494`), но влияние каждого слова на вывод ещё
+не установлено. Ранжирование ledger задаёт triage, а не диагноз. Backlog остаётся
+unreviewed.
 
 Собрать все import loss classes из полных totals/streams, включая записи сверх
 cap. Для каждого класса: mapping owner, реальные witness IDs, неизвестная причина,

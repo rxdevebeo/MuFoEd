@@ -18,7 +18,7 @@
 | Strict XSD | 100 documents validated, 0 missing/refused/unmatched/ours; 2,133 drivers compiled, 0 failures, 0 uncovered roots |
 | OPC | 100 packages, 0 violations |
 
-Corpus runner завершился успешно, но помечен как development measurement (`public_path_development_measurement_not_full_acceptance`). Его параметры: `--wps-text --allow-unsigned-unicode --drop-nul`; manifest SHA-256 `0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f`; CLI SHA-256 `688e69f2cf18382ea8013196a12a82374b079dec50ffb9e160c30818bcd4b40a`. Результаты и DOCX находятся в ignored каталоге `target/rtf-import/RC00-main-integration-corpus/`, полный построчный ledger — `results.json`. Git object id текущего бинарного source diff: `8db8ec57457b003fcee91cb546daf76f9aabe2bf`.
+Corpus runner завершился успешно, но помечен как development measurement (`public_path_development_measurement_not_full_acceptance`). Его параметры: `--wps-text --allow-unsigned-unicode --drop-nul`; manifest SHA-256 `0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f`; CLI SHA-256 `688e69f2cf18382ea8013196a12a82374b079dec50ffb9e160c30818bcd4b40a`. Результаты и DOCX находятся в ignored каталоге `target/rtf-import/RC00-main-integration-corpus/`, полный построчный ledger — `results.json`. Git object id бинарного source diff первоначального RC00 среза: `8db8ec57457b003fcee91cb546daf76f9aabe2bf`.
 
 Проверенные команды:
 
@@ -37,3 +37,12 @@ python xtool/xsd-gate/opc_gate.py --written target/rtf-import/RC00-main-integrat
 Это не полный compatibility acceptance. После интеграции ещё не повторялись независимые WPS region/structure probes, media byte roundtrip, pagination/render reports, pixel/SSIM gate и полная feature matrix. Следовательно, цифры 61/39 pagination и 2/98 pixels из исторического снимка `a7b3c9f` нельзя приписывать HEAD `8e612a8`.
 
 RC01 начат отдельным исправлением PDF диагностики: missing glyph отделён от missing font; регрессионный тест проверяет U+10FFFD. RC01 ledger из 100 отчётов приведён в [rc01-loss-ledger.json](rc01-loss-ledger.json): он фиксирует 1,327,900 import loss events, 154,626 видимых loss details и 443 видимых feature names; 8 report streams усечены. Эти feature names не подтверждают первопричины. Отдельно подтверждены 38 writer losses класса `pic:cNvPr@id`, требующие решения в RC07. Backlog остаётся `reviewed: false`, `root_cause: null` до пофайлового triage.
+
+
+## RC01: точные per-feature totals
+
+После первого import baseline добавлена bounded per-feature агрегация: максимум 4,096 имён до 128 UTF-8 bytes; избыток явно учитывается как unattributed и помечается флагом. CLI JSON schema `strictlib.rtf-import.v1` получила additive поле `feature_counts` и overflow totals. Результат измерения после commit `9a4c457`: CLI SHA-256 `9454a6732755e10a1185ac0c43b9bcfc8c4ace4f8e21ae39403a254c4ebafcff`, тот же corpus manifest `0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f`. Все 100 документов прошли runner, text и resource/integrity gates.
+
+Per-feature суммы сходятся с общими totals во всех файлах: 1,327,900 Loss и 95 Info, 459 distinct features, 0 unattributed, 0 feature-map truncations. Retained issue details по-прежнему ограничены: 8 отчётов показывают `details_truncated=true`, но это больше не теряет feature totals. `control:*` — 1,284,441 Loss (337 имён); `field-instruction-control:*` — 33,753; `destination:*` — 6,097. Это учёт неподдержанных токенов parser, а не измеритель визуального ущерба. Самые частые control names и per-document counts лежат в JSON ledger; semantic mapping и влияние проверяются отдельными RC02–RC09 fixtures. На новых DOCX повторно прошли Strict XSD: 100/100 validated, 0 violations, и OPC: 100 packages, 0 violations. Оба corpus gates завершились PASS.
+
+Проверки RC01: полный targeted workspace test command выше прошёл; bounded-cap test создаёт 4,097 разных unhandled control words и доказывает ограничение в 4,096 keys с точной сверкой tracked + unattributed totals. CLI integration test проверяет JSON per-feature values. Clippy для `strict-ooxml-rtf` и `strict-ooxml-cli` прошёл при suppressions для уже существующих lint в общих пакетах main baseline.
