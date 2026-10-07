@@ -113,11 +113,15 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 Статус: частично выполнено. Согласованные shared contracts и зафиксированные RTF fixes интегрированы; проверенные gates не показывают регрессий. Полный baseline не собран: старые 39/98 pagination/pixel failures нельзя считать актуальной оценкой интегрированного HEAD до повторного измерения.
 ### RC01 — диагностический ledger без ложных причин
 
-Сейчас `FaceCollector::add` помещает face в `unknown`, когда отсутствует отдельный
-glyph; позднее это может выглядеть как `pdf.font.missing`. Разделить absent family,
-absent style, missing glyph, shaping degradation, subset/embedding error и
-unsupported image. Сохранить requested/resolved face, style, script, Unicode
-span/codepoints, stage и точные totals при ограничении detail list.
+Первичная интеграционная ошибка исправлена в `8e612a8`: PDF renderer теперь
+различает отсутствующее семейство и отсутствующий glyph; тест на U+10FFFD
+проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Повторный прогон
+100 файлов собран в [rc01-loss-ledger.json](rc01-loss-ledger.json): 1,327,900
+import loss events по полным totals, 154,626 видимых loss details, 443 видимых
+feature names и 8 отчётов с усечённым detail stream. `control:*` — 142,014 видимых
+срабатываний и 321 имя в 100 документах; подтверждён только общий fallback parser
+для unhandled control words (`parser.rs:2494`), не влияние каждого слова на вывод.
+Топ имён и карточки там — гипотезы triage, не причины. Backlog остаётся unreviewed.
 
 Собрать все import loss classes из полных totals/streams, включая записи сверх
 cap. Для каждого класса: mapping owner, реальные witness IDs, неизвестная причина,
@@ -125,7 +129,7 @@ cap. Для каждого класса: mapping owner, реальные witness
 WPS-only quirk и unsupported contract. Уточнить facts sections, styles/defaults,
 list restarts, tables/merges, regions, custom marks и поля вне inline модели.
 
-Закрытие: все 100 документов учтены, все обнаруженные loss classes имеют владельца,
+Статус: частично выполнено — totals и наблюдаемые feature streams записаны; точная пофайловая семантическая классификация остаётся открытой. Закрытие: все 100 документов учтены, все обнаруженные loss classes имеют владельца,
 missing glyph не выдаётся за missing face, mutations каждого нового fact group
 обнаруживаются независимо. Ledger классифицирует работу, но не утверждает exceptions.
 

@@ -1,0 +1,7960 @@
+{
+  "schema": "strictlib.rtf-observed-loss-ledger.v1",
+  "generated_date": "2026-10-07",
+  "claim": "observed_diagnostic_details_and_totals_not_root_cause_or_approved_expectations",
+  "baseline": {
+    "branch": "codex/rtf-import-integrated",
+    "commit": "8e612a8",
+    "corpus_manifest_sha256": "0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f",
+    "cli_sha256": "688e69f2cf18382ea8013196a12a82374b079dec50ffb9e160c30818bcd4b40a",
+    "source_count": 100
+  },
+  "summary": {
+    "measured_documents": 100,
+    "import_loss_events_from_full_totals": 1327900,
+    "visible_import_loss_details": 154626,
+    "visible_import_info_details": 95,
+    "documents_with_truncated_import_details": 8,
+    "distinct_visible_import_features": 443,
+    "writer_loss_events_from_full_totals": 38,
+    "writer_loss_feature_totals": {
+      "pic:cNvPr@id": 38
+    },
+    "triage_state": "unreviewed",
+    "root_causes_confirmed": 0,
+    "expectations_approved": 0
+  },
+  "interpretation": [
+    "import_loss_count is the authoritative per-document aggregate, including omitted detail records.",
+    "feature visible_occurrences count only records present in the bounded report stream and may undercount when import_details_truncated is true.",
+    "feature names identify parser/report locations; they do not establish semantic impact or root cause.",
+    "writer pic:cNvPr@id is a confirmed observed output loss class, but its acceptability is not approved."
+  ],
+  "visible_features": [
+    {
+      "feature": "color-control:chyperlink",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "004",
+        "021"
+      ]
+    },
+    {
+      "feature": "color-control:cshade",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "004",
+        "021"
+      ]
+    },
+    {
+      "feature": "color-control:ctint",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "004",
+        "021"
+      ]
+    },
+    {
+      "feature": "control:AppleTypeServices",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "061"
+      ]
+    },
+    {
+      "feature": "control:AppleTypeServicesF",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "061"
+      ]
+    },
+    {
+      "feature": "control:CocoaLigature",
+      "visible_occurrences": 7,
+      "document_ids": [
+        "100"
+      ]
+    },
+    {
+      "feature": "control:ab",
+      "visible_occurrences": 3553,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "019",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "059",
+        "075",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:additive",
+      "visible_occurrences": 68,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:adeff",
+      "visible_occurrences": 17,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:adeflang",
+      "visible_occurrences": 23,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:adjustright",
+      "visible_occurrences": 924,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:aenddoc",
+      "visible_occurrences": 27,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:af",
+      "visible_occurrences": 21257,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:afelev",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:afs",
+      "visible_occurrences": 8478,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:aftnnrlc",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "075",
+        "083",
+        "085",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:aftnrstcont",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "075",
+        "083",
+        "085",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:aftnstart",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "056",
+        "058",
+        "064",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:ai",
+      "visible_occurrences": 3562,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "015",
+        "019",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "075",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:alang",
+      "visible_occurrences": 1808,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "058",
+        "059",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:allowfieldendsel",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:alntblind",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:animtext",
+      "visible_occurrences": 118,
+      "document_ids": [
+        "083"
+      ]
+    },
+    {
+      "feature": "control:annotprot",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:asianbrkrule",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:aspalpha",
+      "visible_occurrences": 608,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "074",
+        "081",
+        "083",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:aspnum",
+      "visible_occurrences": 575,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrart",
+      "visible_occurrences": 4,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:brdrb",
+      "visible_occurrences": 142,
+      "document_ids": [
+        "003",
+        "017",
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrbar",
+      "visible_occurrences": 129,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrbtw",
+      "visible_occurrences": 129,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrcf",
+      "visible_occurrences": 532,
+      "document_ids": [
+        "073",
+        "086"
+      ]
+    },
+    {
+      "feature": "control:brdrl",
+      "visible_occurrences": 136,
+      "document_ids": [
+        "017",
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrnil",
+      "visible_occurrences": 104,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:brdrr",
+      "visible_occurrences": 136,
+      "document_ids": [
+        "017",
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrs",
+      "visible_occurrences": 648,
+      "document_ids": [
+        "003",
+        "015",
+        "017",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:brdrt",
+      "visible_occurrences": 137,
+      "document_ids": [
+        "003",
+        "017",
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:brdrtbl",
+      "visible_occurrences": 540,
+      "document_ids": [
+        "008",
+        "015"
+      ]
+    },
+    {
+      "feature": "control:brdrw",
+      "visible_occurrences": 652,
+      "document_ids": [
+        "003",
+        "015",
+        "017",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:brsp",
+      "visible_occurrences": 37,
+      "document_ids": [
+        "003",
+        "015",
+        "017"
+      ]
+    },
+    {
+      "feature": "control:cachedcolbal",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:cb",
+      "visible_occurrences": 290,
+      "document_ids": [
+        "033",
+        "073",
+        "079",
+        "096",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:cbpat",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "002"
+      ]
+    },
+    {
+      "feature": "control:cgrid",
+      "visible_occurrences": 255,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "059",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:charrsid",
+      "visible_occurrences": 2400,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:charscalex",
+      "visible_occurrences": 244,
+      "document_ids": [
+        "002",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:chbrdr",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "017"
+      ]
+    },
+    {
+      "feature": "control:chhres",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "051",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:chpgn",
+      "visible_occurrences": 41,
+      "document_ids": [
+        "063",
+        "072"
+      ]
+    },
+    {
+      "feature": "control:clbrdrb",
+      "visible_occurrences": 306,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clbrdrl",
+      "visible_occurrences": 306,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clbrdrr",
+      "visible_occurrences": 306,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clbrdrt",
+      "visible_occurrences": 306,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clcbpat",
+      "visible_occurrences": 130,
+      "document_ids": [
+        "073",
+        "086"
+      ]
+    },
+    {
+      "feature": "control:clcfpat",
+      "visible_occurrences": 70,
+      "document_ids": [
+        "086"
+      ]
+    },
+    {
+      "feature": "control:clftsWidth",
+      "visible_occurrences": 180,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clhidemark",
+      "visible_occurrences": 150,
+      "document_ids": [
+        "008",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clmarb",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clmarl",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clmarr",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clmart",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clpadb",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clpadl",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clpadr",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clpadt",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:clshdrawnil",
+      "visible_occurrences": 176,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:cltxlrtb",
+      "visible_occurrences": 154,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:clwWidth",
+      "visible_occurrences": 162,
+      "document_ids": [
+        "008",
+        "015",
+        "073"
+      ]
+    },
+    {
+      "feature": "control:cocoaplatform",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "009",
+        "013",
+        "023",
+        "030",
+        "038",
+        "041",
+        "044",
+        "061",
+        "079",
+        "082"
+      ]
+    },
+    {
+      "feature": "control:cocoartf",
+      "visible_occurrences": 33,
+      "document_ids": [
+        "009",
+        "013",
+        "020",
+        "023",
+        "026",
+        "027",
+        "028",
+        "029",
+        "030",
+        "032",
+        "033",
+        "038",
+        "039",
+        "041",
+        "042",
+        "044",
+        "049",
+        "061",
+        "070",
+        "073",
+        "076",
+        "077",
+        "079",
+        "080",
+        "082",
+        "088",
+        "089",
+        "090",
+        "094",
+        "096",
+        "097",
+        "099",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:cocoascreenfonts",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "096"
+      ]
+    },
+    {
+      "feature": "control:cocoasubrtf",
+      "visible_occurrences": 22,
+      "document_ids": [
+        "020",
+        "026",
+        "027",
+        "028",
+        "029",
+        "032",
+        "033",
+        "039",
+        "042",
+        "049",
+        "070",
+        "073",
+        "076",
+        "077",
+        "080",
+        "088",
+        "089",
+        "090",
+        "094",
+        "097",
+        "099",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:cocoatextscaling",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "009",
+        "013",
+        "023",
+        "030",
+        "038",
+        "041",
+        "044",
+        "061",
+        "079",
+        "082"
+      ]
+    },
+    {
+      "feature": "control:colno",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "074",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:cols",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "074",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:colsr",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "074",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:colsx",
+      "visible_occurrences": 59,
+      "document_ids": [
+        "004",
+        "015",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:colw",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "074",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:dbch",
+      "visible_occurrences": 5919,
+      "document_ids": [
+        "002",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "019",
+        "021",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:deflang",
+      "visible_occurrences": 51,
+      "document_ids": [
+        "001",
+        "002",
+        "003",
+        "004",
+        "005",
+        "007",
+        "008",
+        "010",
+        "011",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "024",
+        "025",
+        "034",
+        "035",
+        "036",
+        "040",
+        "043",
+        "045",
+        "046",
+        "047",
+        "048",
+        "050",
+        "051",
+        "052",
+        "053",
+        "054",
+        "055",
+        "057",
+        "059",
+        "060",
+        "062",
+        "063",
+        "065",
+        "066",
+        "067",
+        "068",
+        "071",
+        "074",
+        "078",
+        "081",
+        "084",
+        "086",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:deflangfe",
+      "visible_occurrences": 28,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "007",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "024",
+        "035",
+        "045",
+        "046",
+        "050",
+        "051",
+        "052",
+        "053",
+        "055",
+        "066",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:deftab",
+      "visible_occurrences": 25,
+      "document_ids": [
+        "002",
+        "016",
+        "022",
+        "028",
+        "030",
+        "032",
+        "033",
+        "038",
+        "041",
+        "044",
+        "049",
+        "056",
+        "058",
+        "061",
+        "064",
+        "073",
+        "075",
+        "077",
+        "079",
+        "083",
+        "085",
+        "089",
+        "090",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:dghorigin",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dghshow",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dghspace",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dgmargin",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "002",
+        "015",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dgvorigin",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dgvshow",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dgvspace",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:dntblnsbdb",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "074",
+        "081",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:donotembedlingdata",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:donotembedsysfont",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:endnhere",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "002",
+        "003",
+        "015",
+        "016",
+        "018",
+        "022"
+      ]
+    },
+    {
+      "feature": "control:enforceprot",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:expnd",
+      "visible_occurrences": 4163,
+      "document_ids": [
+        "002",
+        "003",
+        "009",
+        "033",
+        "038",
+        "041",
+        "044",
+        "061",
+        "073",
+        "078",
+        "079",
+        "089",
+        "092",
+        "096",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:expndtw",
+      "visible_occurrences": 4309,
+      "document_ids": [
+        "002",
+        "003",
+        "009",
+        "010",
+        "033",
+        "038",
+        "041",
+        "044",
+        "061",
+        "073",
+        "078",
+        "079",
+        "089",
+        "092",
+        "096",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:expshrtn",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "074",
+        "081",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:faauto",
+      "visible_occurrences": 1069,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "059",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:facingp",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "002",
+        "095"
+      ]
+    },
+    {
+      "feature": "control:fbias",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:fbidis",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "001",
+        "010",
+        "086"
+      ]
+    },
+    {
+      "feature": "control:fcs",
+      "visible_occurrences": 10056,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "059",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:felnbrelev",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:fet",
+      "visible_occurrences": 22,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "095",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:flddirty",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "014",
+        "051"
+      ]
+    },
+    {
+      "feature": "control:fldedit",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "control:formshade",
+      "visible_occurrences": 17,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "056",
+        "058",
+        "075",
+        "078",
+        "083",
+        "085",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:fsmilli",
+      "visible_occurrences": 7,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:ftnbj",
+      "visible_occurrences": 28,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "072",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:ftnlytwnine",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:ftnnar",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "075",
+        "083",
+        "085",
+        "095",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:ftnrstcont",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "056",
+        "058",
+        "064",
+        "075",
+        "083",
+        "085",
+        "095",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:ftnstart",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "056",
+        "058",
+        "064",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:gaph",
+      "visible_occurrences": 26,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:grfdocevents",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:guttersxn",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:hich",
+      "visible_occurrences": 8152,
+      "document_ids": [
+        "002",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "019",
+        "021",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:highlight",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "086"
+      ]
+    },
+    {
+      "feature": "control:horzdoc",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:hres",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "051",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:htmautsp",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "075",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:hwelev",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:hyphauto",
+      "visible_occurrences": 4,
+      "document_ids": [
+        "058",
+        "072",
+        "075",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:hyphcaps",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "014",
+        "074",
+        "081"
+      ]
+    },
+    {
+      "feature": "control:hyphhotz",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "014",
+        "015",
+        "021",
+        "022",
+        "051",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:hyphpar",
+      "visible_occurrences": 3748,
+      "document_ids": [
+        "002",
+        "005",
+        "016",
+        "024",
+        "058",
+        "059",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:ignoremixedcontent",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:ilfomacatclnup",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:indrlsweleven",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:insrsid",
+      "visible_occurrences": 6141,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:irow",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:irowband",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:jclisttab",
+      "visible_occurrences": 5595,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "050",
+        "053",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:jcompress",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "003",
+        "004",
+        "008",
+        "014",
+        "017",
+        "021",
+        "051",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:jexpand",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:kerning",
+      "visible_occurrences": 181,
+      "document_ids": [
+        "002",
+        "003",
+        "009",
+        "014",
+        "015",
+        "033",
+        "038",
+        "041",
+        "044",
+        "056",
+        "061",
+        "073",
+        "079",
+        "083",
+        "089",
+        "096",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:krnprsnet",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:lang",
+      "visible_occurrences": 8857,
+      "document_ids": [
+        "001",
+        "002",
+        "003",
+        "004",
+        "005",
+        "006",
+        "008",
+        "010",
+        "011",
+        "012",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "025",
+        "031",
+        "034",
+        "035",
+        "036",
+        "037",
+        "040",
+        "043",
+        "047",
+        "048",
+        "050",
+        "051",
+        "053",
+        "054",
+        "056",
+        "057",
+        "058",
+        "059",
+        "064",
+        "065",
+        "066",
+        "067",
+        "068",
+        "069",
+        "071",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "084",
+        "085",
+        "086",
+        "087",
+        "091",
+        "093"
+      ]
+    },
+    {
+      "feature": "control:langfe",
+      "visible_occurrences": 3002,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "056",
+        "058",
+        "059",
+        "064",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "085",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:langfenp",
+      "visible_occurrences": 1078,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "059",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:langnp",
+      "visible_occurrences": 2483,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "059",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:lastrow",
+      "visible_occurrences": 21,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:levelindent",
+      "visible_occurrences": 151,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "020",
+        "021",
+        "051",
+        "061",
+        "073",
+        "076",
+        "079",
+        "087",
+        "089"
+      ]
+    },
+    {
+      "feature": "control:levelspace",
+      "visible_occurrences": 151,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "020",
+        "021",
+        "051",
+        "061",
+        "073",
+        "076",
+        "079",
+        "087",
+        "089"
+      ]
+    },
+    {
+      "feature": "control:leveltemplateid",
+      "visible_occurrences": 44,
+      "document_ids": [
+        "015",
+        "020",
+        "051",
+        "061",
+        "073",
+        "076",
+        "079",
+        "089"
+      ]
+    },
+    {
+      "feature": "control:lin",
+      "visible_occurrences": 7121,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "020",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "059",
+        "061",
+        "073",
+        "074",
+        "075",
+        "078",
+        "079",
+        "081",
+        "083",
+        "087",
+        "089",
+        "095",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:linex",
+      "visible_occurrences": 177,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:lnbrkrule",
+      "visible_occurrences": 310,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:loch",
+      "visible_occurrences": 10206,
+      "document_ids": [
+        "002",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "019",
+        "021",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "075",
+        "078",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:ltrmark",
+      "visible_occurrences": 4,
+      "document_ids": [
+        "025"
+      ]
+    },
+    {
+      "feature": "control:ltrrow",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:ltrsect",
+      "visible_occurrences": 185,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "095",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:lvltentative",
+      "visible_occurrences": 8,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:lytcalctblwd",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:lyttblrtgr",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:margmirror",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "002",
+        "016"
+      ]
+    },
+    {
+      "feature": "control:mbrkBin",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mbrkBinSub",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mdefJc",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mdispDef",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mellelrtf",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "095"
+      ]
+    },
+    {
+      "feature": "control:mintLim",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:minterSp",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mintraSp",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mlMargin",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mmathFont",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mmathPr",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mnaryLim",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mpostSp",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mpreSp",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mrMargin",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:msmallFrac",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mwrapIndent",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:mwrapRight",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:newtblstyruls",
+      "visible_occurrences": 4,
+      "document_ids": [
+        "018",
+        "022",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:noafcnsttbl",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:nobrkwrptbl",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "075",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:nocwrap",
+      "visible_occurrences": 298,
+      "document_ids": [
+        "092"
+      ]
+    },
+    {
+      "feature": "control:nocxsptable",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:nofeaturethrottle",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "018",
+        "019",
+        "021",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:nogrowautofit",
+      "visible_occurrences": 4,
+      "document_ids": [
+        "018",
+        "022",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:noindnmbrts",
+      "visible_occurrences": 4,
+      "document_ids": [
+        "018",
+        "078",
+        "087",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:nojkernpunct",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "019",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:noline",
+      "visible_occurrences": 39,
+      "document_ids": [
+        "002",
+        "016",
+        "056",
+        "058",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:nolnhtadjtbl",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "074",
+        "081",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:nooverflow",
+      "visible_occurrences": 298,
+      "document_ids": [
+        "092"
+      ]
+    },
+    {
+      "feature": "control:noproof",
+      "visible_occurrences": 43,
+      "document_ids": [
+        "002",
+        "003",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "078"
+      ]
+    },
+    {
+      "feature": "control:noqfpromote",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:nospaceforul",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "074",
+        "081",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:notbrkcnstfrctbl",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:notcvasp",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:notvatxbx",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:nouicompat",
+      "visible_occurrences": 23,
+      "document_ids": [
+        "010",
+        "012",
+        "018",
+        "019",
+        "021",
+        "025",
+        "036",
+        "037",
+        "040",
+        "043",
+        "047",
+        "048",
+        "050",
+        "053",
+        "055",
+        "065",
+        "066",
+        "071",
+        "078",
+        "084",
+        "087",
+        "093",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:noultrlspc",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "074",
+        "081",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:noxlattoyen",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "074",
+        "081",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:outl",
+      "visible_occurrences": 68,
+      "document_ids": [
+        "009",
+        "038",
+        "041",
+        "044",
+        "061",
+        "079",
+        "089",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:pararsid",
+      "visible_occurrences": 176,
+      "document_ids": [
+        "002",
+        "003",
+        "008",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:pardeftab",
+      "visible_occurrences": 317,
+      "document_ids": [
+        "009",
+        "020",
+        "028",
+        "030",
+        "032",
+        "033",
+        "038",
+        "041",
+        "044",
+        "049",
+        "061",
+        "073",
+        "076",
+        "077",
+        "079",
+        "089",
+        "090",
+        "096",
+        "099",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:pardirnatural",
+      "visible_occurrences": 63,
+      "document_ids": [
+        "009",
+        "013",
+        "020",
+        "023",
+        "026",
+        "027",
+        "029",
+        "039",
+        "042",
+        "070",
+        "073",
+        "076",
+        "080",
+        "082",
+        "088",
+        "094",
+        "096",
+        "097",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:partightenfactor",
+      "visible_occurrences": 303,
+      "document_ids": [
+        "009",
+        "013",
+        "023",
+        "028",
+        "030",
+        "038",
+        "041",
+        "044",
+        "061",
+        "073",
+        "079",
+        "082",
+        "088",
+        "096",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:pgbrdrb",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:pgbrdrfoot",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:pgbrdrhead",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "014",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:pgbrdrl",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:pgbrdropt",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:pgbrdrr",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:pgbrdrt",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:pgndec",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "056",
+        "058",
+        "075",
+        "083",
+        "085",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:pgnrestart",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "002",
+        "015",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:pgnstart",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:pgnstarts",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "002",
+        "015",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:phmrg",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:posxc",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:posy",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:protlevel",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:psz",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "002",
+        "017",
+        "018"
+      ]
+    },
+    {
+      "feature": "control:pvpara",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:qk",
+      "visible_occurrences": 82,
+      "document_ids": [
+        "008",
+        "015"
+      ]
+    },
+    {
+      "feature": "control:qnatural",
+      "visible_occurrences": 96,
+      "document_ids": [
+        "020",
+        "026",
+        "027",
+        "029",
+        "032",
+        "039",
+        "042",
+        "070",
+        "076",
+        "077",
+        "080",
+        "094",
+        "097"
+      ]
+    },
+    {
+      "feature": "control:readprot",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:relyonvml",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:rin",
+      "visible_occurrences": 1529,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "059",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "087",
+        "095",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:rsidroot",
+      "visible_occurrences": 17,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:rtlgutter",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "003",
+        "015"
+      ]
+    },
+    {
+      "feature": "control:rtlrow",
+      "visible_occurrences": 146,
+      "document_ids": [
+        "008",
+        "015",
+        "086"
+      ]
+    },
+    {
+      "feature": "control:rtlsect",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:saftnnrlc",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "058",
+        "075",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:sautoupd",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "014",
+        "015"
+      ]
+    },
+    {
+      "feature": "control:saveinvalidxml",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:sectdefaultcl",
+      "visible_occurrences": 177,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:sectlinegrid",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:sectrsid",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "002",
+        "003",
+        "015",
+        "016",
+        "017",
+        "018",
+        "022"
+      ]
+    },
+    {
+      "feature": "control:sectunlocked",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "056",
+        "058",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:sftnbj",
+      "visible_occurrences": 174,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:sftnnar",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "058",
+        "075",
+        "085"
+      ]
+    },
+    {
+      "feature": "control:showplaceholdtext",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:showxmlerrors",
+      "visible_occurrences": 17,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:shpgrp",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "092"
+      ]
+    },
+    {
+      "feature": "control:slocked",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "002",
+        "008",
+        "018",
+        "022",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:snaptogridincell",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:snext",
+      "visible_occurrences": 18,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "059",
+        "074",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:spltpgpar",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:splytwnine",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:spriority",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:sqformat",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087",
+        "092"
+      ]
+    },
+    {
+      "feature": "control:strokec",
+      "visible_occurrences": 45,
+      "document_ids": [
+        "038",
+        "041",
+        "044",
+        "061",
+        "079",
+        "089",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:strokewidth",
+      "visible_occurrences": 68,
+      "document_ids": [
+        "009",
+        "038",
+        "041",
+        "044",
+        "061",
+        "079",
+        "089",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:stshfbi",
+      "visible_occurrences": 20,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:stshfdbch",
+      "visible_occurrences": 20,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:stshfhich",
+      "visible_occurrences": 20,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:stshfloch",
+      "visible_occurrences": 20,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:styrsid",
+      "visible_occurrences": 89,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "016",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "053",
+        "055",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:subfontbysize",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "control:sunhideused",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "004",
+        "008",
+        "017",
+        "018",
+        "021",
+        "051",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:taflags",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:tamarb",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:tamart",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:tapadb",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:tapadt",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:tblind",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:tblindtype",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:tbllkhdrcols",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:tbllkhdrrows",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:tbllklastcol",
+      "visible_occurrences": 68,
+      "document_ids": [
+        "008",
+        "015"
+      ]
+    },
+    {
+      "feature": "control:tbllklastrow",
+      "visible_occurrences": 68,
+      "document_ids": [
+        "008",
+        "015"
+      ]
+    },
+    {
+      "feature": "control:tbllknocolband",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:tblrsid",
+      "visible_occurrences": 72,
+      "document_ids": [
+        "008",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:themelang",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:themelangcs",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:themelangfe",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:titlepg",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "002",
+        "015",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:trackformatting",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trackmoves",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trautofit",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trbrdrb",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "015",
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trbrdrl",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trbrdrr",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trbrdrt",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trcbpat",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trftsWidth",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trftsWidthA",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:trftsWidthB",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "control:trgaph",
+      "visible_occurrences": 105,
+      "document_ids": [
+        "008",
+        "015",
+        "073",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trmarl",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trpaddb",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddfb",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddfl",
+      "visible_occurrences": 92,
+      "document_ids": [
+        "008",
+        "015",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddfr",
+      "visible_occurrences": 92,
+      "document_ids": [
+        "008",
+        "015",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddft",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddl",
+      "visible_occurrences": 92,
+      "document_ids": [
+        "008",
+        "015",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddr",
+      "visible_occurrences": 92,
+      "document_ids": [
+        "008",
+        "015",
+        "086",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpaddt",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trpadl",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trpadr",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "073"
+      ]
+    },
+    {
+      "feature": "control:trqr",
+      "visible_occurrences": 86,
+      "document_ids": [
+        "008",
+        "015",
+        "086"
+      ]
+    },
+    {
+      "feature": "control:trrh",
+      "visible_occurrences": 84,
+      "document_ids": [
+        "008",
+        "086"
+      ]
+    },
+    {
+      "feature": "control:trspdb",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdfb",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdfl",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdfr",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdft",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdl",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdr",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:trspdt",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "087"
+      ]
+    },
+    {
+      "feature": "control:ts",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "008",
+        "015",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:tsd",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:ulc",
+      "visible_occurrences": 171,
+      "document_ids": [
+        "028",
+        "030",
+        "049",
+        "056",
+        "064",
+        "075",
+        "076",
+        "083",
+        "088",
+        "089",
+        "099"
+      ]
+    },
+    {
+      "feature": "control:ulth",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "092"
+      ]
+    },
+    {
+      "feature": "control:up",
+      "visible_occurrences": 152,
+      "document_ids": [
+        "002",
+        "030",
+        "038",
+        "041",
+        "044",
+        "056",
+        "092",
+        "095"
+      ]
+    },
+    {
+      "feature": "control:useltbaln",
+      "visible_occurrences": 13,
+      "document_ids": [
+        "002",
+        "015",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:usenormstyforlist",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "018",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:utinl",
+      "visible_occurrences": 7,
+      "document_ids": [
+        "002",
+        "018",
+        "019",
+        "050",
+        "053",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:validatexml",
+      "visible_occurrences": 17,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:viewbksp",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:viewh",
+      "visible_occurrences": 28,
+      "document_ids": [
+        "009",
+        "013",
+        "020",
+        "023",
+        "026",
+        "027",
+        "028",
+        "029",
+        "032",
+        "033",
+        "039",
+        "042",
+        "049",
+        "061",
+        "070",
+        "073",
+        "077",
+        "079",
+        "080",
+        "082",
+        "088",
+        "089",
+        "090",
+        "094",
+        "096",
+        "097",
+        "099",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:viewkind",
+      "visible_occurrences": 83,
+      "document_ids": [
+        "001",
+        "002",
+        "003",
+        "004",
+        "006",
+        "008",
+        "009",
+        "010",
+        "011",
+        "012",
+        "013",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "020",
+        "021",
+        "022",
+        "023",
+        "024",
+        "025",
+        "026",
+        "027",
+        "028",
+        "029",
+        "031",
+        "032",
+        "033",
+        "034",
+        "035",
+        "036",
+        "037",
+        "039",
+        "040",
+        "042",
+        "043",
+        "045",
+        "046",
+        "047",
+        "048",
+        "049",
+        "050",
+        "051",
+        "052",
+        "053",
+        "054",
+        "055",
+        "057",
+        "060",
+        "061",
+        "062",
+        "065",
+        "066",
+        "067",
+        "068",
+        "069",
+        "070",
+        "071",
+        "073",
+        "074",
+        "077",
+        "078",
+        "079",
+        "080",
+        "081",
+        "082",
+        "084",
+        "086",
+        "087",
+        "088",
+        "089",
+        "090",
+        "091",
+        "092",
+        "093",
+        "094",
+        "096",
+        "097",
+        "098",
+        "099",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:viewscale",
+      "visible_occurrences": 27,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "028",
+        "032",
+        "050",
+        "051",
+        "053",
+        "055",
+        "058",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "085",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:vieww",
+      "visible_occurrences": 28,
+      "document_ids": [
+        "009",
+        "013",
+        "020",
+        "023",
+        "026",
+        "027",
+        "028",
+        "029",
+        "032",
+        "033",
+        "039",
+        "042",
+        "049",
+        "061",
+        "070",
+        "073",
+        "077",
+        "079",
+        "080",
+        "082",
+        "088",
+        "089",
+        "090",
+        "094",
+        "096",
+        "097",
+        "099",
+        "100"
+      ]
+    },
+    {
+      "feature": "control:webhidden",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "control:widowctrl",
+      "visible_occurrences": 22,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "063",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:wraparound",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "control:wrapdefault",
+      "visible_occurrences": 510,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "059",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "control:wrppunct",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "016",
+        "018",
+        "019",
+        "022",
+        "050",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "control:yts",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "015"
+      ]
+    },
+    {
+      "feature": "destination:aftnsep",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "002",
+        "003",
+        "008",
+        "015",
+        "016",
+        "018"
+      ]
+    },
+    {
+      "feature": "destination:aftnsepc",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "002",
+        "003",
+        "008",
+        "015",
+        "016",
+        "018"
+      ]
+    },
+    {
+      "feature": "destination:background",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "destination:bkmkend",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "014",
+        "016",
+        "053",
+        "075",
+        "083"
+      ]
+    },
+    {
+      "feature": "destination:bkmkstart",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "014",
+        "016",
+        "053",
+        "075",
+        "083"
+      ]
+    },
+    {
+      "feature": "destination:blipuid",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "004"
+      ]
+    },
+    {
+      "feature": "destination:colorschememapping",
+      "visible_occurrences": 8,
+      "document_ids": [
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:datafield",
+      "visible_occurrences": 271,
+      "document_ids": [
+        "004",
+        "014",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "destination:datastore",
+      "visible_occurrences": 8,
+      "document_ids": [
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:defchp",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:defpap",
+      "visible_occurrences": 11,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:expandedcolortbl",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "009",
+        "013",
+        "023",
+        "028",
+        "030",
+        "038",
+        "041",
+        "044",
+        "061",
+        "073",
+        "079",
+        "082",
+        "088",
+        "096"
+      ]
+    },
+    {
+      "feature": "destination:falt",
+      "visible_occurrences": 122,
+      "document_ids": [
+        "002",
+        "004",
+        "017",
+        "021",
+        "051",
+        "058",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "destination:fname",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "001",
+        "024",
+        "054"
+      ]
+    },
+    {
+      "feature": "destination:ftnsep",
+      "visible_occurrences": 10,
+      "document_ids": [
+        "002",
+        "003",
+        "008",
+        "015",
+        "016",
+        "018",
+        "058",
+        "075",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "destination:ftnsepc",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "002",
+        "003",
+        "008",
+        "015",
+        "016",
+        "018"
+      ]
+    },
+    {
+      "feature": "destination:generator",
+      "visible_occurrences": 47,
+      "document_ids": [
+        "001",
+        "003",
+        "006",
+        "010",
+        "011",
+        "012",
+        "014",
+        "016",
+        "019",
+        "024",
+        "025",
+        "031",
+        "034",
+        "035",
+        "036",
+        "037",
+        "040",
+        "043",
+        "045",
+        "046",
+        "047",
+        "048",
+        "050",
+        "052",
+        "053",
+        "054",
+        "055",
+        "057",
+        "058",
+        "060",
+        "062",
+        "063",
+        "065",
+        "066",
+        "067",
+        "068",
+        "069",
+        "071",
+        "075",
+        "081",
+        "083",
+        "084",
+        "085",
+        "086",
+        "091",
+        "093",
+        "098"
+      ]
+    },
+    {
+      "feature": "destination:hyphen",
+      "visible_occurrences": 198,
+      "document_ids": [
+        "056",
+        "064"
+      ]
+    },
+    {
+      "feature": "destination:info",
+      "visible_occurrences": 32,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "028",
+        "032",
+        "050",
+        "051",
+        "053",
+        "055",
+        "056",
+        "058",
+        "059",
+        "064",
+        "074",
+        "075",
+        "078",
+        "081",
+        "083",
+        "085",
+        "087",
+        "092",
+        "098"
+      ]
+    },
+    {
+      "feature": "destination:latentstyles",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "003",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "051",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:levelmarker",
+      "visible_occurrences": 24,
+      "document_ids": [
+        "020",
+        "061",
+        "073",
+        "076",
+        "079",
+        "089"
+      ]
+    },
+    {
+      "feature": "destination:listtext",
+      "visible_occurrences": 128,
+      "document_ids": [
+        "002",
+        "016",
+        "050",
+        "051",
+        "061",
+        "073",
+        "075",
+        "076",
+        "079",
+        "083",
+        "087",
+        "089"
+      ]
+    },
+    {
+      "feature": "destination:mmathPr",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "066"
+      ]
+    },
+    {
+      "feature": "destination:nonshppict",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "003"
+      ]
+    },
+    {
+      "feature": "destination:object",
+      "visible_occurrences": 8,
+      "document_ids": [
+        "008"
+      ]
+    },
+    {
+      "feature": "destination:panose",
+      "visible_occurrences": 504,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "074",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "destination:pgdscno",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "064"
+      ]
+    },
+    {
+      "feature": "destination:pgdsctbl",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "056",
+        "058",
+        "064",
+        "083",
+        "085"
+      ]
+    },
+    {
+      "feature": "destination:pgptbl",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "003",
+        "008",
+        "016",
+        "022",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:picprop",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "004",
+        "075"
+      ]
+    },
+    {
+      "feature": "destination:pn",
+      "visible_occurrences": 33,
+      "document_ids": [
+        "021",
+        "024",
+        "067",
+        "086"
+      ]
+    },
+    {
+      "feature": "destination:pnseclvl",
+      "visible_occurrences": 153,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "074",
+        "078",
+        "081",
+        "087",
+        "095"
+      ]
+    },
+    {
+      "feature": "destination:pntext",
+      "visible_occurrences": 58,
+      "document_ids": [
+        "021",
+        "024",
+        "067",
+        "086"
+      ]
+    },
+    {
+      "feature": "destination:revtbl",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "002",
+        "004"
+      ]
+    },
+    {
+      "feature": "destination:rsidtbl",
+      "visible_occurrences": 19,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "081",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "destination:shp",
+      "visible_occurrences": 47,
+      "document_ids": [
+        "003",
+        "017",
+        "075",
+        "078",
+        "092"
+      ]
+    },
+    {
+      "feature": "destination:shpinst",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "092"
+      ]
+    },
+    {
+      "feature": "destination:shppict",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "003",
+        "005"
+      ]
+    },
+    {
+      "feature": "destination:template",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "002",
+        "016"
+      ]
+    },
+    {
+      "feature": "destination:themedata",
+      "visible_occurrences": 8,
+      "document_ids": [
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:ts",
+      "visible_occurrences": 20,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "078",
+        "081",
+        "087"
+      ]
+    },
+    {
+      "feature": "destination:updnprop",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "056"
+      ]
+    },
+    {
+      "feature": "destination:userprops",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "003",
+        "058",
+        "075",
+        "083",
+        "085",
+        "092"
+      ]
+    },
+    {
+      "feature": "destination:wgrffmtfilter",
+      "visible_occurrences": 17,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "019",
+        "021",
+        "022",
+        "050",
+        "051",
+        "053",
+        "055",
+        "078",
+        "087",
+        "098"
+      ]
+    },
+    {
+      "feature": "destination:xmlnstbl",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:ab",
+      "visible_occurrences": 151,
+      "document_ids": [
+        "015",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:af",
+      "visible_occurrences": 1068,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "015",
+        "018",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:afs",
+      "visible_occurrences": 419,
+      "document_ids": [
+        "004",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:ai",
+      "visible_occurrences": 156,
+      "document_ids": [
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:b",
+      "visible_occurrences": 152,
+      "document_ids": [
+        "015",
+        "016",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:cf",
+      "visible_occurrences": 357,
+      "document_ids": [
+        "014",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:charrsid",
+      "visible_occurrences": 123,
+      "document_ids": [
+        "002",
+        "004",
+        "015",
+        "021",
+        "051"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:cs",
+      "visible_occurrences": 19,
+      "document_ids": [
+        "003",
+        "014",
+        "015"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:dbch",
+      "visible_occurrences": 320,
+      "document_ids": [
+        "004",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:f",
+      "visible_occurrences": 593,
+      "document_ids": [
+        "002",
+        "004",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:fcs",
+      "visible_occurrences": 556,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "015",
+        "018",
+        "021",
+        "051"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:fs",
+      "visible_occurrences": 422,
+      "document_ids": [
+        "002",
+        "004",
+        "016",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:hich",
+      "visible_occurrences": 319,
+      "document_ids": [
+        "004",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:i",
+      "visible_occurrences": 156,
+      "document_ids": [
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:insrsid",
+      "visible_occurrences": 427,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "015",
+        "016",
+        "018",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:lang",
+      "visible_occurrences": 166,
+      "document_ids": [
+        "004",
+        "014",
+        "051"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:langfe",
+      "visible_occurrences": 166,
+      "document_ids": [
+        "004",
+        "014",
+        "051"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:langnp",
+      "visible_occurrences": 118,
+      "document_ids": [
+        "004",
+        "014",
+        "051"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:loch",
+      "visible_occurrences": 320,
+      "document_ids": [
+        "004",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:ltrch",
+      "visible_occurrences": 428,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "015",
+        "018",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:noproof",
+      "visible_occurrences": 48,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:rtlch",
+      "visible_occurrences": 428,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "015",
+        "018",
+        "021",
+        "051",
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:strike",
+      "visible_occurrences": 149,
+      "document_ids": [
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:ul",
+      "visible_occurrences": 24,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:ulnone",
+      "visible_occurrences": 149,
+      "document_ids": [
+        "098"
+      ]
+    },
+    {
+      "feature": "field-instruction-control:webhidden",
+      "visible_occurrences": 8,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "field:multi-paragraph-instruction-dropped",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "014"
+      ]
+    },
+    {
+      "feature": "font-control:fbidis",
+      "visible_occurrences": 7,
+      "document_ids": [
+        "092"
+      ]
+    },
+    {
+      "feature": "font-control:fbimajor",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:fbiminor",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:fdbmajor",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:fdbminor",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:fhimajor",
+      "visible_occurrences": 78,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:fhiminor",
+      "visible_occurrences": 79,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:flomajor",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "font-control:flominor",
+      "visible_occurrences": 99,
+      "document_ids": [
+        "002",
+        "004",
+        "008",
+        "015",
+        "017",
+        "018",
+        "021",
+        "022",
+        "051",
+        "078",
+        "087"
+      ]
+    },
+    {
+      "feature": "list-override-control:f",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:fbias",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelfollow",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelindent",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:leveljc",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:leveljcn",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelnfc",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelnfcn",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelnumbers",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelold",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelspace",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:levelstartat",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:leveltext",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:lfolevel",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:listlevel",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:listoverridecount",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:listoverrideformat",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list-override-control:u",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "list:unbound-text",
+      "visible_occurrences": 3,
+      "document_ids": [
+        "021"
+      ]
+    },
+    {
+      "feature": "picture-control:bliptag",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "004"
+      ]
+    },
+    {
+      "feature": "picture-control:blipupi",
+      "visible_occurrences": 1,
+      "document_ids": [
+        "004"
+      ]
+    },
+    {
+      "feature": "picture-control:piccropb",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "004",
+        "075"
+      ]
+    },
+    {
+      "feature": "picture-control:piccropl",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "004",
+        "075"
+      ]
+    },
+    {
+      "feature": "picture-control:piccropr",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "004",
+        "075"
+      ]
+    },
+    {
+      "feature": "picture-control:piccropt",
+      "visible_occurrences": 9,
+      "document_ids": [
+        "004",
+        "075"
+      ]
+    },
+    {
+      "feature": "picture:wmf-retained-rendering-separate",
+      "visible_occurrences": 16,
+      "document_ids": [
+        "001",
+        "004",
+        "006"
+      ]
+    },
+    {
+      "feature": "section-control-outside-body:sectd",
+      "visible_occurrences": 6,
+      "document_ids": [
+        "002",
+        "003",
+        "015",
+        "018"
+      ]
+    },
+    {
+      "feature": "style:undefined-parent:rtf-s0",
+      "visible_occurrences": 54,
+      "document_ids": [
+        "003",
+        "014",
+        "015",
+        "016",
+        "018",
+        "022",
+        "087",
+        "092"
+      ]
+    },
+    {
+      "feature": "style:undefined-parent:rtf-s15",
+      "visible_occurrences": 12,
+      "document_ids": [
+        "005",
+        "059"
+      ]
+    },
+    {
+      "feature": "stylesheet:unbound-text",
+      "visible_occurrences": 20,
+      "document_ids": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "008",
+        "014",
+        "015",
+        "016",
+        "017",
+        "018",
+        "021",
+        "022",
+        "024",
+        "051",
+        "059",
+        "074",
+        "078",
+        "081",
+        "087",
+        "092"
+      ]
+    },
+    {
+      "feature": "symbol:*",
+      "visible_occurrences": 5,
+      "document_ids": [
+        "064"
+      ]
+    },
+    {
+      "feature": "text:NUL:dropped",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "006"
+      ]
+    },
+    {
+      "feature": "trailing-NUL",
+      "visible_occurrences": 33,
+      "document_ids": [
+        "001",
+        "006",
+        "010",
+        "011",
+        "012",
+        "024",
+        "025",
+        "031",
+        "034",
+        "035",
+        "036",
+        "037",
+        "040",
+        "043",
+        "045",
+        "046",
+        "047",
+        "048",
+        "052",
+        "054",
+        "057",
+        "060",
+        "062",
+        "065",
+        "066",
+        "067",
+        "068",
+        "069",
+        "071",
+        "084",
+        "086",
+        "091",
+        "093"
+      ]
+    },
+    {
+      "feature": "unicode:unsigned-parameter",
+      "visible_occurrences": 14,
+      "document_ids": [
+        "038",
+        "041",
+        "075"
+      ]
+    },
+    {
+      "feature": "wps:header-whitespace:dropped",
+      "visible_occurrences": 74,
+      "document_ids": [
+        "005",
+        "059",
+        "075"
+      ]
+    },
+    {
+      "feature": "wps:leading-group-line-ending",
+      "visible_occurrences": 2533,
+      "document_ids": [
+        "005",
+        "058",
+        "059",
+        "075"
+      ]
+    },
+    {
+      "feature": "wps:literal-unknown-inline-control",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "061",
+        "100"
+      ]
+    },
+    {
+      "feature": "wps:soft-hyphen-to-hyphen",
+      "visible_occurrences": 2,
+      "document_ids": [
+        "002",
+        "017"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "id": "001",
+      "source_filename": "001_doc.rtf",
+      "source_sha256": "29c8cc9cf2d80f2bf04c57324746a201b39ee1513fa165aaeb08c562c530c1a5",
+      "report_sha256": "efa932fc554952a95a9be233d2394a33e7d40b99fbf580bca5a528a99a46ca2e",
+      "import_loss_count": 6,
+      "visible_import_loss_details": 6,
+      "visible_import_info_details": 3,
+      "import_details_truncated": false,
+      "writer_loss_count": 2,
+      "writer_features": [
+        "pic:cNvPr@id"
+      ]
+    },
+    {
+      "id": "002",
+      "source_filename": "002_Buytendijk_HetA.rtf",
+      "source_sha256": "78b5f7a9efb8a445cc72078b26bb26ac320263f012e3ef4de3f9815816930951",
+      "report_sha256": "65dc2f0964ae692d49b74c0e1fb0919dfe37954a0d721685b20f5046c897d092",
+      "import_loss_count": 77558,
+      "visible_import_loss_details": 9999,
+      "visible_import_info_details": 1,
+      "import_details_truncated": true,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "003",
+      "source_filename": "003_Al_Dios_de_mi_alegria_y_de_mi_jubilo_Sl_43_4_Pal.rtf",
+      "source_sha256": "7c1d5815a6e8c3b6bb121a623fcedc1e55e70908ad599bc8556775b4cf16163b",
+      "report_sha256": "45842d2f1143b2ce7c2596bdf90c380c82e5963a380989b2fa03601a970546fc",
+      "import_loss_count": 1196,
+      "visible_import_loss_details": 1196,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "004",
+      "source_filename": "004_LarsLarsensBlogg.rtf",
+      "source_sha256": "77951bb8441057e29e6f6a88cc73dcc3dcce0c9b2e5ca3606d62f9264b0bdbc8",
+      "report_sha256": "fa10b2b3ed5c13880b70fd277e07b35d5456527c53ba26ff1b324e2a0ad96973",
+      "import_loss_count": 72860,
+      "visible_import_loss_details": 9998,
+      "visible_import_info_details": 2,
+      "import_details_truncated": true,
+      "writer_loss_count": 1,
+      "writer_features": [
+        "pic:cNvPr@id"
+      ]
+    },
+    {
+      "id": "005",
+      "source_filename": "005_RomaniaSiSfarsitulEuropei-AmintiriDi-MihailSturd.rtf",
+      "source_sha256": "5de12c802716ea2a00545e9a2f23b5d655ecb59376a031c56313111b8d1ac1d7",
+      "report_sha256": "45c14587d8efc920dfb84de8daef2892dae339bda07612f1aae09c1039218b3d",
+      "import_loss_count": 5228,
+      "visible_import_loss_details": 5228,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "006",
+      "source_filename": "006_E-Book_-_Martial_Arts_Kenjutsu_-_Shinkage_Ryu_Ia.rtf",
+      "source_sha256": "4e2b6eed8e09c26a7160c09cd32a8f1e9cd469913995c2b26242b2ee56b4a47e",
+      "report_sha256": "d31d2ec071ef29dcd121025d5412a8c18d58cccd5960e2eaf51412e2d17d0bcf",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 14,
+      "import_details_truncated": false,
+      "writer_loss_count": 13,
+      "writer_features": [
+        "pic:cNvPr@id"
+      ]
+    },
+    {
+      "id": "007",
+      "source_filename": "007_Ujjvala_Nilamani_01_Three_Tika_-_Sanskrit_Texts_.rtf",
+      "source_sha256": "78d952969b8d8db9ff1d6ed8bc879e54d4adcb73dec41c77e13abcb788c7618a",
+      "report_sha256": "5dc8a19b5b296d135f43bfdd59124a8b94938837fceead441def5c64dbf85883",
+      "import_loss_count": 2,
+      "visible_import_loss_details": 2,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "008",
+      "source_filename": "008_NewRichTextDocument.rtf",
+      "source_sha256": "a79726005cb8008db506f28342a9a6a5fdc000dc2cb93906dccd01e67b0555ac",
+      "report_sha256": "4c01f4355f4c7738d30b2f357bab69cbf2c0c1aeef48584419898f6c428f7963",
+      "import_loss_count": 12272,
+      "visible_import_loss_details": 9999,
+      "visible_import_info_details": 1,
+      "import_details_truncated": true,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "009",
+      "source_filename": "009_ein_freier_raum_fuer_freie_wesen_weder_staat_noc.rtf",
+      "source_sha256": "c0ad6ba5dae8b12b15f9f3ad0706c454b2e557a0d53463d6cdeae72fb7172219",
+      "report_sha256": "9769bf06ec789ff8289df78b772cb100fb160e8d0e005d3801a1bf6318358ac7",
+      "import_loss_count": 75,
+      "visible_import_loss_details": 75,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "010",
+      "source_filename": "010_Arabic_Book_of_the_Adept_Eng-ArabVerses_rtf_word.rtf",
+      "source_sha256": "e1f97230a145b26bb0cb0961af6e15cdfdaf6347c2ec99f1c6dc54d7237a4a2c",
+      "report_sha256": "46c3fa369d188cf001a67acd5f624575a2133e1bf73ffcb9afc0048e142e2592",
+      "import_loss_count": 3069,
+      "visible_import_loss_details": 3069,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "011",
+      "source_filename": "011_Tamil_to_English_Grammar.rtf",
+      "source_sha256": "f7d767093e5afb2121a84d079dd6ceb6b495d233cdc3b4dfb11c73d92278b83d",
+      "report_sha256": "968b83f7f7622153dd9c718008635847ad6e4842c64672d6ebfc1db1d0da2d75",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "012",
+      "source_filename": "012_doc.rtf",
+      "source_sha256": "eb28f4b47b7e6b81c72ac24ed2be28edbd6700abad0b65377220b0567c42ea83",
+      "report_sha256": "2c6cce91d146057aa73c56c923a9f854b52a56af04aa6ea8e8bc8e15fbb1e440",
+      "import_loss_count": 6,
+      "visible_import_loss_details": 6,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "013",
+      "source_filename": "013_COPYING.rtf",
+      "source_sha256": "e2f91967b3d5e2d27c2c1e8ea3ca362d9ea6e39ebfb4732e74668155cd712af3",
+      "report_sha256": "a3a9c8b7e94b9f762b2a128efb150c153e2f7cc012aeadb251819a9fe80455c3",
+      "import_loss_count": 13,
+      "visible_import_loss_details": 13,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "014",
+      "source_filename": "014_Benedetti_Mario_-_El_Cesped_Y_Otros_Relatos.rtf",
+      "source_sha256": "ac564969b065f2e3d5c7aaa091eae6cd355609556b7da9131613c8f7069cf705",
+      "report_sha256": "b6a8f6ae723d25fe21cf335a4b728928b11b40f53392c559e7078816972e3662",
+      "import_loss_count": 3804,
+      "visible_import_loss_details": 3804,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "015",
+      "source_filename": "015_doc.rtf",
+      "source_sha256": "5705ec1319a2821c7c2a27e854f40895f975af67abefebbc4abf593e9160f340",
+      "report_sha256": "facdb341e14fcb355be4e72cf3d8104236a702c8810814788b663b8bda1642ab",
+      "import_loss_count": 6585,
+      "visible_import_loss_details": 6585,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "016",
+      "source_filename": "016_BerlanA_Emancipation.rtf",
+      "source_sha256": "5b90a62f6bb66eb6b617770b37943c7b0bcf194247ac5517398a5f05620f0c51",
+      "report_sha256": "c7884cbf37186bb27f839f26e4b288ca15e88360dca8de29a67a0180d5a01848",
+      "import_loss_count": 2892,
+      "visible_import_loss_details": 2892,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "017",
+      "source_filename": "017_A_Student_by_George.rtf",
+      "source_sha256": "838ba098eee0cb0a9b4f33e8f61d1ff8a36d3aee0530dade906c5c7dc0e15238",
+      "report_sha256": "ccab52f8b79cbcf3f852b0fed04d102c98305cef0d3686c5d476113f1919d738",
+      "import_loss_count": 5132,
+      "visible_import_loss_details": 5132,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "018",
+      "source_filename": "018_EKUSH-FINAL.rtf",
+      "source_sha256": "43ebd439a2f822e4fb2d6d163527851e4389aaeb443554f0eb6f6e6f0bf163a7",
+      "report_sha256": "4763e5890ddaeacace5fe0e3dd252309b4a915298c11c8c287400eecfa3881e6",
+      "import_loss_count": 1013,
+      "visible_import_loss_details": 1013,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "019",
+      "source_filename": "019_mariaAntonietaCastilloVignolo.rtf",
+      "source_sha256": "84e353e1bbc426de151049727030501f633adf6dce1a480818ebfc7323305dfc",
+      "report_sha256": "2c4a8604e912040c799629c1b531e7885aaef22e663afdbd2337f4a5ec802b7a",
+      "import_loss_count": 4831,
+      "visible_import_loss_details": 4831,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "020",
+      "source_filename": "020_ascendepermawandelfreundlichmenschtierpflanzmoeg.rtf",
+      "source_sha256": "86398ae17751bc5e3be66cea782255cc6e333c50581da1da30e269dccca35a63",
+      "report_sha256": "370235f92d49a5cb23dcfd2affdd8852c4e3d7a8329c7f6aa13f261c3354002f",
+      "import_loss_count": 38,
+      "visible_import_loss_details": 38,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "021",
+      "source_filename": "021_descarga.rtf",
+      "source_sha256": "742c221dc874045187a5b1ae73a2fc9e41f4926d267b5e036ee2705cf463a86c",
+      "report_sha256": "dab6a89677289f095893e09a8df7b4ebad2990fa24ddbfdae6b96dc42bfe281d",
+      "import_loss_count": 621,
+      "visible_import_loss_details": 621,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "022",
+      "source_filename": "022_Mohanty_s_books_to_get.rtf",
+      "source_sha256": "066e4332fed49304fa745ca610c2aa33c60b6475b2676ce86783f31d09d94aa4",
+      "report_sha256": "72c9bbb7e0f7f6d24f1485edabdba590e85c80a1075598a5136e5016e239fb68",
+      "import_loss_count": 667,
+      "visible_import_loss_details": 667,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "023",
+      "source_filename": "023_doc.rtf",
+      "source_sha256": "7c1e0e9aeb519cf443d33e622180510576757b8be24af548b7c4ae9ef8507f88",
+      "report_sha256": "1b76fc1a20f530e2980542309eea6b61b618fd438321ad503124d0d6d1024133",
+      "import_loss_count": 9,
+      "visible_import_loss_details": 9,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "024",
+      "source_filename": "024_EULA.rtf",
+      "source_sha256": "f515a1fe7b85350df9d265587f9ed9fefbf9a16981166460aec72af6814bde6b",
+      "report_sha256": "add21fc8938c08182d378fecbf7ba8b61b2523c2aa3e29956ea63f9eced1761b",
+      "import_loss_count": 42,
+      "visible_import_loss_details": 42,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "025",
+      "source_filename": "025_Historia_Antonia.rtf",
+      "source_sha256": "1ee972c31be65baf6227cf423295b7a3d0f4ee1d0caed1004c61d6ca0ce230ba",
+      "report_sha256": "911c543eb25af5d37f07a46531a9d5c845ba691489ff8a0306ef4e66a863e30b",
+      "import_loss_count": 9,
+      "visible_import_loss_details": 9,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "026",
+      "source_filename": "026_fuefezwaenzigschtetegscht.rtf",
+      "source_sha256": "12cd0e685822011c63bea5d5084438db21cedf2b6239e4d783e57b5412cdf043",
+      "report_sha256": "91d66861fcbe1f85429cdb630eca2378b81f50a5e99d484f4191945532be2310",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "027",
+      "source_filename": "027_szweiezwaenzigtschezwaetschgeli.rtf",
+      "source_sha256": "59f6dba020bc95655d620ecded981137b700bc28ba7f41c37a071dabbe77f2cb",
+      "report_sha256": "b988172fc116f661bf9eab7b89ae53e0cdc642721fc493713a9275ee414df1b9",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "028",
+      "source_filename": "028_Peter_Michael_Braunwarth_Publikationsliste.rtf",
+      "source_sha256": "ae61f5098491b957642f996ce2c9e32c73684670234de27a3a03dff3c6f5dbd6",
+      "report_sha256": "bd594f4bea8419230f31fd93b2d8a9c6e3b8a3219462ed143fc963bcbccc888a",
+      "import_loss_count": 27,
+      "visible_import_loss_details": 27,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "029",
+      "source_filename": "029_derviertimaerz2018.rtf",
+      "source_sha256": "98198a0b2ff85c869c4114b309b299e27c5c8a9ebf4c5aacda06918827c83eb3",
+      "report_sha256": "4ab37c385c40bf3c2bf00ea8079cc7f9dd8de949b83a45b176de90cf617fe808",
+      "import_loss_count": 11,
+      "visible_import_loss_details": 11,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "030",
+      "source_filename": "030_5.rtf",
+      "source_sha256": "0e1795317eabc07e1bf0efeb4ef85b584a89dc74cc065e87d6ce32072490f0b0",
+      "report_sha256": "e5618d49be87501081dcd19be5a86923d1ab4d50235ea61065b41d3e6ff880c4",
+      "import_loss_count": 28,
+      "visible_import_loss_details": 28,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "031",
+      "source_filename": "031_doc.rtf",
+      "source_sha256": "d3916ea1839c00dc433c4b48eff28036082a7b49400395c707050ba94a2ef1a5",
+      "report_sha256": "6526f0d1f255623ca547a7dcab3bd5130661e2864c333e6a11256da51ed9155b",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "032",
+      "source_filename": "032_02_laburpena.SakabanaketaNafarroan.rtf",
+      "source_sha256": "60454e0318f857dddff32c6a96251dd5c713855fd3585eab5457da7ce807026c",
+      "report_sha256": "49f852b58d44fcb626b0c9257882ba1bd3e77443dbd2e8d7da0151718bf621b2",
+      "import_loss_count": 41,
+      "visible_import_loss_details": 41,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "033",
+      "source_filename": "033_SanchezCurbelo.rtf",
+      "source_sha256": "a8ec1dabe44783cd99ddb564f77a868b687b6bf3796159bcf0e95be35a7e9010",
+      "report_sha256": "654dd5f4ec43a5aa45f4caecf0cd4b33ce3b106d177342fdc5ebbee3e7ba6c95",
+      "import_loss_count": 15,
+      "visible_import_loss_details": 15,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "034",
+      "source_filename": "034_Tracks_-_2_CDs.rtf",
+      "source_sha256": "f4b7231e4b293f37d64569308b7c99f2ca6ac4d1cb039e62e044c7bbc6a8db9d",
+      "report_sha256": "37cde2e913bee0919d067563b3dd515549192c52b2ba0234ef29c67e05963a2f",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "035",
+      "source_filename": "035_doc.rtf",
+      "source_sha256": "f3c28d93dd23e73149c67bb2ca0f308c34bf5a3fcdcf57ca011f3746f46a6f00",
+      "report_sha256": "2dba3b26d476c7a3fe2bbdef931eca54c832ae3bd54bccfcc127d9ea695bc611",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "036",
+      "source_filename": "036_Tarea_de_Kim_1.rtf",
+      "source_sha256": "ebbd97e3be939dbb2cf88197526c786eec38f8188be2d61c40c2a8572550ea48",
+      "report_sha256": "6691225dea039d044f5e0c2089ae125fff1b0d850a8254eb9b077c4f42a4e50b",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "037",
+      "source_filename": "037_essay.rtf",
+      "source_sha256": "3d77e5c6e618268767760c89db1458b120f9cbccdf64f5a3a3ca99d5c5b03dd9",
+      "report_sha256": "35ea4a1bf8551777db1cdf9ca9e5596111260170ec158c588bd3caede18a875d",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "038",
+      "source_filename": "038_Leonardo_Da_Vinci_-_Simplicity_is_The_ultimate_s.rtf",
+      "source_sha256": "389bed7cf268e7ad6ab835b6a720203605cd2e458b0b62b40e5fc956dc4e8de3",
+      "report_sha256": "2851ef91926065af3d98dd30ef5419170335be0c3ac51775abd72977f7732dee",
+      "import_loss_count": 38,
+      "visible_import_loss_details": 38,
+      "visible_import_info_details": 4,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "039",
+      "source_filename": "039_Info.rtf",
+      "source_sha256": "494f8e0dc4005ecd241be2109d1cb46aad83626dbaf8e45afd6d05d4f1de235b",
+      "report_sha256": "24bdd4233dd437508a1fda041a92579cc7ecf600b8a1482e4b85c1976cb8cd6a",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "040",
+      "source_filename": "040_Belge.rtf",
+      "source_sha256": "d10d5aafa677b2a8097609f996d79fcfdbf91b84f0a3055598186932a9e8f2b0",
+      "report_sha256": "4ead403976adb45cd3891b1287fc5543f17d049881c6898bd31d68906513d94b",
+      "import_loss_count": 25,
+      "visible_import_loss_details": 25,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "041",
+      "source_filename": "041_Arretez_une_Dependance_avec_des_Nouveaux_Objecti.rtf",
+      "source_sha256": "aa0c49102a9a03d9b2dd069d7dbe463270bde9f7ac8928e76cb30522fa8d5b32",
+      "report_sha256": "7b2beb65598d2ebae5e68a12478da8f29642dc39c463090c8b625171a9f41f97",
+      "import_loss_count": 14,
+      "visible_import_loss_details": 14,
+      "visible_import_info_details": 4,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "042",
+      "source_filename": "042_drseppliundsmeielisaegejetztischgnuehoidune.rtf",
+      "source_sha256": "f01e53707f43224c2c067f1747115a9cdc4b3638a6ea3ae47e929b8113e7ea57",
+      "report_sha256": "cc4de6286b177da42bc7b69f2c11bf1bc220f73b2b2369b83377a8745cb8be1d",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "043",
+      "source_filename": "043_Tarea_de_Kim.rtf",
+      "source_sha256": "724fe8fb0dde4fde128dd7374163f0f72421388745f60c9e0f6d7f3d7d10e1a6",
+      "report_sha256": "ad81af5f7f6450b23001f4261ecb9b404b92417acdc56b25ebee27ddad3eac6c",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "044",
+      "source_filename": "044_Ce_nest_pas_en_regardant_la_lumiere_quon_devient.rtf",
+      "source_sha256": "232a169d583ef9c94fc4209a1a11ffa0a358f50f011623cf9412fc567615e8ac",
+      "report_sha256": "c4d892372fa72bb760c352ad32ba86c930b33af5db49dec5f4785d7d095946af",
+      "import_loss_count": 14,
+      "visible_import_loss_details": 14,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "045",
+      "source_filename": "045_JustMarriedByIndex.rtf",
+      "source_sha256": "da677617abd8f13ae3f761e0092b60036b07f1e101dec78ce5db586ddcd3e165",
+      "report_sha256": "25f0586912a44d88138d5ee21808f3355235f3eb70baddc849a36448a51ead12",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "046",
+      "source_filename": "046_SrabTenggaroh05.rtf",
+      "source_sha256": "28af29ed9a777b384a4dbcd8a1da9074cee2d94476ad86e56e01714697619908",
+      "report_sha256": "4b16a0fe12ed086fabb2e401b58f18756b168b293e7875ebac8346fd25e69389",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "047",
+      "source_filename": "047_Scalpel_and_Tongs.rtf",
+      "source_sha256": "be5528b22513bd4c0c4a6c906e01a1a32bdccafa203c16a56241836828dff13b",
+      "report_sha256": "c52b31045eb585bfac3ede800cf7deb8405aaa3b59b5d1f0c017f0458c9a344f",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "048",
+      "source_filename": "048_esperimento.rtf",
+      "source_sha256": "f5744b901b580c947078cdd60475cb75db88df4bdb520eb170f359febe6b2acb",
+      "report_sha256": "8d1e2e9fe435811e8f77fb04bf8265e98eb5fcd7ff3ffe2dc9e28fe9cde30323",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "049",
+      "source_filename": "049_UploadingTrilogy.rtf",
+      "source_sha256": "1d281c3308a874c0401c157da3e32f35f92b2f46471c7eabcd7ae7d9ba7a3033",
+      "report_sha256": "65c70a37e1f81b54622eed09d6d39302c0cc412468c74c8c466344b358e1a7e0",
+      "import_loss_count": 9,
+      "visible_import_loss_details": 9,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "050",
+      "source_filename": "050_How_to_speak_with_teens_on_sensitive_topics.rtf",
+      "source_sha256": "7649149e4a2ef77c26665ef4964d91f0b7f50d40c587b7824bc59ba60a429a80",
+      "report_sha256": "99cf3351b4f6de1de3b8bb1beefe2d8d627583390720743597fe4a3026ed8750",
+      "import_loss_count": 63152,
+      "visible_import_loss_details": 9999,
+      "visible_import_info_details": 1,
+      "import_details_truncated": true,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "051",
+      "source_filename": "051_hr090_improvisions_formatted_text.rtf",
+      "source_sha256": "0301be87fac82a85b1bf969d6e5dcfd567d833c67cdcaf4f28ea5f1d6911ca27",
+      "report_sha256": "506de6f7493427226f1fa9a63cd6e39922c57bd04a7b2a460f9399c7d7392e86",
+      "import_loss_count": 7505,
+      "visible_import_loss_details": 7505,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "052",
+      "source_filename": "052_re_exodus_-_author_s_notes.rtf",
+      "source_sha256": "ee3636080b1bf7adc17323c67b29356ae373738272d3e607470f60febb812e38",
+      "report_sha256": "85ba45fb773d26c706eab4144150af6f0f53819a627557bba98c5c0067f3e415",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "053",
+      "source_filename": "053_CTA-VII_SECTIONS_1-24.rtf",
+      "source_sha256": "f2be9b9d32463562b137e7f12ebe11b2d1eeb32c310b39fa7ecf2893323b2b2f",
+      "report_sha256": "13c885dcef96bd756e1f1ca06546ebba167b134e461fbe2e09810f03f20a4bf6",
+      "import_loss_count": 642122,
+      "visible_import_loss_details": 9999,
+      "visible_import_info_details": 1,
+      "import_details_truncated": true,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "054",
+      "source_filename": "054_Hotyn2.rtf",
+      "source_sha256": "d3a22c9e5dcfc613a5388eaf8b77e36449db5497640cffe2be4f1820fb2f66e8",
+      "report_sha256": "88645cff518412dc372e38d1dfbc44c7f360b67abf1a9f548304700f610f4950",
+      "import_loss_count": 26,
+      "visible_import_loss_details": 26,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "055",
+      "source_filename": "055_The-Vermont-Constitution-A-Legacy-Worth-Saving.rtf",
+      "source_sha256": "fd743dc9af98642dea855778c18fe6b6d4533fe05699bfc3f274115c22c7605a",
+      "report_sha256": "f89530c6217b01ed789582fd9fc20eae0742a0c3fe2abc7b0af711b42b2aee77",
+      "import_loss_count": 102846,
+      "visible_import_loss_details": 9999,
+      "visible_import_info_details": 1,
+      "import_details_truncated": true,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "056",
+      "source_filename": "056_MediaOutletsControlledByTheEstablishmentAndTheGl.rtf",
+      "source_sha256": "8c0742daae77141a9dedd1fe41679a638010bab7d3ed25f901c976bbf4d0b265",
+      "report_sha256": "9c2560baafc0953ea91e79bcad752eddddf869189ac19beb28dbb4050133d6a9",
+      "import_loss_count": 477,
+      "visible_import_loss_details": 477,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "057",
+      "source_filename": "057_There_is_No_Third_Possibility.rtf",
+      "source_sha256": "9b09367b6bd153c5e31d782261f50424a83f6fafd99ca8e17bacfe53a6bee827",
+      "report_sha256": "3794b0132490c316096f25c7f982ab80a6ddb8f06dfb5cf6fe4accb7c02dc306",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "058",
+      "source_filename": "058_THE_GOOD_CHILDS_LIBRARY_EIGHTH_BOOK.rtf",
+      "source_sha256": "e75e06ec1d086c8ce3ff85cc46c5e2213b0cdaefda8866f8252967c1f8da7a87",
+      "report_sha256": "c0e42c3d934cfaf7b6b03207104755747494ed5ab48b9df027c952dae090aca1",
+      "import_loss_count": 7549,
+      "visible_import_loss_details": 7549,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "059",
+      "source_filename": "059_Suicide_Justified_-_C.K._BiTe.rtf",
+      "source_sha256": "e6571d7910984b407a67f2b2e54225e36512349b7e06b2e498e282d5b71ceca1",
+      "report_sha256": "c0223ca6f0667e0c0db8621c0b2387cecfdbc52d3095e6cdfbefae506f5a13de",
+      "import_loss_count": 790,
+      "visible_import_loss_details": 790,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "060",
+      "source_filename": "060_Les_Miserables1935.rtf",
+      "source_sha256": "2746a7c4329e74078df753499c24b18b3960455c68c9a95a50278837fdc92dc8",
+      "report_sha256": "15dbf946580a4165dadf34a8805741bf6d7a83630f430e3b05d0f97b4918ef63",
+      "import_loss_count": 3,
+      "visible_import_loss_details": 3,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "061",
+      "source_filename": "061_Sparks_-_Live_At_The_Record_Plant_1974.rtf",
+      "source_sha256": "41c9f3b16de00788a5308c6a05d5c7923464f200751852a948aa26c1a4bcff34",
+      "report_sha256": "5ec3369743283b5ec1ea4012631f52534f161c98a9295b3bc32b0751dcf97ec4",
+      "import_loss_count": 128,
+      "visible_import_loss_details": 128,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "062",
+      "source_filename": "062_TheBoWeevilClubBook.rtf",
+      "source_sha256": "2be5de7083302e748e5f2261d69df23e2ef476ecd5dd45bae0b411eb10138444",
+      "report_sha256": "5a9f14a3f886e6b1188b77f008a2941fec42b7b9813e928deab36808f7a3d4d4",
+      "import_loss_count": 3,
+      "visible_import_loss_details": 3,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "063",
+      "source_filename": "063_ETMOOC_T3S1_-_Digital_Literacies_with_Dr._Doug_B.rtf",
+      "source_sha256": "3d1aa8c1832d78a1b2d3b8a8be536221220642b510bde5e7bac47814f1e180cb",
+      "report_sha256": "ea95effd2aa35cf91582f2c9460e0bb9ccb74707a3b82bfdee7f0c1e1afe9f45",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "064",
+      "source_filename": "064_8a-lesson7-v0.42-pub-dom-pdf.rtf",
+      "source_sha256": "96fd878bfae9c68e310fa793b83be485e32fabacc2a83c5c79ce152b59f1b9fb",
+      "report_sha256": "631c1d3a82c925cee379c562b7b98e5ea783277305714a2575f36380cfacfa76",
+      "import_loss_count": 2286,
+      "visible_import_loss_details": 2286,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "065",
+      "source_filename": "065_sonic_exe_the_remake_by_sirjchyena231_dbs9nar.rtf",
+      "source_sha256": "abb91bc81bfa3b860cbef5b750a242996b5edd15e658559ba2801fe4a17e43cb",
+      "report_sha256": "f32245dcd7b55080e24bf567dd57c8b99165e3c34112e3cf356fca60acf931d7",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "066",
+      "source_filename": "066_WhatsNew.rtf",
+      "source_sha256": "cc0d634192d2fc50ad18fc9ab3bdb6693bee2846599d958a80f12a1a405596fd",
+      "report_sha256": "882207a542c535cf635099c66aaf784a6ac060d54e538735f73e008cb17b66a9",
+      "import_loss_count": 8,
+      "visible_import_loss_details": 8,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "067",
+      "source_filename": "067_APlainPath.rtf",
+      "source_sha256": "2d0bb113e392ebee3993b232421e7005b9828792a41d34a3ffeb2a88d81e722c",
+      "report_sha256": "18d5936989d9498429c25664c4ccc0c011efa89fec7a1fea3603e0672935f065",
+      "import_loss_count": 74,
+      "visible_import_loss_details": 74,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "068",
+      "source_filename": "068_NRA_2010_IRS_990.rtf",
+      "source_sha256": "58eb5163f15bd587cd6e1bb21eca53afeaae60619d9ad649594e6767100dfe4e",
+      "report_sha256": "d3ffbbf8cdb1e69261be323c4ed75b002b6dd6fd365b1918b9c6210ba7fffbde",
+      "import_loss_count": 4,
+      "visible_import_loss_details": 4,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "069",
+      "source_filename": "069_FujiSupport.html.rtf",
+      "source_sha256": "64ecc4f344250702008d7f3d2f2c1d735e780cf0c21609be5e19b40ed21f8141",
+      "report_sha256": "d14e232e22ea21bd050fb671957f89bea39bf012dbe28653920d8c71884980fa",
+      "import_loss_count": 3,
+      "visible_import_loss_details": 3,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "070",
+      "source_filename": "070_ListaCumpleaos.rtf",
+      "source_sha256": "f15bdcfd7bb19a632a91d13079745d71380f60641cf5838796654843b9a47ef1",
+      "report_sha256": "e6cf2628370443b51a0c12b4aab243bcdb5725354245c844e5972576346a4373",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "071",
+      "source_filename": "071_ps-destroy_graphics_memo.rtf",
+      "source_sha256": "fe826a19052bc1cc95541d49d294a35dc0ea7a518153105568c192a8cc273668",
+      "report_sha256": "196521c5e8dee4eca371ca8408116be5b0e1de3dab4936d0c4d56cf2d32a8453",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "072",
+      "source_filename": "072_OEB-2016.1-US.rtf",
+      "source_sha256": "7eac81ee9d3f5f07229509bd5a60918d01a38afd28c0f68b2a80daa25283ced1",
+      "report_sha256": "10864afd55295a084b46bffb297aa8caddeb937884c9c52460bb7da7207f64d9",
+      "import_loss_count": 42,
+      "visible_import_loss_details": 42,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "073",
+      "source_filename": "073_Heartsong_Wiki.rtf",
+      "source_sha256": "82f44f50105ad307dd6d6212506a86c2becdbb876b08a9ff0f12f7a10035f638",
+      "report_sha256": "eb092b627f37fd7af050f1a1fbb2650c7996ee102d1ea7bcbf539b5fad1516f4",
+      "import_loss_count": 1103,
+      "visible_import_loss_details": 1103,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "074",
+      "source_filename": "074_HenryWallaceSpeech-TheCenturyOfTheCommonMan.rtf",
+      "source_sha256": "58e4fc2d12cbc9e835a6325d30dc8468aefd37628a126233867b20bab66287c1",
+      "report_sha256": "3c620181645690135c99199cd1a010a2d4258642530acf68acc23c79975c116f",
+      "import_loss_count": 105,
+      "visible_import_loss_details": 105,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "075",
+      "source_filename": "075_LetLoose.rtf",
+      "source_sha256": "310183e2bb8a29264fe627ca602c45536661a10aecdb0b850db67ac4ee8d380a",
+      "report_sha256": "998fd9ba34ff47427052a669cdd52559bf0881e1a029ccf5bc17c692f6983f0f",
+      "import_loss_count": 25972,
+      "visible_import_loss_details": 9993,
+      "visible_import_info_details": 7,
+      "import_details_truncated": true,
+      "writer_loss_count": 22,
+      "writer_features": [
+        "pic:cNvPr@id"
+      ]
+    },
+    {
+      "id": "076",
+      "source_filename": "076_IpodSoftwareLicense.rtf",
+      "source_sha256": "d4caa9b3e341c25f4bb7f37308b917f9b2d3b50bd88965cf42f67db7a22e8719",
+      "report_sha256": "3150690e459b10dd41f915fc2b3324cc5fa8b9e641a235e5d93a2f83ea194080",
+      "import_loss_count": 163,
+      "visible_import_loss_details": 163,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "077",
+      "source_filename": "077_obazerotext.rtf",
+      "source_sha256": "95d1e1737367b7963323b1793f4ae8df0e521608680881e81ad4c64bbeef0b81",
+      "report_sha256": "4b44979a9f4393cd87c4aa5dc0a6a85ec1385862cb93bc907064db24bd7b936a",
+      "import_loss_count": 14,
+      "visible_import_loss_details": 14,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "078",
+      "source_filename": "078_1108221226_datosNacimientoDeLosDangelisSinFoto.rtf",
+      "source_sha256": "572bfbb630fd5d478f27a827814f94aea29252a99464833516162fc99a98cff4",
+      "report_sha256": "e2a6dd3f134e1fa69b2a24241481f560dee888c7e11b797a9789094a1206964f",
+      "import_loss_count": 853,
+      "visible_import_loss_details": 853,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "079",
+      "source_filename": "079_The_Pathway.rtf",
+      "source_sha256": "a8f0ce54076cca898ddbfd575863f0c2e1c287b4e8ca19401142b83c6488829c",
+      "report_sha256": "e426ca90b870403ad18c67b76e59249ccfd6272ef89affe263357f9acb3e70d6",
+      "import_loss_count": 221,
+      "visible_import_loss_details": 221,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "080",
+      "source_filename": "080_SoundGeographies.rtf",
+      "source_sha256": "97e64bb59bdd869033115c88a6c0746bfa7c2b7cd68ca83d2fd1236c243cc03b",
+      "report_sha256": "0bdd2bdc4f91ca84b135db7146b895c85bce058fc13e9848e6a897d3a34ad890",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "081",
+      "source_filename": "081_UmCuboHiper-boreo.rtf",
+      "source_sha256": "ffdac7e7b4d2dea0a89cf659e1bb6b9fa1be257ba9fc84bd67cd7e1fbc021fc5",
+      "report_sha256": "fd64f0f2991c7023116e0e8d32f2d581f043fd0f9b9cc0068997069e8e055003",
+      "import_loss_count": 75,
+      "visible_import_loss_details": 75,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "082",
+      "source_filename": "082_TS_Setlist2022-01-24.rtf",
+      "source_sha256": "9f592ea38e2dc0a134a6b432aef044981454dcd41fdcf69dbcc6157b54f5124e",
+      "report_sha256": "a494fd0608dfcf7fee583752f4d080aa965af9689e462eeba4a4457949672b02",
+      "import_loss_count": 9,
+      "visible_import_loss_details": 9,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "083",
+      "source_filename": "083_Liberty_Versus_the_State_-_A_Libertarian_Apology.rtf",
+      "source_sha256": "a03667383110d6ee4758b5a8f64130367109c7b5d85a76c7be478d068568c5e8",
+      "report_sha256": "3f4bd8226c7351a7dd9bdd3eed640437c83b9807e53305acca774661d136d24b",
+      "import_loss_count": 1071,
+      "visible_import_loss_details": 1071,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "084",
+      "source_filename": "084_Yandere_Simulator_Paulina_edition_by_Flower_prin.rtf",
+      "source_sha256": "7128bc78039e3dd3bbcde4d5cb702d29a50c8fcf6384856ae3d52805216a93e8",
+      "report_sha256": "91509dfc3ec81a81761785ab86b58247ee6274ad46e89d139fedcc20ea2179cf",
+      "import_loss_count": 5,
+      "visible_import_loss_details": 5,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "085",
+      "source_filename": "085_66_Books_of_the_Bible_listed_in_order_printable_.rtf",
+      "source_sha256": "316300825064cde868edaee8fe23917cbb16d0c16c02b938486bfc425362a108",
+      "report_sha256": "bfc507019df6b889f31db955062d7c08a50ce9ce2d0cb8f07154bdd45ec72f83",
+      "import_loss_count": 771,
+      "visible_import_loss_details": 771,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "086",
+      "source_filename": "086_doc.rtf",
+      "source_sha256": "19b4c52cfbc21b2c4895e1e1d8f78b4e47ecfcd3ce720a11d7a678267866b662",
+      "report_sha256": "d34922cdf473c7c85bc96a0ab785268c8d7cc1df9cdfb42cc195b012e930e1ea",
+      "import_loss_count": 2418,
+      "visible_import_loss_details": 2418,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "087",
+      "source_filename": "087_mirror_of_truth_32.rtf",
+      "source_sha256": "19b1d8bc75d8de545764297e458a3886eb772cf91313d31637b6a13c2f9822a0",
+      "report_sha256": "3b6f8b10c0f0549f94bec9dd5c1d6f70ce602dc41b88f19ae3f30c3563c084dc",
+      "import_loss_count": 3403,
+      "visible_import_loss_details": 3403,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "088",
+      "source_filename": "088_bbsitters_club_11-29-19_show_notes.rtf",
+      "source_sha256": "df44e67fd8791fa74b70dad2e8b794cea070d750758a76bc30aa42c5da2781f2",
+      "report_sha256": "a7d619cf10deca1deb49fe6c9b8496183a5f1941bc6a56614b38de87a6542838",
+      "import_loss_count": 9,
+      "visible_import_loss_details": 9,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "089",
+      "source_filename": "089_License.rtf",
+      "source_sha256": "1d7ab1cb7eec85701a55d02c4beb9cb809dc449094632add2243c3c28d5e23c7",
+      "report_sha256": "ae6c3c504cd205fba227a64029104711107b13a2ff05ba100a91ef594f63777c",
+      "import_loss_count": 195,
+      "visible_import_loss_details": 195,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "090",
+      "source_filename": "090_SoulClap_Budapest_feat_Illspokinn-Are_You_Listen.rtf",
+      "source_sha256": "7c8230b848ee2b2c5ffe05f6718670147cf9ace654d14939fd480168a59a2cc4",
+      "report_sha256": "7533b4fe3f632192f9fd14b4027e313b56d09d5c411036f5100c12695480d575",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "091",
+      "source_filename": "091_Lyrics.rtf",
+      "source_sha256": "d93efb9fc96deb90566f7e544fb0c885edd68dc3fffa85eaf1d159883e7c00a0",
+      "report_sha256": "bc08a34bb32c205e19a22523dc9926b96c14d3199ae55bea1507509309f3be9c",
+      "import_loss_count": 3,
+      "visible_import_loss_details": 3,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "092",
+      "source_filename": "092_SurviveTheTyrant.rtf",
+      "source_sha256": "14d436224ce154556f187c1ebe427943c1cb4842006b3c2b971d9d4164e40cf5",
+      "report_sha256": "1e6517cce31dc0db57c328a66a6591dd4aecf6b3b05ec74c9a7f5261d6f9917d",
+      "import_loss_count": 8979,
+      "visible_import_loss_details": 8979,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "093",
+      "source_filename": "093_Wood_Preservation.rtf",
+      "source_sha256": "98554efd4afb8d7c8fb61efdbd8a0216a88f0cdb9bf94078efccaaa1f40bc829",
+      "report_sha256": "2b31b5f2c043198a86fba6276ce9c752f21c1d586367a2dd9718e96bd501b9f5",
+      "import_loss_count": 12,
+      "visible_import_loss_details": 12,
+      "visible_import_info_details": 1,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "094",
+      "source_filename": "094_BeethovenSymphonyNo.5Opus67GeorgeSzellCso1967.rtf",
+      "source_sha256": "f9d01adb4c38813512bbd143c85dabccde6aa2550ade75283162ae1515f42b7e",
+      "report_sha256": "5e26961410efdd1a1fbb9888da362ccc07c0aabfaed629606dc37c74261af3a8",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "095",
+      "source_filename": "095_ephrem_contra_haer_23_24.rtf",
+      "source_sha256": "22952c9b6c05049a540486c17f5d9be92348134c402600f19bf73ee7c9e505bb",
+      "report_sha256": "96bf0a07d75666e59350b2d14bc570fb8f83d51f9f18c95201e59f1bcf48ff3a",
+      "import_loss_count": 178,
+      "visible_import_loss_details": 178,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "096",
+      "source_filename": "096_Acknowledgements.rtf",
+      "source_sha256": "cda661b6c360a01aa468f8d2a11faf629a9f28151e2a1ed0f6e4040857b0fab8",
+      "report_sha256": "2d72f01759c2ced464ad30cdf5a2b6783916559a908ee5cfe6a0fa14ddcc269e",
+      "import_loss_count": 104,
+      "visible_import_loss_details": 104,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "097",
+      "source_filename": "097_GoodellMassachusettsStateGrangeAddress.rtf",
+      "source_sha256": "c3ca59d8963fe6d3ce7ea39192e33e9b0cee09993b71524266041dde4e35b990",
+      "report_sha256": "adee2d1aec344df6bee7b7e7d98f469cbd22d72aaf60b7599280789584254a1d",
+      "import_loss_count": 7,
+      "visible_import_loss_details": 7,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "098",
+      "source_filename": "098_Serenity_of_Simplicity_by_Luke_Furgason.docx.rtf",
+      "source_sha256": "72baaf932590552c21f95b262af95205eb07984d22393e71eef707e1c3b7c89d",
+      "report_sha256": "b5ee2e69aad5e61c880796c055b0cd6eec7c8ac5379345f664348c53d7917b5c",
+      "import_loss_count": 256477,
+      "visible_import_loss_details": 9999,
+      "visible_import_info_details": 1,
+      "import_details_truncated": true,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "099",
+      "source_filename": "099_TXT.rtf",
+      "source_sha256": "7f7e7479221658a78276a9abc9654e4a9e41aa3d01154be60b63aed7427a747e",
+      "report_sha256": "5740a4de671b3c4634fafc84794f3390e1188feaf0c32e4ff41c9a3b32325f7a",
+      "import_loss_count": 412,
+      "visible_import_loss_details": 412,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    },
+    {
+      "id": "100",
+      "source_filename": "100_Credits.rtf",
+      "source_sha256": "5e537fdef62301a894bd98261c09a6279cb2d71cc24267bea875c5f0249eca5b",
+      "report_sha256": "b8e0a84a9f4bfd5702c1c7573b67c027dfca694004eda8e7cce62f11f48d6301",
+      "import_loss_count": 39,
+      "visible_import_loss_details": 39,
+      "visible_import_info_details": 0,
+      "import_details_truncated": false,
+      "writer_loss_count": 0,
+      "writer_features": []
+    }
+  ],
+  "feature_families": [
+    {
+      "family": "control",
+      "visible_occurrences": 142014,
+      "distinct_features": 321,
+      "document_count": 100,
+      "top_features": [
+        {
+          "feature": "control:af",
+          "visible_occurrences": 21257
+        },
+        {
+          "feature": "control:loch",
+          "visible_occurrences": 10206
+        },
+        {
+          "feature": "control:fcs",
+          "visible_occurrences": 10056
+        },
+        {
+          "feature": "control:lang",
+          "visible_occurrences": 8857
+        },
+        {
+          "feature": "control:afs",
+          "visible_occurrences": 8478
+        },
+        {
+          "feature": "control:hich",
+          "visible_occurrences": 8152
+        },
+        {
+          "feature": "control:lin",
+          "visible_occurrences": 7121
+        },
+        {
+          "feature": "control:insrsid",
+          "visible_occurrences": 6141
+        }
+      ]
+    },
+    {
+      "family": "field-instruction-control",
+      "visible_occurrences": 7242,
+      "distinct_features": 26,
+      "document_count": 10,
+      "top_features": [
+        {
+          "feature": "field-instruction-control:af",
+          "visible_occurrences": 1068
+        },
+        {
+          "feature": "field-instruction-control:f",
+          "visible_occurrences": 593
+        },
+        {
+          "feature": "field-instruction-control:fcs",
+          "visible_occurrences": 556
+        },
+        {
+          "feature": "field-instruction-control:ltrch",
+          "visible_occurrences": 428
+        },
+        {
+          "feature": "field-instruction-control:rtlch",
+          "visible_occurrences": 428
+        },
+        {
+          "feature": "field-instruction-control:insrsid",
+          "visible_occurrences": 427
+        },
+        {
+          "feature": "field-instruction-control:fs",
+          "visible_occurrences": 422
+        },
+        {
+          "feature": "field-instruction-control:afs",
+          "visible_occurrences": 419
+        }
+      ]
+    },
+    {
+      "family": "wps",
+      "visible_occurrences": 2611,
+      "distinct_features": 4,
+      "document_count": 8,
+      "top_features": [
+        {
+          "feature": "wps:leading-group-line-ending",
+          "visible_occurrences": 2533
+        },
+        {
+          "feature": "wps:header-whitespace:dropped",
+          "visible_occurrences": 74
+        },
+        {
+          "feature": "wps:literal-unknown-inline-control",
+          "visible_occurrences": 2
+        },
+        {
+          "feature": "wps:soft-hyphen-to-hyphen",
+          "visible_occurrences": 2
+        }
+      ]
+    },
+    {
+      "family": "destination",
+      "visible_occurrences": 1868,
+      "distinct_features": 45,
+      "document_count": 83,
+      "top_features": [
+        {
+          "feature": "destination:panose",
+          "visible_occurrences": 504
+        },
+        {
+          "feature": "destination:datafield",
+          "visible_occurrences": 271
+        },
+        {
+          "feature": "destination:hyphen",
+          "visible_occurrences": 198
+        },
+        {
+          "feature": "destination:pnseclvl",
+          "visible_occurrences": 153
+        },
+        {
+          "feature": "destination:listtext",
+          "visible_occurrences": 128
+        },
+        {
+          "feature": "destination:falt",
+          "visible_occurrences": 122
+        },
+        {
+          "feature": "destination:pntext",
+          "visible_occurrences": 58
+        },
+        {
+          "feature": "destination:generator",
+          "visible_occurrences": 47
+        }
+      ]
+    },
+    {
+      "family": "font-control",
+      "visible_occurrences": 758,
+      "distinct_features": 9,
+      "document_count": 12,
+      "top_features": [
+        {
+          "feature": "font-control:fbimajor",
+          "visible_occurrences": 99
+        },
+        {
+          "feature": "font-control:fbiminor",
+          "visible_occurrences": 99
+        },
+        {
+          "feature": "font-control:fdbmajor",
+          "visible_occurrences": 99
+        },
+        {
+          "feature": "font-control:fdbminor",
+          "visible_occurrences": 99
+        },
+        {
+          "feature": "font-control:flomajor",
+          "visible_occurrences": 99
+        },
+        {
+          "feature": "font-control:flominor",
+          "visible_occurrences": 99
+        },
+        {
+          "feature": "font-control:fhiminor",
+          "visible_occurrences": 79
+        },
+        {
+          "feature": "font-control:fhimajor",
+          "visible_occurrences": 78
+        }
+      ]
+    },
+    {
+      "family": "style",
+      "visible_occurrences": 66,
+      "distinct_features": 2,
+      "document_count": 10,
+      "top_features": [
+        {
+          "feature": "style:undefined-parent:rtf-s0",
+          "visible_occurrences": 54
+        },
+        {
+          "feature": "style:undefined-parent:rtf-s15",
+          "visible_occurrences": 12
+        }
+      ]
+    },
+    {
+      "family": "picture-control",
+      "visible_occurrences": 38,
+      "distinct_features": 6,
+      "document_count": 2,
+      "top_features": [
+        {
+          "feature": "picture-control:piccropb",
+          "visible_occurrences": 9
+        },
+        {
+          "feature": "picture-control:piccropl",
+          "visible_occurrences": 9
+        },
+        {
+          "feature": "picture-control:piccropr",
+          "visible_occurrences": 9
+        },
+        {
+          "feature": "picture-control:piccropt",
+          "visible_occurrences": 9
+        },
+        {
+          "feature": "picture-control:bliptag",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "picture-control:blipupi",
+          "visible_occurrences": 1
+        }
+      ]
+    },
+    {
+      "family": "trailing-NUL",
+      "visible_occurrences": 33,
+      "distinct_features": 1,
+      "document_count": 33,
+      "top_features": [
+        {
+          "feature": "trailing-NUL",
+          "visible_occurrences": 33
+        }
+      ]
+    },
+    {
+      "family": "stylesheet",
+      "visible_occurrences": 20,
+      "distinct_features": 1,
+      "document_count": 20,
+      "top_features": [
+        {
+          "feature": "stylesheet:unbound-text",
+          "visible_occurrences": 20
+        }
+      ]
+    },
+    {
+      "family": "list-override-control",
+      "visible_occurrences": 18,
+      "distinct_features": 18,
+      "document_count": 1,
+      "top_features": [
+        {
+          "feature": "list-override-control:f",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:fbias",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:levelfollow",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:levelindent",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:leveljc",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:leveljcn",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:levelnfc",
+          "visible_occurrences": 1
+        },
+        {
+          "feature": "list-override-control:levelnfcn",
+          "visible_occurrences": 1
+        }
+      ]
+    },
+    {
+      "family": "picture",
+      "visible_occurrences": 16,
+      "distinct_features": 1,
+      "document_count": 3,
+      "top_features": [
+        {
+          "feature": "picture:wmf-retained-rendering-separate",
+          "visible_occurrences": 16
+        }
+      ]
+    },
+    {
+      "family": "unicode",
+      "visible_occurrences": 14,
+      "distinct_features": 1,
+      "document_count": 3,
+      "top_features": [
+        {
+          "feature": "unicode:unsigned-parameter",
+          "visible_occurrences": 14
+        }
+      ]
+    },
+    {
+      "family": "color-control",
+      "visible_occurrences": 6,
+      "distinct_features": 3,
+      "document_count": 2,
+      "top_features": [
+        {
+          "feature": "color-control:chyperlink",
+          "visible_occurrences": 2
+        },
+        {
+          "feature": "color-control:cshade",
+          "visible_occurrences": 2
+        },
+        {
+          "feature": "color-control:ctint",
+          "visible_occurrences": 2
+        }
+      ]
+    },
+    {
+      "family": "section-control-outside-body",
+      "visible_occurrences": 6,
+      "distinct_features": 1,
+      "document_count": 4,
+      "top_features": [
+        {
+          "feature": "section-control-outside-body:sectd",
+          "visible_occurrences": 6
+        }
+      ]
+    },
+    {
+      "family": "symbol",
+      "visible_occurrences": 5,
+      "distinct_features": 1,
+      "document_count": 1,
+      "top_features": [
+        {
+          "feature": "symbol:*",
+          "visible_occurrences": 5
+        }
+      ]
+    },
+    {
+      "family": "list",
+      "visible_occurrences": 3,
+      "distinct_features": 1,
+      "document_count": 1,
+      "top_features": [
+        {
+          "feature": "list:unbound-text",
+          "visible_occurrences": 3
+        }
+      ]
+    },
+    {
+      "family": "text",
+      "visible_occurrences": 2,
+      "distinct_features": 1,
+      "document_count": 1,
+      "top_features": [
+        {
+          "feature": "text:NUL:dropped",
+          "visible_occurrences": 2
+        }
+      ]
+    },
+    {
+      "family": "field",
+      "visible_occurrences": 1,
+      "distinct_features": 1,
+      "document_count": 1,
+      "top_features": [
+        {
+          "feature": "field:multi-paragraph-instruction-dropped",
+          "visible_occurrences": 1
+        }
+      ]
+    }
+  ],
+  "confirmed_reporting_paths": [
+    {
+      "feature_family": "control:*",
+      "source": "strict-ooxml-rtf/src/parser.rs:2494",
+      "confirmed": "fallback branch records unhandled body control words as Loss"
+    },
+    {
+      "feature_family": "field-instruction-control:*",
+      "source": "strict-ooxml-rtf/src/parser.rs:1861",
+      "confirmed": "field-instruction context reports unhandled control words as Loss"
+    },
+    {
+      "feature_family": "destination:*",
+      "source": "strict-ooxml-rtf/src/parser.rs:1731",
+      "confirmed": "unsupported destination path reports Loss"
+    },
+    {
+      "feature_family": "all import issues",
+      "source": "strict-ooxml-rtf/src/parser.rs:953",
+      "confirmed": "aggregate info/loss counters increment before bounded detail append; details_truncated marks omitted records"
+    }
+  ],
+  "triage_candidates": [
+    {
+      "feature": "control:af",
+      "visible_occurrences": 21257,
+      "document_count": 25,
+      "candidate_cards": [
+        "RC02",
+        "RC04"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:loch",
+      "visible_occurrences": 10206,
+      "document_count": 22,
+      "candidate_cards": [
+        "RC02",
+        "RC03"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:fcs",
+      "visible_occurrences": 10056,
+      "document_count": 14,
+      "candidate_cards": [
+        "RC02",
+        "RC03"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:lang",
+      "visible_occurrences": 8857,
+      "document_count": 54,
+      "candidate_cards": [
+        "RC02",
+        "RC03"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:afs",
+      "visible_occurrences": 8478,
+      "document_count": 25,
+      "candidate_cards": [
+        "RC02",
+        "RC04"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:hich",
+      "visible_occurrences": 8152,
+      "document_count": 22,
+      "candidate_cards": [
+        "RC02",
+        "RC03"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:lin",
+      "visible_occurrences": 7121,
+      "document_count": 31,
+      "candidate_cards": [
+        "RC04"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    },
+    {
+      "feature": "control:insrsid",
+      "visible_occurrences": 6141,
+      "document_count": 19,
+      "candidate_cards": [
+        "RC09"
+      ],
+      "claim": "name-based investigation target only; no semantic cause confirmed"
+    }
+  ]
+}
