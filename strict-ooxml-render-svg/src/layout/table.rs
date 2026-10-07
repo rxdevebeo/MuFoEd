@@ -135,6 +135,12 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
         let mut page_frames = Vec::new();
+        let row_end = row
+            .cells
+            .iter()
+            .map(|cell| cell.col + cell.span)
+            .max()
+            .unwrap_or(0);
         for cell in &row.cells {
             let (source, paint_text, top_edge, bottom_edge) = match cell.vmerge {
                 VState::Continue => {
@@ -168,14 +174,23 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
                 }
                 page_frames.extend(cell.page_frames.iter().cloned());
             }
+            // Edges shared with another cell take the table's insideH/insideV
+            // when the cell does not set its own (TableGrid draws its grid
+            // this way).
+            let interior = [
+                row_index > 0,
+                row_index + 1 < rows.len(),
+                cell.col > 0,
+                cell.col + cell.span < row_end,
+            ];
             push_borders(
                 ctx,
                 table,
                 cell,
                 &source.properties,
                 row.height,
-                top_edge,
-                bottom_edge,
+                (top_edge, bottom_edge),
+                interior,
                 &mut items,
             );
         }
@@ -1184,8 +1199,8 @@ fn push_borders(
     cell: &RawCell,
     properties: &CellProperties,
     height: f64,
-    top_edge: bool,
-    bottom_edge: bool,
+    (top_edge, bottom_edge): (bool, bool),
+    interior: [bool; 4],
     items: &mut Vec<Item>,
 ) {
     let x = cell.x;
@@ -1202,7 +1217,8 @@ fn push_borders(
         if !draw {
             continue;
         }
-        if let Some(stroke) = resolve_edge(ctx, table, properties, edge) {
+        let inside = interior[usize::from(edge)];
+        if let Some(stroke) = resolve_edge(ctx, table, properties, edge, inside) {
             items.push(Item::Line(LineItem {
                 x1,
                 y1,
@@ -1224,6 +1240,7 @@ fn resolve_edge(
     table: &Table,
     properties: &CellProperties,
     edge: u8,
+    inside: bool,
 ) -> Option<Stroke> {
     let cell_border = match edge {
         0 => properties.borders.top.as_ref(),
@@ -1231,8 +1248,14 @@ fn resolve_edge(
         2 => properties.borders.start.as_ref(),
         _ => properties.borders.end.as_ref(),
     };
-    // Direct `w:tblBorders`, else the table style chain's.
-    let table_border = crate::table_style::table_border(ctx.document, table, edge);
+    // Direct `w:tblBorders`, else the table style chain's; an edge shared with
+    // another cell reads `insideH` (top/bottom) or `insideV` (start/end).
+    let table_edge = match (inside, edge) {
+        (false, _) => edge,
+        (true, 0 | 1) => 4,
+        (true, _) => 5,
+    };
+    let table_border = crate::table_style::table_border(ctx.document, table, table_edge);
     cell_border
         .or(table_border)
         .and_then(|border| stroke(ctx, border))

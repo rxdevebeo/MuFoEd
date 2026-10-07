@@ -332,10 +332,14 @@ pub(crate) fn table_border<'a>(
     table: &'a Table,
     edge: u8,
 ) -> Option<&'a Border> {
+    // `0` top, `1` bottom, `2` start, `3` end; `4` insideH and `5` insideV
+    // for an edge between two cells.
     let pick = |borders: &'a Borders| match edge {
         0 => borders.top.as_ref(),
         1 => borders.bottom.as_ref(),
         2 => borders.start.as_ref(),
+        4 => borders.inside_horizontal.as_ref(),
+        5 => borders.inside_vertical.as_ref(),
         _ => borders.end.as_ref(),
     };
     pick(&table.props.borders).or_else(|| {

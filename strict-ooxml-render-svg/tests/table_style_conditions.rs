@@ -235,3 +235,33 @@ fn table_style_base_borders_reach_the_cells() {
         .count();
     assert!(lines > 0, "the style's tblBorders are painted");
 }
+
+/// `insideH`/`insideV` draw the grid between cells and nothing on the outer
+/// edge; TableGrid, the style Word gives most tables, is drawn this way.
+#[test]
+fn inside_borders_draw_the_inner_grid_only() {
+    const INNER: &str = "<w:style w:type=\"table\" w:styleId=\"Inner\"><w:name w:val=\"Inner\"/>\
+<w:tblPr><w:tblBorders>\
+<w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"FF0000\"/>\
+<w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"FF0000\"/>\
+</w:tblBorders></w:tblPr></w:style>";
+    let svg = render_svg(
+        &table(
+            "Inner",
+            "w:firstRow=\"0\" w:noHBand=\"1\" w:noVBand=\"1\"",
+            None,
+        ),
+        INNER,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("svg");
+    let red = document
+        .descendants()
+        .filter(|node| node.is_element() && node.tag_name().name() == "line")
+        .filter(|node| {
+            node.attribute("stroke")
+                .is_some_and(|stroke| stroke.eq_ignore_ascii_case("#ff0000"))
+        })
+        .count();
+    // 3x3 cells: each draws its interior sides - 12 horizontal, 12 vertical.
+    assert_eq!(red, 24, "interior edges only");
+}
