@@ -1028,7 +1028,14 @@ fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
                     | FontDiagnosticKind::EmbeddingFailed
             )));
         assert_eq!(output.report.font_report().is_clean(), !degraded);
+        if let Ok(directory) = std::env::var("STRICTLIB_FONT_WITNESS_OUTPUT") {
+            let directory = std::path::Path::new(&directory);
+            std::fs::create_dir_all(directory).unwrap();
+            let id = if degraded { "devanagari" } else { "cjk" };
+            std::fs::write(directory.join(format!("{id}.pdf")), &output.bytes).unwrap();
+        }
         let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
+        verify_cluster_actual_text(&reader, &pages);
         let extracted: String = reader
             .extract_text(&[1])
             .unwrap()
@@ -1036,7 +1043,7 @@ fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
             .filter(|ch| !ch.is_whitespace())
             .collect();
         if degraded {
-            // Known continuation-CID extraction gap: keep visible until Indic acceptance closes.
+            // lopdf ignores ActualText; verify its raw ToUnicode limitation separately.
             assert!(extracted.contains('\u{fffd}'));
             assert_eq!(extracted.replace('\u{fffd}', ""), text);
             assert!(output
@@ -1083,4 +1090,66 @@ fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
             assert!(strict.unwrap().report.is_clean());
         }
     }
+}
+
+fn verify_cluster_actual_text(
+    reader: &lopdf::Document,
+    pages: &[strict_ooxml_render_svg::layout::PlacedPage],
+) {
+    use strict_ooxml_render_svg::font::{selected_face, shape_resource};
+    let expected: Vec<String> = pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter_map(|item| {
+            let Item::Text(text) = item else { return None };
+            let face = selected_face(text)?;
+            let shaped = shape_resource(&text.text, &face)?;
+            Some(
+                shaped
+                    .clusters
+                    .iter()
+                    .filter(|cluster| cluster.glyph_count > 1)
+                    .map(|cluster| text.text[cluster.byte_start..cluster.byte_end].to_owned())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect();
+    let page_id = reader.get_pages()[&1];
+    let content = lopdf::content::Content::decode(&reader.get_page_content(page_id)).unwrap();
+    let mut actual = Vec::new();
+    let mut inside = false;
+    let mut glyphs = 0;
+    for operation in content.operations {
+        match operation.operator.as_str() {
+            "BDC" => {
+                assert!(!inside);
+                assert_eq!(operation.operands[0].as_name().unwrap(), b"Span");
+                let bytes = operation.operands[1]
+                    .as_dict()
+                    .unwrap()
+                    .get(b"ActualText")
+                    .unwrap()
+                    .as_str()
+                    .unwrap();
+                assert_eq!(&bytes[..2], &[0xfe, 0xff]);
+                let units: Vec<u16> = bytes[2..]
+                    .chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .collect();
+                actual.push(String::from_utf16(&units).unwrap());
+                inside = true;
+                glyphs = 0;
+            }
+            "Tj" if inside => glyphs += 1,
+            "EMC" => {
+                assert!(inside);
+                assert!(glyphs > 1, "the replacement must cover all cluster glyphs");
+                inside = false;
+            }
+            _ => {}
+        }
+    }
+    assert!(!inside);
+    assert_eq!(actual, expected);
 }

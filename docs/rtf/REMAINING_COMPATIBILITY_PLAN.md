@@ -502,3 +502,15 @@ match the previous slice. Fresh pagination remains 62 Pass/38 Fail. Historical p
 measurement remains 3 Pass/97 Fail documents and 6 Pass/417 Fail pages; no reraster.
 Receipts: `target/rtf-import/RC02-font-policy-{corpus,visual}/results.json`,
 `RC02-font-policy-{full-tests,clippy-final,xsd,opc}.log`.
+
+
+### RC02: cluster ActualText — 2026-10-07
+
+Implemented logical UTF-16 ActualText around multi-glyph clusters. Independent
+MuPDF extraction now preserves the pinned Devanagari text; CJK also passes.
+lopdf ignores ActualText and retains its raw continuation-CID extraction limitation.
+436 tests/53 groups and MSRV Clippy pass with existing exclusions/suppressions.
+Geometry and degraded complex-script status are retained. Corpus gates were not
+rerun in this focused slice. Next: broader script/font profiles and complex-script
+visual/placement acceptance, bounded CLI configuration, full visual corpus.
+RC02 InProgress. Details: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).

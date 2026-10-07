@@ -197,3 +197,38 @@ All 100 default DOCX hashes and all actual/reference PDF hashes and page counts
 match the preceding renderer-assets receipt. Fresh pagination: 62 Pass, 38 Fail.
 Logs/receipts: `target/rtf-import/RC02-font-policy-{xsd,opc}.log`,
 `RC02-font-policy-visual/results.json` and `RC02-font-policy-equivalence.json`.
+
+
+## RC02 cluster ActualText extraction (2026-10-07)
+
+Multi-glyph shaped clusters now carry `/Span` marked content with UTF-16
+`ActualText` for their complete logical Unicode span. The same CIDs, embedded
+program, glyph origins and offsets are painted; single-glyph clusters retain their
+ToUnicode path. Only nonempty clusters without missing glyphs receive replacement
+text. This avoids fabricating an empty ToUnicode destination for continuation CIDs.
+
+Independent MuPDF 1.26.7 (PyMuPDF 1.26.4) extracts the pinned Devanagari witness
+exactly, without replacement characters; CJK also passes. The Rust regression
+independently parses UTF-16 content properties and verifies balanced BDC/EMC around
+all glyphs in each multi-glyph cluster. lopdf 0.45.0 ignores ActualText in its text
+extractor: raw ToUnicode extraction still adds U+FFFD for continuation CIDs. That
+reader limitation remains recorded; universal reader compatibility is not claimed.
+
+Reproduce: set `STRICTLIB_FONT_WITNESS_OUTPUT` to a witness directory, run the PDF
+test `licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation`,
+then run `python xtool/rtf/font_extraction_witness.py --pdfs DIRECTORY --receipt FILE`
+with PyMuPDF 1.26.4 available. Missing inputs or extraction differences fail the gate.
+Receipt: `target/rtf-import/RC02-actualtext-extraction.json`; full tests and Clippy:
+`RC02-actualtext-{full-tests,clippy}.log`. 436 tests in 53 groups pass with the
+previous alias-test exclusion; MSRV Clippy passes with existing suppressions and
+baseline warnings. Corpus/XSD/OPC/pagination/pixels were not rerun in this focused
+extraction slice; previous receipts remain historical and PDF byte identity is not
+claimed after adding marked content.
+
+Complex-script status and strict refusal remain unchanged: a successful narrow
+extraction witness does not close Indic visual/placement acceptance. Next: review
+script/font support profiles, broaden independent complex-script geometry/visual
+witnesses, configure CLI assets through the bounded registry, and pass visual corpus.
+RC02 remains InProgress.
+
+ActualText reference: https://pdfa.org/download-area/publications/Tagged-PDF-Best-Practice-Guide.pdf

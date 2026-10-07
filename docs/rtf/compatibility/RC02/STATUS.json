@@ -2,8 +2,8 @@
   "card": "RC02",
   "status": "InProgress",
   "updated": "2026-10-07",
-  "scope": "bounded font failure policy and licensed finite CJK/Devanagari witnesses",
-  "base_commit": "7d3086b",
+  "scope": "multi-glyph cluster ActualText and independent Unicode extraction",
+  "base_commit": "371dcb8",
   "implemented": [
     "shared bytes lifetime",
     "font program/face index/variation identity",
@@ -35,10 +35,11 @@
     "PDF embedding failure reports",
     "renamed pinned OFL CJK SC and Devanagari test subsets",
     "independent native HarfBuzz geometry oracle",
-    "strict positive CJK SVG/PDF/RTF witness"
+    "strict positive CJK SVG/PDF/RTF witness",
+    "logical UTF-16 ActualText for complete multi-glyph clusters"
   ],
   "remaining": [
-    "Indic continuation-CID ToUnicode extraction gap",
+    "reader compatibility beyond ActualText-aware extraction; lopdf ignores ActualText",
     "full complex-script placement and visual acceptance",
     "reviewed font/script support profile",
     "bounded CLI font asset configuration",
@@ -50,7 +51,7 @@
       "passed": 436,
       "groups": 53,
       "excluded_test": "maps_regular_postscript_names_to_the_same_bundled_faces",
-      "log": "target/rtf-import/RC02-font-policy-full-tests.log"
+      "log": "target/rtf-import/RC02-actualtext-full-tests.log"
     },
     "clippy_msrv": {
       "status": "PassWithBaselineSuppressions",
@@ -146,6 +147,18 @@
       "same_pdf_and_references": 100,
       "receipt": "target/rtf-import/RC02-font-policy-equivalence.json",
       "pixel_status": "Historical only; not rerasterized"
+    },
+    "actualtext": {
+      "status": "PassNarrowUnicodeExtraction",
+      "pymupdf": "1.26.4",
+      "mupdf": "1.26.7",
+      "receipt": "target/rtf-import/RC02-actualtext-extraction.json",
+      "lopdf": "ActualText ignored; raw continuation CID limitation retained",
+      "corpus_gates": "Not rerun in focused extraction slice"
+    },
+    "actualtext_clippy": {
+      "status": "PassWithBaselineSuppressionsAndWarnings",
+      "log": "target/rtf-import/RC02-actualtext-clippy.log"
     }
   }
 }

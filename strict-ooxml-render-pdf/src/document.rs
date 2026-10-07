@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pdf_writer::types::FontFlags;
-use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str};
+use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str, TextStr};
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_render_svg::layout::{Item, PathItem, PlacedPage, TextAdvanceKind, TextItem};
@@ -898,6 +898,17 @@ impl PageWriter<'_> {
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
             };
+            // A cluster can have several glyphs but only one logical Unicode span.
+            // ToUnicode alone cannot suppress continuation CIDs in all readers.
+            let actual_text = glyphs.len() > 1
+                && !unicode.is_empty()
+                && glyphs.iter().all(|glyph| glyph.glyph_id != 0);
+            if actual_text {
+                self.content
+                    .begin_marked_content_with_properties(Name(b"Span"))
+                    .properties()
+                    .actual_text(TextStr(unicode));
+            }
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     for ch in unicode.chars() {
@@ -926,6 +937,9 @@ impl PageWriter<'_> {
                 let bytes = cid.to_be_bytes();
                 self.content.show(Str(&bytes));
                 drew = true;
+            }
+            if actual_text {
+                self.content.end_marked_content();
             }
         }
         self.content.end_text();

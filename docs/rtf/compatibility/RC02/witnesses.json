@@ -84,7 +84,13 @@
     {
       "name": "Devanagari extraction gap",
       "oracle": "TTF embeds with no missing glyph; continuation CID extraction produces U+FFFD; degraded diagnostic and strict refusal remain"
+    },
+    {
+      "name": "multi-glyph logical extraction",
+      "oracle": "MuPDF 1.26.7 extracts pinned CJK/Devanagari exactly; lopdf parses UTF-16 ActualText and balanced Span BDC/EMC",
+      "receipt": "target/rtf-import/RC02-actualtext-extraction.json",
+      "limits": "lopdf extractor ignores ActualText; full Indic visual acceptance pending"
     }
   ],
-  "real_script_geometry_acceptance": "Narrow CJK/Devanagari geometry passes; full script acceptance pending, Indic continuation extraction gap"
+  "real_script_geometry_acceptance": "Narrow CJK/Devanagari geometry and ActualText-aware extraction pass; full script acceptance pending"
 }
