@@ -16,7 +16,7 @@ use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, NumberingTable};
 use strict_ooxml_wml::model::settings::{MathProperties, Settings};
 use strict_ooxml_wml::model::styles::{DocDefaults, Style, StyleTable};
-use strict_ooxml_wml::model::theme::Theme;
+use strict_ooxml_wml::model::theme::{Theme, ThemeRunFonts, ThemeTypeface};
 use strict_ooxml_wml::model::values::StyleType;
 
 use crate::body::blocks;
@@ -881,7 +881,13 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         }
         "themeFontLang" => {
             if let Some(language) = &settings.theme_font_lang {
-                xml.empty_attr_w("w:themeFontLang", "val", language.as_ref());
+                if !language.is_empty() {
+                    xml.start("w:themeFontLang");
+                    xml.attr_w_opt("val", language.val.as_deref());
+                    xml.attr_w_opt("eastAsia", language.east_asia.as_deref());
+                    xml.attr_w_opt("bidi", language.bidi.as_deref());
+                    xml.end();
+                }
             }
         }
         "decimalSymbol" => {
@@ -1112,14 +1118,41 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
         // that carries only the typeface the model happened to hold is invalid
         // (`XS-03`), and an empty typeface is a legal `xsd:string` that means
         // "no face for this script" - which is what the model actually knows.
-        font_collection(&mut xml, "a:latin", set.latin.as_deref());
-        font_collection(&mut xml, "a:ea", set.east_asia.as_deref());
-        font_collection(&mut xml, "a:cs", set.cs.as_deref());
+        font_collection(&mut xml, "a:latin", &set.latin);
+        font_collection(&mut xml, "a:ea", &set.east_asia);
+        font_collection(&mut xml, "a:cs", &set.cs);
         xml.end();
     }
     xml.end();
     format_scheme(&mut xml);
     xml.end();
+    if let Some(markup) = &theme.object_defaults_xml {
+        // The parsed element, including `a:lnDef`, list styles and `a:sym`.
+        // Rewriting only the `defRPr` faces would drop the rest of the subtree.
+        xml.raw_markup(markup, &["a"]);
+    } else {
+        let shape = theme
+            .shape_defaults
+            .as_ref()
+            .filter(|fonts| !fonts.is_empty());
+        let text = theme
+            .text_defaults
+            .as_ref()
+            .filter(|fonts| !fonts.is_empty());
+        if shape.is_some() || text.is_some() {
+            // `CT_DefaultShapeDefinition` requires `spPr`, `bodyPr` and `lstStyle`.
+            // A hand-built theme has no source element to copy, so the empty
+            // properties are the smallest schema-valid shell around the faces.
+            xml.start("a:objectDefaults");
+            if let Some(fonts) = shape {
+                write_object_default(&mut xml, "a:spDef", fonts);
+            }
+            if let Some(fonts) = text {
+                write_object_default(&mut xml, "a:txDef", fonts);
+            }
+            xml.end();
+        }
+    }
     xml.end();
     ctx.finish_xml(xml)
 }
@@ -1196,9 +1229,41 @@ fn format_scheme(xml: &mut XmlWriter) {
     xml.end();
 }
 
-fn font_collection(xml: &mut XmlWriter, name: &str, typeface: Option<&str>) {
+fn font_collection(xml: &mut XmlWriter, name: &str, face: &ThemeTypeface) {
     xml.start(name);
-    xml.attr("typeface", typeface.unwrap_or(""));
+    write_text_font_attrs(xml, face);
+    xml.end();
+}
+
+fn write_text_font_attrs(xml: &mut XmlWriter, face: &ThemeTypeface) {
+    xml.attr("typeface", face.name.as_deref().unwrap_or(""));
+    xml.attr_opt("panose", face.panose.as_deref());
+    xml.attr_opt("pitchFamily", face.pitch_family.as_deref());
+    xml.attr_opt("charset", face.charset.as_deref());
+}
+
+fn write_object_default(xml: &mut XmlWriter, name: &str, fonts: &ThemeRunFonts) {
+    xml.start(name);
+    xml.empty("a:spPr");
+    xml.empty("a:bodyPr");
+    xml.start("a:lstStyle");
+    xml.start("a:defPPr");
+    xml.start("a:defRPr");
+    for (element, face) in [
+        ("a:latin", &fonts.latin),
+        ("a:ea", &fonts.east_asia),
+        ("a:cs", &fonts.cs),
+    ] {
+        if face.is_empty() {
+            continue;
+        }
+        xml.start(element);
+        write_text_font_attrs(xml, face);
+        xml.end();
+    }
+    xml.end();
+    xml.end();
+    xml.end();
     xml.end();
 }
 
@@ -1499,8 +1564,8 @@ mod tests {
                 unhide_when_used: false,
                 ui_priority: None,
                 table: Default::default(),
-            row: Default::default(),
-            cell: Default::default(),
+                row: Default::default(),
+                cell: Default::default(),
                 paragraph: Default::default(),
                 run: RunProperties {
                     fonts: Some(strict_ooxml_wml::model::values::Fonts {
@@ -1510,7 +1575,7 @@ mod tests {
                     ..RunProperties::default()
                 },
                 conditions: Vec::new(),
-            based_on_chain: Vec::new(),
+                based_on_chain: Vec::new(),
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             });
         }

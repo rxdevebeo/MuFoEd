@@ -55,10 +55,10 @@ pub use props::{
     Section, SectionProperties, TablePositioning, TableProperties,
 };
 pub use revision::{Revision, RevisionKind};
-pub use settings::{DocumentZoom, Settings, Zoom};
+pub use settings::{DocumentZoom, Settings, ThemeFontLang, Zoom};
 pub use styles::{Style, StyleTable};
 pub use support::{FeatureUse, SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};
-pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts};
+pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts, ThemeRunFonts, ThemeTypeface};
 pub use values::{
     Border, BorderStyle, Borders, BreakKind, CellMargins, Color, DocGridType, EighthsPoint, Emu,
     FieldCharType, Fonts, HalfPoints, HeightRule, Highlight, HighlightOrColor, Indentation,

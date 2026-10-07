@@ -5,15 +5,72 @@ use std::sync::Arc;
 
 use strict_ooxml_core::error::SourceLocation;
 
+/// One DrawingML typeface (`CT_TextFont`): `a:latin`, `a:ea`, or `a:cs`.
+///
+/// `charset` defaults to `1` and `pitchFamily` to `0` when the attributes are
+/// absent. An explicit value, including those defaults, is kept: omitting it
+/// is a different document to the census even when a consumer would paint the
+/// same face.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ThemeTypeface {
+    /// `typeface`. Empty means the script has no face.
+    pub name: Option<Arc<str>>,
+    /// `panose`.
+    pub panose: Option<Arc<str>>,
+    /// `pitchFamily`.
+    pub pitch_family: Option<Arc<str>>,
+    /// `charset`.
+    pub charset: Option<Arc<str>>,
+}
+
+impl ThemeTypeface {
+    /// A typeface that carries only a name.
+    #[must_use]
+    pub fn named(name: impl Into<Arc<str>>) -> Self {
+        Self {
+            name: Some(name.into()),
+            ..Self::default()
+        }
+    }
+
+    /// Returns `true` when no attribute was stored.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none()
+            && self.panose.is_none()
+            && self.pitch_family.is_none()
+            && self.charset.is_none()
+    }
+}
+
 /// The three typefaces of one font scheme role.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct FontSet {
-    /// Latin typeface (`a:latin/@typeface`).
-    pub latin: Option<Arc<str>>,
-    /// East-Asian typeface (`a:ea/@typeface`).
-    pub east_asia: Option<Arc<str>>,
-    /// Complex-script typeface (`a:cs/@typeface`).
-    pub cs: Option<Arc<str>>,
+    /// Latin typeface (`a:latin`).
+    pub latin: ThemeTypeface,
+    /// East-Asian typeface (`a:ea`).
+    pub east_asia: ThemeTypeface,
+    /// Complex-script typeface (`a:cs`).
+    pub cs: ThemeTypeface,
+}
+
+/// `a:defRPr` latin/ea/cs under theme object defaults.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ThemeRunFonts {
+    /// `a:latin`.
+    pub latin: ThemeTypeface,
+    /// `a:ea`.
+    pub east_asia: ThemeTypeface,
+    /// `a:cs`.
+    pub cs: ThemeTypeface,
+}
+
+impl ThemeRunFonts {
+    /// Returns `true` when none of the three faces carries an attribute.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.latin.is_empty() && self.east_asia.is_empty() && self.cs.is_empty()
+    }
 }
 
 /// The major/minor font scheme (`a:fontScheme`).
@@ -37,11 +94,11 @@ impl ThemeFonts {
             return None;
         };
         if reference.ends_with("EastAsia") {
-            set.east_asia.as_ref()
+            set.east_asia.name.as_ref()
         } else if reference.ends_with("Bidi") {
-            set.cs.as_ref()
+            set.cs.name.as_ref()
         } else {
-            set.latin.as_ref()
+            set.latin.name.as_ref()
         }
     }
 }
@@ -94,6 +151,17 @@ pub struct Theme {
     pub fonts: ThemeFonts,
     /// Colour scheme.
     pub colors: ThemeColors,
+    /// `a:objectDefaults/a:spDef` run fonts, when the theme has them.
+    pub shape_defaults: Option<ThemeRunFonts>,
+    /// `a:objectDefaults/a:txDef` run fonts, when the theme has them.
+    pub text_defaults: Option<ThemeRunFonts>,
+    /// `a:objectDefaults` as parsed, so the writer can put the element back.
+    ///
+    /// The faces above are the part the model understands. The element also
+    /// carries shape properties, list styles and `a:lnDef`, and rewriting it
+    /// as an empty shell would drop those. `None` means the theme had no
+    /// object defaults (a hand-built theme may still set the faces).
+    pub object_defaults_xml: Option<String>,
     /// Source location of the theme root.
     pub location: SourceLocation,
 }
@@ -114,19 +182,18 @@ impl Theme {
 
 #[cfg(test)]
 mod tests {
-    use super::{FontSet, ThemeColors, ThemeFonts};
-    use std::sync::Arc;
+    use super::{FontSet, ThemeColors, ThemeFonts, ThemeTypeface};
 
     #[test]
     fn font_references_resolve_to_sets() {
         let fonts = ThemeFonts {
             major: FontSet {
-                latin: Some(Arc::from("Calibri Light")),
-                east_asia: Some(Arc::from("MS Mincho")),
-                cs: Some(Arc::from("Arial")),
+                latin: ThemeTypeface::named("Calibri Light"),
+                east_asia: ThemeTypeface::named("MS Mincho"),
+                cs: ThemeTypeface::named("Arial"),
             },
             minor: FontSet {
-                latin: Some(Arc::from("Calibri")),
+                latin: ThemeTypeface::named("Calibri"),
                 ..FontSet::default()
             },
         };

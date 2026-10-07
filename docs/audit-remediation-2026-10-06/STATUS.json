@@ -365,13 +365,16 @@
     "p6_package": "P06-table-widths",
     "p7_package": "P07-theme-color",
     "p8_package": "P08-explicit-color",
+    "p9_package": "P09-fonts",
+    "p9_status": "ACCEPT",
     "m2_status": "PASS_SLICE_DECLARED_TRANSFORMS",
     "m3_status": "ACCEPT",
     "m3_slice_p5_p6": "ACCEPT",
     "m3_slice_p7_p8": "ACCEPT",
+    "m4_status": "OPEN",
     "visual_tol_px": 0.75,
     "observed_max_delta_px": 0.0,
-    "note": "M2 P2–P4 ACCEPT. M3 P5–P8 ACCEPT: theme* labels 1027→0; w:color@val+a:schemeClr@val 297→0; Contoso styles themeColor/themeFill source=written (1277/784) locked by write test; paint samples in SVG p7_p8. P8 residual 21 a:srgbClr/a:sysClr/w:shd (a14:hiddenFill under noFill) out of primary scope, no disposition. Full census FAIL unmatched_schema=1198 unclassified=4493 (M4). Next: P9 fonts (incl. themeFontLang)."
+    "note": "M2 P2–P4 ACCEPT. M3 P5–P8 ACCEPT: theme* labels 1027→0; w:color@val+a:schemeClr@val 297→0. P9 fonts ACCEPT: primary font labels 235→0 (themeFontLang eastAsia/bidi, rFonts overlay, charset/pitchFamily/panose, objectDefaults faces). TZ-49 is hint=cs only, cited. unmatched_schema stays 1198. unclassified 4493→4153. D05 is not PASS. M4 remains open (P10–P15)."
   },
   "unsupported_vectors": [
     "cubic",

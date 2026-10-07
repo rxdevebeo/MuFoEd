@@ -1,0 +1,203 @@
+diff --git a/xtool/xsd-gate/census.toml b/xtool/xsd-gate/census.toml
+index ef8509f..c79a0c1 100644
+--- a/xtool/xsd-gate/census.toml
++++ b/xtool/xsd-gate/census.toml
+@@ -588,14 +588,23 @@ disposition = "declared_transform"
+ elements = [
+   "w:tblLook@val",
+   "w:compatSetting@uri",
+-  "a:latin@panose",
+-  "a:ea@panose",
+-  "a:cs@panose",
+   "a:ln@w",
+   "a:prstDash@val",
+ ]
+ summary = "T4 tblLook bitmask rewritten as individual Strict flags; compatSetting uri is regenerated"
+-audit = "D05: Transitional w:tblLook/@val is the same six bits the writer emits as firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand. The attribute spelling change is a declared T4 rewrite, not a dropped look."
++audit = "D05: Transitional w:tblLook/@val is the same six bits the writer emits as firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand. The attribute spelling change is a declared T4 rewrite, not a dropped look. P9 keeps a:latin/a:ea/a:cs panose, charset and pitchFamily; those drops are not this transform."
++
++[[item]]
++id = "TZ-49"
++origin = "waived"
++signal = "element"
++disposition = "named_loss"
++elements = ["w:rFonts@hint"]
++parents = ["rPr"]
++was = ["cs", "CS", "Cs"]
++requires_cited = ["w:rFonts@hint"]
++summary = "Strict ST_Hint has no cs; the complex-script face stays on w:cs"
++audit = "P9: ECMA-376 Strict ST_Hint is default|eastAsia. hint=cs cannot be written. The writer keeps w:cs/w:cstheme and the parse report cites w:rFonts@hint. hint=default and hint=eastAsia are written and must not match this item. A silent drop with no citation stays unclassified."
+ 
+ [[item]]
+ id = "TZ-48"
+diff --git a/xtool/xsd-gate/census_gate.py b/xtool/xsd-gate/census_gate.py
+index 905a531..d2bf8ed 100644
+--- a/xtool/xsd-gate/census_gate.py
++++ b/xtool/xsd-gate/census_gate.py
+@@ -197,6 +197,12 @@ def vanished_elements(
+                 continue
+             _drop_duplicate_singletons(old)
+             _drop_duplicate_singletons(new)
++            # `CT_RPr` allows one `w:rFonts`. A second sibling overrides only the
++            # attributes it sets; the comparison uses that same overlay so a
++            # repeated value is not a second fact and a slot the writer dropped
++            # is still a change.
++            _collapse_duplicate_rfonts(old)
++            _collapse_duplicate_rfonts(new)
+             if part == "word/styles.xml":
+                 _keep_last_duplicate_style(old)
+                 _keep_last_duplicate_style(new)
+@@ -374,6 +380,30 @@ def _changed_attributes(
+     return rows
+ 
+ 
++def _collapse_duplicate_rfonts(root: etree._Element) -> None:
++    """Overlay repeated `w:rFonts` children of one `w:rPr` onto the first.
++
++    The later element's attributes replace the same attributes on the first.
++    Attributes the later element does not carry stay. Extra `rFonts` elements
++    are removed. A single `rFonts` is left untouched.
++    """
++    for parent in list(root.iter()):
++        if not isinstance(parent.tag, str) or etree.QName(parent).localname != "rPr":
++            continue
++        fonts = [
++            child
++            for child in list(parent)
++            if isinstance(child.tag, str) and etree.QName(child).localname == "rFonts"
++        ]
++        if len(fonts) < 2:
++            continue
++        first = fonts[0]
++        for extra in fonts[1:]:
++            for key, value in extra.attrib.items():
++                first.set(key, value)
++            parent.remove(extra)
++
++
+ def _attribute_bag(
+     root: etree._Element,
+     relationships: dict[str, tuple] | None = None,
+@@ -878,6 +908,8 @@ def _same_attr_value(
+         or (element == "gs" and attr == "pos")
+         or (element in {"fillToRect", "fillRect", "srcRect", "tileRect"} and attr in {"l", "t", "r", "b"})
+         or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
++        or (element in {"spcPct", "buSzPct"} and attr == "val")
++        or (element == "miter" and attr == "lim")
+     )
+     if drawing_percent:
+         a, b = _percent_number(left), _percent_number(right)
+@@ -970,6 +1002,16 @@ def element_item_matches(item: dict, where: str, label: str, detail: str) -> boo
+         if not any(token in cited_names for token in required):
+             return False
+ 
++    was_values = item.get("was") or []
++    if was_values:
++        was = ""
++        for piece in detail.split("|"):
++            if piece.startswith("was="):
++                was = piece[len("was=") :]
++                break
++        if was not in was_values:
++            return False
++
+     parents = item.get("parents") or []
+     if parents:
+         parent = ""
+@@ -1205,7 +1247,7 @@ def _names_in(report: str) -> set[str]:
+     if not report:
+         return set()
+     found: set[str] = set()
+-    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:-]*", report):
++    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:@-]*", report):
+         found.add(token)
+         # `w:doNotWrapTextWithPunct` names the element both ways: the signal
+         # compares LOCAL names, because the input and the output are in different
+diff --git a/xtool/xsd-gate/census_gate_selftest.py b/xtool/xsd-gate/census_gate_selftest.py
+index 4418ac2..808bb6b 100644
+--- a/xtool/xsd-gate/census_gate_selftest.py
++++ b/xtool/xsd-gate/census_gate_selftest.py
+@@ -483,6 +483,12 @@ def test_unnamed_element_loss_fails_as_ours() -> None:
+ def test_twip_and_point_are_one_measure() -> None:
+     if not census_gate._same_attr_value("b", "5893", "5.893%", "srcRect", "a"):
+         raise SystemExit("DrawingML percentage rewrite was treated as a loss")
++    if not census_gate._same_attr_value("val", "100000", "100%", "spcPct", "a"):
++        raise SystemExit("spcPct thousandths were treated as a loss")
++    if not census_gate._same_attr_value("lim", "400000", "400%", "miter", "a"):
++        raise SystemExit("miter lim thousandths were treated as a loss")
++    if census_gate._same_attr_value("w", "12700", "12.7%", "ln", "a"):
++        raise SystemExit("a line width was treated as a percentage")
+     for attr, raw, percent, element, ns in [
+         ("b", "5893", "5.894%", "srcRect", "a"),
+         ("val", "60000", "60%", "hue", "a"),
+@@ -591,6 +597,7 @@ def main() -> int:
+     test_context_match_rejects_wrong_parent()
+     test_named_loss_requires_this_inputs_report()
+     test_docpr_id_remap_requires_citation()
++    test_p9_hint_cs_and_duplicate_rfonts()
+     test_review_negative_controls_stay_unclassified()
+     test_vanished_emits_qualified_context()
+     test_one_of_two_same_nodes_is_visible()
+@@ -604,6 +611,62 @@ def main() -> int:
+     return 0
+ 
+ 
++def test_p9_hint_cs_and_duplicate_rfonts() -> None:
++    """P9: hint=cs is a cited named loss; overlay keeps ascii; charset is not waived."""
++    registry = census_gate.load_census()
++    item = next(entry for entry in registry if entry["id"] == "TZ-49")
++    where = "003.docx: word/document.xml"
++    label = "w:rFonts@hint"
++    cited = (
++        "parent=rPr|namespace=w|parent_namespace=w|attribute_namespace=w"
++        "|attr=hint|was=cs|removed=1|named=1|cited=w:rFonts@hint"
++    )
++    east = cited.replace("was=cs", "was=eastAsia")
++    silent = cited.replace("|cited=w:rFonts@hint", "|cited=")
++    if not census_gate.element_item_matches(item, where, label, cited):
++        raise SystemExit("TZ-49 must accept a cited hint=cs drop")
++    if census_gate.element_item_matches(item, where, label, east):
++        raise SystemExit("TZ-49 must not swallow hint=eastAsia")
++    if census_gate.element_item_matches(item, where, label, silent):
++        raise SystemExit("TZ-49 must not accept a silent hint=cs drop")
++    if any(
++        census_gate.element_item_matches(entry, where, "a:latin@charset", "parent=majorFont|was=1|named=0")
++        for entry in registry
++    ):
++        raise SystemExit("charset drop must stay unclassified")
++
++    config = xsd_gate.load_config()
++    oracle = xsd_gate.Oracle(xsd_gate.locate_schemas(config))
++    with tempfile.TemporaryDirectory() as tmp:
++        root = Path(tmp)
++        source = root / "in.docx"
++        written = root / "out.docx"
++        body = (
++            "<?xml version='1.0' encoding='UTF-8'?>"
++            f"<w:document xmlns:w='{WML_T}'><w:body><w:p><w:r><w:rPr>"
++            "<w:rFonts w:ascii='Symbol' w:hAnsi='Symbol' w:cs='Symbol' w:hint='default'/>"
++            "<w:rFonts w:cs='OpenSymbol'/>"
++            "</w:rPr><w:t>a</w:t></w:r></w:p></w:body></w:document>"
++        )
++        kept = (
++            "<?xml version='1.0' encoding='UTF-8'?>"
++            f"<w:document xmlns:w='{WML_S}'><w:body><w:p><w:r><w:rPr>"
++            "<w:rFonts w:ascii='Symbol' w:hAnsi='Symbol' w:cs='OpenSymbol' w:hint='default'/>"
++            "</w:rPr><w:t>a</w:t></w:r></w:p></w:body></w:document>"
++        )
++        _docx(source, {"word/document.xml": body})
++        _docx(written, {"word/document.xml": kept})
++        rows = census_gate.vanished_elements(str(source), str(written), oracle, set())
++        labels = {label for _part, label, _detail in rows}
++        if "w:rFonts@ascii" in labels or "w:rFonts@hint" in labels or "w:rFonts@cs" in labels:
++            raise SystemExit(f"overlay equivalence was a loss: {rows}")
++        dropped = kept.replace("w:ascii='Symbol' ", "")
++        _docx(written, {"word/document.xml": dropped})
++        rows = census_gate.vanished_elements(str(source), str(written), oracle, set())
++        if not any(label == "w:rFonts@ascii" and "was=Symbol" in detail for _part, label, detail in rows):
++            raise SystemExit(f"dropped ascii must stay visible: {rows}")
++
++
+ def test_namespace_identity_cannot_hide_a_change() -> None:
+     from types import SimpleNamespace
+     a = "http://schemas.openxmlformats.org/drawingml/2006/main"

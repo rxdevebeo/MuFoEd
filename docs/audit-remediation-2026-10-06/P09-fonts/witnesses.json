@@ -1,0 +1,66 @@
+{
+  "package": "P9",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+      "role": "witness",
+      "source_sha256": "222d8f388f02aae34b3a2548689c32f4468a64a9210c070ddd947bc855791867",
+      "written_sha256": "7e50f207c5005a5afa3f102027efe09bad5c8938b6b56e24cb2137a84e0a47b8",
+      "written_path": "target/census-written-p9-final/cc0/003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/014_BG_Slokas_With_Transliteration_1_18.docx",
+      "role": "witness",
+      "source_sha256": "c0c7e8cbf38d26ccfea6c8103f6877955203be1238d6569cbba44206502ceebf",
+      "written_sha256": "e7aef219212f25b0a2608afd90991581a799073e7d3e851229524f6b50fdf35f",
+      "written_path": "target/census-written-p9-final/cc0/014_BG_Slokas_With_Transliteration_1_18.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/main_document.docx",
+      "role": "witness",
+      "source_sha256": "5cba7c22e38cdaea25da1d4d5186fb911d4b1dfccd9feeb37093b26ba11b454b",
+      "written_sha256": "b7a704fb9d3f0f4c26f9750b1dc1d0b465d23d262d599e96e81de56c6cd05b17",
+      "written_path": "target/census-written-p9-final/docx/main_document.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/sub_document.docx",
+      "role": "witness",
+      "source_sha256": "30e616e6e3f615cc88fab82794f4eb5f3c7b38fcdcd6459b60a46994debd91eb",
+      "written_sha256": "f7954094c5badddee5205d4a7672bef47834b8f1c610d788733a6a72cd614b9f",
+      "written_path": "target/census-written-p9-final/docx/sub_document.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx",
+      "role": "witness",
+      "source_sha256": "a7048f7c56aa5d52f1720b2fd2cd4a15ba8a50ebd61ccf27f88efa8e5fdfaa20",
+      "written_sha256": "5662c57c900596c0b3e7921910a03e3ca406b3a14e0863f29b3a4c1fd36f0673",
+      "written_path": "target/census-written-p9-final/docx/Contoso_Guest_WiFi_Connection_Guide.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/docx-jinja2-demo.docx",
+      "role": "witness",
+      "source_sha256": "e889890e7a5aec1a555a708a512d52ec01d4b8bcd3e9b0430fd0d91febf9dc07",
+      "written_sha256": "5db062805b7f5de4aee26453756fd3f1f44a62093e4b737f5e3948a045ae09d1",
+      "written_path": "target/census-written-p9-final/docx/docx-jinja2-demo.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/recipe_template.docx",
+      "role": "witness",
+      "source_sha256": "757c13c932cb6e64dff55627287fd395d1f04d1b9b2c428e1cdeebf5ca57728b",
+      "written_sha256": "3bb2b6de91b0873a401289bfcc8fda77d6f5cd7851c834efcfd09f900db8b59b",
+      "written_path": "target/census-written-p9-final/docx/recipe_template.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/samples/DOCX_Mathematical_Equations_2fd0caa825.docx",
+      "role": "witness",
+      "source_sha256": "5bb31c916d957c2ab5b6c174059482ea4be512a55c0c66c009103a8a8aa0092d",
+      "written_sha256": "e02d0286de9b16eabfbf37061c1cf42de2dd22a37593fe289123397e782588ca",
+      "written_path": "target/census-written-p9-final/samples/DOCX_Mathematical_Equations_2fd0caa825.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/strict/05-strict-math-simple.docx",
+      "role": "stage5c-contract",
+      "source_sha256": "8acaac4c050381f3e412bf6678641814a182719f7d5acd2c5898908bdeccf6c2"
+    }
+  ]
+}

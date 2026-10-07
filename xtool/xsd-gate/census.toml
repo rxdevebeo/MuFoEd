@@ -588,14 +588,23 @@ disposition = "declared_transform"
 elements = [
   "w:tblLook@val",
   "w:compatSetting@uri",
-  "a:latin@panose",
-  "a:ea@panose",
-  "a:cs@panose",
   "a:ln@w",
   "a:prstDash@val",
 ]
 summary = "T4 tblLook bitmask rewritten as individual Strict flags; compatSetting uri is regenerated"
-audit = "D05: Transitional w:tblLook/@val is the same six bits the writer emits as firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand. The attribute spelling change is a declared T4 rewrite, not a dropped look."
+audit = "D05: Transitional w:tblLook/@val is the same six bits the writer emits as firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand. The attribute spelling change is a declared T4 rewrite, not a dropped look. P9 keeps a:latin/a:ea/a:cs panose, charset and pitchFamily; those drops are not this transform."
+
+[[item]]
+id = "TZ-49"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = ["w:rFonts@hint"]
+parents = ["rPr"]
+was = ["cs", "CS", "Cs"]
+requires_cited = ["w:rFonts@hint"]
+summary = "Strict ST_Hint has no cs; the complex-script face stays on w:cs"
+audit = "P9: ECMA-376 Strict ST_Hint is default|eastAsia. hint=cs cannot be written. The writer keeps w:cs/w:cstheme and the parse report cites w:rFonts@hint. hint=default and hint=eastAsia are written and must not match this item. A silent drop with no citation stays unclassified."
 
 [[item]]
 id = "TZ-48"

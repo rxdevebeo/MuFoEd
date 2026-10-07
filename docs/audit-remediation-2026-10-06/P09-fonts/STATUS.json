@@ -1,0 +1,74 @@
+{
+  "package": "P9",
+  "slug": "fonts",
+  "visual_level": "V3",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 235,
+  "rows_after": 0,
+  "labels": [
+    "w:themeFontLang@eastAsia",
+    "w:themeFontLang@bidi",
+    "w:rFonts@hint",
+    "w:rFonts@ascii",
+    "w:rFonts@hAnsi",
+    "w:rFonts@cs",
+    "a:latin@charset",
+    "a:ea@charset",
+    "a:cs@charset",
+    "a:latin@pitchFamily",
+    "a:ea@pitchFamily",
+    "a:cs@pitchFamily",
+    "a:latin",
+    "a:ea",
+    "a:cs",
+    "a:sym"
+  ],
+  "labels_residual_out_of_primary_scope": [
+    "resource:word/fonts/font#.odttf"
+  ],
+  "residual_rows_after": 1,
+  "witness_docs": [
+    "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+    "014_BG_Slokas_With_Transliteration_1_18.docx",
+    "main_document.docx",
+    "sub_document.docx",
+    "Contoso_Guest_WiFi_Connection_Guide.docx",
+    "docx-jinja2-demo.docx",
+    "recipe_template.docx",
+    "DOCX_Mathematical_Equations_2fd0caa825.docx",
+    "05-strict-math-simple.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P9-1": true,
+    "T-P9-2": true,
+    "T-P9-3": true
+  },
+  "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "Eight P9 witnesses: documents=8 validated=8 missing=0 unmatched_schema=16 unclassified_element_changes=135 ours=0. Primary font labels are 0 on the slice. Exit 1 is the pre-existing 014 buSzPct schema messages and non-font inventory. D05 is not PASS.",
+  "slice_unclassified_element_changes": 135,
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "full_corpus_refused": 0,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 4153,
+  "visual": {
+    "artifact": "visual/05-strict-math-simple-page1.svg"
+  },
+  "tz_items": ["TZ-49"],
+  "notes": [
+    "Baseline is the post-P8 inventory (4493 unclassified), not the 2026-10-06 plan total of 510. Primary font labels on that inventory: 235 → 0.",
+    "Preserved: themeFontLang eastAsia/bidi; repeated w:rFonts by overlay (ascii/hAnsi stay when a later rFonts sets only cs); theme latin/ea/cs panose, pitchFamily and charset including the schema defaults 0 and 1; font-table panose/charset/family/pitch/sig.",
+    "a:objectDefaults is copied, not replaced by an empty shell. spcPct/@val, buSzPct/@val and a:miter/@lim are rewritten from Transitional thousandths to Strict percent strings (100000 → 100%). Census treats those spellings as one value. unmatched_schema stays 1198.",
+    "TZ-49 named_loss is only w:rFonts@hint was=cs|CS|Cs, parent rPr, and only when this input's report cites w:rFonts@hint. hint=default and hint=eastAsia are written. An uncited drop stays unclassified. Panose was removed from TZ-47 so a silent panose drop cannot hide.",
+    "Copying objectDefaults also cleared unclassified list-style children that the placeholder used to drop (a:defRPr, a:lnSpc, a:lvl1pPr…, a:spcPct). That is preservation, not a new waiver.",
+    "Residual resource:word/fonts/font#.odttf (empty embed, sha256 of an empty file) stays unclassified. It is a binary resource, not a font-table hint.",
+    "One newly listed row: w:default parent=checkBox in zahtev+za+odobrenje+SNS+Obrazac_2.docx. The P8 written package already omitted it. TZ-40 would cover it only with a citation this input does not print. No new disposition.",
+    "T-P9-2: stage5c_corpus 4/4 with report+svg; no assertion removed. T-P9-3: clearing Calibri charset or theme charset=86 is visible in the written XML.",
+    "full_census_exit remains FAIL. unclassified 4493 → 4153. D05 is not PASS. M4 is not closed."
+  ],
+  "declared_transforms": []
+}

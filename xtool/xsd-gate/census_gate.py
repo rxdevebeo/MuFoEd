@@ -197,6 +197,12 @@ def vanished_elements(
                 continue
             _drop_duplicate_singletons(old)
             _drop_duplicate_singletons(new)
+            # `CT_RPr` allows one `w:rFonts`. A second sibling overrides only the
+            # attributes it sets; the comparison uses that same overlay so a
+            # repeated value is not a second fact and a slot the writer dropped
+            # is still a change.
+            _collapse_duplicate_rfonts(old)
+            _collapse_duplicate_rfonts(new)
             if part == "word/styles.xml":
                 _keep_last_duplicate_style(old)
                 _keep_last_duplicate_style(new)
@@ -372,6 +378,30 @@ def _changed_attributes(
         )
         rows.append((part, label, detail))
     return rows
+
+
+def _collapse_duplicate_rfonts(root: etree._Element) -> None:
+    """Overlay repeated `w:rFonts` children of one `w:rPr` onto the first.
+
+    The later element's attributes replace the same attributes on the first.
+    Attributes the later element does not carry stay. Extra `rFonts` elements
+    are removed. A single `rFonts` is left untouched.
+    """
+    for parent in list(root.iter()):
+        if not isinstance(parent.tag, str) or etree.QName(parent).localname != "rPr":
+            continue
+        fonts = [
+            child
+            for child in list(parent)
+            if isinstance(child.tag, str) and etree.QName(child).localname == "rFonts"
+        ]
+        if len(fonts) < 2:
+            continue
+        first = fonts[0]
+        for extra in fonts[1:]:
+            for key, value in extra.attrib.items():
+                first.set(key, value)
+            parent.remove(extra)
 
 
 def _attribute_bag(
@@ -878,6 +908,8 @@ def _same_attr_value(
         or (element == "gs" and attr == "pos")
         or (element in {"fillToRect", "fillRect", "srcRect", "tileRect"} and attr in {"l", "t", "r", "b"})
         or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
+        or (element in {"spcPct", "buSzPct"} and attr == "val")
+        or (element == "miter" and attr == "lim")
     )
     if drawing_percent:
         a, b = _percent_number(left), _percent_number(right)
@@ -968,6 +1000,16 @@ def element_item_matches(item: dict, where: str, label: str, detail: str) -> boo
                 break
         cited_names = set(cited.split(",")) if cited else set()
         if not any(token in cited_names for token in required):
+            return False
+
+    was_values = item.get("was") or []
+    if was_values:
+        was = ""
+        for piece in detail.split("|"):
+            if piece.startswith("was="):
+                was = piece[len("was=") :]
+                break
+        if was not in was_values:
             return False
 
     parents = item.get("parents") or []
@@ -1205,7 +1247,7 @@ def _names_in(report: str) -> set[str]:
     if not report:
         return set()
     found: set[str] = set()
-    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:-]*", report):
+    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:@-]*", report):
         found.add(token)
         # `w:doNotWrapTextWithPunct` names the element both ways: the signal
         # compares LOCAL names, because the input and the output are in different

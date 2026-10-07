@@ -483,6 +483,12 @@ def test_unnamed_element_loss_fails_as_ours() -> None:
 def test_twip_and_point_are_one_measure() -> None:
     if not census_gate._same_attr_value("b", "5893", "5.893%", "srcRect", "a"):
         raise SystemExit("DrawingML percentage rewrite was treated as a loss")
+    if not census_gate._same_attr_value("val", "100000", "100%", "spcPct", "a"):
+        raise SystemExit("spcPct thousandths were treated as a loss")
+    if not census_gate._same_attr_value("lim", "400000", "400%", "miter", "a"):
+        raise SystemExit("miter lim thousandths were treated as a loss")
+    if census_gate._same_attr_value("w", "12700", "12.7%", "ln", "a"):
+        raise SystemExit("a line width was treated as a percentage")
     for attr, raw, percent, element, ns in [
         ("b", "5893", "5.894%", "srcRect", "a"),
         ("val", "60000", "60%", "hue", "a"),
@@ -591,6 +597,7 @@ def main() -> int:
     test_context_match_rejects_wrong_parent()
     test_named_loss_requires_this_inputs_report()
     test_docpr_id_remap_requires_citation()
+    test_p9_hint_cs_and_duplicate_rfonts()
     test_review_negative_controls_stay_unclassified()
     test_vanished_emits_qualified_context()
     test_one_of_two_same_nodes_is_visible()
@@ -602,6 +609,62 @@ def main() -> int:
     test_rounded_twip_duplicate_run_and_style()
     print("census_gate_selftest: pass")
     return 0
+
+
+def test_p9_hint_cs_and_duplicate_rfonts() -> None:
+    """P9: hint=cs is a cited named loss; overlay keeps ascii; charset is not waived."""
+    registry = census_gate.load_census()
+    item = next(entry for entry in registry if entry["id"] == "TZ-49")
+    where = "003.docx: word/document.xml"
+    label = "w:rFonts@hint"
+    cited = (
+        "parent=rPr|namespace=w|parent_namespace=w|attribute_namespace=w"
+        "|attr=hint|was=cs|removed=1|named=1|cited=w:rFonts@hint"
+    )
+    east = cited.replace("was=cs", "was=eastAsia")
+    silent = cited.replace("|cited=w:rFonts@hint", "|cited=")
+    if not census_gate.element_item_matches(item, where, label, cited):
+        raise SystemExit("TZ-49 must accept a cited hint=cs drop")
+    if census_gate.element_item_matches(item, where, label, east):
+        raise SystemExit("TZ-49 must not swallow hint=eastAsia")
+    if census_gate.element_item_matches(item, where, label, silent):
+        raise SystemExit("TZ-49 must not accept a silent hint=cs drop")
+    if any(
+        census_gate.element_item_matches(entry, where, "a:latin@charset", "parent=majorFont|was=1|named=0")
+        for entry in registry
+    ):
+        raise SystemExit("charset drop must stay unclassified")
+
+    config = xsd_gate.load_config()
+    oracle = xsd_gate.Oracle(xsd_gate.locate_schemas(config))
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source = root / "in.docx"
+        written = root / "out.docx"
+        body = (
+            "<?xml version='1.0' encoding='UTF-8'?>"
+            f"<w:document xmlns:w='{WML_T}'><w:body><w:p><w:r><w:rPr>"
+            "<w:rFonts w:ascii='Symbol' w:hAnsi='Symbol' w:cs='Symbol' w:hint='default'/>"
+            "<w:rFonts w:cs='OpenSymbol'/>"
+            "</w:rPr><w:t>a</w:t></w:r></w:p></w:body></w:document>"
+        )
+        kept = (
+            "<?xml version='1.0' encoding='UTF-8'?>"
+            f"<w:document xmlns:w='{WML_S}'><w:body><w:p><w:r><w:rPr>"
+            "<w:rFonts w:ascii='Symbol' w:hAnsi='Symbol' w:cs='OpenSymbol' w:hint='default'/>"
+            "</w:rPr><w:t>a</w:t></w:r></w:p></w:body></w:document>"
+        )
+        _docx(source, {"word/document.xml": body})
+        _docx(written, {"word/document.xml": kept})
+        rows = census_gate.vanished_elements(str(source), str(written), oracle, set())
+        labels = {label for _part, label, _detail in rows}
+        if "w:rFonts@ascii" in labels or "w:rFonts@hint" in labels or "w:rFonts@cs" in labels:
+            raise SystemExit(f"overlay equivalence was a loss: {rows}")
+        dropped = kept.replace("w:ascii='Symbol' ", "")
+        _docx(written, {"word/document.xml": dropped})
+        rows = census_gate.vanished_elements(str(source), str(written), oracle, set())
+        if not any(label == "w:rFonts@ascii" and "was=Symbol" in detail for _part, label, detail in rows):
+            raise SystemExit(f"dropped ascii must stay visible: {rows}")
 
 
 def test_namespace_identity_cannot_hide_a_change() -> None:

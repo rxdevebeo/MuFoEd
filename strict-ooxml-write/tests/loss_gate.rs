@@ -24,7 +24,7 @@ use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::normalize::report::{LossRecord, NormalizationReport, Severity};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::document::DocumentSource;
-use strict_ooxml_wml::model::theme::{FontSet, Theme, ThemeColors, ThemeFonts};
+use strict_ooxml_wml::model::theme::{FontSet, Theme, ThemeColors, ThemeFonts, ThemeTypeface};
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_write::{verify_no_silent_loss, write_package, WriteOptions};
 
@@ -61,17 +61,18 @@ fn theme() -> Theme {
     Theme {
         fonts: ThemeFonts {
             major: FontSet {
-                latin: Some("Calibri Light".into()),
-                east_asia: None,
-                cs: None,
+                latin: ThemeTypeface::named("Calibri Light"),
+                ..FontSet::default()
             },
             minor: FontSet {
-                latin: Some("Calibri".into()),
-                east_asia: None,
-                cs: None,
+                latin: ThemeTypeface::named("Calibri"),
+                ..FontSet::default()
             },
         },
         colors,
+        shape_defaults: None,
+        text_defaults: None,
+        object_defaults_xml: None,
         location: SourceLocation::unknown(),
     }
 }

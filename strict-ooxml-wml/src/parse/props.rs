@@ -293,7 +293,14 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "rStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
-                            "rFonts" => props.fonts = Some(parser.parse_fonts(&attrs)),
+                            "rFonts" => {
+                                let next = parser.parse_fonts(&attrs);
+                                if let Some(existing) = props.fonts.as_mut() {
+                                    existing.overlay(next);
+                                } else {
+                                    props.fonts = Some(next);
+                                }
+                            }
                             "b" => props.bold = parse_on_off_tristate(parser, &attrs, "w:b"),
                             "bCs" => {
                                 props.bold_cs = parse_on_off_tristate(parser, &attrs, "w:bCs");
@@ -469,7 +476,23 @@ impl PartParser<'_> {
             h_ansi: wml_attr(attrs, "hAnsi").map(|value| self.intern(value)),
             east_asia: wml_attr(attrs, "eastAsia").map(|value| self.intern(value)),
             complex_script: wml_attr(attrs, "cs").map(|value| self.intern(value)),
-            hint: wml_attr(attrs, "hint").map(|value| self.intern(value)),
+            hint: {
+                let hint = wml_attr(attrs, "hint");
+                if hint.is_some_and(|value| value.eq_ignore_ascii_case("cs")) {
+                    // Strict `ST_Hint` is `default` | `eastAsia`. The face stays
+                    // on `w:cs`; the hint token itself cannot be written.
+                    self.record(
+                        "w:rFonts@hint",
+                        SupportStatus::Partial,
+                        Some(
+                            "Strict ST_Hint has no cs; the complex-script face stays on w:cs"
+                                .to_owned(),
+                        ),
+                        Some(self.location()),
+                    );
+                }
+                hint.map(|value| self.intern(value))
+            },
             ascii_theme: wml_attr(attrs, "asciiTheme").map(|value| self.intern(value)),
             h_ansi_theme: wml_attr(attrs, "hAnsiTheme").map(|value| self.intern(value)),
             east_asia_theme: wml_attr(attrs, "eastAsiaTheme").map(|value| self.intern(value)),

@@ -6,6 +6,29 @@ use super::ids::StyleId;
 use super::notes::NoteProperties;
 use super::values::Twips;
 
+/// `w:themeFontLang` — the three script languages `CT_Language` carries.
+///
+/// `val` is the Latin/ascii language. `eastAsia` and `bidi` select the theme
+/// font used for those scripts. Dropping either one changes which face a theme
+/// reference resolves to.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ThemeFontLang {
+    /// `w:val`.
+    pub val: Option<Arc<str>>,
+    /// `w:eastAsia`.
+    pub east_asia: Option<Arc<str>>,
+    /// `w:bidi`.
+    pub bidi: Option<Arc<str>>,
+}
+
+impl ThemeFontLang {
+    /// Returns `true` when none of the three languages is set.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.val.is_none() && self.east_asia.is_none() && self.bidi.is_none()
+    }
+}
+
 /// The document zoom level (`w:zoom`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Zoom {
@@ -86,8 +109,8 @@ pub struct Settings {
     /// survives with its key/values and none of its switches is a document whose
     /// line breaking has silently changed.
     pub compat_flags: CompatFlags,
-    /// Theme font languages (`w:themeFontLang`).
-    pub theme_font_lang: Option<Arc<str>>,
+    /// Theme font languages (`w:themeFontLang`: `val`, `eastAsia`, `bidi`).
+    pub theme_font_lang: Option<ThemeFontLang>,
     /// Footnote properties (`w:footnotePr`).
     pub footnote_properties: NoteProperties,
     /// Endnote properties (`w:endnotePr`).

@@ -681,6 +681,31 @@ pub struct Fonts {
     pub cs_theme: Option<Arc<str>>,
 }
 
+impl Fonts {
+    /// Applies a later `w:rFonts` in the same `w:rPr`.
+    ///
+    /// `CT_RPr` allows one `w:rFonts`. Some producers emit a second element that
+    /// names only the complex-script face. The schema-legal reading is one
+    /// element: each attribute the later element sets replaces that slot, and
+    /// every slot it does not mention stays.
+    pub fn overlay(&mut self, later: Self) {
+        fn take(slot: &mut Option<Arc<str>>, next: Option<Arc<str>>) {
+            if next.is_some() {
+                *slot = next;
+            }
+        }
+        take(&mut self.ascii, later.ascii);
+        take(&mut self.h_ansi, later.h_ansi);
+        take(&mut self.east_asia, later.east_asia);
+        take(&mut self.complex_script, later.complex_script);
+        take(&mut self.hint, later.hint);
+        take(&mut self.ascii_theme, later.ascii_theme);
+        take(&mut self.h_ansi_theme, later.h_ansi_theme);
+        take(&mut self.east_asia_theme, later.east_asia_theme);
+        take(&mut self.cs_theme, later.cs_theme);
+    }
+}
+
 /// Paragraph spacing (`w:spacing`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Spacing {
