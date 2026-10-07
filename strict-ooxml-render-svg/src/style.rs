@@ -795,7 +795,7 @@ mod tests {
                 ..RunProperties::default()
             },
             conditions: Vec::new(),
-        based_on_chain: Vec::new(),
+            based_on_chain: Vec::new(),
             location: location(),
         };
         base.run.size = Some(strict_ooxml_wml::model::values::HalfPoints(28));

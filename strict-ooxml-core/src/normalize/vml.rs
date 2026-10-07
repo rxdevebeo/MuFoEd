@@ -544,9 +544,9 @@ pub(crate) fn grouped_text_boxes(
                     continue;
                 };
                 if is_vml(&uri) && local == "group" {
-                    if let Some(frame) = group_frame(start).or_else(|| {
-                        stack.last().map(|group| group.frame.clone())
-                    }) {
+                    if let Some(frame) =
+                        group_frame(start).or_else(|| stack.last().map(|group| group.frame.clone()))
+                    {
                         stack.push(OpenGroup {
                             depth,
                             frame,
@@ -595,8 +595,7 @@ pub(crate) fn grouped_text_boxes(
                     child_depth -= 1;
                     if child_depth == 0 {
                         if let Some(group) = stack.last() {
-                            if let Some(grouped) =
-                                finish_grouped(buffer, &group.frame, group.wrap)
+                            if let Some(grouped) = finish_grouped(buffer, &group.frame, group.wrap)
                             {
                                 out.push(grouped);
                             }

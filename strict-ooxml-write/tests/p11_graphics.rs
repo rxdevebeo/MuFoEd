@@ -30,12 +30,16 @@ fn picture_id_bw_mode_and_cstate_round_trip() {
     let written = write_package(&document, Some(&package), &WriteOptions::default())
         .expect("write")
         .bytes;
-    let reopened = Package::open_reader(written.as_slice(), &OpenOptions::default()).expect("reopen");
+    let reopened =
+        Package::open_reader(written.as_slice(), &OpenOptions::default()).expect("reopen");
     let document = reopened
         .read_part(&PartId::new("/word/document.xml"))
         .expect("document");
     let text = String::from_utf8_lossy(&document);
-    assert!(text.contains(r#"id="150""#), "shape non-visual id was rewritten");
+    assert!(
+        text.contains(r#"id="150""#),
+        "shape non-visual id was rewritten"
+    );
     assert!(
         text.contains(r#"bwMode="auto""#),
         "explicit bwMode=auto was dropped"

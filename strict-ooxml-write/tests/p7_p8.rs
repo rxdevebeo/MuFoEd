@@ -63,7 +63,11 @@ fn round_trip_body(body: &str) -> (Document, Document, String) {
         write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
     let reopened = open(&written.bytes).expect("reopen");
     let reparsed = parse(&reopened).expect("reparse");
-    (document, reparsed, part_xml(&reopened, "/word/document.xml"))
+    (
+        document,
+        reparsed,
+        part_xml(&reopened, "/word/document.xml"),
+    )
 }
 
 /// T-P7-1: themeColor + tint/shade round-trip on run colour and table borders.
@@ -113,11 +117,7 @@ fn t_p7_1_theme_color_tint_shade_round_trip() {
     );
     let condition = &style.conditions[0];
     assert_eq!(
-        condition
-            .run
-            .color_theme
-            .as_ref()
-            .map(|t| t.color.as_str()),
+        condition.run.color_theme.as_ref().map(|t| t.color.as_str()),
         Some("accent1")
     );
     assert!(
@@ -177,7 +177,10 @@ fn t_p7_2_lexical_theme_drop_is_not_equivalent() {
     let written =
         write_package(&stripped, Some(&package), &WriteOptions::default()).expect("write");
     let xml = part_xml(&open(&written.bytes).expect("reopen"), "/word/document.xml");
-    assert!(xml.contains(r#"w:val="4472C4""#) || xml.contains(r#"w:val="4472c4""#), "{xml}");
+    assert!(
+        xml.contains(r#"w:val="4472C4""#) || xml.contains(r#"w:val="4472c4""#),
+        "{xml}"
+    );
     assert!(
         !xml.contains("themeColor"),
         "dropping themeColor must be visible in XML: {xml}"
@@ -209,8 +212,7 @@ fn t_p7_3_accent_slot_change_is_visible() {
             .build(),
     )
     .expect("open");
-    let written =
-        write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
+    let written = write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
     let xml = part_xml(&open(&written.bytes).expect("reopen"), "/word/document.xml");
     assert!(xml.contains(r#"w:themeColor="accent2""#), "{xml}");
     assert!(!xml.contains(r#"w:themeColor="accent1""#), "{xml}");
@@ -310,8 +312,7 @@ fn t_p8_1_hex_case_and_real_value_change() {
             .build(),
     )
     .expect("open");
-    let written =
-        write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
+    let written = write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
     let xml = part_xml(&open(&written.bytes).expect("reopen"), "/word/document.xml");
     assert!(xml.contains(r#"w:val="AbCdEe""#), "{xml}");
     assert!(!xml.contains(r#"w:val="AbCdEf""#), "{xml}");

@@ -47,7 +47,10 @@ fn softuni_preserves_page_percent_position() {
     for block in &doc.body.blocks {
         walk_count(block, &mut out, &mut opaque, &mut drawings);
     }
-    eprintln!("anchors found={} drawings={drawings} opaque_inlines={opaque}", out.len());
+    eprintln!(
+        "anchors found={} drawings={drawings} opaque_inlines={opaque}",
+        out.len()
+    );
     for line in &out {
         eprintln!("{line}");
     }
@@ -59,7 +62,10 @@ fn softuni_preserves_page_percent_position() {
         n += 1;
         let start = idx.saturating_sub(120);
         let end = (idx + 80).min(text.len());
-        eprintln!("pct#{n} @{idx}: ...{}...", &text[start..end].replace('\n', " "));
+        eprintln!(
+            "pct#{n} @{idx}: ...{}...",
+            &text[start..end].replace('\n', " ")
+        );
         search_from = idx + 12;
     }
     assert!(
@@ -77,12 +83,7 @@ fn walk(block: &Block, out: &mut Vec<String>) {
     walk_count(block, out, &mut opaque, &mut drawings);
 }
 
-fn walk_count(
-    block: &Block,
-    out: &mut Vec<String>,
-    opaque: &mut usize,
-    drawings: &mut usize,
-) {
+fn walk_count(block: &Block, out: &mut Vec<String>, opaque: &mut usize, drawings: &mut usize) {
     match block {
         Block::Paragraph(paragraph) => {
             for inline in &paragraph.inlines {

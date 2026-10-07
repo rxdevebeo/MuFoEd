@@ -325,7 +325,10 @@ fn f06_clio_l16055_is_four_point() {
             if let Some(style_id) = &run.props.style {
                 eprintln!("style present={}", document.styles.get(style_id).is_some());
                 if let Some(style) = document.styles.get(style_id) {
-                    eprintln!("style.size={:?} based_on={:?}", style.run.size, style.based_on);
+                    eprintln!(
+                        "style.size={:?} based_on={:?}",
+                        style.run.size, style.based_on
+                    );
                 }
             }
             return Some(computed.size_pt);

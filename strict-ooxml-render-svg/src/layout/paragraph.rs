@@ -740,9 +740,9 @@ fn build_lines(
             Seg::Text(text, run) => {
                 let tokens = tokenize(&text);
                 for (index, token) in tokens.iter().enumerate() {
-                    let following = tokens.get(index + 1).and_then(|next| {
-                        next.chars().find(|ch| !ch.is_whitespace())
-                    });
+                    let following = tokens
+                        .get(index + 1)
+                        .and_then(|next| next.chars().find(|ch| !ch.is_whitespace()));
                     place_token(
                         &mut sink,
                         &mut current,
@@ -1343,7 +1343,10 @@ fn apply_substitute_width_reflow(
     if scales.iter().all(|s| (*s - 1.0).abs() <= f64::EPSILON) {
         return;
     }
-    let origin = items.iter().map(|item| item.x).fold(f64::INFINITY, f64::min);
+    let origin = items
+        .iter()
+        .map(|item| item.x)
+        .fold(f64::INFINITY, f64::min);
     if !origin.is_finite() {
         return;
     }

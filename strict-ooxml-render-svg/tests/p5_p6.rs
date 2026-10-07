@@ -13,9 +13,7 @@ use std::sync::Arc;
 use common::{build_docx, content_types, document, open_bytes, root_rels};
 use strict_ooxml_core::normalize::TransitionalNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
-use strict_ooxml_render_svg::{
-    place_pages, render, Item, MediaMode, PageSelection, RenderOptions,
-};
+use strict_ooxml_render_svg::{place_pages, render, Item, MediaMode, PageSelection, RenderOptions};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
 fn placed(body: &str) -> Vec<Item> {
@@ -142,7 +140,8 @@ fn t_p6_2_table_column_boxes() {
 }
 
 fn witness(prefix: &str) -> std::path::PathBuf {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
     std::fs::read_dir(&dir)
         .expect("docx corpus")
         .filter_map(|entry| entry.ok())
@@ -218,7 +217,8 @@ fn t_p5_4_rm0090_heading_metrics() {
     assert!(
         (heading.size_px - 32.0).abs() <= 0.25,
         "sz 48 must be 32 px, got {} ({})",
-        heading.size_px, heading.text
+        heading.size_px,
+        heading.text
     );
     // Builtin-font advance of this exact 24 pt run. The TOC fragment is a
     // different string, so the width is locked against the heading itself.
@@ -292,9 +292,9 @@ fn t_p6_2_rm0090_table_columns() {
     let center = (left.x + title_end.x + title_end.width) / 2.0;
     let column2 = center + col1 / 2.0;
     // The next row is left-aligned. HCLK starts one default cell margin in.
-    let hclk = texts(&owned, "HCLK").into_iter().find(|text| {
-        text.baseline > left.baseline && (text.x - (column2 + pad)).abs() <= 0.25
-    });
+    let hclk = texts(&owned, "HCLK")
+        .into_iter()
+        .find(|text| text.baseline > left.baseline && (text.x - (column2 + pad)).abs() <= 0.25);
     assert!(
         hclk.is_some(),
         "HCLK should start at {:.2}, one margin into the 1917 twip column",

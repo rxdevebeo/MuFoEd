@@ -863,7 +863,8 @@ impl PartParser<'_> {
         let rel_id = attr_in_ns(attrs, RELS_STRICT_NS, "id").map(RelId::new);
         let anchor = wml_attr(attrs, "anchor").map(|value| self.intern(value));
         let tooltip = wml_attr(attrs, "tooltip").map(|value| self.intern(value));
-        let history = wml_attr(attrs, "history").is_some_and(|value| matches!(value, "1" | "true" | "on"));
+        let history =
+            wml_attr(attrs, "history").is_some_and(|value| matches!(value, "1" | "true" | "on"));
         let tgt_frame = wml_attr(attrs, "tgtFrame").map(|value| self.intern(value));
         let inlines = self.parse_inline_children()?;
         Ok(Hyperlink {
@@ -1095,7 +1096,8 @@ impl PartParser<'_> {
                         if is_wml(&name) && name.local() == "docPartGallery" {
                             gallery = val_attr(&attrs).map(|value| parser.intern(value));
                         } else if is_wml(&name) && name.local() == "docPartUnique" {
-                            unique = val_attr(&attrs).is_none_or(|value| matches!(value, "1" | "true" | "on"));
+                            unique = val_attr(&attrs)
+                                .is_none_or(|value| matches!(value, "1" | "true" | "on"));
                         }
                         parser.skip_element()?;
                     }

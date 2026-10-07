@@ -767,7 +767,8 @@ impl PartParser<'_> {
                             if let Some(part) = &resolved {
                                 parser.index_resolved_media(part);
                             }
-                            let cstate = plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
+                            let cstate =
+                                plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
                             blip = Some(BlipRef {
                                 embed,
                                 link,
@@ -866,7 +867,8 @@ impl PartParser<'_> {
                             if let Some(part) = &resolved {
                                 parser.index_resolved_media(part);
                             }
-                            let cstate = plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
+                            let cstate =
+                                plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
                             blip = Some(BlipRef {
                                 embed,
                                 link,
@@ -982,8 +984,8 @@ impl PartParser<'_> {
                         if is_shape_ns(&name) {
                             match name.local() {
                                 "cNvPr" => {
-                                    shape.nv_id =
-                                        plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
+                                    shape.nv_id = plain_attr(&attrs, "id")
+                                        .and_then(|value| value.parse().ok());
                                     shape.name =
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     shape.descr =
