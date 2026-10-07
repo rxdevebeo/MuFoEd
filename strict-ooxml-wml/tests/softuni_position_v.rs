@@ -148,3 +148,33 @@ fn walk_inline_count(
         _ => {}
     }
 }
+
+/// The same construct on a CC0 document (`docs/CC0_CORPUS_MIGRATION_PLAN.md`
+/// §6), so it runs in CI: `CC0_DOCX_1/076` anchors text box `docPr id=32` with
+/// `<wp:positionV relativeFrom="page">` whose `mc:Choice` is
+/// `<wp14:pctPosVOffset>88000` and whose `mc:Fallback` is
+/// `<wp:posOffset>8851265` (read from `word/document.xml` of that file).
+#[test]
+fn cc0_preserves_page_percent_position() {
+    let doc = strict_ooxml_testkit::corpus_doc!("cc0-docx-1/076");
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer);
+    let package = Package::open_path(&doc.path, &options).expect("open");
+    let parsed = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let mut out = Vec::new();
+    let mut opaque = 0usize;
+    let mut drawings = 0usize;
+    for block in &parsed.body.blocks {
+        walk_count(block, &mut out, &mut opaque, &mut drawings);
+    }
+    assert!(
+        out.iter().any(|line| {
+            line.contains("id=Some(32)")
+                && line.contains("rel=Some(\"page\")")
+                && (line.contains("pct=Some(88000)") || line.contains("off=Some(8851265)"))
+        }),
+        "text box 32 lost its page position: {out:?}"
+    );
+}

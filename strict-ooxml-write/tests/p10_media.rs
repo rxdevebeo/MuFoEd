@@ -96,10 +96,8 @@ fn t_p10_shape_fill_png_bytes_are_identical() {
 
 #[test]
 fn t_p10_locked_canvas_jpeg_stays_the_same_bytes() {
-    let Some(path) = corpus("../testdata/CC0_DOCX/014_BG_Slokas_With_Transliteration_1_18.docx")
-    else {
-        return;
-    };
+    // CC0 ci-core: runs in CI after `xtool corpus fetch`.
+    let path = strict_ooxml_testkit::corpus_doc!("cc0-docx/014").path;
     let package = open_transitional(&path);
     let expected = source_digest(&package, "/word/media/image1.jpeg");
     let written = write_back(&package);
@@ -111,10 +109,8 @@ fn t_p10_locked_canvas_jpeg_stays_the_same_bytes() {
 
 #[test]
 fn t_p10_empty_embedded_font_bytes_are_kept() {
-    let Some(path) = corpus("../testdata/CC0_DOCX/068_Madhurya_Kadambini_Roman_Sanskrit.docx")
-    else {
-        return;
-    };
+    // CC0 ci-core: runs in CI after `xtool corpus fetch`.
+    let path = strict_ooxml_testkit::corpus_doc!("cc0-docx/068").path;
     let package = open_transitional(&path);
     let expected = source_digest(&package, "/word/fonts/font6.odttf");
     assert_eq!(expected, digest(b""));
