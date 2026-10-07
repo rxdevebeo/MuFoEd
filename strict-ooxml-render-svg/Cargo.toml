@@ -25,6 +25,9 @@ skrifa.workspace = true
 harfrust.workspace = true
 # Hash of the exact face bytes delivered to SVG `@font-face` and PDF embedding.
 sha2.workspace = true
+# Grapheme clusters: an unbreakable token is split between lines only at a
+# cluster boundary, so a combining mark or a ZWJ sequence stays whole.
+unicode-segmentation = "1.13"
 
 [dev-dependencies]
 # Independent XML/SVG parser used only as an oracle by the tests (ADR-0006).

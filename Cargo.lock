@@ -2339,6 +2339,7 @@ dependencies = [
  "strict-ooxml-fidelity",
  "strict-ooxml-wml",
  "toml",
+ "unicode-segmentation",
 ]
 
 [[package]]

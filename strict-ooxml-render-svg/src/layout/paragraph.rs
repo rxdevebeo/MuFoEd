@@ -1254,34 +1254,104 @@ fn place_long_token(
             .character_spacing_control
             .as_deref(),
     );
-    for ch in token.chars() {
-        let width = sink.ctx.measure(&ch.to_string(), run);
-        if sink.exclusions.is_empty() {
-            if *x + width > line_end + 1e-9 && !current.is_empty() {
-                sink.emit(std::mem::replace(current, LineBuilder::new()), false);
-                *x = normal_x;
-            }
+    let plain_space_factor = crate::style::plain_space_factor(sink.computed.alignment, run.size_pt);
+    // One item per line-sized piece, not per character: a 1 MB unbroken token
+    // used to become a million items, each with its own copy of the run. The
+    // token is cut only at grapheme-cluster boundaries.
+    let mut piece = String::new();
+    let mut piece_x = *x;
+    let mut piece_width = 0.0;
+    for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(token, true) {
+        let width = sink.ctx.measure(cluster, run);
+        let overflows = if sink.exclusions.is_empty() {
+            *x + width > line_end + 1e-9 && !(current.is_empty() && piece.is_empty())
         } else {
+            false
+        };
+        if overflows {
+            if !piece.is_empty() {
+                push_piece(
+                    sink,
+                    current,
+                    &piece,
+                    piece_x,
+                    piece_width,
+                    run,
+                    size_px,
+                    compress,
+                    plain_space_factor,
+                );
+                piece.clear();
+            }
+            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+            *x = normal_x;
+            piece_x = *x;
+            piece_width = 0.0;
+        } else if !sink.exclusions.is_empty() {
+            // Exclusions may move the pen; flush so the piece starts where
+            // `reserve` puts it.
+            if !piece.is_empty() {
+                push_piece(
+                    sink,
+                    current,
+                    &piece,
+                    piece_x,
+                    piece_width,
+                    run,
+                    size_px,
+                    compress,
+                    plain_space_factor,
+                );
+                piece.clear();
+                piece_width = 0.0;
+            }
             let _ = reserve(sink, current, x, normal_x, width);
+            piece_x = *x;
         }
-        current.items.push(TextItem {
-            x: *x,
-            baseline: 0.0,
-            width,
-            text: ch.to_string(),
-            run: run.clone(),
-            size_px,
-            advance: sink.ctx.advance_kind_for(&ch.to_string(), run),
-            field: None,
-            compress_punctuation: compress,
-            following_non_space: None,
-            plain_space_factor: crate::style::plain_space_factor(
-                sink.computed.alignment,
-                run.size_pt,
-            ),
-        });
+        piece.push_str(cluster);
+        piece_width += width;
         *x += width;
     }
+    if !piece.is_empty() {
+        push_piece(
+            sink,
+            current,
+            &piece,
+            piece_x,
+            piece_width,
+            run,
+            size_px,
+            compress,
+            plain_space_factor,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_piece(
+    sink: &LineSink<'_, '_>,
+    current: &mut LineBuilder,
+    text: &str,
+    x: f64,
+    width: f64,
+    run: &ComputedRun,
+    size_px: f64,
+    compress_punctuation: bool,
+    plain_space_factor: f64,
+) {
+    current.items.push(TextItem {
+        x,
+        baseline: 0.0,
+        width,
+        text: text.to_owned(),
+        run: run.clone(),
+        size_px,
+        advance: sink.ctx.advance_kind_for(text, run),
+        field: None,
+        compress_punctuation,
+        following_non_space: None,
+        plain_space_factor,
+    });
 }
 
 /// Blend from identity at the line origin to `scale` by ~160 px of run-in.
