@@ -43,7 +43,7 @@ Design documents live in the repository root:
 strict-ooxml inspect   <file.docx>
 strict-ooxml check     <file.docx> [--transitional]      # exit 0 / 1 / 2
 strict-ooxml report    <file.docx> [--json|--text] [--out <path>] [--transitional]
-strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96]
+strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96] [--wps-times]
 strict-ooxml normalize <file.docx>                       # Loss Report for Transitional
 strict-ooxml to-pdf    <file.docx> --out <file.pdf>      # Stage 8B
 strict-ooxml from-pdf  <file.pdf>  --out <file.docx>     # Stage 8C+
@@ -59,6 +59,21 @@ the text is selectable and searchable; it exits `1` when the render lost
 something. `write` serializes the parsed model back to a Strict package, prints
 what the writer could not express, and exits `1` when something was lost
 (`STAGE-8-TASK.md`).
+
+Every line the CLI prints passes through one escaping step: C0/C1 control
+characters from document text (part names, relationship targets, loss details)
+are shown as `\u{..}` instead of reaching the terminal. Commands run on a
+64 MiB worker thread. `render --wps-times` applies the Times-on-Tinos width
+calibration fitted to the Clio WPS audit (`RenderOptions::wps_times_calibration`);
+it is off by default because Tinos already has Times New Roman's metrics.
+
+Hostile-input budgets (`ResourceLimits` for DOCX, `PdfLimits` for PDF) cover
+ZIP sizes and ratios, XML depth, block nesting, inline-wrapper nesting
+(`max_inline_nesting`, 16), text-box and math nesting; for PDF the input size,
+the inflated size of object streams before `lopdf` loads them
+(`LimitKind::ObjectStreamBytes`), per-page content/operators/glyphs/paths,
+form depth, and the picture and form caches (`max_cached_image_bytes`,
+`max_cached_form_bytes`).
 
 ## PDF conversion (Stage 8)
 
