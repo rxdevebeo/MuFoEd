@@ -110,7 +110,7 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 
 Артефакты текущего частичного baseline и команды приведены в [RC00_INTEGRATION.md](RC00_INTEGRATION.md). Public import для 100 источников, точный текст, целостность выходов, resource supervision, Strict XSD и OPC проверены после интеграции. Body/region facts, media roundtrip, render/pagination, pixels и feature matrix по-прежнему требуют повторного прогона. WPS recapture нужен только при изменении oracle contract, а не при изменении кода.
 
-Статус: частично выполнено. Согласованные shared contracts и зафиксированные RTF fixes интегрированы; проверенные gates не показывают регрессий. Повторный visual snapshot текущей ветки: 62/100 pagination Pass, 3/100 pixel Pass; это development measurements, не полный baseline/acceptance.
+Статус: частично выполнено. Согласованные shared contracts и зафиксированные RTF fixes интегрированы; проверенные gates не показывают регрессий. Повторный visual snapshot: 62/100 pagination Pass, 3/100 pixel Pass; это development measurements, не полный baseline/acceptance. После следующего измерения 62/100 page counts остались неизменными; один PDF hash изменился без изменения числа страниц.
 ### RC01 — диагностический ledger без ложных причин
 
 Первичная интеграционная ошибка исправлена в `8e612a8`: PDF renderer теперь
@@ -156,13 +156,19 @@ slot; последующие `\\f`/`\\af` обновляют этот slot, а g
 Fixtures покрывают ASCII, High-ANSI, East-Asian, complex-script, unknown `\\fcs`
 и import → write → reopen. `\\alang` записывается в WML `bidi` language slot; LCID
 1093 сохраняется как `bn-IN`, неизвестные 1024 и 255 остаются Loss. В корпусе
-осталось 208,166 Loss при 100/100 text/resource Pass. Pagination — 62/100,
-pixels — 3/100; после этого mapping page counts и PDF hashes прежние. Это не
-полная визуальная приёмка. Следующий приоритет — 758 Loss по font-table theme
-selectors `\\fbimajor/minor`, `\\fdbmajor/minor`, `\\fhimajor/minor`,
-`\\flomajor/minor` и `\\fbidis`. `\\fcharset` и `\\fprq` уже читаются в font table.
-Font registry, единый resolved face и
-embedding остаются открытой частью RC02.
+после `\\alang` осталось 208,166 Loss. Затем font-table theme selectors
+`\\fbimajor/minor`, `\\fdbmajor/minor`, `\\fhimajor/minor` и `\\flomajor/minor`
+были связаны с соответствующими WML theme slots при сохранении fallback face;
+fixture проверяет все восемь ссылок через import → write → reopen. На корпусе
+снято ещё 751 Loss, осталось 207,415 Loss и 95 Info; text/resource — 100/100,
+Strict XSD — 100/100 без нарушений, OPC — 100 пакетов без нарушений. Pagination
+осталась 62/100 и все page counts прежние; один PDF hash изменился. Pixel gate —
+3/100 Pass, 97/100 Fail (423 сопоставленные страницы: 6 Pass, 417 Fail), без
+изменения comparator. Это не полная визуальная приёмка. Следующий приоритет RC02 —
+разобрать 7 `\\fbidis` losses как отдельный document-level control; это не один
+из восьми font-table theme selectors. `\\fcharset` и `\\fprq` уже читаются в
+font table. Font registry, единый resolved face и embedding остаются открытой
+частью RC02.
 
 Использовать shared face/shaping API после RC00. Определить один resolved face
 для measurement, glyph coverage, SVG emission и PDF subset: font SHA-256, face
