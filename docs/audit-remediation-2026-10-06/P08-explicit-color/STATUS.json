@@ -1,0 +1,59 @@
+{
+  "package": "P8",
+  "slug": "explicit-color",
+  "visual_level": "V2",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 297,
+  "rows_after": 0,
+  "labels": [
+    "w:color@val",
+    "a:schemeClr@val"
+  ],
+  "labels_residual_out_of_primary_scope": [
+    "a:srgbClr",
+    "a:srgbClr@val",
+    "a:sysClr",
+    "w:shd"
+  ],
+  "residual_rows_after": 21,
+  "witness_docs": [
+    "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+    "081_Lab_De_Uniones.docx",
+    "Contoso_Guest_WiFi_Connection_Guide.docx",
+    "sample-files.com-table-document.docx",
+    "1. First-Steps-in-Programming.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P8-1": true,
+    "T-P8-2": true,
+    "T-P8-3": true
+  },
+  "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "Seven P7/P8 witnesses: documents=7 validated=7 missing=0 unmatched_schema=0 unclassified_element_changes=376 ours=0. Primary P8 labels w:color@val and a:schemeClr@val are 0 on the slice. Exit 1 is residual a:srgbClr/a:sysClr and non-color inventory. D05 is not PASS.",
+  "slice_unclassified_element_changes": 376,
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "full_corpus_refused": 0,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 4493,
+  "visual": {
+    "T-P8-3": true,
+    "artifact": "visual/018-page1.svg",
+    "color_sample": "visual/color-sample.json"
+  },
+  "tz_items": [],
+  "notes": [
+    "Primary plan labels w:color@val (232) and a:schemeClr@val (65): 297 → 0 on the full corpus.",
+    "ShapeStyle now stores schemeClr vals and fontRef idx as text (major/minor). Writer no longer rewrites stored accent*/dk1/tx1 to phClr.",
+    "DrawingML aliases bg1/tx1/bg2/tx2 resolve through ThemeColors for paint (T-P8-3).",
+    "Residual 21 E_color-class rows are mostly a:srgbClr inside a14:hiddenFill under a:noFill (Office 2010 extension; primary fill is already noFill — not a silent paint change) plus a:sysClr / one w:shd. Deferred with shapes/extensions, not closed by disposition.",
+    "T-P8-1/T-P8-2 lock hex change visibility and auto/000000 lexical policy.",
+    "Acceptance rolled into root STATUS.json m3_status=ACCEPT / m3_slice_p7_p8=ACCEPT on 2026-10-07.",
+    "full_census_exit remains FAIL on unmatched_schema=1198. D05 is not PASS."
+  ],
+  "declared_transforms": []
+}

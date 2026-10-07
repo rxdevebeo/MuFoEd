@@ -306,6 +306,13 @@ impl PartParser<'_> {
                                 props.underline =
                                     parser.val_enum(&attrs, "w:u", Underline::from_strict);
                                 props.underline_color = wml_attr(&attrs, "color").map(Color::new);
+                                props.underline_theme = theme_color_ref(
+                                    parser,
+                                    &attrs,
+                                    "themeColor",
+                                    "themeTint",
+                                    "themeShade",
+                                );
                             }
                             "strike" => {
                                 props.strike = parse_on_off_tristate(parser, &attrs, "w:strike");
@@ -316,15 +323,13 @@ impl PartParser<'_> {
                             }
                             "color" => {
                                 props.color = parser.val_string(&attrs).map(Color::new);
-                                if let Some(theme) = wml_attr(&attrs, "themeColor") {
-                                    props.color_theme = Some(ThemeColorRef {
-                                        color: ThemeColor::new(parser.intern(theme)),
-                                        tint: wml_attr(&attrs, "themeTint")
-                                            .map(|value| parser.intern(value)),
-                                        shade: wml_attr(&attrs, "themeShade")
-                                            .map(|value| parser.intern(value)),
-                                    });
-                                }
+                                props.color_theme = theme_color_ref(
+                                    parser,
+                                    &attrs,
+                                    "themeColor",
+                                    "themeTint",
+                                    "themeShade",
+                                );
                             }
                             "highlight" => {
                                 props.highlight =
@@ -511,6 +516,7 @@ impl PartParser<'_> {
             style: self.val_enum_owned(attrs, "w:border", BorderStyle::from_strict),
             size: self.measure_u16(attrs, "sz", "w:border").map(EighthsPoint),
             color: wml_attr(attrs, "color").map(Color::new),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade"),
             space: self.measure_u16(attrs, "space", "w:border"),
             shadow: attr_on(attrs, "shadow"),
             frame: attr_on(attrs, "frame"),
@@ -523,6 +529,14 @@ impl PartParser<'_> {
             pattern: wml_attr(attrs, "val").map(|value| self.intern(value)),
             color: wml_attr(attrs, "color").map(Color::new),
             fill: wml_attr(attrs, "fill").map(Color::new),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade"),
+            theme_fill: theme_color_ref(
+                self,
+                attrs,
+                "themeFill",
+                "themeFillTint",
+                "themeFillShade",
+            ),
         }
     }
 
@@ -1155,11 +1169,7 @@ impl PartParser<'_> {
                 .map(EighthsPoint),
             space: wml_attr(attrs, "space").and_then(|value| value.trim().parse::<u16>().ok()),
             color: wml_attr(attrs, "color").map(Color::new),
-            theme_color: wml_attr(attrs, "themeColor").map(|slot| ThemeColorRef {
-                color: ThemeColor::new(slot),
-                tint: wml_attr(attrs, "themeTint").map(|value| self.intern(value)),
-                shade: wml_attr(attrs, "themeShade").map(|value| self.intern(value)),
-            }),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade"),
             shadow: attr_on(attrs, "shadow"),
         }
     }
@@ -1446,4 +1456,20 @@ impl PartParser<'_> {
         };
         Some(parsed)
     }
+}
+
+/// Reads a theme-colour slot plus optional tint/shade attributes into a ref.
+fn theme_color_ref(
+    parser: &mut PartParser<'_>,
+    attrs: &[Attr],
+    color: &str,
+    tint: &str,
+    shade: &str,
+) -> Option<ThemeColorRef> {
+    let slot = wml_attr(attrs, color)?;
+    Some(ThemeColorRef {
+        color: ThemeColor::new(parser.intern(slot)),
+        tint: wml_attr(attrs, tint).map(|value| parser.intern(value)),
+        shade: wml_attr(attrs, shade).map(|value| parser.intern(value)),
+    })
 }

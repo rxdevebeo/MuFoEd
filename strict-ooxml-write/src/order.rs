@@ -273,6 +273,12 @@ pub const STYLE: &[&str] = &[
     "tblStylePr",
 ];
 
+/// `CT_TblStylePr`, `strict/wml.xsd` (table style conditional formatting).
+///
+/// Banded-cell theme fills and borders live in `tcPr`/`tblPr` here. Emitting
+/// only `pPr`/`rPr` was the silent Contoso colour loss measured as P7.
+pub const TBLSTYLEPR: &[&str] = &["pPr", "rPr", "tblPr", "trPr", "tcPr"];
+
 /// `CT_Lvl`, `strict/wml.xsd:1521`.
 ///
 /// The numbering level's own properties, then the paragraph and run defaults

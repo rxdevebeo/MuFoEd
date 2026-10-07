@@ -4,7 +4,9 @@ use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::XmlEvent;
 
 use crate::model::ids::StyleId;
-use crate::model::props::{ParagraphProperties, RunProperties, TableProperties};
+use crate::model::props::{
+    CellProperties, ParagraphProperties, RowProperties, RunProperties, TableProperties,
+};
 use crate::model::styles::{DocDefaults, Style, StyleTable, TableStyleCondition};
 use crate::model::support::SupportStatus;
 use crate::model::values::StyleType;
@@ -187,6 +189,8 @@ impl PartParser<'_> {
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
             let mut table_props = TableProperties::default();
+            let mut row_props = RowProperties::default();
+            let mut cell_props = CellProperties::default();
             let mut conditions = Vec::new();
 
             loop {
@@ -245,6 +249,8 @@ impl PartParser<'_> {
                             "pPr" => paragraph = parser.parse_paragraph_properties()?.0,
                             "rPr" => run = parser.parse_run_properties()?,
                             "tblPr" => table_props = parser.parse_table_properties()?,
+                            "trPr" => row_props = parser.parse_row_properties()?,
+                            "tcPr" => cell_props = parser.parse_cell_properties()?,
                             "tblStylePr" => {
                                 conditions.push(parser.parse_table_style_condition(&attrs)?);
                             }
@@ -292,6 +298,8 @@ impl PartParser<'_> {
                 paragraph,
                 run,
                 table: table_props,
+                row: row_props,
+                cell: cell_props,
                 conditions,
                 based_on_chain: Vec::new(),
                 location,
@@ -299,7 +307,7 @@ impl PartParser<'_> {
         })
     }
 
-    /// Reads one `w:tblStylePr`. Paragraph and run properties are kept.
+    /// Reads one `w:tblStylePr` (`pPr`/`rPr`/`tblPr`/`trPr`/`tcPr`).
     fn parse_table_style_condition(
         &mut self,
         attrs: &[strict_ooxml_core::xml::Attr],
@@ -310,13 +318,21 @@ impl PartParser<'_> {
         self.nested(|parser| {
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
+            let mut table = TableProperties::default();
+            let mut row = RowProperties::default();
+            let mut cell = CellProperties::default();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, .. } => {
-                        if is_wml(&name) && name.local() == "pPr" {
-                            paragraph = parser.parse_paragraph_properties()?.0;
-                        } else if is_wml(&name) && name.local() == "rPr" {
-                            run = parser.parse_run_properties()?;
+                        if is_wml(&name) {
+                            match name.local() {
+                                "pPr" => paragraph = parser.parse_paragraph_properties()?.0,
+                                "rPr" => run = parser.parse_run_properties()?,
+                                "tblPr" => table = parser.parse_table_properties()?,
+                                "trPr" => row = parser.parse_row_properties()?,
+                                "tcPr" => cell = parser.parse_cell_properties()?,
+                                _ => parser.skip_element()?,
+                            }
                         } else {
                             parser.skip_element()?;
                         }
@@ -332,6 +348,9 @@ impl PartParser<'_> {
                 kind,
                 paragraph,
                 run,
+                table,
+                row,
+                cell,
             })
         })
     }

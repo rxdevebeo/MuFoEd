@@ -616,6 +616,10 @@ pub struct Shading {
     pub color: Option<Color>,
     /// Background fill (`w:fill`).
     pub fill: Option<Color>,
+    /// Theme reference for the pattern colour (`w:themeColor` + tint/shade).
+    pub theme_color: Option<ThemeColorRef>,
+    /// Theme reference for the fill (`w:themeFill` + themeFillTint/Shade).
+    pub theme_fill: Option<ThemeColorRef>,
 }
 
 /// A single border edge (`w:top`, `w:left`, ...).
@@ -627,6 +631,8 @@ pub struct Border {
     pub size: Option<EighthsPoint>,
     /// Border colour (`w:color`).
     pub color: Option<Color>,
+    /// Theme colour reference (`w:themeColor` + tint/shade).
+    pub theme_color: Option<ThemeColorRef>,
     /// Space between border and text, in points (`w:space`).
     pub space: Option<u16>,
     /// Whether the border is in the shadow (`w:shadow`).

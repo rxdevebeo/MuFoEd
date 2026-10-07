@@ -1,0 +1,40 @@
+{
+  "package": "P8",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+      "role": "witness",
+      "source_sha256": "d0bbb44d604b2c18b744cfa9085da3d2a2a2428ad81cfea19d1de0e11c884583",
+      "written_sha256": "9710ab47e9c9a7f611e9434530ba2b7f1e508c5247602bd13a967b0a83de28bb",
+      "written_path": "target/census-written-p7p8-final/cc0/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/081_Lab_De_Uniones.docx",
+      "role": "witness",
+      "source_sha256": "dae53123559b0f676b6f6f7533b31770aac192e571ac2a916340cb7c85dc8e35",
+      "written_sha256": "84c5659a10c21bcfe64d6001c4027165f10fed97ea85b3a7ae4845128982c5f5",
+      "written_path": "target/census-written-p7p8-final/cc0/081_Lab_De_Uniones.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx",
+      "role": "witness",
+      "source_sha256": "a7048f7c56aa5d52f1720b2fd2cd4a15ba8a50ebd61ccf27f88efa8e5fdfaa20",
+      "written_sha256": "4ffb5c5a6b277244728b8f2914567ab23317e4f3bd67832be518c0b788dee10c",
+      "written_path": "target/census-written-p7p8-final/docx/Contoso_Guest_WiFi_Connection_Guide.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/samples/sample-files.com-table-document.docx",
+      "role": "witness",
+      "source_sha256": "f11873de3cb3f1f2424806b21aab6e6c95e5a54bf05875a62fd7ac0420d33189",
+      "written_sha256": "8fae712e481e1648fa832f8ae85f31f36075ee798b050899c4a53c2449fdadfa",
+      "written_path": "target/census-written-p7p8-final/samples/sample-files.com-table-document.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "witness",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "51445cdbfa9ce9e93f73eeea8cba2ede08ece238c913f5359ef976d88b8253f9",
+      "written_path": "target/census-written-p7p8-final/docx/1. First-Steps-in-Programming.docx"
+    }
+  ]
+}

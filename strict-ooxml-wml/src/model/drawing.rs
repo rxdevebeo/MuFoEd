@@ -235,17 +235,25 @@ pub enum ShapeGeometry {
     Custom(CustomGeometry),
 }
 
-/// A `wps:style` reference block, carrying theme style indices.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// A `wps:style` reference block, carrying theme style indices and scheme colours.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ShapeStyle {
-    /// Line reference index (`a:lnRef/@idx`).
-    pub line_ref: Option<i32>,
-    /// Fill reference index (`a:fillRef/@idx`).
-    pub fill_ref: Option<i32>,
-    /// Effect reference index (`a:effectRef/@idx`).
-    pub effect_ref: Option<i32>,
-    /// Font reference index (`a:fontRef/@idx`).
-    pub font_ref: Option<i32>,
+    /// Line reference index (`a:lnRef/@idx`), an integer as text.
+    pub line_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:lnRef` (`a:schemeClr/@val`).
+    pub line_ref_color: Option<std::sync::Arc<str>>,
+    /// Fill reference index (`a:fillRef/@idx`), an integer as text.
+    pub fill_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:fillRef` (`a:schemeClr/@val`).
+    pub fill_ref_color: Option<std::sync::Arc<str>>,
+    /// Effect reference index (`a:effectRef/@idx`), an integer as text.
+    pub effect_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:effectRef` (`a:schemeClr/@val`).
+    pub effect_ref_color: Option<std::sync::Arc<str>>,
+    /// Font collection index (`a:fontRef/@idx`: `major` / `minor` / `none`).
+    pub font_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:fontRef` (`a:schemeClr/@val`).
+    pub font_ref_color: Option<std::sync::Arc<str>>,
 }
 
 /// Vertical anchoring of text within a text box (`w:bodyPr/@anchor`).

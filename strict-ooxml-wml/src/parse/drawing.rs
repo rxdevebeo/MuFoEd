@@ -1401,7 +1401,7 @@ impl PartParser<'_> {
         })
     }
 
-    /// Parses `wps:style`.
+    /// Parses `wps:style`, including each reference's `a:schemeClr/@val`.
     fn parse_shape_style(&mut self) -> Result<ShapeStyle> {
         self.nested(|parser| {
             let mut style = ShapeStyle::default();
@@ -1409,16 +1409,32 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) {
-                            let index = parse_i32_attr(&attrs, "idx");
+                            let index = plain_attr(&attrs, "idx").map(|value| parser.intern(value));
+                            let scheme = parser.scheme_clr_under_ref()?;
                             match name.local() {
-                                "lnRef" => style.line_ref = index,
-                                "fillRef" => style.fill_ref = index,
-                                "effectRef" => style.effect_ref = index,
-                                "fontRef" => style.font_ref = index,
-                                _ => {}
+                                "lnRef" => {
+                                    style.line_ref = index;
+                                    style.line_ref_color = scheme;
+                                }
+                                "fillRef" => {
+                                    style.fill_ref = index;
+                                    style.fill_ref_color = scheme;
+                                }
+                                "effectRef" => {
+                                    style.effect_ref = index;
+                                    style.effect_ref_color = scheme;
+                                }
+                                "fontRef" => {
+                                    style.font_ref = index;
+                                    style.font_ref_color = scheme;
+                                }
+                                _ => {
+                                    parser.skip_element()?;
+                                }
                             }
+                        } else {
+                            parser.skip_element()?;
                         }
-                        parser.skip_element()?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -1427,6 +1443,33 @@ impl PartParser<'_> {
             }
             Ok(style)
         })
+    }
+
+    /// Consumes a style reference element and returns its first `a:schemeClr/@val`.
+    fn scheme_clr_under_ref(&mut self) -> Result<Option<std::sync::Arc<str>>> {
+        let mut scheme = None;
+        self.nested(|parser| {
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS)
+                            && name.local() == "schemeClr"
+                            && scheme.is_none()
+                        {
+                            scheme = plain_attr(&attrs, "val").map(|value| parser.intern(value));
+                        }
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of style colour reference"))
+                    }
+                }
+            }
+            Ok(())
+        })?;
+        Ok(scheme)
     }
 
     /// Parses `wps:txbx`.

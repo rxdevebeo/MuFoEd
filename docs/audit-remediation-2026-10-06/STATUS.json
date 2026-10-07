@@ -363,11 +363,15 @@
     "p4_package": "P04-wps-bodypr",
     "p5_package": "P05-run-metrics",
     "p6_package": "P06-table-widths",
+    "p7_package": "P07-theme-color",
+    "p8_package": "P08-explicit-color",
     "m2_status": "PASS_SLICE_DECLARED_TRANSFORMS",
+    "m3_status": "ACCEPT",
     "m3_slice_p5_p6": "ACCEPT",
+    "m3_slice_p7_p8": "ACCEPT",
     "visual_tol_px": 0.75,
     "observed_max_delta_px": 0.0,
-    "note": "P2–P4 ACCEPT (M2): A/B/C package labels 0 on measured slice; TZ-48 declared for wp:docPr@id. P5 ACCEPT: corpus labels 197→15 (residual VML v:group sz in 070 only); T-P5-* retest 2026-10-07 PASS. P6 ACCEPT: table labels 0; T-P6-* + p6_table_page PASS. Infrastructure: PageSelection::Range early-stops layout (was paint-only → RM0090 OOM). corpus_slice_exit=1 from inherited unmatched_schema=1182, not package labels. Full 221 census NOT_RUN (M4). P7/P8 still open for M3 colors."
+    "note": "M2 P2–P4 ACCEPT. M3 P5–P8 ACCEPT: theme* labels 1027→0; w:color@val+a:schemeClr@val 297→0; Contoso styles themeColor/themeFill source=written (1277/784) locked by write test; paint samples in SVG p7_p8. P8 residual 21 a:srgbClr/a:sysClr/w:shd (a14:hiddenFill under noFill) out of primary scope, no disposition. Full census FAIL unmatched_schema=1198 unclassified=4493 (M4). Next: P9 fonts (incl. themeFontLang)."
   },
   "unsupported_vectors": [
     "cubic",

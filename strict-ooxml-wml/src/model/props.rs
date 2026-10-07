@@ -105,6 +105,8 @@ pub struct RunProperties {
     pub underline: Option<Underline>,
     /// Underline colour (`w:u/@w:color`).
     pub underline_color: Option<Color>,
+    /// Theme colour on the underline (`w:u/@w:themeColor` + tint/shade).
+    pub underline_theme: Option<ThemeColorRef>,
     /// Strikethrough (`w:strike`).
     pub strike: TriState,
     /// Double strikethrough (`w:dstrike`).

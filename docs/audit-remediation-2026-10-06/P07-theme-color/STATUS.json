@@ -1,0 +1,73 @@
+{
+  "package": "P7",
+  "slug": "theme-color",
+  "visual_level": "V2",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 1027,
+  "rows_after": 0,
+  "labels": [
+    "w:bottom@themeColor",
+    "w:color@themeColor",
+    "w:top@themeColor",
+    "w:insideH@themeColor",
+    "w:insideV@themeColor",
+    "w:shd@themeFill",
+    "w:shd@themeFillShade",
+    "w:shd@themeFillTint",
+    "w:bottom@themeShade",
+    "w:color@themeShade",
+    "w:bottom@themeTint",
+    "w:insideH@themeTint",
+    "w:insideV@themeTint",
+    "w:top@themeTint",
+    "w:color@themeTint",
+    "w:top@themeShade",
+    "w:left@themeColor",
+    "w:right@themeColor",
+    "w:u@themeColor",
+    "w:left@themeShade",
+    "w:u@themeTint"
+  ],
+  "witness_docs": [
+    "Contoso_Guest_WiFi_Connection_Guide.docx",
+    "Digital_Marketing_Service_Agreement.docx",
+    "sample-files.com-table-document.docx",
+    "sample-simple.docx",
+    "1. First-Steps-in-Programming.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P7-1": true,
+    "T-P7-2": true,
+    "T-P7-3": true
+  },
+  "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "Seven P7/P8 witnesses: documents=7 validated=7 missing=0 unmatched_schema=0 unclassified_element_changes=376 ours=0. Exit 1 is inherited inventory debt outside theme* labels (P7 labels on the slice are 0). D05 is not PASS.",
+  "slice_unclassified_element_changes": 376,
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "full_corpus_refused": 0,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 4493,
+  "visual": {
+    "T-P7-1": true,
+    "T-P7-3": true,
+    "artifact": "visual/contoso-page1.svg",
+    "color_sample": "visual/color-sample.json"
+  },
+  "tz_items": [],
+  "notes": [
+    "Full-corpus theme* labels: 1027 → 0. Contoso styles themeColor/themeFill counts now match source (1277/784), locked by t_p7_contoso_styles_theme_token_counts_match_source.",
+    "Root cause: Border lacked theme_color; Shading lacked themeFill*; Style lacked tcPr/trPr; TableStyleCondition lacked tblPr/trPr/tcPr — Contoso banded cells lived there.",
+    "T-P7-2: same hex without themeColor is a different model; no declared_transform was added for lexical theme drop.",
+    "T-P7-3: accent1→accent2 fails in XML and SVG paint (#4472c4 vs #ed7d31).",
+    "w:u with themeColor and no w:val is written (NAMDAR residual closed).",
+    "TBLSTYLEPR order constant added and wired into xsd_gate ORDER_TYPES.",
+    "Acceptance rolled into root STATUS.json m3_status=ACCEPT / m3_slice_p7_p8=ACCEPT on 2026-10-07.",
+    "full_census_exit remains FAIL on unmatched_schema=1198 (inherited; same class of debt as P5/P6). D05 is not PASS."
+  ],
+  "declared_transforms": []
+}

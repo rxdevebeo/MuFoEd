@@ -257,13 +257,16 @@ fn apply_paragraph_props_mode(
     if props.borders.bottom.is_some() {
         computed.border_after_pt = border_pad_pt(props.borders.bottom.as_ref());
     }
-    if let Some(fill) = props
-        .shading
-        .as_ref()
-        .and_then(|shading| shading.fill.as_ref())
-        .and_then(parse_color)
-    {
-        computed.shading = Some(fill);
+    if let Some(shading) = &props.shading {
+        if let Some(fill) = shading
+            .theme_fill
+            .as_ref()
+            .and_then(|reference| resolve_theme_color(reference, theme))
+        {
+            computed.shading = Some(fill);
+        } else if let Some(fill) = shading.fill.as_ref().and_then(parse_color) {
+            computed.shading = Some(fill);
+        }
     }
     if !props.tabs.is_empty() {
         computed.tabs.clone_from(&props.tabs);
@@ -782,6 +785,8 @@ mod tests {
             unhide_when_used: false,
             ui_priority: None,
             table: Default::default(),
+            row: Default::default(),
+            cell: Default::default(),
             paragraph: ParagraphProperties::default(),
             run: RunProperties {
                 bold: TriState::On,

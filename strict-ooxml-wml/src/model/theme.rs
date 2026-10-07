@@ -68,10 +68,11 @@ impl ThemeColors {
     #[must_use]
     pub fn resolve(&self, reference: &str) -> Option<&str> {
         let slot = match reference {
-            "dark1" | "text1" => "dk1",
-            "light1" | "background1" => "lt1",
-            "dark2" | "text2" => "dk2",
-            "light2" | "background2" => "lt2",
+            // WML `w:themeColor` names and DrawingML `a:schemeClr` aliases.
+            "dark1" | "text1" | "tx1" | "dk1" => "dk1",
+            "light1" | "background1" | "bg1" | "lt1" => "lt1",
+            "dark2" | "text2" | "tx2" | "dk2" => "dk2",
+            "light2" | "background2" | "bg2" | "lt2" => "lt2",
             "hyperlink" => "hlink",
             "followedHyperlink" => "folHlink",
             "accent1" => "accent1",
@@ -151,7 +152,9 @@ mod tests {
         colors.insert("hlink", "#0563c1");
         assert_eq!(colors.resolve("dark1"), Some("#000000"));
         assert_eq!(colors.resolve("text1"), Some("#000000"));
+        assert_eq!(colors.resolve("tx1"), Some("#000000"));
         assert_eq!(colors.resolve("background1"), Some("#ffffff"));
+        assert_eq!(colors.resolve("bg1"), Some("#ffffff"));
         assert_eq!(colors.resolve("accent1"), Some("#4472c4"));
         assert_eq!(colors.resolve("hyperlink"), Some("#0563c1"));
         assert_eq!(colors.resolve("accent6"), None);

@@ -1,0 +1,32 @@
+{
+  "package": "P7",
+  "metric": "resolved sRGB in SVG paint vs theme slot",
+  "tests": {
+    "T-P7-1": {
+      "input": "w:color themeColor=accent1 (+ optional val)",
+      "theme_slot": "accent1",
+      "resolved_srgb": "#4472c4",
+      "svg_contains": "#4472c4",
+      "pass": true
+    },
+    "T-P7-1_themeFill": {
+      "input": "w:shd themeFill=accent1",
+      "theme_slot": "accent1",
+      "resolved_srgb": "#4472c4",
+      "svg_contains": "#4472c4",
+      "pass": true
+    },
+    "T-P7-3": {
+      "input": "accent1 vs accent2",
+      "accent1_srgb": "#4472c4",
+      "accent2_srgb": "#ed7d31",
+      "paint_differs": true,
+      "pass": true
+    }
+  },
+  "witness_svg": "contoso-page1.svg",
+  "notes": [
+    "Paint samples are locked by strict-ooxml-render-svg --test p7_p8.",
+    "Contoso page 1 SVG is a corpus witness render after --transitional normalize."
+  ]
+}

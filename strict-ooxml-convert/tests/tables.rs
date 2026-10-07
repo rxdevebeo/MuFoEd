@@ -78,6 +78,7 @@ fn border() -> Border {
         style: Some(BorderStyle::Single),
         size: Some(EighthsPoint(4)),
         color: Some(Color::new("000000")),
+        theme_color: None,
         space: None,
         shadow: false,
         frame: false,

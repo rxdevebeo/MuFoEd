@@ -21,7 +21,10 @@ use strict_ooxml_wml::model::values::StyleType;
 
 use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
-use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
+use crate::props::{
+    cell_properties, note_properties, paragraph_properties, row_properties, run_properties,
+    table_properties,
+};
 use crate::xml::{WriteError, XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
 use strict_ooxml_wml::model::fonts::{EmbedKind, FontEntry, FontTable};
 use strict_ooxml_wml::parse::LOST_FONT_PART;
@@ -183,12 +186,26 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
             "tblPr" if style.style_type == StyleType::Table => {
                 table_properties(xml, &style.table);
             }
+            "trPr" if style.style_type == StyleType::Table => {
+                row_properties(xml, &style.row);
+            }
+            "tcPr" if style.style_type == StyleType::Table => {
+                cell_properties(xml, &style.cell);
+            }
             "tblStylePr" => {
                 for condition in &style.conditions {
                     xml.start("w:tblStylePr");
                     xml.attr_w("type", condition.kind.as_ref());
-                    paragraph_properties(ctx, xml, &condition.paragraph, None);
-                    run_properties(xml, &condition.run);
+                    for child in crate::order::TBLSTYLEPR {
+                        match *child {
+                            "pPr" => paragraph_properties(ctx, xml, &condition.paragraph, None),
+                            "rPr" => run_properties(xml, &condition.run),
+                            "tblPr" => table_properties(xml, &condition.table),
+                            "trPr" => row_properties(xml, &condition.row),
+                            "tcPr" => cell_properties(xml, &condition.cell),
+                            _ => {}
+                        }
+                    }
                     xml.end();
                 }
             }
@@ -1439,6 +1456,8 @@ mod tests {
             unhide_when_used: false,
             ui_priority: Some(9),
             table: Default::default(),
+            row: Default::default(),
+            cell: Default::default(),
             paragraph: Default::default(),
             run: RunProperties {
                 bold: TriState::On,
@@ -1480,6 +1499,8 @@ mod tests {
                 unhide_when_used: false,
                 ui_priority: None,
                 table: Default::default(),
+            row: Default::default(),
+            cell: Default::default(),
                 paragraph: Default::default(),
                 run: RunProperties {
                     fonts: Some(strict_ooxml_wml::model::values::Fonts {
@@ -1514,6 +1535,8 @@ mod tests {
             unhide_when_used: false,
             ui_priority: None,
             table: Default::default(),
+            row: Default::default(),
+            cell: Default::default(),
             paragraph: Default::default(),
             run: RunProperties {
                 fonts: Some(strict_ooxml_wml::model::values::Fonts {

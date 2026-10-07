@@ -766,6 +766,7 @@ ORDER_TYPES = {
     "TCPR": "CT_TcPr",
     "TRPR": "CT_TrPr",
     "STYLE": "CT_Style",
+    "TBLSTYLEPR": "CT_TblStylePr",
     "LVL": "CT_Lvl",
 }
 

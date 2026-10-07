@@ -396,6 +396,7 @@ pub(crate) fn table_of(planned: &PlannedTable, paragraphs: Vec<Vec<Vec<Paragraph
         style: Some(BorderStyle::Single),
         size: Some(eighths_of(planned.thickness)),
         color: Some(color(planned.color)),
+        theme_color: None,
         space: None,
         shadow: false,
         frame: false,

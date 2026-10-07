@@ -64,6 +64,6 @@ pub use values::{
     FieldCharType, Fonts, HalfPoints, HeightRule, Highlight, HighlightOrColor, Indentation,
     Justification, LineNumberRestart, LineSpacingRule, PageOrientation, RowHeight, Rsids,
     SectionType, Shading, Space, Spacing, StyleType, TabAlignment, TabLeader, TabStop, TableLayout,
-    TableLook, TextDirection, ThemeColor, TriState, Twips, Underline, UnderlineSpec, VertAlign,
-    VerticalJc, VerticalMerge, Width, WidthKind,
+    TableLook, TextDirection, ThemeColor, ThemeColorRef, TriState, Twips, Underline, UnderlineSpec,
+    VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };

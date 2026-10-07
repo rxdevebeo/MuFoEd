@@ -1,0 +1,40 @@
+{
+  "package": "P7",
+  "documents": [
+    {
+      "path": "strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx",
+      "role": "witness",
+      "source_sha256": "a7048f7c56aa5d52f1720b2fd2cd4a15ba8a50ebd61ccf27f88efa8e5fdfaa20",
+      "written_sha256": "4ffb5c5a6b277244728b8f2914567ab23317e4f3bd67832be518c0b788dee10c",
+      "written_path": "target/census-written-p7p8-final/docx/Contoso_Guest_WiFi_Connection_Guide.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/Digital_Marketing_Service_Agreement.docx",
+      "role": "witness",
+      "source_sha256": "72a8f06f7ec0531626b8f1c68befa6a445d1aa8a151a2521b767e49195661722",
+      "written_sha256": "8049ed59fec7301d4148ab8d6e32eb77de046e82be69044de903a7f88337e98f",
+      "written_path": "target/census-written-p7p8-final/docx/Digital_Marketing_Service_Agreement.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/samples/sample-files.com-table-document.docx",
+      "role": "witness",
+      "source_sha256": "f11873de3cb3f1f2424806b21aab6e6c95e5a54bf05875a62fd7ac0420d33189",
+      "written_sha256": "8fae712e481e1648fa832f8ae85f31f36075ee798b050899c4a53c2449fdadfa",
+      "written_path": "target/census-written-p7p8-final/samples/sample-files.com-table-document.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/samples/sample-simple.docx",
+      "role": "witness",
+      "source_sha256": "bd8d8f3cd62f4910257f7567743a58291d17ac2ee3383b7fd8b4a813237391d6",
+      "written_sha256": "dc5b759231076a32abe887faa3768687aa35bd6dc757ea5d25c0eaa3be35279f",
+      "written_path": "target/census-written-p7p8-final/samples/sample-simple.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "witness",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "51445cdbfa9ce9e93f73eeea8cba2ede08ece238c913f5359ef976d88b8253f9",
+      "written_path": "target/census-written-p7p8-final/docx/1. First-Steps-in-Programming.docx"
+    }
+  ]
+}

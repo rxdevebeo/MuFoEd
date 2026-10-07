@@ -647,6 +647,8 @@ pub(crate) fn declare_style(document: &mut Document) {
             look: Some(TableLook::default()),
             ..TableProperties::default()
         },
+        row: Default::default(),
+        cell: Default::default(),
         paragraph: ParagraphProperties::default(),
         run: RunProperties::default(),
         conditions: Vec::new(),

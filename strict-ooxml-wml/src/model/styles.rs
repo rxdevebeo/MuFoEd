@@ -6,10 +6,16 @@ use std::sync::Arc;
 use strict_ooxml_core::error::SourceLocation;
 
 use super::ids::StyleId;
-use super::props::{ParagraphProperties, RunProperties, TableProperties};
+use super::props::{
+    CellProperties, ParagraphProperties, RowProperties, RunProperties, TableProperties,
+};
 use super::values::StyleType;
 
 /// One `w:tblStylePr` conditional format inside a table style.
+///
+/// `CT_TblStylePr` is `pPr`, `rPr`, `tblPr`, `trPr`, `tcPr` in that order. The
+/// theme colours that Contoso-like corpora store on banded cells live in
+/// `tcPr`/`tblPr` here; dropping them is a silent fill/border change (P7).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TableStyleCondition {
     /// `w:type` (`firstRow`, `band1Horz`, ...).
@@ -18,6 +24,12 @@ pub struct TableStyleCondition {
     pub paragraph: ParagraphProperties,
     /// Run properties of the condition.
     pub run: RunProperties,
+    /// Table properties of the condition (`w:tblPr`).
+    pub table: TableProperties,
+    /// Row properties of the condition (`w:trPr`).
+    pub row: RowProperties,
+    /// Cell properties of the condition (`w:tcPr`).
+    pub cell: CellProperties,
 }
 
 /// A single style definition (`w:style`).
@@ -49,8 +61,12 @@ pub struct Style {
     pub unhide_when_used: bool,
     /// UI priority (`w:uiPriority`).
     pub ui_priority: Option<i32>,
-    /// Table style conditional formatting (reserved).
+    /// Table properties of the style (`w:tblPr`).
     pub table: TableProperties,
+    /// Row properties of the style (`w:trPr`).
+    pub row: RowProperties,
+    /// Cell properties of the style (`w:tcPr`).
+    pub cell: CellProperties,
     /// Paragraph properties of the style.
     pub paragraph: ParagraphProperties,
     /// Run properties of the style.

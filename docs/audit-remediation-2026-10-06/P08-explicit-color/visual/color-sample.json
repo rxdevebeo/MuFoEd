@@ -1,0 +1,32 @@
+{
+  "package": "P8",
+  "metric": "explicit hex / schemeClr resolve in paint and XML",
+  "tests": {
+    "T-P8-1": {
+      "input": "w:color val=AbCdEf then AbCdEe",
+      "case_preserved_or_folded": true,
+      "real_value_change_visible": true,
+      "pass": true
+    },
+    "T-P8-2": {
+      "auto": "auto",
+      "black": "000000",
+      "both_written": true,
+      "pass": true
+    },
+    "T-P8-3": {
+      "schemeClr_aliases": {
+        "bg1": "#ffffff",
+        "tx1": "#000000"
+      },
+      "style_refs_keep_val": ["accent1", "accent2", "dk1", "tx1"],
+      "no_invented_phClr_when_stored": true,
+      "pass": true
+    }
+  },
+  "witness_svg": "018-page1.svg",
+  "notes": [
+    "Paint alias resolve locked by t_p8_3_paint_scheme_clr_alias_resolves.",
+    "Residual inventory a:srgbClr rows are a14:hiddenFill under a:noFill, not primary solidFill ink."
+  ]
+}

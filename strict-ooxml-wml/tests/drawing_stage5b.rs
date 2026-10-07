@@ -127,9 +127,9 @@ fn shape_fills_geometry_outline_and_style_are_parsed() {
     assert_eq!(stroke.head_end.as_deref(), Some("triangle"));
     assert_eq!(stroke.tail_end.as_deref(), Some("oval"));
     assert_eq!(stroke.width.unwrap().value(), 12700);
-    let style = parsed.style.unwrap();
-    assert_eq!(style.line_ref, Some(1));
-    assert_eq!(style.font_ref, Some(4));
+    let style = parsed.style.as_ref().unwrap();
+    assert_eq!(style.line_ref.as_deref(), Some("1"));
+    assert_eq!(style.font_ref.as_deref(), Some("4"));
     let _ = &document;
 }
 

@@ -696,24 +696,38 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.end();
     if let Some(style) = &shape.style {
         xml.start("wps:style");
-        for (name, index, color) in [
-            ("a:lnRef", style.line_ref, style.line_ref.map(|_| "phClr")),
-            ("a:fillRef", style.fill_ref, style.fill_ref.map(|_| "phClr")),
+        for (name, index, color, fallback) in [
+            (
+                "a:lnRef",
+                style.line_ref.as_deref(),
+                style.line_ref_color.as_deref(),
+                "phClr",
+            ),
+            (
+                "a:fillRef",
+                style.fill_ref.as_deref(),
+                style.fill_ref_color.as_deref(),
+                "phClr",
+            ),
             (
                 "a:effectRef",
-                style.effect_ref,
-                style.effect_ref.map(|_| "phClr"),
+                style.effect_ref.as_deref(),
+                style.effect_ref_color.as_deref(),
+                "phClr",
             ),
-            ("a:fontRef", style.font_ref, style.font_ref.map(|_| "tx1")),
+            (
+                "a:fontRef",
+                style.font_ref.as_deref(),
+                style.font_ref_color.as_deref(),
+                "tx1",
+            ),
         ] {
             if let Some(index) = index {
                 xml.start(name);
                 xml.attr("idx", index);
-                if let Some(color) = color {
-                    xml.start("a:schemeClr");
-                    xml.attr("val", color);
-                    xml.end();
-                }
+                xml.start("a:schemeClr");
+                xml.attr("val", color.unwrap_or(fallback));
+                xml.end();
                 xml.end();
             }
         }
