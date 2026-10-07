@@ -46,6 +46,8 @@ pub struct ComputedRun {
     pub complex_family: Option<String>,
     /// East-Asian face (`w:rFonts/@w:eastAsia`) for CJK text.
     pub east_asia_family: Option<String>,
+    /// Explicit immutable assets retained by placed text for backend delivery.
+    pub font_assets: Option<std::sync::Arc<crate::font::FontAssetRegistry>>,
 }
 
 impl Default for ComputedRun {
@@ -65,6 +67,7 @@ impl Default for ComputedRun {
             vanish: false,
             complex_family: None,
             east_asia_family: None,
+            font_assets: None,
         }
     }
 }
@@ -461,7 +464,7 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
 /// Latin/Cyrillic, complex-script, and East-Asian text use their corresponding
 /// WML font slots; neutral punctuation does not change the selected slot.
 #[must_use]
-pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
+pub fn requested_family<'a>(run: &'a ComputedRun, text: &str) -> &'a str {
     let requested = if run.east_asia_family.is_some() && script_is_east_asian_only(text) {
         run.east_asia_family.as_deref().unwrap_or(&run.family)
     } else if run.complex_family.is_some() && script_is_complex_only(text) {
@@ -469,7 +472,45 @@ pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
     } else {
         run.family.as_str()
     };
-    crate::font::map_family(requested).to_owned()
+    requested
+}
+
+/// Resolves an explicit font-slot binding before family substitution.
+#[must_use]
+pub fn registered_face(run: &ComputedRun, text: &str) -> Option<crate::font::ResolvedFaceHandle> {
+    run.font_assets
+        .as_ref()?
+        .resolve(requested_family(run, text), run.bold, run.italic)
+}
+
+/// Safe standalone SVG family id of one exact registered program/instance.
+#[must_use]
+pub fn resource_family(face: &crate::font::ResolvedFaceHandle) -> String {
+    let key = face.resource.key();
+    use std::fmt::Write as _;
+    let mut hash = String::with_capacity(64);
+    for byte in key.resource_hash {
+        let _ = write!(hash, "{byte:02x}");
+    }
+    let mut family = format!("StrictAsset-{hash}-{}", key.face_index);
+    for coordinate in &key.variations {
+        let _ = write!(
+            family,
+            "-{:08x}-{:08x}",
+            u32::from_be_bytes(coordinate.tag()),
+            coordinate.value().to_bits()
+        );
+    }
+    family
+}
+
+/// The family a painter uses; explicit assets have resource-specific CSS names.
+#[must_use]
+pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
+    registered_face(run, text).map_or_else(
+        || crate::font::map_family(requested_family(run, text)).to_owned(),
+        |face| resource_family(&face),
+    )
 }
 
 fn script_is_east_asian_only(text: &str) -> bool {

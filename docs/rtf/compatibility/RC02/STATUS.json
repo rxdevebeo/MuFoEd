@@ -2,8 +2,8 @@
   "card": "RC02",
   "status": "InProgress",
   "updated": "2026-10-07",
-  "scope": "bounded explicit font registry and owned metrics/coverage/shaping API",
-  "base_commit": "9a30a06",
+  "scope": "optional explicit font assets through placement and SVG/PDF delivery",
+  "base_commit": "b6608f7",
   "implemented": [
     "shared bytes lifetime",
     "font program/face index/variation identity",
@@ -16,32 +16,86 @@
     "deterministic exact family/style lookup",
     "owned resource metrics and scalar coverage",
     "owned resource shaping via shared harfrust/cluster pipeline",
-    "missing glyph shaping status"
+    "missing glyph shaping status",
+    "optional RenderOptions registry",
+    "original script-font request before substitution",
+    "placed run retains immutable registry",
+    "SVG exact bytes and escaped variation settings",
+    "SVG resource-derived safe CSS names",
+    "SVG optical/synthetic instance changes disabled",
+    "explicit SVG collection rejection",
+    "PDF owned resource collector",
+    "PDF resource/index/all-coordinate subsetting",
+    "registered PDF/SVG spacing and compression origins"
   ],
   "remaining": [
-    "RenderOptions and placement registry wiring",
-    "SVG font delivery and PDF resource collector/subset migration",
     "resource/glyph failure policy and runtime reports",
     "licensed CJK/Indic assets",
-    "independent geometry and extraction witnesses",
+    "independent positive CJK/Indic geometry and extraction witnesses",
     "full corpus acceptance"
   ],
   "checks": {
     "full_svg_pdf_public_api": {
       "status": "PassWithBaselineExclusion",
-      "passed": 418,
+      "passed": 425,
       "excluded_test": "maps_regular_postscript_names_to_the_same_bundled_faces",
-      "log": "target/rtf-import/RC02-registry-full-tests.log"
+      "log": "target/rtf-import/RC02-render-assets-full-tests.log"
     },
     "clippy_msrv": {
       "status": "PassWithBaselineSuppressions",
       "log": "target/rtf-import/RC02-registry-clippy.log"
     },
-    "corpus_xsd_opc_pixels": "NotRunForThisSlice",
+    "corpus_xsd_opc_pixels": "See renderer checks; pixel measurement carried forward by exact PDF identity, not rerasterized",
     "registry_owned_consumer_tests": {
       "status": "Pass",
       "passed": 6,
       "log": "target/rtf-import/RC02-registry-tests.log"
+    },
+    "renderer_svg_final": {
+      "status": "Pass",
+      "passed": 10,
+      "log": "target/rtf-import/RC02-render-assets-svg-final.log"
+    },
+    "renderer_clippy": {
+      "status": "PassWithBaselineSuppressionsAndWarnings",
+      "log": "target/rtf-import/RC02-render-assets-clippy-final.log"
+    },
+    "renderer_corpus": {
+      "status": "Pass",
+      "documents": 100,
+      "text": 100,
+      "integrity": 100,
+      "resource": 100,
+      "same_docx_hashes_as_eastasia_face": 100,
+      "receipt": "target/rtf-import/RC02-render-assets-corpus-current/results.json"
+    },
+    "renderer_xsd_opc": {
+      "status": "Pass",
+      "documents": 100,
+      "violations": 0,
+      "logs": [
+        "target/rtf-import/RC02-render-assets-xsd-current.log",
+        "target/rtf-import/RC02-render-assets-opc-current.log"
+      ]
+    },
+    "renderer_pagination": {
+      "status": "Measured",
+      "pass": 62,
+      "fail": 38,
+      "same_pdf_hashes_as_eastasia_face": 100,
+      "receipt": "target/rtf-import/RC02-render-assets-visual-verified/results.json"
+    },
+    "renderer_pixels": {
+      "status": "HistoricalMeasurementCarriedForwardByExactPdfIdentity",
+      "pass_documents": 3,
+      "fail_documents": 97,
+      "pass_pages": 6,
+      "fail_pages": 417,
+      "receipt": "target/rtf-import/RC02-render-assets-pixel-equivalence.json"
+    },
+    "formatting": {
+      "rustfmt_changed_files": "Pass",
+      "git_diff_check": "Pass"
     }
   }
 }

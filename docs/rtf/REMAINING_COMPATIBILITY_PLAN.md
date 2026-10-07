@@ -454,3 +454,30 @@ Missing CJK glyph возвращает DegradedMissingGlyph. Полные SVG/PD
 следующий срез — сохранить original request и owned handle до delivery/subset,
 затем failure policy и свежий corpus run. RC02 остаётся InProgress.
 Подробности: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).
+
+
+### RC02: explicit assets through placement and SVG/PDF — 2026-10-07
+
+Optional RenderOptions font_assets now preserves the selected original script-font
+request and retains its registry in placed runs. SVG embeds exact program bytes with
+safe resource-derived CSS names, explicit variations and no automatic optical/synthetic
+instance changes. PDF collects and subsets exact program/index/all-coordinate keys;
+owned programs survive options drop. TTC face 1 is verified in PDF and rejected
+explicitly for current SVG delivery. Empty registries preserve established output.
+Full SVG/PDF/RTF suites: 425 Pass with the previously recorded alias-test exclusion;
+final SVG tests: 10 Pass. MSRV Clippy retains the existing suppressions. Fresh default
+public corpus has 100/100 text/integrity/resource Pass and unchanged DOCX hashes;
+Strict XSD and OPC have zero violations across 100 packages.
+RC02 remains InProgress: runtime failure policy, positive licensed CJK/Indic geometry
+and full visual acceptance remain pending. Registry admission is available in the
+library API; the corpus CLI still exercises default bundled resources.
+Current contract, limits and witness references: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).
+
+
+Fresh default pagination: 62/100 Pass, 38 Fail. All 100 actual/reference PDF hashes
+and page correspondences match RC02-eastasia-face. The prior pixel receipt is
+carried forward by exact PDF identity: 3/100 documents Pass, 97 Fail; 423 pages,
+6 Pass and 417 Fail. The existing release comparator SHA-256 matches that receipt.
+This is not a new raster run or visual acceptance. Equivalence evidence:
+`target/rtf-import/RC02-render-assets-pixel-equivalence.json`; fresh pagination:
+`target/rtf-import/RC02-render-assets-visual-verified/results.json`.

@@ -22,14 +22,18 @@ use std::fmt::Write as _;
 use skrifa::instance::{LocationRef, Size};
 use skrifa::raw::types::GlyphId;
 use skrifa::{FontRef, MetadataProvider};
-use strict_ooxml_render_svg::font::FaceSource;
+use strict_ooxml_render_svg::font::{
+    FaceInstanceKey, FaceSource, FontResource, ResolvedFaceHandle,
+};
 use subsetter::{subset, subset_with_variations, Error as SubsetError, GlyphRemapper, Tag};
 
 /// A face that some text uses.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FaceKey {
     /// The mapped family (the bundled substitute).
-    pub family: &'static str,
+    pub family: String,
+    /// Exact external program and instance, absent for bundled legacy faces.
+    pub instance: Option<FaceInstanceKey>,
     /// Bold.
     pub bold: bool,
     /// Italic.
@@ -37,6 +41,17 @@ pub struct FaceKey {
 }
 
 impl FaceKey {
+    /// Identifies an explicitly registered face without merging distinct programs.
+    #[must_use]
+    pub fn from_resource(face: &ResolvedFaceHandle) -> Self {
+        Self {
+            family: strict_ooxml_render_svg::style::resource_family(face),
+            instance: Some(face.resource.key().clone()),
+            bold: face.bold,
+            italic: face.italic,
+        }
+    }
+
     /// A stable name for the PDF resource dictionary, e.g. `F1`.
     #[must_use]
     pub fn resource_name(&self, index: usize) -> String {
@@ -80,6 +95,7 @@ struct UsedGlyph {
 #[derive(Debug, Default)]
 pub struct FaceCollector {
     faces: BTreeMap<FaceKey, BTreeSet<(GlyphId, Option<char>)>>,
+    resources: BTreeMap<FaceKey, FontResource>,
     /// Shaped clusters whose glyph is not a single cmap character: `(source gid, unicode)`.
     shaped: BTreeMap<FaceKey, BTreeSet<(u16, String)>>,
     /// Characters the selected bundled face does not contain.
@@ -99,7 +115,8 @@ impl FaceCollector {
     /// distinguish a missing glyph from a family that is not bundled.
     pub fn add(&mut self, source: &FaceSource, bold: bool, italic: bool, ch: char) {
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold,
             italic,
         };
@@ -128,10 +145,38 @@ impl FaceCollector {
         unicode: &str,
     ) {
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold,
             italic,
         };
+        self.insert_cluster(key, glyph_id, unicode);
+    }
+
+    /// Records a glyph using an owned resource, retaining it through subsetting.
+    pub fn add_resource(&mut self, face: &ResolvedFaceHandle, ch: char) {
+        self.add_cluster_resource(
+            face,
+            face.resource.glyph_id(ch).unwrap_or(0),
+            &ch.to_string(),
+        );
+    }
+
+    /// Records a shaped cluster using the exact owned resource.
+    pub fn add_cluster_resource(
+        &mut self,
+        face: &ResolvedFaceHandle,
+        glyph_id: u16,
+        unicode: &str,
+    ) {
+        let key = FaceKey::from_resource(face);
+        self.resources
+            .entry(key.clone())
+            .or_insert_with(|| face.resource.clone());
+        self.insert_cluster(key, glyph_id, unicode);
+    }
+
+    fn insert_cluster(&mut self, key: FaceKey, glyph_id: u16, unicode: &str) {
         if glyph_id == 0 {
             // Keep a valid face subset for the paint pass, which will report
             // the cluster as missing text instead of treating the face as absent.
@@ -192,7 +237,8 @@ impl FaceCollector {
         second: char,
     ) {
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold,
             italic,
         };
@@ -210,6 +256,43 @@ impl FaceCollector {
     ///
     /// Returns a [`FontError`] when the face cannot be parsed or subsetted.
     pub fn build(&self, key: &FaceKey, source: &FaceSource) -> Result<EmbeddedFont, FontError> {
+        let variations = source
+            .weight
+            .map(|weight| vec![(Tag::new(b"wght"), weight)])
+            .unwrap_or_default();
+        self.build_program(key, source.data, 0, &variations)
+    }
+
+    /// Builds a subset from the exact retained program and variation instance.
+    ///
+    /// # Errors
+    /// Returns a font error when the resource is absent or cannot be subsetted.
+    pub fn build_resource(&self, key: &FaceKey) -> Result<EmbeddedFont, FontError> {
+        let resource = self
+            .resources
+            .get(key)
+            .ok_or_else(|| FontError::Parse("missing owned font resource".into()))?;
+        let variations: Vec<_> = resource
+            .key()
+            .variations
+            .iter()
+            .map(|axis| (Tag::new(&axis.tag()), axis.value()))
+            .collect();
+        self.build_program(
+            key,
+            resource.bytes(),
+            resource.key().face_index,
+            &variations,
+        )
+    }
+
+    fn build_program(
+        &self,
+        key: &FaceKey,
+        data: &[u8],
+        index: u32,
+        variations: &[(Tag, f32)],
+    ) -> Result<EmbeddedFont, FontError> {
         let used: Vec<UsedGlyph> = self
             .faces
             .get(key)
@@ -244,11 +327,10 @@ impl FaceCollector {
                 remapper.remap(old);
             }
         }
-        let subset_bytes = match source.weight {
-            Some(weight) => {
-                subset_with_variations(source.data, 0, &[(Tag::new(b"wght"), weight)], &remapper)
-            }
-            None => subset(source.data, 0, &remapper),
+        let subset_bytes = if variations.is_empty() {
+            subset(data, index, &remapper)
+        } else {
+            subset_with_variations(data, index, variations, &remapper)
         }
         .map_err(|error: SubsetError| FontError::Subset(error.to_string()))?;
 
@@ -500,7 +582,8 @@ mod tests {
         assert!(collector.missing_glyphs().is_empty());
 
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold: false,
             italic: false,
         };
@@ -530,7 +613,8 @@ mod tests {
                 collector.add(&source, bold, italic, 'g');
                 collector.add_notdef();
                 let key = FaceKey {
-                    family: source.family,
+                    family: source.family.to_owned(),
+                    instance: None,
                     bold,
                     italic,
                 };
@@ -552,7 +636,8 @@ mod tests {
         collector.add(&source, true, false, 'B');
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold: true,
             italic: false,
         };
@@ -572,7 +657,8 @@ mod tests {
         assert_eq!(collector.missing_glyphs().len(), 1);
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold: false,
             italic: false,
         };
@@ -587,7 +673,8 @@ mod tests {
         collector.add(&source, false, false, 'A');
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold: false,
             italic: false,
         };
@@ -621,7 +708,8 @@ mod tests {
         let mut collector = FaceCollector::new();
         collector.add(&source, false, false, 'A');
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold: false,
             italic: false,
         };
@@ -645,7 +733,8 @@ mod tests {
         collector.add_shared_glyph(&source, false, false, space_gid, ' ', '\u{A0}');
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
+            instance: None,
             bold: false,
             italic: false,
         };

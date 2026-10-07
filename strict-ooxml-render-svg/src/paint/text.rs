@@ -40,6 +40,31 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
     if item.run.italic {
         attributes.push_str(" font-style=\"italic\"");
     }
+    if let Some(face) = crate::style::registered_face(&item.run, &item.text) {
+        let mut asset_style = String::from("font-optical-sizing: none; font-synthesis: none");
+        if !face.resource.key().variations.is_empty() {
+            let settings = face
+                .resource
+                .key()
+                .variations
+                .iter()
+                .map(|axis| {
+                    let mut tag = String::with_capacity(16);
+                    for byte in axis.tag() {
+                        let _ = write!(tag, "\\{byte:02x} ");
+                    }
+                    format!("'{tag}' {}", axis.value())
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = write!(asset_style, "; font-variation-settings: {settings}");
+        }
+        let _ = write!(
+            attributes,
+            " style=\"{}\"",
+            super::escape_attr(&asset_style)
+        );
+    }
     let decoration = match (item.run.underline, item.run.strike) {
         (true, true) => Some("underline line-through"),
         (true, false) => Some("underline"),
@@ -66,9 +91,16 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
     if shown.is_empty() || shown.chars().count() == 1 {
         return coord(item.x);
     }
+    let owned = crate::style::registered_face(&item.run, &item.text);
+    let provider = BuiltinFontProvider::new();
+    let advance = |ch| {
+        owned.as_ref().map_or_else(
+            || provider.advance_em(family, ch, item.run.bold, item.run.italic),
+            |face| face.resource.advance_em(ch).unwrap_or(0.0),
+        )
+    };
     let xs = match item.advance {
         TextAdvanceKind::Metric => {
-            let provider = BuiltinFontProvider::new();
             let extra = crate::style::spacing_px(&item.run, item.size_px);
             let mut cursor = item.x;
             let mut prev = None;
@@ -84,9 +116,7 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
                     item.compress_punctuation,
                     item.plain_space_factor,
                 );
-                cursor += provider.advance_em(family, ch, item.run.bold, item.run.italic)
-                    * item.size_px
-                    * factor;
+                cursor += advance(ch) * item.size_px * factor;
                 if !ch.is_whitespace() {
                     cursor += extra;
                     prev = Some(ch);
@@ -97,10 +127,18 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
             metric
         }
         TextAdvanceKind::Shaped => {
-            let Some(shaped) = shape_bundled(shown, family, item.run.bold, item.run.italic) else {
-                return coord(item.x);
+            let mut xs = if let Some(face) = &owned {
+                let Some(shaped) = crate::font::shape_resource(shown, face) else {
+                    return coord(item.x);
+                };
+                unicode_x_positions_px(shown, &shaped, item.x, item.size_px)
+            } else {
+                let Some(shaped) = shape_bundled(shown, family, item.run.bold, item.run.italic)
+                else {
+                    return coord(item.x);
+                };
+                unicode_x_positions_px(shown, &shaped, item.x, item.size_px)
             };
-            let mut xs = unicode_x_positions_px(shown, &shaped, item.x, item.size_px);
             let extra = crate::style::spacing_px(&item.run, item.size_px);
             let compress = item.compress_punctuation;
             if extra != 0.0 || compress {
@@ -108,7 +146,6 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
                 let mut prev = None;
                 let mut non_space_index = 0usize;
                 let mut compress_shift = 0.0;
-                let provider = BuiltinFontProvider::new();
                 for (logical, &ch) in chars.iter().enumerate() {
                     let next = chars.get(logical + 1).copied().or(item.following_non_space);
                     let factor = crate::style::compressed_char_factor(
@@ -122,13 +159,7 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
                         *x += extra * non_space_index as f64 + compress_shift;
                     }
                     if (factor - 1.0).abs() > f64::EPSILON {
-                        compress_shift -= provider.advance_em(
-                            family,
-                            ch,
-                            item.run.bold,
-                            item.run.italic,
-                        ) * item.size_px
-                            * (1.0 - factor);
+                        compress_shift -= advance(ch) * item.size_px * (1.0 - factor);
                     }
                     if !ch.is_whitespace() {
                         non_space_index += 1;

@@ -93,3 +93,56 @@ fn imported_media_outlives_input_and_initial_package_bytes() {
         .svg
         .contains("data:image/png;base64,"));
 }
+
+#[cfg(all(feature = "svg", feature = "pdf"))]
+#[test]
+fn imported_script_font_slots_accept_explicit_resources_in_both_backends() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{
+        resolve_face, FontAsset, FontAssetManifest, FontAssetRegistry, FontEmbeddingPermission,
+        FontRegistryLimits,
+    };
+    let source = br"{\rtf1\ansi{\fonttbl{\f0 Latin Alias;}{\f1 CJK Alias;}}\loch\f0 AV office \dbch\af1\u28450?\u23383?}";
+    let opened = StrictDocument::import_rtf(source, &RtfOptions::default()).unwrap();
+    let assets = [("Latin Alias", "Arial"), ("CJK Alias", "Times New Roman")]
+        .into_iter()
+        .map(|(request, family)| {
+            let face = resolve_face(family, false, false).unwrap();
+            FontAsset {
+                bytes: Arc::from(face.bytes),
+                manifest: FontAssetManifest {
+                    family: request.into(),
+                    resolved_family: face.family.into(),
+                    bold: false,
+                    italic: false,
+                    resource_hash: face.resource_hash,
+                    face_index: 0,
+                    variations: face.instance_key().variations,
+                    source: "bundled test fixture".into(),
+                    license_id: "OFL-1.1".into(),
+                    license_reference: "bundled font licenses".into(),
+                    embedding: FontEmbeddingPermission::EmbedAndSubset,
+                },
+            }
+        })
+        .collect();
+    let registry =
+        Arc::new(FontAssetRegistry::from_assets(assets, FontRegistryLimits::default()).unwrap());
+    let options = strict_ooxml::RenderOptions::default().font_assets(registry);
+    let svg = opened.document.render_svg(&options).unwrap();
+    assert!(svg[0].svg.contains("StrictAsset-"));
+    assert!(svg[0]
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("font.glyph.missing: CJK Alias")));
+    let pdf = opened.document.render_pdf(&options).unwrap();
+    assert_eq!(pdf.embedded_faces.len(), 2);
+    assert!(pdf
+        .embedded_faces
+        .iter()
+        .all(|face| face.instance.is_some()));
+    assert!(
+        !pdf.report.losses().is_empty(),
+        "fixture deliberately has no CJK outlines"
+    );
+}

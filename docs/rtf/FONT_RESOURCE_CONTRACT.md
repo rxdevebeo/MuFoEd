@@ -1,6 +1,6 @@
 # RC02: explicit font assets and resource consumers
 
-Current slice: 2026-10-07, based on `9a30a06`. RC02 remains InProgress.
+Current slice: 2026-10-07, based on `b6608f7`. RC02 remains InProgress.
 
 ## Resource contract
 
@@ -60,37 +60,83 @@ keeps its resource alive. Owned parsed-face/run caching is a later optimization.
 Missing `.notdef` glyphs return DegradedMissingGlyph; otherwise complex scripts retain
 DegradedComplexScript. This does not establish independent CJK/Indic acceptance.
 
-The legacy shaping caches still include program/instance identity. Existing PDF
-collection/build still adapts the shared cached bundled resolver to FaceSource.
-Registry assets are not yet wired into RenderOptions/placement/SVG/PDF. Therefore
-these APIs enable explicit resource operations, not external-font document rendering.
+## Renderer admission
+
+`RenderOptions::font_assets(Arc<FontAssetRegistry>)` is optional; its default is
+None. Layout resolves the original selected WML script-font slot before bundled
+family substitution. Placed text retains the immutable registry through its run,
+so the exact resource remains available after options and caller owners are dropped.
+The metrics adapter also supports existing provider-based measurements. Admitted
+resources must have usable vertical metrics; absent bindings keep the established
+bundled resolution path. No style binding is fabricated by the registry.
+
+SVG embeds the selected program bytes. CSS family names encode program hash,
+face index and coordinate bits; caller family metadata is never inserted into CSS.
+Scalar and shaped positions use the registered resource. Explicit variation settings
+use escaped axis tags; optical sizing and synthetic font styles are disabled.
+SVG currently rejects collection programs explicitly, including index zero in a TTC;
+it does not ask a browser to guess the intended collection face.
+
+PDF face keys contain an owned family identifier and optional FaceInstanceKey;
+legacy bundled keys have no explicit instance. The collector retains FontResource,
+collects scalar/cluster CIDs against that resource, and subsets its exact program,
+collection index and every variation coordinate. Font dictionaries, widths and
+ToUnicode use that subset. Registered text spacing/compression follows the SVG
+origin adjustments. Resource keys prevent programs and instances from merging even
+when their declared resolved family metadata is identical.
+
+This is renderer API admission, not CLI font discovery/configuration. Default CLI
+corpus runs do not exercise positive CJK coverage. Missing glyph warnings are visible,
+but ReportAndContinue/Reject and exact/substitute/unresolved runtime reports remain
+pending. In particular, browser missing-glyph fallback is not full SVG/PDF equivalence.
+Complex script support remains explicitly degraded; these fixtures use bundled
+programs admitted under test aliases and do not establish CJK/Indic support.
 
 ## Validation
 
-Six public API regressions cover registry order/lifetime, absence of implicit style
-or fallback, owned metrics/shaping parity, weight identity, explicit missing CJK
-glyphs, all budgets, preflight ordering, pinned hashes/index/axes/metadata/duplicates,
-and OS/2 embedding restrictions overriding permission attestations.
+Ten registry/SVG public tests cover the preceding six admission/API witnesses plus
+explicit document layout/delivery/lifetime, safe CSS names, unchanged empty-registry
+output, script-slot missing glyph diagnostics, TTC rejection and bounded lookup.
+PDF witnesses independently parse/extract output with lopdf: distinct programs and
+variable weights sharing declared family metadata, ownership after options drop,
+combining marks/ligatures, deterministic PDF bytes, unchanged empty-registry output,
+and TTC face 1 geometry matching the same explicitly admitted single-face program.
+Public RTF integration exercises Latin and East Asian slot admission in both backends;
+the CJK fixture deliberately lacks outlines and requires a loss diagnostic.
 
-Full SVG/PDF/public RTF API suites: 418 Pass in 52 groups, exit 0, with the existing
+Full SVG/PDF/public RTF API suites: 425 Pass in 52 groups, exit 0, with the existing
 `maps_regular_postscript_names_to_the_same_bundled_faces` exclusion recorded.
-Final registry tests after lint fixes: 6 Pass, exit 0.
-MSRV Rust 1.92 Clippy: Pass with unchanged baseline suppressions:
-manual_let_else, items_after_statements, single_char_pattern, replace_box,
-while_let_loop, unnecessary_sort_by, if_same_then_else.
-Changed-file rustfmt and git diff --check: Pass.
-Logs: `target/rtf-import/RC02-registry-{full-tests,tests,clippy}.log`.
+Final SVG registry suite after optical-sizing change: 10 Pass. MSRV Rust 1.92 Clippy
+passes with the unchanged baseline suppressions: manual_let_else,
+items_after_statements, single_char_pattern, replace_box, while_let_loop,
+unnecessary_sort_by, if_same_then_else. Remaining pedantic baseline warnings are
+not zero-warning acceptance. Changed-file rustfmt and git diff --check are required.
+Logs: `target/rtf-import/RC02-render-assets-{full-tests,svg-final,clippy-final}.log`.
 
-Corpus/XSD/OPC/pixels were not rerun for this API-only slice. Previous measurements
-are not new receipts; a fresh corpus run is required after renderer admission.
+Fresh default public CLI corpus: 100/100 text, integrity and resource Pass;
+all 100 DOCX hashes match the preceding East Asian face receipt. Strict XSD/OPC
+validate all 100 packages with no violations. Corpus manifest SHA-256 remains
+`0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f`;
+CLI SHA-256 is `87a75e5c7a61591a43c555d103ddbbe71eff1abb0662e83debadd4e0ea42bb7b`.
+Receipts: `RC02-render-assets-corpus-current/results.json` and
+`RC02-render-assets-{xsd-current,opc-current}.log`, under `target/rtf-import`.
+Pagination/pixel evidence is recorded separately in the RC02 status ledger; matching
+page counts do not establish visual acceptance.
 
 ## Next implementation
 
-1. Optional registry in RenderOptions; preserve original font-slot request through
-   placement and retain one resolved owned handle for measurement and delivery.
-2. SVG font emission/positions and PDF collector/subsets migrate to resource keys,
-   bytes, face index and all variation coordinates; no fallback back to static APIs.
-3. ReportAndContinue/Reject policy and original-request exact/substitute/unresolved
-   diagnostics, including missing glyphs and embedding failures.
-4. Licensed CJK/Indic assets, independent geometry/extraction witnesses, determinism
-   and fresh full-corpus gates. RC02 closes only after those requirements pass.
+1. ReportAndContinue/Reject policy and original-request exact/substitute/unresolved
+   diagnostics, including missing glyphs, shaping and embedding failures.
+2. Licensed CJK/Indic assets and independent positive geometry/extraction witnesses.
+3. Reviewed script/font support profile and full-corpus visual acceptance; CLI asset
+   configuration must use the same bounded registry rather than system discovery.
+RC02 closes only after those requirements pass.
+
+
+Fresh default pagination: 62/100 Pass, 38 Fail. All 100 actual/reference PDF hashes
+and page correspondences match RC02-eastasia-face. The prior pixel receipt is
+carried forward by exact PDF identity: 3/100 documents Pass, 97 Fail; 423 pages,
+6 Pass and 417 Fail. The existing release comparator SHA-256 matches that receipt.
+This is not a new raster run or visual acceptance. Equivalence evidence:
+`target/rtf-import/RC02-render-assets-pixel-equivalence.json`; fresh pagination:
+`target/rtf-import/RC02-render-assets-visual-verified/results.json`.

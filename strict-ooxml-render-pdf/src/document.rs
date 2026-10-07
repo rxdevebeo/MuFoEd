@@ -296,6 +296,40 @@ fn read_media(media: Option<&dyn MediaSource>, part: &PartId) -> Result<Option<V
 }
 
 /// Subsets and orders the faces the pages use.
+fn collect_owned_text(
+    collector: &mut FaceCollector,
+    text: &TextItem,
+    shown: &str,
+    face: &strict_ooxml_render_svg::font::ResolvedFaceHandle,
+) {
+    if text.advance == TextAdvanceKind::Metric {
+        for ch in shown.chars() {
+            collector.add_resource(face, ch);
+        }
+    } else if let Some(shaped) = strict_ooxml_render_svg::font::shape_resource(shown, face) {
+        for cluster in &shaped.clusters {
+            let unicode = shown
+                .get(cluster.byte_start..cluster.byte_end)
+                .unwrap_or("");
+            for (index, glyph) in shaped.glyphs
+                [cluster.glyph_start..cluster.glyph_start + cluster.glyph_count]
+                .iter()
+                .enumerate()
+            {
+                collector.add_cluster_resource(
+                    face,
+                    glyph.glyph_id,
+                    if index == 0 { unicode } else { "" },
+                );
+            }
+        }
+    } else {
+        for ch in shown.chars() {
+            collector.add_resource(face, ch);
+        }
+    }
+}
+
 fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont> {
     let mut collector = FaceCollector::new();
     for page in pages {
@@ -304,6 +338,12 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                 continue;
             };
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
+            if let Some(face) =
+                strict_ooxml_render_svg::style::registered_face(&text.run, &text.text)
+            {
+                collect_owned_text(&mut collector, text, &shown, &face);
+                continue;
+            }
             let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &shown);
             let Some(source) = strict_ooxml_render_svg::font::resolve_face(
                 &family,
@@ -363,10 +403,17 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
 
     let mut out: Vec<PlacedFont> = Vec::new();
     for (index, key) in collector.faces().iter().enumerate() {
+        if key.instance.is_some() {
+            match collector.build_resource(key) {
+                Ok(font) => out.push((Arc::new(font), key.resource_name(index))),
+                Err(error) => report.record_font_error(key, &error),
+            }
+            continue;
+        }
         let Some(source) =
-            strict_ooxml_render_svg::font::resolve_face(key.family, key.bold, key.italic)
+            strict_ooxml_render_svg::font::resolve_face(&key.family, key.bold, key.italic)
         else {
-            report.record_missing_face(key.family);
+            report.record_missing_face(&key.family);
             continue;
         };
         let source = source.as_source();
@@ -587,14 +634,21 @@ impl PageWriter<'_> {
         // cloned out before anything is drawn: `fonts` is an immutable borrow of
         // `self` and the content stream is a mutable one.
         let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text);
+        let owned = strict_ooxml_render_svg::style::registered_face(&text.run, &text.text);
+        let owned_key = owned.as_ref().map(FaceKey::from_resource);
         let mapped = strict_ooxml_render_svg::font::map_family(&family);
         let found = self
             .fonts
             .iter()
             .find(|(font, _)| {
-                font.key.family == mapped
-                    && font.key.bold == text.run.bold
-                    && font.key.italic == text.run.italic
+                if let Some(key) = &owned_key {
+                    &font.key == key
+                } else {
+                    font.key.instance.is_none()
+                        && font.key.family == mapped
+                        && font.key.bold == text.run.bold
+                        && font.key.italic == text.run.italic
+                }
             })
             .map(|(font, name)| (Arc::clone(font), name.clone()));
         let Some((font, name)) = found else {
@@ -612,7 +666,15 @@ impl PageWriter<'_> {
                 }
             }
             TextAdvanceKind::Shaped => {
-                if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
+                if let Some(face) = &owned {
+                    if let Some(shaped) =
+                        strict_ooxml_render_svg::font::shape_resource(&shown, face)
+                    {
+                        if self.show_shaped(text, &font, &name, &shown, &shaped) {
+                            return;
+                        }
+                    }
+                } else if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
                     &shown,
                     &family,
                     text.run.bold,
@@ -633,7 +695,10 @@ impl PageWriter<'_> {
             }
         }
         for ch in missing {
-            self.report.record_missing_glyph(&text.run.family, ch);
+            self.report.record_missing_glyph(
+                strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
+                ch,
+            );
         }
         if encoded.is_empty() {
             return;
@@ -663,6 +728,7 @@ impl PageWriter<'_> {
         }
         let provider = strict_ooxml_render_svg::font::BuiltinFontProvider::new();
         let family = strict_ooxml_render_svg::style::chosen_family(&text.run, shown);
+        let owned = strict_ooxml_render_svg::style::registered_face(&text.run, &text.text);
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
         let size = px_to_pt(text.size_px, self.scale) as f32;
         let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
@@ -671,7 +737,9 @@ impl PageWriter<'_> {
         self.content.begin_text();
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
-        for ch in shown.chars() {
+        let chars: Vec<_> = shown.chars().collect();
+        let mut prev = None;
+        for (index, &ch) in chars.iter().enumerate() {
             match font.chars.get(&ch) {
                 Some(cid) => {
                     let x_px = text.x + cursor;
@@ -686,12 +754,32 @@ impl PageWriter<'_> {
                     self.content.show(Str(&cid.to_be_bytes()));
                     drew = true;
                 }
-                None => self.report.record_missing_glyph(&text.run.family, ch),
+                None => self.report.record_missing_glyph(
+                    strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
+                    ch,
+                ),
             }
-            cursor +=
-                provider.advance_em(&family, ch, text.run.bold, text.run.italic) * text.size_px;
+            let factor = if owned.is_some() {
+                strict_ooxml_render_svg::style::compressed_char_factor(
+                    prev,
+                    ch,
+                    chars.get(index + 1).copied().or(text.following_non_space),
+                    text.compress_punctuation,
+                    text.plain_space_factor,
+                )
+            } else {
+                1.0
+            };
+            cursor += owned.as_ref().map_or_else(
+                || provider.advance_em(&family, ch, text.run.bold, text.run.italic),
+                |face| face.resource.advance_em(ch).unwrap_or(0.0),
+            ) * text.size_px
+                * factor;
             if !ch.is_whitespace() {
                 cursor += extra;
+                prev = Some(ch);
+            } else if factor > 0.0 {
+                prev = Some(ch);
             }
         }
         self.content.end_text();
@@ -699,13 +787,13 @@ impl PageWriter<'_> {
     }
 
     /// Draws shaped glyph ids at their visual origins. Returns false when no CID matched.
-    fn show_shaped(
+    fn show_shaped<F>(
         &mut self,
         text: &TextItem,
         font: &Arc<EmbeddedFont>,
         name: &str,
         shown: &str,
-        shaped: &strict_ooxml_render_svg::font::ShapedText,
+        shaped: &strict_ooxml_render_svg::font::ShapedText<F>,
     ) -> bool {
         if shaped.glyphs.is_empty() {
             return false;
@@ -717,12 +805,17 @@ impl PageWriter<'_> {
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
         let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
+        let adjustments = owned_origin_adjustments(text, shown);
         let mut non_space_before = 0usize;
         for cluster in &shaped.clusters {
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
                 .unwrap_or("");
-            let cluster_extra = extra * non_space_before as f64;
+            let cluster_extra = adjustments
+                .as_ref()
+                .and_then(|positions| positions.get(&cluster.byte_start))
+                .copied()
+                .unwrap_or(extra * non_space_before as f64);
             non_space_before += unicode.chars().filter(|ch| !ch.is_whitespace()).count();
             let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
@@ -731,7 +824,10 @@ impl PageWriter<'_> {
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     for ch in unicode.chars() {
-                        self.report.record_missing_glyph(&text.run.family, ch);
+                        self.report.record_missing_glyph(
+                            strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
+                            ch,
+                        );
                     }
                     continue;
                 }
@@ -761,6 +857,38 @@ impl PageWriter<'_> {
         self.content.end_text();
         drew
     }
+}
+
+/// Mirrors SVG spacing/compression adjustments for explicitly registered resources.
+fn owned_origin_adjustments(text: &TextItem, shown: &str) -> Option<BTreeMap<usize, f64>> {
+    let face = strict_ooxml_render_svg::style::registered_face(&text.run, &text.text)?;
+    let chars: Vec<_> = shown.char_indices().collect();
+    let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
+    let mut positions = BTreeMap::new();
+    let mut shift = 0.0;
+    let mut prev = None;
+    for (index, &(byte, ch)) in chars.iter().enumerate() {
+        positions.insert(byte, shift);
+        let next = chars
+            .get(index + 1)
+            .map(|(_, ch)| *ch)
+            .or(text.following_non_space);
+        let factor = strict_ooxml_render_svg::style::compressed_char_factor(
+            prev,
+            ch,
+            next,
+            text.compress_punctuation,
+            text.plain_space_factor,
+        );
+        shift -= face.resource.advance_em(ch).unwrap_or(0.0) * text.size_px * (1.0 - factor);
+        if !ch.is_whitespace() {
+            shift += extra;
+            prev = Some(ch);
+        } else if factor > 0.0 {
+            prev = Some(ch);
+        }
+    }
+    Some(positions)
 }
 
 /// Closes a path with the painting operators the flags ask for.

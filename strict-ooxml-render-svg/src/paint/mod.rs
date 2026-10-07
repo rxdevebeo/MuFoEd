@@ -71,14 +71,22 @@ pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
 /// Embeds each face the page paints, so a standalone SVG does not ask the
 /// machine for a font.
 fn font_faces(page: &PlacedPage) -> String {
-    let mut keys = Vec::new();
+    let mut keys: Vec<(String, bool, bool, Option<crate::font::ResolvedFaceHandle>)> = Vec::new();
     for item in &page.items {
         let Item::Text(text) = item else {
             continue;
         };
         let family = crate::style::chosen_family(&text.run, &text.text);
-        let key = (family, text.run.bold, text.run.italic);
-        if !keys.contains(&key) {
+        let key = (
+            family,
+            text.run.bold,
+            text.run.italic,
+            crate::style::registered_face(&text.run, &text.text),
+        );
+        if !keys
+            .iter()
+            .any(|existing| existing.0 == key.0 && existing.1 == key.1 && existing.2 == key.2)
+        {
             keys.push(key);
         }
     }
@@ -86,19 +94,24 @@ fn font_faces(page: &PlacedPage) -> String {
         return String::new();
     }
     let mut css = String::from("  <style type=\"text/css\"><![CDATA[\n");
-    for (family, bold, italic) in keys {
-        let Some(source) = crate::font::face_source(&family, bold, italic) else {
+    for (family, bold, italic, owned) in keys {
+        let source = crate::font::face_source(&family, bold, italic);
+        let data = if let Some(face) = &owned {
+            face.resource.bytes()
+        } else if let Some(source) = &source {
+            source.data
+        } else {
             continue;
         };
-        let (mime, format) = if source.data.starts_with(b"OTTO") {
+        let (mime, format) = if data.starts_with(b"OTTO") {
             ("font/otf", "opentype")
         } else {
             ("font/ttf", "truetype")
         };
         let weight = if bold { "bold" } else { "normal" };
         let style = if italic { "italic" } else { "normal" };
-        let encoded = image::base64_encode(source.data);
-        let hash = source.resource_hash_hex();
+        let encoded = image::base64_encode(data);
+        let hash = crate::font::hash_face_bytes_hex(data);
         let _ = writeln!(
             css,
             "/* resource_hash={hash} family={family} bold={bold} italic={italic} */"

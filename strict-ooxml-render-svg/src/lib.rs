@@ -139,6 +139,8 @@ pub struct RenderOptions {
     pub media: MediaMode,
     /// Font provider kind.
     pub font_provider: FontProviderKind,
+    /// Optional explicitly admitted font assets. Absent by default.
+    pub font_assets: Option<std::sync::Arc<font::FontAssetRegistry>>,
     /// Page selection.
     pub pages: PageSelection,
     /// Draw a white page background.
@@ -169,6 +171,7 @@ impl Default for RenderOptions {
             scale: 96.0,
             media: MediaMode::EmbedDataUri,
             font_provider: FontProviderKind::Builtin,
+            font_assets: None,
             pages: PageSelection::All,
             background: true,
             floating: true,
@@ -180,6 +183,24 @@ impl Default for RenderOptions {
 }
 
 impl RenderOptions {
+    /// Supplies immutable explicit font assets for placement and both backends.
+    #[must_use]
+    pub fn font_assets(mut self, assets: std::sync::Arc<font::FontAssetRegistry>) -> Self {
+        self.font_assets = Some(assets);
+        self
+    }
+
+    fn make_font_provider(&self) -> Box<dyn font::FontProvider> {
+        let fallback = self.font_provider.make();
+        match &self.font_assets {
+            Some(assets) => Box::new(font::registry::RegistryFontProvider::new(
+                std::sync::Arc::clone(assets),
+                fallback,
+            )),
+            None => fallback,
+        }
+    }
+
     /// Sets the scale (px per inch).
     #[must_use]
     pub fn scale(mut self, scale: f64) -> Self {
@@ -253,7 +274,7 @@ pub fn place_pages(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<PlacedPage>> {
-    let provider = options.font_provider.make();
+    let provider = options.make_font_provider();
     let context = layout::LayoutContext {
         document,
         options,
@@ -273,7 +294,9 @@ pub fn place_pages(
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
-    Ok(layout::paginate::layout_document(&context)?.pages)
+    let mut pages = layout::paginate::layout_document(&context)?.pages;
+    retain_font_assets(&mut pages, options);
+    Ok(pages)
 }
 
 /// Renders a document without a media source.
@@ -298,7 +321,7 @@ pub fn render_with_media(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<Page>> {
-    let provider = options.font_provider.make();
+    let provider = options.make_font_provider();
     let context = layout::LayoutContext {
         document,
         options,
@@ -318,7 +341,24 @@ pub fn render_with_media(
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
-    let laid_out = layout::paginate::layout_document(&context)?;
+    let mut laid_out = layout::paginate::layout_document(&context)?;
+    retain_font_assets(&mut laid_out.pages, options);
+    for page in &laid_out.pages {
+        for item in &page.items {
+            if let layout::Item::Text(text) = item {
+                if let Some(face) = style::registered_face(&text.run, &text.text) {
+                    if face.resource.key().face_index != 0
+                        || face.resource.bytes().starts_with(b"ttcf")
+                    {
+                        return Err(RenderError::UnsupportedFontAsset(
+                            "SVG font collection delivery requires a single-face program".into(),
+                        )
+                        .into_strict());
+                    }
+                }
+            }
+        }
+    }
     let layout_warnings = laid_out.warnings.clone();
 
     let mut pages = Vec::new();
@@ -338,6 +378,18 @@ pub fn render_with_media(
         });
     }
     Ok(pages)
+}
+
+fn retain_font_assets(pages: &mut [PlacedPage], options: &RenderOptions) {
+    if let Some(assets) = &options.font_assets {
+        for page in pages {
+            for item in &mut page.items {
+                if let layout::Item::Text(text) = item {
+                    text.run.font_assets = Some(std::sync::Arc::clone(assets));
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

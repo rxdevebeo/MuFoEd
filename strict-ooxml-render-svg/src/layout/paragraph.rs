@@ -740,9 +740,9 @@ fn build_lines(
             Seg::Text(text, run) => {
                 let tokens = tokenize(&text);
                 for (index, token) in tokens.iter().enumerate() {
-                    let following = tokens.get(index + 1).and_then(|next| {
-                        next.chars().find(|ch| !ch.is_whitespace())
-                    });
+                    let following = tokens
+                        .get(index + 1)
+                        .and_then(|next| next.chars().find(|ch| !ch.is_whitespace()));
                     place_token(
                         &mut sink,
                         &mut current,
@@ -1343,7 +1343,10 @@ fn apply_substitute_width_reflow(
     if scales.iter().all(|s| (*s - 1.0).abs() <= f64::EPSILON) {
         return;
     }
-    let origin = items.iter().map(|item| item.x).fold(f64::INFINITY, f64::min);
+    let origin = items
+        .iter()
+        .map(|item| item.x)
+        .fold(f64::INFINITY, f64::min);
     if !origin.is_finite() {
         return;
     }
@@ -1651,7 +1654,18 @@ fn resolve_line_metrics(
     grid_line_pitch: Option<f64>,
 ) -> (f64, f64) {
     let run = item.map_or(&computed.default_run, |item| &item.run);
-    let metrics = ctx.font.metrics(&run.family, run.bold, run.italic);
+    let owned = item.and_then(|item| {
+        ctx.options.font_assets.as_ref().and_then(|assets| {
+            assets.resolve(
+                crate::style::requested_family(run, &item.text),
+                run.bold,
+                run.italic,
+            )
+        })
+    });
+    let metrics = owned
+        .and_then(|face| face.resource.metrics())
+        .unwrap_or_else(|| ctx.font.metrics(&run.family, run.bold, run.italic));
     let size_px = ctx.size_px(run.size_pt);
     let natural_height = (metrics.line_height_em() * size_px).max(1.0);
     let natural_ascent = metrics.ascent_em() * size_px;

@@ -225,6 +225,11 @@ impl FontAssetRegistry {
                 manifest.variations.clone(),
             )
             .map_err(|error| reject(FontAssetRejection::InvalidResource(error)))?;
+            if resource.metrics().is_none() {
+                return Err(reject(FontAssetRejection::InvalidResource(
+                    FontResourceError::InvalidFace,
+                )));
+            }
             let font =
                 FontRef::from_index(resource.bytes(), manifest.face_index).map_err(|_| {
                     reject(FontAssetRejection::InvalidResource(
@@ -313,4 +318,49 @@ fn trim_metadata(value: &mut String) {
     let end = value.trim_end().len();
     value.truncate(end);
     value.drain(..start);
+}
+
+impl PartialEq for FontAssetRegistry {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.bindings, &other.bindings)
+            || self.bindings.keys().eq(other.bindings.keys())
+                && self.manifests().eq(other.manifests())
+    }
+}
+impl Eq for FontAssetRegistry {}
+
+/// Metrics adapter for explicit assets with the existing provider as an intentional fallback.
+pub struct RegistryFontProvider {
+    assets: Arc<FontAssetRegistry>,
+    fallback: Box<dyn super::FontProvider>,
+}
+impl RegistryFontProvider {
+    /// Creates an adapter without discovering any other font resources.
+    #[must_use]
+    pub fn new(assets: Arc<FontAssetRegistry>, fallback: Box<dyn super::FontProvider>) -> Self {
+        Self { assets, fallback }
+    }
+}
+impl super::FontProvider for RegistryFontProvider {
+    fn metrics(&self, family: &str, bold: bool, italic: bool) -> super::FontMetrics {
+        self.assets
+            .resolve(family, bold, italic)
+            .and_then(|face| face.resource.metrics())
+            .unwrap_or_else(|| self.fallback.metrics(family, bold, italic))
+    }
+    fn advance_em(&self, family: &str, ch: char, bold: bool, italic: bool) -> f64 {
+        self.assets.resolve(family, bold, italic).map_or_else(
+            || self.fallback.advance_em(family, ch, bold, italic),
+            |face| face.resource.advance_em(ch).unwrap_or(0.0),
+        )
+    }
+    fn has_glyph(&self, family: &str, ch: char) -> bool {
+        self.assets.resolve(family, false, false).map_or_else(
+            || self.fallback.has_glyph(family, ch),
+            |face| face.resource.glyph_id(ch).is_some(),
+        )
+    }
+    fn name(&self) -> &'static str {
+        "explicit-font-assets"
+    }
 }

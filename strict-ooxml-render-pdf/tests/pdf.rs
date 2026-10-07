@@ -707,3 +707,184 @@ fn direct_italic_embeds_the_italic_face() {
     );
     assert!(!extracted_text(&pdf).is_empty(), "the page draws text");
 }
+
+#[test]
+fn explicit_font_assets_subset_exact_instances_and_keep_unicode_after_options_drop() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{
+        resolve_face, FontAsset, FontAssetManifest, FontAssetRegistry, FontEmbeddingPermission,
+        FontRegistryLimits,
+    };
+    use strict_ooxml_testkit::DocxBuilder;
+    let assets: Vec<_> = [
+        ("AliasA", "Arial", false),
+        ("AliasB", "Times New Roman", false),
+        ("AliasA", "Arial", true),
+    ]
+    .into_iter()
+    .map(|(request, source, bold)| {
+        let face = resolve_face(source, bold, false).unwrap();
+        FontAsset {
+            bytes: Arc::from(face.bytes),
+            manifest: FontAssetManifest {
+                family: request.into(),
+                resolved_family: "same declared name".into(),
+                bold,
+                italic: false,
+                resource_hash: face.resource_hash,
+                face_index: 0,
+                variations: face.instance_key().variations,
+                source: "bundled fixture".into(),
+                license_id: "OFL-1.1".into(),
+                license_reference: "bundled fonts licenses".into(),
+                embedding: FontEmbeddingPermission::EmbedAndSubset,
+            },
+        }
+    })
+    .collect();
+    let registry =
+        Arc::new(FontAssetRegistry::from_assets(assets, FontRegistryLimits::default()).unwrap());
+    let options = RenderOptions::default().font_assets(Arc::clone(&registry));
+    let bytes = DocxBuilder::strict().body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"AliasA\"/></w:rPr><w:t>office AV e&#x301;</w:t></w:r></w:p><w:p><w:r><w:rPr><w:rFonts w:ascii=\"AliasB\"/></w:rPr><w:t>Serif text</w:t></w:r></w:p><w:p><w:r><w:rPr><w:rFonts w:ascii=\"AliasA\"/><w:b/></w:rPr><w:t>Bold text</w:t></w:r></w:p>").build();
+    let package = open(&bytes);
+    let document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let pages = place_pages(&document, &options, None).unwrap();
+    drop(options);
+    drop(registry);
+    let output = render(&pages, &RenderOptions::default()).unwrap();
+    assert!(
+        output.report.losses().is_empty(),
+        "{:?}",
+        output.report.losses()
+    );
+    assert_eq!(output.embedded_faces.len(), 3);
+    assert!(output
+        .embedded_faces
+        .iter()
+        .all(|key| key.instance.is_some()));
+    let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
+    let raw_extracted = reader.extract_text(&[1]).unwrap();
+    let extracted = raw_extracted
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for expected in ["office AV e\u{301}", "Serif text", "Bold text"] {
+        assert!(extracted.contains(expected), "{extracted:?}");
+    }
+    assert_eq!(
+        output.bytes,
+        render(&pages, &RenderOptions::default()).unwrap().bytes
+    );
+    // Empty admission must leave the established default PDF bytes unchanged.
+    let plain = place_pages(&document, &RenderOptions::default(), None).unwrap();
+    let empty = RenderOptions::default().font_assets(Arc::new(FontAssetRegistry::default()));
+    let empty_pages = place_pages(&document, &empty, None).unwrap();
+    assert_eq!(
+        render(&plain, &RenderOptions::default()).unwrap().bytes,
+        render(&empty_pages, &empty).unwrap().bytes
+    );
+}
+
+fn collection_asset() -> strict_ooxml_render_svg::font::FontAsset {
+    use strict_ooxml_render_svg::font::{
+        hash_face_bytes, resolve_face, FontAsset, FontAssetManifest, FontEmbeddingPermission,
+    };
+    let mut bytes = b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02".to_vec();
+    bytes.resize(20, 0);
+    for (index, family) in ["Arial", "Times New Roman"].iter().enumerate() {
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0);
+        }
+        let offset = u32::try_from(bytes.len()).unwrap();
+        bytes[12 + index * 4..16 + index * 4].copy_from_slice(&offset.to_be_bytes());
+        let mut program = resolve_face(family, false, false).unwrap().bytes.to_vec();
+        let tables = usize::from(u16::from_be_bytes([program[4], program[5]]));
+        for table in 0..tables {
+            let pos = 12 + table * 16 + 8;
+            let old = u32::from_be_bytes(program[pos..pos + 4].try_into().unwrap());
+            program[pos..pos + 4].copy_from_slice(&(old + offset).to_be_bytes());
+        }
+        bytes.extend(program);
+    }
+    FontAsset {
+        manifest: FontAssetManifest {
+            family: "Collection Face".into(),
+            resolved_family: "Tinos".into(),
+            bold: false,
+            italic: false,
+            resource_hash: hash_face_bytes(&bytes),
+            face_index: 1,
+            variations: resolve_face("Times New Roman", false, false)
+                .unwrap()
+                .instance_key()
+                .variations,
+            source: "two bundled fonts test collection".into(),
+            license_id: "OFL-1.1".into(),
+            license_reference: "bundled font licenses".into(),
+            embedding: FontEmbeddingPermission::EmbedAndSubset,
+        },
+        bytes: std::sync::Arc::from(bytes),
+    }
+}
+
+#[test]
+fn pdf_subsets_collection_face_one_and_matches_single_face_geometry() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{FontAssetRegistry, FontRegistryLimits};
+    use strict_ooxml_testkit::DocxBuilder;
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(vec![collection_asset()], FontRegistryLimits::default())
+            .unwrap(),
+    );
+    let options = RenderOptions::default().font_assets(registry);
+    let body = |family| {
+        format!("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{family}\"/></w:rPr><w:t>AV office</w:t></w:r></w:p>")
+    };
+    let docx = DocxBuilder::strict().body(&body("Collection Face")).build();
+    let package = open(&docx);
+    let document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let pages = place_pages(&document, &options, None).unwrap();
+    let output = render(&pages, &options).unwrap();
+    assert!(
+        output.report.losses().is_empty(),
+        "{:?}",
+        output.report.losses()
+    );
+    assert_eq!(
+        output.embedded_faces[0]
+            .instance
+            .as_ref()
+            .unwrap()
+            .face_index,
+        1
+    );
+    let mut single_asset = collection_asset();
+    let single_face =
+        strict_ooxml_render_svg::font::resolve_face("Times New Roman", false, false).unwrap();
+    single_asset.bytes = Arc::from(single_face.bytes);
+    single_asset.manifest.resource_hash = single_face.resource_hash;
+    single_asset.manifest.face_index = 0;
+    let single_options = RenderOptions::default().font_assets(Arc::new(
+        FontAssetRegistry::from_assets(vec![single_asset], FontRegistryLimits::default()).unwrap(),
+    ));
+    let single = DocxBuilder::strict().body(&body("Collection Face")).build();
+    let single_package = open(&single);
+    let single_doc = parse_document(&single_package, &ParseOptions::default()).unwrap();
+    let single_pages = place_pages(&single_doc, &single_options, None).unwrap();
+    let widths = |pages: &[strict_ooxml_render_svg::layout::PlacedPage]| {
+        pages[0]
+            .items
+            .iter()
+            .filter_map(|item| {
+                if let Item::Text(text) = item {
+                    Some(text.width)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(widths(&pages), widths(&single_pages));
+    let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
+    assert!(reader.extract_text(&[1]).unwrap().contains("office"));
+}

@@ -288,3 +288,153 @@ fn embedding_flags_override_a_permissive_attestation() {
     input.manifest.embedding = FontEmbeddingPermission::Forbidden;
     assert_eq!(rejection(input), FontAssetRejection::PermissionMissing);
 }
+
+mod common;
+
+#[test]
+fn render_options_use_exact_program_for_layout_svg_and_retained_pages() {
+    use strict_ooxml_render_svg::{layout::Item, place_pages, render, RenderOptions};
+    let alias = "Alias'; } dangerous";
+    let (_, document) = common::open_body(&format!("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{alias}\"/></w:rPr><w:t>AV office e&#x301;</w:t></w:r></w:p>"));
+    let input = asset(alias, "Times New Roman", false);
+    let expected_hash = strict_ooxml_render_svg::font::hash_face_bytes_hex(&input.bytes);
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(vec![input], FontRegistryLimits::default()).unwrap(),
+    );
+    let face = registry.resolve(alias, false, false).unwrap();
+    let options = RenderOptions::default().font_assets(Arc::clone(&registry));
+    let svg = render(&document, &options).unwrap();
+    assert!(svg[0]
+        .svg
+        .contains(&format!("resource_hash={expected_hash}")));
+    assert!(svg[0].svg.contains("font-family=\"StrictAsset-"));
+    assert!(!svg[0].svg.contains("dangerous"));
+    assert!(svg[0]
+        .svg
+        .contains("font-optical-sizing: none; font-synthesis: none"));
+    let pages = place_pages(&document, &options, None).unwrap();
+    let default = place_pages(&document, &RenderOptions::default(), None).unwrap();
+    let item = pages[0]
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Text(text) = item {
+                Some(text)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let expected = shape_resource(&item.text, &face).unwrap().total_advance_em * item.size_px;
+    assert!((item.width - expected).abs() < 1e-8);
+    let default_width = default[0]
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Text(text) = item {
+                Some(text.width)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!((default_width - item.width).abs() > 0.1);
+    drop(options);
+    drop(registry);
+    assert_eq!(
+        strict_ooxml_render_svg::style::registered_face(&item.run, &item.text)
+            .unwrap()
+            .resource
+            .key(),
+        face.resource.key()
+    );
+}
+
+#[test]
+fn empty_registry_preserves_default_svg_and_missing_cjk_is_reported() {
+    use strict_ooxml_render_svg::{render, RenderOptions};
+    let (_, document) = common::open_body("<w:p><w:r><w:t>AV office</w:t></w:r></w:p>");
+    let plain = render(&document, &RenderOptions::default()).unwrap();
+    let empty = RenderOptions::default().font_assets(Arc::new(FontAssetRegistry::default()));
+    assert_eq!(plain[0].svg, render(&document, &empty).unwrap()[0].svg);
+    let (_, cjk) = common::open_body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:eastAsia=\"Custom CJK\"/></w:rPr><w:t>&#x4e2d;&#x6587;</w:t></w:r></w:p>");
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(
+            vec![asset("Custom CJK", "Arial", false)],
+            FontRegistryLimits::default(),
+        )
+        .unwrap(),
+    );
+    let rendered = render(&cjk, &RenderOptions::default().font_assets(registry)).unwrap();
+    assert!(rendered[0]
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("font.glyph.missing: Custom CJK")));
+    assert!(rendered[0].svg.contains("StrictAsset-"));
+}
+
+fn collection_asset() -> strict_ooxml_render_svg::font::FontAsset {
+    use strict_ooxml_render_svg::font::{
+        hash_face_bytes, resolve_face, FontAsset, FontAssetManifest, FontEmbeddingPermission,
+    };
+    let mut bytes = b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02".to_vec();
+    bytes.resize(20, 0);
+    for (index, family) in ["Arial", "Times New Roman"].iter().enumerate() {
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0);
+        }
+        let offset = u32::try_from(bytes.len()).unwrap();
+        bytes[12 + index * 4..16 + index * 4].copy_from_slice(&offset.to_be_bytes());
+        let mut program = resolve_face(family, false, false).unwrap().bytes.to_vec();
+        let tables = usize::from(u16::from_be_bytes([program[4], program[5]]));
+        for table in 0..tables {
+            let pos = 12 + table * 16 + 8;
+            let old = u32::from_be_bytes(program[pos..pos + 4].try_into().unwrap());
+            program[pos..pos + 4].copy_from_slice(&(old + offset).to_be_bytes());
+        }
+        bytes.extend(program);
+    }
+    FontAsset {
+        manifest: FontAssetManifest {
+            family: "Collection Face".into(),
+            resolved_family: "Tinos".into(),
+            bold: false,
+            italic: false,
+            resource_hash: hash_face_bytes(&bytes),
+            face_index: 1,
+            variations: resolve_face("Times New Roman", false, false)
+                .unwrap()
+                .instance_key()
+                .variations,
+            source: "two bundled fonts test collection".into(),
+            license_id: "OFL-1.1".into(),
+            license_reference: "bundled font licenses".into(),
+            embedding: FontEmbeddingPermission::EmbedAndSubset,
+        },
+        bytes: std::sync::Arc::from(bytes),
+    }
+}
+
+#[test]
+fn svg_rejects_collection_delivery_instead_of_selecting_first_face() {
+    use strict_ooxml_render_svg::{render, RenderOptions};
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(vec![collection_asset()], FontRegistryLimits::default())
+            .unwrap(),
+    );
+    let (_, document) = common::open_body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Collection Face\"/></w:rPr><w:t>AV office</w:t></w:r></w:p>");
+    let error = render(&document, &RenderOptions::default().font_assets(registry)).unwrap_err();
+    assert!(error.to_string().contains("single-face program"));
+}
+
+#[test]
+fn admitted_long_family_remains_resolvable_with_bounded_lookup() {
+    let family = "A".repeat(256);
+    let registry = FontAssetRegistry::from_assets(
+        vec![asset(&family, "Arial", false)],
+        FontRegistryLimits::default(),
+    )
+    .unwrap();
+    assert!(registry.resolve(&family, false, false).is_some());
+    assert!(registry.resolve(&"A".repeat(257), false, false).is_none());
+}

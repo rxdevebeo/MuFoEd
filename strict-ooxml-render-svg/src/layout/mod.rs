@@ -598,23 +598,54 @@ impl LayoutContext<'_> {
     ) -> f64 {
         let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
-        let family = crate::style::chosen_family(run, text);
+        let family = crate::style::requested_family(run, text);
+        let owned = self.options.font_assets.as_ref().and_then(|assets| {
+            assets.resolve(
+                crate::style::requested_family(run, text),
+                run.bold,
+                run.italic,
+            )
+        });
+        let advance = |ch| {
+            owned.as_ref().map_or_else(
+                || self.font.advance_em(family, ch, run.bold, run.italic),
+                |face| face.resource.advance_em(ch).unwrap_or(0.0),
+            )
+        };
         let complex = crate::font::needs_complex_script(&shown);
         let non_space = shown.chars().filter(|ch| !ch.is_whitespace()).count() as f64;
         let extra = crate::style::spacing_px(run, size_px) * non_space;
         let compress = crate::style::compress_punctuation(
-            self.document
-                .settings
-                .character_spacing_control
-                .as_deref(),
+            self.document.settings.character_spacing_control.as_deref(),
         );
         let chars: Vec<char> = shown.chars().collect();
         if complex || !self.metric_advances.get() {
-            let shaped = crate::font::shape_text(&shown, &family, run.bold, run.italic, self.font);
-            if shaped.status == crate::font::ShapeStatus::DegradedComplexScript {
+            let (total_advance_em, status) = if let Some(face) = &owned {
+                crate::font::shape_resource(&shown, face).map_or_else(
+                    || {
+                        self.warn(format!("font.shaping.failed: {}", face.requested_family));
+                        (
+                            shown.chars().map(advance).sum(),
+                            crate::font::ShapeStatus::DegradedMissingGlyph,
+                        )
+                    },
+                    |shaped| (shaped.total_advance_em, shaped.status),
+                )
+            } else {
+                let shaped =
+                    crate::font::shape_text(&shown, family, run.bold, run.italic, self.font);
+                (shaped.total_advance_em, shaped.status)
+            };
+            if status == crate::font::ShapeStatus::DegradedMissingGlyph {
+                self.warn(format!(
+                    "font.glyph.missing: {}",
+                    crate::style::requested_family(run, text)
+                ));
+            }
+            if status == crate::font::ShapeStatus::DegradedComplexScript {
                 self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
             }
-            let mut width = shaped.total_advance_em * size_px + extra;
+            let mut width = total_advance_em * size_px + extra;
             if compress {
                 let mut prev = None;
                 for (i, &ch) in chars.iter().enumerate() {
@@ -627,9 +658,7 @@ impl LayoutContext<'_> {
                         plain_space_factor,
                     );
                     if (factor - 1.0).abs() > f64::EPSILON {
-                        width -= self.font.advance_em(&family, ch, run.bold, run.italic)
-                            * size_px
-                            * (1.0 - factor);
+                        width -= advance(ch) * size_px * (1.0 - factor);
                     }
                     if !ch.is_whitespace() {
                         prev = Some(ch);
@@ -640,18 +669,22 @@ impl LayoutContext<'_> {
             }
             return width;
         }
+        if owned
+            .as_ref()
+            .is_some_and(|face| shown.chars().any(|ch| face.resource.glyph_id(ch).is_none()))
+        {
+            self.warn(format!(
+                "font.glyph.missing: {}",
+                crate::style::requested_family(run, text)
+            ));
+        }
         let mut total = 0.0;
         let mut prev = None;
         for (i, &ch) in chars.iter().enumerate() {
             let next = chars.get(i + 1).copied().or(following);
-            let factor = crate::style::compressed_char_factor(
-                prev,
-                ch,
-                next,
-                compress,
-                plain_space_factor,
-            );
-            total += self.font.advance_em(&family, ch, run.bold, run.italic) * factor;
+            let factor =
+                crate::style::compressed_char_factor(prev, ch, next, compress, plain_space_factor);
+            total += advance(ch) * factor;
             if !ch.is_whitespace() {
                 prev = Some(ch);
             } else if factor > 0.0 {

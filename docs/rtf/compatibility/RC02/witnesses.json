@@ -1,6 +1,6 @@
 {
   "card": "RC02",
-  "scope": "bounded registry and owned measurement/shaping operations",
+  "scope": "registry resources admitted through placement and both renderers",
   "witnesses": [
     {
       "name": "bundled adapter",
@@ -47,6 +47,26 @@
       "name": "embedding restriction",
       "program": "test-only modified Arimo OS/2 flags",
       "oracle": "restricted/no-subset/bitmap/unknown flags reject even with permission attestation"
+    },
+    {
+      "name": "SVG registry delivery",
+      "oracle": "pinned bytes hash, resource-derived CSS family, exact owned shaping width, ownership after options drop"
+    },
+    {
+      "name": "PDF owned instances",
+      "oracle": "lopdf parse/ToUnicode extraction; distinct program/weight keys despite same declared resolved family; deterministic bytes"
+    },
+    {
+      "name": "collection face 1",
+      "oracle": "PDF geometry versus identical explicit single-face program; SVG explicit unsupported delivery error"
+    },
+    {
+      "name": "default compatibility",
+      "oracle": "byte-identical SVG/PDF with empty registry; fresh default CLI corpus and 100 unchanged DOCX hashes"
+    },
+    {
+      "name": "RTF script-slot admission",
+      "oracle": "Latin/East Asian aliases reach explicit resource keys; missing CJK outlines remain loss"
     }
   ],
   "real_script_geometry_acceptance": "Pending"
