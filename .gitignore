@@ -53,3 +53,6 @@ __pycache__/
 # Nothing here is an input to anything, and `git status` listing 300 of them
 # buries the files that are.
 /render_out/
+
+# hostq queue (tools/hostq): jobs, reports, its worktree and its target dir
+/StrictLib-hostq/
