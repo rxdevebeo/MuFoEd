@@ -272,8 +272,16 @@ pub(crate) fn plan(
             }
         }
     }
+    // A shadow reached through a copied part (a glossary document's own
+    // `stylesWithEffects`, say) is left out the same way as the main
+    // document's: its target is not copied, and its relationship is cut from the
+    // `.rels` that is.
+    let shadows = shadow_targets(ctx, source, &queue);
     let mut copied: BTreeSet<String> = BTreeSet::new();
     for part in queue {
+        if shadows.contains(part.as_str()) {
+            continue;
+        }
         if !copied.insert(part.as_str().to_owned()) {
             continue;
         }
@@ -301,7 +309,7 @@ pub(crate) fn plan(
             .to_ascii_lowercase()
             .ends_with(CONTENT_TYPE_RELS_SUFFIX);
         let bytes = if is_rels {
-            strict_rels_namespace(&bytes)
+            without_shadow_relationships(&strict_rels_namespace(&bytes))
         } else {
             bytes
         };
@@ -328,7 +336,7 @@ pub(crate) fn plan(
             if let Ok(bytes) = source.read_part(&rels_part) {
                 out.parts.push(CopiedPart {
                     name: rels_part.as_str().to_owned(),
-                    bytes: strict_rels_namespace(&bytes),
+                    bytes: without_shadow_relationships(&strict_rels_namespace(&bytes)),
                     content_type: None,
                 });
             }
@@ -925,6 +933,65 @@ fn replace_all(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
 /// A Transitional or Strict producer that already writes the standard URI needs
 /// no change; only earlier project versions that emitted a non-standard purl
 /// URI are repaired. Ids, types and targets stay untouched.
+/// The targets of shadow relationships declared by the parts in `queue`, each
+/// named in the report as the main document's own shadow is.
+fn shadow_targets(ctx: &mut Ctx<'_>, source: &dyn Source, queue: &[PartId]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for part in queue {
+        for info in source.relationships(part) {
+            if info.external || !is_shadow(&info) {
+                continue;
+            }
+            let Some(target) = resolve(part, &info.target) else {
+                continue;
+            };
+            if out.insert(target.as_str().to_owned()) {
+                ctx.report_unsupported(
+                    "W7.stylesWithEffects",
+                    &format!(
+                        "{} (from {}) was not copied: it shadows a styles part this write \
+                         regenerates or does not carry, so a copy would be a second and stale \
+                         set of styles",
+                        target.as_str(),
+                        part.as_str()
+                    ),
+                    &SourceLocation::unknown(),
+                );
+            }
+        }
+    }
+    out
+}
+
+/// `bytes` (a `.rels` part) without its `Relationship` elements of a shadow
+/// type (see [`SHADOW_REL_TYPES`]).
+fn without_shadow_relationships(bytes: &[u8]) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return bytes.to_vec();
+    };
+    if !SHADOW_REL_TYPES.iter().any(|uri| text.contains(uri)) {
+        return bytes.to_vec();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<Relationship ") {
+        out.push_str(&rest[..start]);
+        let element = &rest[start..];
+        let Some(end) = element.find('>') else {
+            out.push_str(element);
+            rest = "";
+            break;
+        };
+        let (tag, after) = element.split_at(end + 1);
+        if !SHADOW_REL_TYPES.iter().any(|uri| tag.contains(uri)) {
+            out.push_str(tag);
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out.into_bytes()
+}
+
 fn strict_rels_namespace(bytes: &[u8]) -> Vec<u8> {
     replace_all(bytes, LEGACY_PURL_RELS_NS, PACKAGE_RELS_NS)
 }
