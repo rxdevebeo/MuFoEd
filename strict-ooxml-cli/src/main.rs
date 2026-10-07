@@ -112,8 +112,12 @@ fn run_command() -> ExitCode {
         Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
-        Some("--help" | "-h") | None => {
+        Some("--help" | "-h" | "help") | None => {
             print_usage();
+            ExitCode::from(EXIT_OK)
+        }
+        Some("--version" | "-V") => {
+            println!("strict-ooxml {}", env!("CARGO_PKG_VERSION"));
             ExitCode::from(EXIT_OK)
         }
         Some(other) => {

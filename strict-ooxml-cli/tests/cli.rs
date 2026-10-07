@@ -654,3 +654,16 @@ fn inspect_escapes_control_characters_from_the_document() {
         "escaped form expected: {stdout}"
     );
 }
+
+#[test]
+fn version_and_help_exit_zero() {
+    let (code, stdout, _) = run(&["--version"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.starts_with("strict-ooxml ") && stdout.trim().len() > "strict-ooxml ".len(),
+        "{stdout}"
+    );
+    let (code, _, stderr) = run(&["help"]);
+    assert_eq!(code, 0);
+    assert!(stderr.contains("usage:"), "{stderr}");
+}
