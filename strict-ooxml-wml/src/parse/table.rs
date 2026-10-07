@@ -274,16 +274,7 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "sdtPr" => {
-                                let parsed = parser.parse_sdt_properties()?;
-                                props.tag = parsed.tag.or(props.tag);
-                                props.alias = parsed.alias.or(props.alias);
-                                props.id = parsed.id.or(props.id);
-                                props.placeholder = parsed.placeholder.or(props.placeholder);
-                                props.showing_placeholder |= parsed.showing_placeholder;
-                                props.run_props = parsed.run_props.or(props.run_props);
-                                props.doc_part_gallery =
-                                    parsed.doc_part_gallery.or(props.doc_part_gallery);
-                                props.doc_part_unique |= parsed.doc_part_unique;
+                                parser.parse_sdt_properties()?.merge_into(&mut props);
                             }
                             "sdtEndPr" => {
                                 props.has_end_pr = true;
@@ -332,16 +323,7 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "sdtPr" => {
-                                let parsed = parser.parse_sdt_properties()?;
-                                props.tag = parsed.tag.or(props.tag);
-                                props.alias = parsed.alias.or(props.alias);
-                                props.id = parsed.id.or(props.id);
-                                props.placeholder = parsed.placeholder.or(props.placeholder);
-                                props.showing_placeholder |= parsed.showing_placeholder;
-                                props.run_props = parsed.run_props.or(props.run_props);
-                                props.doc_part_gallery =
-                                    parsed.doc_part_gallery.or(props.doc_part_gallery);
-                                props.doc_part_unique |= parsed.doc_part_unique;
+                                parser.parse_sdt_properties()?.merge_into(&mut props);
                             }
                             "sdtEndPr" => {
                                 props.has_end_pr = true;
