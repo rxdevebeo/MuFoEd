@@ -361,6 +361,8 @@ fn style_table_behaviour() {
         next: None,
         link: None,
         is_default: true,
+        custom_style: false,
+        auto_redefine: false,
         semi_hidden: false,
         hidden: false,
         q_format: false,
@@ -582,11 +584,14 @@ fn drawing_and_run_constructors() {
         embed: None,
         link: None,
         resolved: None,
+        cstate: None,
         location: location(),
     };
     let picture = Picture {
         name: Some(Arc::from("p")),
         descr: Some(Arc::from("d")),
+        nv_id: Some(1),
+        bw_mode: None,
         blip: Some(blip),
         extent: Some(Extent {
             cx: Emu(1),

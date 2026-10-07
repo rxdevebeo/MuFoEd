@@ -281,6 +281,12 @@ impl PartParser<'_> {
                                 props.placeholder = parsed.placeholder.or(props.placeholder);
                                 props.showing_placeholder |= parsed.showing_placeholder;
                                 props.run_props = parsed.run_props.or(props.run_props);
+                                props.doc_part_gallery = parsed.doc_part_gallery.or(props.doc_part_gallery);
+                                props.doc_part_unique |= parsed.doc_part_unique;
+                            }
+                            "sdtEndPr" => {
+                                props.has_end_pr = true;
+                                props.end_run_props = parser.parse_sdt_end_properties()?.or(props.end_run_props);
                             }
                             "sdtContent" => {
                                 rows.append(&mut parser.parse_table_row_children()?);
@@ -331,6 +337,12 @@ impl PartParser<'_> {
                                 props.placeholder = parsed.placeholder.or(props.placeholder);
                                 props.showing_placeholder |= parsed.showing_placeholder;
                                 props.run_props = parsed.run_props.or(props.run_props);
+                                props.doc_part_gallery = parsed.doc_part_gallery.or(props.doc_part_gallery);
+                                props.doc_part_unique |= parsed.doc_part_unique;
+                            }
+                            "sdtEndPr" => {
+                                props.has_end_pr = true;
+                                props.end_run_props = parser.parse_sdt_end_properties()?.or(props.end_run_props);
                             }
                             "sdtContent" => {
                                 cells.append(&mut parser.parse_table_cell_children()?);

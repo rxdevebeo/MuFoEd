@@ -162,6 +162,8 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
     let shape = Shape {
         name: Some(Arc::clone(&name)),
         descr: None,
+        nv_id: None,
+        bw_mode: None,
         tx_box: None,
         geometry: ShapeGeometry::Preset(Arc::from("rect")),
         xfrm: None,

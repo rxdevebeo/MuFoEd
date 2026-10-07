@@ -1123,10 +1123,16 @@ fn copy_attributes(
         }
         match rewrite_attribute(&attribute, context, report, &present_locals) {
             RewrittenAttribute::Keep(key, value) => {
-                // `value` is already in its final escaped form: a stage that
-                // rewrote it escaped it, and a stage that did not left the
-                // producer's own bytes alone.
-                buffer.push_attribute((key.as_str(), value.as_str()));
+                // Two source attributes can rewrite to one Strict name
+                // (`w:tentative` and `w15:tentative`). The second copy is not
+                // a second attribute; emitting both makes the part unreadable.
+                let duplicate = buffer
+                    .attributes()
+                    .flatten()
+                    .any(|existing| existing.key.as_ref() == key.as_bytes());
+                if !duplicate {
+                    buffer.push_attribute((key.as_str(), value.as_str()));
+                }
             }
             // A declaration that must not be emitted: the namespace is going away
             // with its nodes, and leaving it would only advertise a namespace
@@ -1883,6 +1889,31 @@ fn rewrite_attribute(
     // Counted in the stage total rather than as a removal record: an attribute
     // is not a node, and `verify_no_silent_loss` counts nodes against reported
     // removals - booking it as one would put the two counters out of step.
+    // Word 2012 stores `w:lvl/@tentative` in an ignorable namespace. Strict
+    // `CT_Lvl` has the same attribute in the main namespace. Rewriting it
+    // keeps the value; every other attribute in that namespace still drops.
+    if !is_reserved
+        && local == "tentative"
+        && context.pending_element == "lvl"
+        && (uri == "http://schemas.microsoft.com/office/word/2012/wordml" || uri.is_empty())
+    {
+        // `present_locals` contains this attribute's own local name. Treating
+        // that as "already present" drops `w15:tentative` before it is rewritten.
+        let Some(decoded) = attribute
+            .normalized_value(version)
+            .ok()
+            .map(Cow::into_owned)
+        else {
+            return RewrittenAttribute::Drop;
+        };
+        report.record_mapping(
+            "T1.namespace",
+            &uri,
+            "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        );
+        return RewrittenAttribute::Keep(PartContext::qualified_name("w", "tentative"), decoded);
+    }
+
     if !is_reserved && is_ignorable_extension(&uri) {
         report.record("T5.extension-attribute", 1);
         // The stage id alone does not name the attribute. Census named-loss
@@ -2775,6 +2806,27 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("schemas.openxmlformats.org"), "{text}");
+    }
+
+    #[test]
+    fn word2012_lvl_tentative_becomes_the_strict_attribute() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<?xml version="1.0"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w15">
+<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0" w15:tentative="1"><w:start w:val="1"/></w:lvl></w:abstractNum>
+</w:numbering>"#;
+        let output = normalizer
+            .normalize(&PartId::new("/word/numbering.xml"), source.as_bytes())
+            .expect("normalize");
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(
+            text.contains(r#"w:tentative="1""#),
+            "the Word 2012 attribute must be rewritten onto w:lvl: {text}"
+        );
+        assert!(
+            !text.contains("w15:"),
+            "the ignorable prefix must not survive: {text}"
+        );
     }
 
     #[test]

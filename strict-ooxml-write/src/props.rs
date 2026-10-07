@@ -776,6 +776,8 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         && !props.bidi_visual
         && props.positioning.is_none()
         && props.cell_spacing.is_none()
+        && props.style_row_band_size.is_none()
+        && props.style_col_band_size.is_none()
         && borders_empty(&props.borders)
         && props.cell_margins.top.is_none()
         && props.cell_margins.start.is_none()
@@ -797,6 +799,16 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
         "tblStyle" => {
             if let Some(style) = &props.style {
                 xml.empty_attr_w("w:tblStyle", "val", style.as_str());
+            }
+        }
+        "tblStyleRowBandSize" => {
+            if let Some(size) = props.style_row_band_size {
+                xml.empty_attr_w("w:tblStyleRowBandSize", "val", size);
+            }
+        }
+        "tblStyleColBandSize" => {
+            if let Some(size) = props.style_col_band_size {
+                xml.empty_attr_w("w:tblStyleColBandSize", "val", size);
             }
         }
         "tblpPr" => {
@@ -1422,11 +1434,24 @@ mod tests {
     };
 
     use super::{
-        borders_element, fonts_element, paragraph_properties, section_properties, strict_font_hint,
-        tbl_width_value, EdgeNames,
+        borders_element, fonts_element, note_properties, paragraph_properties, section_properties,
+        strict_font_hint, tbl_width_value, EdgeNames,
     };
     use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
+
+    #[test]
+    fn footnote_separator_keeps_negative_and_foreign_ids() {
+        let props = strict_ooxml_wml::model::notes::NoteProperties {
+            separator_ids: vec![-1, 7],
+            ..strict_ooxml_wml::model::notes::NoteProperties::default()
+        };
+        let mut xml = XmlWriter::new();
+        note_properties(&mut xml, "w:footnotePr", &props);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains(r#"w:id="-1""#), "{text}");
+        assert!(text.contains(r#"w:id="7""#), "{text}");
+    }
 
     #[test]
     fn an_empty_ppr_is_not_emitted() {

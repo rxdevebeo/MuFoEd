@@ -49,6 +49,10 @@ pub struct Style {
     pub link: Option<StyleId>,
     /// Whether this is a default style (`w:default`).
     pub is_default: bool,
+    /// User style (`w:customStyle`). Strict `CT_Style` allows the attribute.
+    pub custom_style: bool,
+    /// Redefine automatically (`w:autoRedefine`).
+    pub auto_redefine: bool,
     /// Semi-hidden in the UI (`w:semiHidden`), AUD-46.
     pub semi_hidden: bool,
     /// Fully hidden (`w:hidden`), AUD-46.
@@ -97,6 +101,8 @@ pub struct StyleTable {
     styles: Vec<Style>,
     by_id: HashMap<StyleId, usize>,
     defaults: DocDefaults,
+    /// The source part contained `w:docDefaults`, including an empty one.
+    defaults_declared: bool,
 }
 
 impl StyleTable {
@@ -109,6 +115,13 @@ impl StyleTable {
     /// Sets the document-wide default properties (`w:docDefaults`).
     pub fn set_defaults(&mut self, defaults: DocDefaults) {
         self.defaults = defaults;
+        self.defaults_declared = true;
+    }
+
+    /// Returns `w:docDefaults` when the source declared it, even if it is empty.
+    #[must_use]
+    pub fn declared_defaults(&self) -> Option<&DocDefaults> {
+        self.defaults_declared.then_some(&self.defaults)
     }
 
     /// Returns the document-wide default properties, if any were declared.

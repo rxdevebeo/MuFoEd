@@ -41,6 +41,10 @@ pub(crate) struct ParsedSdtPr {
     pub showing_placeholder: bool,
     /// `w:rPr` of the placeholder, including half-point `w:sz`.
     pub run_props: Option<RunProperties>,
+    /// `w:docPartObj/w:docPartGallery/@w:val`.
+    pub doc_part_gallery: Option<Arc<str>>,
+    /// `w:docPartObj/w:docPartUnique`.
+    pub doc_part_unique: bool,
 }
 
 impl PartParser<'_> {
@@ -859,11 +863,15 @@ impl PartParser<'_> {
         let rel_id = attr_in_ns(attrs, RELS_STRICT_NS, "id").map(RelId::new);
         let anchor = wml_attr(attrs, "anchor").map(|value| self.intern(value));
         let tooltip = wml_attr(attrs, "tooltip").map(|value| self.intern(value));
+        let history = wml_attr(attrs, "history").is_some_and(|value| matches!(value, "1" | "true" | "on"));
+        let tgt_frame = wml_attr(attrs, "tgtFrame").map(|value| self.intern(value));
         let inlines = self.parse_inline_children()?;
         Ok(Hyperlink {
             rel_id,
             anchor,
             tooltip,
+            history,
+            tgt_frame,
             inlines,
             location,
         })
@@ -929,6 +937,9 @@ impl PartParser<'_> {
             let mut showing_placeholder = false;
             let mut run_props = None;
             let mut end_run_props = None;
+            let mut has_end_pr = false;
+            let mut doc_part_gallery = None;
+            let mut doc_part_unique = false;
             let mut blocks = Vec::new();
             let mut inlines = Vec::new();
             loop {
@@ -948,8 +959,13 @@ impl PartParser<'_> {
                                 placeholder = props.placeholder.or(placeholder);
                                 showing_placeholder |= props.showing_placeholder;
                                 run_props = props.run_props.or(run_props);
+                                doc_part_gallery = props.doc_part_gallery.or(doc_part_gallery);
+                                doc_part_unique |= props.doc_part_unique;
                             }
-                            "sdtEndPr" => end_run_props = parser.parse_sdt_end_properties()?,
+                            "sdtEndPr" => {
+                                has_end_pr = true;
+                                end_run_props = parser.parse_sdt_end_properties()?;
+                            }
                             "sdtContent" => {
                                 if is_block {
                                     let mut found = parser.parse_block_children()?;
@@ -969,6 +985,7 @@ impl PartParser<'_> {
                     }
                 }
             }
+            let has_end_pr = has_end_pr || end_run_props.is_some();
             Ok(SdtContainer {
                 tag,
                 alias,
@@ -977,6 +994,9 @@ impl PartParser<'_> {
                 showing_placeholder,
                 run_props,
                 end_run_props,
+                has_end_pr,
+                doc_part_gallery,
+                doc_part_unique,
                 blocks,
                 inlines,
                 location,
@@ -985,7 +1005,9 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:sdtEndPr`, which holds the end marker's `w:rPr`.
-    fn parse_sdt_end_properties(&mut self) -> Result<Option<crate::model::props::RunProperties>> {
+    pub(crate) fn parse_sdt_end_properties(
+        &mut self,
+    ) -> Result<Option<crate::model::props::RunProperties>> {
         self.nested(|parser| {
             let mut props = None;
             loop {
@@ -1045,6 +1067,11 @@ impl PartParser<'_> {
                             "rPr" => {
                                 parsed.run_props = Some(parser.parse_run_properties()?);
                             }
+                            "docPartObj" => {
+                                let (gallery, unique) = parser.parse_doc_part_obj()?;
+                                parsed.doc_part_gallery = gallery.or(parsed.doc_part_gallery);
+                                parsed.doc_part_unique |= unique;
+                            }
                             _ => parser.skip_element()?,
                         }
                     }
@@ -1054,6 +1081,30 @@ impl PartParser<'_> {
                 }
             }
             Ok(parsed)
+        })
+    }
+
+    /// Parses `w:docPartObj`: gallery value and whether `w:docPartUnique` is on.
+    fn parse_doc_part_obj(&mut self) -> Result<(Option<Arc<str>>, bool)> {
+        self.nested(|parser| {
+            let mut gallery = None;
+            let mut unique = false;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) && name.local() == "docPartGallery" {
+                            gallery = val_attr(&attrs).map(|value| parser.intern(value));
+                        } else if is_wml(&name) && name.local() == "docPartUnique" {
+                            unique = val_attr(&attrs).is_none_or(|value| matches!(value, "1" | "true" | "on"));
+                        }
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of document part")),
+                }
+            }
+            Ok((gallery, unique))
         })
     }
 

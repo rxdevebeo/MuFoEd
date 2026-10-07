@@ -8,7 +8,9 @@ use crate::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingT
 use crate::model::support::SupportStatus;
 use crate::model::values::Justification;
 
-use super::{is_wml, parse_u32, val_attr, wml_attr, PartParser};
+use super::{attr_in_ns, is_wml, parse_u32, val_attr, wml_attr, PartParser};
+
+const WORDML_2012_NS: &str = "http://schemas.microsoft.com/office/word/2012/wordml";
 
 impl PartParser<'_> {
     /// Parses a `numbering.xml` part.
@@ -135,6 +137,10 @@ impl PartParser<'_> {
     /// Parses a `w:lvl` element.
     fn parse_level(&mut self, attrs: &[Attr]) -> Result<Level> {
         let ilvl = self.clamped_ilvl(wml_attr(attrs, "ilvl").and_then(parse_u32));
+        let tentative_attr = wml_attr(attrs, "tentative")
+            .or_else(|| attr_in_ns(attrs, WORDML_2012_NS, "tentative"));
+        let tentative = tentative_attr.is_some_and(|value| matches!(value, "1" | "true" | "on"));
+        let tentative_off = tentative_attr.is_some_and(|value| matches!(value, "0" | "false" | "off"));
         if wml_attr(attrs, "tplc").is_some() {
             self.record(
                 "w:lvl@tplc",
@@ -145,6 +151,8 @@ impl PartParser<'_> {
         }
         self.nested(|parser| {
             let mut level = Level::new(ilvl);
+            level.tentative = tentative;
+            level.tentative_off = tentative_off;
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {

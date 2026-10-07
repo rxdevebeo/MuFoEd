@@ -547,6 +547,8 @@ fn shape_textbox_search_replace_and_move_stay_in_scope() {
             graphic: Box::new(Graphic::Shape(Shape {
                 name: None,
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 tx_box: None,
                 geometry: ShapeGeometry::Preset("rect".into()),
                 xfrm: None,

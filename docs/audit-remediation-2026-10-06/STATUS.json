@@ -369,6 +369,16 @@
     "p9_status": "ACCEPT",
     "p10_package": "P10-binary-resources",
     "p10_status": "ACCEPT",
+    "p11_package": "P11-graphic-identity",
+    "p11_status": "ACCEPT",
+    "p12_package": "P12-header-footer-notes",
+    "p12_status": "OPEN",
+    "p13_package": "P13-ignorable-notes",
+    "p13_status": "ACCEPT",
+    "p14_package": "P14-sdt-docpart",
+    "p14_status": "ACCEPT",
+    "p15_package": "P15-settings-tail",
+    "p15_status": "OPEN",
     "m2_status": "PASS_SLICE_DECLARED_TRANSFORMS",
     "m3_status": "ACCEPT",
     "m3_slice_p5_p6": "ACCEPT",
@@ -376,7 +386,7 @@
     "m4_status": "OPEN",
     "visual_tol_px": 0.75,
     "observed_max_delta_px": 0.0,
-    "note": "M2 P2–P4 ACCEPT. M3 P5–P8 ACCEPT: theme* labels 1027→0; w:color@val+a:schemeClr@val 297→0. P9 fonts ACCEPT: primary font labels 235→0. P10 binary resources ACCEPT: resource labels 84→0 (identical-byte dedup and zip directories are not losses; unique media and empty odttf bytes are copied; shape blipFill and locked-canvas pictures keep their digest). unmatched_schema stays 1198. unclassified 4153→4032. D05 is not PASS. M4 remains open (P11–P15)."
+    "note": "M2 P2–P4 ACCEPT. M3 P5–P8 ACCEPT. P9 fonts ACCEPT. P10 binary resources ACCEPT. P11 graphic identity ACCEPT (graphicData URI, bwMode, cNvPr id, blip cstate → 0). P12 OPEN: footnote/endnote ids → 0, headerReference 138→78 and footerReference 107→61 remain real part diffs. P13 Ignorable on hdr/ftr/notes ACCEPT (388→0, TZ-50). P14 docPart/sdtEndPr ACCEPT (280→0); dataBinding and sdt text stay unclassified. P15 OPEN: customStyle, tentative, style-pane mask, band sizes, explicit breaks and custom-properties namespace identity are 0, and the package goal unclassified=0 is not met. unmatched_schema stays 1198. unclassified 4032→784. D05 is not PASS. M4 remains open."
   },
   "unsupported_vectors": [
     "cubic",

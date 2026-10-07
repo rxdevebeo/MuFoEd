@@ -97,7 +97,7 @@ pub fn styles_part(
 ) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:styles", &WML_NAMESPACES);
-    if let Some(defaults) = table.defaults() {
+    if let Some(defaults) = table.declared_defaults() {
         doc_defaults(ctx, &mut xml, defaults);
     }
     for style in table.iter() {
@@ -138,6 +138,9 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
     if style.is_default {
         xml.attr_w("default", "true");
     }
+    if style.custom_style {
+        xml.attr_w("customStyle", "1");
+    }
     // `CT_Style` is an xsd:sequence too, and it is one of the two places where
     // the writer's order was simply not the schema's: `w:rPr` comes BEFORE
     // `w:tblPr`, and the paragraph properties were emitted between them, so a
@@ -166,6 +169,7 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
                     xml.empty_attr_w("w:link", "val", link.as_str());
                 }
             }
+            "autoRedefine" if style.auto_redefine => xml.empty("w:autoRedefine"),
             "uiPriority" => {
                 if let Some(priority) = style.ui_priority {
                     xml.empty_attr_w("w:uiPriority", "val", priority);
@@ -293,6 +297,12 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     // pStyle, isLgl, suff, lvlText, lvlPicBulletId, lvlJc, pPr, rPr.
     xml.start("w:lvl");
     ilvl_attr(ctx, xml, &level.ilvl, "w:lvl");
+    // Strict `CT_Lvl` carries `tentative` as an attribute, not a child.
+    if level.tentative {
+        xml.attr_w("tentative", "1");
+    } else if level.tentative_off {
+        xml.attr_w("tentative", "0");
+    }
     if let Some(start) = level.start {
         xml.empty_attr_w("w:start", "val", start);
     }
@@ -325,9 +335,6 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     }
     if let Some(justification) = &level.justification {
         xml.empty_attr_w("w:lvlJc", "val", justification.as_str());
-    }
-    if level.tentative {
-        xml.empty("w:tentative");
     }
     paragraph_properties(ctx, xml, &level.paragraph, None);
     run_properties(xml, &level.run);
@@ -729,7 +736,9 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
                 xml.empty_attr_w("w:defaultTabStop", "val", stop.0);
             }
         }
-        "autoHyphenation" if settings.auto_hyphenation => xml.empty("w:autoHyphenation"),
+        "autoHyphenation" if settings.auto_hyphenation => {
+            xml.empty_attr_w("w:autoHyphenation", "val", "true");
+        }
         "hyphenationZone" => {
             if let Some(zone) = settings.hyphenation_zone {
                 xml.empty_attr_w("w:hyphenationZone", "val", zone.0);
@@ -740,6 +749,9 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         }
         "evenAndOddHeaders" if settings.even_and_odd_headers => {
             xml.empty("w:evenAndOddHeaders");
+        }
+        "evenAndOddHeaders" if settings.even_and_odd_headers_off => {
+            xml.empty_attr_w("w:evenAndOddHeaders", "val", "false");
         }
         "mirrorMargins" if settings.mirror_margins => xml.empty("w:mirrorMargins"),
         // The Strict home of the flag Transitional writes inside `w:sectPr`,
@@ -1514,6 +1526,8 @@ mod tests {
             next: None,
             link: None,
             is_default: false,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: false,
             hidden: false,
             q_format: false,
@@ -1557,6 +1571,8 @@ mod tests {
                 next: None,
                 link: None,
                 is_default: false,
+                custom_style: false,
+                auto_redefine: false,
                 semi_hidden: false,
                 hidden: false,
                 q_format: false,
@@ -1593,6 +1609,8 @@ mod tests {
             next: None,
             link: None,
             is_default: true,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: false,
             hidden: false,
             q_format: false,
@@ -1731,6 +1749,83 @@ mod tests {
                     && loss.severity == Severity::Lossy
             }),
             "{report:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_false_headers_and_auto_hyphenation_keep_their_values() {
+        let settings = Settings {
+            even_and_odd_headers_off: true,
+            auto_hyphenation: true,
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings_part balances");
+        assert!(
+            xml.contains(r#"<w:evenAndOddHeaders w:val="false"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<w:autoHyphenation w:val="true"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_empty_doc_defaults_element_is_written() {
+        let mut table = StyleTable::new();
+        table.set_defaults(Default::default());
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = styles_part(&mut ctx, &table).expect("styles_part balances");
+        assert!(xml.contains("<w:docDefaults>"), "{xml}");
+        assert!(xml.contains("<w:rPrDefault"), "{xml}");
+        assert!(xml.contains("<w:pPrDefault"), "{xml}");
+    }
+
+    #[test]
+    fn table_style_band_sizes_are_written() {
+        let mut table = StyleTable::new();
+        table.insert(Style {
+            id: StyleId::new("TableGrid"),
+            style_type: StyleType::Table,
+            name: None,
+            based_on: None,
+            next: None,
+            link: None,
+            is_default: false,
+            custom_style: false,
+            auto_redefine: false,
+            semi_hidden: false,
+            hidden: false,
+            q_format: false,
+            locked: false,
+            unhide_when_used: false,
+            ui_priority: None,
+            table: strict_ooxml_wml::model::props::TableProperties {
+                style_row_band_size: Some(3),
+                style_col_band_size: Some(2),
+                ..Default::default()
+            },
+            row: Default::default(),
+            cell: Default::default(),
+            paragraph: Default::default(),
+            run: Default::default(),
+            conditions: Vec::new(),
+            based_on_chain: Vec::new(),
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        });
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = styles_part(&mut ctx, &table).expect("styles_part balances");
+        assert!(
+            xml.contains(r#"<w:tblStyleRowBandSize w:val="3"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<w:tblStyleColBandSize w:val="2"/>"#),
+            "{xml}"
         );
     }
 }

@@ -661,6 +661,12 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "tblStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
+                            "tblStyleRowBandSize" => {
+                                props.style_row_band_size = val_attr(&attrs).and_then(parse_i32);
+                            }
+                            "tblStyleColBandSize" => {
+                                props.style_col_band_size = val_attr(&attrs).and_then(parse_i32);
+                            }
                             "tblW" => props.width = Some(parser.parse_width(&attrs, "w:tblW")),
                             "jc" => {
                                 props.alignment =

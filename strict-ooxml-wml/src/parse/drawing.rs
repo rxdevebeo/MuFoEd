@@ -678,6 +678,8 @@ impl PartParser<'_> {
             let mut picture = Picture {
                 name: None,
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 blip: None,
                 extent: None,
                 src_rect: None,
@@ -685,9 +687,10 @@ impl PartParser<'_> {
             };
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "nvPicPr" {
-                            let (name, descr) = parser.parse_nv_pic_pr()?;
+                            let (nv_id, name, descr) = parser.parse_nv_pic_pr()?;
+                            picture.nv_id = nv_id;
                             picture.name = name;
                             picture.descr = descr;
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
@@ -695,6 +698,8 @@ impl PartParser<'_> {
                             picture.blip = blip;
                             picture.src_rect = src_rect;
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "spPr" {
+                            picture.bw_mode =
+                                plain_attr(&attrs, "bwMode").map(|value| parser.intern(value));
                             let (extent, xfrm) = parser.parse_sp_pr()?;
                             picture.extent = extent;
                             picture.xfrm = xfrm;
@@ -714,8 +719,13 @@ impl PartParser<'_> {
     /// Parses `pic:nvPicPr`.
     fn parse_nv_pic_pr(
         &mut self,
-    ) -> Result<(Option<std::sync::Arc<str>>, Option<std::sync::Arc<str>>)> {
+    ) -> Result<(
+        Option<u32>,
+        Option<std::sync::Arc<str>>,
+        Option<std::sync::Arc<str>>,
+    )> {
         self.nested(|parser| {
+            let mut nv_id = None;
             let mut name = None;
             let mut descr = None;
             loop {
@@ -725,6 +735,7 @@ impl PartParser<'_> {
                         attrs,
                     } => {
                         if is_ns(&element, PICTURE_STRICT_NS) && element.local() == "cNvPr" {
+                            nv_id = plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
                             name = plain_attr(&attrs, "name").map(|value| parser.intern(value));
                             descr = plain_attr(&attrs, "descr").map(|value| parser.intern(value));
                         }
@@ -735,7 +746,7 @@ impl PartParser<'_> {
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of nvPicPr")),
                 }
             }
-            Ok((name, descr))
+            Ok((nv_id, name, descr))
         })
     }
 
@@ -756,10 +767,12 @@ impl PartParser<'_> {
                             if let Some(part) = &resolved {
                                 parser.index_resolved_media(part);
                             }
+                            let cstate = plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
                             blip = Some(BlipRef {
                                 embed,
                                 link,
                                 resolved,
+                                cstate,
                                 location: parser.location(),
                             });
                             parser.skip_element()?;
@@ -853,10 +866,12 @@ impl PartParser<'_> {
                             if let Some(part) = &resolved {
                                 parser.index_resolved_media(part);
                             }
+                            let cstate = plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
                             blip = Some(BlipRef {
                                 embed,
                                 link,
                                 resolved,
+                                cstate,
                                 location: parser.location(),
                             });
                             parser.skip_element()?;
@@ -947,6 +962,8 @@ impl PartParser<'_> {
             let mut shape = Shape {
                 name: None,
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 tx_box: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
@@ -965,6 +982,8 @@ impl PartParser<'_> {
                         if is_shape_ns(&name) {
                             match name.local() {
                                 "cNvPr" => {
+                                    shape.nv_id =
+                                        plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
                                     shape.name =
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     shape.descr =
@@ -975,7 +994,11 @@ impl PartParser<'_> {
                                     shape.tx_box = optional_bool_attr(&attrs, "txBox");
                                     parser.skip_element()?;
                                 }
-                                "spPr" => parser.parse_shape_sp_pr(&mut shape)?,
+                                "spPr" => {
+                                    shape.bw_mode = plain_attr(&attrs, "bwMode")
+                                        .map(|value| parser.intern(value));
+                                    parser.parse_shape_sp_pr(&mut shape)?;
+                                }
                                 "style" => shape.style = Some(parser.parse_shape_style()?),
                                 "txbx" => shape.text = Some(parser.parse_text_box()?),
                                 "bodyPr" => body = Some(parser.parse_text_box_body(&attrs)?),

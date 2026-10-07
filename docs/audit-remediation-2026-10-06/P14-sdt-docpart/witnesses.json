@@ -1,0 +1,12 @@
+{
+  "package": "P14",
+  "documents": [
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "witness",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "0cc77b817eb6b214da0a11187d080549228fc2210084ea2f532fdfed6a490ebb",
+      "written_path": "target/census-written-p11p15b/docx/1. First-Steps-in-Programming.docx"
+    }
+  ]
+}

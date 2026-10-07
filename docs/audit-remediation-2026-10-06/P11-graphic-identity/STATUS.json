@@ -1,0 +1,42 @@
+{
+  "package": "P11",
+  "slug": "graphic-identity",
+  "visual_level": "V3-V4",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 1441,
+  "rows_after": 0,
+  "labels": [
+    "a:graphicData@uri",
+    "pic:spPr@bwMode",
+    "spPr@bwMode",
+    "cNvPr@id",
+    "a:blip@cstate"
+  ],
+  "witness_docs": [
+    "031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+    "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+    "1. First-Steps-in-Programming.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P11-1": true,
+    "T-P11-2": true,
+    "T-P11-3": true
+  },
+  "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "Witness documents still carry other unclassified rows (descr, a:ext, header relationships). The P11 labels on the full corpus are 0.",
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 784,
+  "full_unclassified_before": 4032,
+  "notes": [
+    "Baseline is the post-P10 inventory (4032). Counts are label rows, not the plan's earlier 333/99 estimate.",
+    "Known Transitional/Strict graphicData URI pairs compare equal. A different vocabulary stays a row.",
+    "Picture and shape nv id, bwMode (including explicit auto) and blip cstate are stored and written. Hand-built pictures with no id still cite pic:cNvPr@id / wps:cNvPr@id.",
+    "unmatched_schema stays 1198. unclassified 4032 → 784. D05 is not PASS. M4 is not closed."
+  ]
+}

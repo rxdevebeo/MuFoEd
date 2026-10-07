@@ -34,8 +34,10 @@ pub struct Level {
     pub run: RunProperties,
     /// Legal numbering (`w:isLgl`).
     pub is_legal: bool,
-    /// Tentative level (`w:tentative`).
+    /// Tentative level (`w:tentative="1"`).
     pub tentative: bool,
+    /// Explicit `w:tentative="0"`. Absence of the attribute is neither flag.
+    pub tentative_off: bool,
 }
 
 impl Level {

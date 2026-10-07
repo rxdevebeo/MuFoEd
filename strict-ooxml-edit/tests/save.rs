@@ -263,10 +263,13 @@ fn picture_fixture() -> (
             graphic: Box::new(Graphic::Picture(Picture {
                 name: Some("red pixel".into()),
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 blip: Some(BlipRef {
                     embed: None,
                     link: None,
                     resolved: Some(part),
+                    cstate: None,
                     location: location.clone(),
                 }),
                 extent: Some(extent),

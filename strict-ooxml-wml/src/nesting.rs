@@ -307,6 +307,8 @@ mod tests {
                     graphic: Box::new(Graphic::Shape(Shape {
                         name: None,
                         descr: None,
+                        nv_id: None,
+                        bw_mode: None,
                         tx_box: None,
                         geometry: ShapeGeometry::None,
                         xfrm: None,

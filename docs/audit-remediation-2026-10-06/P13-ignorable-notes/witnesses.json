@@ -1,0 +1,19 @@
+{
+  "package": "P13",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+      "role": "witness",
+      "source_sha256": "222d8f388f02aae34b3a2548689c32f4468a64a9210c070ddd947bc855791867",
+      "written_sha256": "89af964f8fa2085190dda0b24083c8e9e033b0925b1861f28a105c5b66917da8",
+      "written_path": "target/census-written-p11p15b/cc0/003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx",
+      "role": "witness",
+      "source_sha256": "41eab2bf28fce5901104e15f7e57f93f2981f347c6b53e6ae3d970ad023262ff",
+      "written_sha256": "839fd71c4b136adc164355f1492746e01bc47d11227217cfb8c23b142e7fe025",
+      "written_path": "target/census-written-p11p15b/docx/Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx"
+    }
+  ]
+}

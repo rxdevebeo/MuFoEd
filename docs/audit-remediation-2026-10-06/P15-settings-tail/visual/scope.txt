@@ -1,0 +1,1 @@
+P15 does not move glyph origins. The 0.25 px tolerance was not changed. Numbering tentative, settings flags and custom properties are markup identity.

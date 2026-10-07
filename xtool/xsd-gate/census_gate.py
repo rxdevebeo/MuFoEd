@@ -111,6 +111,8 @@ NS_PREFIX = {
     "http://purl.oclc.org/ooxml/officeDocument/extendedProperties": "ep",
     "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes": "vt",
     "http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes": "vt",
+    "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties": "cust",
+    "http://purl.oclc.org/ooxml/officeDocument/customProperties": "cust",
     "http://schemas.openxmlformats.org/drawingml/2006/chart": "c",
     "http://purl.oclc.org/ooxml/drawingml/chart": "c",
     "http://schemas.openxmlformats.org/officeDocument/2006/math": "m",
@@ -247,6 +249,80 @@ def vanished_elements(
     return found
 
 
+# Marks a writer is allowed to drop without the header becoming a different part.
+# A paragraph, its text, and every other attribute stay in the digest.
+_EDITOR_ATTRS = {
+    "rsidR", "rsidRPr", "rsidDel", "rsidP", "rsidRDefault", "rsidTr",
+    "rsidSect", "rsidTbl", "paraId", "textId", "anchorId", "editId",
+}
+
+
+def _strict_namespace_map() -> dict[str, str]:
+    groups: dict[str, list[str]] = {}
+    for uri, prefix in NS_PREFIX.items():
+        groups.setdefault(prefix, []).append(uri)
+    mapping: dict[str, str] = {}
+    for uris in groups.values():
+        strict = [uri for uri in uris if "purl.oclc.org/ooxml/" in uri]
+        if len(strict) != 1:
+            continue
+        for uri in uris:
+            mapping[uri] = strict[0]
+    return mapping
+
+
+_STRICT_NS = _strict_namespace_map()
+
+
+def _semantic_part_digest(payload: bytes) -> str:
+    """Header and footer identity after the Strict rewrite.
+
+    Editor marks, `mc:Ignorable`, a default on/off `val`, and the complex-script
+    font hint Strict rejects do not make a different part. Dropping a paragraph
+    or changing its text does.
+    """
+    try:
+        root = etree.fromstring(payload)
+    except etree.XMLSyntaxError:
+        return hashlib.sha256(payload).hexdigest()
+    # Property bags are rewritten in schema order. Sorting them keeps a
+    # reordered `w:rPr` from looking like a different header, and leaves
+    # paragraph order alone so a dropped paragraph still changes the digest.
+    property_bags = {"rPr", "pPr", "tcPr", "trPr", "tblPr", "sectPr", "pBdr", "rBdr"}
+
+    def walk(element: etree._Element, chunks: list[str]) -> None:
+        if not isinstance(element.tag, str):
+            return
+        qname = etree.QName(element)
+        namespace = _STRICT_NS.get(qname.namespace or "", qname.namespace or "")
+        chunks.append(f"<{namespace} {qname.localname}")
+        attributes: list[str] = []
+        for key, value in element.attrib.items():
+            attr = etree.QName(key)
+            if attr.localname in _EDITOR_ATTRS or attr.localname == "Ignorable":
+                continue
+            if qname.localname == "rFonts" and attr.localname == "hint" and value.lower() == "cs":
+                continue
+            if attr.localname == "val" and value.lower() in {"true", "on"}:
+                continue
+            attr_ns = _STRICT_NS.get(attr.namespace or "", attr.namespace or "")
+            attributes.append(f"{attr_ns} {attr.localname}={value}")
+        if attributes:
+            chunks.append(" ".join(sorted(attributes)))
+        text = (element.text or "").strip()
+        if text:
+            chunks.append(text)
+        children = [child for child in element if isinstance(child.tag, str)]
+        if qname.localname in property_bags:
+            children.sort(key=lambda child: etree.QName(child).localname)
+        for child in children:
+            walk(child, chunks)
+
+    chunks: list[str] = []
+    walk(root, chunks)
+    return hashlib.sha256("\n".join(chunks).encode("utf-8")).hexdigest()
+
+
 def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
     """Relationship identity survives id/part renaming, but not changed bytes.
 
@@ -282,10 +358,18 @@ def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
                 else posixpath.join(directory, path)
             )
             try:
-                digest = hashlib.sha256(archive.read(resolved)).hexdigest()
+                payload = archive.read(resolved)
             except KeyError:
                 # An unresolved target is not evidence for equivalence.
                 continue
+            # A regenerated header or footer is a different zip entry even when
+            # the paragraphs are the same. The relationship row is the part
+            # identity; attribute losses inside the part stay their own rows.
+            digest = (
+                _semantic_part_digest(payload)
+                if kind.endswith("/header") or kind.endswith("/footer")
+                else hashlib.sha256(payload).hexdigest()
+            )
             found[rid] = (kind, mode, digest, fragment if separator else "")
     return found
 
@@ -314,6 +398,7 @@ def _changed_attributes(
     # raw ids first loses both the equivalence and the target change.
     old_bag, namespace_of, old_stripped = _attribute_bag(old, old_rels)
     new_bag, _new_ns, new_stripped = _attribute_bag(new, new_rels)
+    pane_left = _written_style_pane_sets(new_stripped)
     # `w:type="pct"` stores fiftieths (`5000`) in Transitional and `100%` in
     # Strict. Pair by element and type so a dxa `5000` cannot cancel a percent.
     _cancel_percent_widths(old_stripped, new_stripped, old_bag, new_bag)
@@ -354,7 +439,18 @@ def _changed_attributes(
                 break
             for other_key, spare in list(appeared.items()):
                 other_elem, other_parent, other_attr, other_value, other_ns, other_parent_ns, other_attr_ns = other_key
-                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate or (other_ns, other_parent_ns, other_attr_ns) != (elem_ns, parent_ns, attr_ns):
+                same_namespace = (other_ns, other_parent_ns, other_attr_ns) == (elem_ns, parent_ns, attr_ns)
+                # Word 2012 puts `tentative` in its own namespace. The Strict
+                # attribute is `w:tentative`. A different value stays a change.
+                if (
+                    not same_namespace
+                    and elem_local == "lvl"
+                    and candidate == "tentative"
+                    and _tentative_namespace(attr_ns)
+                    and _tentative_namespace(other_attr_ns)
+                ):
+                    same_namespace = True
+                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate or not same_namespace:
                     continue
                 same_value = _same_attr_value(
                     candidate, value, other_value, elem_local,
@@ -364,6 +460,16 @@ def _changed_attributes(
                     continue
                 take = min(removed, spare)
                 appeared[other_key] -= take
+                removed -= take
+        if (
+            removed > 0
+            and elem_local == "stylePaneFormatFilter"
+            and attr_local == "val"
+        ):
+            expected = _style_pane_true_set(value)
+            if expected is not None and pane_left[expected] > 0:
+                take = min(removed, pane_left[expected])
+                pane_left[expected] -= take
                 removed -= take
         if removed <= 0:
             continue
@@ -889,11 +995,108 @@ def _percent_number(text: str) -> float | None:
         return None
 
 
+# Transitional `a:graphicData/@uri` values and the Strict URI the writer emits.
+# A different vocabulary is not in this map and stays a loss.
+_GRAPHIC_URI = {
+    "http://schemas.openxmlformats.org/drawingml/2006/picture": "http://purl.oclc.org/ooxml/drawingml/picture",
+    "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas": "http://purl.oclc.org/ooxml/drawingml/lockedCanvas",
+    "http://schemas.openxmlformats.org/drawingml/2006/chart": "http://purl.oclc.org/ooxml/drawingml/chart",
+    "http://schemas.openxmlformats.org/drawingml/2006/diagram": "http://purl.oclc.org/ooxml/drawingml/diagram",
+}
+
+
+# Transitional `w:stylePaneFormatFilter/@w:val` bits, in the writer's order.
+# `0x0010` is reserved. A value that sets it is not this expansion.
+_STYLE_PANE_BITS = (
+    (0x0001, "allStyles"),
+    (0x0002, "customStyles"),
+    (0x0004, "latentStyles"),
+    (0x0008, "stylesInUse"),
+    (0x0020, "headingStyles"),
+    (0x0040, "numberingStyles"),
+    (0x0080, "tableStyles"),
+    (0x0100, "directFormattingOnRuns"),
+    (0x0200, "directFormattingOnParagraphs"),
+    (0x0400, "directFormattingOnNumbering"),
+    (0x0800, "directFormattingOnTables"),
+    (0x1000, "clearFormatting"),
+    (0x2000, "top3HeadingStyles"),
+    (0x4000, "visibleStyles"),
+    (0x8000, "alternateStyleNames"),
+)
+
+
+def _style_pane_true_set(value: str) -> frozenset[str] | None:
+    """Boolean attributes the Strict writer emits for a legacy bitmask."""
+    try:
+        bits = int(value.strip(), 16)
+    except ValueError:
+        return None
+    if bits & 0x0010:
+        return None
+    return frozenset(name for mask, name in _STYLE_PANE_BITS if bits & mask)
+
+
+def _written_style_pane_sets(root: etree._Element) -> collections.Counter:
+    bag: collections.Counter = collections.Counter()
+    for element in root.iter():
+        if not isinstance(element.tag, str):
+            continue
+        if etree.QName(element).localname != "stylePaneFormatFilter":
+            continue
+        names = set()
+        for key, raw in element.attrib.items():
+            local = etree.QName(key).localname if str(key).startswith("{") else key
+            if raw.lower() in {"1", "true", "on"}:
+                names.add(local)
+        bag[frozenset(names)] += 1
+    return bag
+
+
+def _same_sym_char(left: str, right: str) -> bool:
+    def code(value: str) -> int | None:
+        try:
+            return int(value, 16)
+        except ValueError:
+            return None
+
+    def norm(value: int) -> int:
+        if 0xF000 <= value <= 0xF0FF:
+            return value - 0xF000
+        return value
+
+    old, new = code(left), code(right)
+    if old is None or new is None:
+        return False
+    return norm(old) == norm(new)
+
+
+def _same_graphic_uri(left: str, right: str) -> bool:
+    def canon(value: str) -> str:
+        return _GRAPHIC_URI.get(value, value)
+    return canon(left) == canon(right)
+
+
+def _tentative_namespace(namespace: str) -> bool:
+    return namespace in {
+        "w",
+        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        "http://schemas.microsoft.com/office/word/2012/wordml",
+    }
+
+
 def _same_attr_value(
     attr: str, left: str, right: str,
     element: str | None = None, namespace: str | None = None,
 ) -> bool:
     """Lengths, T3/T4 direction words, and on/off spellings."""
+    if element == "graphicData" and attr == "uri" and _same_graphic_uri(left, right):
+        return True
+    # AUD-45 remaps a Symbol-font private-use code F0xx onto the low byte.
+    # A different character is not that remap.
+    if element == "sym" and attr == "char" and _same_sym_char(left, right):
+        return True
     if _same_measure(left, right):
         return True
     if _same_hex(left, right):

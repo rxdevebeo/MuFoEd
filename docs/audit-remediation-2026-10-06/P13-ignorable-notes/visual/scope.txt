@@ -1,0 +1,1 @@
+P13 does not move glyph origins. The 0.25 px tolerance was not changed. Header text of 003 is unchanged; see P12 visual/003-header-text.txt.

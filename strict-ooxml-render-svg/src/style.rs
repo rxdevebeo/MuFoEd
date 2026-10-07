@@ -778,6 +778,8 @@ mod tests {
             next: None,
             link: None,
             is_default: false,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: false,
             hidden: false,
             q_format: false,

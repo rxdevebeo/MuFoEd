@@ -780,10 +780,13 @@ fn image_paragraph(
                     strict_ooxml_wml::model::drawing::Picture {
                         name: Some(Arc::from("Picture")),
                         descr: description.map(Arc::from),
+                        nv_id: None,
+                        bw_mode: None,
                         blip: Some(strict_ooxml_wml::model::drawing::BlipRef {
                             embed: None,
                             link: None,
                             resolved: Some(part.clone()),
+                            cstate: None,
                             location: location.clone(),
                         }),
                         extent: Some(extent),

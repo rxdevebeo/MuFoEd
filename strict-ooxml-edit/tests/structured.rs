@@ -499,6 +499,8 @@ fn frame_and_shape_textbox_edits_have_exact_history() {
             graphic: Box::new(Graphic::Shape(Shape {
                 name: None,
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 tx_box: None,
                 geometry: ShapeGeometry::Preset("rect".into()),
                 xfrm: None,

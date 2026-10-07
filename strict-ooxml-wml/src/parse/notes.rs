@@ -127,9 +127,7 @@ impl PartParser<'_> {
                                     // kind of slip that looks right: every sibling in
                                     // CT_FtnProps uses it, and these two do not.
                                     if let Some(id) = wml_attr(&attrs, "id").and_then(parse_i32) {
-                                        if let Ok(id) = u32::try_from(id) {
-                                            props.separator_ids.push(id);
-                                        }
+                                        props.separator_ids.push(id);
                                     }
                                 }
                                 _ => {}

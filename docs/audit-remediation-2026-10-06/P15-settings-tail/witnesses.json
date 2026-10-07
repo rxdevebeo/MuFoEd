@@ -1,0 +1,29 @@
+{
+  "package": "P15",
+  "documents": [
+    {
+      "path": "strict-ooxml-core/tests/docx/Algorithmics_Test_v4.docx",
+      "role": "witness",
+      "source_sha256": "9be0ecf2f4b748c85cbe59ddfc41f7c47b1779c418aa02a5197728a4ab8960cd",
+      "written_sha256": "169c50abe8f7e291c76243f0684319ec4fe286a53166d9a3a98ad43a9cf4383b",
+      "written_path": "target/census-written-p11p15b/docx/Algorithmics_Test_v4.docx",
+      "unclassified_rows_in_full_inventory": 0
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/curso_comunicacion_masas_ES.docx",
+      "role": "witness",
+      "source_sha256": "dcf63564fbda2a1e29040ca0f52cde45c9da2be88f1b9987337968837f1bda3b",
+      "written_sha256": "4bf25861ba6fe43d406123bb29c4e757ea9463df43d6b86e2fd1e61ed159211e",
+      "written_path": "target/census-written-p11p15b/docx/curso_comunicacion_masas_ES.docx",
+      "unclassified_rows_in_full_inventory": 0
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/Digital_Marketing_Service_Agreement.docx",
+      "role": "witness",
+      "source_sha256": "72a8f06f7ec0531626b8f1c68befa6a445d1aa8a151a2521b767e49195661722",
+      "written_sha256": "c8770c485e48f997d048ade87d6ce8ff7b0025996fc5244683f0d0eaf902caff",
+      "written_path": "target/census-written-p11p15b/docx/Digital_Marketing_Service_Agreement.docx",
+      "unclassified_rows_in_full_inventory": 0
+    }
+  ]
+}

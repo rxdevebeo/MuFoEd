@@ -616,3 +616,38 @@ parents = ["anchor", "inline"]
 requires_cited = ["wp:docPr"]
 summary = "wp:docPr/@id remapped only when a per-part uniqueness collision forces a new id"
 audit = "M2/P3: expanded grpSp/lockedCanvas trees can introduce extra drawings that collide with source ids. The writer cites wp:docPr on remap. A foreign id rewrite without that citation (no expansion / no collision report) stays unclassified and fails the gate."
+
+[[item]]
+id = "TZ-50"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "w:hdr@Ignorable", "w:ftr@Ignorable", "w:footnotes@Ignorable",
+  "w:endnotes@Ignorable", "w:glossaryDocument@Ignorable",
+]
+was = [
+  "w14",
+  "w14 wp14",
+  "w14 w15 wp14",
+  "w14 wp14 w15",
+  "w14 w15 w16se wp14",
+  "w14 w15 w16se w16cid wp14",
+  "w14 w15 w16se w16cid w16 w16cex w16sdtdh wp14",
+  "w14 w15 w16se w16cid w16 w16cex w16sdtdh w16du wp14",
+  "w14 w15 w16se w16cid w16 w16cex w16sdtdh w16sdtfl w16du wp14",
+]
+summary = "mc:Ignorable on headers, footers and notes, for the Office prefix sets this corpus uses"
+audit = "P13: TZ-46 already names Ignorable on document, styles, fonts and settings. These parts use the same markup-compatibility prefixes. An Ignorable value outside this list, including an arbitrary prefix, stays unclassified."
+
+[[item]]
+id = "TZ-51"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = ["w:abstractNum@restartNumberingAfterBreak"]
+parents = ["numbering"]
+was = ["0"]
+requires_cited = ["ext:restartNumberingAfterBreak"]
+summary = "numbering extension attribute Strict wml.xsd does not declare, cited when dropped"
+audit = "P15: w:abstractNum/@w:restartNumberingAfterBreak is not in CT_AbstractNum. The writer cites ext:restartNumberingAfterBreak. was=0 is the only value in the corpus. was=1, or a drop that does not cite the feature, stays unclassified."

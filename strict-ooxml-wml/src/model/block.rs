@@ -115,6 +115,12 @@ pub struct SdtProperties {
     pub run_props: Option<RunProperties>,
     /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
     pub end_run_props: Option<RunProperties>,
+    /// The source had `w:sdtEndPr`, including when it carried no `w:rPr`.
+    pub has_end_pr: bool,
+    /// Building-block gallery (`w:docPartObj/w:docPartGallery/@w:val`).
+    pub doc_part_gallery: Option<Arc<str>>,
+    /// Gallery entry is unique (`w:docPartUnique`).
+    pub doc_part_unique: bool,
     /// Source location of the `w:sdt` element.
     pub location: SourceLocation,
 }
@@ -136,6 +142,12 @@ pub struct SdtContainer {
     pub run_props: Option<RunProperties>,
     /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
     pub end_run_props: Option<RunProperties>,
+    /// The source had `w:sdtEndPr`, including when it carried no `w:rPr`.
+    pub has_end_pr: bool,
+    /// Building-block gallery (`w:docPartObj/w:docPartGallery/@w:val`).
+    pub doc_part_gallery: Option<Arc<str>>,
+    /// Gallery entry is unique (`w:docPartUnique`).
+    pub doc_part_unique: bool,
     /// Block content when the tag is block-level.
     pub blocks: Vec<Block>,
     /// Inline content when the tag is inline-level.
@@ -156,6 +168,9 @@ impl SdtContainer {
             showing_placeholder: self.showing_placeholder,
             run_props: self.run_props.clone(),
             end_run_props: self.end_run_props.clone(),
+            has_end_pr: self.has_end_pr || self.end_run_props.is_some(),
+            doc_part_gallery: self.doc_part_gallery.clone(),
+            doc_part_unique: self.doc_part_unique,
             location: self.location.clone(),
         }
     }

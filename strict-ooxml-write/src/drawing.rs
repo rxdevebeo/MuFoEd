@@ -585,14 +585,18 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.start("pic:pic");
     xml.start("pic:nvPicPr");
     xml.start("pic:cNvPr");
-    // The model does not store `pic:cNvPr/@id`. Writing 0 is a named replacement,
-    // not a silent one.
-    ctx.report_partial(
-        "pic:cNvPr@id",
-        "picture non-visual id is not stored and is written as 0",
-        &strict_ooxml_core::error::SourceLocation::unknown(),
-    );
-    xml.attr("id", "0");
+    match picture.nv_id {
+        Some(id) => xml.attr("id", id),
+        None => {
+            // A picture built in code has no producer id. Writing 0 is cited.
+            ctx.report_partial(
+                "pic:cNvPr@id",
+                "picture non-visual id is not stored and is written as 0",
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+            xml.attr("id", "0");
+        }
+    }
     xml.attr("name", picture.name.as_deref().unwrap_or("Picture"));
     xml.attr_opt("descr", picture.descr.as_deref());
     xml.end();
@@ -614,6 +618,9 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
             &strict_ooxml_core::error::SourceLocation::unknown(),
         ),
     }
+    if let Some(blip) = picture.blip.as_ref() {
+        xml.attr_opt("cstate", blip.cstate.as_deref());
+    }
     // AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`, not a
     // child. The parser skips unknown children of `a:blip`, so a nested crop was
     // written once and lost on the next read — fixed-point failed.
@@ -627,6 +634,7 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.end();
 
     xml.start("pic:spPr");
+    xml.attr_opt("bwMode", picture.bw_mode.as_deref());
     transform(xml, &picture.xfrm, picture.extent.as_ref());
     geometry_element(xml, &ShapeGeometry::None);
     xml.end();
@@ -660,7 +668,17 @@ fn thousandths_percent(value: i32) -> String {
 fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.start("wps:wsp");
     xml.start("wps:cNvPr");
-    xml.attr("id", "0");
+    match shape.nv_id {
+        Some(id) => xml.attr("id", id),
+        None => {
+            ctx.report_partial(
+                "wps:cNvPr@id",
+                "shape non-visual id is not stored and is written as 0",
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+            xml.attr("id", "0");
+        }
+    }
     xml.attr("name", shape.name.as_deref().unwrap_or("Shape"));
     xml.attr_opt("descr", shape.descr.as_deref());
     xml.end();
@@ -671,6 +689,7 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.empty("a:spLocks");
     xml.end();
     xml.start("wps:spPr");
+    xml.attr_opt("bwMode", shape.bw_mode.as_deref());
     let mut xfrm = shape.xfrm;
     if let Some(xfrm) = xfrm.as_mut() {
         if xfrm.offset.is_none() {
@@ -913,6 +932,7 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
                     &strict_ooxml_core::error::SourceLocation::unknown(),
                 ),
             }
+            xml.attr_opt("cstate", blip.cstate.as_deref());
             xml.end();
             xml.start("a:stretch");
             xml.start("a:fillRect");
@@ -1238,10 +1258,13 @@ mod tests {
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: Some("Logo".into()),
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     blip: Some(BlipRef {
                         embed: Some(RelId::new("rId7")),
                         link: None,
                         resolved: Some(PartId::new("/word/media/image1.png")),
+                        cstate: None,
                         location: SourceLocation::unknown(),
                     }),
                     extent: Some(Extent {
@@ -1315,10 +1338,13 @@ mod tests {
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: None,
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     blip: Some(BlipRef {
                         embed: Some(RelId::new("rId1")),
                         link: None,
                         resolved: Some(PartId::new("/word/media/image1.png")),
+                        cstate: None,
                         location: SourceLocation::unknown(),
                     }),
                     extent: None,
@@ -1391,6 +1417,8 @@ mod tests {
                 graphic: Box::new(Graphic::Shape(Shape {
                     name: Some("box".into()),
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     tx_box: Some(true),
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
@@ -1465,6 +1493,8 @@ mod tests {
                 graphic: Box::new(Graphic::Shape(Shape {
                     name: None,
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     tx_box: Some(true),
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
@@ -1609,6 +1639,8 @@ mod tests {
             Graphic::Shape(Shape {
                 name: None,
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 tx_box: None,
                 geometry: ShapeGeometry::None,
                 xfrm: Some(Xfrm {

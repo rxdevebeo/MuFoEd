@@ -1,0 +1,1 @@
+P14 does not move glyph origins. The 0.25 px tolerance was not changed. docPart and sdtEndPr are markup identity, not a pixel change.

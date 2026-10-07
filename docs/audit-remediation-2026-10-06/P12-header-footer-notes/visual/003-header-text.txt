@@ -1,0 +1,13 @@
+003_HTyn header text, source versus the P11–P15 full-census write.
+
+word/header1.xml
+source:  دینِ حق اور علمائے ربانی شرک وبدعت کے خلاف کیوں؟
+written: دینِ حق اور علمائے ربانی شرک وبدعت کے خلاف کیوں؟
+equal: yes
+
+word/header10.xml
+source:  دینِ حق اور علمائے ربانی علماء کا کام دینِ خالص (توحید) کی اشاعتعرتمہتتتتتتتتت
+written: دینِ حق اور علمائے ربانی علماء کا کام دینِ خالص (توحید) کی اشاعتعرتمہتتتتتتتتت
+equal: yes
+
+The package still has 19 header parts on each side. Remaining w:headerReference@id rows are parts whose markup still differs (extensions, effects), not a dropped header string.

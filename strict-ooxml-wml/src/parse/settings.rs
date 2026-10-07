@@ -112,9 +112,11 @@ impl PartParser<'_> {
                 settings.default_tab_stop = val_attr(attrs).and_then(parse_i32).map(Twips);
             }
             "zoom" => settings.zoom = Some(Self::parse_zoom(attrs)),
-            "evenAndOddHeaders" => {
-                settings.even_and_odd_headers = parse_on_off(attrs).unwrap_or(false);
-            }
+            "evenAndOddHeaders" => match parse_on_off(attrs) {
+                Some(false) => settings.even_and_odd_headers_off = true,
+                Some(true) => settings.even_and_odd_headers = true,
+                None => {}
+            },
             "displayBackgroundShape" => {
                 settings.display_background_shape = parse_on_off(attrs).unwrap_or(false);
             }

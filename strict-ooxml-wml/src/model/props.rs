@@ -190,6 +190,10 @@ pub struct TableProperties {
     pub positioning: Option<TablePositioning>,
     /// Spacing between cells (`w:tblCellSpacing`), AUD-46.
     pub cell_spacing: Option<Width>,
+    /// Rows in one style band (`w:tblStyleRowBandSize`).
+    pub style_row_band_size: Option<i32>,
+    /// Columns in one style band (`w:tblStyleColBandSize`).
+    pub style_col_band_size: Option<i32>,
     /// Source location of `w:tblPr`.
     pub location: Option<SourceLocation>,
 }

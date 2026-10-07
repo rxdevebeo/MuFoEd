@@ -56,6 +56,8 @@ pub struct BlipRef {
     pub link: Option<RelId>,
     /// Resolved media part for `embed`.
     pub resolved: Option<PartId>,
+    /// `a:blip/@cstate` (`print`, `screen`, `none`, …).
+    pub cstate: Option<Arc<str>>,
     /// Source location.
     pub location: SourceLocation,
 }
@@ -93,6 +95,10 @@ pub struct Picture {
     pub name: Option<Arc<str>>,
     /// Picture description (`pic:cNvPr/@descr`).
     pub descr: Option<Arc<str>>,
+    /// Non-visual id (`pic:cNvPr/@id`). Absent only for a picture built in code.
+    pub nv_id: Option<u32>,
+    /// `pic:spPr/@bwMode`, including the explicit value `auto`.
+    pub bw_mode: Option<Arc<str>>,
     /// The image reference.
     pub blip: Option<BlipRef>,
     /// Picture geometry extent.
@@ -343,6 +349,10 @@ pub struct Shape {
     pub name: Option<Arc<str>>,
     /// Shape description (`wps:cNvPr/@descr`).
     pub descr: Option<Arc<str>>,
+    /// Non-visual id (`wps:cNvPr/@id`).
+    pub nv_id: Option<u32>,
+    /// `wps:spPr/@bwMode`, including the explicit value `auto`.
+    pub bw_mode: Option<Arc<str>>,
     /// Whether this shape is a text box (`wps:cNvSpPr/@txBox`).
     pub tx_box: Option<bool>,
     /// Geometry.

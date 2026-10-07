@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import collections
 import os
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+from lxml import etree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -599,6 +602,13 @@ def main() -> int:
     test_docpr_id_remap_requires_citation()
     test_p9_hint_cs_and_duplicate_rfonts()
     test_p10_resource_identity()
+    test_p11_graphic_uri_pair()
+    test_p12_header_digest_keeps_text()
+    test_p12_foreign_footnote_id_is_not_waived()
+    test_p13_ignorable_is_narrow()
+    test_p14_alias_is_not_a_docpart_waiver()
+    test_p15_restart_only_when_cited_zero()
+    test_p15_style_pane_and_custom_properties()
     test_review_negative_controls_stay_unclassified()
     test_vanished_emits_qualified_context()
     test_one_of_two_same_nodes_is_visible()
@@ -617,6 +627,178 @@ def _bindocx(path: Path, parts: dict[str, bytes]) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         for name, data in parts.items():
             archive.writestr(name, data)
+
+
+def test_p12_header_digest_keeps_text() -> None:
+    """T-P12-1 equivalent header markup is one part. A changed paragraph is not."""
+    transitional = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    source = (
+        f'<w:hdr xmlns:w="{transitional}" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+        f'mc:Ignorable="w14 wp14"><w:p w:rsidR="00A"><w:r><w:rPr><w:rFonts w:hint="cs"/></w:rPr>'
+        f"<w:t>Hello</w:t></w:r></w:p></w:hdr>"
+    ).encode()
+    written = (
+        f'<w:hdr xmlns:w="{strict}"><w:p><w:r><w:rPr><w:rFonts/></w:rPr><w:t>Hello</w:t></w:r></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
+        raise SystemExit("equivalent header was a different part")
+    changed = (
+        f'<w:hdr xmlns:w="{strict}"><w:p><w:r><w:t>Goodbye</w:t></w:r></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(changed):
+        raise SystemExit("a changed header paragraph matched")
+
+
+def test_p12_foreign_footnote_id_is_not_waived() -> None:
+    """T-P12-3 a footnote id other than the separator is not a disposition."""
+    items = census_gate.load_census()
+    foreign = "parent=footnotePr|was=7|removed=1|named=1|cited=mc:Ignorable"
+    if any(
+        census_gate.element_item_matches(item, "doc: word/settings.xml", "w:footnote@id", foreign)
+        for item in items
+    ):
+        raise SystemExit("footnote id 7 was masked")
+    separator = "parent=footnotePr|was=-1|removed=1|named=1|cited="
+    if any(
+        census_gate.element_item_matches(item, "doc: word/settings.xml", "w:footnote@id", separator)
+        for item in items
+    ):
+        raise SystemExit("separator id -1 is waived; the writer has to keep it")
+
+
+def test_p13_ignorable_is_narrow() -> None:
+    """T-P13-1 a known Office prefix set matches. T-P13-2 an arbitrary prefix does not."""
+    item = next(row for row in census_gate.load_census() if row["id"] == "TZ-50")
+    where = "doc: word/header1.xml"
+    known = "parent=hdr|was=w14 wp14|named=1|cited=mc:Ignorable"
+    if not census_gate.element_item_matches(item, where, "w:hdr@Ignorable", known):
+        raise SystemExit("known hdr Ignorable did not match")
+    foreign = "parent=hdr|was=w14 customPrefix|named=1|cited=mc:Ignorable"
+    if census_gate.element_item_matches(item, where, "w:hdr@Ignorable", foreign):
+        raise SystemExit("an arbitrary Ignorable prefix matched")
+    silent = "parent=hdr|was=w14 wp14|named=0|cited="
+    if census_gate.element_item_matches(item, where, "w:hdr@Ignorable", silent):
+        raise SystemExit("an uncited Ignorable matched")
+
+
+def test_p14_alias_is_not_a_docpart_waiver() -> None:
+    """T-P14-2 a user SDT alias dropped without a citation stays unclassified."""
+    detail = "parent=sdtPr|namespace=w|removed=1|named=0|cited="
+    if any(
+        census_gate.element_item_matches(item, "doc: word/document.xml", "w:alias", detail)
+        for item in census_gate.load_census()
+    ):
+        raise SystemExit("a dropped SDT alias was classified")
+
+
+def test_p15_restart_only_when_cited_zero() -> None:
+    item = next(row for row in census_gate.load_census() if row["id"] == "TZ-51")
+    where = "doc: word/numbering.xml"
+    label = "w:abstractNum@restartNumberingAfterBreak"
+    cited = "parent=numbering|was=0|named=1|cited=ext:restartNumberingAfterBreak"
+    if not census_gate.element_item_matches(item, where, label, cited):
+        raise SystemExit("cited restartNumberingAfterBreak=0 did not match")
+    other = "parent=numbering|was=1|named=1|cited=ext:restartNumberingAfterBreak"
+    if census_gate.element_item_matches(item, where, label, other):
+        raise SystemExit("restartNumberingAfterBreak=1 was waived")
+    silent = "parent=numbering|was=0|named=1|cited="
+    if census_gate.element_item_matches(item, where, label, silent):
+        raise SystemExit("an uncited restart attribute was waived")
+    if not census_gate._tentative_namespace("w"):
+        raise SystemExit("w is not a tentative namespace")
+    if census_gate._tentative_namespace("http://example.invalid"):
+        raise SystemExit("an arbitrary namespace was accepted as tentative")
+
+
+def test_p15_style_pane_and_custom_properties() -> None:
+    """A legacy style-pane bitmask is the flags the writer emits. A dropped property is not a namespace rewrite."""
+    from types import SimpleNamespace
+
+    wml = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    old = etree.fromstring(
+        f'<w:settings xmlns:w="{wml}"><w:stylePaneFormatFilter w:val="1721"/></w:settings>'
+    )
+    expanded = (
+        '<w:stylePaneFormatFilter w:allStyles="true" w:headingStyles="true" '
+        'w:directFormattingOnRuns="true" w:directFormattingOnParagraphs="true" '
+        'w:directFormattingOnNumbering="true" w:clearFormatting="true"/>'
+    )
+    new = etree.fromstring(f'<w:settings xmlns:w="{wml}">{expanded}</w:settings>')
+    oracle = SimpleNamespace(declared={"stylePaneFormatFilter", "settings"})
+    surviving = collections.Counter({("stylePaneFormatFilter", "settings", "w", "w"): 1})
+    with tempfile.TemporaryDirectory() as tmp:
+        left, right = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        _bindocx(left, {"word/settings.xml": b"<w:settings/>"})
+        _bindocx(right, {"word/settings.xml": b"<w:settings/>"})
+        with zipfile.ZipFile(left) as before, zipfile.ZipFile(right) as after:
+            rows = census_gate._changed_attributes(
+                old, new, oracle, set(), "word/settings.xml", surviving, before, after
+            )
+        if any(label.endswith("@val") for _part, label, _detail in rows):
+            raise SystemExit(f"expanded style pane bitmask was a loss: {rows}")
+        short = etree.fromstring(
+            f'<w:settings xmlns:w="{wml}"><w:stylePaneFormatFilter w:allStyles="true"/></w:settings>'
+        )
+        with zipfile.ZipFile(left) as before, zipfile.ZipFile(right) as after:
+            rows = census_gate._changed_attributes(
+                old, short, oracle, set(), "word/settings.xml", surviving, before, after
+            )
+        if not any(label.endswith("@val") for _part, label, _detail in rows):
+            raise SystemExit("a partial style pane expansion was accepted")
+        reserved = etree.fromstring(
+            f'<w:settings xmlns:w="{wml}"><w:stylePaneFormatFilter w:val="0010"/></w:settings>'
+        )
+        with zipfile.ZipFile(left) as before, zipfile.ZipFile(right) as after:
+            rows = census_gate._changed_attributes(
+                reserved, new, oracle, set(), "word/settings.xml", surviving, before, after
+            )
+        if not any("was=0010" in detail for _part, _label, detail in rows):
+            raise SystemExit("reserved style pane bit 0x0010 was waived")
+
+    old_ns = "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"
+    new_ns = "http://purl.oclc.org/ooxml/officeDocument/customProperties"
+    vt_old = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
+    vt_new = "http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes"
+    source_xml = (
+        f'<Properties xmlns="{old_ns}" xmlns:vt="{vt_old}">'
+        '<property name="A"><vt:lpwstr>1</vt:lpwstr></property></Properties>'
+    )
+    written_xml = (
+        f'<Properties xmlns="{new_ns}" xmlns:vt="{vt_new}">'
+        '<property name="A"><vt:lpwstr>1</vt:lpwstr></property></Properties>'
+    )
+    dropped_xml = f'<Properties xmlns="{new_ns}" xmlns:vt="{vt_new}"/>'
+    oracle = SimpleNamespace(declared={"Properties", "property", "lpwstr"})
+    with tempfile.TemporaryDirectory() as tmp:
+        source, output = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        _bindocx(source, {"docProps/custom.xml": source_xml.encode()})
+        _bindocx(output, {"docProps/custom.xml": written_xml.encode()})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        if rows:
+            raise SystemExit(f"custom property namespace rewrite was a loss: {rows}")
+        _bindocx(output, {"docProps/custom.xml": dropped_xml.encode()})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        labels = {label for _part, label, _detail in rows}
+        if "cust:property" not in labels or "vt:lpwstr" not in labels:
+            raise SystemExit(f"a dropped custom property was hidden: {rows}")
+
+
+def test_p11_graphic_uri_pair() -> None:
+    """T-P11-1 a known Transitional/Strict picture URI is one value. T-P11-2 a different vocabulary is not."""
+    picture_t = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+    picture_s = "http://purl.oclc.org/ooxml/drawingml/picture"
+    chart_s = "http://purl.oclc.org/ooxml/drawingml/chart"
+    if not census_gate._same_attr_value("uri", picture_t, picture_s, element="graphicData"):
+        raise SystemExit("known picture URI pair was a change")
+    if census_gate._same_attr_value("uri", picture_t, chart_s, element="graphicData"):
+        raise SystemExit("a picture URI was accepted as a chart")
+    if census_gate._same_attr_value("uri", picture_t, "urn:other", element="graphicData"):
+        raise SystemExit("an unknown graphic URI was accepted")
+    if not census_gate._same_attr_value("char", "F0E0", "00E0", element="sym"):
+        raise SystemExit("symbol private-use remap was a change")
+    if census_gate._same_attr_value("char", "F0E0", "0041", element="sym"):
+        raise SystemExit("a different symbol character was accepted")
 
 
 def test_p10_resource_identity() -> None:

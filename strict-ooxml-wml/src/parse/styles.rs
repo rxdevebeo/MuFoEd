@@ -176,6 +176,8 @@ impl PartParser<'_> {
             let style_type = wml_attr(attrs, "type").and_then(StyleType::from_strict);
             let is_default =
                 wml_attr(attrs, "default").is_some_and(|v| matches!(v, "true" | "on" | "1"));
+            let custom_style =
+                wml_attr(attrs, "customStyle").is_some_and(|v| matches!(v, "true" | "on" | "1"));
             let mut name = None;
             let mut based_on = None;
             let mut next = None;
@@ -186,6 +188,7 @@ impl PartParser<'_> {
             let mut q_format = false;
             let mut locked = false;
             let mut unhide_when_used = false;
+            let mut auto_redefine = false;
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
             let mut table_props = TableProperties::default();
@@ -246,6 +249,10 @@ impl PartParser<'_> {
                                 unhide_when_used = true;
                                 parser.skip_element()?;
                             }
+                            "autoRedefine" => {
+                                auto_redefine = true;
+                                parser.skip_element()?;
+                            }
                             "pPr" => paragraph = parser.parse_paragraph_properties()?.0,
                             "rPr" => run = parser.parse_run_properties()?,
                             "tblPr" => table_props = parser.parse_table_properties()?,
@@ -289,6 +296,8 @@ impl PartParser<'_> {
                 next,
                 link,
                 is_default,
+                custom_style,
+                auto_redefine,
                 semi_hidden,
                 hidden,
                 q_format,

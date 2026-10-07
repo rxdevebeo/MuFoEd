@@ -4,7 +4,7 @@ use strict_ooxml_wml::model::block::{
     Block, Paragraph, SdtContainer, SdtProperties, Table, TableCell, TableRow,
 };
 use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
-use strict_ooxml_wml::model::values::{BreakKind, Space, Twips, WidthKind};
+use strict_ooxml_wml::model::values::{Space, Twips, WidthKind};
 
 use crate::ctx::Ctx;
 use crate::props::{
@@ -179,6 +179,10 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
             }
             xml.attr_w_opt("anchor", link.anchor.as_deref());
             xml.attr_w_opt("tooltip", link.tooltip.as_deref());
+            if link.history {
+                xml.attr_w("history", "1");
+            }
+            xml.attr_w_opt("tgtFrame", link.tgt_frame.as_deref());
             write_inlines_with_revisions(ctx, xml, &link.inlines);
             xml.end();
         }
@@ -302,11 +306,7 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
     match content {
         RunContent::Text(node) => text_node(xml, node, if deleted { "w:delText" } else { "w:t" }),
         RunContent::Tab => xml.empty("w:tab"),
-        RunContent::Break(kind) => match kind {
-            BreakKind::Page => xml.empty_attr_w("w:br", "type", "page"),
-            BreakKind::Column => xml.empty_attr_w("w:br", "type", "column"),
-            BreakKind::TextWrapping => xml.empty("w:br"),
-        },
+        RunContent::Break(kind) => xml.empty_attr_w("w:br", "type", kind.as_str()),
         RunContent::CarriageReturn => xml.empty("w:cr"),
         RunContent::Drawing(drawing) => crate::drawing::drawing_element(ctx, xml, drawing),
         RunContent::InstrText(text) => {
@@ -590,10 +590,22 @@ fn write_sdt_around(
     if sdt.showing_placeholder {
         xml.empty("w:showingPlcHdr");
     }
+    if sdt.doc_part_gallery.is_some() || sdt.doc_part_unique {
+        xml.start("w:docPartObj");
+        if let Some(gallery) = sdt.doc_part_gallery.as_deref() {
+            xml.empty_attr_w("w:docPartGallery", "val", gallery);
+        }
+        if sdt.doc_part_unique {
+            xml.empty("w:docPartUnique");
+        }
+        xml.end();
+    }
     xml.end(); // sdtPr
-    if let Some(end_props) = &sdt.end_run_props {
+    if sdt.has_end_pr {
         xml.start("w:sdtEndPr");
-        run_properties(xml, end_props);
+        if let Some(end_props) = &sdt.end_run_props {
+            run_properties(xml, end_props);
+        }
         xml.end();
     }
     xml.start("w:sdtContent");
@@ -683,6 +695,27 @@ mod tests {
     }
 
     #[test]
+    fn a_text_wrapping_break_keeps_its_type() {
+        use strict_ooxml_wml::model::values::BreakKind;
+        let paragraph = Paragraph {
+            props: ParagraphProperties::default(),
+            inlines: vec![Inline::Run(Run {
+                props: Default::default(),
+                content: vec![RunContent::Break(BreakKind::TextWrapping)],
+                revision: None,
+                location: location(),
+            })],
+            rsids: Default::default(),
+            para_id: None,
+            text_id: None,
+            revision: None,
+            location: location(),
+        };
+        let text = render(&[paragraph]);
+        assert!(text.contains(r#"<w:br w:type="textWrapping"/>"#), "{text}");
+    }
+
+    #[test]
     fn an_empty_paragraph_stays_empty() {
         let paragraph = Paragraph {
             props: ParagraphProperties::default(),
@@ -724,6 +757,9 @@ mod tests {
             showing_placeholder: false,
             run_props: None,
             end_run_props: None,
+            has_end_pr: false,
+            doc_part_gallery: None,
+            doc_part_unique: false,
             blocks: vec![Block::Paragraph(text_paragraph("inside", Space::Default))],
             inlines: Vec::new(),
             location: location(),
@@ -761,6 +797,9 @@ mod tests {
             showing_placeholder: true,
             run_props: None,
             end_run_props: None,
+            has_end_pr: false,
+            doc_part_gallery: None,
+            doc_part_unique: false,
             blocks: Vec::new(),
             inlines: Vec::new(),
             location: location(),

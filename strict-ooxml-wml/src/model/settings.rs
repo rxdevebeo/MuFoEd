@@ -74,6 +74,8 @@ pub struct Settings {
     pub zoom: Option<Zoom>,
     /// Different headers/footers for even pages (`w:evenAndOddHeaders`).
     pub even_and_odd_headers: bool,
+    /// Explicit `w:evenAndOddHeaders w:val="false"`. Absence is neither flag.
+    pub even_and_odd_headers_off: bool,
     /// Display background shapes in print layout (`w:displayBackgroundShape`).
     pub display_background_shape: bool,
     /// Hide spelling errors (`w:hideSpellingErrors`).
