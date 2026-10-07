@@ -51,8 +51,10 @@ fn part_digests(bytes: &[u8]) -> Vec<[u8; 32]> {
     package
         .parts()
         .filter(|part| {
-            let name = part.id.as_str();
-            !name.ends_with(".xml") && !name.ends_with(".rels") && !name.ends_with(".vml")
+            let name = part.id.as_str().to_ascii_lowercase();
+            ![".xml", ".rels", ".vml"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
         })
         .map(|part| digest(&package.read_part(&part.id).expect("part")))
         .collect()
