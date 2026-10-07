@@ -379,3 +379,50 @@ Blocked содержит конкретный отсутствующий asset/c
 Срок полной совместимости уточняется после RC00–RC02: нынешние 97 pixel failures
 ещё не разбиты на доказанные root causes. План не даёт календарного обещания
 до интеграции новой базы и установления реально используемых fonts.
+
+### RC02: East Asian face selection — 2026-10-07
+
+В `ComputedRun` сохраняется отдельный East Asian font slot: direct `w:eastAsia`
+или theme `w:eastAsiaTheme`. CJK-only текст выбирает этот face через общий
+`chosen_family`; смешанный Latin/CJK run сохраняет основной face. Math-run
+сбрасывает оба script slots. PDF collection, shaping и выбор embedded face теперь
+используют тот же resolver, что SVG measurement/paint. Direct/theme SVG regression,
+RTF → SVG regression и PDF embedded BaseFont regression проходят. Проверка PDF
+доказывает выбор bundled substitute (Arimo/Tinos), а не наличие CJK glyph coverage.
+Owned font registry, exact CJK assets, per-script splitting смешанных runs и полный
+resolved-face identity contract остаются открытыми; RC02 не закрыт.
+
+Повторно прочитаны receipts `target/rtf-import/RC02-eastasia-face-{corpus,visual,pixels}`:
+100/100 Measured, text/resource/integrity Pass; pagination 62/100 Pass;
+pixels 3/100 Pass, 97 Fail, 423 страницы (6 Pass, 417 Fail). Comparator и thresholds
+не изменялись. Это development measurement, не visual acceptance. CLI SHA-256:
+`5665763b1c104346810ee7ed692f96379f1ab954d20f508c13d718d2e1b7d683`.
+XSD/OPC 100/100 без нарушений — результат предыдущего запуска, в этой сессии
+эти gates не повторялись.
+
+В текущем worktree `C:/Users/gamer/.codex/worktrees/rtf-import-integrated/StrictLib`
+(ветка `codex/rtf-import-integrated`) повторены full PDF/public API suites с
+`cargo +1.98.0 test --locked -p strict-ooxml-render-pdf -p strict-ooxml --features rtf,pdf`
+и SVG `--test themes`: Pass. Логи `RC02-eastasia-face-pdf-rtf-tests.log` и
+`RC02-eastasia-face-themes-tests.log` в `target/rtf-import/`.
+Full SVG baseline имеет противоречивый `maps_regular_postscript_names_to_the_same_bundled_faces`:
+он ожидает сохранения `Arial-BoldMT`, но unchanged resolver возвращает Carlito.
+Первый повтор также не имел ignored Clio DOCX fixture; fixture восстановлен из
+основной копии. Эти результаты не заменяют безусловный full-suite Pass.
+
+Clippy на Rust 1.92 прошёл для трёх crates, `--all-targets --features rtf,pdf`,
+с `-A clippy::manual_let_else -A clippy::items_after_statements
+-A clippy::single_char_pattern -A clippy::replace_box -A clippy::while_let_loop
+-A clippy::unnecessary_sort_by -A clippy::if_same_then_else`.
+Дополнительные suppression относятся к unchanged WML/write/layout baseline;
+лог `RC02-eastasia-face-clippy-msrv-final.log`. Rust 1.98 дополнительно сообщает
+existing `chunks_exact_to_as_chunks` в public RTF test. Changed-file rustfmt
+(`--edition 2021 --config skip_children=true`) и `git diff --check`: Pass.
+`cargo fmt --all -- --check` выявляет existing formatting differences вне этого diff;
+посторонние файлы не форматировались.
+
+После восстановления fixture полный SVG suite с единственным явным исключением
+maps_regular_postscript_names_to_the_same_bundled_faces завершился Pass (exit 0).
+Команда: cargo +1.98.0 test --locked --no-fail-fast -p strict-ooxml-render-svg --
+--skip maps_regular_postscript_names_to_the_same_bundled_faces.
+Лог: target/rtf-import/RC02-eastasia-face-svg-final-tests.log.

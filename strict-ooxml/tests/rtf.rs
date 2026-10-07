@@ -21,6 +21,26 @@ fn clean_and_degraded_are_independent_of_docx_support() {
     assert!(StrictDocument::import_rtf(br"{\rtf1 unfinished", &options).is_err());
 }
 
+#[cfg(feature = "svg")]
+#[test]
+fn imported_east_asian_font_reaches_the_svg_face_choice() {
+    let source = br"{\rtf1\ansi{\fonttbl{\f0 Arial;}{\f1 Times New Roman;}}\loch\f0 Latin \dbch\af1\u28450?\u23383?}";
+    let opened = StrictDocument::import_rtf(source, &RtfOptions::default()).unwrap();
+    assert_eq!(opened.status(), RtfStatus::Clean);
+    let pages = opened
+        .document
+        .render_svg(&strict_ooxml::RenderOptions::default())
+        .unwrap();
+    assert!(
+        pages[0].svg.contains("Arimo"),
+        "Latin face was not selected"
+    );
+    assert!(
+        pages[0].svg.contains("Tinos"),
+        "East Asian face was not selected"
+    );
+}
+
 #[test]
 fn public_path_keeps_region_references_and_cached_link_result() {
     let opened = StrictDocument::import_rtf(br#"{\rtf1{\header Header}A\chftn{\footnote\chftn Note}{\field{\*\fldinst HYPERLINK "https://example.test"}{\fldrslt Link}}}"#, &RtfOptions::default()).unwrap();

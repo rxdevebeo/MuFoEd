@@ -70,7 +70,8 @@ pub(crate) fn open_body(body: &str) -> (Package, Document) {
 
 /// Builds and parses a Strict `.docx` with a `styles.xml` part.
 pub(crate) fn open_with_styles(body: &str, styles: &str) -> (Package, Document) {
-    let styles_xml = format!("<?xml version=\"1.0\"?><w:styles xmlns:w=\"{W}\">{styles}</w:styles>");
+    let styles_xml =
+        format!("<?xml version=\"1.0\"?><w:styles xmlns:w=\"{W}\">{styles}</w:styles>");
     let rels = format!(
         "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
          <Relationship Id=\"rIdStyles\" Type=\"{STYLES_REL}\" Target=\"styles.xml\"/>\

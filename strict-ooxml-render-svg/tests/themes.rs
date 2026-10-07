@@ -11,6 +11,7 @@
 mod common;
 
 use common::{build_docx, content_types, document, open_bytes, root_rels};
+use strict_ooxml_render_svg::style::{chosen_family, ComputedRun};
 use strict_ooxml_render_svg::{render, Page, RenderOptions};
 
 const THEME_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/theme";
@@ -35,8 +36,8 @@ fn theme_xml() -> Vec<u8> {
 <a:folHlink><a:srgbClr val=\"954F72\"/></a:folHlink>\
 </a:clrScheme>\
 <a:fontScheme name=\"Office\">\
-<a:majorFont><a:latin typeface=\"Cambria\"/></a:majorFont>\
-<a:minorFont><a:latin typeface=\"Calibri\"/></a:minorFont>\
+<a:majorFont><a:latin typeface=\"Cambria\"/><a:ea typeface=\"Cambria\"/><a:cs typeface=\"Cambria\"/></a:majorFont>\
+<a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"Calibri\"/><a:cs typeface=\"Calibri\"/></a:minorFont>\
 </a:fontScheme>\
 <a:fmtScheme name=\"Office\"/>\
 </a:themeElements></a:theme>"
@@ -82,6 +83,24 @@ fn direct_font_overrides_theme_font() {
     let pages = build(body);
     assert!(pages[0].svg.contains("Arimo"));
     assert!(!pages[0].svg.contains("Carlito"));
+}
+
+#[test]
+fn east_asia_font_slot_and_theme_are_used_for_cjk_runs() {
+    let body = "<w:p><w:r><w:rPr><w:rFonts w:eastAsiaTheme=\"majorEastAsia\"/></w:rPr><w:t>漢字。</w:t></w:r></w:p>";
+    let pages = build(body);
+    assert!(
+        pages[0].svg.contains("Caladea"),
+        "major East Asian theme face not applied"
+    );
+
+    let run = ComputedRun {
+        family: "Arial".to_owned(),
+        east_asia_family: Some("Times New Roman".to_owned()),
+        ..ComputedRun::default()
+    };
+    assert_eq!(chosen_family(&run, "漢字。"), "Tinos");
+    assert_eq!(chosen_family(&run, "A漢字"), "Arimo");
 }
 
 #[test]

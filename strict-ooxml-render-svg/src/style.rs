@@ -44,6 +44,8 @@ pub struct ComputedRun {
     pub vanish: bool,
     /// Complex-script face (`w:rFonts/@w:cs`). Latin and Cyrillic keep [`Self::family`].
     pub complex_family: Option<String>,
+    /// East-Asian face (`w:rFonts/@w:eastAsia`) for CJK text.
+    pub east_asia_family: Option<String>,
 }
 
 impl Default for ComputedRun {
@@ -62,6 +64,7 @@ impl Default for ComputedRun {
             caps: false,
             vanish: false,
             complex_family: None,
+            east_asia_family: None,
         }
     }
 }
@@ -443,22 +446,63 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
         // Kept for complex-script characters. It must not replace ascii/hAnsi:
         // a Cyrillic run with `w:cs` still uses the Latin face (A11).
         computed.complex_family = Some(family.to_string());
+    } else if let Some(family) = theme_font(fonts.cs_theme.as_deref(), theme) {
+        computed.complex_family = Some(family);
+    }
+    if let Some(family) = fonts.east_asia.as_ref() {
+        computed.east_asia_family = Some(family.to_string());
+    } else if let Some(family) = theme_font(fonts.east_asia_theme.as_deref(), theme) {
+        computed.east_asia_family = Some(family);
     }
 }
 
 /// The face a run's text is measured and painted with.
 ///
-/// Latin and Cyrillic stay on ascii/hAnsi (or the theme face that resolved
-/// there). The complex-script face is used only when the text has no Latin or
-/// Cyrillic letters.
+/// Latin/Cyrillic, complex-script, and East-Asian text use their corresponding
+/// WML font slots; neutral punctuation does not change the selected slot.
 #[must_use]
 pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
-    let requested = if run.complex_family.is_some() && script_is_complex_only(text) {
+    let requested = if run.east_asia_family.is_some() && script_is_east_asian_only(text) {
+        run.east_asia_family.as_deref().unwrap_or(&run.family)
+    } else if run.complex_family.is_some() && script_is_complex_only(text) {
         run.complex_family.as_deref().unwrap_or(&run.family)
     } else {
         run.family.as_str()
     };
     crate::font::map_family(requested).to_owned()
+}
+
+fn script_is_east_asian_only(text: &str) -> bool {
+    let mut east_asian = false;
+    for ch in text.chars() {
+        if is_east_asian(ch) {
+            east_asian = true;
+        } else if ch.is_alphabetic() {
+            return false;
+        }
+    }
+    east_asian
+}
+
+fn is_east_asian(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{1100}'..='\u{11FF}'
+            | '\u{2E80}'..='\u{2FFF}'
+            | '\u{3000}'..='\u{30FF}'
+            | '\u{3100}'..='\u{312F}'
+            | '\u{3130}'..='\u{318F}'
+            | '\u{31A0}'..='\u{31BF}'
+            | '\u{31F0}'..='\u{31FF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{A960}'..='\u{A97F}'
+            | '\u{AC00}'..='\u{D7FF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{FE30}'..='\u{FE4F}'
+            | '\u{FF00}'..='\u{FFEF}'
+            | '\u{20000}'..='\u{323AF}'
+    )
 }
 
 /// Extra advance, in px, added after each character of `run`.

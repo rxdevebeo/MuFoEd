@@ -304,11 +304,10 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                 continue;
             };
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
-            let Some(source) = strict_ooxml_render_svg::font::face_source(
-                &text.run.family,
-                text.run.bold,
-                text.run.italic,
-            ) else {
+            let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &shown);
+            let Some(source) =
+                strict_ooxml_render_svg::font::face_source(&family, text.run.bold, text.run.italic)
+            else {
                 report.record_missing_face(&text.run.family);
                 continue;
             };
@@ -322,7 +321,7 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
             }
             if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
                 &shown,
-                &text.run.family,
+                &family,
                 text.run.bold,
                 text.run.italic,
             ) {
@@ -583,7 +582,8 @@ impl PageWriter<'_> {
         // the layout used decides which embedded face a run refers to, and it is
         // cloned out before anything is drawn: `fonts` is an immutable borrow of
         // `self` and the content stream is a mutable one.
-        let mapped = strict_ooxml_render_svg::font::map_family(&text.run.family);
+        let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text);
+        let mapped = strict_ooxml_render_svg::font::map_family(&family);
         let found = self
             .fonts
             .iter()
@@ -610,7 +610,7 @@ impl PageWriter<'_> {
             TextAdvanceKind::Shaped => {
                 if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
                     &shown,
-                    &text.run.family,
+                    &family,
                     text.run.bold,
                     text.run.italic,
                 ) {
