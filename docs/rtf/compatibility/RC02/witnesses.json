@@ -1,6 +1,6 @@
 {
   "card": "RC02",
-  "scope": "resource contract only",
+  "scope": "bounded registry and owned measurement/shaping operations",
   "witnesses": [
     {
       "name": "bundled adapter",
@@ -26,6 +26,27 @@
       ],
       "text": "iiii",
       "oracle": "distinct resolved hash/advances despite identical supplied family/style"
+    },
+    {
+      "name": "registry owned consumers",
+      "program": "Arimo",
+      "text": "AV office e combining accent",
+      "oracle": "bundled metrics/glyphs/clusters/x positions and pinned instance hash"
+    },
+    {
+      "name": "missing CJK glyph",
+      "program": "Arimo",
+      "text_codepoint": "U+6F22",
+      "oracle": "no scalar glyph/advance; owned shaping returns DegradedMissingGlyph"
+    },
+    {
+      "name": "admission failures",
+      "oracle": "bounded complete preflight, pinned hash/index/axes/metadata/duplicate rejection"
+    },
+    {
+      "name": "embedding restriction",
+      "program": "test-only modified Arimo OS/2 flags",
+      "oracle": "restricted/no-subset/bitmap/unknown flags reject even with permission attestation"
     }
   ],
   "real_script_geometry_acceptance": "Pending"

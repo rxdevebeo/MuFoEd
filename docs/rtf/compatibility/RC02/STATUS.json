@@ -2,19 +2,25 @@
   "card": "RC02",
   "status": "InProgress",
   "updated": "2026-10-07",
-  "scope": "shared font resource contract and bundled compatibility adapter",
-  "base_commit": "81ab887",
+  "scope": "bounded explicit font registry and owned metrics/coverage/shaping API",
+  "base_commit": "9a30a06",
   "implemented": [
     "shared bytes lifetime",
     "font program/face index/variation identity",
     "font/index/axis/range validation",
     "bundled mapping provenance",
     "resource identity in shaping caches",
-    "PDF bundled source via cached resolver"
+    "PDF bundled source via cached resolver",
+    "bounded immutable manifest registry",
+    "hash/permission/OS2 admission gates",
+    "deterministic exact family/style lookup",
+    "owned resource metrics and scalar coverage",
+    "owned resource shaping via shared harfrust/cluster pipeline",
+    "missing glyph shaping status"
   ],
   "remaining": [
-    "bounded manifest registry",
-    "owned measurement/shaping/SVG/PDF consumers",
+    "RenderOptions and placement registry wiring",
+    "SVG font delivery and PDF resource collector/subset migration",
     "resource/glyph failure policy and runtime reports",
     "licensed CJK/Indic assets",
     "independent geometry and extraction witnesses",
@@ -23,19 +29,19 @@
   "checks": {
     "full_svg_pdf_public_api": {
       "status": "PassWithBaselineExclusion",
-      "passed": 411,
+      "passed": 418,
       "excluded_test": "maps_regular_postscript_names_to_the_same_bundled_faces",
-      "log": "target/rtf-import/RC02-resource-full-tests-utf8.log"
-    },
-    "font_module_after_cache_regression": {
-      "status": "Pass",
-      "passed": 30,
-      "log": "target/rtf-import/RC02-resource-font-final-tests.log"
+      "log": "target/rtf-import/RC02-registry-full-tests.log"
     },
     "clippy_msrv": {
       "status": "PassWithBaselineSuppressions",
-      "log": "target/rtf-import/RC02-resource-clippy-utf8.log"
+      "log": "target/rtf-import/RC02-registry-clippy.log"
     },
-    "corpus_xsd_opc_pixels": "NotRunForThisSlice"
+    "corpus_xsd_opc_pixels": "NotRunForThisSlice",
+    "registry_owned_consumer_tests": {
+      "status": "Pass",
+      "passed": 6,
+      "log": "target/rtf-import/RC02-registry-tests.log"
+    }
   }
 }

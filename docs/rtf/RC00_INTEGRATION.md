@@ -113,3 +113,19 @@ bundled face через общий cached resolver. Contract tests, cache collis
 baseline suppressions проходят. RC02 остаётся InProgress: registry admission, owned
 consumer pipeline, glyph policy и реальные CJK/Indic assets требуют следующих срезов.
 Контракт, проверки и ограничения: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).
+
+### RC02: bounded registry и owned consumer API — 2026-10-07
+
+Реализован immutable FontAssetRegistry с typed pinned manifest, explicit shared
+bytes и budgets; complete preflight предшествует hashing/parsing. Проверяются
+hash/index/axes, metadata/duplicates, permission evidence и OS/2 embedding flags.
+Lookup требует exact family/style binding, без system discovery или implicit
+fallback. Owned resource metrics/coverage/advances и shape_resource используют
+одни program bytes/variation location и существующий harfrust/cluster builder.
+Missing CJK glyph возвращает DegradedMissingGlyph. Полные SVG/PDF/RTF suites:
+418 Pass (existing alias-test skip); registry regressions 6 Pass; MSRV Clippy с
+прежними baseline suppression и formatting проходят. Corpus gates в этом API-срезе
+не повторялись. Registry ещё не подключён к RenderOptions/placement/SVG/PDF;
+следующий срез — сохранить original request и owned handle до delivery/subset,
+затем failure policy и свежий corpus run. RC02 остаётся InProgress.
+Подробности: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).

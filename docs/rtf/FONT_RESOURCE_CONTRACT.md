@@ -1,68 +1,96 @@
-# RC02: font resource contract
+# RC02: explicit font assets and resource consumers
 
-Срез 2026-10-07; RC02 остаётся InProgress.
+Current slice: 2026-10-07, based on `9a30a06`. RC02 remains InProgress.
 
-## Контракт
+## Resource contract
 
-`font::FontResource` хранит borrowed bundled bytes или явно переданные `Arc<[u8]>`.
-Копия handle сохраняет lifetime bytes; обращения к установленным шрифтам отсутствуют.
-`from_shared(bytes, face_index, variations)` проверяет font/collection index,
-отсутствие повторных axis tags, наличие осей и диапазоны design coordinates.
-`FaceVariation::new` отклоняет NaN/infinity и нормализует negative zero.
-Ошибки: InvalidFace, DuplicateAxis, InvalidVariation; молчаливого fallback нет.
-Эта проверка не заменяет проверку лицензии, embedding rights и полного glyph coverage.
+`FontResource` holds borrowed bundled bytes or explicit `Arc<[u8]>`. Its key is
+program SHA-256, collection face index and sorted explicit variation coordinates.
+The legacy Copy `ResolvedFace`/`FaceSource` APIs remain available. Family aliases
+are separate from resource identity; different variable weights remain distinct.
+Omitted defaults are not yet merged with explicit default coordinates.
 
-`FaceInstanceKey` содержит SHA-256 полного исходного font program, face index и
-отсортированные explicit variation coordinates. Family alias не является resource
-identity. Одинаковые program bytes с разным `wght` получают разные instance keys.
-Оmitted axis defaults пока не сворачиваются с explicit default coordinates.
+`from_shared` validates font/index, duplicate axes, supported axes and design ranges.
+`FaceVariation::new` rejects nonfinite values and canonicalizes negative zero.
+`ResolvedFaceHandle` carries original request, declared resolved family, requested
+style, mapping provenance and the resource. ExactFamily identifies the declared
+family binding; it does not prove internal font naming, style authenticity, glyph
+coverage or full script support. Those facts need independent asset witnesses.
 
-`ResolvedFaceHandle` сохраняет requested family, resolved family, requested
-bold/italic, mapping provenance и resource. `resolve_bundled_handle` адаптирует
-существующий bundled provider без копирования bytes. Старый Copy `ResolvedFace`,
-`FaceSource` и их API сохраняются; `ResolvedFace::instance_key` даёт совместимый ключ.
-ExactFamily означает совпадение family name, не glyph coverage или полноту script
-support. Substitute обозначает известную замену; DefaultFallback — неизвестный face.
-Requested bold/italic не являются доказательством synthetic styling single-face font.
+## Immutable bounded registry
 
-Parsed-face/shaped-run caches включают resource/instance identity, сохраняя family
-и requested style для legacy metadata. PDF font collection/build теперь получает
-source через тот же cached `resolve_face`, что shaping. Его внутренний collector
-пока использует legacy bundled family/style keys: admission external assets в PDF
-потребует отдельной миграции collector и embedding к resource handle.
+`FontAssetRegistry::from_assets(Vec<FontAsset>, FontRegistryLimits)` takes explicit
+shared bytes and a typed manifest per family/style binding. Each manifest pins
+program hash, face index, variations, declared family/style, source reference,
+license identifier/reference and explicit EmbedAndSubset permission attestation.
+The library does not fetch or legally verify those evidence references.
 
-## Проверки
+Complete budget/metadata/duplicate/permission preflight runs before any program
+hashing/parsing. Construction is transactional; failure contains input asset index
+and a specific reason. OS/2 flags are checked independently: missing metadata,
+restricted embedding, no-subsetting, bitmap-only and unknown bits reject admission.
+A permissive attestation cannot override restrictive font metadata.
 
-Четыре resource tests: borrowed adapter identity/provenance, shared bytes после
-освобождения исходного Arc, variable-weight identity, rejection malformed/index/axis
-и nonfinite inputs. Отдельный cache regression под одним family/style последовательно
-shape-ит разные реальные program bytes: hash и advances не смешиваются, повторный
-запрос возвращает исходные glyphs.
+| Budget | Default | Hard ceiling |
+| --- | ---: | ---: |
+| bindings | 64 | 1024 |
+| bytes per binding | 32 MiB | 128 MiB |
+| sum of binding bytes | 128 MiB | 1 GiB |
+| bytes per source/license field | 4096 | 16384 |
+| variation coordinates per binding | 32 | 64 |
 
-Полные SVG/PDF/public API suites на Rust 1.98: exit 0, 411 tests в 51 группах;
-единственный skip — existing `maps_regular_postscript_names_to_the_same_bundled_faces`.
-После добавления cache regression повторён весь font module: 30 Pass, exit 0.
-Логи: `target/rtf-import/RC02-resource-full-tests-utf8.log`,
-`target/rtf-import/RC02-resource-font-final-tests.log`.
+Family fields are bounded to 256 UTF-8 bytes. Empty/control-containing metadata,
+zero/oversized budgets and duplicate normalized family/style bindings are rejected.
+Bytes are charged per binding, even if bindings share an Arc. Lookup trims and
+normalizes family case, requires the exact bold/italic binding, performs no system
+font discovery and returns None for an absent binding instead of synthesizing a
+style or selecting a fallback. Manifest enumeration is independent of input order.
 
-Clippy Rust 1.92 для SVG/PDF/public API, all-targets, features rtf,pdf: Pass с теми же
-baseline suppressions, что предыдущий срез (manual_let_else, items_after_statements,
-single_char_pattern, replace_box, while_let_loop, unnecessary_sort_by, if_same_then_else).
-Лог: `target/rtf-import/RC02-resource-clippy-utf8.log`.
-Changed-file rustfmt и git diff --check проверяются перед commit.
-Corpus/XSD/OPC/pixels в этом срезе не повторялись; прежние receipts не выдаются за новый
-результат. Следующий full-corpus run нужен после admission registry в consumers.
+## Owned measurement and shaping
 
-## Следующий срез
+`FontResource::metrics`, `glyph_id` and `advance_em` read the exact selected program
+and variation location. Missing glyphs/metrics return None; no character-class
+advance or family substitution is invented by these operations.
 
-1. Bounded optional font-assets registry с явным manifest: family/style → resource,
-   expected program hash, face index, variations, provenance, embedding rights.
-   Без registry сохраняется bundled output; запрет неявного system font discovery.
-2. Подключение owned handle к measurement, glyph coverage и existing harfrust pipeline,
-   затем SVG delivery и PDF subset/collector. Один resource должен дойти до всех consumers.
-3. Missing-resource/glyph policies: ReportAndContinue (default, Degraded) или Reject.
-   Runtime report должен сохранять exact/substitute/unresolved outcome и original request.
-4. CJK/Indic witnesses, Unicode extraction, deterministic hashes и corpus gates.
+`shape_resource(text, &ResolvedFaceHandle)` uses existing harfrust plus the shared
+raw-glyph/cluster assembly. `ShapedText<F = ResolvedFace>` keeps legacy type usage
+available and supports owned handles. Unicode cluster/x helpers accept either face
+kind. Borrowed parser/shaper state is local to the operation; returned shaped text
+keeps its resource alive. Owned parsed-face/run caching is a later optimization.
+Missing `.notdef` glyphs return DegradedMissingGlyph; otherwise complex scripts retain
+DegradedComplexScript. This does not establish independent CJK/Indic acceptance.
 
-Registry, RenderOptions wiring, external shaping/embedding, missing-resource policies,
-licensed CJK assets и полное закрытие RC02 в этом commit не реализованы.
+The legacy shaping caches still include program/instance identity. Existing PDF
+collection/build still adapts the shared cached bundled resolver to FaceSource.
+Registry assets are not yet wired into RenderOptions/placement/SVG/PDF. Therefore
+these APIs enable explicit resource operations, not external-font document rendering.
+
+## Validation
+
+Six public API regressions cover registry order/lifetime, absence of implicit style
+or fallback, owned metrics/shaping parity, weight identity, explicit missing CJK
+glyphs, all budgets, preflight ordering, pinned hashes/index/axes/metadata/duplicates,
+and OS/2 embedding restrictions overriding permission attestations.
+
+Full SVG/PDF/public RTF API suites: 418 Pass in 52 groups, exit 0, with the existing
+`maps_regular_postscript_names_to_the_same_bundled_faces` exclusion recorded.
+Final registry tests after lint fixes: 6 Pass, exit 0.
+MSRV Rust 1.92 Clippy: Pass with unchanged baseline suppressions:
+manual_let_else, items_after_statements, single_char_pattern, replace_box,
+while_let_loop, unnecessary_sort_by, if_same_then_else.
+Changed-file rustfmt and git diff --check: Pass.
+Logs: `target/rtf-import/RC02-registry-{full-tests,tests,clippy}.log`.
+
+Corpus/XSD/OPC/pixels were not rerun for this API-only slice. Previous measurements
+are not new receipts; a fresh corpus run is required after renderer admission.
+
+## Next implementation
+
+1. Optional registry in RenderOptions; preserve original font-slot request through
+   placement and retain one resolved owned handle for measurement and delivery.
+2. SVG font emission/positions and PDF collector/subsets migrate to resource keys,
+   bytes, face index and all variation coordinates; no fallback back to static APIs.
+3. ReportAndContinue/Reject policy and original-request exact/substitute/unresolved
+   diagnostics, including missing glyphs and embedding failures.
+4. Licensed CJK/Indic assets, independent geometry/extraction witnesses, determinism
+   and fresh full-corpus gates. RC02 closes only after those requirements pass.

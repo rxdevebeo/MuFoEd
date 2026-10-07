@@ -9,6 +9,7 @@ pub mod builtin;
 pub mod face;
 pub mod family;
 pub mod metrics;
+pub mod registry;
 pub mod resource;
 pub mod shape;
 mod symbol;
@@ -19,14 +20,18 @@ pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource
 pub use face::{hash_face_bytes, hash_face_bytes_hex, resolve_face, FaceId, ResolvedFace};
 pub use family::{map_family, substitute_width_scale};
 pub use metrics::FontMetrics;
+pub use registry::{
+    FontAsset, FontAssetManifest, FontAssetRegistry, FontAssetRejection, FontEmbeddingPermission,
+    FontRegistryError, FontRegistryLimits,
+};
 pub use resource::{
     resolve_bundled_handle, FaceInstanceKey, FaceMapping, FaceVariation, FontResource,
     FontResourceError, ResolvedFaceHandle,
 };
 pub use shape::{
-    needs_complex_script, shape_advance_em, shape_bundled, shape_text, unicode_cluster_map,
-    unicode_x_positions_px, ShapeStatus, ShapedCluster, ShapedGlyph, ShapedText,
-    COMPLEX_SCRIPT_WARNING,
+    needs_complex_script, shape_advance_em, shape_bundled, shape_resource, shape_text,
+    unicode_cluster_map, unicode_x_positions_px, ShapeStatus, ShapedCluster, ShapedGlyph,
+    ShapedText, COMPLEX_SCRIPT_WARNING,
 };
 
 /// Provides metrics for a font face.

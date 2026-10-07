@@ -10,13 +10,13 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use harfrust::{
-    BufferClusterLevel, FontRef, ShapeOptions, ShaperData, ShaperInstance, Tag, UnicodeBuffer,
-    Variation,
+    BufferClusterLevel, FontRef, GlyphBuffer, ShapeOptions, ShaperData, ShaperInstance, Tag,
+    UnicodeBuffer, Variation,
 };
 
 use super::face::{resolve_face, ResolvedFace};
 use super::family::map_family;
-use super::{FaceInstanceKey, FontProvider};
+use super::{FaceInstanceKey, FontProvider, ResolvedFaceHandle};
 
 /// How many distinct strings one style keeps. Past this, shaping still runs;
 /// the entry is just not stored. The hostile footer and a normal page both
@@ -31,6 +31,8 @@ pub enum ShapeStatus {
     /// Arabic/Indic/Hebrew/… still go through harfrust, but F07/R05 does not
     /// claim full complex-script acceptance yet.
     DegradedComplexScript,
+    /// Owned-resource shaping encountered a `.notdef` glyph; missing text is not Full.
+    DegradedMissingGlyph,
 }
 
 /// One glyph in visual order, with pen advances and drawing offsets.
@@ -77,9 +79,9 @@ pub struct ShapedCluster {
 
 /// Result of shaping a string with a resolved face.
 #[derive(Clone, Debug)]
-pub struct ShapedText {
+pub struct ShapedText<F = ResolvedFace> {
     /// Face that produced the advances (same bytes SVG/PDF deliver).
-    pub face: ResolvedFace,
+    pub face: F,
     /// Clusters in logical Unicode order. Each span satisfies `byte_start < byte_end`.
     pub clusters: Vec<ShapedCluster>,
     /// Glyphs in visual order. Logical spans are on [`Self::clusters`].
@@ -190,7 +192,7 @@ pub fn shape_bundled(text: &str, family: &str, bold: bool, italic: bool) -> Opti
 /// Maps each Unicode scalar in `text` to the cluster that owns it and that
 /// cluster's advance in em units.
 #[must_use]
-pub fn unicode_cluster_map(text: &str, shaped: &ShapedText) -> Vec<(char, usize, f64)> {
+pub fn unicode_cluster_map<F>(text: &str, shaped: &ShapedText<F>) -> Vec<(char, usize, f64)> {
     let mut out = Vec::new();
     for (index, cluster) in shaped.clusters.iter().enumerate() {
         let Some(slice) = text.get(cluster.byte_start..cluster.byte_end) else {
@@ -209,9 +211,9 @@ pub fn unicode_cluster_map(text: &str, shaped: &ShapedText) -> Vec<(char, usize,
 /// ligature or mark cluster shares the cluster origin. RTL logical characters
 /// therefore receive their visual x rather than a left-to-right accumulation.
 #[must_use]
-pub fn unicode_x_positions_px(
+pub fn unicode_x_positions_px<F>(
     text: &str,
-    shaped: &ShapedText,
+    shaped: &ShapedText<F>,
     origin_x: f64,
     size_px: f64,
 ) -> Vec<f64> {
@@ -366,6 +368,49 @@ fn shape_with_face_uncached(text: &str, resolved: ResolvedFace) -> Option<Shaped
         let glyphs = shaper.shape(buffer, ShapeOptions::new());
         (units, glyphs)
     })?;
+    let pieces = raw_glyphs(text, units, &glyphs)?;
+    Some(assemble_shaped(resolved, text, pieces))
+}
+
+/// Shapes with explicitly resolved shared bytes using the existing harfrust/cluster pipeline.
+/// This operation does not consult installed fonts or cache a borrowed font past its lifetime.
+/// Complex-script acceptance remains degraded exactly as on the bundled path.
+#[must_use]
+pub fn shape_resource(
+    text: &str,
+    face: &ResolvedFaceHandle,
+) -> Option<ShapedText<ResolvedFaceHandle>> {
+    let resource = &face.resource;
+    let font = FontRef::from_index(resource.bytes(), resource.key().face_index).ok()?;
+    let data = ShaperData::new(&font);
+    let variations = &resource.key().variations;
+    let instance = (!variations.is_empty()).then(|| {
+        ShaperInstance::from_variations(
+            &font,
+            variations.iter().map(|coordinate| Variation {
+                tag: Tag::new(&coordinate.tag()),
+                value: coordinate.value(),
+            }),
+        )
+    });
+    let mut buffer = UnicodeBuffer::new();
+    buffer.push_str(text);
+    buffer.set_cluster_level(BufferClusterLevel::MonotoneCharacters);
+    buffer.guess_segment_properties();
+    let shaper = data.shaper(&font).instance(instance.as_ref()).build();
+    let units = f64::from(shaper.units_per_em());
+    let glyphs = shaper.shape(buffer, ShapeOptions::new());
+    let pieces = raw_glyphs(text, units, &glyphs)?;
+    let mut result = assemble_shaped(face.clone(), text, pieces);
+    if result.glyphs.iter().any(|glyph| glyph.glyph_id == 0) {
+        result.status = ShapeStatus::DegradedMissingGlyph;
+    } else if needs_complex_script(text) {
+        result.status = ShapeStatus::DegradedComplexScript;
+    }
+    Some(result)
+}
+
+fn raw_glyphs(text: &str, units: f64, glyphs: &GlyphBuffer) -> Option<Vec<RawGlyph>> {
     if units <= 0.0 {
         return None;
     }
@@ -389,7 +434,7 @@ fn shape_with_face_uncached(text: &str, resolved: ResolvedFace) -> Option<Shaped
             glyph_id: u16::try_from(info.glyph_id).unwrap_or(0),
         });
     }
-    Some(assemble_shaped(resolved, text, pieces))
+    Some(pieces)
 }
 
 struct RawGlyph {
@@ -404,7 +449,7 @@ struct RawGlyph {
 ///
 /// Logical `byte_end` is the next cluster start in byte order, never the next
 /// glyph in visual order. RTL output therefore keeps `byte_start < byte_end`.
-fn assemble_shaped(resolved: ResolvedFace, text: &str, pieces: Vec<RawGlyph>) -> ShapedText {
+fn assemble_shaped<F>(resolved: F, text: &str, pieces: Vec<RawGlyph>) -> ShapedText<F> {
     let mut groups: Vec<Vec<RawGlyph>> = Vec::new();
     for piece in pieces {
         if let Some(last) = groups.last_mut() {

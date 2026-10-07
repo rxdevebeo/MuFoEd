@@ -5,10 +5,12 @@
 
 use std::sync::Arc;
 
+use skrifa::instance::{LocationRef, Size};
+use skrifa::metrics::GlyphMetrics;
 use skrifa::prelude::{MetadataProvider, Tag};
 use skrifa::FontRef;
 
-use super::{hash_face_bytes, resolve_face, ResolvedFace};
+use super::{hash_face_bytes, resolve_face, FontMetrics, ResolvedFace};
 
 /// An OpenType design coordinate. Finite values only; negative zero is canonicalized.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -136,6 +138,65 @@ impl FontResource {
             ProgramBytes::Bundled(bytes) => bytes,
             ProgramBytes::Shared(bytes) => bytes,
         }
+    }
+
+    /// Vertical metrics from the selected program and variation location.
+    /// No character-class or family substitute fallback is applied.
+    #[must_use]
+    pub fn metrics(&self) -> Option<FontMetrics> {
+        let font = FontRef::from_index(self.bytes(), self.key.face_index).ok()?;
+        let location = font.axes().location(
+            self.key
+                .variations
+                .iter()
+                .map(|coordinate| (Tag::new(&coordinate.tag()), coordinate.value())),
+        );
+        let metrics = font.metrics(Size::unscaled(), LocationRef::new(location.coords()));
+        let units = f64::from(metrics.units_per_em);
+        if units <= 0.0 {
+            return None;
+        }
+        Some(FontMetrics {
+            units_per_em: units,
+            ascender: f64::from(metrics.ascent) / units,
+            descender: f64::from(metrics.descent).abs() / units,
+            line_gap: f64::from(metrics.leading) / units,
+            width_scale: 1.0,
+        })
+    }
+
+    /// Scalar glyph coverage from this exact program; `.notdef` is not coverage.
+    #[must_use]
+    pub fn glyph_id(&self, ch: char) -> Option<u16> {
+        let font = FontRef::from_index(self.bytes(), self.key.face_index).ok()?;
+        let glyph = font.charmap().map(ch)?;
+        (glyph.to_u32() != 0)
+            .then(|| u16::try_from(glyph.to_u32()).ok())
+            .flatten()
+    }
+
+    /// Scalar hmtx advance at the selected variation location, in em.
+    /// Returns None for a missing glyph or invalid metrics, without substituting it.
+    #[must_use]
+    pub fn advance_em(&self, ch: char) -> Option<f64> {
+        let font = FontRef::from_index(self.bytes(), self.key.face_index).ok()?;
+        let glyph = font.charmap().map(ch)?;
+        if glyph.to_u32() == 0 {
+            return None;
+        }
+        let location = font.axes().location(
+            self.key
+                .variations
+                .iter()
+                .map(|coordinate| (Tag::new(&coordinate.tag()), coordinate.value())),
+        );
+        let location = LocationRef::new(location.coords());
+        let metrics = font.metrics(Size::unscaled(), location);
+        if metrics.units_per_em == 0 {
+            return None;
+        }
+        let advance = GlyphMetrics::new(&font, Size::unscaled(), location).advance_width(glyph)?;
+        Some(f64::from(advance) / f64::from(metrics.units_per_em))
     }
 
     /// Canonical program/instance identity.
