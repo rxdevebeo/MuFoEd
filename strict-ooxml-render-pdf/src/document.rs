@@ -59,6 +59,17 @@ struct PageWriter<'a> {
     report: &'a mut PdfReport,
 }
 
+/// The bundled faces' metrics, parsed once per process.
+///
+/// `show_metric` built a fresh provider for every metric text item, which parses
+/// all 22 bundled faces each time: a page of justified text paid that cost per
+/// word.
+fn builtin_provider() -> &'static strict_ooxml_render_svg::font::BuiltinFontProvider {
+    static PROVIDER: std::sync::OnceLock<strict_ooxml_render_svg::font::BuiltinFontProvider> =
+        std::sync::OnceLock::new();
+    PROVIDER.get_or_init(strict_ooxml_render_svg::font::BuiltinFontProvider::new)
+}
+
 /// Renders placed pages to PDF without resolving media bytes.
 pub fn render(pages: &[PlacedPage], options: &RenderOptions) -> Result<PdfOutput> {
     render_with_source(pages, options, None)
@@ -661,7 +672,7 @@ impl PageWriter<'_> {
         if shown.is_empty() {
             return false;
         }
-        let provider = strict_ooxml_render_svg::font::BuiltinFontProvider::new();
+        let provider = builtin_provider();
         let family = strict_ooxml_render_svg::style::chosen_family(&text.run, shown);
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
         let size = px_to_pt(text.size_px, self.scale) as f32;
