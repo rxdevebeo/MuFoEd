@@ -728,13 +728,15 @@ impl PageWriter<'_> {
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
         let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
-        let mut non_space_before = 0usize;
+        let mut non_space_before = 0_u32;
         for cluster in &shaped.clusters {
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
                 .unwrap_or("");
-            let cluster_extra = extra * non_space_before as f64;
-            non_space_before += unicode.chars().filter(|ch| !ch.is_whitespace()).count();
+            let cluster_extra = extra * f64::from(non_space_before);
+            let visible = unicode.chars().filter(|ch| !ch.is_whitespace()).count();
+            non_space_before =
+                non_space_before.saturating_add(u32::try_from(visible).unwrap_or(u32::MAX));
             let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
