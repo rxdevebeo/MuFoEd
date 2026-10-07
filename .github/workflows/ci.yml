@@ -332,10 +332,45 @@ jobs:
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
 
+  # One job per target: eight one-hour sessions in a row (8 h) never fit the 6 h
+  # job limit, so the later targets and the coverage floors after them never ran.
   fuzz-nightly:
-    name: fuzz nightly
+    name: fuzz nightly (${{ matrix.target }})
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_zip, fuzz_xml, fuzz_relpath, fuzz_wml, fuzz_normalize, fuzz_docx_full, fuzz_pdf, fuzz_convert]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Bounded nightly fuzz session (3600s; not the 60s smoke)
+        working-directory: fuzz
+        run: |
+          EXTRA=""
+          case "${{ matrix.target }}" in
+            fuzz_normalize|fuzz_docx_full|fuzz_xml|fuzz_wml) EXTRA="-dict=dict/wml.dict" ;;
+          esac
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "${{ matrix.target }}" -- \
+            -max_total_time=3600 -rss_limit_mb=2048 -timeout=10 $EXTRA
+      - name: Keep the reproducer
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+
+  coverage-branch-nightly:
+    name: branch coverage (nightly)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
       CARGO_TARGET_DIR: target/cov-ci-branch
@@ -347,18 +382,7 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-fuzz,cargo-llvm-cov@0.9.1
-      - name: Bounded nightly fuzz sessions (3600s each; not the 60s smoke)
-        working-directory: fuzz
-        run: |
-          for t in fuzz_zip fuzz_xml fuzz_relpath fuzz_wml fuzz_normalize fuzz_docx_full fuzz_pdf fuzz_convert; do
-            EXTRA=""
-            case "$t" in
-              fuzz_normalize|fuzz_docx_full|fuzz_xml|fuzz_wml) EXTRA="-dict=dict/wml.dict" ;;
-            esac
-            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$t" -- \
-              -max_total_time=3600 -rss_limit_mb=2048 -timeout=10 $EXTRA
-          done
+          tool: cargo-llvm-cov@0.9.1
       # REWORK-AUDIT-2026-10 §15.1 branch floors (≥70% core/wml). Unstable
       # `--branch` needs nightly; the 60s fuzz-smoke job does not substitute.
       - name: Branch coverage (core ≥70%)
