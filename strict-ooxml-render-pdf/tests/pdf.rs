@@ -122,6 +122,18 @@ fn non_bmp_math_font_text_is_extractable() {
     assert!(text.contains("Math𝑥"), "{text:?}");
 }
 
+#[test]
+fn a_missing_glyph_is_not_reported_as_a_missing_face() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>&#x10FFFD;</w:t></w:r></w:p>")
+        .build();
+    let (_, _, report) = to_pdf(&bytes);
+    let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
+    assert!(ids.contains(&"pdf.font.no_glyph"), "{ids:?}");
+    assert!(!ids.contains(&"pdf.font.missing"), "{ids:?}");
+}
+
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
 /// encoding and a `ToUnicode` CMap: the two things that make the text
 /// selectable and searchable rather than glyph ids.

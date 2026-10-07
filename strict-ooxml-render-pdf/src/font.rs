@@ -82,8 +82,8 @@ pub struct FaceCollector {
     faces: BTreeMap<FaceKey, BTreeSet<(GlyphId, Option<char>)>>,
     /// Shaped clusters whose glyph is not a single cmap character: `(source gid, unicode)`.
     shaped: BTreeMap<FaceKey, BTreeSet<(u16, String)>>,
-    /// Faces requested that the bundle does not carry.
-    unknown: BTreeSet<FaceKey>,
+    /// Characters the selected bundled face does not contain.
+    missing_glyphs: BTreeMap<FaceKey, BTreeSet<char>>,
 }
 
 impl FaceCollector {
@@ -95,10 +95,8 @@ impl FaceCollector {
 
     /// Records one character for a face.
     ///
-    /// A family the bundle does not carry is recorded and reported rather than
-    /// silently drawn with a substitute: the text would keep its metrics and
-    /// lose its glyphs, which is exactly the kind of quiet loss the project
-    /// refuses.
+    /// Missing characters remain attached to their known face so the PDF can
+    /// distinguish a missing glyph from a family that is not bundled.
     pub fn add(&mut self, source: &FaceSource, bold: bool, italic: bool, ch: char) {
         let key = FaceKey {
             family: source.family,
@@ -106,7 +104,11 @@ impl FaceCollector {
             italic,
         };
         let Some(glyph) = glyph_for(source, ch) else {
-            self.unknown.insert(key);
+            // Keep the face in the collection. `add_notdef` gives it a valid
+            // subset, while the drawing pass reports this character as a
+            // missing glyph instead of misclassifying the whole face.
+            self.faces.entry(key.clone()).or_default();
+            self.missing_glyphs.entry(key).or_default().insert(ch);
             return;
         };
         self.faces.entry(key).or_default().insert((glyph, Some(ch)));
@@ -155,10 +157,13 @@ impl FaceCollector {
         self.faces.keys().cloned().collect()
     }
 
-    /// The faces that were requested but are not bundled.
+    /// Characters absent from a known bundled face, in deterministic order.
     #[must_use]
-    pub fn unknown_faces(&self) -> Vec<FaceKey> {
-        self.unknown.iter().cloned().collect()
+    pub fn missing_glyphs(&self) -> Vec<(FaceKey, char)> {
+        self.missing_glyphs
+            .iter()
+            .flat_map(|(key, chars)| chars.iter().map(|ch| (key.clone(), *ch)))
+            .collect()
     }
 
     /// Records glyph 0 (`.notdef`) for every face, which a font must keep.
@@ -485,7 +490,7 @@ mod tests {
         }
         collector.add_notdef();
         assert_eq!(collector.faces().len(), 1);
-        assert!(collector.unknown_faces().is_empty());
+        assert!(collector.missing_glyphs().is_empty());
 
         let key = FaceKey {
             family: source.family,
@@ -552,12 +557,20 @@ mod tests {
     }
 
     #[test]
-    fn a_character_without_a_glyph_is_recorded_not_substituted() {
+    fn a_character_without_a_glyph_keeps_its_face_and_is_recorded() {
         let source = face_source("Calibri", false, false).expect("bundled");
         let mut collector = FaceCollector::new();
         collector.add(&source, false, false, '\u{10FFFD}');
-        assert_eq!(collector.faces().len(), 0);
-        assert_eq!(collector.unknown_faces().len(), 1);
+        assert_eq!(collector.faces().len(), 1);
+        assert_eq!(collector.missing_glyphs().len(), 1);
+        collector.add_notdef();
+        let key = FaceKey {
+            family: source.family,
+            bold: false,
+            italic: false,
+        };
+        let font = collector.build(&key, &source).expect("subset .notdef");
+        assert!(font.chars.is_empty());
     }
 
     #[test]
