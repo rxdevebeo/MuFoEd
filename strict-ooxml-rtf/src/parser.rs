@@ -240,6 +240,7 @@ struct State {
     paragraph: ParagraphProperties,
     codepage: i32,
     associated_font: Option<i32>,
+    font_slot: Option<FontSlot>,
     uc: usize,
     skip: bool,
     first: bool,
@@ -260,6 +261,7 @@ impl Default for State {
             paragraph: ParagraphProperties::default(),
             codepage: 1252,
             associated_font: None,
+            font_slot: None,
             uc: 1,
             skip: false,
             first: true,
@@ -273,6 +275,23 @@ impl Default for State {
             line_spacing: 0,
             line_multiple: false,
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FontSlot {
+    Ascii,
+    HighAnsi,
+    EastAsia,
+    ComplexScript,
+}
+
+fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
+    match slot {
+        FontSlot::Ascii => fonts.ascii = Some(face),
+        FontSlot::HighAnsi => fonts.h_ansi = Some(face),
+        FontSlot::EastAsia => fonts.east_asia = Some(face),
+        FontSlot::ComplexScript => fonts.complex_script = Some(face),
     }
 }
 struct Parser<'a> {
@@ -942,6 +961,15 @@ impl Parser<'_> {
                 reason: "unsupported font charset/codepage",
             })?;
         let face = Arc::<str>::from(font.name.as_str());
+        if let Some(slot) = self.state.font_slot {
+            assign_font(
+                self.state.run.fonts.get_or_insert_with(Fonts::default),
+                slot,
+                face,
+            );
+            self.state.codepage = cp;
+            return Ok(());
+        }
         let associated_face = self
             .state
             .associated_font
@@ -965,6 +993,14 @@ impl Parser<'_> {
             return self.issue(span, Severity::Loss, format!("undefined-font:{id}"));
         };
         let face = Arc::<str>::from(font.name.as_str());
+        if let Some(slot) = self.state.font_slot {
+            assign_font(
+                self.state.run.fonts.get_or_insert_with(Fonts::default),
+                slot,
+                face,
+            );
+            return Ok(());
+        }
         self.state.associated_font = Some(id);
         self.state
             .run
@@ -2035,6 +2071,20 @@ impl Parser<'_> {
                 self.document_codepage = cp;
             }
             "deff" => self.default_font = n,
+            "loch" => self.state.font_slot = Some(FontSlot::Ascii),
+            "hich" => self.state.font_slot = Some(FontSlot::HighAnsi),
+            "dbch" => self.state.font_slot = Some(FontSlot::EastAsia),
+            "fcs" => match n {
+                Some(0) => self.state.font_slot = None,
+                Some(1) => self.state.font_slot = Some(FontSlot::ComplexScript),
+                Some(value) => {
+                    self.state.font_slot = None;
+                    self.issue(span, Severity::Loss, format!("font-script-class:{value}"))?;
+                }
+                None => {
+                    return malformed(span.start, "missing font script class");
+                }
+            },
             "lang" | "langnp" | "langfe" | "langfenp" => {
                 let id = n.ok_or(RtfError::Malformed {
                     offset: span.start,
@@ -2082,6 +2132,7 @@ impl Parser<'_> {
             "plain" => {
                 self.state.run = RunProperties::default();
                 self.state.associated_font = None;
+                self.state.font_slot = None;
                 self.state.codepage = self.document_codepage;
                 if let Some(id) = self.default_font {
                     self.select_font(id, span)?;
@@ -2250,8 +2301,14 @@ impl Parser<'_> {
             "caps" => self.state.run.caps = toggle,
             "scaps" => self.state.run.small_caps = toggle,
             "v" => self.state.run.vanish = toggle,
-            "rtlch" => self.state.run.rtl = TriState::On,
-            "ltrch" => self.state.run.rtl = TriState::Off,
+            "rtlch" => {
+                self.state.run.rtl = TriState::On;
+                self.state.font_slot = Some(FontSlot::ComplexScript);
+            }
+            "ltrch" => {
+                self.state.run.rtl = TriState::Off;
+                self.state.font_slot = None;
+            }
             "ul" => {
                 self.state.run.underline = Some(if n == Some(0) {
                     Underline::None

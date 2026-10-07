@@ -467,6 +467,57 @@ fn associated_font_survives_font_switch_and_wml_roundtrip() {
 }
 
 #[test]
+fn script_font_selectors_map_f_and_af_to_their_wml_slots() {
+    let source = br"{\rtf1{\fonttbl{\f0 Base;}{\f1 Low;}{\f2 High;}{\f3 Double;}{\f4 Complex;}}\f0\loch\f1 Low \hich\af2 High \dbch\af3 Double \rtlch\af4 Complex {\loch\f1 Scoped} After {\ltrch\fcs1\af4 SouthAsian}}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let fonts_for = |needle: &str| {
+        paragraph.inlines.iter().find_map(|inline| {
+            match inline {
+            Inline::Run(run)
+                if run.content.iter().any(|content| {
+                    matches!(content, RunContent::Text(text) if text.text.contains(needle))
+                }) => run.props.fonts.as_ref(),
+            _ => None,
+        }
+        })
+    };
+    let low = fonts_for("Low").expect("low-ANSI font properties");
+    assert_eq!(low.ascii.as_deref(), Some("Low"));
+    assert_eq!(low.h_ansi.as_deref(), Some("Base"));
+    let high = fonts_for("High").expect("high-ANSI font properties");
+    assert_eq!(high.h_ansi.as_deref(), Some("High"));
+    assert_eq!(high.east_asia.as_deref(), Some("Base"));
+    let double = fonts_for("Double").expect("double-byte font properties");
+    assert_eq!(double.east_asia.as_deref(), Some("Double"));
+    let complex = fonts_for("Complex").expect("complex-script font properties");
+    assert_eq!(complex.complex_script.as_deref(), Some("Complex"));
+    let after_group = fonts_for("After").expect("font properties after nested group");
+    assert_eq!(after_group.complex_script.as_deref(), Some("Complex"));
+    let south_asian = fonts_for("SouthAsian").expect("South Asian font properties");
+    assert_eq!(south_asian.complex_script.as_deref(), Some("Complex"));
+}
+
+#[test]
+fn unsupported_font_script_class_remains_an_explicit_loss() {
+    let imported = import(
+        br"{\rtf1{\fonttbl{\f0 Base;}}\fcs2\af0 text}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(imported.report.loss_count, 1);
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "font-script-class:2"));
+}
+
+#[test]
 fn lang_and_langnp_map_known_lcids_and_restore_group_state() {
     let source = br"{\rtf1\lang1033 English {\langnp2057 British}\lang9 Neutral}";
     let imported = import(source, &RtfOptions::default()).unwrap();
