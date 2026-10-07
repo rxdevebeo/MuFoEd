@@ -2188,7 +2188,9 @@ impl Parser<'_> {
                 });
             }
             "b" => self.state.run.bold = toggle,
+            "ab" => self.state.run.bold_cs = toggle,
             "i" => self.state.run.italic = toggle,
+            "ai" => self.state.run.italic_cs = toggle,
             "strike" => self.state.run.strike = toggle,
             "striked" => self.state.run.double_strike = toggle,
             "caps" => self.state.run.caps = toggle,
@@ -2205,11 +2207,15 @@ impl Parser<'_> {
             }
             "ulnone" => self.state.run.underline = Some(Underline::None),
             "uldb" => self.state.run.underline = Some(Underline::Double),
-            "fs" => {
+            "fs" | "afs" => {
                 let Some(size) = n.filter(|n| *n > 0) else {
                     return malformed(span.start, "invalid font size");
                 };
-                self.state.run.size = Some(HalfPoints(size));
+                if name == "afs" {
+                    self.state.run.size_cs = Some(HalfPoints(size));
+                } else {
+                    self.state.run.size = Some(HalfPoints(size));
+                }
             }
             "super" => self.state.run.vert_align = Some(VertAlign::Superscript),
             "sub" => self.state.run.vert_align = Some(VertAlign::Subscript),

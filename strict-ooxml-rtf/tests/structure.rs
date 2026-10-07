@@ -382,6 +382,33 @@ fn spacing_rules_and_tab_reset_are_explicit() {
     );
 }
 
+#[test]
+fn associated_bold_italic_and_size_survive_wml_roundtrip() {
+    let source = br"{\rtf1\ab\ai\afs28 Associated}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let run = paragraph
+        .inlines
+        .iter()
+        .find_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        })
+        .expect("associated-formatting run");
+    assert_eq!(run.props.bold_cs, TriState::On);
+    assert_eq!(run.props.italic_cs, TriState::On);
+    assert_eq!(
+        run.props.size_cs,
+        Some(strict_ooxml_wml::model::HalfPoints(28))
+    );
+    assert_eq!(run.props.bold, TriState::Absent);
+    assert_eq!(run.props.italic, TriState::Absent);
+}
+
 fn reopened(input: &[u8]) -> strict_ooxml_wml::model::Document {
     let imported = import(input, &RtfOptions::default()).unwrap();
     let mut media = strict_ooxml_write::package::MediaBag::new();
