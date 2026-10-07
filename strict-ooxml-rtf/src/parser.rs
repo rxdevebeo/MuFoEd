@@ -239,6 +239,7 @@ struct State {
     run: RunProperties,
     paragraph: ParagraphProperties,
     codepage: i32,
+    associated_font: Option<i32>,
     uc: usize,
     skip: bool,
     first: bool,
@@ -258,6 +259,7 @@ impl Default for State {
             run: RunProperties::default(),
             paragraph: ParagraphProperties::default(),
             codepage: 1252,
+            associated_font: None,
             uc: 1,
             skip: false,
             first: true,
@@ -940,14 +942,35 @@ impl Parser<'_> {
                 reason: "unsupported font charset/codepage",
             })?;
         let face = Arc::<str>::from(font.name.as_str());
+        let associated_face = self
+            .state
+            .associated_font
+            .and_then(|associated_id| self.fonts.get(&associated_id))
+            .map_or_else(
+                || face.clone(),
+                |associated| Arc::<str>::from(associated.name.as_str()),
+            );
         self.state.run.fonts = Some(Fonts {
             ascii: Some(face.clone()),
             h_ansi: Some(face.clone()),
-            east_asia: Some(face.clone()),
+            east_asia: Some(associated_face),
             complex_script: Some(face),
             ..Default::default()
         });
         self.state.codepage = cp;
+        Ok(())
+    }
+    fn select_associated_font(&mut self, id: i32, span: RtfSpan) -> Result<(), RtfError> {
+        let Some(font) = self.fonts.get(&id) else {
+            return self.issue(span, Severity::Loss, format!("undefined-font:{id}"));
+        };
+        let face = Arc::<str>::from(font.name.as_str());
+        self.state.associated_font = Some(id);
+        self.state
+            .run
+            .fonts
+            .get_or_insert_with(Default::default)
+            .east_asia = Some(face);
         Ok(())
     }
     fn issue(
@@ -1996,6 +2019,13 @@ impl Parser<'_> {
                 self.document_codepage = cp;
             }
             "deff" => self.default_font = n,
+            "af" => {
+                let id = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing associated font id",
+                })?;
+                self.select_associated_font(id, span)?;
+            }
             "f" => {
                 let id = n.ok_or(RtfError::Malformed {
                     offset: span.start,
@@ -2028,6 +2058,7 @@ impl Parser<'_> {
             "u" => self.unicode(n, span)?,
             "plain" => {
                 self.state.run = RunProperties::default();
+                self.state.associated_font = None;
                 self.state.codepage = self.document_codepage;
                 if let Some(id) = self.default_font {
                     self.select_font(id, span)?;

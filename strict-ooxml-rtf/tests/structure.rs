@@ -409,6 +409,63 @@ fn associated_bold_italic_and_size_survive_wml_roundtrip() {
     assert_eq!(run.props.italic, TriState::Absent);
 }
 
+#[test]
+fn associated_font_survives_font_switch_and_wml_roundtrip() {
+    let source = br"{\rtf1{\fonttbl{\f0 Arial;}{\f1 SimSun;}}\f0 Latin {\af1 Han \f0 After}}";
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let runs = paragraph
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let associated = runs
+        .iter()
+        .find(|run| {
+            run.content.iter().any(
+                |content| matches!(content, RunContent::Text(text) if text.text.contains("Han")),
+            )
+        })
+        .expect("associated-font run");
+    assert_eq!(
+        associated.props.fonts.as_ref().unwrap().ascii.as_deref(),
+        Some("Arial")
+    );
+    assert_eq!(
+        associated
+            .props
+            .fonts
+            .as_ref()
+            .unwrap()
+            .east_asia
+            .as_deref(),
+        Some("SimSun")
+    );
+    let after_switch = runs
+        .iter()
+        .find(|run| {
+            run.content.iter().any(
+                |content| matches!(content, RunContent::Text(text) if text.text.contains("After")),
+            )
+        })
+        .expect("run after ordinary font switch");
+    assert_eq!(
+        after_switch
+            .props
+            .fonts
+            .as_ref()
+            .unwrap()
+            .east_asia
+            .as_deref(),
+        Some("SimSun")
+    );
+}
+
 fn reopened(input: &[u8]) -> strict_ooxml_wml::model::Document {
     let imported = import(input, &RtfOptions::default()).unwrap();
     let mut media = strict_ooxml_write::package::MediaBag::new();
