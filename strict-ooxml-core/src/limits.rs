@@ -92,6 +92,24 @@ pub struct ResourceLimits {
     /// past one level. The renderer and the writer return
     /// `LimitKind::TextBoxNesting` for a model built by hand that goes past it.
     pub max_text_box_nesting: u32,
+    /// Maximum nesting of inline wrappers inside one paragraph. Default: 16.
+    ///
+    /// An *inline wrapper* is a paragraph child whose children are themselves
+    /// paragraph children: `w:ins`, `w:del`, `w:moveTo`, `w:moveFrom`,
+    /// `w:hyperlink`, `w:fldSimple`, an inline `w:sdt`, `w:dir`, `w:bdo`,
+    /// `w:customXml`, `w:smartTag` and an inline `mc:AlternateContent`.
+    ///
+    /// Without it the only bound was [`max_xml_depth`](Self::max_xml_depth),
+    /// and 120-180 nested `w:ins` overflowed a 1 MiB stack in a release build
+    /// (debug frames are larger). Word nests a handful of these at most - a
+    /// content control around a hyperlink around a revision - so 16 refuses no
+    /// real document and keeps the inline chain well inside the stack.
+    ///
+    /// The parser does not refuse a document over it: the wrapper past the
+    /// bound loses its content, `limit.inline_nesting` is recorded as
+    /// `Unsupported`, and the rest of the document is read - the trade
+    /// [`max_text_box_nesting`](Self::max_text_box_nesting) makes.
+    pub max_inline_nesting: u32,
     /// Maximum number of nodes in one `m:oMath`. Default: 4096.
     ///
     /// Per formula, not per package: a document may carry a thousand formulas,
@@ -131,6 +149,7 @@ impl Default for ResourceLimits {
             max_parts: 4096,
             max_block_nesting: 12,
             max_text_box_nesting: 5,
+            max_inline_nesting: 16,
             max_math_nodes: 4096,
             max_math_depth: 64,
             max_support_features: 10_000,
@@ -159,6 +178,7 @@ mod tests {
         assert_eq!(limits.max_parts, 4096);
         assert_eq!(limits.max_block_nesting, 12);
         assert_eq!(limits.max_text_box_nesting, 5);
+        assert_eq!(limits.max_inline_nesting, 16);
         assert_eq!(limits.max_math_nodes, 4096);
         assert_eq!(limits.max_math_depth, 64);
         assert_eq!(limits.max_support_features, 10_000);

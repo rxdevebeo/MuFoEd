@@ -141,7 +141,7 @@ fn edge_line(
         ctx.document.theme.as_ref(),
         &ShapeColor {
             value: edge.color.clone(),
-            theme: edge.theme_color.clone(),
+            theme: edge.theme_color.as_deref().cloned(),
         },
     )
     .unwrap_or_else(|| "#000000".to_owned());

@@ -319,7 +319,8 @@ impl PartParser<'_> {
                                     "themeColor",
                                     "themeTint",
                                     "themeShade",
-                                );
+                                )
+                                .map(Box::new);
                             }
                             "strike" => {
                                 props.strike = parse_on_off_tristate(parser, &attrs, "w:strike");
@@ -539,7 +540,8 @@ impl PartParser<'_> {
             style: self.val_enum_owned(attrs, "w:border", BorderStyle::from_strict),
             size: self.measure_u16(attrs, "sz", "w:border").map(EighthsPoint),
             color: wml_attr(attrs, "color").map(Color::new),
-            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade"),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
+                .map(Box::new),
             space: self.measure_u16(attrs, "space", "w:border"),
             shadow: attr_on(attrs, "shadow"),
             frame: attr_on(attrs, "frame"),
@@ -552,14 +554,16 @@ impl PartParser<'_> {
             pattern: wml_attr(attrs, "val").map(|value| self.intern(value)),
             color: wml_attr(attrs, "color").map(Color::new),
             fill: wml_attr(attrs, "fill").map(Color::new),
-            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade"),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
+                .map(Box::new),
             theme_fill: theme_color_ref(
                 self,
                 attrs,
                 "themeFill",
                 "themeFillTint",
                 "themeFillShade",
-            ),
+            )
+            .map(Box::new),
         }
     }
 
@@ -1198,7 +1202,8 @@ impl PartParser<'_> {
                 .map(EighthsPoint),
             space: wml_attr(attrs, "space").and_then(|value| value.trim().parse::<u16>().ok()),
             color: wml_attr(attrs, "color").map(Color::new),
-            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade"),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
+                .map(Box::new),
             shadow: attr_on(attrs, "shadow"),
         }
     }

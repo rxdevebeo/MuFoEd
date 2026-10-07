@@ -417,7 +417,7 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
         if let Some(color) = &props.underline_color {
             xml.attr_w("color", color.as_str());
         }
-        write_theme_color_attrs(xml, props.underline_theme.as_ref(), ThemeAttrNames::Color);
+        write_theme_color_attrs(xml, props.underline_theme.as_deref(), ThemeAttrNames::Color);
         xml.end();
     }
     if !borders_empty(&props.borders) {
@@ -537,9 +537,9 @@ fn shading_element(xml: &mut XmlWriter, shading: &Shading) {
     xml.start("w:shd");
     xml.attr_w("val", shading.pattern.as_deref().unwrap_or("clear"));
     xml.attr_w_opt("color", shading.color.as_ref().map(Color::as_str));
-    write_theme_color_attrs(xml, shading.theme_color.as_ref(), ThemeAttrNames::Color);
+    write_theme_color_attrs(xml, shading.theme_color.as_deref(), ThemeAttrNames::Color);
     xml.attr_w_opt("fill", shading.fill.as_ref().map(Color::as_str));
-    write_theme_color_attrs(xml, shading.theme_fill.as_ref(), ThemeAttrNames::Fill);
+    write_theme_color_attrs(xml, shading.theme_fill.as_deref(), ThemeAttrNames::Fill);
     xml.end();
 }
 
@@ -658,7 +658,7 @@ fn write_border_attributes(xml: &mut XmlWriter, border: &Border) {
     xml.attr_w_opt("sz", border.size.map(|v| v.0));
     xml.attr_w_opt("space", border.space);
     xml.attr_w_opt("color", border.color.as_ref().map(Color::as_str));
-    write_theme_color_attrs(xml, border.theme_color.as_ref(), ThemeAttrNames::Color);
+    write_theme_color_attrs(xml, border.theme_color.as_deref(), ThemeAttrNames::Color);
     if border.shadow {
         xml.attr_w("shadow", "true");
     }
@@ -1341,7 +1341,7 @@ fn page_border_edge(xml: &mut XmlWriter, local: &str, border: &PageBorder) {
     // next open: a page border that silently lost its ink. The tint and shade
     // that go with `w:themeColor` are attributes for the same reason.
     xml.attr_w_opt("color", border.color.as_ref().map(Color::as_str));
-    write_theme_color_attrs(xml, border.theme_color.as_ref(), ThemeAttrNames::Color);
+    write_theme_color_attrs(xml, border.theme_color.as_deref(), ThemeAttrNames::Color);
     if border.shadow {
         xml.attr_w("shadow", "true");
     }

@@ -880,13 +880,39 @@ impl PartParser<'_> {
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "stretch" {
                             fill_rect = parser.parse_stretch_fill_rect()?;
                         } else {
+                            // `a:srcRect` and `a:tile` are not modelled: the fill
+                            // is painted stretched and uncropped.
+                            let location = parser.location();
                             parser.skip_element()?;
+                            parser.record(
+                                "a:fill",
+                                SupportStatus::Partial,
+                                Some(format!(
+                                    "blip fill child `{}` is not modelled; image is stretched",
+                                    name.local()
+                                )),
+                                Some(location),
+                            );
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of blip fill")),
                 }
+            }
+            // A fill with no embedded image part paints nothing. The model keeps
+            // the reference, but the loss must reach the support report.
+            let unresolved = blip.as_ref().is_none_or(|blip| blip.resolved.is_none());
+            if unresolved {
+                let location = blip
+                    .as_ref()
+                    .map_or_else(|| parser.location(), |blip| blip.location.clone());
+                parser.record(
+                    "a:fill",
+                    SupportStatus::Partial,
+                    Some("blip fill has no embedded image; painted as no fill".to_owned()),
+                    Some(location),
+                );
             }
             Ok(match blip {
                 Some(blip) => ShapeFill::Blip { blip, fill_rect },

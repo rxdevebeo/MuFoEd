@@ -324,6 +324,15 @@ impl PartParser<'_> {
         let kind = wml_attr(attrs, "type")
             .map(std::sync::Arc::from)
             .unwrap_or_else(|| std::sync::Arc::from(""));
+        // The condition is kept for the writer, but style resolution and
+        // layout do not apply it. That gap belongs in the support report.
+        let location = self.location();
+        self.record(
+            "w:tblStylePr",
+            SupportStatus::Partial,
+            Some("table style condition preserved; not applied in layout".to_owned()),
+            Some(location),
+        );
         self.nested(|parser| {
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
@@ -340,7 +349,19 @@ impl PartParser<'_> {
                                 "tblPr" => table = parser.parse_table_properties()?,
                                 "trPr" => row = parser.parse_row_properties()?,
                                 "tcPr" => cell = parser.parse_cell_properties()?,
-                                _ => parser.skip_element()?,
+                                _ => {
+                                    let location = parser.location();
+                                    parser.skip_element()?;
+                                    parser.record(
+                                        "w:tblStylePr",
+                                        SupportStatus::Partial,
+                                        Some(format!(
+                                            "table style condition child `{}` not modelled",
+                                            name.local()
+                                        )),
+                                        Some(location),
+                                    );
+                                }
                             }
                         } else {
                             parser.skip_element()?;

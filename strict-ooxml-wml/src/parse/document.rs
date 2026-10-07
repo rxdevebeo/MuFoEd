@@ -40,7 +40,7 @@ pub(crate) struct ParsedSdtPr {
     /// `w:showingPlcHdr`.
     pub showing_placeholder: bool,
     /// `w:rPr` of the placeholder, including half-point `w:sz`.
-    pub run_props: Option<RunProperties>,
+    pub run_props: Option<Box<RunProperties>>,
     /// `w:docPartObj/w:docPartGallery/@w:val`.
     pub doc_part_gallery: Option<Arc<str>>,
     /// `w:docPartObj/w:docPartUnique`.
@@ -331,11 +331,99 @@ impl PartParser<'_> {
         // `w:r` is the text-box path. Bookmarks, comments and the other arms
         // reserve their locals for the whole function in a debug build, so they
         // are not in this frame.
-        if inline_kind(name.local()) == InlineKind::Run {
-            out.push(Inline::Run(self.parse_run(attrs)?));
-            return Ok(());
+        match inline_kind(name.local()) {
+            InlineKind::Run => {
+                out.push(Inline::Run(self.parse_run(attrs)?));
+                Ok(())
+            }
+            kind if kind.is_wrapper() => self.parse_inline_wrapper(name, attrs, out),
+            _ => self.parse_inline_into_rest(name, attrs, out),
         }
-        self.parse_inline_into_rest(name, attrs, out)
+    }
+
+    /// One inline wrapper, counted against `max_inline_nesting`.
+    ///
+    /// Every wrapper recursion - `w:ins`/`w:del`/`w:moveTo`/`w:moveFrom`,
+    /// `w:hyperlink`, `w:fldSimple`, inline `w:sdt`, `w:dir`/`w:bdo`,
+    /// `w:customXml`/`w:smartTag` - goes through here, so the one counter covers
+    /// them in any mix. Past the budget the wrapper is skipped and recorded.
+    fn parse_inline_wrapper(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        out: &mut Vec<Inline>,
+    ) -> Result<()> {
+        let location = self.location();
+        let parsed =
+            self.nested_inline(|parser| parser.parse_inline_wrapper_body(name, attrs, out))?;
+        if parsed.is_none() {
+            self.record_inline_nesting(&feature_id_for(name), location);
+        }
+        Ok(())
+    }
+
+    /// The wrapper arms, apart from [`parse_inline_into_rest`](Self::parse_inline_into_rest)
+    /// so a chain of wrappers does not keep that match's locals on the stack
+    /// once per level.
+    fn parse_inline_wrapper_body(
+        &mut self,
+        name: &QName,
+        attrs: &[Attr],
+        out: &mut Vec<Inline>,
+    ) -> Result<()> {
+        let location = self.location();
+        match inline_kind(name.local()) {
+            InlineKind::Hyperlink => out.push(Inline::Hyperlink(self.parse_hyperlink(attrs)?)),
+            InlineKind::Field => out.push(Inline::Field(self.parse_fld_simple(attrs)?)),
+            InlineKind::Sdt => out.push(Inline::SdtInline(self.parse_sdt(false)?)),
+            InlineKind::Inserted
+            | InlineKind::Deleted
+            | InlineKind::MovedTo
+            | InlineKind::MovedFrom => {
+                let kind = RevisionKind::from_local(name.local()).unwrap_or(RevisionKind::Insert);
+                let revision = self.parse_revision_attrs(kind, attrs);
+                self.record(
+                    kind.feature_id(),
+                    SupportStatus::Supported,
+                    None,
+                    Some(location),
+                );
+                let mut children = self.parse_inline_children()?;
+                stamp_revision_on_inlines(&mut children, &revision);
+                out.append(&mut children);
+            }
+            InlineKind::Transparent => {
+                let feature = feature_id_for(name);
+                self.record(
+                    &feature,
+                    SupportStatus::Partial,
+                    Some("wrapper dropped, content kept".to_owned()),
+                    Some(location),
+                );
+                let mut children = self.parse_inline_children()?;
+                out.append(&mut children);
+            }
+            InlineKind::Dir | InlineKind::Bdo => {
+                let kind = if inline_kind(name.local()) == InlineKind::Dir {
+                    DirectionalKind::Dir
+                } else {
+                    DirectionalKind::Bdo
+                };
+                let val = wml_attr(attrs, "val")
+                    .and_then(DirectionalVal::from_strict)
+                    .unwrap_or(DirectionalVal::Ltr);
+                let inlines = self.parse_inline_children()?;
+                out.push(Inline::Directional(Directional {
+                    kind,
+                    val,
+                    inlines,
+                    location,
+                }));
+            }
+            // `is_wrapper` routes nothing else here.
+            _ => self.parse_inline_into_rest(name, attrs, out)?,
+        }
+        Ok(())
     }
 
     /// Paragraph children other than `w:r`.
@@ -351,8 +439,6 @@ impl PartParser<'_> {
         let location = self.location();
         match inline_kind(name.local()) {
             InlineKind::Run => out.push(Inline::Run(self.parse_run(attrs)?)),
-            InlineKind::Hyperlink => out.push(Inline::Hyperlink(self.parse_hyperlink(attrs)?)),
-            InlineKind::Field => out.push(Inline::Field(self.parse_fld_simple(attrs)?)),
             InlineKind::Drawing => out.push(Inline::Drawing(self.parse_drawing()?)),
             InlineKind::BookmarkStart => {
                 // Both attributes are read, and they are not the same attribute:
@@ -440,51 +526,17 @@ impl PartParser<'_> {
                 }
                 self.skip_element()?;
             }
-            InlineKind::Sdt => out.push(Inline::SdtInline(self.parse_sdt(false)?)),
-            InlineKind::Inserted
+            // Reached only if a caller bypasses `parse_inline_into`; still counted.
+            InlineKind::Hyperlink
+            | InlineKind::Field
+            | InlineKind::Sdt
+            | InlineKind::Inserted
             | InlineKind::Deleted
             | InlineKind::MovedTo
-            | InlineKind::MovedFrom => {
-                let kind = RevisionKind::from_local(name.local()).unwrap_or(RevisionKind::Insert);
-                let revision = self.parse_revision_attrs(kind, attrs);
-                self.record(
-                    kind.feature_id(),
-                    SupportStatus::Supported,
-                    None,
-                    Some(location),
-                );
-                let mut children = self.parse_inline_children()?;
-                stamp_revision_on_inlines(&mut children, &revision);
-                out.append(&mut children);
-            }
-            InlineKind::Transparent => {
-                let feature = feature_id_for(name);
-                self.record(
-                    &feature,
-                    SupportStatus::Partial,
-                    Some("wrapper dropped, content kept".to_owned()),
-                    Some(location),
-                );
-                let mut children = self.parse_inline_children()?;
-                out.append(&mut children);
-            }
-            InlineKind::Dir | InlineKind::Bdo => {
-                let kind = if inline_kind(name.local()) == InlineKind::Dir {
-                    DirectionalKind::Dir
-                } else {
-                    DirectionalKind::Bdo
-                };
-                let val = wml_attr(attrs, "val")
-                    .and_then(DirectionalVal::from_strict)
-                    .unwrap_or(DirectionalVal::Ltr);
-                let inlines = self.parse_inline_children()?;
-                out.push(Inline::Directional(Directional {
-                    kind,
-                    val,
-                    inlines,
-                    location,
-                }));
-            }
+            | InlineKind::MovedFrom
+            | InlineKind::Transparent
+            | InlineKind::Dir
+            | InlineKind::Bdo => self.parse_inline_wrapper(name, attrs, out)?,
             InlineKind::Ignored => self.skip_element()?,
             InlineKind::Opaque => {
                 self.record_foreign(name);
@@ -1008,14 +1060,14 @@ impl PartParser<'_> {
     /// Parses `w:sdtEndPr`, which holds the end marker's `w:rPr`.
     pub(crate) fn parse_sdt_end_properties(
         &mut self,
-    ) -> Result<Option<crate::model::props::RunProperties>> {
+    ) -> Result<Option<Box<crate::model::props::RunProperties>>> {
         self.nested(|parser| {
             let mut props = None;
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, .. } => {
                         if is_wml(&name) && name.local() == "rPr" {
-                            props = Some(parser.parse_run_properties()?);
+                            props = Some(Box::new(parser.parse_run_properties()?));
                         } else {
                             parser.skip_element()?;
                         }
@@ -1066,7 +1118,7 @@ impl PartParser<'_> {
                                 parsed.placeholder = parser.parse_sdt_placeholder()?;
                             }
                             "rPr" => {
-                                parsed.run_props = Some(parser.parse_run_properties()?);
+                                parsed.run_props = Some(Box::new(parser.parse_run_properties()?));
                             }
                             "docPartObj" => {
                                 let (gallery, unique) = parser.parse_doc_part_obj()?;
@@ -1217,12 +1269,21 @@ impl PartParser<'_> {
         attrs: &[Attr],
         out: &mut Vec<Inline>,
     ) -> Result<()> {
-        self.parse_mce_alternate_content(attrs, |parser, branch_attrs| {
-            let mut nested = parser.parse_inline_children_flat()?;
-            let _ = branch_attrs;
-            out.append(&mut nested);
-            Ok(())
-        })
+        // Counted as an inline wrapper: `mc:Choice` may hold another
+        // `mc:AlternateContent`, which recurses the same way `w:ins` does.
+        let location = self.location();
+        let parsed = self.nested_inline(|parser| {
+            parser.parse_mce_alternate_content(attrs, |parser, branch_attrs| {
+                let mut nested = parser.parse_inline_children_flat()?;
+                let _ = branch_attrs;
+                out.append(&mut nested);
+                Ok(())
+            })
+        })?;
+        if parsed.is_none() {
+            self.record_inline_nesting("mc:AlternateContent", location);
+        }
+        Ok(())
     }
 
     /// Resolves `mc:AlternateContent` into run content (AUD-50).

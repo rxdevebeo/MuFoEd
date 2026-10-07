@@ -112,9 +112,9 @@ pub struct SdtProperties {
     /// Whether the control shows an empty placeholder.
     pub showing_placeholder: bool,
     /// Placeholder run properties (`w:sdtPr/w:rPr`), including `w:sz`.
-    pub run_props: Option<RunProperties>,
+    pub run_props: Option<Box<RunProperties>>,
     /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
-    pub end_run_props: Option<RunProperties>,
+    pub end_run_props: Option<Box<RunProperties>>,
     /// The source had `w:sdtEndPr`, including when it carried no `w:rPr`.
     pub has_end_pr: bool,
     /// Building-block gallery (`w:docPartObj/w:docPartGallery/@w:val`).
@@ -139,9 +139,9 @@ pub struct SdtContainer {
     /// Whether the control shows an empty placeholder.
     pub showing_placeholder: bool,
     /// Placeholder run properties (`w:sdtPr/w:rPr`), including `w:sz`.
-    pub run_props: Option<RunProperties>,
+    pub run_props: Option<Box<RunProperties>>,
     /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
-    pub end_run_props: Option<RunProperties>,
+    pub end_run_props: Option<Box<RunProperties>>,
     /// The source had `w:sdtEndPr`, including when it carried no `w:rPr`.
     pub has_end_pr: bool,
     /// Building-block gallery (`w:docPartObj/w:docPartGallery/@w:val`).
