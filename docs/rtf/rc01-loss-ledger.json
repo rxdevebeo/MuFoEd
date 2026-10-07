@@ -4,10 +4,10 @@
   "claim": "exact_bounded_per_feature_totals_not_semantic_root_cause_or_approved_expectations",
   "baseline": {
     "branch": "codex/rtf-import-integrated",
-    "commit": "62dec410252eea7fd68606366e88df3dd4e9c86e",
+    "commit": "1c14d0b0804b3f196ecdca9603ddd0b41afba780",
     "worktree_dirty_for_feature_count_instrumentation": false,
     "corpus_manifest_sha256": "0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f",
-    "cli_sha256": "6a7f9b04463f9bf7eb9a04cedb8a46c8c090e4dfebae19eae2be74d0c6193557",
+    "cli_sha256": "1715d2780068640552ad9cb6c16bf8cb49a8e6d17b4e0d392fb11ac270012d1d",
     "options": [
       "--wps-text",
       "--allow-unsigned-unicode",
@@ -17,13 +17,13 @@
   },
   "summary": {
     "measured_documents": 100,
-    "import_loss_events": 976909,
+    "import_loss_events": 701940,
     "import_info_events": 95,
-    "feature_loss_events": 976909,
+    "feature_loss_events": 701940,
     "feature_info_events": 95,
     "unattributed_loss_events": 0,
     "unattributed_info_events": 0,
-    "distinct_features": 456,
+    "distinct_features": 460,
     "documents_with_truncated_details": 8,
     "documents_with_truncated_feature_counts": 0,
     "writer_loss_events": 38,
@@ -41,9 +41,9 @@
     },
     {
       "family": "control",
-      "loss_count": 933450,
+      "loss_count": 658433,
       "info_count": 0,
-      "distinct_features": 334,
+      "distinct_features": 333,
       "document_count": 100
     },
     {
@@ -143,6 +143,13 @@
       "info_count": 33,
       "distinct_features": 1,
       "document_count": 33
+    },
+    {
+      "family": "undefined-font",
+      "loss_count": 48,
+      "info_count": 0,
+      "distinct_features": 5,
+      "document_count": 5
     },
     {
       "family": "unicode",
@@ -349,38 +356,6 @@
         "075",
         "078",
         "081",
-        "083",
-        "085",
-        "087",
-        "098"
-      ]
-    },
-    {
-      "feature": "control:af",
-      "loss_count": 275017,
-      "info_count": 0,
-      "document_ids": [
-        "002",
-        "003",
-        "004",
-        "005",
-        "008",
-        "015",
-        "017",
-        "018",
-        "019",
-        "021",
-        "022",
-        "050",
-        "051",
-        "053",
-        "055",
-        "056",
-        "058",
-        "059",
-        "064",
-        "075",
-        "078",
         "083",
         "085",
         "087",
@@ -6878,6 +6853,48 @@
       ]
     },
     {
+      "feature": "undefined-font:10",
+      "loss_count": 1,
+      "info_count": 0,
+      "document_ids": [
+        "058"
+      ]
+    },
+    {
+      "feature": "undefined-font:25",
+      "loss_count": 2,
+      "info_count": 0,
+      "document_ids": [
+        "005",
+        "059"
+      ]
+    },
+    {
+      "feature": "undefined-font:26",
+      "loss_count": 12,
+      "info_count": 0,
+      "document_ids": [
+        "005",
+        "059"
+      ]
+    },
+    {
+      "feature": "undefined-font:6",
+      "loss_count": 32,
+      "info_count": 0,
+      "document_ids": [
+        "056"
+      ]
+    },
+    {
+      "feature": "undefined-font:9",
+      "loss_count": 1,
+      "info_count": 0,
+      "document_ids": [
+        "085"
+      ]
+    },
+    {
       "feature": "unicode:unsigned-parameter",
       "loss_count": 0,
       "info_count": 14,
@@ -6950,18 +6967,6 @@
     }
   ],
   "triage_candidates": [
-    {
-      "feature": "control:af",
-      "loss_count": 275017,
-      "document_count": 25,
-      "candidate_cards": [
-        "RC02",
-        "RC03",
-        "RC04",
-        "RC09"
-      ],
-      "claim": "ranked by observed count; feature names alone do not confirm semantic impact"
-    },
     {
       "feature": "control:loch",
       "loss_count": 84381,
@@ -7309,6 +7314,18 @@
         "RC09"
       ],
       "claim": "ranked by observed count; feature names alone do not confirm semantic impact"
+    },
+    {
+      "feature": "wps:leading-group-line-ending",
+      "loss_count": 2541,
+      "document_count": 4,
+      "candidate_cards": [
+        "RC02",
+        "RC03",
+        "RC04",
+        "RC09"
+      ],
+      "claim": "ranked by observed count; feature names alone do not confirm semantic impact"
     }
   ],
   "interpretation": [
@@ -7324,7 +7341,7 @@
       "source_filename": "001_doc.rtf",
       "source_sha256": "29c8cc9cf2d80f2bf04c57324746a201b39ee1513fa165aaeb08c562c530c1a5",
       "output_sha256": "95c0b8d5d9bd36359df6a07d09c00868e823520ee1645069d545776f6f9fcc83",
-      "report_sha256": "aef7382b7d7d2543778c6e5a64266f48fb337bad23f8a3fcd68be8e6cf1b641d",
+      "report_sha256": "2ac6007a88b60c1583ec79a459dc536a26072b9cf83a8b66a3534df573def922",
       "import_loss_count": 6,
       "import_info_count": 3,
       "details_truncated": false,
@@ -7374,9 +7391,9 @@
       "id": "002",
       "source_filename": "002_Buytendijk_HetA.rtf",
       "source_sha256": "78b5f7a9efb8a445cc72078b26bb26ac320263f012e3ef4de3f9815816930951",
-      "output_sha256": "43ad0bf2fd68ebb187fdf567e1dead7fa07dfac49c7fd841fbfb49e9be7e20df",
-      "report_sha256": "3250688a92acbf0ae655676e40d7735b062006627710c259d2ece71effb77609",
-      "import_loss_count": 74781,
+      "output_sha256": "9e88e2b59973b25e8e9d3e1b83fa68d13302a78996776c0314cb95f59bb2a8ec",
+      "report_sha256": "41e4a08bd14e134b4797a76b65a0a87e0da2d69b3a52cebb5ba4af7985b54e5f",
+      "import_loss_count": 60527,
       "import_info_count": 1,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -7402,10 +7419,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 14254
         },
         "control:alang": {
           "info_count": 0,
@@ -8091,9 +8104,9 @@
       "id": "003",
       "source_filename": "003_Al_Dios_de_mi_alegria_y_de_mi_jubilo_Sl_43_4_Pal.rtf",
       "source_sha256": "7c1d5815a6e8c3b6bb121a623fcedc1e55e70908ad599bc8556775b4cf16163b",
-      "output_sha256": "57295e60f0c24a20d0ebea4e497a4e17b938af55824dbb6174e6e0ae0c59dbf3",
-      "report_sha256": "edf0ec64c5783325733d9ede705116e1413207157120c2d128cee1ed376786b5",
-      "import_loss_count": 1094,
+      "output_sha256": "d075d56ad554b1cd1c3c17175bd152bc5fe501d6bda78dce8b979bb9cdd151ab",
+      "report_sha256": "35354f88b1432675cdbac7de66387343e654425dc0187710fbadfe2dff4ee40e",
+      "import_loss_count": 961,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -8119,10 +8132,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 133
         },
         "control:alang": {
           "info_count": 0,
@@ -8528,9 +8537,9 @@
       "id": "004",
       "source_filename": "004_LarsLarsensBlogg.rtf",
       "source_sha256": "77951bb8441057e29e6f6a88cc73dcc3dcce0c9b2e5ca3606d62f9264b0bdbc8",
-      "output_sha256": "553dc085336433896fa10695279462a52728313bb72b44acbae0c8503904e1c3",
-      "report_sha256": "755c54358c91852ade0ab0d395e4471dd4c2190b4d577e6712e34547b52d0e6d",
-      "import_loss_count": 70381,
+      "output_sha256": "95b4abb9ef2802334a832068c0634fa3fa1d47a3220333005b6202b7defc022b",
+      "report_sha256": "421db55847c05decf9ff4b59349d01fe021a65b11d024442c8db065556d95ea0",
+      "import_loss_count": 59623,
       "import_info_count": 2,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -8568,10 +8577,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 10758
         },
         "control:alang": {
           "info_count": 0,
@@ -9112,18 +9117,14 @@
       "source_filename": "005_RomaniaSiSfarsitulEuropei-AmintiriDi-MihailSturd.rtf",
       "source_sha256": "5de12c802716ea2a00545e9a2f23b5d655ecb59376a031c56313111b8d1ac1d7",
       "output_sha256": "8bcfce7b2be1c30776d9ecb20672857f366156f540238e5fd976d33f5ae12131",
-      "report_sha256": "877bdd83e300bba236dfbeccc714a64c7c3c336e6cf88075c283adad202c8411",
-      "import_loss_count": 5159,
+      "report_sha256": "a156b3fbcd424f032cac97e141af3140a9518c2a08c7a9288b0330de0542a27f",
+      "import_loss_count": 5147,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
       "unattributed_loss_count": 0,
       "unattributed_info_count": 0,
       "feature_counts": {
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 19
-        },
         "control:alang": {
           "info_count": 0,
           "loss_count": 7
@@ -9208,6 +9209,14 @@
           "info_count": 0,
           "loss_count": 1
         },
+        "undefined-font:25": {
+          "info_count": 0,
+          "loss_count": 1
+        },
+        "undefined-font:26": {
+          "info_count": 0,
+          "loss_count": 6
+        },
         "wps:header-whitespace:dropped": {
           "info_count": 0,
           "loss_count": 1
@@ -9225,7 +9234,7 @@
       "source_filename": "006_E-Book_-_Martial_Arts_Kenjutsu_-_Shinkage_Ryu_Ia.rtf",
       "source_sha256": "4e2b6eed8e09c26a7160c09cd32a8f1e9cd469913995c2b26242b2ee56b4a47e",
       "output_sha256": "6027981aa37dac3d8442e8b29223202903cbf3d87c6c205399c63958c4aeba84",
-      "report_sha256": "c1c04fc32f0708065b6ffeed32347cd90370178a865325f2748d1f6f445feba6",
+      "report_sha256": "f9d4f556452c1607d0125e5f8227756fce1b21402bed3a05a8a7b0827d1d42c6",
       "import_loss_count": 5,
       "import_info_count": 14,
       "details_truncated": false,
@@ -9268,7 +9277,7 @@
       "source_filename": "007_Ujjvala_Nilamani_01_Three_Tika_-_Sanskrit_Texts_.rtf",
       "source_sha256": "78d952969b8d8db9ff1d6ed8bc879e54d4adcb73dec41c77e13abcb788c7618a",
       "output_sha256": "25d17d564a9d6d58f3e83b041d792fb83391e7e4bf252a2d573da03724636771",
-      "report_sha256": "26e2d77c40b090075d50f7b8340fef77f0912531e4ac51db17e3b7390f1850c0",
+      "report_sha256": "f516162e8a28771d896d31c7e610eb39544d7f234e315070b50c572113937ac1",
       "import_loss_count": 2,
       "import_info_count": 0,
       "details_truncated": false,
@@ -9292,9 +9301,9 @@
       "id": "008",
       "source_filename": "008_NewRichTextDocument.rtf",
       "source_sha256": "a79726005cb8008db506f28342a9a6a5fdc000dc2cb93906dccd01e67b0555ac",
-      "output_sha256": "c4122ab9fbff24fc296faa19bcdae342b9dc3fa6982dfd1669c4e3417a7093e5",
-      "report_sha256": "60ee244abf977018bbf04669772a9535d671813ca9dbc8e53d2d06b4669c3cb9",
-      "import_loss_count": 10719,
+      "output_sha256": "df02751bfe4f04f61bc616cc1b94b06cc041f534b5121499a9f28066c236a9f3",
+      "report_sha256": "3db683ddaba87c9fe0c658f42916f377dea4470a6e81e5ebb9f532435eeba83d",
+      "import_loss_count": 10457,
       "import_info_count": 1,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -9320,10 +9329,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 262
         },
         "control:alang": {
           "info_count": 0,
@@ -9890,7 +9895,7 @@
       "source_filename": "009_ein_freier_raum_fuer_freie_wesen_weder_staat_noc.rtf",
       "source_sha256": "c0ad6ba5dae8b12b15f9f3ad0706c454b2e557a0d53463d6cdeae72fb7172219",
       "output_sha256": "6c06ef20a11a292c4ff6db76410242f208295c103d4c47b77f670c629b194873",
-      "report_sha256": "a621050bcc7fb774b35c86f18b278791d5e8e79c0dc44821dca69f40ba58805e",
+      "report_sha256": "1cc9652b5c5ca1b303e58477b2f30d3845f25154e92be2ee003e2eebdfce89e6",
       "import_loss_count": 75,
       "import_info_count": 0,
       "details_truncated": false,
@@ -9967,7 +9972,7 @@
       "source_filename": "010_Arabic_Book_of_the_Adept_Eng-ArabVerses_rtf_word.rtf",
       "source_sha256": "e1f97230a145b26bb0cb0961af6e15cdfdaf6347c2ec99f1c6dc54d7237a4a2c",
       "output_sha256": "f3b6b6f79e77f298f4621a504053d0f3ef761c7d2236e670b6ea6a84624be8a2",
-      "report_sha256": "42563ac6f7961d8175ec4e25d9171b4875944a2afc7474a4756d8007e3f4784c",
+      "report_sha256": "9188529860e848f6d5c0998d1a286b9fbc2b6c61bf8fd7cfcb51931eea9fd025",
       "import_loss_count": 3069,
       "import_info_count": 1,
       "details_truncated": false,
@@ -10016,7 +10021,7 @@
       "source_filename": "011_Tamil_to_English_Grammar.rtf",
       "source_sha256": "f7d767093e5afb2121a84d079dd6ceb6b495d233cdc3b4dfb11c73d92278b83d",
       "output_sha256": "fccf6bead22863e3b8f700df32b56314046f2a0d424733c12d310c24606f6ce7",
-      "report_sha256": "cd489b744613885dcbb96ea292d888ae57963f546e3f2ba6188839259bc40ec6",
+      "report_sha256": "7225d72179065b8e1e0bf84a285bb121df411038ce773036ee3b8ec41c2fb30f",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -10053,7 +10058,7 @@
       "source_filename": "012_doc.rtf",
       "source_sha256": "eb28f4b47b7e6b81c72ac24ed2be28edbd6700abad0b65377220b0567c42ea83",
       "output_sha256": "87ea5484d963156f1544896377fa3fa39d51baf0ae19a67ec21ae5a381b45aa9",
-      "report_sha256": "470892138860acecdd780019d4ece355c8c50154ba9aa67c00fc63c5bfd11cf8",
+      "report_sha256": "66823a401c8012d2f3ad0a3d39c6f1e6eb6ca2d3a3b3f6ef29891ba337cf5fd3",
       "import_loss_count": 6,
       "import_info_count": 1,
       "details_truncated": false,
@@ -10090,7 +10095,7 @@
       "source_filename": "013_COPYING.rtf",
       "source_sha256": "e2f91967b3d5e2d27c2c1e8ea3ca362d9ea6e39ebfb4732e74668155cd712af3",
       "output_sha256": "c03a59628f6e6c5e92b3cb2118cbbe6c2555446c08a413be5cea8d3538fe6532",
-      "report_sha256": "7b137060a19f17ec490e1b41b876a5482a45178f26bc0192d0e6d5a9c9144277",
+      "report_sha256": "701a56d99a5f2824e338284f0d281037f589ea5ca5faefa1ca75869496f9b4bf",
       "import_loss_count": 13,
       "import_info_count": 0,
       "details_truncated": false,
@@ -10143,7 +10148,7 @@
       "source_filename": "014_Benedetti_Mario_-_El_Cesped_Y_Otros_Relatos.rtf",
       "source_sha256": "ac564969b065f2e3d5c7aaa091eae6cd355609556b7da9131613c8f7069cf705",
       "output_sha256": "e095883013f588caf253ce13ac00089104735ef5fad52a6a052a2fbadc3ff1fc",
-      "report_sha256": "11c412f92313cdc768703a1a47ca3db401c7190ef9082641b2cc7724f19a3354",
+      "report_sha256": "6dbaed58983eb5285e69d6969ec3fc315032a3094255a9593f439172d4de11d7",
       "import_loss_count": 3804,
       "import_info_count": 1,
       "details_truncated": false,
@@ -10443,9 +10448,9 @@
       "id": "015",
       "source_filename": "015_doc.rtf",
       "source_sha256": "5705ec1319a2821c7c2a27e854f40895f975af67abefebbc4abf593e9160f340",
-      "output_sha256": "c8b2a3489eff2408000fc96ae2ed64de67118164bf8c6cfdb9f16db65a32d7a7",
-      "report_sha256": "61922da73a3a565d42dbb91367dab7cab03618fdd9ff343769ad99e6c3455d6f",
-      "import_loss_count": 5638,
+      "output_sha256": "c0f211d9747fa26efcb0889cdda4e6c0ee6842dd960691aebdb3695b8f2c9893",
+      "report_sha256": "3876f8528ce864459dcde0d472d9d87d7dabe780dbeda0ea868308bc8e252179",
+      "import_loss_count": 5469,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -10471,10 +10476,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 169
         },
         "control:alang": {
           "info_count": 0,
@@ -11273,7 +11274,7 @@
       "source_filename": "016_BerlanA_Emancipation.rtf",
       "source_sha256": "5b90a62f6bb66eb6b617770b37943c7b0bcf194247ac5517398a5f05620f0c51",
       "output_sha256": "6c487af1520f66711ebdec205ed42392d8ed2d5a2296522108127ba77203f16c",
-      "report_sha256": "a370d828f06bdc5a8b05a908ad51e4598b1ab2f8ae379c28147cbd6bbd2c6384",
+      "report_sha256": "d7d1e0c55526e88092bcf0cbf4b9f02e8804e94dfa7eec85da9bd4d03ea9fd50",
       "import_loss_count": 2892,
       "import_info_count": 1,
       "details_truncated": false,
@@ -11669,9 +11670,9 @@
       "id": "017",
       "source_filename": "017_A_Student_by_George.rtf",
       "source_sha256": "838ba098eee0cb0a9b4f33e8f61d1ff8a36d3aee0530dade906c5c7dc0e15238",
-      "output_sha256": "52da3c4e2dba669773b9c535e11792db31f1ade9f689b5540baf8ccf2a0f5759",
-      "report_sha256": "16b7e19f7322d89603c3bcb3980bbea7522fa0ca251e3d253ee94cac8be1d2e0",
-      "import_loss_count": 4837,
+      "output_sha256": "bdeee4c69a59268cf7e3f18433005cd0395cb8218f15839c0c4bb8e44b4e0150",
+      "report_sha256": "c09874c9809c7ae94002b7f808568bc816b2eb24ba01c7da9eba43d4eb1777d6",
+      "import_loss_count": 3268,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -11697,10 +11698,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 1569
         },
         "control:alang": {
           "info_count": 0,
@@ -12154,9 +12151,9 @@
       "id": "018",
       "source_filename": "018_EKUSH-FINAL.rtf",
       "source_sha256": "43ebd439a2f822e4fb2d6d163527851e4389aaeb443554f0eb6f6e6f0bf163a7",
-      "output_sha256": "48529e780ff21a8f78d5807d4c962025acc40d5ae125ae9032045c30989de03c",
-      "report_sha256": "36b4c6693679e904e76c2524a725351cc1df2acb6216fe5df6f9ceffaa483d5f",
-      "import_loss_count": 997,
+      "output_sha256": "794299bc92e850a8bc62043c10fca3068621e664a9f21e9d432a5c290717cfe0",
+      "report_sha256": "6be47fb4b8ca60f7767c8eb26dd2ff43f98bec49208b476bc939c73ca44de4cd",
+      "import_loss_count": 871,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -12182,10 +12179,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 126
         },
         "control:afelev": {
           "info_count": 0,
@@ -12812,8 +12805,8 @@
       "source_filename": "019_mariaAntonietaCastilloVignolo.rtf",
       "source_sha256": "84e353e1bbc426de151049727030501f633adf6dce1a480818ebfc7323305dfc",
       "output_sha256": "ad468bd786824d748d23f5da2dcdc55e819a0ffd512b885c5853e56b112083cf",
-      "report_sha256": "dbfbbe1d58e89a3b89caf3ff8b9c84fae74a461eb5188591178571cc4cb4e403",
-      "import_loss_count": 3826,
+      "report_sha256": "3b16e56b767fc75ae73e700efc5392e2e5808c03ea79240a19cf0d70abb57c99",
+      "import_loss_count": 2821,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -12839,10 +12832,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 1005
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -13257,7 +13246,7 @@
       "source_filename": "020_ascendepermawandelfreundlichmenschtierpflanzmoeg.rtf",
       "source_sha256": "86398ae17751bc5e3be66cea782255cc6e333c50581da1da30e269dccca35a63",
       "output_sha256": "593b03c5f72c9048c9f6cbfc7a45811c3a6ab6f51463cdcd4974712fd25118cb",
-      "report_sha256": "2cf866d7519a3db0b15e8972b3efe891e8a22443a55cd85c8a78392247e187b9",
+      "report_sha256": "71b60cac49ff721787dbb1d5880825781fa06c64cee7b0ee14fd4ee51110b770",
       "import_loss_count": 38,
       "import_info_count": 0,
       "details_truncated": false,
@@ -13325,9 +13314,9 @@
       "id": "021",
       "source_filename": "021_descarga.rtf",
       "source_sha256": "742c221dc874045187a5b1ae73a2fc9e41f4926d267b5e036ee2705cf463a86c",
-      "output_sha256": "2c2fc77a2a58411d527c3e97b33441f15c2d6015d311daf52e51f43801f2e758",
-      "report_sha256": "5880004ef133e7c0f0ffb60c74b92861538300c40a07dde50333ab4feec08944",
-      "import_loss_count": 617,
+      "output_sha256": "c2c489fc9876233e50ce17c6affd7cd2d5798ba96d7f301f236869d111da1add",
+      "report_sha256": "e721ef3b26ae08126ee5d1981c842dec30d672b84b3254eeb9802171e684dbfe",
+      "import_loss_count": 515,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -13365,10 +13354,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 102
         },
         "control:alang": {
           "info_count": 0,
@@ -13935,8 +13920,8 @@
       "source_filename": "022_Mohanty_s_books_to_get.rtf",
       "source_sha256": "066e4332fed49304fa745ca610c2aa33c60b6475b2676ce86783f31d09d94aa4",
       "output_sha256": "3c30b11c2d6a0cfff0e26623bb87d50928b413fdd850011eb5ebc7cce7886f12",
-      "report_sha256": "0cd1523ed79eab52f45bb99133b6b038cf346df69bf31fb1b79e74c3506d9c6d",
-      "import_loss_count": 617,
+      "report_sha256": "558c64ac8081080922c8597fe55c486c411ccae0533d3521d112020f57573880",
+      "import_loss_count": 565,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -13962,10 +13947,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 52
         },
         "control:alang": {
           "info_count": 0,
@@ -14488,7 +14469,7 @@
       "source_filename": "023_doc.rtf",
       "source_sha256": "7c1e0e9aeb519cf443d33e622180510576757b8be24af548b7c4ae9ef8507f88",
       "output_sha256": "d3bf04dfcb54cc98466586c7cd32c7fbd67ddc7456239e8eebd97feb678d9625",
-      "report_sha256": "25b18ef05d827a88700ec99dbfba542cbfe7d1b06acf49a3d7547a7bf3509012",
+      "report_sha256": "cb79cbee8fe9f4445903d3ba27440f591016f42ec878f1ffbc072fbdfbbca311",
       "import_loss_count": 9,
       "import_info_count": 0,
       "details_truncated": false,
@@ -14541,7 +14522,7 @@
       "source_filename": "024_EULA.rtf",
       "source_sha256": "f515a1fe7b85350df9d265587f9ed9fefbf9a16981166460aec72af6814bde6b",
       "output_sha256": "f588f6155681156c38e0649a79213f14835cfe077775fbf9546cb3b21aa3d9a7",
-      "report_sha256": "722738867e1e5e5a962c740e919bde7e575e6be8f00a9226ee441b60a308bb3b",
+      "report_sha256": "70510b599a822efa4fde0ecf7dabf4fdacca124648c914b9c7b6f9aeae16fb67",
       "import_loss_count": 42,
       "import_info_count": 1,
       "details_truncated": false,
@@ -14598,7 +14579,7 @@
       "source_filename": "025_Historia_Antonia.rtf",
       "source_sha256": "1ee972c31be65baf6227cf423295b7a3d0f4ee1d0caed1004c61d6ca0ce230ba",
       "output_sha256": "0ade76cf32a33d61c8a0c6fd14a7f4b46407c8f1f9925101fb7dcb4f33a3fad8",
-      "report_sha256": "d90db74e35893613620e9e96aba5f68ba1767f20ebb1fbe308a95cb3fff6e96e",
+      "report_sha256": "1d3b2300b3db3dfc98c6182eb1b348999d03df9edb402d80a493405d32cd06c5",
       "import_loss_count": 9,
       "import_info_count": 1,
       "details_truncated": false,
@@ -14643,7 +14624,7 @@
       "source_filename": "026_fuefezwaenzigschtetegscht.rtf",
       "source_sha256": "12cd0e685822011c63bea5d5084438db21cedf2b6239e4d783e57b5412cdf043",
       "output_sha256": "b09deb305064be302185041d377c0690a0c03e7f7c8c903a77bce8a4c37196dd",
-      "report_sha256": "51d762dc9197197ab7d384233a9cbc5072cf332851881faa3e0403b50e7857d2",
+      "report_sha256": "839a5abe2051b0ab2486dd41eeb5ddec720d289e6ccefd7299f9bd1bdab39020",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -14688,7 +14669,7 @@
       "source_filename": "027_szweiezwaenzigtschezwaetschgeli.rtf",
       "source_sha256": "59f6dba020bc95655d620ecded981137b700bc28ba7f41c37a071dabbe77f2cb",
       "output_sha256": "cc411fbb7fc7efeae446ebb082b2658ccac4663453ffb2b9881bcb9fbd25a38e",
-      "report_sha256": "255bd3a9441b15b42224c4df0886415fb2464e9e977f1d6bf1ee4fac12b8022f",
+      "report_sha256": "a9cfb2c1b2b7ec2bc0ec5f909a809563ab87d9e2099b702fd1a287fb4689084f",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -14733,7 +14714,7 @@
       "source_filename": "028_Peter_Michael_Braunwarth_Publikationsliste.rtf",
       "source_sha256": "ae61f5098491b957642f996ce2c9e32c73684670234de27a3a03dff3c6f5dbd6",
       "output_sha256": "43e239c0ec4c577d73c9f2f014dbea8e6fc281f1bb239bf6e4474392aae5820c",
-      "report_sha256": "fbf3f124e95c8e9eb001d688f30eb01ec69530aaff76e205507a9bb3f975e33e",
+      "report_sha256": "85811b314001842a8a1b5ba4d96cd19abb0b5b56a12df643ab0e8e398040b461",
       "import_loss_count": 27,
       "import_info_count": 1,
       "details_truncated": false,
@@ -14798,7 +14779,7 @@
       "source_filename": "029_derviertimaerz2018.rtf",
       "source_sha256": "98198a0b2ff85c869c4114b309b299e27c5c8a9ebf4c5aacda06918827c83eb3",
       "output_sha256": "c20cce15ada67d59ded513848be18a60e1b3feced422ff30ad86670e3bcfcb01",
-      "report_sha256": "a8644d38b5803e2bc6b8edf9748f89341ff22cc8566d96ad37d0d629a18da2ee",
+      "report_sha256": "607eb8aa3a5d52b01cd344930e430c5b3e27c4ddc1e42bdec01a9134d038460f",
       "import_loss_count": 11,
       "import_info_count": 0,
       "details_truncated": false,
@@ -14843,7 +14824,7 @@
       "source_filename": "030_5.rtf",
       "source_sha256": "0e1795317eabc07e1bf0efeb4ef85b584a89dc74cc065e87d6ce32072490f0b0",
       "output_sha256": "04c32a9aba8c11fd7bd39d8cf45d3ea9c73eb5c18be9979cabedf5b3b852a277",
-      "report_sha256": "a827926de79122aa32ba203597d8908f38420fd1f0d020426a5dc37d67eed396",
+      "report_sha256": "a2957d49288b661c9722b201559a5acc83504f54768bad8ee802dab2158e9687",
       "import_loss_count": 28,
       "import_info_count": 0,
       "details_truncated": false,
@@ -14896,7 +14877,7 @@
       "source_filename": "031_doc.rtf",
       "source_sha256": "d3916ea1839c00dc433c4b48eff28036082a7b49400395c707050ba94a2ef1a5",
       "output_sha256": "5ac5d284bc05f36b1c9557a58bfdb3e3c3e14d9906560df4eca0ca3579e5bf2c",
-      "report_sha256": "59fbd5879d30a9f37aab282f270000c09fd5bd5758ec4e91734e23010b5129bb",
+      "report_sha256": "9aafb06959817fc3d693c965a3c5c9f7980d57f6067b3446a762de2f71fb5eb4",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -14929,7 +14910,7 @@
       "source_filename": "032_02_laburpena.SakabanaketaNafarroan.rtf",
       "source_sha256": "60454e0318f857dddff32c6a96251dd5c713855fd3585eab5457da7ce807026c",
       "output_sha256": "f9f1af6339feeee56497e62d90561a482c9370bd40fa715ef15fd03d94b87395",
-      "report_sha256": "96e3d2e0a68c3e112d18434606f29e40676868ce4cf623dab2a45476950fbed3",
+      "report_sha256": "f316e905e69961e2663c860c3eb860f58401cb1e1f0e6c7e7a6ce20b047e4037",
       "import_loss_count": 41,
       "import_info_count": 1,
       "details_truncated": false,
@@ -14986,7 +14967,7 @@
       "source_filename": "033_SanchezCurbelo.rtf",
       "source_sha256": "a8ec1dabe44783cd99ddb564f77a868b687b6bf3796159bcf0e95be35a7e9010",
       "output_sha256": "2ba4daeb9e0cac0724cb7177b72f99f2c12cf003d5a78b139d87693a8a8c3497",
-      "report_sha256": "ad02a85ba5473f2ea599bdd8237c4c9a68fa710daaa2d01e246a3cf848af6df1",
+      "report_sha256": "937abe455ac9c6e2e750b6a8cb37ba5d017a8640161049b7ad6257aecd9c5385",
       "import_loss_count": 15,
       "import_info_count": 0,
       "details_truncated": false,
@@ -15047,7 +15028,7 @@
       "source_filename": "034_Tracks_-_2_CDs.rtf",
       "source_sha256": "f4b7231e4b293f37d64569308b7c99f2ca6ac4d1cb039e62e044c7bbc6a8db9d",
       "output_sha256": "e935911b28bd20cef47ef2cab4f59f00f613eef82ed93f17cb29e31d21f2d2fc",
-      "report_sha256": "5c77958da0acfb91495246100f98c2fed9f32a5815263dd74f899d97b86f6145",
+      "report_sha256": "29f028103988a0b39926a0f587e20c2e6ffcf312f93f1f65c485797ab672915c",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15084,7 +15065,7 @@
       "source_filename": "035_doc.rtf",
       "source_sha256": "f3c28d93dd23e73149c67bb2ca0f308c34bf5a3fcdcf57ca011f3746f46a6f00",
       "output_sha256": "a0606312c0a11b7166970e04c2db54ec07fea9eb7e145956d871fdf74b7356c3",
-      "report_sha256": "742863fdff8e8f19b64509f1d626fe1ae5b38a7dbaa163b579c9a8c5e713f01b",
+      "report_sha256": "dd22a7761742e960617b8462dbafd801e70cef2e3e1ff491b07fd0f76af40e1d",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15125,7 +15106,7 @@
       "source_filename": "036_Tarea_de_Kim_1.rtf",
       "source_sha256": "ebbd97e3be939dbb2cf88197526c786eec38f8188be2d61c40c2a8572550ea48",
       "output_sha256": "c84553dca7f205412d67c9a6209d05406f5ebd26be7bf763cdcc67a7551288b3",
-      "report_sha256": "8aeaea99b70f704cbfc4065782a22dd9d60ae372f55e6d74fef32af0eb975983",
+      "report_sha256": "22869fb3dc9bdee02f2b69575b97c508baf7fc9c665824ee978e0a5f6bfecd3e",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15166,7 +15147,7 @@
       "source_filename": "037_essay.rtf",
       "source_sha256": "3d77e5c6e618268767760c89db1458b120f9cbccdf64f5a3a3ca99d5c5b03dd9",
       "output_sha256": "cec74daa0135eb7f1ca99535d8128d4d08d42f51d0297a0288727540ad855006",
-      "report_sha256": "5a355f531204d6570eefb28af2f13c92de6d2526d2a6edb9ccc780f1a2442722",
+      "report_sha256": "e4a1603c7fbf2556365c89eac474f165312ee48453a0419393166937f1e8d815",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15203,7 +15184,7 @@
       "source_filename": "038_Leonardo_Da_Vinci_-_Simplicity_is_The_ultimate_s.rtf",
       "source_sha256": "389bed7cf268e7ad6ab835b6a720203605cd2e458b0b62b40e5fc956dc4e8de3",
       "output_sha256": "4e32b7c281e97f680c5b4a566b35b868a7be363c43632ae072b7ce60314ad901",
-      "report_sha256": "1e7e5d1959162d556003c291b9c0f86f1f9aa82778013a2bb4adcddd46c8d37f",
+      "report_sha256": "a9f4c2c2889db75ca48b51307c27b5794e231728f37c935196dcfc6738e80549",
       "import_loss_count": 38,
       "import_info_count": 4,
       "details_truncated": false,
@@ -15280,7 +15261,7 @@
       "source_filename": "039_Info.rtf",
       "source_sha256": "494f8e0dc4005ecd241be2109d1cb46aad83626dbaf8e45afd6d05d4f1de235b",
       "output_sha256": "b78a556bdef3a7390157ef8cd46586647ca6fe42947a5f7de374bdd8910bf5c9",
-      "report_sha256": "ce948783e6bb56fd76ecfe0b1b6759c6abe54630a75114cfd2611957d8e5dc43",
+      "report_sha256": "1e5ba142d3ed6c994449fbf1b4b115688b8dcb4bb3597a51740f10cf2ef49308",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -15325,7 +15306,7 @@
       "source_filename": "040_Belge.rtf",
       "source_sha256": "d10d5aafa677b2a8097609f996d79fcfdbf91b84f0a3055598186932a9e8f2b0",
       "output_sha256": "6d8d4e87f8458f13b6e7017a0cceae66e93a9190b52aff3143328256c6fd7c60",
-      "report_sha256": "701a40db4835429a6fd4885d0aa16bbbeb0ce7e2e6c31aeaeff8b31d053e2194",
+      "report_sha256": "ac34454770ed5b890bcb139a1da7c08b9269c6a2a9b754200194bbab577bf0b1",
       "import_loss_count": 25,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15366,7 +15347,7 @@
       "source_filename": "041_Arretez_une_Dependance_avec_des_Nouveaux_Objecti.rtf",
       "source_sha256": "aa0c49102a9a03d9b2dd069d7dbe463270bde9f7ac8928e76cb30522fa8d5b32",
       "output_sha256": "9164b0246c0fe7715ec8add6d8f36e2f7dc68459712cb0a0b1d922863969c393",
-      "report_sha256": "67d0b10ffc4fcc3fa6fd6347c17c84e5122f0de1ffbeb0eeaa960b72c6c8eb43",
+      "report_sha256": "d9235cee60aa9bd160bd3cac3b266d284ea4208697062f3728ee296a8984aed7",
       "import_loss_count": 14,
       "import_info_count": 4,
       "details_truncated": false,
@@ -15443,7 +15424,7 @@
       "source_filename": "042_drseppliundsmeielisaegejetztischgnuehoidune.rtf",
       "source_sha256": "f01e53707f43224c2c067f1747115a9cdc4b3638a6ea3ae47e929b8113e7ea57",
       "output_sha256": "4f2825c3831f28b127f43ae4d3a18a5346ab3d45962660aaa3daddec61f2ef70",
-      "report_sha256": "df57729c0ae71ea5b4ccc66e951da6b24291e47ab47bfa2151f65aeb95b0e311",
+      "report_sha256": "156d1236c5ebaf6c5f5d9b8f4f7b83bf2f195db8543fa8016e9d7c70680dc346",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -15488,7 +15469,7 @@
       "source_filename": "043_Tarea_de_Kim.rtf",
       "source_sha256": "724fe8fb0dde4fde128dd7374163f0f72421388745f60c9e0f6d7f3d7d10e1a6",
       "output_sha256": "c55bd594de16c74a57d570008660871794e38b137501b511083d862e2e51ff14",
-      "report_sha256": "781ffb5fb16cb80e8677ea1707cb0c992d9baf5e0838d1a7ebdd8f3027aeb2df",
+      "report_sha256": "1717974c69b53dbed98934fa15b570676a22b9401610ba92f5c74469f8534201",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15529,7 +15510,7 @@
       "source_filename": "044_Ce_nest_pas_en_regardant_la_lumiere_quon_devient.rtf",
       "source_sha256": "232a169d583ef9c94fc4209a1a11ffa0a358f50f011623cf9412fc567615e8ac",
       "output_sha256": "258fe88656749ef8f72c8c07a59b06458fb9485c674ca45628d647d7ca0dee38",
-      "report_sha256": "4fe93554aa080979aca6961b98ec08d241b36bced7ca3166cb39441978f6c3a6",
+      "report_sha256": "9acd20f33aa38bea23d64941bc4a94bdbd13e828f0a8d1753570b4342e287b0c",
       "import_loss_count": 14,
       "import_info_count": 0,
       "details_truncated": false,
@@ -15602,7 +15583,7 @@
       "source_filename": "045_JustMarriedByIndex.rtf",
       "source_sha256": "da677617abd8f13ae3f761e0092b60036b07f1e101dec78ce5db586ddcd3e165",
       "output_sha256": "176d0ce1d57c7226c1fe76dec94046631b856f2c6c42914bf4f948f9f0469fd5",
-      "report_sha256": "6d60fcd59ea736dd18f065fdea69688d02c2341fe8d3d73182f7dedb0e0d0230",
+      "report_sha256": "ac4b0cd24194573a2182546910170612d5d452cd27b76acd3d2250337823c982",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15639,7 +15620,7 @@
       "source_filename": "046_SrabTenggaroh05.rtf",
       "source_sha256": "28af29ed9a777b384a4dbcd8a1da9074cee2d94476ad86e56e01714697619908",
       "output_sha256": "47ed6967d2a763b195d4a10b958ac1d4dfab8d88f550d42a16beed6797d18294",
-      "report_sha256": "50f0ad272592b39949b4e16a388bc0f3cf0c1f9b1d37edf5cf3c82fa0a38065f",
+      "report_sha256": "91403d54181d0e071e29b6381d75b6cde7ff907d49d7639c240eb17516176b17",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15676,7 +15657,7 @@
       "source_filename": "047_Scalpel_and_Tongs.rtf",
       "source_sha256": "be5528b22513bd4c0c4a6c906e01a1a32bdccafa203c16a56241836828dff13b",
       "output_sha256": "1042182a1e7a171b5486fa3841a9a3e79771a2d3cd5ddd68d9822a8e5c67357b",
-      "report_sha256": "6a7e9daf2584dbe675443ccd3cf7ca48306d6ce1481e2bab5e4026ac4275a02c",
+      "report_sha256": "6bb78ff2d087e7b162064e90f61b0951de69044092a8dbf56304438208dcfaf8",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15717,7 +15698,7 @@
       "source_filename": "048_esperimento.rtf",
       "source_sha256": "f5744b901b580c947078cdd60475cb75db88df4bdb520eb170f359febe6b2acb",
       "output_sha256": "917cb12cd79b98115eea97f68982b5fb8e920cf952a7a986a88347422a474a40",
-      "report_sha256": "b8b1bebadf3d64ed2378fd87afa50b31ee234f369791fb924136502a025c183a",
+      "report_sha256": "92e59c3eadd2c2291efd945954f56e589ce799b3137e50e3971ddec992f16a23",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -15758,7 +15739,7 @@
       "source_filename": "049_UploadingTrilogy.rtf",
       "source_sha256": "1d281c3308a874c0401c157da3e32f35f92b2f46471c7eabcd7ae7d9ba7a3033",
       "output_sha256": "05c885fca498ba044e1aa7da813f6d3c65b2cf6f76681d179aac96d4b472714d",
-      "report_sha256": "7bfdcdc0d424617d1c4d609c542be53561edf5cb6027fe240efc403917badceb",
+      "report_sha256": "69b705ed4d0987190ead5279d993c3e01eec09083b0e944cc487b2bcd0b744b4",
       "import_loss_count": 9,
       "import_info_count": 0,
       "details_truncated": false,
@@ -15807,8 +15788,8 @@
       "source_filename": "050_How_to_speak_with_teens_on_sensitive_topics.rtf",
       "source_sha256": "7649149e4a2ef77c26665ef4964d91f0b7f50d40c587b7824bc59ba60a429a80",
       "output_sha256": "8346dca20523f3e2a2abab04805c791bfabd80c230f2731760b6ced44842daef",
-      "report_sha256": "d510c0aba5936375992ff84f62a1d91ab4995c2feb1e2074382d329d0b3fdc1a",
-      "import_loss_count": 49517,
+      "report_sha256": "a1092dd8142327d369dbfc1c0e92f09fc21d40bdea496c021661bc208d35ccb1",
+      "import_loss_count": 35882,
       "import_info_count": 1,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -15834,10 +15815,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 13635
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -16259,9 +16236,9 @@
       "id": "051",
       "source_filename": "051_hr090_improvisions_formatted_text.rtf",
       "source_sha256": "0301be87fac82a85b1bf969d6e5dcfd567d833c67cdcaf4f28ea5f1d6911ca27",
-      "output_sha256": "3843963d94d372592d0d60e234d18b93e1336cbc36aff158454ac486dd1f3ff2",
-      "report_sha256": "1755848df63b8dbf9d88c8860e989e0a50c34966958d3d7f2fd284fecf2378ba",
-      "import_loss_count": 7198,
+      "output_sha256": "b4818a6906af4dcdca099d0209d3f4d13bb3b1d284fc0048f0dc7a1acf3384f5",
+      "report_sha256": "5e53c0ec489a096ff9452316bbea2defb2608cb70d3d97bc809039e46e616b60",
+      "import_loss_count": 6313,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -16287,10 +16264,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 885
         },
         "control:alang": {
           "info_count": 0,
@@ -16801,7 +16774,7 @@
       "source_filename": "052_re_exodus_-_author_s_notes.rtf",
       "source_sha256": "ee3636080b1bf7adc17323c67b29356ae373738272d3e607470f60febb812e38",
       "output_sha256": "b1aaf97d6da6d4e66bad678c26c909e5fbc6bfb04874cf55a0e436b33d077eb5",
-      "report_sha256": "0255806c3abf64f69d1febfeae0a3d223068799ee08f5b6c1bc7bdf21c6f473b",
+      "report_sha256": "9414ab2655ca080242434f7cf417320543cbafb74f1db3520957a97858703e8e",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -16838,8 +16811,8 @@
       "source_filename": "053_CTA-VII_SECTIONS_1-24.rtf",
       "source_sha256": "f2be9b9d32463562b137e7f12ebe11b2d1eeb32c310b39fa7ecf2893323b2b2f",
       "output_sha256": "cc80092489cd8be1ad3d3c0410d36cd8f8afa71a8c127cc33064199708a1ea26",
-      "report_sha256": "3aa376a8823ef35f1bdacb01ed55aa4f74fd88e02fe9e4d4dafe31c68cde77b0",
-      "import_loss_count": 510650,
+      "report_sha256": "f812a76c526b90b9995d4c74eafe1dda2e55b2bb87ec766997a73f19ef20bdb8",
+      "import_loss_count": 379178,
       "import_info_count": 1,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -16865,10 +16838,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 131472
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -17499,7 +17468,7 @@
       "source_filename": "054_Hotyn2.rtf",
       "source_sha256": "d3a22c9e5dcfc613a5388eaf8b77e36449db5497640cffe2be4f1820fb2f66e8",
       "output_sha256": "ca4206b6366441ce7f97f44977a6da9607c824024d890510b01ee472ff2deb7e",
-      "report_sha256": "7759e34f5d0b81293e7ebc68d277b6d2b8fff74e29e03f0a8c2b937d8a28e9af",
+      "report_sha256": "40bbb0464b16ffebf7395d4a9977cd07c93caa42996b799487b34f70d39673cf",
       "import_loss_count": 26,
       "import_info_count": 1,
       "details_truncated": false,
@@ -17540,8 +17509,8 @@
       "source_filename": "055_The-Vermont-Constitution-A-Legacy-Worth-Saving.rtf",
       "source_sha256": "fd743dc9af98642dea855778c18fe6b6d4533fe05699bfc3f274115c22c7605a",
       "output_sha256": "ba9963cdd748a09fd97250e2caa998c21b341125bcfba1bed03d0ff41974322f",
-      "report_sha256": "86298a55892c4d741b0804474ea5267325f5125c5db2d9d1fbac690466a28757",
-      "import_loss_count": 69015,
+      "report_sha256": "57b60a5d16f1f77c0520101a534b0d7adc8ea28112bdc678dac023446c99d9f9",
+      "import_loss_count": 35184,
       "import_info_count": 1,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -17567,10 +17536,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 33831
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -17952,9 +17917,9 @@
       "id": "056",
       "source_filename": "056_MediaOutletsControlledByTheEstablishmentAndTheGl.rtf",
       "source_sha256": "8c0742daae77141a9dedd1fe41679a638010bab7d3ed25f901c976bbf4d0b265",
-      "output_sha256": "488551c7f21984fc4af9e80d74fee3e096821d5603437e67952781eb8160f22f",
-      "report_sha256": "aa288e768fa5122c2ba025aa9be9661000bd593299322dc2653df28ef5b0f2cb",
-      "import_loss_count": 426,
+      "output_sha256": "ef3255e41ab576170e90a987300a75ab535588e4636ee4b76f3c5d0d7c96167d",
+      "report_sha256": "6325879ae646dfe80e13d76e4155343fa900e92cc9259155dced5213b6fb8cb6",
+      "import_loss_count": 389,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -17968,10 +17933,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 69
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -18072,6 +18033,10 @@
         "destination:updnprop": {
           "info_count": 0,
           "loss_count": 2
+        },
+        "undefined-font:6": {
+          "info_count": 0,
+          "loss_count": 32
         }
       },
       "writer_loss_count": 0,
@@ -18082,7 +18047,7 @@
       "source_filename": "057_There_is_No_Third_Possibility.rtf",
       "source_sha256": "9b09367b6bd153c5e31d782261f50424a83f6fafd99ca8e17bacfe53a6bee827",
       "output_sha256": "86e8825b89cc847989d7f81f1ab83e07ed05c5498416e6fa4db57d3fcea2a2ae",
-      "report_sha256": "f5edad9d665e5066abe70ebb8d4bf07289cd3b7c316898d062c4af6824c8cd4d",
+      "report_sha256": "b0c0344a02a8e13d0e3cdda90268172f73947609ebf3cb86d75775e51e5d1bb4",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18118,9 +18083,9 @@
       "id": "058",
       "source_filename": "058_THE_GOOD_CHILDS_LIBRARY_EIGHTH_BOOK.rtf",
       "source_sha256": "e75e06ec1d086c8ce3ff85cc46c5e2213b0cdaefda8866f8252967c1f8da7a87",
-      "output_sha256": "47163662e0f7a8dac7c3ae551dc3be8665309645710b7c4fd4e1263b332e2d24",
-      "report_sha256": "5718d7a9ee86e78134350eeb60482b939fdd6f12dedd686d8774183cb78676ea",
-      "import_loss_count": 6650,
+      "output_sha256": "ffdcd97bbd355da6c43b5c6759cf6e45d9edc2eba467adaf12d7e6b54ff755bd",
+      "report_sha256": "1c2746e956622ae91100a4d17fb6d5fc7c0ae69e7b6ea153db8b84e07c68b1f1",
+      "import_loss_count": 3957,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -18134,10 +18099,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 2694
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -18255,6 +18216,10 @@
           "info_count": 0,
           "loss_count": 1
         },
+        "undefined-font:10": {
+          "info_count": 0,
+          "loss_count": 1
+        },
         "wps:leading-group-line-ending": {
           "info_count": 0,
           "loss_count": 334
@@ -18268,18 +18233,14 @@
       "source_filename": "059_Suicide_Justified_-_C.K._BiTe.rtf",
       "source_sha256": "e6571d7910984b407a67f2b2e54225e36512349b7e06b2e498e282d5b71ceca1",
       "output_sha256": "56444b8e51611d7f8931e22093d6bdb891062794ca59cdae954d50195368650a",
-      "report_sha256": "58d7f1e1154183015fdf59855125dae194095eb780ae99744e990967601dbc26",
-      "import_loss_count": 775,
+      "report_sha256": "731ecdb86aa380c913d036090fed36429932d57ea956bdf02fa3d09edf46dcc0",
+      "import_loss_count": 763,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
       "unattributed_loss_count": 0,
       "unattributed_info_count": 0,
       "feature_counts": {
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 19
-        },
         "control:alang": {
           "info_count": 0,
           "loss_count": 7
@@ -18360,6 +18321,14 @@
           "info_count": 0,
           "loss_count": 1
         },
+        "undefined-font:25": {
+          "info_count": 0,
+          "loss_count": 1
+        },
+        "undefined-font:26": {
+          "info_count": 0,
+          "loss_count": 6
+        },
         "wps:header-whitespace:dropped": {
           "info_count": 0,
           "loss_count": 5
@@ -18377,7 +18346,7 @@
       "source_filename": "060_Les_Miserables1935.rtf",
       "source_sha256": "2746a7c4329e74078df753499c24b18b3960455c68c9a95a50278837fdc92dc8",
       "output_sha256": "13cfa95b25df3e857d681c36ca9a7bc8c0b349e311b6bea64f421d772e0b1e76",
-      "report_sha256": "f6ea1630eccc5525db629e185db20d528f1bb192d387961dbdf8bcaa30927f1d",
+      "report_sha256": "2596b44e8803c82749a7c9ebe7533d51e4fe8eb3df3b44bd803d86c7a4ad4942",
       "import_loss_count": 3,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18410,7 +18379,7 @@
       "source_filename": "061_Sparks_-_Live_At_The_Record_Plant_1974.rtf",
       "source_sha256": "41c9f3b16de00788a5308c6a05d5c7923464f200751852a948aa26c1a4bcff34",
       "output_sha256": "62d55ce51a9f92ddc69e63c6f3d213de474027d88ec1551d9d26fc59074b9bc7",
-      "report_sha256": "428d02690800871abdbd20aa13b9bae9115e547ead79f80d9cbb912e69f10929",
+      "report_sha256": "96ece94f0689278f9fcc533377a7ab870ea7c4a8691f93d04734e2b024a93f9e",
       "import_loss_count": 128,
       "import_info_count": 0,
       "details_truncated": false,
@@ -18527,7 +18496,7 @@
       "source_filename": "062_TheBoWeevilClubBook.rtf",
       "source_sha256": "2be5de7083302e748e5f2261d69df23e2ef476ecd5dd45bae0b411eb10138444",
       "output_sha256": "76935614efa47fadabc97a8f54db16f399c672f5f0d050b8008d658cb4043eae",
-      "report_sha256": "c0adfda6c68693d8089cf2c44626e733dc95ee4316f2686ebb953de87bd365d7",
+      "report_sha256": "cef69bad02473d1080222fe35f0e3b9fde14c883794965d30533f85eed9ae407",
       "import_loss_count": 3,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18560,7 +18529,7 @@
       "source_filename": "063_ETMOOC_T3S1_-_Digital_Literacies_with_Dr._Doug_B.rtf",
       "source_sha256": "3d1aa8c1832d78a1b2d3b8a8be536221220642b510bde5e7bac47814f1e180cb",
       "output_sha256": "f394c8eeb0a0c43e0fecdadeb13c3cf4eeab64bf58355e6bf040523f14010065",
-      "report_sha256": "a223997b3f12eaee90bd8f4e2ec0c83eb68dca0078f9ae4fc1f05a7304bcda2d",
+      "report_sha256": "86ad5e587a6903593560ee9d36d56ccb27fabbb27715243c3b4e40ef4fc0c091",
       "import_loss_count": 4,
       "import_info_count": 0,
       "details_truncated": false,
@@ -18592,9 +18561,9 @@
       "id": "064",
       "source_filename": "064_8a-lesson7-v0.42-pub-dom-pdf.rtf",
       "source_sha256": "96fd878bfae9c68e310fa793b83be485e32fabacc2a83c5c79ce152b59f1b9fb",
-      "output_sha256": "6370cf0a4d97aa000c10e51944764d0657ce11da3ec46ad0a8b062f0a275cbbd",
-      "report_sha256": "084b9cbfd38527d976aaf31d1412b58237275a9e5d11093388a017ebe571de90",
-      "import_loss_count": 2118,
+      "output_sha256": "d025ddc42924d2bebf30bfa6d4a001bec1744bfed48fc6f0f77c94c00ea424fa",
+      "report_sha256": "7abea57493fbe09cfaf334605832f447f7d90c4858c0429573aded123c0ff964",
+      "import_loss_count": 1784,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -18608,10 +18577,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 334
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -18698,7 +18663,7 @@
       "source_filename": "065_sonic_exe_the_remake_by_sirjchyena231_dbs9nar.rtf",
       "source_sha256": "abb91bc81bfa3b860cbef5b750a242996b5edd15e658559ba2801fe4a17e43cb",
       "output_sha256": "b9ad95605ee1b203c0b0135fa897ce556f202940b34a0ba2e2bb076c8a2c958e",
-      "report_sha256": "2d84039a9679bfa73915406cd8e636dbef244ef40caf71319d55b80e1a1cc297",
+      "report_sha256": "606d4907a1258d4b0c6557dfbc6b96b483c3721e934fd367b6396c55c2e308e5",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18739,7 +18704,7 @@
       "source_filename": "066_WhatsNew.rtf",
       "source_sha256": "cc0d634192d2fc50ad18fc9ab3bdb6693bee2846599d958a80f12a1a405596fd",
       "output_sha256": "d3d797ea870c6ae8ef829041d0af2416a7dc8ed48195ee85097599a8567d4d0f",
-      "report_sha256": "f3b199ada64591e400f700c54905a083857d4b87eb4d6476f597714d82edb341",
+      "report_sha256": "53f5d3a422edbcbc32e4cd60e07d5751bfe8849ceac71add15c519baf6646983",
       "import_loss_count": 8,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18788,7 +18753,7 @@
       "source_filename": "067_APlainPath.rtf",
       "source_sha256": "2d0bb113e392ebee3993b232421e7005b9828792a41d34a3ffeb2a88d81e722c",
       "output_sha256": "a0bfa482caf044ba3f4edf40bb123b8c40c294fec3684595995a538f2b81b54f",
-      "report_sha256": "b6458073af67b5c4a3816eacb2f1d41e3d6193c49fa61ccbe72515e8701fc1aa",
+      "report_sha256": "0aac55356078628d030bd5c7c27ca847b93dc10e6769cc1adde4ecca8c2da45d",
       "import_loss_count": 74,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18833,7 +18798,7 @@
       "source_filename": "068_NRA_2010_IRS_990.rtf",
       "source_sha256": "58eb5163f15bd587cd6e1bb21eca53afeaae60619d9ad649594e6767100dfe4e",
       "output_sha256": "5e01f19e920a5473b8cccb7b14e8a9cb80906db52e977268f692fe6ab15b9763",
-      "report_sha256": "9d41ca9f038a051bb36eb568a921080249964bc5d04fa185c74cdec9cdb12203",
+      "report_sha256": "3bc5f2e6e4af5056a029274ce8d4b7698fc3701a51774363712e778c61c2ac59",
       "import_loss_count": 4,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18870,7 +18835,7 @@
       "source_filename": "069_FujiSupport.html.rtf",
       "source_sha256": "64ecc4f344250702008d7f3d2f2c1d735e780cf0c21609be5e19b40ed21f8141",
       "output_sha256": "25d9a73b105909a5c99d858ed0cf26e4c163118c9aaf6f44fa3a03b47f0cc78c",
-      "report_sha256": "ed07a465682a4c276df2f07674999fb4f0adadd0076ae264d576c7ad4b8e6ee0",
+      "report_sha256": "06830e248827f023eed868b3b886d0846d2ad832c48e550d21912b9d338ae799",
       "import_loss_count": 3,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18903,7 +18868,7 @@
       "source_filename": "070_ListaCumpleaos.rtf",
       "source_sha256": "f15bdcfd7bb19a632a91d13079745d71380f60641cf5838796654843b9a47ef1",
       "output_sha256": "d3a7524729103e2febf8c828b9d11c0b0fb6f81dc47f8de81b183fede95fad16",
-      "report_sha256": "2f39fa90919a398af922f73991aeb39ddee63a011f843c8917920e321a913f73",
+      "report_sha256": "38ac242286987f4822e5e9d98a8603a39db790e7b825366c6e5ff310b280f125",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -18948,7 +18913,7 @@
       "source_filename": "071_ps-destroy_graphics_memo.rtf",
       "source_sha256": "fe826a19052bc1cc95541d49d294a35dc0ea7a518153105568c192a8cc273668",
       "output_sha256": "9495e6c1dca155e23a1ccb6c498876b859651c5a21d02942c7fd78b3739f43c6",
-      "report_sha256": "a6a21cd63e41e42c9cc8bd0242aa156ca63ae96506dc9917f6f337ff9e9cbf5e",
+      "report_sha256": "a84431607e5a23c43f6d771a1ec9e755800a709ae223afb39851f18cc6a013d6",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -18989,7 +18954,7 @@
       "source_filename": "072_OEB-2016.1-US.rtf",
       "source_sha256": "7eac81ee9d3f5f07229509bd5a60918d01a38afd28c0f68b2a80daa25283ced1",
       "output_sha256": "9919d85442659ea7bfc5662cc2107bee49e03205fa1184652e526bb0cf9a8b8c",
-      "report_sha256": "77e199aab829e739e8d88b8c67aeb6c5fd39389d0dba62b45f819ceced47a37c",
+      "report_sha256": "24d8f393a5766cbf40538002156972d18838410d9cbc333f93853d3ad777753a",
       "import_loss_count": 42,
       "import_info_count": 0,
       "details_truncated": false,
@@ -19018,7 +18983,7 @@
       "source_filename": "073_Heartsong_Wiki.rtf",
       "source_sha256": "82f44f50105ad307dd6d6212506a86c2becdbb876b08a9ff0f12f7a10035f638",
       "output_sha256": "85dcb1efa60fcf640fe33eabdaf09655279af6586f744fc8b33719988fd57370",
-      "report_sha256": "2bfd55eb55a9084068e25f917e232ba9830fbb72d5fc2b44ee372592b76026c9",
+      "report_sha256": "039c371d9de116aff44384b165b9be1d65831df8e44c1089c5aac76e019c8c3a",
       "import_loss_count": 1103,
       "import_info_count": 0,
       "details_truncated": false,
@@ -19263,7 +19228,7 @@
       "source_filename": "074_HenryWallaceSpeech-TheCenturyOfTheCommonMan.rtf",
       "source_sha256": "58e4fc2d12cbc9e835a6325d30dc8468aefd37628a126233867b20bab66287c1",
       "output_sha256": "904cf2f7f0bbb92d377a42b68d1106ce6c7e0ffbd2bbb36bcd88ba76bf1c13a3",
-      "report_sha256": "09dd145a5e755e57f54c76a1c0ebf674443d067edc053ad1ce1c86472a108609",
+      "report_sha256": "cc091155afaf65ab4d76817c35d3412ed4a452b9582e7fa69a82d14a30a1bc3c",
       "import_loss_count": 105,
       "import_info_count": 1,
       "details_truncated": false,
@@ -19467,9 +19432,9 @@
       "id": "075",
       "source_filename": "075_LetLoose.rtf",
       "source_sha256": "310183e2bb8a29264fe627ca602c45536661a10aecdb0b850db67ac4ee8d380a",
-      "output_sha256": "7eec741512e4bd63544a325a3f7c4377551127b7ff030e2853b19282a2f5ed01",
-      "report_sha256": "6877553058f40ddc0e1d8ea1c9ac8f8caea616d0acb51bd3be7e7fa9b15a2917",
-      "import_loss_count": 22584,
+      "output_sha256": "6030cab8b27de9fa0b0d8714bec2604d881a5f8cd05c38a0b183d7e303f01d38",
+      "report_sha256": "aab062197cf9124bcdd809fac4fb9839997a21bcc6c4e6ba58a437213fe77c51",
+      "import_loss_count": 15802,
       "import_info_count": 7,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -19483,10 +19448,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 6782
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -19679,7 +19640,7 @@
       "source_filename": "076_IpodSoftwareLicense.rtf",
       "source_sha256": "d4caa9b3e341c25f4bb7f37308b917f9b2d3b50bd88965cf42f67db7a22e8719",
       "output_sha256": "9c7ba40c2d2187d71f04d5ddfc3c92ab3008a562dc98aefc9eb78b82765d7a2a",
-      "report_sha256": "8e0c3b4f66f84e8c7185f684ccd1e07e5fe75da2427154b371c6e805607b6629",
+      "report_sha256": "c95c7ef430b92efbd5c6d62e298b45ed4d4469a1a927ce31e5233d33a81916b4",
       "import_loss_count": 163,
       "import_info_count": 0,
       "details_truncated": false,
@@ -19740,7 +19701,7 @@
       "source_filename": "077_obazerotext.rtf",
       "source_sha256": "95d1e1737367b7963323b1793f4ae8df0e521608680881e81ad4c64bbeef0b81",
       "output_sha256": "9e126be3610b151018a76a7d86d0c41cdf5612f2c17a57606f32dd2fa072cbdc",
-      "report_sha256": "10c216bb5f4e03a32f70b42599db3ed8f5dfd0fa2275f10b480a732f7c608266",
+      "report_sha256": "ef9daa348261fd9850324388172f2122514de41b161d9f6bbe70416744b8a218",
       "import_loss_count": 14,
       "import_info_count": 0,
       "details_truncated": false,
@@ -19788,9 +19749,9 @@
       "id": "078",
       "source_filename": "078_1108221226_datosNacimientoDeLosDangelisSinFoto.rtf",
       "source_sha256": "572bfbb630fd5d478f27a827814f94aea29252a99464833516162fc99a98cff4",
-      "output_sha256": "022a58d23d4bdb5154726722a70ba464dd59b60a41ae36f079f14c6030bb0393",
-      "report_sha256": "17900716332360f225f41812d99462e8ba21315154eaf11a0874b3586532ad09",
-      "import_loss_count": 800,
+      "output_sha256": "17feb693a993dc6be7c476dba5f89e7e6921f65ac642b9af36819d867e179882",
+      "report_sha256": "a13f9e93a5a33be9a7cfe979c072745e2d14ba1e596a37a3881c358de3f27f87",
+      "import_loss_count": 654,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -19816,10 +19777,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 146
         },
         "control:afelev": {
           "info_count": 0,
@@ -20358,7 +20315,7 @@
       "source_filename": "079_The_Pathway.rtf",
       "source_sha256": "a8f0ce54076cca898ddbfd575863f0c2e1c287b4e8ca19401142b83c6488829c",
       "output_sha256": "db3f4fd2c8811406c498fca6b044c574bd0d39db4b3c0cc03c8987fb6d4fec83",
-      "report_sha256": "755f7aa90d1fc196238dd9c12fa6567cc1d8f5826b3efc7d1f74a983931e0014",
+      "report_sha256": "e5b52379306f75fbf16769fad6f9c4683802efd9918d008b2c6ff8e9f124cdd4",
       "import_loss_count": 221,
       "import_info_count": 0,
       "details_truncated": false,
@@ -20467,7 +20424,7 @@
       "source_filename": "080_SoundGeographies.rtf",
       "source_sha256": "97e64bb59bdd869033115c88a6c0746bfa7c2b7cd68ca83d2fd1236c243cc03b",
       "output_sha256": "81e91c20131725248de4689faf6e6e898c7d42756088edfec05a655a551e6610",
-      "report_sha256": "534136ce40d8f80afa9e8d1e5e2945c6e3212be3b42f2083da44723a9e834bf2",
+      "report_sha256": "ae2ff1c02c874781eeae0f6a727502a71286903dd2b1cca9bcbbb71d3537c8ed",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -20512,7 +20469,7 @@
       "source_filename": "081_UmCuboHiper-boreo.rtf",
       "source_sha256": "ffdac7e7b4d2dea0a89cf659e1bb6b9fa1be257ba9fc84bd67cd7e1fbc021fc5",
       "output_sha256": "f6bc401a1b142717381ea73448c1aabed1d03d3aa558e9b35c19f83b788a6be4",
-      "report_sha256": "862934823879642b923d7aafb1d54dafbd8539372eca1284110027184abb0c63",
+      "report_sha256": "44bb67d4fd982306a807b75533df7849f78fa65f212b2104ae4b2bbadc18a007",
       "import_loss_count": 75,
       "import_info_count": 1,
       "details_truncated": false,
@@ -20749,7 +20706,7 @@
       "source_filename": "082_TS_Setlist2022-01-24.rtf",
       "source_sha256": "9f592ea38e2dc0a134a6b432aef044981454dcd41fdcf69dbcc6157b54f5124e",
       "output_sha256": "8e9b437f9d6e4a78ac3f3fe1815c0ffea4dbb04895fc3204013d154242969a5a",
-      "report_sha256": "c2e0cb8c40e9e7cb1c4f90ad9f3a69cce47c06b6573bbc0db751fa0cb8facc48",
+      "report_sha256": "30b4e6ad163d2c0792ba0b7f88f5d95cdb333828a2bb692b956cdc40ce086935",
       "import_loss_count": 9,
       "import_info_count": 0,
       "details_truncated": false,
@@ -20801,9 +20758,9 @@
       "id": "083",
       "source_filename": "083_Liberty_Versus_the_State_-_A_Libertarian_Apology.rtf",
       "source_sha256": "a03667383110d6ee4758b5a8f64130367109c7b5d85a76c7be478d068568c5e8",
-      "output_sha256": "2314f22be3a262eba613b98fdc199c1dbb9bc060e2e9caaf293fbb9a168b559d",
-      "report_sha256": "2bb1203ca207b9b5d7b513efc8faa22ec54aa407ca7fd0628374151f102d00d8",
-      "import_loss_count": 947,
+      "output_sha256": "e61c7ea9fec25c83ec926a0eb1e2b32005fe1b1d08eea2a93154b1f33fb92b4a",
+      "report_sha256": "70fe14e88cd18aec242f23368ed4375aadac11f92aa2d7212710c93091e9f64a",
+      "import_loss_count": 801,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -20817,10 +20774,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 146
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -20971,7 +20924,7 @@
       "source_filename": "084_Yandere_Simulator_Paulina_edition_by_Flower_prin.rtf",
       "source_sha256": "7128bc78039e3dd3bbcde4d5cb702d29a50c8fcf6384856ae3d52805216a93e8",
       "output_sha256": "2180fcb465bcdb329e0e66e3fa1b9d865069a2897a0783ef0086a8fc0ad85dcd",
-      "report_sha256": "86e99fc59776d85050ead21301776bf111c54cbd2b8f34ec2be22af4cc3ee992",
+      "report_sha256": "89694406c46da8e3a2d93a6a04c8124a602aea250dcb7552171e8953bc09c4fa",
       "import_loss_count": 5,
       "import_info_count": 1,
       "details_truncated": false,
@@ -21011,9 +20964,9 @@
       "id": "085",
       "source_filename": "085_66_Books_of_the_Bible_listed_in_order_printable_.rtf",
       "source_sha256": "316300825064cde868edaee8fe23917cbb16d0c16c02b938486bfc425362a108",
-      "output_sha256": "86fcb2b278cdf0e0ef2000391a34bc694c067556bd5954b770fa3fa115f396c2",
-      "report_sha256": "b93c03fc39484075c048ec678faffe255b83a7138feb60b622e20b9519544e68",
-      "import_loss_count": 688,
+      "output_sha256": "30dfd1e65bb169a6d31748141e62df082453a6d962453b22cd7b10d11585b847",
+      "report_sha256": "509cfd900e41a3b2c16e5c1e5a97056f5efb01c48a61986fbf22a58ceda96cb1",
+      "import_loss_count": 443,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -21027,10 +20980,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 246
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -21147,6 +21096,10 @@
         "destination:userprops": {
           "info_count": 0,
           "loss_count": 1
+        },
+        "undefined-font:9": {
+          "info_count": 0,
+          "loss_count": 1
         }
       },
       "writer_loss_count": 0,
@@ -21157,7 +21110,7 @@
       "source_filename": "086_doc.rtf",
       "source_sha256": "19b4c52cfbc21b2c4895e1e1d8f78b4e47ecfcd3ce720a11d7a678267866b662",
       "output_sha256": "2db4cedaefe60af55979332934eea4d4caca8a9cf91e09cd6b06c1e2063d56e3",
-      "report_sha256": "4295b7d6e57921aa6149e9e7c31cbec030a3378c82e1b3de01444e51a8dd24de",
+      "report_sha256": "15e89e7d61ed1800c93b578bec77bd30e23fac66f640f4bbcc49639920980130",
       "import_loss_count": 2418,
       "import_info_count": 1,
       "details_truncated": false,
@@ -21277,9 +21230,9 @@
       "id": "087",
       "source_filename": "087_mirror_of_truth_32.rtf",
       "source_sha256": "19b1d8bc75d8de545764297e458a3886eb772cf91313d31637b6a13c2f9822a0",
-      "output_sha256": "2fe8d6401339fe65cfdcbb044981d76d7dfdecd9b5b9ab48cfd4944d86e2a2f4",
-      "report_sha256": "de8a0f9f7fb7453c995823862ff523396eb9365616d910a1204a38ea13a3fbd2",
-      "import_loss_count": 3259,
+      "output_sha256": "565554e7c99b236bbc29bc41895ed65868e737d0ef7fd5ae1b1a7479a9b3d4cf",
+      "report_sha256": "c98a260c8ae92bf47e435582dfc7f34860a731689530d6d9f8dd95973baba11d",
+      "import_loss_count": 2468,
       "import_info_count": 1,
       "details_truncated": false,
       "feature_counts_truncated": false,
@@ -21305,10 +21258,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 791
         },
         "control:afelev": {
           "info_count": 0,
@@ -22051,7 +22000,7 @@
       "source_filename": "088_bbsitters_club_11-29-19_show_notes.rtf",
       "source_sha256": "df44e67fd8791fa74b70dad2e8b794cea070d750758a76bc30aa42c5da2781f2",
       "output_sha256": "bcc5e6aed078a3d4d0ea09ee22a611d5da002a0380277377a5ffc50279afec2c",
-      "report_sha256": "3e93649d75efb335220073bb7943cf53220d5603243a42ab4e50e68d45cacbe9",
+      "report_sha256": "ec9b4079f8f1f60a4dfc1b2327d07ca0eeebb03863ad0161afb087f1dff9ef7b",
       "import_loss_count": 9,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22104,7 +22053,7 @@
       "source_filename": "089_License.rtf",
       "source_sha256": "1d7ab1cb7eec85701a55d02c4beb9cb809dc449094632add2243c3c28d5e23c7",
       "output_sha256": "4562cce87b02e0f32354b41304c6a924a1b8f54e885f54ba92a2dec956c4c083",
-      "report_sha256": "6ea6dfd980f22e9e890dc4b5f2f2e2564b54ade6257390a9a1137fa938e111e0",
+      "report_sha256": "736457ed00e301f29221537d332898747d77994ae7011e4c77685ece3bc19bed",
       "import_loss_count": 195,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22201,7 +22150,7 @@
       "source_filename": "090_SoulClap_Budapest_feat_Illspokinn-Are_You_Listen.rtf",
       "source_sha256": "7c8230b848ee2b2c5ffe05f6718670147cf9ace654d14939fd480168a59a2cc4",
       "output_sha256": "3d5c7c984753c0a120568c00d32c1e584656ec6d3ab8ad28941af89ec4a13e5a",
-      "report_sha256": "effc77fd4970ca2817e9b8ffdc42012341943a45251b15f3ef405680db966052",
+      "report_sha256": "0addd34949091656d1e300eaabb083945e04991c5243edf7b4e065f9d5fd2a65",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22246,7 +22195,7 @@
       "source_filename": "091_Lyrics.rtf",
       "source_sha256": "d93efb9fc96deb90566f7e544fb0c885edd68dc3fffa85eaf1d159883e7c00a0",
       "output_sha256": "8a76f487e01486092f6c3d70c55f918bf2e72d0fe825e3661396cd768a32f3cc",
-      "report_sha256": "84ccd37dc59dcd84c7a5389df0142767321073f4b01b63a9da5f310d8f1840b9",
+      "report_sha256": "c48dbf7bf41b066c7f4574755d241e096ea6296c15d2db81127590bd8791f383",
       "import_loss_count": 3,
       "import_info_count": 1,
       "details_truncated": false,
@@ -22279,7 +22228,7 @@
       "source_filename": "092_SurviveTheTyrant.rtf",
       "source_sha256": "14d436224ce154556f187c1ebe427943c1cb4842006b3c2b971d9d4164e40cf5",
       "output_sha256": "66a6d71f0425827e921fa854db5123f84a492c9876cd9190f2d9c85c9714f277",
-      "report_sha256": "cd5a61d7df4c11f313a8ff8430501e038bdd413cacc5635c58567ef703c963f4",
+      "report_sha256": "7dea120ee73a9c39dd388839c1227254151269d89b59ee7ed10964427c60061e",
       "import_loss_count": 8979,
       "import_info_count": 1,
       "details_truncated": false,
@@ -22420,7 +22369,7 @@
       "source_filename": "093_Wood_Preservation.rtf",
       "source_sha256": "98554efd4afb8d7c8fb61efdbd8a0216a88f0cdb9bf94078efccaaa1f40bc829",
       "output_sha256": "99023a1c6c14ad661ee0f3821433dfe2a95e86bc3f73d08d5fa95cc51b5d4bdf",
-      "report_sha256": "c68e66bbb6de5ea675b099c1d2c2d3f88dce2cd5c233868285c7974e9861d2e2",
+      "report_sha256": "c312cbd1ebf33d893edd5b62c57fa4c29819c51f57b5efc67f6f23d7ba703353",
       "import_loss_count": 12,
       "import_info_count": 1,
       "details_truncated": false,
@@ -22457,7 +22406,7 @@
       "source_filename": "094_BeethovenSymphonyNo.5Opus67GeorgeSzellCso1967.rtf",
       "source_sha256": "f9d01adb4c38813512bbd143c85dabccde6aa2550ade75283162ae1515f42b7e",
       "output_sha256": "18c27eb2b3a7d85c8e5bf3142f2277b66f592a3a6146e65116e650ebb6613d1b",
-      "report_sha256": "953a8db405c8d6969186c12ce89f6a85a1e11f4c483b7c5a6373c95f1c6a9d6e",
+      "report_sha256": "68e04ee0e5fac469f0ec14a80209fa312a4c1ade972a3f85023476261d00d1d8",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22502,7 +22451,7 @@
       "source_filename": "095_ephrem_contra_haer_23_24.rtf",
       "source_sha256": "22952c9b6c05049a540486c17f5d9be92348134c402600f19bf73ee7c9e505bb",
       "output_sha256": "f57b394895ead85e7b39d4bfdeab2dee1cecc81df4ae2e307b7e59df87d0b462",
-      "report_sha256": "cb0112fd6a1311ee3b69cf3990f200dd94d2a527f4197ce5e4932f30bd763e59",
+      "report_sha256": "f654dbd1bc3e1bd02eba558c9285ad949ee68b257e4a02ce78c5ba174a438736",
       "import_loss_count": 178,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22559,7 +22508,7 @@
       "source_filename": "096_Acknowledgements.rtf",
       "source_sha256": "cda661b6c360a01aa468f8d2a11faf629a9f28151e2a1ed0f6e4040857b0fab8",
       "output_sha256": "dc8a0717082149ad172da8734a975afc460d1173333cc76f2aeec5c75afd319a",
-      "report_sha256": "80663e58d18b71de5afd127efd8daf27ce8f5fb0fca40294be617c434c4f8dbc",
+      "report_sha256": "06a1f875e2e3abbe144794c4590b29fcc74294d9fd6e82c1d154d01a5b99c415",
       "import_loss_count": 104,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22628,7 +22577,7 @@
       "source_filename": "097_GoodellMassachusettsStateGrangeAddress.rtf",
       "source_sha256": "c3ca59d8963fe6d3ce7ea39192e33e9b0cee09993b71524266041dde4e35b990",
       "output_sha256": "0362fb9fdf9cd583fdf9a69f9566bcb14dcf0d33ee1ae88d1c35083f3b18ee81",
-      "report_sha256": "94e12c9535dac1520262dd88acebc294eac4557def2d1e8d846a0e0782a72011",
+      "report_sha256": "892085d52451d0614093fe34a282cafd308c5fa60ef596c8251a09a52dcc5e4e",
       "import_loss_count": 7,
       "import_info_count": 0,
       "details_truncated": false,
@@ -22673,8 +22622,8 @@
       "source_filename": "098_Serenity_of_Simplicity_by_Luke_Furgason.docx.rtf",
       "source_sha256": "72baaf932590552c21f95b262af95205eb07984d22393e71eef707e1c3b7c89d",
       "output_sha256": "cbae2b8098f1cb5f4995ba548bf31d446f098f59b71f2cef5e98a346770c5cac",
-      "report_sha256": "89154602dc304e1998170891f24ec1507a63540e13c67ccafb08f1fac4017f8b",
-      "import_loss_count": 98953,
+      "report_sha256": "6cbdadde58565da8b83baee56c7ba1d2ba315618ebcff768c5bc8a34e388c658",
+      "import_loss_count": 43435,
       "import_info_count": 1,
       "details_truncated": true,
       "feature_counts_truncated": false,
@@ -22700,10 +22649,6 @@
         "control:aenddoc": {
           "info_count": 0,
           "loss_count": 1
-        },
-        "control:af": {
-          "info_count": 0,
-          "loss_count": 55518
         },
         "control:aftnnrlc": {
           "info_count": 0,
@@ -23194,7 +23139,7 @@
       "source_filename": "099_TXT.rtf",
       "source_sha256": "7f7e7479221658a78276a9abc9654e4a9e41aa3d01154be60b63aed7427a747e",
       "output_sha256": "d357df9eb8c378e4d3a15b2cf293c83d447455ace2d038184f52baac7b780d89",
-      "report_sha256": "7eab55b279de5fa1307e23412af70831461e0833178080d7ffbcc1105cb39644",
+      "report_sha256": "3c0c6d4ad834d482ad76658d3029519b0cecc02d03a010aca6075b2a560dd847",
       "import_loss_count": 412,
       "import_info_count": 0,
       "details_truncated": false,
@@ -23275,7 +23220,7 @@
       "source_filename": "100_Credits.rtf",
       "source_sha256": "5e537fdef62301a894bd98261c09a6279cb2d71cc24267bea875c5f0249eca5b",
       "output_sha256": "5e113d3e4d27f0bb9217efbc73eb04432ccd5dbf0f71b7589640eb50be213644",
-      "report_sha256": "38d9172bcc1ca359d3058b9f25b2d35d6417e3eee1aaaba958c04b5b193c187d",
+      "report_sha256": "485a214359e83d7b9f4c763b2cc9b2934cf3a999c0034b9f2c9ba97c87ca96c1",
       "import_loss_count": 39,
       "import_info_count": 0,
       "details_truncated": false,

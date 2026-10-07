@@ -1,7 +1,7 @@
 # План оставшейся совместимости RTF
 
 Дата: 7 октября 2026. Историческая база RTF: `a7b3c9f`, ветка `codex/rtf-import`.
-Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `62dec410`; подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
+Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `1c14d0b0`; подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
 Карточки остаются планом; RC00/RC01 частично закрыты, RC02 начат. Таблица ниже — исторический снимок 5 октября и не описывает новый прогон.
 ## Цель и исходное состояние
 
@@ -115,15 +115,16 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 
 Первичная интеграционная ошибка исправлена в `8e612a8`: PDF renderer теперь
 различает отсутствующее семейство и отсутствующий glyph; тест на U+10FFFD
-проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Повторный прогон
-Добавлен per-feature счётчик с bounded map (4096 имён, до 128 UTF-8 bytes каждое)
-и unattributed overflow totals. Полный повторный прогон 100 файлов записан в
-Текущий [rc01-loss-ledger.json](rc01-loss-ledger.json) обновлён после `62dec410`:
-976,909 Loss, 95 Info, 456 feature names; суммы сходятся по каждому файлу. До
+проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Добавлен per-feature
+счётчик с bounded map (4096 имён, до 128 UTF-8 bytes каждое) и unattributed
+overflow totals. Текущий [rc01-loss-ledger.json](rc01-loss-ledger.json) обновлён
+после `1c14d0b0`:
+701,940 Loss, 95 Info, 460 feature names; суммы сходятся по каждому файлу. До
 RC02 было 1,327,900 Loss/459 features; `\\ab`, `\\ai`, `\\afs` сняли ровно
-350,991 событий. У восьми документов
+350,991 событий; mapping определённых `\\af` снял ещё 274,969, а 48 ссылок на
+несуществующие definitions получили точные `undefined-font:*` labels. У восьми документов
 усечён только retained detail stream; feature counters не усечены. Namespace
-`control:*` теперь даёт 933,450 loss events. Подтверждён общий parser fallback для
+`control:*` теперь даёт 658,433 loss events. Подтверждён общий parser fallback для
 unhandled control words (`parser.rs:2494`), но влияние каждого слова на вывод ещё
 не установлено. Ранжирование ledger задаёт triage, а не диагноз. Backlog остаётся
 unreviewed.
@@ -141,12 +142,14 @@ missing glyph не выдаётся за missing face, mutations каждого 
 ### RC02 — associated-script formatting, реальные fonts и единый resolved face
 
 Частично обработаны `\\ab`, `\\ai` и `\\afs`: они хранятся в существующих
-WML run fields `bCs`, `iCs`, `szCs`; import → write → reopen проверен синтетическим
-fixture. В корпусе это сняло 350,991 generic Loss событий, сохранив 100/100 text
-и resource gates. Это подтверждает mapping и roundtrip, но не визуальную идентичность.
-Следующие крупные controls для отдельного triage: `\\af`, `\\loch`, `\\hich`,
-`\\dbch`, `\\lang*`, `\\fcs`. Font registry, единый resolved face и embedding
-остаётся открытой частью RC02.
+WML run fields `bCs`, `iCs`, `szCs`. `\\af` разрешается в East Asian font slot,
+отдельно от обычного `\\f`; font switch, group state и import → write → reopen
+закреплены fixture. В корпусе эти mappings сняли 625,960 generic Loss событий,
+сохранив 100/100 text и resource gates; 48 отсутствующих font definitions
+продолжают честно выдавать Loss. Pagination осталась 62/100, pixel gate 3/100;
+это не полная визуальная приёмка. Следующие controls для triage: `\\loch`,
+`\\hich`, `\\dbch`, `\\lang*`, `\\fcs`. Font registry, единый resolved face и
+embedding остаются открытой частью RC02.
 
 Использовать shared face/shaping API после RC00. Определить один resolved face
 для measurement, glyph coverage, SVG emission и PDF subset: font SHA-256, face
