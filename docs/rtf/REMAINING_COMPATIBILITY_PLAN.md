@@ -118,15 +118,16 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Добавлен per-feature
 счётчик с bounded map (4096 имён, до 128 UTF-8 bytes каждое) и unattributed
 overflow totals. Текущий [rc01-loss-ledger.json](rc01-loss-ledger.json) обновлён
-после `5fe4988`:
-523,927 Loss, 95 Info, 460 feature names; суммы сходятся по каждому файлу. До
+после `9d934c0`:
+249,734 Loss, 95 Info, 456 feature names; суммы сходятся по каждому файлу. До
 RC02 было 1,327,900 Loss/459 features; `\\ab`, `\\ai`, `\\afs` сняли ровно
 350,991 событий; mapping определённых `\\af` снял ещё 274,969, а 48 ссылок на
 несуществующие definitions получили точные `undefined-font:*` labels. Mapping
-`\\lang`/`\\langnp` и `\\langfe`/`\\langfenp` снизил остаток ещё на 178,013 Loss,
-сохранив неизвестные LCID как явные Loss. У семи документов
+`\\lang`/`\\langnp` и `\\langfe`/`\\langfenp` снизил остаток на 178,013 Loss;
+script-font selector mapping снял ещё 274,193 события. Неизвестные LCID и
+неподдержанный `\\fcs` class остаются явными Loss. У четырёх документов
 усечён только retained detail stream; feature counters не усечены. Namespace
-`control:*` теперь даёт 574,535 loss events. Подтверждён общий parser fallback для
+`control:*` теперь даёт 205,950 loss events. Подтверждён общий parser fallback для
 unhandled control words (`parser.rs:2494`), но влияние каждого слова на вывод ещё
 не установлено. Ранжирование ledger задаёт triage, а не диагноз. Backlog остаётся
 unreviewed.
@@ -148,13 +149,14 @@ WML run fields `bCs`, `iCs`, `szCs`. `\\af` разрешается в East Asian
 отдельно от обычного `\\f`; font switch, group state и import → write → reopen
 закреплены fixture. В корпусе эти mappings сняли 625,960 generic Loss событий,
 сохранив 100/100 text и resource gates; 48 отсутствующих font definitions
-продолжают честно выдавать Loss. `\\lang`/`\\langnp` заполняют основной language
-slot, `\\langfe`/`\\langfenp` — `eastAsia`; неизвестные LCID остаются явными
-Loss. Regression покрывает group scope и import → write → reopen. В корпусе
-осталось 523,927 Loss при 100/100 text/resource Pass. Pagination — 62/100,
-pixels — 3/100; ни один page count или PDF hash не изменился после language
-mapping. Это не полная визуальная приёмка. Следующие controls для triage:
-`\\loch`, `\\hich`, `\\dbch`, `\\fcs`. Font registry, единый resolved face и
+продолжают честно выдавать Loss. `\\lang` family сохраняется в language slots.
+`\\loch`, `\\hich`, `\\dbch`, `\\rtlch`/`\\ltrch` и `\\fcs0/1` выбирают WML font
+slot; последующие `\\f`/`\\af` обновляют этот slot, а group scope восстанавливается.
+Fixtures покрывают ASCII, High-ANSI, East-Asian, complex-script, unknown `\\fcs`
+и import → write → reopen. В корпусе осталось 249,734 Loss при 100/100
+text/resource Pass. Pagination — 62/100, pixels — 3/100; page counts прежние,
+три PDF hashes изменились. Это не полная визуальная приёмка. Следующий приоритет:
+`\\alang`, `\\fcharset` и font-table modifiers. Font registry, единый resolved face и
 embedding остаются открытой частью RC02.
 
 Использовать shared face/shaping API после RC00. Определить один resolved face
