@@ -56,7 +56,37 @@ const EXIT_PROBLEM: u8 = 1;
 /// Exit code: damaged input or internal error.
 const EXIT_ERROR: u8 = 2;
 
+/// Stack of the thread every command runs on.
+///
+/// The library's budgets (`max_block_nesting`, `max_text_box_nesting`,
+/// `max_inline_nesting`, the math budgets) are sized so parsing fits the 1 MiB
+/// main-thread stack Windows gives a process. This is defence in depth on top of
+/// them: a recursion path a budget has not caught yet meets 64 MiB, not 1 MiB.
+const WORKER_STACK: usize = 64 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    let worker = std::thread::Builder::new()
+        .name("strict-ooxml".to_owned())
+        .stack_size(WORKER_STACK)
+        .spawn(run_command);
+    match worker {
+        Ok(handle) => handle.join().unwrap_or_else(|_| {
+            eprintln!("error: internal error (the command panicked)");
+            ExitCode::from(EXIT_ERROR)
+        }),
+        Err(error) => {
+            // A host that refuses a 64 MiB reservation still gets the command,
+            // on the stack it already has.
+            eprintln!(
+                "warning: could not reserve a {WORKER_STACK}-byte stack ({error}); continuing"
+            );
+            run_command()
+        }
+    }
+}
+
+/// Dispatches the command line; runs on the [`WORKER_STACK`] thread.
+fn run_command() -> ExitCode {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("inspect") => run_inspect(&args.collect::<Vec<_>>()),
