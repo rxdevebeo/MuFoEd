@@ -288,6 +288,7 @@ fn layout_row(
 }
 
 /// Where a laid-out cell sits in its row.
+#[derive(Clone, Copy)]
 struct CellPlacement {
     col: usize,
     span: usize,

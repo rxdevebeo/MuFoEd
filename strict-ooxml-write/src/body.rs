@@ -203,7 +203,7 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
         Inline::Tab => xml.empty("w:tab"),
         Inline::SdtInline(sdt) => {
             // AUD-68: keep the control; unwrapping dropped tag/alias/id.
-            write_sdt_around(xml, &sdt.properties(), |xml| {
+            write_sdt_around(ctx, xml, &sdt.properties(), |ctx, xml| {
                 for child in &sdt.inlines {
                     inline_item(ctx, xml, child);
                 }
