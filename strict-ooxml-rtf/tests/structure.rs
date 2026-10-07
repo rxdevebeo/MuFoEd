@@ -503,6 +503,55 @@ fn script_font_selectors_map_f_and_af_to_their_wml_slots() {
 }
 
 #[test]
+fn font_table_theme_selectors_round_trip_to_wml_theme_slots() {
+    let source = br"{\rtf1{\fonttbl{\flomajor\f0 MajorAscii;}{\fhimajor\f1 MajorHAnsi;}{\fdbmajor\f2 MajorEastAsia;}{\fbimajor\f3 MajorBidi;}{\flominor\f4 MinorAscii;}{\fhiminor\f5 MinorHAnsi;}{\fdbminor\f6 MinorEastAsia;}{\fbiminor\f7 MinorBidi;}}\f0 A \f1 H \f2 E \f3 B \f4 a \f5 h \f6 e \f7 b}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let expected = [
+        ("A", "MajorAscii", "majorAscii"),
+        ("H", "MajorHAnsi", "majorHAnsi"),
+        ("E", "MajorEastAsia", "majorEastAsia"),
+        ("B", "MajorBidi", "majorBidi"),
+        ("a", "MinorAscii", "minorAscii"),
+        ("h", "MinorHAnsi", "minorHAnsi"),
+        ("e", "MinorEastAsia", "minorEastAsia"),
+        ("b", "MinorBidi", "minorBidi"),
+    ];
+    for (text, face, theme) in expected {
+        let fonts = paragraph
+            .inlines
+            .iter()
+            .find_map(|inline| {
+                match inline {
+                Inline::Run(run)
+                    if run.content.iter().any(|content| {
+                        matches!(content, RunContent::Text(value) if value.text.contains(text))
+                    }) => run.props.fonts.as_ref(),
+                _ => None,
+            }
+            })
+            .unwrap_or_else(|| panic!("font properties for {text}"));
+        let (actual_face, actual_theme) = match theme {
+            "majorAscii" | "minorAscii" => (fonts.ascii.as_deref(), fonts.ascii_theme.as_deref()),
+            "majorHAnsi" | "minorHAnsi" => (fonts.h_ansi.as_deref(), fonts.h_ansi_theme.as_deref()),
+            "majorEastAsia" | "minorEastAsia" => {
+                (fonts.east_asia.as_deref(), fonts.east_asia_theme.as_deref())
+            }
+            "majorBidi" | "minorBidi" => {
+                (fonts.complex_script.as_deref(), fonts.cs_theme.as_deref())
+            }
+            _ => unreachable!(),
+        };
+        assert_eq!(actual_face, Some(face));
+        assert_eq!(actual_theme, Some(theme));
+    }
+}
+
+#[test]
 fn unsupported_font_script_class_remains_an_explicit_loss() {
     let imported = import(
         br"{\rtf1{\fonttbl{\f0 Base;}}\fcs2\af0 text}",

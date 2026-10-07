@@ -78,6 +78,12 @@ struct Font {
     name: String,
     charset: i32,
     codepage: Option<i32>,
+    theme: Option<FontTheme>,
+}
+#[derive(Clone, Copy)]
+struct FontTheme {
+    slot: FontSlot,
+    reference: &'static str,
 }
 #[derive(Default, Clone)]
 struct RowBuilder {
@@ -301,6 +307,15 @@ fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
         FontSlot::ComplexScript => fonts.complex_script = Some(face),
     }
 }
+fn assign_font_theme(fonts: &mut Fonts, slot: FontSlot, reference: &'static str) {
+    let reference: Arc<str> = Arc::from(reference);
+    match slot {
+        FontSlot::Ascii => fonts.ascii_theme = Some(reference),
+        FontSlot::HighAnsi => fonts.h_ansi_theme = Some(reference),
+        FontSlot::EastAsia => fonts.east_asia_theme = Some(reference),
+        FontSlot::ComplexScript => fonts.cs_theme = Some(reference),
+    }
+}
 struct Parser<'a> {
     options: &'a RtfOptions,
     report: RtfReport,
@@ -319,6 +334,8 @@ struct Parser<'a> {
     font_name: String,
     font_charset: i32,
     font_codepage: Option<i32>,
+    font_theme: Option<FontTheme>,
+    pending_font_theme: Option<FontTheme>,
     default_font: Option<i32>,
     pending_note_marker: Option<RtfSpan>,
     document_codepage: i32,
@@ -931,6 +948,7 @@ impl Parser<'_> {
                     name: std::mem::take(&mut self.font_name).trim().to_string(),
                     charset: self.font_charset,
                     codepage: self.font_codepage,
+                    theme: self.font_theme.take(),
                 },
             );
         }
@@ -968,12 +986,23 @@ impl Parser<'_> {
                 reason: "unsupported font charset/codepage",
             })?;
         let face = Arc::<str>::from(font.name.as_str());
-        if let Some(slot) = self.state.font_slot {
+        if let Some(slot) = self
+            .state
+            .font_slot
+            .or_else(|| font.theme.map(|theme| theme.slot))
+        {
             assign_font(
                 self.state.run.fonts.get_or_insert_with(Fonts::default),
                 slot,
-                face,
+                face.clone(),
             );
+            if let Some(theme) = font.theme {
+                assign_font_theme(
+                    self.state.run.fonts.get_or_insert_with(Fonts::default),
+                    slot,
+                    theme.reference,
+                );
+            }
             self.state.codepage = cp;
             return Ok(());
         }
@@ -992,6 +1021,10 @@ impl Parser<'_> {
             complex_script: Some(face),
             ..Default::default()
         });
+        if let Some(theme) = font.theme {
+            let fonts = self.state.run.fonts.get_or_insert_with(Fonts::default);
+            assign_font_theme(fonts, theme.slot, theme.reference);
+        }
         self.state.codepage = cp;
         Ok(())
     }
@@ -1006,6 +1039,13 @@ impl Parser<'_> {
                 slot,
                 face,
             );
+            if let Some(theme) = font.theme {
+                assign_font_theme(
+                    self.state.run.fonts.get_or_insert_with(Fonts::default),
+                    slot,
+                    theme.reference,
+                );
+            }
             return Ok(());
         }
         self.state.associated_font = Some(id);
@@ -1014,6 +1054,13 @@ impl Parser<'_> {
             .fonts
             .get_or_insert_with(Default::default)
             .east_asia = Some(face);
+        if let Some(theme) = font.theme {
+            assign_font_theme(
+                self.state.run.fonts.get_or_insert_with(Fonts::default),
+                theme.slot,
+                theme.reference,
+            );
+        }
         Ok(())
     }
     fn set_language(&mut self, id: i32, span: RtfSpan, slot: LanguageSlot) -> Result<(), RtfError> {
@@ -1897,6 +1944,7 @@ impl Parser<'_> {
             match name {
                 "f" => {
                     self.finish_font(span.start)?;
+                    self.font_theme = self.pending_font_theme.take();
                     self.font_id = Some(n.filter(|id| *id >= 0).ok_or(RtfError::Malformed {
                         offset: span.start,
                         reason: "invalid font id",
@@ -1904,6 +1952,26 @@ impl Parser<'_> {
                     self.font_charset = 0;
                     self.font_codepage = None;
                     self.font_name.clear();
+                }
+                "fbimajor" | "fbiminor" | "fdbmajor" | "fdbminor" | "fhimajor" | "fhiminor"
+                | "flomajor" | "flominor" => {
+                    let (slot, reference) = match name {
+                        "fbimajor" => (FontSlot::ComplexScript, "majorBidi"),
+                        "fbiminor" => (FontSlot::ComplexScript, "minorBidi"),
+                        "fdbmajor" => (FontSlot::EastAsia, "majorEastAsia"),
+                        "fdbminor" => (FontSlot::EastAsia, "minorEastAsia"),
+                        "fhimajor" => (FontSlot::HighAnsi, "majorHAnsi"),
+                        "fhiminor" => (FontSlot::HighAnsi, "minorHAnsi"),
+                        "flomajor" => (FontSlot::Ascii, "majorAscii"),
+                        "flominor" => (FontSlot::Ascii, "minorAscii"),
+                        _ => unreachable!(),
+                    };
+                    let theme = FontTheme { slot, reference };
+                    if self.font_id.is_some() {
+                        self.font_theme = Some(theme);
+                    } else {
+                        self.pending_font_theme = Some(theme);
+                    }
                 }
                 "fcharset" => {
                     self.font_charset = n.ok_or(RtfError::Malformed {
@@ -2780,6 +2848,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         font_name: String::new(),
         font_charset: 0,
         font_codepage: None,
+        font_theme: None,
+        pending_font_theme: None,
         default_font: None,
         pending_note_marker: None,
         document_codepage: 1252,
