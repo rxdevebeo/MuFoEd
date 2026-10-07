@@ -1130,15 +1130,13 @@ fn bind_part_foreign(
 }
 
 fn note_foreign_ids(table: &strict_ooxml_wml::model::notes::NoteTable) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut out = UniqueIds::default();
     for note in table.iter() {
         for id in passthrough::referenced_ids(&note.blocks) {
-            if !out.contains(&id) {
-                out.push(id);
-            }
+            out.insert(id);
         }
     }
-    out
+    out.into_vec()
 }
 
 /// AUD-61 invariant: every `r:*` attribute resolves through its part's `.rels`.
@@ -1213,7 +1211,7 @@ fn verify_no_dangling_relationships(
 /// Collects relationship-bearing `r:*` attribute values from a Strict part.
 fn office_relationship_ids(xml: &str) -> Vec<String> {
     const NAMES: &[&str] = &["embed", "id", "link", "dm", "lo", "qs", "cs"];
-    let mut out = Vec::new();
+    let mut out = UniqueIds::default();
     for attr in NAMES {
         let needle = format!(" r:{attr}=\"");
         let mut rest = xml;
@@ -1223,13 +1221,13 @@ fn office_relationship_ids(xml: &str) -> Vec<String> {
                 break;
             };
             let value = value_start[..end].to_owned();
-            if !value.is_empty() && !out.contains(&value) {
-                out.push(value);
+            if !value.is_empty() {
+                out.insert(value);
             }
             rest = &value_start[end + 1..];
         }
     }
-    out
+    out.into_vec()
 }
 
 fn add_part(zip: &mut ZipWriter, part: &str, bytes: Vec<u8>) -> Result<()> {
@@ -1300,12 +1298,36 @@ fn binary_content_type(name: &str) -> &'static str {
 
 /// Collects the relationship ids of every hyperlink in the body, in order.
 fn collect_hyperlink_ids(blocks: &[Block]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+    let mut out = UniqueIds::default();
     collect_hyperlink_ids_in(blocks, &mut out);
-    out
+    out.into_vec()
 }
 
-fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
+/// Strings in first-seen order without repeats, in O(1) per insert.
+///
+/// The collectors deduplicated with `Vec::contains`, which is quadratic: a
+/// document with 50 000 distinct hyperlinks cost about 1.25e9 string
+/// comparisons on save.
+#[derive(Default)]
+struct UniqueIds {
+    order: Vec<String>,
+    seen: HashSet<String>,
+}
+
+impl UniqueIds {
+    fn insert(&mut self, id: String) {
+        if !self.seen.contains(&id) {
+            self.seen.insert(id.clone());
+            self.order.push(id);
+        }
+    }
+
+    fn into_vec(self) -> Vec<String> {
+        self.order
+    }
+}
+
+fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut UniqueIds) {
     for block in blocks {
         match block {
             Block::Paragraph(paragraph) => collect_hyperlink_ids_inline(&paragraph.inlines, out),
@@ -1325,15 +1347,13 @@ fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
     }
 }
 
-fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
+fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
     for inline in inlines {
         match inline {
             Inline::Hyperlink(link) => {
                 if let Some(id) = &link.rel_id {
                     let id = id.as_str().to_owned();
-                    if !out.contains(&id) {
-                        out.push(id);
-                    }
+                    out.insert(id);
                 }
                 collect_hyperlink_ids_inline(&link.inlines, out);
             }
@@ -1356,7 +1376,7 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
     }
 }
 
-fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
+fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut UniqueIds) {
     let graphic = match &drawing.kind {
         DrawingKind::Inline(inline) => inline.graphic.as_ref(),
         DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
@@ -1365,7 +1385,7 @@ fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
     collect_hyperlink_ids_graphic(graphic, out);
 }
 
-fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut Vec<String>) {
+fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut UniqueIds) {
     match graphic {
         Graphic::Shape(shape) => {
             if let Some(text) = &shape.text {
