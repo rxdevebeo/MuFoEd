@@ -12,9 +12,10 @@
 //! - `report <file> [--json|--text] [--out <path>]` — emits the full Stage-3
 //!   Feature Report.
 //! - `render <file> [--out <dir|file.svg>] [--pages <range>] [--scale <n>]
-//!   [--no-floating] [--no-math]` — renders Stage-4/5B/5C SVG pages (floating
+//!   [--no-floating] [--no-math] [--wps-times]` — renders Stage-4/5B/5C SVG pages (floating
 //!   heavy objects and OMML formulas can be disabled with `--no-floating` and
-//!   `--no-math`).
+//!   `--no-math`; `--wps-times` applies the Clio WPS Times calibration, see
+//!   `RenderOptions::wps_times_calibration`).
 //! - `write <file.docx> --out <file.docx>` — serializes the parsed model back
 //!   to a Strict package (Stage 8A) and prints what the writer could not
 //!   express.
@@ -127,7 +128,7 @@ fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|write|normalize> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
-         [--no-floating] [--no-math] [--transitional]"
+         [--no-floating] [--no-math] [--wps-times] [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
@@ -411,6 +412,7 @@ struct RenderArgs {
     scale: Option<f64>,
     floating: bool,
     math: bool,
+    wps_times: bool,
 }
 
 impl RenderArgs {
@@ -421,11 +423,13 @@ impl RenderArgs {
         let mut scale: Option<f64> = None;
         let mut floating = true;
         let mut math = true;
+        let mut wps_times = false;
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
                 "--no-floating" => floating = false,
                 "--no-math" => math = false,
+                "--wps-times" => wps_times = true,
                 // Accepting the flag here rather than filtering it out of
                 // `args` keeps one source of truth for what the flag means.
                 "--transitional" => {}
@@ -469,6 +473,7 @@ impl RenderArgs {
             scale,
             floating,
             math,
+            wps_times,
         })
     }
 }
@@ -868,6 +873,7 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     }
     render_options = render_options.floating(parsed.floating);
     render_options = render_options.math(parsed.math);
+    render_options = render_options.wps_times_calibration(parsed.wps_times);
     let rendered = match document.render_svg(&render_options) {
         Ok(rendered) => rendered,
         Err(error) => {

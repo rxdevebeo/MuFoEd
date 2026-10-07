@@ -174,6 +174,17 @@ pub struct RenderOptions {
     /// all, is held to the same number instead of to whatever constant the layout
     /// happened to carry.
     pub limits: strict_ooxml_core::limits::ResourceLimits,
+    /// Stretch Tinos advances to the WPS-embedded Times of the Clio audit
+    /// (`font::substitute_width_scale`). Default `false`.
+    ///
+    /// Tinos is metric-compatible with Times New Roman, so the default layout
+    /// already measures Times the way Word does. The calibration was fitted to
+    /// one document's WPS export (P1, pages 54/104) and applied after
+    /// justification, so on every other document it moved glyphs off the
+    /// measured layout — a justified line ended 4–5 px past the right margin and
+    /// the `strict-text` pixel gate failed. It is kept for reproducing that
+    /// audit, behind this switch.
+    pub wps_times_calibration: bool,
 }
 
 impl Default for RenderOptions {
@@ -188,6 +199,7 @@ impl Default for RenderOptions {
             math: true,
             revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
+            wps_times_calibration: false,
         }
     }
 }
@@ -227,6 +239,13 @@ impl RenderOptions {
     #[must_use]
     pub fn math(mut self, math: bool) -> Self {
         self.math = math;
+        self
+    }
+
+    /// Sets [`Self::wps_times_calibration`].
+    #[must_use]
+    pub fn wps_times_calibration(mut self, enabled: bool) -> Self {
+        self.wps_times_calibration = enabled;
         self
     }
 }

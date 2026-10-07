@@ -1448,7 +1448,9 @@ fn finish_line(
     }
 
     // After wrap + justify + alignment: stretch Tinos to WPS Times metrics.
-    apply_substitute_width_reflow(&mut line.items, computed.alignment);
+    if ctx.options.wps_times_calibration {
+        apply_substitute_width_reflow(&mut line.items, computed.alignment);
+    }
 
     if line
         .items
