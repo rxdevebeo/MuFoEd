@@ -57,6 +57,7 @@ struct PageWriter<'a> {
     names: &'a BTreeMap<PartId, String>,
     images: BTreeMap<PartId, String>,
     report: &'a mut PdfReport,
+    font_diagnostics: bool,
 }
 
 /// Renders placed pages to PDF without resolving media bytes.
@@ -81,7 +82,17 @@ pub fn render_with_source(
 ) -> Result<PdfOutput> {
     let scale = options.scale;
     let mut report = PdfReport::new();
-    let fonts = collect_fonts(pages, &mut report);
+    report.configure_font_report(options.font_report_limit);
+    for page in pages {
+        report.record_font_report(strict_ooxml_render_svg::font::inspect_page_fonts(
+            page,
+            options.font_failure_policy,
+            strict_ooxml_render_svg::font::FontBackend::Pdf,
+            options.font_report_limit,
+            options.font_diagnostics,
+        )?);
+    }
+    let fonts = collect_fonts(pages, &mut report, options)?;
     // One name per picture, for the whole document, fixed before anything is
     // written: the content stream says `/Im… Do` and the page's `/XObject`
     // dictionary has to answer to that same name, and a name chosen twice is a
@@ -106,6 +117,7 @@ pub fn render_with_source(
             names: &image_names,
             images: BTreeMap::new(),
             report: &mut report,
+            font_diagnostics: options.font_diagnostics,
         };
         writer.draw_page(page, options.background);
         streams.push((writer.content.finish().into_vec(), writer.images));
@@ -330,7 +342,11 @@ fn collect_owned_text(
     }
 }
 
-fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont> {
+fn collect_fonts(
+    pages: &[PlacedPage],
+    report: &mut PdfReport,
+    options: &RenderOptions,
+) -> Result<Vec<PlacedFont>> {
     let mut collector = FaceCollector::new();
     for page in pages {
         for item in &page.items {
@@ -406,7 +422,7 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
         if key.instance.is_some() {
             match collector.build_resource(key) {
                 Ok(font) => out.push((Arc::new(font), key.resource_name(index))),
-                Err(error) => report.record_font_error(key, &error),
+                Err(error) => record_embedding_failure(pages, report, options, key, &error)?,
             }
             continue;
         }
@@ -419,10 +435,66 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
         let source = source.as_source();
         match collector.build(key, &source) {
             Ok(font) => out.push((Arc::new(font), key.resource_name(index))),
-            Err(error) => report.record_font_error(key, &error),
+            Err(error) => record_embedding_failure(pages, report, options, key, &error)?,
         }
     }
-    out
+    Ok(out)
+}
+
+fn record_embedding_failure(
+    pages: &[PlacedPage],
+    report: &mut PdfReport,
+    options: &RenderOptions,
+    key: &FaceKey,
+    error: &crate::font::FontError,
+) -> Result<()> {
+    use strict_ooxml_render_svg::font::{
+        selected_face, FontDiagnostic, FontDiagnosticKind, FontFailurePolicy,
+    };
+    let mut handled = false;
+    for page in pages {
+        for item in &page.items {
+            let Item::Text(text) = item else { continue };
+            if text.run.font_assets.is_none()
+                && options.font_failure_policy == FontFailurePolicy::ReportAndContinue
+                && !options.font_diagnostics
+            {
+                continue;
+            }
+            let Some(face) = selected_face(text) else {
+                continue;
+            };
+            let matches = if let Some(instance) = &key.instance {
+                face.resource.key() == instance
+            } else {
+                face.family.as_ref() == key.family
+                    && face.bold == key.bold
+                    && face.italic == key.italic
+            };
+            if matches {
+                report.record_font_diagnostic(
+                    &FontDiagnostic::for_face(
+                        FontDiagnosticKind::EmbeddingFailed,
+                        &face,
+                        None,
+                        &error.to_string(),
+                    ),
+                    options.font_failure_policy,
+                )?;
+                handled = true;
+            }
+        }
+    }
+    if !handled {
+        if options.font_failure_policy == FontFailurePolicy::Reject {
+            return Err(StrictError::Render(format!(
+                "font policy rejected font.embed.failed: {}: {error}",
+                key.family
+            )));
+        }
+        report.record_font_error(key, error);
+    }
+    Ok(())
 }
 
 impl PageWriter<'_> {
@@ -625,6 +697,15 @@ impl PageWriter<'_> {
         self.content.restore_state();
     }
 
+    fn record_text_missing_glyph(&mut self, text: &TextItem, ch: char) {
+        if text.run.font_assets.is_none() && !self.font_diagnostics {
+            self.report.record_missing_glyph(
+                strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
+                ch,
+            );
+        }
+    }
+
     fn text(&mut self, text: &TextItem) {
         if text.text.is_empty() {
             return;
@@ -652,7 +733,9 @@ impl PageWriter<'_> {
             })
             .map(|(font, name)| (Arc::clone(font), name.clone()));
         let Some((font, name)) = found else {
-            self.report.record_missing_face(&text.run.family);
+            if text.run.font_assets.is_none() && !self.font_diagnostics {
+                self.report.record_missing_face(&text.run.family);
+            }
             return;
         };
         // A character with no glyph in this face is dropped rather than drawn as
@@ -695,10 +778,7 @@ impl PageWriter<'_> {
             }
         }
         for ch in missing {
-            self.report.record_missing_glyph(
-                strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
-                ch,
-            );
+            self.record_text_missing_glyph(text, ch);
         }
         if encoded.is_empty() {
             return;
@@ -754,10 +834,7 @@ impl PageWriter<'_> {
                     self.content.show(Str(&cid.to_be_bytes()));
                     drew = true;
                 }
-                None => self.report.record_missing_glyph(
-                    strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
-                    ch,
-                ),
+                None => self.record_text_missing_glyph(text, ch),
             }
             let factor = if owned.is_some() {
                 strict_ooxml_render_svg::style::compressed_char_factor(
@@ -824,10 +901,7 @@ impl PageWriter<'_> {
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     for ch in unicode.chars() {
-                        self.report.record_missing_glyph(
-                            strict_ooxml_render_svg::style::requested_family(&text.run, &text.text),
-                            ch,
-                        );
+                        self.record_text_missing_glyph(text, ch);
                     }
                     continue;
                 }

@@ -141,6 +141,12 @@ pub struct RenderOptions {
     pub font_provider: FontProviderKind,
     /// Optional explicitly admitted font assets. Absent by default.
     pub font_assets: Option<std::sync::Arc<font::FontAssetRegistry>>,
+    /// Font failures default to reported continuation; Reject refuses unresolved/degraded text.
+    pub font_failure_policy: font::FontFailurePolicy,
+    /// Inspect bundled font requests as well; the policy builder enables this.
+    pub font_diagnostics: bool,
+    /// Retained font diagnostics per page (SVG) or document (PDF). Hard ceiling: 4096.
+    pub font_report_limit: usize,
     /// Page selection.
     pub pages: PageSelection,
     /// Draw a white page background.
@@ -172,6 +178,9 @@ impl Default for RenderOptions {
             media: MediaMode::EmbedDataUri,
             font_provider: FontProviderKind::Builtin,
             font_assets: None,
+            font_failure_policy: font::FontFailurePolicy::default(),
+            font_diagnostics: false,
+            font_report_limit: 256,
             pages: PageSelection::All,
             background: true,
             floating: true,
@@ -187,6 +196,14 @@ impl RenderOptions {
     #[must_use]
     pub fn font_assets(mut self, assets: std::sync::Arc<font::FontAssetRegistry>) -> Self {
         self.font_assets = Some(assets);
+        self
+    }
+
+    /// Sets the font failure policy for shared placement and backend delivery.
+    #[must_use]
+    pub fn font_failure_policy(mut self, policy: font::FontFailurePolicy) -> Self {
+        self.font_failure_policy = policy;
+        self.font_diagnostics = true;
         self
     }
 
@@ -242,6 +259,8 @@ impl RenderOptions {
 /// One rendered page.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Page {
+    /// Bounded resolution/failure diagnostics for text actually painted on this page.
+    pub font_report: font::FontReport,
     /// Zero-based index of the page in the document.
     pub index: usize,
     /// Page width in px.
@@ -296,6 +315,17 @@ pub fn place_pages(
     };
     let mut pages = layout::paginate::layout_document(&context)?.pages;
     retain_font_assets(&mut pages, options);
+    if options.font_failure_policy == font::FontFailurePolicy::Reject {
+        for page in &pages {
+            font::inspect_page_fonts(
+                page,
+                options.font_failure_policy,
+                font::FontBackend::Placement,
+                options.font_report_limit,
+                options.font_diagnostics,
+            )?;
+        }
+    }
     Ok(pages)
 }
 
@@ -343,22 +373,6 @@ pub fn render_with_media(
     };
     let mut laid_out = layout::paginate::layout_document(&context)?;
     retain_font_assets(&mut laid_out.pages, options);
-    for page in &laid_out.pages {
-        for item in &page.items {
-            if let layout::Item::Text(text) = item {
-                if let Some(face) = style::registered_face(&text.run, &text.text) {
-                    if face.resource.key().face_index != 0
-                        || face.resource.bytes().starts_with(b"ttcf")
-                    {
-                        return Err(RenderError::UnsupportedFontAsset(
-                            "SVG font collection delivery requires a single-face program".into(),
-                        )
-                        .into_strict());
-                    }
-                }
-            }
-        }
-    }
     let layout_warnings = laid_out.warnings.clone();
 
     let mut pages = Vec::new();
@@ -366,7 +380,16 @@ pub fn render_with_media(
         if !options.pages.contains(index + 1) {
             continue;
         }
+        let font_report = font::inspect_page_fonts(
+            page,
+            options.font_failure_policy,
+            font::FontBackend::Svg,
+            options.font_report_limit,
+            options.font_diagnostics,
+        )?;
+        let font_warnings = font_report.warnings();
         pages.push(Page {
+            font_report,
             index,
             width_px: page.width_px,
             height_px: page.height_px,
@@ -374,6 +397,7 @@ pub fn render_with_media(
             warnings: paint::invalid_char_warning(page)
                 .into_iter()
                 .chain(layout_warnings.iter().cloned())
+                .chain(font_warnings)
                 .collect(),
         });
     }

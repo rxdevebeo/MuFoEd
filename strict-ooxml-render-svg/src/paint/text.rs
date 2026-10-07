@@ -8,6 +8,11 @@ use crate::layout::{TextAdvanceKind, TextItem};
 
 /// Writes one text fragment, optionally with a highlight rectangle behind it.
 pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
+    if crate::style::registered_face(&item.run, &item.text)
+        .is_some_and(|face| !crate::font::svg_resource_supported(&face))
+    {
+        return;
+    }
     if let Some(highlight) = &item.run.highlight {
         // Highlight: an approximate box around the glyphs.
         let height = item.size_px * 1.2;

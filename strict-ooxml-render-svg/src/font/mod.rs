@@ -9,6 +9,7 @@ pub mod builtin;
 pub mod face;
 pub mod family;
 pub mod metrics;
+pub mod policy;
 pub mod registry;
 pub mod resource;
 pub mod shape;
@@ -20,6 +21,10 @@ pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource
 pub use face::{hash_face_bytes, hash_face_bytes_hex, resolve_face, FaceId, ResolvedFace};
 pub use family::{map_family, substitute_width_scale};
 pub use metrics::FontMetrics;
+pub use policy::{
+    inspect_page_fonts, selected_face, svg_resource_supported, FontBackend, FontDiagnostic,
+    FontDiagnosticKind, FontFailurePolicy, FontReport,
+};
 pub use registry::{
     FontAsset, FontAssetManifest, FontAssetRegistry, FontAssetRejection, FontEmbeddingPermission,
     FontRegistryError, FontRegistryLimits,

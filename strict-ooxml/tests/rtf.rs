@@ -146,3 +146,102 @@ fn imported_script_font_slots_accept_explicit_resources_in_both_backends() {
         "fixture deliberately has no CJK outlines"
     );
 }
+
+#[cfg(all(feature = "svg", feature = "pdf"))]
+#[test]
+fn public_rtf_font_reject_policy_refuses_unknown_request_in_both_backends() {
+    use strict_ooxml_render_svg::font::FontFailurePolicy;
+    let source = br"{\rtf1{\fonttbl{\f0 Unavailable RTF Face;}}\f0 AV office}";
+    let opened = StrictDocument::import_rtf(source, &RtfOptions::default()).unwrap();
+    let options = strict_ooxml::RenderOptions {
+        font_report_limit: 0,
+        ..strict_ooxml::RenderOptions::default().font_failure_policy(FontFailurePolicy::Reject)
+    };
+    for error in [
+        opened.document.render_svg(&options).unwrap_err(),
+        opened.document.render_pdf(&options).unwrap_err(),
+    ] {
+        assert!(error
+            .to_string()
+            .contains("font.unresolved: Unavailable RTF Face"));
+    }
+    assert!(opened
+        .document
+        .render_svg(&strict_ooxml::RenderOptions::default())
+        .is_ok());
+    assert!(opened
+        .document
+        .render_pdf(&strict_ooxml::RenderOptions::default())
+        .is_ok());
+}
+
+#[cfg(all(feature = "svg", feature = "pdf"))]
+#[test]
+fn explicit_continue_policy_reports_bundled_fallback_without_registry() {
+    use strict_ooxml_render_svg::font::{FontDiagnosticKind, FontFailurePolicy};
+    let opened = StrictDocument::import_rtf(
+        br"{\rtf1{\fonttbl{\f0 Unavailable RTF Face;}}\f0 AV office}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let options = strict_ooxml::RenderOptions::default()
+        .font_failure_policy(FontFailurePolicy::ReportAndContinue);
+    let svg = opened.document.render_svg(&options).unwrap();
+    let pdf = opened.document.render_pdf(&options).unwrap();
+    for report in [&svg[0].font_report, pdf.report.font_report()] {
+        let unresolved = report
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.kind == FontDiagnosticKind::Unresolved)
+            .unwrap();
+        assert_eq!(unresolved.requested_family, "Unavailable RTF Face");
+        assert_eq!(unresolved.resolved_family.as_deref(), Some("Carlito"));
+        assert!(!report.is_clean());
+    }
+}
+
+#[cfg(all(feature = "svg", feature = "pdf"))]
+#[test]
+fn imported_east_asian_slot_delivers_real_cjk_in_strict_mode() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{
+        hash_face_bytes, FontAsset, FontAssetManifest, FontAssetRegistry, FontEmbeddingPermission,
+        FontFailurePolicy, FontRegistryLimits,
+    };
+    let bytes = &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.otf")[..];
+    let family = "StrictLib Witness CJK SC";
+    let source = br"{\rtf1\ansi{\fonttbl{\f0 Arial;}{\f1 StrictLib Witness CJK SC;}}\loch\f0 AV \dbch\af1\u28450?\u23383?}";
+    let opened = StrictDocument::import_rtf(source, &RtfOptions::default()).unwrap();
+    let registry = FontAssetRegistry::from_assets(
+        vec![FontAsset {
+            bytes: Arc::from(bytes),
+            manifest: FontAssetManifest {
+                family: family.into(),
+                resolved_family: family.into(),
+                bold: false,
+                italic: false,
+                resource_hash: hash_face_bytes(bytes),
+                face_index: 0,
+                variations: vec![],
+                source: "pinned Noto CJK derivative; fonts/witnesses/manifest.json".into(),
+                license_id: "OFL-1.1".into(),
+                license_reference: "fonts/witnesses/CJK-OFL.txt and cjk-COPYRIGHT.txt".into(),
+                embedding: FontEmbeddingPermission::EmbedAndSubset,
+            },
+        }],
+        FontRegistryLimits::default(),
+    )
+    .unwrap();
+    let options = strict_ooxml::RenderOptions::default()
+        .font_assets(Arc::new(registry))
+        .font_failure_policy(FontFailurePolicy::Reject);
+    let svg = opened.document.render_svg(&options).unwrap();
+    assert!(svg[0].font_report.is_clean());
+    assert!(svg[0].svg.contains("漢字"));
+    let pdf = opened.document.render_pdf(&options).unwrap();
+    assert!(pdf.report.is_clean());
+    assert!(pdf
+        .embedded_faces
+        .iter()
+        .any(|face| face.instance.is_some()));
+}

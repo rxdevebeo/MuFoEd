@@ -1,0 +1,38 @@
+{
+  "schema": "strictlib.font-witness.v1",
+  "license": "OFL-1.1",
+  "fonttools": "4.60.1",
+  "uharfbuzz": "0.56.3",
+  "harfbuzz": "14.6.0",
+  "purpose": "test-only finite coverage, no runtime fallback",
+  "assets": [
+    {
+      "id": "cjk",
+      "family": "StrictLib Witness CJK SC",
+      "source_url": "https://github.com/notofonts/noto-cjk/blob/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+      "source_sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+      "source_bytes": 16437364,
+      "fixture": "cjk.otf",
+      "fixture_sha256": "226a61ed488949f0809ff9961e722274464a2b50297aa80a40ab07358f974d67",
+      "fixture_bytes": 11372,
+      "text": "漢字中文测试日本語한국어AV0123",
+      "license_file": "CJK-OFL.txt",
+      "modifications": "finite text subset with all layout features and closure; renamed family/PostScript/CFF names; unchanged timestamps",
+      "oracle": "native HarfBuzz, default features, und, guessed properties, MONOTONE_CHARACTERS; original/subset glyph names and geometry identical"
+    },
+    {
+      "id": "devanagari",
+      "family": "StrictLib Witness Devanagari",
+      "source_url": "https://github.com/notofonts/noto-fonts/blob/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSansDevanagari/NotoSansDevanagari-Regular.ttf",
+      "source_sha256": "385e78e6359a9d88a0f243d53b1209d7548361ba2194e2b9ec779bcaa7e8949d",
+      "source_bytes": 219212,
+      "fixture": "devanagari.ttf",
+      "fixture_sha256": "16431b8a3ccaa45038cab3824008d628668f79e518ccee82f9b312022cc6d1f4",
+      "fixture_bytes": 25224,
+      "text": "कर्मनमस्तेहिन्दीक्षि0123",
+      "license_file": "Devanagari-OFL.txt",
+      "modifications": "finite text subset with all layout features and closure; renamed family/PostScript/CFF names; unchanged timestamps",
+      "oracle": "native HarfBuzz, default features, und, guessed properties, MONOTONE_CHARACTERS; original/subset glyph names and geometry identical"
+    }
+  ]
+}

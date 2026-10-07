@@ -888,3 +888,199 @@ fn pdf_subsets_collection_face_one_and_matches_single_face_geometry() {
     let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
     assert!(reader.extract_text(&[1]).unwrap().contains("office"));
 }
+
+fn policy_asset(request: &str) -> strict_ooxml_render_svg::font::FontAsset {
+    let face =
+        strict_ooxml_render_svg::font::resolve_face("Times New Roman", false, false).unwrap();
+    let mut asset = collection_asset();
+    asset.bytes = std::sync::Arc::from(face.bytes);
+    asset.manifest.family = request.into();
+    asset.manifest.resolved_family = request.into();
+    asset.manifest.face_index = 0;
+    asset.manifest.resource_hash = face.resource_hash;
+    asset.manifest.variations = face.instance_key().variations;
+    asset.manifest.source = "bundled Tinos test fixture".into();
+    asset
+}
+
+fn policy_pages(
+    asset: strict_ooxml_render_svg::font::FontAsset,
+    text: &str,
+) -> Vec<strict_ooxml_render_svg::layout::PlacedPage> {
+    use strict_ooxml_render_svg::font::{FontAssetRegistry, FontRegistryLimits};
+    let body = format!(
+        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{}\"/></w:rPr><w:t>{text}</w:t></w:r></w:p>",
+        asset.manifest.family
+    );
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(&body)
+        .build();
+    let package = open(&bytes);
+    let document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let options = RenderOptions::default().font_assets(std::sync::Arc::new(
+        FontAssetRegistry::from_assets(vec![asset], FontRegistryLimits::default()).unwrap(),
+    ));
+    place_pages(&document, &options, None).unwrap()
+}
+
+#[test]
+fn pdf_policy_keeps_failure_counts_without_details_and_refuses_glyph_loss() {
+    use strict_ooxml_render_svg::font::FontFailurePolicy;
+    let pages = policy_pages(policy_asset("CJK Alias"), "&#x6f22;&#x5b57;");
+    let options = RenderOptions {
+        font_report_limit: 0,
+        ..RenderOptions::default()
+    };
+    let continued = render(&pages, &options).unwrap();
+    assert!(continued.report.losses().is_empty());
+    assert!(!continued.report.is_clean());
+    assert!(continued.report.font_report().failure_count >= 2);
+    assert!(continued.report.font_report().details_truncated);
+    assert!(continued.report.to_string().contains("font failures:"));
+    let strict = options.font_failure_policy(FontFailurePolicy::Reject);
+    assert!(render(&pages, &strict)
+        .unwrap_err()
+        .to_string()
+        .contains("font.glyph.missing: CJK Alias"));
+}
+
+#[test]
+fn pdf_embedding_failure_reports_request_and_strict_policy_refuses_output() {
+    use strict_ooxml_render_svg::font::{hash_face_bytes, FontDiagnosticKind, FontFailurePolicy};
+    let mut asset = policy_asset("Broken Outline Alias");
+    let mut bytes = asset.bytes.to_vec();
+    let table_count = usize::from(u16::from_be_bytes([bytes[4], bytes[5]]));
+    let table = (0..table_count)
+        .map(|index| 12 + index * 16)
+        .find(|&offset| &bytes[offset..offset + 4] == b"glyf")
+        .unwrap();
+    bytes[table..table + 4].copy_from_slice(b"BAD!");
+    asset.manifest.resource_hash = hash_face_bytes(&bytes);
+    asset.bytes = std::sync::Arc::from(bytes);
+    let mut pages = policy_pages(asset, "AV office");
+    // Exercise the scalar-CID subset path independently of malformed-font shaping rejection.
+    for page in &mut pages {
+        for item in &mut page.items {
+            if let Item::Text(text) = item {
+                text.advance = strict_ooxml_render_svg::TextAdvanceKind::Metric;
+            }
+        }
+    }
+    let output = render(&pages, &RenderOptions::default()).unwrap();
+    let failure = output
+        .report
+        .font_report()
+        .diagnostics()
+        .iter()
+        .find(|entry| entry.kind == FontDiagnosticKind::EmbeddingFailed)
+        .unwrap();
+    assert_eq!(failure.requested_family, "Broken Outline Alias");
+    assert!(failure.resource.is_some());
+    assert!(output.embedded_faces.is_empty());
+    assert!(!output.report.is_clean());
+    let strict = RenderOptions {
+        font_report_limit: 0,
+        ..RenderOptions::default().font_failure_policy(FontFailurePolicy::Reject)
+    };
+    let error = render(&pages, &strict).unwrap_err().to_string();
+    assert!(
+        error.contains("font.embed.failed: Broken Outline Alias"),
+        "{error}"
+    );
+}
+
+#[test]
+fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
+    use strict_ooxml_render_svg::font::{hash_face_bytes, FontDiagnosticKind, FontFailurePolicy};
+    for (family, bytes, text, degraded) in [
+        (
+            "StrictLib Witness CJK SC",
+            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.otf")[..],
+            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.txt"),
+            false,
+        ),
+        (
+            "StrictLib Witness Devanagari",
+            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/devanagari.ttf")[..],
+            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/devanagari.txt"),
+            true,
+        ),
+    ] {
+        let mut asset = policy_asset(family);
+        asset.bytes = std::sync::Arc::from(bytes);
+        asset.manifest.resource_hash = hash_face_bytes(bytes);
+        asset.manifest.variations.clear();
+        asset.manifest.source = "fonts/witnesses/manifest.json pinned Noto derivative".into();
+        asset.manifest.license_reference = "fonts/witnesses OFL and copyright".into();
+        let pages = policy_pages(asset, text);
+        let output = render(&pages, &RenderOptions::default()).unwrap();
+        assert_eq!(output.embedded_faces.len(), 1, "{family}");
+        assert!(output.embedded_faces[0].instance.is_some());
+        assert!(!output
+            .report
+            .font_report()
+            .diagnostics()
+            .iter()
+            .any(|entry| matches!(
+                entry.kind,
+                FontDiagnosticKind::MissingGlyph
+                    | FontDiagnosticKind::ShapingFailed
+                    | FontDiagnosticKind::EmbeddingFailed
+            )));
+        assert_eq!(output.report.font_report().is_clean(), !degraded);
+        let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
+        let extracted: String = reader
+            .extract_text(&[1])
+            .unwrap()
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect();
+        if degraded {
+            // Known continuation-CID extraction gap: keep visible until Indic acceptance closes.
+            assert!(extracted.contains('\u{fffd}'));
+            assert_eq!(extracted.replace('\u{fffd}', ""), text);
+            assert!(output
+                .report
+                .font_report()
+                .diagnostics()
+                .iter()
+                .any(|entry| entry.kind == FontDiagnosticKind::DegradedScript));
+        } else {
+            assert_eq!(
+                extracted, text,
+                "{family}: ToUnicode must preserve logical clusters"
+            );
+        }
+        let program_refs: Vec<_> = reader
+            .objects
+            .values()
+            .filter_map(|obj| obj.as_dict().ok())
+            .filter_map(|dict| {
+                dict.get(b"FontFile2")
+                    .or_else(|_| dict.get(b"FontFile3"))
+                    .ok()
+            })
+            .map(|obj| obj.as_reference().unwrap())
+            .collect();
+        assert_eq!(program_refs.len(), 1);
+        let stream = reader
+            .get_object(program_refs[0])
+            .unwrap()
+            .as_stream()
+            .unwrap();
+        let program = stream.decompressed_content().unwrap();
+        assert!(!program.is_empty());
+        let strict = render(
+            &pages,
+            &RenderOptions::default().font_failure_policy(FontFailurePolicy::Reject),
+        );
+        if degraded {
+            assert!(strict
+                .unwrap_err()
+                .to_string()
+                .contains("font.script.degraded"));
+        } else {
+            assert!(strict.unwrap().report.is_clean());
+        }
+    }
+}

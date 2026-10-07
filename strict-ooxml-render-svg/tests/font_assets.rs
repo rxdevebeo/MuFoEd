@@ -423,7 +423,19 @@ fn svg_rejects_collection_delivery_instead_of_selecting_first_face() {
             .unwrap(),
     );
     let (_, document) = common::open_body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Collection Face\"/></w:rPr><w:t>AV office</w:t></w:r></w:p>");
-    let error = render(&document, &RenderOptions::default().font_assets(registry)).unwrap_err();
+    let options = RenderOptions::default().font_assets(registry);
+    let continued = render(&document, &options).unwrap();
+    assert!(continued[0]
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("font.delivery.unsupported")));
+    assert!(!continued[0].svg.contains("AV office"));
+    assert!(!continued[0].svg.contains("data:font"));
+    let error = render(
+        &document,
+        &options.font_failure_policy(strict_ooxml_render_svg::font::FontFailurePolicy::Reject),
+    )
+    .unwrap_err();
     assert!(error.to_string().contains("single-face program"));
 }
 
@@ -437,4 +449,143 @@ fn admitted_long_family_remains_resolvable_with_bounded_lookup() {
     .unwrap();
     assert!(registry.resolve(&family, false, false).is_some());
     assert!(registry.resolve(&"A".repeat(257), false, false).is_none());
+}
+
+#[test]
+fn font_policy_reports_original_slot_and_refuses_missing_glyph_without_details() {
+    use strict_ooxml_render_svg::font::{FontDiagnosticKind, FontFailurePolicy};
+    use strict_ooxml_render_svg::{place_pages, render, RenderOptions};
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(
+            vec![asset("CJK Alias", "Arial", false)],
+            FontRegistryLimits::default(),
+        )
+        .unwrap(),
+    );
+    let (_, document) = common::open_body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Calibri\" w:eastAsia=\"CJK Alias\"/></w:rPr><w:t>&#x6f22;&#x5b57;</w:t></w:r></w:p>");
+    let options = RenderOptions::default().font_assets(registry);
+    let page = render(&document, &options).unwrap().remove(0);
+    assert!(!page.font_report.is_clean());
+    let missing = page
+        .font_report
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.kind == FontDiagnosticKind::MissingGlyph)
+        .unwrap();
+    assert_eq!(missing.requested_family, "CJK Alias");
+    assert_eq!(missing.resolved_family.as_deref(), Some("Arimo"));
+    assert!(missing.resource.is_some());
+    assert!(matches!(missing.codepoint, Some(0x6f22 | 0x5b57)));
+    let strict = RenderOptions {
+        font_report_limit: 0,
+        ..options
+            .clone()
+            .font_failure_policy(FontFailurePolicy::Reject)
+    };
+    assert!(render(&document, &strict)
+        .unwrap_err()
+        .to_string()
+        .contains("font.glyph.missing: CJK Alias"));
+    assert!(place_pages(&document, &strict, None)
+        .unwrap_err()
+        .to_string()
+        .contains("font.glyph.missing"));
+    let counts = render(
+        &document,
+        &RenderOptions {
+            font_report_limit: 0,
+            ..options
+        },
+    )
+    .unwrap();
+    assert!(counts[0].font_report.diagnostics().is_empty());
+    assert!(counts[0].font_report.failure_count >= 2);
+    assert!(counts[0]
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("font.report.truncated")));
+}
+
+#[test]
+fn strict_policy_accepts_mapping_and_rejects_unresolved_style() {
+    use strict_ooxml_render_svg::font::{FontDiagnosticKind, FontFailurePolicy};
+    use strict_ooxml_render_svg::{render, RenderOptions};
+    let (_, known) = common::open_body(
+        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Arial\"/></w:rPr><w:t>AV office</w:t></w:r></w:p>",
+    );
+    let strict = RenderOptions::default().font_failure_policy(FontFailurePolicy::Reject);
+    let page = render(&known, &strict).unwrap().remove(0);
+    assert!(page.font_report.is_clean());
+    assert!(page
+        .font_report
+        .diagnostics()
+        .iter()
+        .any(
+            |diagnostic| diagnostic.kind == FontDiagnosticKind::Substitute
+                && diagnostic.requested_family == "Arial"
+        ));
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(
+            vec![asset("Alias", "Arial", false)],
+            FontRegistryLimits::default(),
+        )
+        .unwrap(),
+    );
+    let (_, unknown_style) = common::open_body(
+        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Alias\"/><w:b/></w:rPr><w:t>AV</w:t></w:r></w:p>",
+    );
+    let continued = RenderOptions::default().font_assets(Arc::clone(&registry));
+    let page = render(&unknown_style, &continued).unwrap().remove(0);
+    let unresolved = page
+        .font_report
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.kind == FontDiagnosticKind::Unresolved)
+        .unwrap();
+    assert_eq!(unresolved.requested_family, "Alias");
+    assert!(unresolved.bold);
+    assert_eq!(unresolved.resolved_family.as_deref(), Some("Carlito"));
+    assert!(render(&unknown_style, &strict.font_assets(registry))
+        .unwrap_err()
+        .to_string()
+        .contains("font.unresolved: Alias"));
+}
+
+#[test]
+fn bounded_reports_preserve_counts_and_fail_closed_on_overflow() {
+    use strict_ooxml_render_svg::font::{
+        FontDiagnostic, FontDiagnosticKind, FontFailurePolicy, FontReport,
+    };
+    let registry = FontAssetRegistry::from_assets(
+        vec![asset("Alias", "Arial", false)],
+        FontRegistryLimits::default(),
+    )
+    .unwrap();
+    let face = registry.resolve("Alias", false, false).unwrap();
+    let diagnostic = FontDiagnostic::for_face(
+        FontDiagnosticKind::MissingGlyph,
+        &face,
+        Some('\u{6f22}'),
+        &"X".repeat(900),
+    );
+    assert_eq!(diagnostic.detail.len(), 512);
+    assert!(diagnostic.details_truncated);
+    let mut report = FontReport::new(1);
+    assert!(report
+        .record(diagnostic.clone(), FontFailurePolicy::ReportAndContinue)
+        .unwrap());
+    assert!(!report
+        .record(diagnostic.clone(), FontFailurePolicy::ReportAndContinue)
+        .unwrap());
+    let mut overflow = FontReport::new(0);
+    overflow
+        .record(diagnostic.clone(), FontFailurePolicy::ReportAndContinue)
+        .unwrap();
+    assert!(report.append(overflow).is_empty());
+    assert_eq!(report.failure_count, 3);
+    assert_eq!(report.diagnostics().len(), 1);
+    assert!(report.details_truncated);
+    assert!(FontReport::new(0)
+        .record(diagnostic, FontFailurePolicy::Reject)
+        .is_err());
 }

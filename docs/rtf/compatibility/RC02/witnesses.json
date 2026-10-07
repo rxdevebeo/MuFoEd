@@ -67,7 +67,24 @@
     {
       "name": "RTF script-slot admission",
       "oracle": "Latin/East Asian aliases reach explicit resource keys; missing CJK outlines remain loss"
+    },
+    {
+      "name": "strict and bounded font policy",
+      "oracle": "unknown request/missing glyph/subset failures refused even at zero detail capacity; continuation reports preserve counts"
+    },
+    {
+      "name": "licensed CJK and Devanagari geometry",
+      "oracle": "pinned source/subset geometry identical in native HarfBuzz; harfrust matches glyphs/clusters/advances/offsets",
+      "manifest": "strict-ooxml-render-svg/fonts/witnesses/manifest.json"
+    },
+    {
+      "name": "real CJK delivery",
+      "oracle": "strict SVG/PDF and RTF East Asian slot; embedded CFF program; independent lopdf Unicode extraction"
+    },
+    {
+      "name": "Devanagari extraction gap",
+      "oracle": "TTF embeds with no missing glyph; continuation CID extraction produces U+FFFD; degraded diagnostic and strict refusal remain"
     }
   ],
-  "real_script_geometry_acceptance": "Pending"
+  "real_script_geometry_acceptance": "Narrow CJK/Devanagari geometry passes; full script acceptance pending, Indic continuation extraction gap"
 }

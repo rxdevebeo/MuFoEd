@@ -623,7 +623,6 @@ impl LayoutContext<'_> {
             let (total_advance_em, status) = if let Some(face) = &owned {
                 crate::font::shape_resource(&shown, face).map_or_else(
                     || {
-                        self.warn(format!("font.shaping.failed: {}", face.requested_family));
                         (
                             shown.chars().map(advance).sum(),
                             crate::font::ShapeStatus::DegradedMissingGlyph,
@@ -636,12 +635,6 @@ impl LayoutContext<'_> {
                     crate::font::shape_text(&shown, family, run.bold, run.italic, self.font);
                 (shaped.total_advance_em, shaped.status)
             };
-            if status == crate::font::ShapeStatus::DegradedMissingGlyph {
-                self.warn(format!(
-                    "font.glyph.missing: {}",
-                    crate::style::requested_family(run, text)
-                ));
-            }
             if status == crate::font::ShapeStatus::DegradedComplexScript {
                 self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
             }
@@ -668,15 +661,6 @@ impl LayoutContext<'_> {
                 }
             }
             return width;
-        }
-        if owned
-            .as_ref()
-            .is_some_and(|face| shown.chars().any(|ch| face.resource.glyph_id(ch).is_none()))
-        {
-            self.warn(format!(
-                "font.glyph.missing: {}",
-                crate::style::requested_family(run, text)
-            ));
         }
         let mut total = 0.0;
         let mut prev = None;

@@ -481,3 +481,24 @@ carried forward by exact PDF identity: 3/100 documents Pass, 97 Fail; 423 pages,
 This is not a new raster run or visual acceptance. Equivalence evidence:
 `target/rtf-import/RC02-render-assets-pixel-equivalence.json`; fresh pagination:
 `target/rtf-import/RC02-render-assets-visual-verified/results.json`.
+
+
+## RC02 failure policy and licensed witnesses (2026-10-07)
+
+Implemented bounded original-request reports and ReportAndContinue/Reject across
+placement, SVG and PDF. Strict refusal survives zero detail capacity; SVG TTC
+continuation omits unsupported text with a diagnostic. Renamed pinned OFL CJK SC
+and Devanagari test subsets match independent native HarfBuzz geometry. CJK strict
+SVG/PDF/RTF and Unicode extraction pass. Devanagari embeds but continuation CIDs
+still produce replacement characters on extraction: it remains degraded and strict
+rendering refuses it. Next: fix continuation extraction, review script/font profiles,
+wire bounded CLI assets, and pass full visual corpus acceptance. RC02 InProgress.
+Contract and limits: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).
+
+436 tests/53 groups pass with the existing alias-test exclusion; MSRV Clippy passes
+with unchanged baseline suppressions/warnings. Fresh corpus 100/100 text/integrity/
+resource; XSD/OPC 100 packages, zero violations. All 100 default DOCX/PDF hashes
+match the previous slice. Fresh pagination remains 62 Pass/38 Fail. Historical pixel
+measurement remains 3 Pass/97 Fail documents and 6 Pass/417 Fail pages; no reraster.
+Receipts: `target/rtf-import/RC02-font-policy-{corpus,visual}/results.json`,
+`RC02-font-policy-{full-tests,clippy-final,xsd,opc}.log`.

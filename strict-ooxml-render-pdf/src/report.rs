@@ -44,6 +44,7 @@ impl fmt::Display for Severity {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PdfReport {
     losses: Vec<PdfLoss>,
+    fonts: strict_ooxml_render_svg::font::FontReport,
 }
 
 impl PdfReport {
@@ -51,6 +52,34 @@ impl PdfReport {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Bounded original-request/program diagnostics, including failure counts after truncation.
+    #[must_use]
+    pub fn font_report(&self) -> &strict_ooxml_render_svg::font::FontReport {
+        &self.fonts
+    }
+
+    pub(crate) fn record_font_report(&mut self, report: strict_ooxml_render_svg::font::FontReport) {
+        for diagnostic in self.fonts.append(report) {
+            if diagnostic.kind.is_failure() {
+                self.push(diagnostic.kind.id(), diagnostic.message(), Severity::Text);
+            }
+        }
+    }
+    pub(crate) fn configure_font_report(&mut self, limit: usize) {
+        self.fonts = strict_ooxml_render_svg::font::FontReport::new(limit);
+    }
+
+    pub(crate) fn record_font_diagnostic(
+        &mut self,
+        diagnostic: &strict_ooxml_render_svg::font::FontDiagnostic,
+        policy: strict_ooxml_render_svg::font::FontFailurePolicy,
+    ) -> strict_ooxml_core::error::Result<()> {
+        if self.fonts.record(diagnostic.clone(), policy)? && diagnostic.kind.is_failure() {
+            self.push(diagnostic.kind.id(), diagnostic.message(), Severity::Text);
+        }
+        Ok(())
     }
 
     /// The losses, in the order they were found.
@@ -81,7 +110,7 @@ impl PdfReport {
     /// Whether nothing was lost.
     #[must_use]
     pub fn is_clean(&self) -> bool {
-        self.losses.is_empty()
+        self.losses.is_empty() && self.fonts.is_clean()
     }
 
     /// Counts of each severity, for a one-line summary.
@@ -190,11 +219,18 @@ impl PdfReport {
 
 impl fmt::Display for PdfReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.losses.is_empty() {
+        if self.is_clean() {
             return f.write_str("nothing lost\n");
         }
         for (severity, count) in self.severity_counts() {
             writeln!(f, "  {severity}: {count}")?;
+        }
+        if self.fonts.failure_count > 0 {
+            writeln!(
+                f,
+                "font failures: {} occurrence(s); details truncated: {}",
+                self.fonts.failure_count, self.fonts.details_truncated
+            )?;
         }
         // Worst first: this is the text a person reads, and the whole point of a
         // severity is that it orders what to look at. The counts above carry the

@@ -2,8 +2,8 @@
   "card": "RC02",
   "status": "InProgress",
   "updated": "2026-10-07",
-  "scope": "optional explicit font assets through placement and SVG/PDF delivery",
-  "base_commit": "b6608f7",
+  "scope": "bounded font failure policy and licensed finite CJK/Devanagari witnesses",
+  "base_commit": "7d3086b",
   "implemented": [
     "shared bytes lifetime",
     "font program/face index/variation identity",
@@ -26,20 +26,31 @@
     "explicit SVG collection rejection",
     "PDF owned resource collector",
     "PDF resource/index/all-coordinate subsetting",
-    "registered PDF/SVG spacing and compression origins"
+    "registered PDF/SVG spacing and compression origins",
+    "ReportAndContinue/Reject original-request font diagnostics",
+    "bounded detail reports with truncation-independent failure counts",
+    "strict placement and backend failure checks",
+    "explicit bundled-only diagnostics opt-in",
+    "SVG TTC continuation omission and strict refusal",
+    "PDF embedding failure reports",
+    "renamed pinned OFL CJK SC and Devanagari test subsets",
+    "independent native HarfBuzz geometry oracle",
+    "strict positive CJK SVG/PDF/RTF witness"
   ],
   "remaining": [
-    "resource/glyph failure policy and runtime reports",
-    "licensed CJK/Indic assets",
-    "independent positive CJK/Indic geometry and extraction witnesses",
-    "full corpus acceptance"
+    "Indic continuation-CID ToUnicode extraction gap",
+    "full complex-script placement and visual acceptance",
+    "reviewed font/script support profile",
+    "bounded CLI font asset configuration",
+    "full corpus visual acceptance"
   ],
   "checks": {
     "full_svg_pdf_public_api": {
       "status": "PassWithBaselineExclusion",
-      "passed": 425,
+      "passed": 436,
+      "groups": 53,
       "excluded_test": "maps_regular_postscript_names_to_the_same_bundled_faces",
-      "log": "target/rtf-import/RC02-render-assets-full-tests.log"
+      "log": "target/rtf-import/RC02-font-policy-full-tests.log"
     },
     "clippy_msrv": {
       "status": "PassWithBaselineSuppressions",
@@ -96,6 +107,45 @@
     "formatting": {
       "rustfmt_changed_files": "Pass",
       "git_diff_check": "Pass"
+    },
+    "policy_clippy": {
+      "status": "PassWithBaselineSuppressionsAndWarnings",
+      "log": "target/rtf-import/RC02-font-policy-clippy-final.log"
+    },
+    "policy_corpus": {
+      "status": "Pass",
+      "documents": 100,
+      "text": 100,
+      "integrity": 100,
+      "resource": 100,
+      "receipt": "target/rtf-import/RC02-font-policy-corpus/results.json"
+    },
+    "script_witnesses": {
+      "cjk": "PassNarrowCoverageStrictSvgPdfRtfUnicode",
+      "devanagari": "GeometryAndEmbeddingPassDegradedExtraction",
+      "manifest": "strict-ooxml-render-svg/fonts/witnesses/manifest.json"
+    },
+    "policy_xsd_opc": {
+      "status": "Pass",
+      "documents": 100,
+      "violations": 0,
+      "logs": [
+        "target/rtf-import/RC02-font-policy-xsd.log",
+        "target/rtf-import/RC02-font-policy-opc.log"
+      ]
+    },
+    "policy_pagination": {
+      "status": "Measured",
+      "pass": 62,
+      "fail": 38,
+      "same_pdf_hashes_as_previous": 100,
+      "receipt": "target/rtf-import/RC02-font-policy-visual/results.json"
+    },
+    "policy_default_equivalence": {
+      "same_docx": 100,
+      "same_pdf_and_references": 100,
+      "receipt": "target/rtf-import/RC02-font-policy-equivalence.json",
+      "pixel_status": "Historical only; not rerasterized"
     }
   }
 }

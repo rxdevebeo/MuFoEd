@@ -76,6 +76,11 @@ fn font_faces(page: &PlacedPage) -> String {
         let Item::Text(text) = item else {
             continue;
         };
+        if crate::style::registered_face(&text.run, &text.text)
+            .is_some_and(|face| !crate::font::svg_resource_supported(&face))
+        {
+            continue;
+        }
         let family = crate::style::chosen_family(&text.run, &text.text);
         let key = (
             family,
