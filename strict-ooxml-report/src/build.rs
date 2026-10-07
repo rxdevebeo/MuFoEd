@@ -99,7 +99,7 @@ impl<'a> ReportInput<'a> {
         self
     }
 
-    /// Fills the normalization block from a core [`NormalizationReport`] (AUD-31).
+    /// Fills the normalization block from a core [`NormalizationReport`](strict_ooxml_core::normalize::NormalizationReport) (AUD-31).
     #[must_use]
     pub fn normalization_report(mut self, report: &CoreNormalizationReport) -> Self {
         self.normalization = normalization_block_from(report);
@@ -163,7 +163,7 @@ pub fn build(input: ReportInput<'_>) -> SupportReport {
     }
 }
 
-/// Converts a core [`NormalizationReport`] into the Feature Report block.
+/// Converts a core [`NormalizationReport`](strict_ooxml_core::normalize::NormalizationReport) into the Feature Report block.
 #[must_use]
 pub fn normalization_block_from(report: &CoreNormalizationReport) -> NormalizationBlock {
     let applied: Vec<AppliedTransform> = report

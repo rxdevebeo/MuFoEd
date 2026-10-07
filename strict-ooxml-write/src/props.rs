@@ -7,7 +7,7 @@
 //!
 //! The order itself is not written out in each function. It lives in
 //! [`crate::order`], transcribed from `strict/wml.xsd`, and every container here
-//! emits through [`schema_child`], which asks that table where a child goes
+//! emits through `schema_child`, which asks that table where a child goes
 //! instead of relying on the order the statements below happen to appear in.
 //! `STAGE-10G-TASK.md` G21 asks for exactly this: the order comes from the
 //! schema, in one place, rather than being repaired one misordered element at a

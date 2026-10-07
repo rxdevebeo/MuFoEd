@@ -124,7 +124,7 @@ pub struct NormalizerOptions {
     /// from the start and read nowhere, which made `with_mce` a constructor for a
     /// setting with no behaviour behind it — the same category of defect as the
     /// XSD harness version that caught `XMLSchemaParseError` and passed. See
-    /// [`mce`](crate::normalize::mce) for what each policy does and
+    /// [`crate::normalize::mce`] for what each policy does and
     /// [`McePolicy`] for what "understood" means here.
     pub mce: McePolicy,
     /// What to do about a broken Strict invariant (`TZ` §10.9).
@@ -194,7 +194,7 @@ impl NormalizerOptions {
 
 /// Normalizes Transitional OOXML parts to Strict at the raw-bytes seam.
 ///
-/// Implements [`RawNormalizer`]. Each part writes a local
+/// Implements [`RawNormalizer`](crate::normalize::RawNormalizer). Each part writes a local
 /// [`NormalizationReport`]; on completion that report **replaces** the entry
 /// for the part in a `BTreeMap` (ADR-0017 / AUD-30). The mutex is held only
 /// for the insert, so concurrent `normalize_part` calls under `parallel` do

@@ -264,7 +264,7 @@ pub struct Page {
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`]-backed error if a layout limit is exceeded.
+/// Returns a [`StrictError`](strict_ooxml_core::error::StrictError)-backed error if a layout limit is exceeded.
 pub fn place_pages(
     document: &Document,
     options: &RenderOptions,

@@ -407,8 +407,8 @@ pub enum WriteError {
     ///
     /// Not `DepthExceeded`: that one counts XML elements the serializer opened,
     /// this one counts `w:tbl`, block-level `w:sdt` and text boxes in the model -
-    /// the same containers [`ResourceLimits::max_block_nesting`] and
-    /// [`ResourceLimits::max_text_box_nesting`] bound on the way in, checked here
+    /// the same containers [`ResourceLimits::max_block_nesting`](strict_ooxml_core::limits::ResourceLimits::max_block_nesting) and
+    /// [`ResourceLimits::max_text_box_nesting`](strict_ooxml_core::limits::ResourceLimits::max_text_box_nesting) bound on the way in, checked here
     /// because a model built in code never met the reader.
     Nesting {
         /// Which budget was spent.

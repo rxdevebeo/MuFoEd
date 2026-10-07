@@ -8,7 +8,7 @@
 //! Object numbering is explicit rather than implicit. `pdf-writer` does not
 //! allocate ids, and the order in which they are handed out is what makes the
 //! output byte-identical between runs (SC-1), so the allocation order is part of
-//! the contract and is written down in [`PdfBuilder::allocate`].
+//! the contract and is written down in `PdfBuilder::allocate`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

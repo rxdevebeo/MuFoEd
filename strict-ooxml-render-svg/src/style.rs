@@ -344,7 +344,7 @@ enum ToggleMode {
 
 /// Merges run properties from a style or from document defaults.
 ///
-/// Toggle properties XOR. Direct formatting goes through [`apply_direct_run_props`].
+/// Toggle properties XOR. Direct formatting goes through `apply_direct_run_props`.
 pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme: Option<&Theme>) {
     apply_run_props_mode(computed, props, theme, ToggleMode::Cascade);
 }

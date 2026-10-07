@@ -77,11 +77,11 @@ pub struct ParseOptions {
 ///
 /// Runs both phases (parse + resolve). The conformance policy is no longer
 /// this function's concern (AUD-23 / ADR-0016): `Package::open_*` is the only
-/// place a [`ConformancePolicy`] is weighed, through
+/// place a [`ConformancePolicy`](strict_ooxml_core::opc::ConformancePolicy) is weighed, through
 /// `opc::policy::decide`, so a `Package` that opened at all has already
 /// cleared that gate. What this function still enforces is that every part it
 /// reads actually arrives in the WordprocessingML Strict namespace — see
-/// [`PartParser::expect_root_ns`].
+/// `PartParser::expect_root_ns`.
 ///
 /// # Errors
 ///

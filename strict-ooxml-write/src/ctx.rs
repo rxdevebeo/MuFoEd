@@ -256,7 +256,7 @@ impl<'a> Ctx<'a> {
     /// `part`.
     ///
     /// Inside a decoration or notes part a fresh id is allocated in that
-    /// part's [`RelAllocator`] against the **written** media target (AUD-61).
+    /// part's `RelAllocator` against the **written** media target (AUD-61).
     pub fn media_rel(&mut self, part: Option<&PartId>) -> Option<String> {
         let part = part?;
         let target = self.media_targets.get(part.as_str())?.clone();

@@ -4,8 +4,8 @@
 //! accepted. Every node carries a
 //! [`SourceLocation`](strict_ooxml_core::error::SourceLocation), recursion is
 //! bounded by the shared XML depth limit and by the per-formula budgets
-//! [`ResourceLimits::max_math_nodes`] and
-//! [`ResourceLimits::max_math_depth`], and unmodelled constructs are recorded in
+//! [`ResourceLimits::max_math_nodes`](strict_ooxml_core::limits::ResourceLimits::max_math_nodes) and
+//! [`ResourceLimits::max_math_depth`](strict_ooxml_core::limits::ResourceLimits::max_math_depth), and unmodelled constructs are recorded in
 //! the [`SupportModel`](crate::model::support::SupportModel) as
 //! `Partial`/`Unsupported` instead of being dropped.
 //!

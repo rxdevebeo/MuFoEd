@@ -835,7 +835,7 @@ fn attributes_of<'a>(attributes: impl Iterator<Item = Attribute<'a>>) -> BTreeMa
 ///
 /// **The split is a return value rather than a marker inside one list**, and that
 /// is deliberate. A text box's content has to go through T1–T5 like everything else,
-/// and writing it through [`TransitionalNormalizer::rewrite_event`] in place is both
+/// and writing it through `TransitionalNormalizer::rewrite_event` in place is both
 /// simpler and impossible to get wrong. The marker version — emit a placeholder,
 /// queue the content, queue the tail — was tried first and it is a trap: the caller
 /// has to get three orderings right at once (head, content, tail), and getting one
@@ -866,7 +866,7 @@ pub fn shape_events(
 /// The events before a text box's content and the events after it.
 ///
 /// Two lists because the content is written **in place**, through the same
-/// [`TransitionalNormalizer::rewrite_event`] as the rest of the part — which is
+/// `TransitionalNormalizer::rewrite_event` as the rest of the part — which is
 /// what makes it ordinary WML by the time it lands, and removes any need for a
 /// marker, a queue or an ordering the caller has to get right.
 #[must_use]

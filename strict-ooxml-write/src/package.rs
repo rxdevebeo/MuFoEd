@@ -159,7 +159,7 @@ pub trait Source {
     ///
     /// # Errors
     ///
-    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when the
+    /// Returns a [`strict_ooxml_core::error::StrictError`] when the
     /// part cannot be read.
     fn read_part(&self, part: &PartId) -> Result<Vec<u8>>;
 
@@ -205,7 +205,7 @@ pub trait Source {
     ///
     /// # Errors
     ///
-    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a
+    /// Returns a [`strict_ooxml_core::error::StrictError`] when a
     /// bound is exceeded.
     fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
         use std::collections::{HashSet, VecDeque};
@@ -506,7 +506,7 @@ fn part_xml<'a>(
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a part
+/// Returns a [`strict_ooxml_core::error::StrictError`] when a part
 /// exceeds a resource limit, when a media part cannot be read, or when the
 /// writer's own depth budget is exceeded.
 pub fn write_package(
