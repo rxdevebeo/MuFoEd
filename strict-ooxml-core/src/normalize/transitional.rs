@@ -815,10 +815,17 @@ impl TransitionalNormalizer {
         let location = context.location();
         let (local, uri) = resolve(start, context);
         let qualified = qualify(&uri, &local);
-        if let Some(dropped) =
-            drop_unsupported_start(empty, &local, &uri, &qualified, &location, report)
-        {
-            return dropped;
+        // The root is never dropped: a part whose root is in an extension
+        // namespace (`w15:commentsEx`, `w16cid:commentsIds`, ...) would otherwise
+        // be written with no root element at all, which is not XML. Its
+        // children still go through the removal rules.
+        let is_root = !std::mem::replace(&mut context.root_seen, true);
+        if !is_root {
+            if let Some(dropped) =
+                drop_unsupported_start(empty, &local, &uri, &qualified, &location, report)
+            {
+                return dropped;
+            }
         }
 
         // ---- T3: element name -----------------------------------------
@@ -1576,6 +1583,8 @@ pub(crate) struct PartContext {
     vml_picture_prefixes: Vec<(&'static str, &'static str)>,
     /// Whether the part's root element has been written yet.
     root_written: bool,
+    /// Whether the part's root start tag has been seen (see `rewrite_start`).
+    root_seen: bool,
     /// Next `wp:docPr/@id` this part hands out, for a converted VML picture.
     doc_pr_id: u32,
     /// The markup-compatibility policy this write runs with.
@@ -1630,6 +1639,7 @@ impl PartContext {
             doc_pr_id: 0,
             vml_picture_prefixes: Vec::new(),
             root_written: false,
+            root_seen: false,
             mce: McePolicy::default(),
             invariants: InvariantMode::default(),
             direction: DirectionPolicy::default(),
@@ -2771,6 +2781,24 @@ mod tests {
     const TRANSITIONAL: &str = r#"<?xml version="1.0"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>"#;
+
+    /// A part whose root is in an extension namespace keeps its root, so the
+    /// normalized part is still a well-formed document (CC0_DOCX_1/065's
+    /// `word/commentsExtended.xml` came out empty).
+    #[test]
+    fn an_extension_namespace_root_is_kept() {
+        let input = br#"<w15:commentsEx xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" mc:Ignorable="w15"><w15:commentEx w15:paraId="0A1B2C3D" w15:done="0"/></w15:commentsEx>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let output = normalizer
+            .normalize(&PartId::new("/word/commentsExtended.xml"), input)
+            .expect("normalize");
+        let xml = String::from_utf8(output.to_vec()).expect("utf8");
+        assert!(xml.contains("<w15:commentsEx"), "the root survives: {xml}");
+        assert!(
+            xml.trim_end().ends_with("</w15:commentsEx>") || xml.trim_end().ends_with("/>"),
+            "and is closed: {xml}"
+        );
+    }
 
     #[test]
     fn drawingml_hue_stays_an_angle_and_lum_mod_becomes_a_percent() {
