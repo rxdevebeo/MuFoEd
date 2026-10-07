@@ -33,6 +33,20 @@
 //! `render` returns `0` on success, `1` when the document was rendered but the
 //! Feature Report has `unsupported`/`error` blockers, and `2` on failure.
 
+// Every line this tool prints goes through `terminal_safe`: part names,
+// relationship ids and targets, content types, loss details and error messages
+// all come from the document, and a raw ESC or BEL in them is a terminal
+// escape sequence (title rewrite, colour, cursor movement), not text. These
+// shadow the std macros for this file, so no call site can forget.
+macro_rules! println {
+    () => { std::println!() };
+    ($($arg:tt)*) => { std::println!("{}", crate::terminal_safe(&format!($($arg)*))) };
+}
+macro_rules! eprintln {
+    () => { std::eprintln!() };
+    ($($arg:tt)*) => { std::eprintln!("{}", crate::terminal_safe(&format!($($arg)*))) };
+}
+
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -1067,4 +1081,28 @@ fn push_json_string(body: &mut String, name: &str, value: &str, comma: bool) {
         body.push(',');
     }
     body.push('\n');
+}
+
+/// Replaces C0/C1 control characters other than newline and tab with a visible
+/// `\u{..}` escape, so text taken from a document cannot drive the terminal.
+///
+/// JSON output passes through unchanged: the serializer already escapes control
+/// characters inside strings, and nothing else in it is a control character.
+fn terminal_safe(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(is_unsafe_control) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + 8);
+    for ch in text.chars() {
+        if is_unsafe_control(ch) {
+            let _ = write!(out, "\\u{{{:x}}}", u32::from(ch));
+        } else {
+            out.push(ch);
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+fn is_unsafe_control(ch: char) -> bool {
+    ch.is_control() && ch != '\n' && ch != '\t'
 }
