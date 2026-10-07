@@ -295,6 +295,11 @@ fn f06_clio_l16055_is_four_point() {
         "/../strict-ooxml-core/tests/docx/",
         "Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
     );
+    // The Clio witness is gitignored (local only); skip without it.
+    if !std::path::Path::new(path).is_file() {
+        eprintln!("SKIP f06_clio_l16055_is_four_point: {path} is absent");
+        return;
+    }
     let normalizer = Arc::new(TransitionalNormalizer::new());
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)

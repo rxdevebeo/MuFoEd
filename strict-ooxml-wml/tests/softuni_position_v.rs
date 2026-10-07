@@ -16,6 +16,12 @@ fn softuni_preserves_page_percent_position() {
         env!("CARGO_MANIFEST_DIR"),
         "/../strict-ooxml-core/tests/docx/4. Complex-Conditions.docx"
     );
+    // The corpus document is gitignored (local only); a checkout without it
+    // has nothing to check here.
+    if !std::path::Path::new(path).is_file() {
+        eprintln!("SKIP softuni_preserves_page_percent_position: {path} is absent");
+        return;
+    }
     let normalizer = Arc::new(TransitionalNormalizer::new());
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)
