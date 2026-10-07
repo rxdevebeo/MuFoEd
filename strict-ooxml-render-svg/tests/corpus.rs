@@ -67,3 +67,43 @@ fn corpus_renders_or_refuses_without_panics() {
         "expected at least one sample"
     );
 }
+
+/// The CC0 `ci-core` tier, normalized: every document opens, parses and
+/// renders (first 20 pages) to valid SVG with finite coordinates. The samples
+/// above are Transitional and only exercise the refusal; these exercise the
+/// layout on real Word, LibreOffice and WPS output.
+#[test]
+fn cc0_core_corpus_renders() {
+    use strict_ooxml_core::normalize::transitional::TransitionalNormalizer;
+    use strict_ooxml_render_svg::PageSelection;
+    use strict_ooxml_testkit::corpus::{tier, Tier};
+
+    let docs = tier(Tier::CiCore);
+    if docs.is_empty() {
+        eprintln!("SKIP cc0 ci-core corpus not fetched");
+        return;
+    }
+    let options = RenderOptions {
+        pages: PageSelection::Range { start: 1, end: 20 },
+        ..RenderOptions::default()
+    };
+    for doc in docs {
+        let open = OpenOptions::default()
+            .conformance(ConformancePolicy::Normalize)
+            .shared_normalization(std::sync::Arc::new(TransitionalNormalizer::new()));
+        let package = Package::open_path(&doc.path, &open)
+            .unwrap_or_else(|error| panic!("{}: open: {error}", doc.id));
+        let document = parse_document(&package, &ParseOptions::default())
+            .unwrap_or_else(|error| panic!("{}: parse: {error}", doc.id));
+        let pages = render(&document, &options)
+            .unwrap_or_else(|error| panic!("{}: render: {error}", doc.id));
+        assert!(!pages.is_empty(), "{}: no pages", doc.id);
+        for page in &pages {
+            roxmltree::Document::parse(&page.svg)
+                .unwrap_or_else(|error| panic!("{}: invalid SVG: {error}", doc.id));
+            let ink = common::without_font_faces(&page.svg);
+            assert!(!ink.contains("NaN"), "{}: NaN in SVG", doc.id);
+            assert!(!ink.contains("inf"), "{}: inf in SVG", doc.id);
+        }
+    }
+}

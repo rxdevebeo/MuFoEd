@@ -2338,6 +2338,7 @@ dependencies = [
  "skrifa 0.44.0",
  "strict-ooxml-core",
  "strict-ooxml-fidelity",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "toml",
  "unicode-segmentation",
