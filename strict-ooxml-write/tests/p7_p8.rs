@@ -5,8 +5,6 @@
 //! change one slot or one hex digit and require the written package to show
 //! that change. Lexical theme drop at the same hex is not equivalence (plan §8).
 
-use std::path::{Path, PathBuf};
-
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::normalize::TransitionalNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
@@ -17,21 +15,6 @@ use strict_ooxml_wml::model::values::{Color, ThemeColor, ThemeColorRef};
 use strict_ooxml_wml::model::Document;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
-
-/// A document from the gitignored local corpus, or `None` (with a loud skip
-/// line) when this checkout does not carry it.
-fn local_corpus(relative: &str) -> Option<PathBuf> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
-    if path.is_file() {
-        Some(path)
-    } else {
-        eprintln!(
-            "SKIP: local corpus document not present: {}",
-            path.display()
-        );
-        None
-    }
-}
 
 fn open(bytes: &[u8]) -> Result<Package, StrictError> {
     Package::open_reader(bytes, &OpenOptions::default())
@@ -233,28 +216,27 @@ fn t_p7_3_accent_slot_change_is_visible() {
     assert!(!xml.contains(r#"w:themeColor="accent1""#), "{xml}");
 }
 
-/// Contoso styles: themeColor / themeFill token counts survive a Strict rewrite.
+/// Contoso-template styles (CC0/023): themeColor / themeFill token counts survive a Strict rewrite.
 ///
 /// Counts are substring occurrences in `word/styles.xml` (themeFill includes
 /// themeFillTint/Shade), matching the P7 receipt note (1277 / 784).
 #[test]
 fn t_p7_contoso_styles_theme_token_counts_match_source() {
-    let Some(path) =
-        local_corpus("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx")
-    else {
-        return;
-    };
+    // CC0/023 is built on the same style template as the local Contoso guide
+    // (1277 themeColor, 784 themeFill in styles.xml, themeFontLang eastAsia
+    // ja-JP; counted in its XML), and it runs in CI (ci-core).
+    let path = strict_ooxml_testkit::corpus_doc!("cc0/023").path;
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)
         .normalization(TransitionalNormalizer::new());
-    let package = Package::open_path(&path, &options).expect("open Contoso");
+    let package = Package::open_path(&path, &options).expect("open CC0/023");
     let source_styles = part_xml(&package, "/word/styles.xml");
     let source_theme_color = source_styles.matches("themeColor").count();
     let source_theme_fill = source_styles.matches("themeFill").count();
-    assert_eq!(source_theme_color, 1277, "Contoso source themeColor count");
-    assert_eq!(source_theme_fill, 784, "Contoso source themeFill count");
+    assert_eq!(source_theme_color, 1277, "CC0/023 source themeColor count");
+    assert_eq!(source_theme_fill, 784, "CC0/023 source themeFill count");
 
-    let document = parse(&package).expect("parse Contoso");
+    let document = parse(&package).expect("parse CC0/023");
     let written =
         write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
     let written_styles = part_xml(&open(&written.bytes).expect("reopen"), "/word/styles.xml");

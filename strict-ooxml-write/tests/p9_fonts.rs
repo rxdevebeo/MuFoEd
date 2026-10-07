@@ -219,25 +219,24 @@ fn t_p9_numbering_symbol_face_survives_the_opensymbol_overlay() {
 
 #[test]
 fn t_p9_contoso_theme_font_languages_round_trip() {
-    let Some(path) =
-        local_corpus("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx")
-    else {
-        return;
-    };
+    // CC0/023 is built on the same style template as the local Contoso guide
+    // (1277 themeColor, 784 themeFill in styles.xml, themeFontLang eastAsia
+    // ja-JP; counted in its XML), and it runs in CI (ci-core).
+    let path = strict_ooxml_testkit::corpus_doc!("cc0/023").path;
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let language = document
         .settings
         .theme_font_lang
         .as_ref()
-        .expect("Contoso themeFontLang");
+        .expect("CC0/023 themeFontLang");
     assert_eq!(language.east_asia.as_deref(), Some("ja-JP"));
     let written =
         write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
     let settings = part_text(&written.bytes, "/word/settings.xml");
     assert!(
         settings.contains(r#"w:eastAsia="ja-JP""#) && !settings.contains("w:bidi="),
-        "Contoso keeps eastAsia and does not invent bidi: {settings}"
+        "CC0/023 keeps eastAsia and does not invent bidi: {settings}"
     );
 }
 
