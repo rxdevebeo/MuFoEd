@@ -51,6 +51,7 @@ mod math;
 mod notes;
 mod numbering;
 mod paint;
+mod table_style;
 
 pub use layout::{
     ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,

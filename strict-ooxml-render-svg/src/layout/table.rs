@@ -91,11 +91,11 @@ pub(crate) fn layout_table(
     let skip_cell_h_margins = table_uniform_frame(table).is_some();
 
     let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
-    for row in &table.rows {
+    for (row_index, row) in table.rows.iter().enumerate() {
         let raw = layout_row(
             ctx,
             table,
-            row,
+            row_index,
             &widths,
             table_x,
             depth,
@@ -151,7 +151,7 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
                 VState::Restart => (cell, true, true, !merge_continues(rows, row_index, cell)),
                 VState::None => (cell, true, true, true),
             };
-            if let Some(fill) = shading_fill(&source.properties) {
+            if let Some(fill) = shading_fill(ctx, &source.properties) {
                 items.push(Item::Rect(RectItem {
                     x: cell.x,
                     y: 0.0,
@@ -209,13 +209,14 @@ struct LaidOutRow {
 fn layout_row(
     ctx: &LayoutContext<'_>,
     table: &Table,
-    row: &strict_ooxml_wml::model::TableRow,
+    row_index: usize,
     widths: &[f64],
     table_x: f64,
     depth: u32,
     escape_frames: bool,
     skip_cell_h_margins: bool,
 ) -> LaidOutRow {
+    let row = &table.rows[row_index];
     let row_columns: usize = row
         .cells
         .iter()
@@ -237,7 +238,17 @@ fn layout_row(
     for cell in &row.cells {
         let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
         let span = span.min(widths.len().saturating_sub(column).max(1));
-        let mut margins = effective_margins(ctx, table, row, cell);
+        // `w:tblStylePr` conditions of this cell, as a mask: the resolved
+        // properties are built in helpers, not in this recursive frame.
+        let conditions = crate::table_style::cell_conditions(
+            ctx.document,
+            table,
+            row_index,
+            column,
+            span,
+            widths.len(),
+        );
+        let mut margins = effective_margins(ctx, table, row, cell, conditions);
         if skip_cell_h_margins {
             margins.0 = 0.0;
             margins.1 = 0.0;
@@ -256,6 +267,7 @@ fn layout_row(
         let end = column.saturating_add(span).min(widths.len());
         let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
         let cell_content_width = (width - margins.0 - margins.1).max(1.0);
+        let cell_style = crate::table_style::enter_cell(table, conditions);
         let (items, content_height, page_frames) = layout_cell_content(
             ctx,
             &cell.blocks,
@@ -264,9 +276,12 @@ fn layout_row(
             depth + 1,
             escape_frames,
         );
+        drop(cell_style);
         let height = content_height + margins.2 + margins.3;
         max_content = max_content.max(height);
         push_raw_cell(
+            ctx,
+            table,
             &mut cells,
             cell,
             CellPlacement {
@@ -275,6 +290,7 @@ fn layout_row(
                 x,
                 width,
                 margin_top: margins.2,
+                conditions,
             },
             items,
             page_frames,
@@ -295,13 +311,17 @@ struct CellPlacement {
     x: f64,
     width: f64,
     margin_top: f64,
+    /// `w:tblStylePr` conditions that apply (see `table_style::cell_conditions`).
+    conditions: u16,
 }
 
-/// Builds a [`RawCell`] in its own frame: the cell's properties are cloned
-/// here, not in [`layout_row`], which recurses once per nesting level (see
-/// [`row_flows`]).
+/// Builds a [`RawCell`] in its own frame: the cell's properties are resolved
+/// against the table style here, not in [`layout_row`], which recurses once per
+/// nesting level (see [`row_flows`]).
 #[inline(never)]
 fn push_raw_cell(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
     cells: &mut Vec<RawCell>,
     cell: &strict_ooxml_wml::model::TableCell,
     placement: CellPlacement,
@@ -313,7 +333,12 @@ fn push_raw_cell(
         span: placement.span,
         x: placement.x,
         width: placement.width,
-        properties: cell.props.clone(),
+        properties: crate::table_style::resolve_cell_properties(
+            ctx.document,
+            table,
+            placement.conditions,
+            &cell.props,
+        ),
         items,
         page_frames,
         margin_top: placement.margin_top,
@@ -571,19 +596,27 @@ fn cell_spacing_px(
 }
 
 /// Effective cell margins `(left, right, top, bottom)` in px.
+///
+/// The first source that sets any side wins: the cell, the row, the table, then
+/// the table style (`tcMar` of the style and its `conditions` over the style's
+/// `tblCellMar`).
+#[inline(never)]
 fn effective_margins(
     ctx: &LayoutContext<'_>,
     table: &Table,
     row: &strict_ooxml_wml::model::TableRow,
     cell: &strict_ooxml_wml::model::TableCell,
+    conditions: u16,
 ) -> (f64, f64, f64, f64) {
     let scale = ctx.options.scale;
     let source = if cell.props.margins != CellMargins::default() {
         cell.props.margins
     } else if row.props.cell_margins != CellMargins::default() {
         row.props.cell_margins
-    } else {
+    } else if table.props.cell_margins != CellMargins::default() {
         table.props.cell_margins
+    } else {
+        crate::table_style::style_cell_margins(ctx.document, table, conditions)
     };
     let value = |margin: Option<Twips>, default: i32| {
         twips_to_px(margin.map_or(default, Twips::value), scale)
@@ -1198,12 +1231,8 @@ fn resolve_edge(
         2 => properties.borders.start.as_ref(),
         _ => properties.borders.end.as_ref(),
     };
-    let table_border = match edge {
-        0 => table.props.borders.top.as_ref(),
-        1 => table.props.borders.bottom.as_ref(),
-        2 => table.props.borders.start.as_ref(),
-        _ => table.props.borders.end.as_ref(),
-    };
+    // Direct `w:tblBorders`, else the table style chain's.
+    let table_border = crate::table_style::table_border(ctx.document, table, edge);
     cell_border
         .or(table_border)
         .and_then(|border| stroke(ctx, border))
@@ -1241,12 +1270,12 @@ fn stroke(ctx: &LayoutContext<'_>, border: &Border) -> Option<Stroke> {
     Some((color, width, dashed))
 }
 
-/// Returns the cell/row/table shading fill colour, if any.
-fn shading_fill(cell: &CellProperties) -> Option<String> {
+/// Returns the cell shading fill colour, if any (`w:themeFill` resolved through
+/// the document theme, as paragraph shading is).
+fn shading_fill(ctx: &LayoutContext<'_>, cell: &CellProperties) -> Option<String> {
     cell.shading
         .as_ref()
-        .and_then(|shading| shading.fill.as_ref())
-        .and_then(parse_color)
+        .and_then(|shading| crate::style::shading_fill_color(shading, ctx.document.theme.as_ref()))
 }
 
 #[cfg(test)]

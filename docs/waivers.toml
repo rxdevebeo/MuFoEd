@@ -694,6 +694,21 @@ then close this waiver.
 """
 opened = "2026-10-03"
 review = "2027-01-03"
+closed = "2026-10-08"
+closed_by = """
+The render cascade applies table styles (`strict-ooxml-render-svg/src/table_style.rs`):
+the base `w:tblPr` borders and cell margins, `w:tcPr` shading/borders/margins and
+`w:pPr`/`w:rPr` of the `w:tblStyle` chain, then each `w:tblStylePr` that the cell's
+position, `w:tblLook` and `w:tblStyleRowBandSize`/`w:tblStyleColBandSize` select, in
+Word's order (wholeTable, vertical bands, horizontal bands, first/last column,
+first/last row, corner cells); `basedOn` ancestors first, so a child's condition
+overrides its parent's. Direct `w:tcPr` and paragraph/run formatting still win
+(table style < paragraph style < direct, §17.7.2); `w:themeFill` resolves through
+the theme as paragraph shading does. Tests:
+`strict-ooxml-render-svg/tests/table_style_conditions.rs`. Follow-up outside the
+renderer: the parser's support note for `w:tblStylePr` ("not applied in layout") and
+the `coverage/wml-elements.toml` reason that cites this waiver are now stale.
+"""
 
 [[waivers]]
 id = "VERTJC"
