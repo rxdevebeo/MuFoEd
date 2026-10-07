@@ -278,3 +278,49 @@ fn t_p9_object_defaults_keep_the_def_rpr_faces_and_the_rest_of_the_element() {
         "objectDefaults must be copied, with Strict percentages: {theme_xml}"
     );
 }
+
+/// The jinja2-demo construct, built here so it runs everywhere: a numbering
+/// level whose `w:rPr` carries two `w:rFonts`, the second adding only
+/// `w:cs="OpenSymbol"` (LibreOffice writes bullets this way). The bullet's
+/// Symbol faces and the second element's complex-script face must all survive.
+#[test]
+fn t_p9_numbering_second_rfonts_keeps_both_faces_synthetic() {
+    let numbering = "<w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"bullet\"/>\
+<w:lvlText w:val=\"\u{f0b7}\"/><w:rPr>\
+<w:rFonts w:ascii=\"Symbol\" w:hAnsi=\"Symbol\" w:hint=\"default\"/>\
+<w:rFonts w:cs=\"OpenSymbol\"/></w:rPr></w:lvl></w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>";
+    let bytes = DocxBuilder::new(Family::Transitional)
+        .body(
+            "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>\
+<w:r><w:t>item</w:t></w:r></w:p>",
+        )
+        .part_xml("word/numbering.xml", "w:numbering", numbering)
+        .rel("rIdNumbering", "numbering", "numbering.xml")
+        .content_type(
+            "/word/numbering.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+        )
+        .build();
+    let package = Package::open_reader(
+        bytes.as_slice(),
+        &OpenOptions::default()
+            .conformance(ConformancePolicy::Normalize)
+            .shared_normalization(Arc::new(
+                strict_ooxml_core::normalize::transitional::TransitionalNormalizer::new(),
+            )),
+    )
+    .expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written =
+        write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
+    let numbering = part_text(&written.bytes, "/word/numbering.xml");
+    assert!(
+        numbering.contains(r#"w:ascii="Symbol""#)
+            && numbering.contains(r#"w:hAnsi="Symbol""#)
+            && numbering.contains(r#"w:hint="default""#)
+            && numbering.contains(r#"w:cs="OpenSymbol""#),
+        "numbering bullet faces must survive the second rFonts: {numbering}"
+    );
+}
