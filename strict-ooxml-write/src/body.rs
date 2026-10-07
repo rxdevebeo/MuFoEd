@@ -636,7 +636,11 @@ fn sdt_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtProperties) {
     }
     if let Some(binding) = &sdt.data_binding {
         xml.start("w:dataBinding");
-        xml.attr_w_opt("prefixMappings", binding.prefix_mappings.as_deref());
+        let mappings = binding
+            .prefix_mappings
+            .as_deref()
+            .map(strict_prefix_mappings);
+        xml.attr_w_opt("prefixMappings", mappings.as_deref());
         xml.attr_w("xpath", &*binding.xpath);
         xml.attr_w("storeItemID", &*binding.store_item_id);
         xml.end();
@@ -806,6 +810,33 @@ pub fn sdt_container(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtContainer)
     });
 }
 
+/// `w:dataBinding/@w:prefixMappings` with every namespace URI the registry
+/// knows in its Strict form.
+///
+/// The mappings are XPath data, not markup, so the normalizer leaves them as
+/// written; but the parts they address (`docProps/app.xml`, custom XML) are
+/// written in Strict namespaces, and a binding that still names
+/// `.../2006/extended-properties` would bind to nothing.
+fn strict_prefix_mappings(mappings: &str) -> String {
+    let mut out = String::with_capacity(mappings.len());
+    let mut rest = mappings;
+    while let Some(start) = rest.find(['\'', '"']) {
+        let quote = rest[start..].chars().next().unwrap_or('\'');
+        out.push_str(&rest[..=start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find(quote) else {
+            out.push_str(after);
+            return out;
+        };
+        let uri = &after[..end];
+        out.push_str(strict_ooxml_core::ns::registry::strict_form(uri).unwrap_or(uri));
+        out.push(quote);
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use strict_ooxml_core::error::SourceLocation;
@@ -856,6 +887,23 @@ mod tests {
         let mut xml = XmlWriter::new();
         crate::body::blocks(&mut ctx, &mut xml, &items);
         xml.finish().expect("balanced")
+    }
+
+    #[test]
+    fn prefix_mappings_name_strict_namespaces() {
+        let mapped = super::strict_prefix_mappings(
+            "xmlns:ns0='http://schemas.openxmlformats.org/officeDocument/2006/extended-properties' \
+             xmlns:ns1=\"urn:example\"",
+        );
+        assert!(
+            mapped.contains("'http://purl.oclc.org/ooxml/officeDocument/extendedProperties'"),
+            "{mapped}"
+        );
+        assert!(
+            mapped.contains("\"urn:example\""),
+            "unknown URIs stay: {mapped}"
+        );
+        assert!(!mapped.contains("2006/extended-properties"), "{mapped}");
     }
 
     #[test]
