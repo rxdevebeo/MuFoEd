@@ -588,6 +588,48 @@ fn langfe_and_langfenp_map_to_east_asia_language_slot() {
     assert_eq!(chinese.east_asia.as_deref(), Some("zh-CN"));
 }
 
+#[test]
+fn alang_maps_lcid_to_bidi_language_and_restores_group_state() {
+    let source = br"{\rtf1\lang1033 English \langfe2052 Chinese \alang1025 Arabic {\alang1093 Bengali} Restored}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let language_for = |needle: &str| {
+        paragraph.inlines.iter().find_map(|inline| {
+            match inline {
+            Inline::Run(run)
+                if run.content.iter().any(|content| {
+                    matches!(content, RunContent::Text(text) if text.text.contains(needle))
+                }) => run.props.language.as_ref(),
+            _ => None,
+        }
+        })
+    };
+    let chinese = language_for("Chinese").expect("Chinese language properties");
+    assert_eq!(chinese.val.as_deref(), Some("en-US"));
+    assert_eq!(chinese.east_asia.as_deref(), Some("zh-CN"));
+    let arabic = language_for("Arabic").expect("Arabic language properties");
+    assert_eq!(arabic.bidi.as_deref(), Some("ar-SA"));
+    let bengali = language_for("Bengali").expect("Bengali language properties");
+    assert_eq!(bengali.bidi.as_deref(), Some("bn-IN"));
+    let restored = language_for("Restored").expect("restored language properties");
+    assert_eq!(restored.bidi.as_deref(), Some("ar-SA"));
+}
+
+#[test]
+fn unknown_alang_lcid_remains_an_explicit_loss() {
+    let imported = import(br"{\rtf1\alang1024 text}", &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 1);
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "language:unknown-lcid:1024"));
+}
+
 fn reopened(input: &[u8]) -> strict_ooxml_wml::model::Document {
     let imported = import(input, &RtfOptions::default()).unwrap();
     let mut media = strict_ooxml_write::package::MediaBag::new();

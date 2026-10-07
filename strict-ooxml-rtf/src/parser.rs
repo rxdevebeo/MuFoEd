@@ -286,6 +286,13 @@ enum FontSlot {
     ComplexScript,
 }
 
+#[derive(Clone, Copy)]
+enum LanguageSlot {
+    Primary,
+    EastAsia,
+    Bidi,
+}
+
 fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
     match slot {
         FontSlot::Ascii => fonts.ascii = Some(face),
@@ -1009,7 +1016,7 @@ impl Parser<'_> {
             .east_asia = Some(face);
         Ok(())
     }
-    fn set_language(&mut self, id: i32, span: RtfSpan, east_asia: bool) -> Result<(), RtfError> {
+    fn set_language(&mut self, id: i32, span: RtfSpan, slot: LanguageSlot) -> Result<(), RtfError> {
         let Some(tag) = rtf_lcid_tag(id) else {
             return self.issue(span, Severity::Loss, format!("language:unknown-lcid:{id}"));
         };
@@ -1018,10 +1025,10 @@ impl Parser<'_> {
             .run
             .language
             .get_or_insert_with(Language::default);
-        if east_asia {
-            language.east_asia = Some(Arc::from(tag));
-        } else {
-            language.val = Some(Arc::from(tag));
+        match slot {
+            LanguageSlot::Primary => language.val = Some(Arc::from(tag)),
+            LanguageSlot::EastAsia => language.east_asia = Some(Arc::from(tag)),
+            LanguageSlot::Bidi => language.bidi = Some(Arc::from(tag)),
         }
         Ok(())
     }
@@ -2085,12 +2092,17 @@ impl Parser<'_> {
                     return malformed(span.start, "missing font script class");
                 }
             },
-            "lang" | "langnp" | "langfe" | "langfenp" => {
+            "lang" | "langnp" | "langfe" | "langfenp" | "alang" => {
                 let id = n.ok_or(RtfError::Malformed {
                     offset: span.start,
                     reason: "missing language id",
                 })?;
-                self.set_language(id, span, matches!(name, "langfe" | "langfenp"))?;
+                let slot = match name {
+                    "langfe" | "langfenp" => LanguageSlot::EastAsia,
+                    "alang" => LanguageSlot::Bidi,
+                    _ => LanguageSlot::Primary,
+                };
+                self.set_language(id, span, slot)?;
             }
             "af" => {
                 let id = n.ok_or(RtfError::Malformed {
@@ -2700,6 +2712,7 @@ fn rtf_lcid_tag(id: i32) -> Option<&'static str> {
         1055 => "tr-TR",
         1058 => "uk-UA",
         1081 => "hi-IN",
+        1093 => "bn-IN",
         2052 => "zh-CN",
         2057 => "en-GB",
         2070 => "pt-PT",
