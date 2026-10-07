@@ -3161,7 +3161,7 @@ mod tests {
     #[test]
     fn a_vml_group_keeps_every_text_box_size() {
         let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
-        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
  xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word">
 <w:body><w:p><w:r><w:pict>
 <v:group coordsize="100,50" coordorigin="0,0" style="width:200pt;height:100pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line">
@@ -3179,7 +3179,7 @@ mod tests {
 </v:group>
 <w10:wrap type="square"/>
 </v:group>
-</w:pict></w:r></w:p></w:body></w:document>"##;
+</w:pict></w:r></w:p></w:body></w:document>"#;
         let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
         let text = String::from_utf8(output.into_owned()).unwrap();
         assert!(!text.contains("v:group"), "{text}");

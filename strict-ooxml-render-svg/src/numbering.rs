@@ -264,7 +264,7 @@ fn collect_table(table: &Table, visit: &mut impl FnMut(&Paragraph)) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Engine, NumberingMarkers};
+    use super::{is_known, Engine, NumberingMarkers};
     use strict_ooxml_core::error::SourceLocation;
     use strict_ooxml_core::part::PartId;
     use strict_ooxml_wml::model::ids::{AbstractNumId, Ilvl, NumId};
