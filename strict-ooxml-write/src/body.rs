@@ -56,12 +56,7 @@ pub fn block_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, block: &Block) {
     match block {
         Block::Paragraph(paragraph) => paragraph_element(ctx, xml, paragraph),
         Block::Table(table) => table_element(ctx, xml, table),
-        Block::SdtBlock(sdt) => {
-            // AUD-68: keep the control; unwrapping made children body blocks.
-            write_sdt_around(ctx, xml, &sdt.properties(), |ctx, xml| {
-                blocks(ctx, xml, &sdt.blocks);
-            });
-        }
+        Block::SdtBlock(sdt) => sdt_block(ctx, xml, sdt),
         Block::AltChunk(info) => {
             ctx.report_unsupported("w:altChunk", "alternative format chunk", &info.location);
         }
@@ -201,14 +196,7 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
             xml.empty_attr_w("w:br", "type", kind.as_str());
         }
         Inline::Tab => xml.empty("w:tab"),
-        Inline::SdtInline(sdt) => {
-            // AUD-68: keep the control; unwrapping dropped tag/alias/id.
-            write_sdt_around(ctx, xml, &sdt.properties(), |ctx, xml| {
-                for child in &sdt.inlines {
-                    inline_item(ctx, xml, child);
-                }
-            });
-        }
+        Inline::SdtInline(sdt) => sdt_inline(ctx, xml, sdt),
         Inline::BookmarkStart(bookmark) => {
             xml.start("w:bookmarkStart");
             xml.attr_w("id", bookmark.id.as_str());
@@ -460,6 +448,31 @@ fn synthesize_grid(table: &Table) -> Vec<Option<Twips>> {
         }
     }
     widths
+}
+
+/// A block-level `w:sdt` (AUD-68: keep the control; unwrapping made its
+/// children body blocks).
+///
+/// Its own frame: `sdt.properties()` builds a full `SdtProperties` value, and
+/// [`block_item`] sits once per nesting level on the stack of a deep table, so
+/// in a debug build that temporary was paid at every level (`hostile`
+/// `twelve_nested_tables_*` on a 1 MiB stack).
+#[inline(never)]
+fn sdt_block(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtContainer) {
+    write_sdt_around(ctx, xml, &sdt.properties(), |ctx, xml| {
+        blocks(ctx, xml, &sdt.blocks);
+    });
+}
+
+/// An inline `w:sdt` (AUD-68: keep the control; unwrapping dropped
+/// tag/alias/id). Its own frame for the reason given at [`sdt_block`].
+#[inline(never)]
+fn sdt_inline(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtContainer) {
+    write_sdt_around(ctx, xml, &sdt.properties(), |ctx, xml| {
+        for child in &sdt.inlines {
+            inline_item(ctx, xml, child);
+        }
+    });
 }
 
 /// Writes `w:tbl`.
