@@ -5,7 +5,7 @@
   "date_utc": "2026-10-07",
   "acceptance": "ACCEPT",
   "rows_before": 197,
-  "rows_after": 15,
+  "rows_after": 0,
   "labels": [
     "w:w@val",
     "w:sz",
@@ -38,7 +38,7 @@
     "T-P5-4": true
   },
   "corpus_slice_exit": 1,
-  "corpus_slice_exit_reason": "Six witnesses remeasured with the release CLI. documents=6 validated=6 missing=0 unmatched_schema=1182 unclassified_element_changes=1497 ours=0. Exit 1 is inherited schema debt (the same 1182). It is not a P5 label failure. D05 is not PASS.",
+  "corpus_slice_exit_reason": "Six witnesses were last gated before the v:group text-box conversion: documents=6 validated=6 missing=0 unmatched_schema=1182 unclassified_element_changes=1497 ours=0. Exit 1 is inherited schema debt (the same 1182). Package labels on all 221 documents after the conversion are 0. D05 is not PASS.",
   "slice_unclassified_element_changes": 1497,
   "full_census_exit": "NOT_RUN",
   "full_corpus_documents": 221,
@@ -56,8 +56,8 @@
   "visual_tol_px": 0.25,
   "tz_items": [],
   "notes": [
-    "Full-corpus package labels on 221 documents: 197 → 15. The 15 are all w:sz / w:sz@val / w:szCs@val in 070_Innovations_and_New_Technologies.docx.",
-    "Those 15 are run sizes inside v:group text boxes. The VML converter keeps one shape per w:pict, so the other grouped text boxes and their w:sz are dropped. No registry disposition was added for them.",
+    "Full-corpus package labels on 221 documents: 197 → 0. The previous 15 rows were w:sz / w:sz@val / w:szCs@val inside v:group text boxes in 070_Innovations_and_New_Technologies.docx.",
+    "Each text box in a v:group, including a nested group, is now its own DrawingML text box. Child coordinates are scaled from coordorigin/coordsize into the group's point size. Lines and non-text geometry stay dropped and are named T7.vml-group. No registry disposition was added.",
     "w:spacing, w:ind, w:tab and w:w@val are 0 on the full corpus. SoftUni lessons 1–8 are 0. The corpus has these 8 numbered lessons, not the plan's ~20.",
     "The earlier witness-slice baseline, measured before these writer fixes, was 133 → 0 on RM0090, 018, 064 and First-Steps. Plan 1324 predates MCE stripping and T2/T3.",
     "T-P5-4 locks the RM0090 heading LCD-TFT: 32 px, width 143.953125 px, baseline gap to 16.1 of 85.212890625 px. Tolerance stays 0.25 px.",

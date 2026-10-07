@@ -482,6 +482,47 @@ impl TransitionalNormalizer {
             return Ok(());
         }
 
+        let grouped = vml::grouped_text_boxes(subtree, context);
+        if !grouped.is_empty() {
+            if let Some((shape, wrap)) = vml::classify(subtree, context) {
+                if matches!(shape, vml::Shape::Picture(_)) {
+                    let doc_pr_id = context.next_doc_pr_id();
+                    let (head, tail) =
+                        vml::shape_events(&shape, wrap, doc_pr_id, report, &location);
+                    for event in head.into_iter().chain(tail) {
+                        writer
+                            .write_event(event)
+                            .map_err(|error| xml_error(&context.part, error.to_string()))?;
+                    }
+                    report.record("T7.vml-shape", 1);
+                }
+            }
+            let count = Self::write_grouped_text_boxes(writer, grouped, context, report)?;
+            report.record("T7.vml-shape", count);
+            report.record_loss(LossRecord {
+                transform_id: "T7.vml-group",
+                feature_id: "v:group".to_owned(),
+                reason: "a VML group has no DrawingML group here; each of its text boxes is \
+                         converted on its own, and the lines and non-text geometry are dropped"
+                    .to_owned(),
+                severity: Severity::Lossy,
+                locations: vec![location.clone()],
+            });
+            if element == "w:object" {
+                report.record_loss(LossRecord {
+                    transform_id: "T7.ole",
+                    feature_id: "w:object".to_owned(),
+                    reason: "an OLE object is an executable object Strict has no substitute for; \
+                         its preview raster was kept as a picture and the object itself is gone"
+                        .to_owned(),
+                    severity: Severity::Lossy,
+                    locations: vec![location],
+                });
+                report.count_reported_removal(1);
+            }
+            return Ok(());
+        }
+
         let Some((shape, wrap)) = vml::classify(subtree, context) else {
             // Not a shape this converts. Everything under `w:pict` is VML, and
             // Strict declares none of it, so the subtree goes and the loss is
@@ -580,6 +621,49 @@ impl TransitionalNormalizer {
         // called for the `w:pict` case. Booking it as one would put the two
         // counters `verify_no_silent_loss` compares out of step.
         Ok(())
+    }
+
+    /// Writes every text box of a `v:group` as its own DrawingML shape.
+    ///
+    /// The caller has already decided this subtree is a group with labels. A
+    /// picture in the same group is written separately; these are only the labels.
+    fn write_grouped_text_boxes(
+        writer: &mut Writer<Vec<u8>>,
+        grouped: Vec<vml::GroupedTextBox>,
+        context: &mut PartContext,
+        report: &mut NormalizationReport,
+    ) -> Result<u32> {
+        let count = u32::try_from(grouped.len()).unwrap_or(u32::MAX);
+        let location = context.location();
+        for grouped_box in grouped {
+            let doc_pr_id = context.next_doc_pr_id();
+            let (head, tail) = vml::text_box_shape_events(
+                &grouped_box.shape,
+                grouped_box.wrap,
+                doc_pr_id,
+                report,
+                &location,
+            );
+            for event in head {
+                writer
+                    .write_event(event)
+                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
+            }
+            for content in grouped_box.content {
+                Self::rewrite_event(writer, content, context, report)?;
+            }
+            for event in vml::text_box_close() {
+                writer
+                    .write_event(event)
+                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
+            }
+            for event in tail {
+                writer
+                    .write_event(event)
+                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
+            }
+        }
+        Ok(count)
     }
 
     /// The events of a `w:txbxContent`'s **children**, and nothing else.
@@ -3004,6 +3088,48 @@ mod tests {
         );
         let report = normalizer.report();
         assert_eq!(report.lossy_count(), 0, "nothing was lost: {report}");
+    }
+
+    /// A `v:group` keeps every label, not only the first shape.
+    ///
+    /// Child coordinates are group units. 25/100 of a 200 pt frame is 50 pt,
+    /// which is 635000 EMU. The second label's half-points must still be there:
+    /// a conversion that keeps one shape drops them.
+    #[test]
+    fn a_vml_group_keeps_every_text_box_size() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word">
+<w:body><w:p><w:r><w:pict>
+<v:group coordsize="100,50" coordorigin="0,0" style="width:200pt;height:100pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line">
+<v:shape style="position:absolute;left:0;top:0;width:100;height:50"/>
+<v:shape id="one" style="position:absolute;left:25;top:10;width:50;height:25">
+<v:textbox><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>one</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:shape>
+<v:rect id="two" style="position:absolute;left:0;top:0;width:10;height:10">
+<v:textbox><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="21"/><w:szCs w:val="32"/></w:rPr><w:t>two</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:rect>
+<v:group coordsize="10,10" coordorigin="0,0" style="width:20pt;height:20pt">
+<v:shape id="inner" style="position:absolute;left:0;top:0;width:10;height:10">
+<v:textbox><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="12"/></w:rPr><w:t>inner</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:shape>
+</v:group>
+<w10:wrap type="square"/>
+</v:group>
+</w:pict></w:r></w:p></w:body></w:document>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(!text.contains("v:group"), "{text}");
+        assert_eq!(text.matches("<wps:txbx>").count(), 3, "{text}");
+        assert!(text.contains(r#"<w:sz w:val="18"/>"#), "{text}");
+        assert!(text.contains(r#"<w:sz w:val="21"/>"#), "{text}");
+        assert!(text.contains(r#"<w:sz w:val="12"/>"#), "{text}");
+        assert!(text.contains(r#"<w:szCs w:val="32"/>"#), "{text}");
+        assert!(!text.contains(r#"w:val="99""#), "{text}");
+        assert!(text.contains(">635000<"), "50 pt offset: {text}");
+        assert!(text.contains(">254000<"), "20 pt offset: {text}");
+        assert!(text.contains("one"), "{text}");
+        assert!(text.contains("two"), "{text}");
     }
 
     /// Dropping an empty child must not steal the parent's stack slot: after

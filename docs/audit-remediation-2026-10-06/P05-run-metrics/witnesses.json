@@ -80,9 +80,9 @@
     },
     {
       "path": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
-      "role": "remainder",
+      "role": "witness",
       "source_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
-      "written_sha256": "7a14bbbf1478f9a3fec9f1468b130a97fd835f014e9a2f401658b91cf9367900",
+      "written_sha256": "ae41d6e16b5ac9bd9ab27aba5a8617664cb58f10bc1ef2483702e549f07baf30",
       "written_path": "target/p5-corpus/cc0/070_Innovations_and_New_Technologies.docx"
     }
   ]

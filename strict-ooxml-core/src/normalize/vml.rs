@@ -500,6 +500,306 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
     (element == "rect").then_some((Shape::Rectangle(shape), wrap))
 }
 
+/// One text box inside a `v:group`, already mapped into the group's point frame.
+///
+/// `classify` keeps the first `v:shape` and treats every later sibling as part of
+/// that one shape. A group is a diagram: the later siblings are the labels, and
+/// their `w:sz` is the text. Each label becomes its own text box. Lines and the
+/// group's own geometry stay out of this list.
+pub(crate) struct GroupedTextBox {
+    /// The label, with width, height and offsets in points.
+    pub shape: Shape,
+    /// How text wraps the group. Every label inherits it.
+    pub wrap: Wrap,
+    /// The children of this label's `w:txbxContent`.
+    pub content: Vec<Event<'static>>,
+}
+
+/// Text boxes of every `v:group` in `subtree`.
+///
+/// Child `left`/`top`/`width`/`height` are group coordinates (`coordorigin` +
+/// `coordsize`), not points. They are scaled into the group's `style` width and
+/// height, and the group's horizontal/vertical relative bases are copied so the
+/// label anchors where the group does.
+#[must_use]
+pub(crate) fn grouped_text_boxes(
+    subtree: &[Event<'static>],
+    context: &PartContext,
+) -> Vec<GroupedTextBox> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut stack: Vec<OpenGroup> = Vec::new();
+    let mut child: Option<Vec<Event<'static>>> = None;
+    let mut child_depth = 0i32;
+    for event in subtree {
+        match event {
+            Event::Start(start) => {
+                depth += 1;
+                if let Some(buffer) = child.as_mut() {
+                    child_depth += 1;
+                    buffer.push(event.clone());
+                    continue;
+                }
+                let Some((local, uri)) = qualified(start, context) else {
+                    continue;
+                };
+                if is_vml(&uri) && local == "group" {
+                    if let Some(frame) = group_frame(start).or_else(|| {
+                        stack.last().map(|group| group.frame.clone())
+                    }) {
+                        stack.push(OpenGroup {
+                            depth,
+                            frame,
+                            wrap: Wrap::None,
+                        });
+                    }
+                    continue;
+                }
+                if stack.last().is_some_and(|group| group.depth == depth - 1)
+                    && is_vml(&uri)
+                    && matches!(local.as_str(), "shape" | "rect" | "oval")
+                {
+                    child = Some(vec![event.clone()]);
+                    child_depth = 1;
+                    continue;
+                }
+                if let Some(group) = stack.last_mut() {
+                    if local == "wrap" && uri == WORD_NS {
+                        let attributes = attributes_of(start.attributes().flatten());
+                        if let Some(kind) = attributes.get("type") {
+                            group.wrap = Wrap::from_type(kind).unwrap_or(Wrap::None);
+                        }
+                    }
+                }
+            }
+            Event::Empty(start) => {
+                if let Some(buffer) = child.as_mut() {
+                    buffer.push(event.clone());
+                    continue;
+                }
+                let Some((local, uri)) = qualified(start, context) else {
+                    continue;
+                };
+                if let Some(group) = stack.last_mut() {
+                    if local == "wrap" && uri == WORD_NS {
+                        let attributes = attributes_of(start.attributes().flatten());
+                        if let Some(kind) = attributes.get("type") {
+                            group.wrap = Wrap::from_type(kind).unwrap_or(Wrap::None);
+                        }
+                    }
+                }
+            }
+            Event::End(_) => {
+                if let Some(buffer) = child.as_mut() {
+                    buffer.push(event.clone());
+                    child_depth -= 1;
+                    if child_depth == 0 {
+                        if let Some(group) = stack.last() {
+                            if let Some(grouped) =
+                                finish_grouped(buffer, &group.frame, group.wrap)
+                            {
+                                out.push(grouped);
+                            }
+                        }
+                        child = None;
+                    }
+                }
+                if stack.last().is_some_and(|group| group.depth == depth) {
+                    stack.pop();
+                }
+                depth -= 1;
+            }
+            _ => {
+                if let Some(buffer) = child.as_mut() {
+                    buffer.push(event.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+struct OpenGroup {
+    depth: i32,
+    frame: GroupFrame,
+    wrap: Wrap,
+}
+
+#[derive(Clone)]
+struct GroupFrame {
+    origin_x: f64,
+    origin_y: f64,
+    coord_w: f64,
+    coord_h: f64,
+    width_pt: f64,
+    height_pt: f64,
+    style: VmlStyle,
+}
+
+fn qualified(start: &BytesStart<'_>, context: &PartContext) -> Option<(String, String)> {
+    let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+    let (prefix, local) = name.split_once(':')?;
+    let uri = context.uri_for(prefix.as_bytes()).unwrap_or("").to_owned();
+    Some((local.to_owned(), uri))
+}
+
+fn group_frame(start: &BytesStart<'_>) -> Option<GroupFrame> {
+    let attributes = attributes_of(start.attributes().flatten());
+    let style = VmlStyle::parse(attributes.get("style").map_or("", String::as_str));
+    let width_pt = style.width_pt.as_deref().and_then(points_of)?;
+    let height_pt = style.height_pt.as_deref().and_then(points_of)?;
+    let (coord_w, coord_h) = attributes
+        .get("coordsize")
+        .and_then(|value| pair(value))
+        .unwrap_or((width_pt, height_pt));
+    if coord_w == 0.0 || coord_h == 0.0 {
+        return None;
+    }
+    let (origin_x, origin_y) = attributes
+        .get("coordorigin")
+        .and_then(|value| pair(value))
+        .unwrap_or((0.0, 0.0));
+    Some(GroupFrame {
+        origin_x,
+        origin_y,
+        coord_w,
+        coord_h,
+        width_pt,
+        height_pt,
+        style,
+    })
+}
+
+fn finish_grouped(
+    events: &[Event<'static>],
+    frame: &GroupFrame,
+    wrap: Wrap,
+) -> Option<GroupedTextBox> {
+    let content = textbox_children(events)?;
+    let Event::Start(start) = events.first()? else {
+        return None;
+    };
+    let attributes = attributes_of(start.attributes().flatten());
+    let numbers = style_numbers(attributes.get("style").map_or("", String::as_str));
+    let left = numbers.get("left").copied().unwrap_or(frame.origin_x);
+    let top = numbers.get("top").copied().unwrap_or(frame.origin_y);
+    let width = numbers.get("width").copied().unwrap_or(frame.coord_w);
+    let height = numbers.get("height").copied().unwrap_or(frame.coord_h);
+    let scale_x = frame.width_pt / frame.coord_w;
+    let scale_y = frame.height_pt / frame.coord_h;
+    let mut style = frame.style.clone();
+    style.absolute = true;
+    style.horizontal = None;
+    style.vertical = None;
+    style.width_pt = Some(format_pt(width * scale_x));
+    style.height_pt = Some(format_pt(height * scale_y));
+    style.margin_left = Some(format_pt((left - frame.origin_x) * scale_x));
+    style.margin_top = Some(format_pt((top - frame.origin_y) * scale_y));
+    let shape = Shape::TextBox(VmlShape {
+        name: attributes
+            .get("id")
+            .cloned()
+            .unwrap_or_else(|| "Shape".to_owned()),
+        description: attributes.get("alt").cloned().filter(|alt| !alt.is_empty()),
+        style,
+    });
+    Some(GroupedTextBox {
+        shape,
+        wrap,
+        content,
+    })
+}
+
+fn textbox_children(events: &[Event<'static>]) -> Option<Vec<Event<'static>>> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut seen = false;
+    for event in events {
+        match event {
+            Event::Start(start) => {
+                let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+                if depth == 0 {
+                    if !name.ends_with(":txbxContent") {
+                        continue;
+                    }
+                    depth = 1;
+                    seen = true;
+                    continue;
+                }
+                depth += 1;
+                out.push(event.clone());
+            }
+            Event::End(_) => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    return Some(out);
+                }
+                out.push(event.clone());
+            }
+            _ => {
+                if depth > 0 {
+                    out.push(event.clone());
+                }
+            }
+        }
+    }
+    seen.then_some(out)
+}
+
+fn pair(value: &str) -> Option<(f64, f64)> {
+    let (left, right) = value.split_once(',')?;
+    Some((left.trim().parse().ok()?, right.trim().parse().ok()?))
+}
+
+fn style_numbers(style: &str) -> BTreeMap<String, f64> {
+    let mut out = BTreeMap::new();
+    for declaration in style.split(';') {
+        let Some((name, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        if !matches!(name.as_str(), "left" | "top" | "width" | "height") {
+            continue;
+        }
+        let number: String = value
+            .trim()
+            .chars()
+            .take_while(|character| character.is_ascii_digit() || matches!(character, '.' | '-'))
+            .collect();
+        if let Ok(parsed) = number.parse() {
+            out.insert(name, parsed);
+        }
+    }
+    out
+}
+
+fn points_of(value: &str) -> Option<f64> {
+    let trimmed = value.trim();
+    let split = trimmed
+        .find(|character: char| !character.is_ascii_digit() && !matches!(character, '.' | '-'))
+        .unwrap_or(trimmed.len());
+    let (number, unit) = trimmed.split_at(split);
+    let number: f64 = number.trim().parse().ok()?;
+    let per_point = match unit.trim() {
+        "pt" | "" => 1.0,
+        "in" => 72.0,
+        "cm" => 72.0 / 2.54,
+        "mm" => 7.2 / 2.54,
+        "pc" => 12.0,
+        "pi" => 15.0,
+        _ => return None,
+    };
+    Some(number * per_point)
+}
+
+fn format_pt(value: f64) -> String {
+    let rounded = (value * 100.0).round() / 100.0;
+    format!("{rounded}pt")
+}
+
 /// Whether a namespace URI holds VML or the `w10:` vocabulary that positions it.
 fn is_drawable_namespace(uri: &str) -> bool {
     is_vml(uri) || uri == WORD_NS

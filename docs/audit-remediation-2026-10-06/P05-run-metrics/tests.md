@@ -19,11 +19,12 @@ python xtool/xsd-gate/census_gate_selftest.py
 | `w:ind@left` 720 → `w:start` 720; отрицательный 719 | PASS |
 | `w:leftChars` / `w:rightChars`, `beforeLines` / `afterLines`, autospacing `false`, run spacing 0 | PASS |
 | `m:sSubPr/m:ctrlPr/w:rPr/w:sz` 22 остаётся под `m:sSubPr`; отрицательный 21 | PASS |
+| `v:group`: каждый text box, включая вложенную группу, сохраняет `w:sz` 18 / 21 / 12; чужой sz 99 не появляется | PASS |
 
 Отрицательный контроль half-point: sz 24 и sz 23 дают разный `w:sz`. Отступ 720 и 719 — разные `w:start`. Допуск краски 0.25 px не поднимался.
 
 Страница свидетеля: `visual/rm0090-page1.svg`.
 
-Полный корпус, 221 документ, 0 отказов: метки пакета **197 → 15**. Оставшиеся 15 — `w:sz` / `w:szCs` внутри `v:group` в `070_Innovations_and_New_Technologies.docx`. Диспозиция реестра для них не добавлялась. `w:spacing`, `w:ind`, `w:tab` и `w:w@val` на корпусе равны 0, включая уроки SoftUni 1–8.
+Полный корпус, 221 документ, 0 отказов: метки пакета **197 → 0**. Подписи `v:group`, включая вложенную группу, пишутся отдельными text box, и их `w:sz` / `w:szCs` сохраняются. Линии и нетекстовая геометрия группы по-прежнему не конвертируются; это `T7.vml-group`, не размер run. Диспозиция реестра не добавлялась. `w:spacing`, `w:ind`, `w:tab` и `w:w@val` на корпусе равны 0, включая уроки SoftUni 1–8.
 
-Повтор 2026-10-07 (после early-stop `PageSelection::Range` в пагинаторе): write `p5_p6` 13 ok; SVG `p5_p6` `--test-threads=1` 5 ok. **ACCEPT** (остаток 15 VML sz вне paint-scope).
+Повтор 2026-10-07: write `p5_p6` 13 ok; SVG `p5_p6` 5 ok; `a_vml_group_keeps_every_text_box_size` ok. Метки пакета на 221 документе: 0.

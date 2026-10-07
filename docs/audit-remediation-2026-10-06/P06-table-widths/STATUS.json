@@ -56,7 +56,7 @@
     "The earlier witness-slice baseline was 112 → 0 (tcW 71, gridCol@w 23, tblW 17, gridCol 1) on RM0090, 070 and 033. Plan 503 predates MCE stripping and T2/T3.",
     "T-P6-2 locks RM0090's first table: gridCol 1917 and 2579 twips, header cells centered, HCLK one 108 twip margin into column 2. The page SVG and a one-page PDF are in visual/.",
     "T-P6-3: shrinking a column by 1 twip fails in the model and in _same_measure. 1 twip is 1/15 px, under the 0.25 px paint tolerance, so the tolerance was not raised.",
-    "070 still loses w:sz inside v:group text boxes. Those rows are P5, not table widths, and they are not closed by a registry item.",
+    "070's run sizes inside v:group text boxes are kept. The lines of those groups are still dropped as T7.vml-group, which is not a table-width label.",
     "Retest 2026-10-07: SVG T-P6-2 with limited_pages(2) ok; cargo +1.92.0 test -p strict-ooxml-render-pdf --test p6_table_page (~23s) ok. Same PageSelection early-stop fix as P5; run-glue loop in t_p6_2 guards zero-width progress.",
     "Package labels 0. full_census_exit remains NOT_RUN until M4. D05 is not PASS."
   ],
