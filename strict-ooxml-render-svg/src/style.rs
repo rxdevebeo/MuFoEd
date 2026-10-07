@@ -786,9 +786,9 @@ mod tests {
             locked: false,
             unhide_when_used: false,
             ui_priority: None,
-            table: Default::default(),
-            row: Default::default(),
-            cell: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: ParagraphProperties::default(),
             run: RunProperties {
                 bold: TriState::On,

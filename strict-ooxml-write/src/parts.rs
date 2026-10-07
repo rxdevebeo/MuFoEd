@@ -1534,9 +1534,9 @@ mod tests {
             locked: false,
             unhide_when_used: false,
             ui_priority: Some(9),
-            table: Default::default(),
-            row: Default::default(),
-            cell: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: Default::default(),
             run: RunProperties {
                 bold: TriState::On,
@@ -1579,9 +1579,9 @@ mod tests {
                 locked: false,
                 unhide_when_used: false,
                 ui_priority: None,
-                table: Default::default(),
-                row: Default::default(),
-                cell: Default::default(),
+                table: strict_ooxml_wml::model::props::TableProperties::default(),
+                row: strict_ooxml_wml::model::props::RowProperties::default(),
+                cell: strict_ooxml_wml::model::props::CellProperties::default(),
                 paragraph: Default::default(),
                 run: RunProperties {
                     fonts: Some(strict_ooxml_wml::model::values::Fonts {
@@ -1617,9 +1617,9 @@ mod tests {
             locked: false,
             unhide_when_used: false,
             ui_priority: None,
-            table: Default::default(),
-            row: Default::default(),
-            cell: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: Default::default(),
             run: RunProperties {
                 fonts: Some(strict_ooxml_wml::model::values::Fonts {
@@ -1808,8 +1808,8 @@ mod tests {
                 style_col_band_size: Some(2),
                 ..Default::default()
             },
-            row: Default::default(),
-            cell: Default::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: Default::default(),
             run: Default::default(),
             conditions: Vec::new(),
