@@ -101,3 +101,15 @@ maps_regular_postscript_names_to_the_same_bundled_faces завершился Pas
 Команда: cargo +1.98.0 test --locked --no-fail-fast -p strict-ooxml-render-svg --
 --skip maps_regular_postscript_names_to_the_same_bundled_faces.
 Лог: target/rtf-import/RC02-eastasia-face-svg-final-tests.log.
+
+### RC02: shared font resource contract — 2026-10-07
+
+Добавлены FontResource/ResolvedFaceHandle: borrowed bundled или explicit shared bytes,
+program SHA-256 + collection face index + sorted variation coordinates; validation
+font/index/axis/range и mapping provenance. Legacy Copy face/source API сохранены.
+Shaping caches используют program/instance identity; PDF collection/build разрешает
+bundled face через общий cached resolver. Contract tests, cache collision regression,
+полные SVG/PDF/public API suites (existing alias-test skip) и MSRV Clippy с existing
+baseline suppressions проходят. RC02 остаётся InProgress: registry admission, owned
+consumer pipeline, glyph policy и реальные CJK/Indic assets требуют следующих срезов.
+Контракт, проверки и ограничения: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).

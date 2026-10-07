@@ -305,12 +305,15 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
             };
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
             let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &shown);
-            let Some(source) =
-                strict_ooxml_render_svg::font::face_source(&family, text.run.bold, text.run.italic)
-            else {
+            let Some(source) = strict_ooxml_render_svg::font::resolve_face(
+                &family,
+                text.run.bold,
+                text.run.italic,
+            ) else {
                 report.record_missing_face(&text.run.family);
                 continue;
             };
+            let source = source.as_source();
             if text.advance == TextAdvanceKind::Metric {
                 // Metric paint addresses scalar CIDs, not shaped clusters. A
                 // ligature-only subset cannot serve its individual characters.
@@ -361,11 +364,12 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
     let mut out: Vec<PlacedFont> = Vec::new();
     for (index, key) in collector.faces().iter().enumerate() {
         let Some(source) =
-            strict_ooxml_render_svg::font::face_source(key.family, key.bold, key.italic)
+            strict_ooxml_render_svg::font::resolve_face(key.family, key.bold, key.italic)
         else {
             report.record_missing_face(key.family);
             continue;
         };
+        let source = source.as_source();
         match collector.build(key, &source) {
             Ok(font) => out.push((Arc::new(font), key.resource_name(index))),
             Err(error) => report.record_font_error(key, &error),

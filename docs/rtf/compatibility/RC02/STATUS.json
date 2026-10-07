@@ -1,0 +1,41 @@
+{
+  "card": "RC02",
+  "status": "InProgress",
+  "updated": "2026-10-07",
+  "scope": "shared font resource contract and bundled compatibility adapter",
+  "base_commit": "81ab887",
+  "implemented": [
+    "shared bytes lifetime",
+    "font program/face index/variation identity",
+    "font/index/axis/range validation",
+    "bundled mapping provenance",
+    "resource identity in shaping caches",
+    "PDF bundled source via cached resolver"
+  ],
+  "remaining": [
+    "bounded manifest registry",
+    "owned measurement/shaping/SVG/PDF consumers",
+    "resource/glyph failure policy and runtime reports",
+    "licensed CJK/Indic assets",
+    "independent geometry and extraction witnesses",
+    "full corpus acceptance"
+  ],
+  "checks": {
+    "full_svg_pdf_public_api": {
+      "status": "PassWithBaselineExclusion",
+      "passed": 411,
+      "excluded_test": "maps_regular_postscript_names_to_the_same_bundled_faces",
+      "log": "target/rtf-import/RC02-resource-full-tests-utf8.log"
+    },
+    "font_module_after_cache_regression": {
+      "status": "Pass",
+      "passed": 30,
+      "log": "target/rtf-import/RC02-resource-font-final-tests.log"
+    },
+    "clippy_msrv": {
+      "status": "PassWithBaselineSuppressions",
+      "log": "target/rtf-import/RC02-resource-clippy-utf8.log"
+    },
+    "corpus_xsd_opc_pixels": "NotRunForThisSlice"
+  }
+}

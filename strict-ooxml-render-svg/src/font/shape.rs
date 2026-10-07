@@ -16,7 +16,7 @@ use harfrust::{
 
 use super::face::{resolve_face, ResolvedFace};
 use super::family::map_family;
-use super::FontProvider;
+use super::{FaceInstanceKey, FontProvider};
 
 /// How many distinct strings one style keeps. Past this, shaping still runs;
 /// the entry is just not stored. The hostile footer and a normal page both
@@ -255,13 +255,13 @@ fn is_combining_mark(ch: char) -> bool {
     )
 }
 
-/// Parsed-face and shaped-run cache key. Variation is the `wght` bits.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+/// Parsed-face and shaped-run cache key, including exact program/instance identity.
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct StyleKey {
     family: &'static str,
     bold: bool,
     italic: bool,
-    weight_bits: Option<u32>,
+    instance: FaceInstanceKey,
 }
 
 fn style_key(resolved: &ResolvedFace) -> StyleKey {
@@ -269,7 +269,7 @@ fn style_key(resolved: &ResolvedFace) -> StyleKey {
         family: resolved.family,
         bold: resolved.bold,
         italic: resolved.italic,
-        weight_bits: resolved.weight.map(f32::to_bits),
+        instance: resolved.instance_key(),
     }
 }
 
@@ -311,7 +311,7 @@ fn with_parsed_face<R>(resolved: &ResolvedFace, body: impl FnOnce(&CachedFace) -
     let key = style_key(resolved);
     PARSED_FACES.with(|cell| {
         let mut faces = cell.borrow_mut();
-        if let Entry::Vacant(entry) = faces.entry(key) {
+        if let Entry::Vacant(entry) = faces.entry(key.clone()) {
             let font = FontRef::from_index(resolved.bytes, 0).ok()?;
             let data = ShaperData::new(&font);
             let instance = resolved.weight.map(|weight| {
@@ -560,6 +560,27 @@ mod tests {
         unicode_x_positions_px, ShapeStatus,
     };
     use crate::font::{face_source, BuiltinFontProvider, FontProvider};
+
+    #[test]
+    fn shape_cache_does_not_alias_distinct_programs_with_the_same_family_and_style() {
+        let first = crate::font::resolve_face("Arial", false, false).unwrap();
+        let mut second = crate::font::resolve_face("Times New Roman", false, false).unwrap();
+        // The future registry may bind a family to different explicit assets.
+        // Family/style alone must not return advances from the previous program.
+        second.family = first.family;
+        second.id = first.id;
+        let first_shape = super::shape_with_face("iiii", first).unwrap();
+        let second_shape = super::shape_with_face("iiii", second).unwrap();
+        assert_eq!(second_shape.face.resource_hash, second.resource_hash);
+        assert_ne!(
+            first_shape.face.resource_hash,
+            second_shape.face.resource_hash
+        );
+        assert!((first_shape.total_advance_em - second_shape.total_advance_em).abs() > 0.01);
+        let again = super::shape_with_face("iiii", first).unwrap();
+        assert_eq!(again.face.resource_hash, first.resource_hash);
+        assert_eq!(again.glyphs, first_shape.glyphs);
+    }
 
     #[test]
     fn shaped_advance_differs_from_naive_sum_when_kerning_applies() {

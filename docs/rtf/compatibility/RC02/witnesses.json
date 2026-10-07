@@ -1,0 +1,32 @@
+{
+  "card": "RC02",
+  "scope": "resource contract only",
+  "witnesses": [
+    {
+      "name": "bundled adapter",
+      "oracle": "legacy resolver bytes pointer/hash and requested family"
+    },
+    {
+      "name": "shared lifetime",
+      "oracle": "Arc pointer/hash after original owner is dropped"
+    },
+    {
+      "name": "Arimo variable weight",
+      "oracle": "same program hash, distinct instance coordinate"
+    },
+    {
+      "name": "invalid assets",
+      "oracle": "explicit font/index/duplicate-axis/range error"
+    },
+    {
+      "name": "cache collision",
+      "programs": [
+        "Arimo",
+        "Tinos"
+      ],
+      "text": "iiii",
+      "oracle": "distinct resolved hash/advances despite identical supplied family/style"
+    }
+  ],
+  "real_script_geometry_acceptance": "Pending"
+}
