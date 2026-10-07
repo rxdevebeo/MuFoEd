@@ -432,8 +432,11 @@ pub fn to_unicode_cmap(font: &EmbeddedFont) -> Vec<u8> {
         entries.push((*cid, text.clone()));
     }
     entries.sort_by_key(|(cid, _)| *cid);
-    for (index, chunk) in entries.chunks(100).enumerate() {
-        let _ = writeln!(out, "{index} beginbfchar");
+    // The number before `beginbfchar` is the entry count of that section
+    // (PDF 32000-1 §9.10.3, Adobe TN 5099); readers that trust it read exactly
+    // that many pairs.
+    for chunk in entries.chunks(100) {
+        let _ = writeln!(out, "{} beginbfchar", chunk.len());
         for (gid, text) in chunk {
             let mut encoded = String::new();
             for unit in text.encode_utf16() {
@@ -570,6 +573,41 @@ mod tests {
         assert!(cmap.contains("<0041>"), "A must map to U+0041:\n{cmap}");
         let identity = String::from_utf8(super::identity_h_cmap()).expect("utf-8");
         assert!(identity.contains("begincidrange"), "{identity}");
+    }
+
+    /// Every `bfchar` section announces its own entry count, including the
+    /// short last one and documents with more than one section.
+    #[test]
+    fn bfchar_sections_announce_their_entry_count() {
+        let source = face_source("Calibri", false, false).expect("bundled");
+        let mut collector = FaceCollector::new();
+        for ch in (' '..='~').chain('\u{C0}'..='\u{FF}') {
+            collector.add(&source, false, false, ch);
+        }
+        collector.add_notdef();
+        let key = FaceKey {
+            family: source.family,
+            bold: false,
+            italic: false,
+        };
+        let font = collector.build(&key, &source).expect("subset");
+        let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
+        let mut sections = 0;
+        let mut lines = cmap.lines();
+        while let Some(line) = lines.next() {
+            let Some(count) = line.strip_suffix(" beginbfchar") else {
+                continue;
+            };
+            let declared: usize = count.parse().expect("numeric count");
+            let actual = lines.by_ref().take_while(|l| *l != "endbfchar").count();
+            assert_eq!(declared, actual, "section {sections}:\n{cmap}");
+            assert!((1..=100).contains(&declared), "{declared}");
+            sections += 1;
+        }
+        assert!(
+            sections >= 2,
+            "the test needs more than 100 mappings:\n{cmap}"
+        );
     }
 
     /// AUD-82: two characters that share a source glyph get distinct CIDs.
