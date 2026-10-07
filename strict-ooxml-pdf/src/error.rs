@@ -175,6 +175,16 @@ pub struct PdfLimits {
     /// is evicted, because a policy that guessed wrong would cost more than it
     /// saves.
     pub max_cached_image_bytes: usize,
+    /// Decompressed content bytes of form XObjects the document holds on to
+    /// between draws. Default: 64 MiB.
+    ///
+    /// The same contract as [`Self::max_cached_image_bytes`]: a form drawn on
+    /// every page is decoded once, but the cache outlives the page, so without a
+    /// ceiling a small file whose pages draw many distinct large forms keeps all
+    /// of them (each up to [`Self::max_content_bytes`], plus its operator list)
+    /// until the document is dropped. Past the ceiling a form is decoded per draw
+    /// and released with it.
+    pub max_cached_form_bytes: usize,
     /// Pixels in one rasterized page or region. Default: 16 777 216 (4096²).
     ///
     /// A Letter page at scale 4 is 2448 × 3168 pixels — 7.7 M — so the default
@@ -198,6 +208,7 @@ impl Default for PdfLimits {
             max_input_bytes: 256 * 1024 * 1024,
             max_form_depth: 12,
             max_cached_image_bytes: 64 * 1024 * 1024,
+            max_cached_form_bytes: 64 * 1024 * 1024,
             max_raster_pixels: 4096 * 4096,
         }
     }

@@ -52,14 +52,22 @@ struct DecodedForm {
 }
 
 /// Forms already decoded, by object id.
+///
+/// Bounded by [`PdfLimits::max_cached_form_bytes`]: a form decoded once the
+/// cache is full is returned to the caller but not kept.
 struct FormCache {
     entries: RefCell<HashMap<lopdf::ObjectId, Rc<DecodedForm>>>,
+    /// Decompressed content bytes of the forms in `entries`.
+    held_bytes: std::cell::Cell<usize>,
+    ceiling: usize,
 }
 
 impl FormCache {
-    fn new() -> Self {
+    fn new(ceiling: usize) -> Self {
         Self {
             entries: RefCell::new(HashMap::new()),
+            held_bytes: std::cell::Cell::new(0),
+            ceiling,
         }
     }
 
@@ -102,7 +110,11 @@ impl FormCache {
             matrix,
             resources,
         });
-        self.entries.borrow_mut().insert(id, Rc::clone(&decoded));
+        let held = self.held_bytes.get().saturating_add(bytes.len());
+        if held <= self.ceiling {
+            self.held_bytes.set(held);
+            self.entries.borrow_mut().insert(id, Rc::clone(&decoded));
+        }
         Some(decoded)
     }
 }
@@ -230,7 +242,7 @@ impl PdfDocument {
             source: bytes.to_vec(),
             limits,
             images: ImageCache::new(limits.max_cached_image_bytes),
-            forms: FormCache::new(),
+            forms: FormCache::new(limits.max_cached_form_bytes),
             fonts: FontCache::new(),
             report: crate::report::ReadReport::new(),
         })
@@ -277,6 +289,13 @@ impl PdfDocument {
     #[must_use]
     pub fn cached_image_bytes(&self) -> usize {
         self.images.bytes()
+    }
+
+    /// Decompressed content bytes of the form XObjects this document holds, at
+    /// most [`PdfLimits::max_cached_form_bytes`].
+    #[must_use]
+    pub fn cached_form_bytes(&self) -> usize {
+        self.forms.held_bytes.get()
     }
 
     /// How many distinct pictures this document has decoded, refusals included.
