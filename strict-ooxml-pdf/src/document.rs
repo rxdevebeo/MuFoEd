@@ -223,13 +223,24 @@ impl PdfDocument {
     /// Returns [`PdfError::Malformed`] for a file that is not a PDF,
     /// [`PdfError::Encrypted`] for one that is, and
     /// [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded) when
-    /// the input size or the page count is over budget.
+    /// the input size, the inflated size of its object streams
+    /// ([`LimitKind::ObjectStreamBytes`](crate::error::LimitKind::ObjectStreamBytes))
+    /// or the page count is over budget.
     pub fn open(bytes: &[u8], limits: PdfLimits) -> Result<Self> {
         if bytes.len() > limits.max_input_bytes {
             return Err(limits.exceeded(crate::error::LimitKind::InputBytes, bytes.len() as u64));
         }
-        let document =
-            lopdf::Document::load_mem(bytes).map_err(|error| PdfError::from_lopdf(&error))?;
+        // `lopdf` inflates every object and cross-reference stream while it
+        // loads, so their budget is checked on the raw bytes first, and handed to
+        // the loader as its per-stream ceiling for whatever the scan could not
+        // read (waiver `PDF-OBJSTM-BOMB`, closed).
+        crate::preload::check_object_streams(bytes, &limits)?;
+        let options = lopdf::LoadOptions {
+            max_decompressed_size: Some(crate::preload::object_stream_budget(&limits)),
+            ..lopdf::LoadOptions::default()
+        };
+        let document = lopdf::Document::load_mem_with_options(bytes, options)
+            .map_err(|error| PdfError::from_lopdf(&error))?;
         if document.is_encrypted() {
             return Err(PdfError::Encrypted);
         }

@@ -418,6 +418,171 @@ mod budget {
     }
 }
 
+mod object_streams {
+    //! Waiver `PDF-OBJSTM-BOMB` (closed): `lopdf` inflates every object stream
+    //! while it loads, so their budget is checked on the raw bytes first.
+
+    use super::*;
+    use strict_ooxml_pdf::{LimitKind, PdfError, OBJECT_STREAM_BUDGET_FACTOR};
+
+    /// A zlib stream that inflates to `copies × segment` zero bytes, built
+    /// without ever holding the inflated bytes: one sync-flushed deflate segment
+    /// of `segment` zeros (independent of what precedes it, and byte-aligned),
+    /// repeated, then a final empty block and the Adler-32 of the zeros.
+    fn zero_bomb(segment: usize, copies: usize) -> Vec<u8> {
+        use miniz_oxide::deflate::core::{create_comp_flags_from_zip_params, CompressorOxide};
+        use miniz_oxide::deflate::stream::deflate;
+        use miniz_oxide::MZFlush;
+
+        let mut compressor = CompressorOxide::new(create_comp_flags_from_zip_params(9, -15, 0));
+        let input = vec![0u8; segment];
+        let mut block = vec![0u8; segment / 64 + 4096];
+        let result = deflate(&mut compressor, &input, &mut block, MZFlush::Sync);
+        assert_eq!(result.bytes_consumed, segment, "{result:?}");
+        block.truncate(result.bytes_written);
+
+        let mut out = vec![0x78, 0xDA];
+        for _ in 0..copies {
+            out.extend_from_slice(&block);
+        }
+        // Final fixed-Huffman block holding only end-of-block.
+        out.extend_from_slice(&[0x03, 0x00]);
+        let total = (segment as u64) * (copies as u64);
+        let adler = ((total % 65_521) << 16) | 1;
+        out.extend_from_slice(&u32::try_from(adler).expect("adler fits").to_be_bytes());
+        out
+    }
+
+    /// A one-page PDF (classic xref table) carrying the given object streams.
+    /// `lopdf` expands every `/Type /ObjStm` object it loads, referenced or not.
+    fn with_object_streams(payloads: &[Vec<u8>]) -> Vec<u8> {
+        let mut pdf = PdfBuilder::new();
+        pdf.page(b"0 0 m 10 10 l S");
+        for payload in payloads {
+            let mut body = format!(
+                "<< /Type /ObjStm /N 1 /First 4 /Length {} /Filter /FlateDecode >>\nstream\n",
+                payload.len()
+            )
+            .into_bytes();
+            body.extend_from_slice(payload);
+            body.extend_from_slice(b"\nendstream");
+            pdf.object(body);
+        }
+        pdf.build()
+    }
+
+    fn reduced() -> PdfLimits {
+        PdfLimits {
+            max_content_bytes: 4 * 1024 * 1024,
+            ..PdfLimits::default()
+        }
+    }
+
+    fn refusal(bytes: Vec<u8>, limits: PdfLimits) -> PdfError {
+        assert_survives("object-stream bomb", move || {
+            match PdfDocument::open(&bytes, limits) {
+                Ok(_) => panic!("an object-stream bomb was loaded"),
+                Err(error) => error,
+            }
+        })
+    }
+
+    #[test]
+    fn a_quarter_megabyte_object_stream_bomb_is_refused_before_load() {
+        // 256 MiB of zeros in about a quarter of a megabyte of file. Before the
+        // guard `load_mem` inflated all of it (and a gigabyte-sized one, the
+        // same way) before the reader saw an object.
+        let bytes = with_object_streams(&[zero_bomb(1024 * 1024, 256)]);
+        assert!(bytes.len() < 512 * 1024, "{} bytes", bytes.len());
+        let limits = reduced();
+        let started = std::time::Instant::now();
+        let error = refusal(bytes, limits);
+        let budget = (limits.max_content_bytes * OBJECT_STREAM_BUDGET_FACTOR) as u64;
+        match error {
+            PdfError::LimitExceeded {
+                kind: LimitKind::ObjectStreamBytes,
+                limit,
+                actual,
+            } => {
+                assert_eq!(limit, budget);
+                // The scan stops one scratch buffer past the budget.
+                assert!(actual > budget && actual <= budget + 64 * 1024, "{actual}");
+            }
+            other => panic!("expected an object-stream refusal, got {other:?}"),
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn many_object_streams_are_held_to_one_budget_together() {
+        // Each stream is under the budget; their sum is not.
+        let streams: Vec<Vec<u8>> = (0..8).map(|_| zero_bomb(1024 * 1024, 4)).collect();
+        let error = refusal(with_object_streams(&streams), reduced());
+        assert!(
+            matches!(
+                error,
+                PdfError::LimitExceeded {
+                    kind: LimitKind::ObjectStreamBytes,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn the_budget_is_named_in_the_error() {
+        let limits = PdfLimits::default();
+        let error = limits.exceeded(LimitKind::ObjectStreamBytes, 1);
+        assert_eq!(LimitKind::ObjectStreamBytes.as_str(), "object_stream_bytes");
+        assert!(error.to_string().contains("object_stream_bytes"), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains(&(128u64 * 1024 * 1024).to_string()),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_file_written_with_object_streams_still_opens() {
+        let mut source = PdfBuilder::new();
+        source.page(b"0 0 m 10 10 l S");
+        source.page(b"BT ET");
+        let mut document = lopdf::Document::load_mem(&source.build()).expect("lopdf load");
+        let mut modern = Vec::new();
+        document
+            .save_modern(&mut modern)
+            .expect("save with object streams");
+        assert!(
+            modern
+                .windows(b"ObjStm".len())
+                .any(|window| window == b"ObjStm"),
+            "the fixture must actually carry an object stream"
+        );
+        for limits in [PdfLimits::default(), reduced()] {
+            let bytes = modern.clone();
+            let (count, pages) = assert_survives("open a modern pdf", move || {
+                let mut pdf = PdfDocument::open(&bytes, limits).expect("open");
+                (pdf.page_count(), pdf.pages().expect("pages").len())
+            });
+            assert_eq!((count, pages), (2, 2));
+        }
+    }
+
+    #[test]
+    fn a_small_object_stream_under_budget_still_loads() {
+        let payload = miniz_oxide::deflate::compress_to_vec_zlib(b"1 0 << /A 1 >>", 6);
+        let bytes = with_object_streams(&[payload]);
+        let pages = assert_survives("open", move || {
+            PdfDocument::open(&bytes, reduced())
+                .expect("open")
+                .page_count()
+        });
+        assert_eq!(pages, 1);
+    }
+}
+
 /// AUD-88: vendored `hayro` must not stack-overflow or hang on hostile PDFs.
 #[cfg(feature = "raster")]
 mod raster {
@@ -610,7 +775,8 @@ trailer << /Root 1 0 R >>\n\
     }
 
     /// `/Kids` cycle: our lopdf path must not abort; hayro-syntax guard covers the
-    /// rasterizer. Object-stream bombs remain under waiver `PDF-OBJSTM-BOMB`.
+    /// rasterizer. Object-stream bombs are refused before load (`object_streams`
+    /// above; waiver `PDF-OBJSTM-BOMB` closed).
     #[test]
     fn page_tree_kids_cycle_is_handled() {
         let cyclic = || {

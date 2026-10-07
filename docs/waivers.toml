@@ -843,3 +843,13 @@ this waiver.
 """
 opened = "2026-10-03"
 review = "2027-01-03"
+closed = "2026-10-08"
+closed_by = """
+`PdfDocument::open` scans the raw bytes for object and cross-reference stream
+dictionaries and inflates each `/FlateDecode` one into a discarded scratch
+buffer, holding their sum to `LimitKind::ObjectStreamBytes`
+(`OBJECT_STREAM_BUDGET_FACTOR` x `max_content_bytes`, 128 MiB by default)
+before `lopdf` is called (`strict-ooxml-pdf/src/preload.rs`); the same budget is
+handed to `lopdf::LoadOptions::max_decompressed_size` as the per-stream ceiling
+for anything the scan cannot read. Tests: `hostile::object_streams`.
+"""
