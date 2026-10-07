@@ -127,14 +127,21 @@ impl FaceCollector {
         glyph_id: u16,
         unicode: &str,
     ) {
-        if glyph_id == 0 {
-            return;
-        }
         let key = FaceKey {
             family: source.family,
             bold,
             italic,
         };
+        if glyph_id == 0 {
+            // Keep a valid face subset for the paint pass, which will report
+            // the cluster as missing text instead of treating the face as absent.
+            self.faces.entry(key.clone()).or_default();
+            self.missing_glyphs
+                .entry(key)
+                .or_default()
+                .extend(unicode.chars());
+            return;
+        }
         if unicode.chars().count() == 1 {
             if let Some(ch) = unicode.chars().next() {
                 self.faces
@@ -591,6 +598,7 @@ mod tests {
         let identity = String::from_utf8(super::identity_h_cmap()).expect("utf-8");
         assert!(identity.contains("begincidrange"), "{identity}");
         for count in [0_u16, 1, 100, 101, 201] {
+            font.cluster_unicode.clear();
             font.to_unicode = (0..count).map(|cid| (cid, 'A')).collect();
             let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
             let counts: Vec<usize> = cmap

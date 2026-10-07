@@ -138,7 +138,12 @@ impl PictureBuilder {
                     id: u32::try_from(index).ok(),
                     name: Some(name.clone()),
                     descr: None,
+                    title: None,
                 }),
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: Some(name),

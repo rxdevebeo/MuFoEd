@@ -2557,6 +2557,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         width: Some(Twips(12240)),
         height: Some(Twips(15840)),
         orientation: None,
+        code: None,
     };
     let document_page_margins = PageMargins {
         left: Some(Twips(1800)),
@@ -2983,6 +2984,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
             .values()
             .map(|f| strict_ooxml_wml::model::fonts::FontEntry {
                 name: Arc::from(f.name.as_str()),
+                hints: Default::default(),
                 embeds: Default::default(),
             })
             .collect(),

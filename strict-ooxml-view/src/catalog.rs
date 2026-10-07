@@ -250,10 +250,16 @@ pub fn render_rtf(
         });
     }
     if opened.import_report.details_truncated {
-        note.push_str("Diagnostic details capped; aggregate loss count includes omitted details.\n");
+        note.push_str(
+            "Diagnostic details capped; aggregate loss count includes omitted details.\n",
+        );
     }
     for issue in opened.write_report.losses() {
-        let _ = writeln!(note, "Writer {:?}: {}: {}", issue.severity, issue.feature_id, issue.reason);
+        let _ = writeln!(
+            note,
+            "Writer {:?}: {}: {}",
+            issue.severity, issue.feature_id, issue.reason
+        );
         issues.push(ViewIssue {
             stage: "write".to_owned(),
             id: issue.feature_id.to_owned(),
@@ -266,14 +272,22 @@ pub fn render_rtf(
         });
     }
     let support = opened.document.support_report();
-    let pages = opened.document.render_svg(
-        &RenderOptions::default().scale(scale).floating(true).math(true),
-    )?.into_iter().map(|page| Rendered {
-        number: page.index + 1,
-        width: page.width_px,
-        height: page.height_px,
-        svg: page.svg,
-    }).collect();
+    let pages = opened
+        .document
+        .render_svg(
+            &RenderOptions::default()
+                .scale(scale)
+                .floating(true)
+                .math(true),
+        )?
+        .into_iter()
+        .map(|page| Rendered {
+            number: page.index + 1,
+            width: page.width_px,
+            height: page.height_px,
+            svg: page.svg,
+        })
+        .collect();
     Ok(DocumentView {
         name: entry.name.clone(),
         conformance: "rtf import → strict".to_owned(),
@@ -290,11 +304,26 @@ pub fn render_rtf(
             outcome: format!("{status:?}").to_lowercase(),
             issues,
             stages: vec![
-                StageStatus { stage: "input".to_owned(), status: "ran".to_owned() },
-                StageStatus { stage: "normalize".to_owned(), status: "not_run".to_owned() },
-                StageStatus { stage: "convert".to_owned(), status: "ran".to_owned() },
-                StageStatus { stage: "write".to_owned(), status: "ran".to_owned() },
-                StageStatus { stage: "render".to_owned(), status: "ran".to_owned() },
+                StageStatus {
+                    stage: "input".to_owned(),
+                    status: "ran".to_owned(),
+                },
+                StageStatus {
+                    stage: "normalize".to_owned(),
+                    status: "not_run".to_owned(),
+                },
+                StageStatus {
+                    stage: "convert".to_owned(),
+                    status: "ran".to_owned(),
+                },
+                StageStatus {
+                    stage: "write".to_owned(),
+                    status: "ran".to_owned(),
+                },
+                StageStatus {
+                    stage: "render".to_owned(),
+                    status: "ran".to_owned(),
+                },
             ],
             sidecar: "absent".to_owned(),
         },
@@ -543,7 +572,7 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
-    use super::{discover, Cache, DocumentView, PipelineView, Summary};
+    use super::{discover, render_rtf, Cache, DocumentView, Entry, PipelineView, Summary};
     use std::path::Path;
 
     #[test]
@@ -572,6 +601,36 @@ mod tests {
             vec!["a.docx", "b.docx", "c.RTF"],
             "sorted, docx and rtf, not recursive, no Word lock files"
         );
+    }
+
+    #[test]
+    fn rtf_render_keeps_import_stages_and_pages_in_the_corpus_view() {
+        let dir = std::env::temp_dir().join(format!("strict-view-rtf-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create");
+        let path = dir.join("sample.rtf");
+        let bytes = br"{\rtf1\ansi RTF viewer}";
+        std::fs::write(&path, bytes).expect("write");
+        let entry = Entry {
+            name: "sample.rtf".to_owned(),
+            path,
+            size: bytes.len() as u64,
+        };
+
+        let view =
+            render_rtf(&entry, &strict_ooxml::RtfOptions::default(), 96.0).expect("RTF renders");
+        assert!(!view.pages.is_empty());
+        assert_eq!(view.pipeline.outcome, "clean");
+        assert_eq!(
+            view.pipeline
+                .stages
+                .iter()
+                .find(|stage| stage.stage == "convert")
+                .map(|stage| stage.status.as_str()),
+            Some("ran")
+        );
+        assert_eq!(view.pipeline.issues.len(), 0);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

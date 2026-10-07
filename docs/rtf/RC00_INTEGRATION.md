@@ -1,0 +1,39 @@
+# RC00: интеграция и повторный прогон public import
+
+Дата замера: 2026-10-07. Worktree: `C:\Users\gamer\.codex\worktrees\rtf-import-integrated\StrictLib`; ветка `codex/rtf-import-integrated`. Основной checkout `D:\projects\StrictLib` не изменялся.
+
+Интеграционная история: `ac51b68` (main) → `c1e9a91` (RTF parser/scaffold) → `a13739c` (явный WPS профиль) → `48beb68` (структурная интеграция) → `8e612a8` (диагностика отсутствующих glyph). Во время интеграции сохранены main P5/P6, cluster-aware ToUnicode CMap, writer suffix validation, XSD policy gate и multi-corpus viewer; RTF wiring объединён с этими контрактами. Модель RTF WML обновлена к текущим полям main.
+
+## Проверки после интеграции
+
+| Проверка | Результат |
+| --- | --- |
+| Public corpus import | 100/100 измерены |
+| Точный body text | 100/100 Pass |
+| Целостность результата и supervised resource gate | 100/100 Pass |
+| Exit code | 100/100 = 1 (Degraded, из-за зарегистрированных import losses); exit 0 = 0 |
+| Import loss events | 1,327,900 суммарно; это события диагностики, не число уникальных ошибок |
+| Writer losses | 38, все относятся к потере `pic:cNvPr@id` (при записи id становится 0) |
+| Максимальный peak RSS / p95 времени | 264.5 MiB / 0.634 s |
+| Strict XSD | 100 documents validated, 0 missing/refused/unmatched/ours; 2,133 drivers compiled, 0 failures, 0 uncovered roots |
+| OPC | 100 packages, 0 violations |
+
+Corpus runner завершился успешно, но помечен как development measurement (`public_path_development_measurement_not_full_acceptance`). Его параметры: `--wps-text --allow-unsigned-unicode --drop-nul`; manifest SHA-256 `0e0567956a1590ea8e273ece693dcd2d2b8cc408494d20c1234193cd99786a4f`; CLI SHA-256 `688e69f2cf18382ea8013196a12a82374b079dec50ffb9e160c30818bcd4b40a`. Результаты и DOCX находятся в ignored каталоге `target/rtf-import/RC00-main-integration-corpus/`, полный построчный ledger — `results.json`. Git object id текущего бинарного source diff: `8db8ec57457b003fcee91cb546daf76f9aabe2bf`.
+
+Проверенные команды:
+
+```powershell
+cargo +1.92 test -p strict-ooxml-render-pdf -p strict-ooxml-view -p strict-ooxml-rtf -p strict-ooxml-cli -p strict-ooxml --locked
+cargo +1.92 test -p strict-ooxml-view rtf_render_keeps_import_stages_and_pages_in_the_corpus_view
+cargo +1.92 build -p strict-ooxml-cli --locked
+python xtool/xsd-gate/xsd_gate.py --corpus target/rtf-import/RC00-main-integration-corpus --written target/rtf-import/RC00-main-integration-corpus --cli target/debug/strict-ooxml.exe --quiet-messages
+python xtool/xsd-gate/opc_gate.py --written target/rtf-import/RC00-main-integration-corpus
+```
+
+Изменённые Rust файлы прошли точечный `rustfmt +1.92 --edition 2021 --check`; `git diff --check` чист. Полный `cargo fmt --all -- --check` и широкий Clippy остаются затронуты уже существовавшими несоответствиями main baseline; Clippy для RTF пакета прошёл при подавлении только этих базовых lint-категорий.
+
+## Открытые критерии
+
+Это не полный compatibility acceptance. После интеграции ещё не повторялись независимые WPS region/structure probes, media byte roundtrip, pagination/render reports, pixel/SSIM gate и полная feature matrix. Следовательно, цифры 61/39 pagination и 2/98 pixels из исторического снимка `a7b3c9f` нельзя приписывать HEAD `8e612a8`.
+
+RC01 начат отдельным исправлением PDF диагностики: missing glyph отделён от missing font; регрессионный тест проверяет U+10FFFD. По corpus-прогону остаются подтверждённые 38 writer losses класса `pic:cNvPr@id`, требующие решения в RC07. Остальные 1,327,862 import-loss events пока не классифицированы этим прогоном и не считаются подтверждёнными первопричинами. Backlog остаётся `reviewed: false`, `root_cause: null` до пофайловой проверки.

@@ -157,7 +157,16 @@ fn metafile_payloads_and_extents_survive_package_roundtrip() {
         let written =
             strict_ooxml_write::write_package(&imported.document, Some(&bag), &Default::default())
                 .unwrap();
-        assert!(written.report.losses().is_empty());
+        assert_eq!(
+            written
+                .report
+                .losses()
+                .iter()
+                .map(|loss| loss.feature_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["pic:cNvPr@id"],
+            "the writer must report its generated picture id while preserving media"
+        );
         let package = strict_ooxml_core::opc::Package::open_reader(
             written.bytes.as_slice(),
             &Default::default(),

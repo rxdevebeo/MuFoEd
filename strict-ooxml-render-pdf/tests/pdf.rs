@@ -130,8 +130,8 @@ fn a_missing_glyph_is_not_reported_as_a_missing_face() {
         .build();
     let (_, _, report) = to_pdf(&bytes);
     let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
-    assert!(ids.contains(&"pdf.font.no_glyph"), "{ids:?}");
-    assert!(!ids.contains(&"pdf.font.missing"), "{ids:?}");
+    assert!(ids.contains(&"pdf.font.no_glyph"), "{:?}", report.losses());
+    assert!(!ids.contains(&"pdf.font.missing"), "{:?}", report.losses());
 }
 
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`

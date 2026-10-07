@@ -488,8 +488,7 @@ impl Config {
                     config.rtf_options.nul_policy = strict_ooxml::NulPolicy::DropAndReport;
                 }
                 "--reject-unsupported" => {
-                    config.rtf_options.unsupported_policy =
-                        strict_ooxml::UnsupportedPolicy::Reject;
+                    config.rtf_options.unsupported_policy = strict_ooxml::UnsupportedPolicy::Reject;
                 }
                 "--help" | "-h" => {
                     print_usage();
@@ -698,9 +697,12 @@ mod tests {
         assert!(ids.contains(&"strict"));
         assert!(ids.contains(&"docx"));
         assert!(ids.contains(&"cc0-docx"));
+        assert!(ids.contains(&"cc0-rtf"));
         assert!(KNOWN_CORPORA
             .iter()
-            .filter(|known| known.id != "cc0" && known.id != "cc0-docx")
+            .filter(|known| {
+                known.id != "cc0" && known.id != "cc0-docx" && known.id != "cc0-rtf"
+            })
             .all(|known| known.path.starts_with("strict-ooxml-core/tests/")));
     }
 
