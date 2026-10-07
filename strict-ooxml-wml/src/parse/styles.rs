@@ -321,9 +321,8 @@ impl PartParser<'_> {
         &mut self,
         attrs: &[strict_ooxml_core::xml::Attr],
     ) -> Result<TableStyleCondition> {
-        let kind = wml_attr(attrs, "type")
-            .map(std::sync::Arc::from)
-            .unwrap_or_else(|| std::sync::Arc::from(""));
+        let kind =
+            wml_attr(attrs, "type").map_or_else(|| std::sync::Arc::from(""), std::sync::Arc::from);
         // The condition is kept for the writer, but style resolution and
         // layout do not apply it. That gap belongs in the support report.
         let location = self.location();

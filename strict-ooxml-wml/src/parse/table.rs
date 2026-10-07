@@ -158,7 +158,7 @@ impl PartParser<'_> {
                                 // `w:tblPrEx` is the preceding sibling. Replacing
                                 // the row properties must keep the exception.
                                 let exception_borders = props.exception_borders.clone();
-                                let exception_spacing = props.cell_spacing.clone();
+                                let exception_spacing = props.cell_spacing;
                                 props = parser.parse_row_properties()?;
                                 props.exception_borders = exception_borders;
                                 if props.cell_spacing.is_none() {

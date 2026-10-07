@@ -243,7 +243,7 @@ impl PartParser<'_> {
                     } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
                         let (uri, graphic) = self.parse_graphic()?;
                         anchor.graphic_uri = uri;
-                        anchor.graphic = Box::new(graphic);
+                        *anchor.graphic = graphic;
                     } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS) {
                         match name.local() {
                             "sizeRelH" => {
@@ -1867,7 +1867,11 @@ fn is_locked_canvas_ns(name: &QName) -> bool {
 
 /// Writes a start tag with Strict namespace prefixes for locked-canvas capture.
 fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
-    let prefix = markup_prefix(name.ns.as_ref().map(|ns| ns.as_str()));
+    let prefix = markup_prefix(
+        name.ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+    );
     out.push('<');
     if let Some(prefix) = prefix {
         out.push_str(prefix);
@@ -1888,7 +1892,12 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
         out.push('"');
     }
     for attr in attrs {
-        let attr_prefix = markup_prefix(attr.name.ns.as_ref().map(|ns| ns.as_str()));
+        let attr_prefix = markup_prefix(
+            attr.name
+                .ns
+                .as_ref()
+                .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+        );
         out.push(' ');
         if let Some(prefix) = attr_prefix {
             // Unprefixed attributes stay unprefixed (XML Namespaces).
@@ -1912,7 +1921,11 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
 
 /// Writes an end tag with the same prefix policy as [`write_start_markup`].
 fn write_end_markup(out: &mut String, name: &QName) {
-    let prefix = markup_prefix(name.ns.as_ref().map(|ns| ns.as_str()));
+    let prefix = markup_prefix(
+        name.ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+    );
     out.push_str("</");
     if let Some(prefix) = prefix {
         out.push_str(prefix);
@@ -1929,13 +1942,16 @@ fn escape_text_into_markup(out: &mut String, text: &str) {
 /// Stable prefix for a namespace URI when serialising locked-canvas markup.
 fn markup_prefix(ns: Option<&str>) -> Option<&'static str> {
     match ns {
-        Some(LOCKED_CANVAS_STRICT_NS) | Some(LOCKED_CANVAS_TRANSITIONAL_NS) => Some("lc"),
-        Some(DRAWINGML_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/drawingml/2006/main") => Some("a"),
-        Some(RELS_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/officeDocument/2006/relationships") => Some("r"),
-        Some(PICTURE_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/drawingml/2006/picture") => Some("pic"),
+        Some(LOCKED_CANVAS_STRICT_NS | LOCKED_CANVAS_TRANSITIONAL_NS) => Some("lc"),
+        Some(DRAWINGML_STRICT_NS | "http://schemas.openxmlformats.org/drawingml/2006/main") => {
+            Some("a")
+        }
+        Some(
+            RELS_STRICT_NS | "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        ) => Some("r"),
+        Some(PICTURE_STRICT_NS | "http://schemas.openxmlformats.org/drawingml/2006/picture") => {
+            Some("pic")
+        }
         Some("http://www.w3.org/XML/1998/namespace") => Some("xml"),
         _ => None,
     }
