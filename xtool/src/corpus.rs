@@ -197,8 +197,11 @@ fn parse_lock(text: &str) -> Result<Vec<LockDoc>, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let mut ids: Vec<&str> = docs.iter().map(|doc| doc.id.as_str()).collect();
     ids.sort_unstable();
-    if let Some(pair) = ids.windows(2).find(|pair| pair[0] == pair[1]) {
-        return Err(format!("duplicate id {}", pair[0]));
+    if let Some(id) = ids.windows(2).find_map(|pair| match pair {
+        [first, second] if first == second => Some(*first),
+        _ => None,
+    }) {
+        return Err(format!("duplicate id {id}"));
     }
     Ok(docs)
 }

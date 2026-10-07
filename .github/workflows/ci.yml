@@ -458,6 +458,31 @@ jobs:
         run: cargo test --workspace --all-features --release --test docx_corpus --test corpus
         env:
           STRICT_OOXML_CORPUS: require
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Census ratchet (Transitional -> Strict over the public corpora)
+        # D05 is not at zero yet, so the gate is "no counter grew": against
+        # xtool/xsd-gate/census-baseline.json once it is committed, advisory
+        # until then. The measured counters are uploaded either way, so the
+        # first run's file is the baseline to commit.
+        run: |
+          pip install -r xtool/xsd-gate/requirements.txt
+          cargo build -p strict-ooxml-cli --release --locked
+          BASELINE=""
+          if [ -f xtool/xsd-gate/census-baseline.json ]; then
+            BASELINE="--baseline xtool/xsd-gate/census-baseline.json"
+          fi
+          python xtool/xsd-gate/census_gate.py --no-build --quiet-messages \
+            --cli target/release/strict-ooxml \
+            --corpora samples,cc0,cc0-a,cc0-1 \
+            --baseline-out census-measured.json $BASELINE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: census-measured
+          path: census-measured.json
+          if-no-files-found: ignore
       - name: corpus_scan (open, parse, write, render every document)
         run: |
           for set in CC0 CC0_DOCX CC0_DOCX_1; do

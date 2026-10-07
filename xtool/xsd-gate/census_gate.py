@@ -154,7 +154,17 @@ CORPORA = {
     "docx": os.path.join(REPO, "strict-ooxml-core", "tests", "docx"),
     "samples": os.path.join(REPO, "strict-ooxml-core", "tests", "samples"),
     "cc0": os.path.join(REPO, "testdata", "CC0_DOCX"),
+    # The other two CC0 sets of testdata-lock/cc0.toml (fetched by
+    # `xtool corpus fetch --tier ci-full`); off unless --corpora names them.
+    "cc0-a": os.path.join(REPO, "testdata", "CC0"),
+    "cc0-1": os.path.join(REPO, "testdata", "CC0_DOCX_1"),
 }
+DEFAULT_CORPORA = ("docx", "samples", "cc0")
+
+# The counters a baseline holds. A ratchet fails when any of them grows; the
+# census is not yet at zero (D05), so "no worse than recorded" is the gate CI
+# can enforce today.
+BASELINE_KEYS = ("missing", "unmatched_schema", "unclassified_element_changes", "ours")
 
 
 def load_census() -> list[dict]:
@@ -1633,6 +1643,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--quiet-messages", action="store_true")
     parser.add_argument("--inventory-out", help="save exact unclassified inventory rows as JSON")
     parser.add_argument(
+        "--corpora",
+        help="comma-separated corpus labels to measure (default: docx,samples,cc0; "
+        "also cc0-a, cc0-1)",
+    )
+    parser.add_argument(
+        "--baseline",
+        help="ratchet: pass when no counter exceeds this JSON's (see --baseline-out)",
+    )
+    parser.add_argument("--baseline-out", help="write the measured counters as a baseline JSON")
+    parser.add_argument(
         "--keep-written",
         help="write the Transitional corpus into this directory and keep it",
     )
@@ -1658,6 +1678,17 @@ def main(argv: list[str]) -> int:
             "       Use --keep-written DIR to retain packages this run produces, "
             "or xsd_gate.py --written for the Strict-input gate."
         )
+
+    if args.corpora:
+        wanted = [label.strip() for label in args.corpora.split(",") if label.strip()]
+        unknown = [label for label in wanted if label not in CORPORA]
+        if unknown:
+            raise SystemExit(f"error: unknown corpus label(s): {', '.join(unknown)}")
+    else:
+        wanted = list(DEFAULT_CORPORA)
+    for label in list(CORPORA):
+        if label not in wanted:
+            del CORPORA[label]
 
     config = xsd_gate.load_config()
     print("=" * 78)
@@ -1952,6 +1983,20 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         unclassified_element_changes=unclassified_n,
         our_total=our_total,
     )
+    measured = {
+        "corpora": sorted(CORPORA),
+        "documents": documents,
+        "missing": missing,
+        "unmatched_schema": unmatched_schema_n,
+        "unclassified_element_changes": unclassified_n,
+        "ours": our_total,
+    }
+    if args.baseline_out:
+        with open(args.baseline_out, "w", encoding="utf-8") as output:
+            json.dump(measured, output, indent=2, sort_keys=True)
+            output.write("\n")
+    if args.baseline:
+        code, summary = ratchet(code, measured, args.baseline)
     print(f"\n{summary}")
     if open_items:
         print(
@@ -1964,6 +2009,38 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         "an un-named one would be)"
     )
     return code
+
+
+def ratchet(code: int, measured: dict, baseline_path: str) -> tuple[int, str]:
+    """The census against a recorded baseline: no counter may grow.
+
+    An unmeasurable run stays unmeasurable. A baseline for other corpora is not
+    a baseline for this run, so it is refused rather than compared.
+    """
+    if code == EXIT_UNMEASURABLE:
+        return code, "ratchet: the census was not measurable"
+    with open(baseline_path, encoding="utf-8") as handle:
+        baseline = json.load(handle)
+    if baseline.get("corpora") != measured["corpora"]:
+        return EXIT_UNMEASURABLE, (
+            f"ratchet: baseline corpora {baseline.get('corpora')} "
+            f"!= measured {measured['corpora']}"
+        )
+    worse = [
+        f"{key} {measured[key]} > {baseline.get(key, 0)}"
+        for key in BASELINE_KEYS
+        if measured[key] > baseline.get(key, 0)
+    ]
+    if worse:
+        return EXIT_OPEN, "ratchet: FAILED - " + "; ".join(worse)
+    better = [
+        f"{key} {measured[key]} < {baseline.get(key, 0)}"
+        for key in BASELINE_KEYS
+        if measured[key] < baseline.get(key, 0)
+    ]
+    if better:
+        return EXIT_OK, "ratchet: OK, improved (" + "; ".join(better) + ") - lower the baseline"
+    return EXIT_OK, "ratchet: OK, no counter grew"
 
 
 if __name__ == "__main__":
