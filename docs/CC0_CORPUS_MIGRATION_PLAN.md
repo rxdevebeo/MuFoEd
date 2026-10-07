@@ -1,6 +1,7 @@
 # Переход тестов на корпуса CC0
 
-Дата: 7 октября 2026 года. Статус: план; ни один шаг не выполнен.
+Дата: 7 октября 2026 года. Статус: фазы 0–2 выполнены в ветке
+`task/hardening-2026-10-07` (см. §12); фазы 3–7 — план.
 
 ## 1. Цель и решение
 
@@ -443,3 +444,19 @@ Document» (если Word есть на хосте; через hostq). Это о
 - Waiver `CENSUS-LOCAL` закрыт.
 - Каждый закреплённый тест имеет записанное свидетельство из XML документа и
   проходит мутационную проверку.
+
+## 12. Выполнено (ветка `task/hardening-2026-10-07`)
+
+- **Фаза 0.** Все тесты, читавшие `tests/docx/` через `.expect()`, пропускаются
+  без корпуса (`SKIP …`); `wml/tests/corpus.rs` читает существующий каталог.
+- **Фаза 1.** `testdata-lock/cc0.toml` (300 документов, 26 в `ci-core`),
+  генератор `xtool/corpus/make_lock.py`; `xtool corpus fetch|verify`
+  (`xtool/src/corpus.rs`: SHA-256 и размер, атомарная запись, только
+  `https://archive.org`, повторы); `strict_ooxml_testkit::corpus` (`tier`,
+  `doc`, `corpus_doc!`, режимы `STRICT_OOXML_CORPUS=skip|require`,
+  `STRICT_OOXML_CORPUS_ROOT`).
+- **Фаза 2.** CI `test`: кэш + `corpus fetch --tier ci-core` +
+  `STRICT_OOXML_CORPUS=require`; ночной job `corpus-full` (`ci-full`, корпусные
+  тесты и `corpus_scan` по трём наборам).
+- **Фаза 3 (частично).** `core/tests/docx_corpus.rs` и `wml/tests/corpus.rs`
+  гоняют `ci-core`. Census и остальные потребители класса A — впереди.

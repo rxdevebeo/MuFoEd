@@ -84,6 +84,15 @@ cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
+Corpus. The CC0 test corpus is named by `testdata-lock/cc0.toml` (the
+documents are not committed; `docs/CC0_CORPUS_MIGRATION_PLAN.md`). Fetch the
+small CI tier once, and tests that need it run instead of skipping:
+
+```text
+cargo run -p xtool --release -- corpus fetch --tier ci-core   # or ci-full
+STRICT_OOXML_CORPUS=require cargo test --workspace --all-features
+```
+
 Coverage (≥ 80% lines for `core`, `wml`, `report`, `render-svg` and `fidelity`):
 
 ```text

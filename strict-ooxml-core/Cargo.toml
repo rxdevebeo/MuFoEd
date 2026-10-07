@@ -29,6 +29,9 @@ proptest.workspace = true
 criterion = "0.5"
 # Independent ZIP implementation used only as an oracle by `tests/corpus_oracle.rs`.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# The CC0 corpus by its lock file (`tests/docx_corpus.rs`, `tests/corpus.rs`).
+# Path only: see the testkit note in deny.toml.
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 
 [[test]]
 name = "parallel_report"

@@ -38,8 +38,20 @@ jobs:
       # check, no features, is what makes the default build a promise again.
       - name: Check (default features)
         run: cargo check --workspace --all-targets
+      # The CC0 corpus (docs/CC0_CORPUS_MIGRATION_PLAN.md): the lock file is
+      # committed, the documents are not. `ci-core` (26 documents, ~11 MB) is
+      # fetched by hash and cached; `require` turns a missing document into a
+      # failure instead of a skipped test.
+      - uses: actions/cache@v4
+        with:
+          path: testdata
+          key: cc0-ci-core-${{ hashFiles('testdata-lock/cc0.toml') }}
+      - name: Fetch the CC0 ci-core corpus
+        run: cargo run -p xtool --release --locked -- corpus fetch --tier ci-core
       - name: Test
         run: cargo test --workspace --all-features
+        env:
+          STRICT_OOXML_CORPUS: require
       - name: Editing feature matrix
         run: |
           cargo test -p strict-ooxml-edit --locked --no-default-features
@@ -413,3 +425,28 @@ jobs:
           print(f"wml branches {c}/{n} = {pct:.4f}%")
           sys.exit(0 if pct+1e-9>=70.0 else 1)
           PY
+
+  corpus-full:
+    name: CC0 corpus (nightly, full)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: testdata
+          key: cc0-ci-full-${{ hashFiles('testdata-lock/cc0.toml') }}
+      - name: Fetch the whole CC0 corpus
+        run: cargo run -p xtool --release --locked -- corpus fetch --tier ci-full
+      - name: Corpus tests over the fetched documents
+        run: cargo test --workspace --all-features --release --test docx_corpus --test corpus
+        env:
+          STRICT_OOXML_CORPUS: require
+      - name: corpus_scan (open, parse, write, render every document)
+        run: |
+          for set in CC0 CC0_DOCX CC0_DOCX_1; do
+            cargo run -p strict-ooxml --release --features write,svg --example corpus_scan -- "testdata/$set"
+          done

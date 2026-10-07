@@ -2251,6 +2251,7 @@ dependencies = [
  "proptest",
  "quick-xml",
  "rayon",
+ "strict-ooxml-testkit",
  "thiserror",
  "zip",
 ]
@@ -2358,6 +2359,8 @@ name = "strict-ooxml-testkit"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide 0.8.9",
+ "sha2",
+ "toml",
 ]
 
 [[package]]
@@ -2379,6 +2382,7 @@ dependencies = [
  "rayon",
  "roxmltree 0.20.0",
  "strict-ooxml-core",
+ "strict-ooxml-testkit",
  "toml",
  "zip",
 ]
@@ -3110,8 +3114,10 @@ name = "xtool"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide 0.8.9",
+ "sha2",
  "strict-ooxml-core",
  "toml",
+ "ureq",
 ]
 
 [[package]]
