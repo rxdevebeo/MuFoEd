@@ -164,11 +164,12 @@ fixture проверяет все восемь ссылок через import �
 Strict XSD — 100/100 без нарушений, OPC — 100 пакетов без нарушений. Pagination
 осталась 62/100 и все page counts прежние; один PDF hash изменился. Pixel gate —
 3/100 Pass, 97/100 Fail (423 сопоставленные страницы: 6 Pass, 417 Fail), без
-изменения comparator. Это не полная визуальная приёмка. Следующий приоритет RC02 —
-разобрать 7 `\\fbidis` losses как отдельный document-level control; это не один
-из восьми font-table theme selectors. `\\fcharset` и `\\fprq` уже читаются в
-font table. Font registry, единый resolved face и embedding остаются открытой
-частью RC02.
+изменения comparator. Это не полная визуальная приёмка. Commit `4725086` распознал
+7 font-table `\\fbidis` hints и 3 document-level `\\fbidis` controls. Для
+document-level флага `\\f` уже задаёт один active face для WML slots, а дальнейший
+`\\af` не переключает associated face; оба пути закреплены fixtures. Итог: 207,405
+Loss, 95 Info, 445 features. Следующий приоритет RC02 — единый resolved face,
+font registry и embedding; `\\fcharset` и `\\fprq` уже читаются в font table.
 
 Использовать shared face/shaping API после RC00. Определить один resolved face
 для measurement, glyph coverage, SVG emission и PDF subset: font SHA-256, face
