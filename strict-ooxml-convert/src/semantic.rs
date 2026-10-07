@@ -156,30 +156,57 @@ pub(crate) fn build(
             report,
         );
 
+        // Pictures and drawn shapes, each with the top of its box (points from
+        // the page's top). On a single-column page they join the flow where they
+        // stand: before the first line below their top. A two-column page keeps
+        // them after its text, because "below" means nothing across a gutter.
+        let mut figures: Vec<(f64, Block)> = Vec::new();
+        if options.embed_images {
+            figures.extend(images_of(page, &mut media, report, options));
+        }
+        figures.extend(crate::vectors::placed_blocks_for(page, report));
+        let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
+        if interleave {
+            // Stable: equal tops keep pictures before shapes, as before.
+            figures.sort_by(|a, b| a.0.total_cmp(&b.0));
+        }
+        let mut figures = figures.into_iter().peekable();
+
         // A table takes the place of the text inside it, and the page's own flow
         // runs around it: the paragraphs before it, the table, the paragraphs
         // after. The table sits where its first line was, which is the only
         // order the page states.
         let mut flow: Vec<GlyphLine> = Vec::new();
         for (number, line) in lines.iter().enumerate() {
+            if interleave {
+                let line_top = line.baseline - line.ascent;
+                while let Some((_, figure)) = figures.next_if(|(top, _)| *top < line_top) {
+                    flush_flow(
+                        &mut blocks,
+                        &mut flow,
+                        body,
+                        pitch,
+                        options,
+                        &mut numbering,
+                        report,
+                        index + 1,
+                    );
+                    blocks.push(figure);
+                }
+            }
             if let Some(table) = plan.starts_table(number) {
-                let list_items =
-                    list_items_of(&flow, body, options, &mut numbering, report, index + 1);
-                push_paragraphs(
+                // The paragraphs above the table are done; keeping them would put
+                // the page's text in the document twice.
+                flush_flow(
                     &mut blocks,
-                    &flow,
+                    &mut flow,
                     body,
                     pitch,
                     options,
-                    0.0,
-                    true,
+                    &mut numbering,
                     report,
                     index + 1,
-                    &list_items,
                 );
-                // The paragraphs above the table are done; keeping them would put
-                // the page's text in the document twice.
-                flow.clear();
                 blocks.push(table_block(
                     &plan.tables[table],
                     body,
@@ -195,27 +222,19 @@ pub(crate) fn build(
             }
             flow.push(line.clone());
         }
-        let list_items = list_items_of(&flow, body, options, &mut numbering, report, index + 1);
-        push_paragraphs(
+        flush_flow(
             &mut blocks,
-            &flow,
+            &mut flow,
             body,
             pitch,
             options,
-            0.0,
-            true,
+            &mut numbering,
             report,
             index + 1,
-            &list_items,
         );
-
-        if options.embed_images {
-            blocks.extend(images_of(page, &mut media, report, options));
-        }
-        blocks.extend(crate::vectors::blocks_for(page, report));
-        // A page a model read stands where the region it came from was: after
-        // whatever the PDF itself gave (nothing, or the caption under the
-        // picture) and before the pictures, indented to the region's left edge.
+        blocks.extend(figures.map(|(_, figure)| figure));
+        // Text a model read off a picture-only region comes after the page's
+        // own content, indented to the region's left edge.
         for block in recovered.page(index) {
             for paragraph in &block.paragraphs {
                 blocks.push(Block::Paragraph(paragraph.clone()));
@@ -617,12 +636,48 @@ fn run(properties: RunProperties, text: String) -> Inline {
 /// reader reads. Everything the model said lands in the report first: a
 /// description in a document that the report does not mention is a caption
 /// nobody can audit.
+/// Closes the open text flow into paragraphs (with its list items) and empties it.
+#[allow(clippy::too_many_arguments)]
+fn flush_flow(
+    blocks: &mut Vec<Block>,
+    flow: &mut Vec<GlyphLine>,
+    body: f64,
+    pitch: f64,
+    options: &PdfOptions,
+    numbering: &mut strict_ooxml_wml::model::numbering::NumberingTable,
+    report: &mut ConversionReport,
+    page: usize,
+) {
+    if flow.is_empty() {
+        return;
+    }
+    let list_items = list_items_of(flow, body, options, numbering, report, page);
+    push_paragraphs(
+        blocks,
+        flow,
+        body,
+        pitch,
+        options,
+        0.0,
+        true,
+        report,
+        page,
+        &list_items,
+    );
+    flow.clear();
+}
+
+/// The page's pictures as image paragraphs, each with the top of its box in
+/// points from the page's top.
+///
+/// `PlacedImage` keeps PDF's y-up lower edge (unlike glyphs, which the
+/// interpreter reflects), so the top is `page height - (y + height)`.
 fn images_of(
     page: &PdfPage,
     media: &mut MediaCollector,
     report: &mut ConversionReport,
     options: &PdfOptions,
-) -> Vec<Block> {
+) -> Vec<(f64, Block)> {
     let page_number = page.number;
     let mut out = Vec::new();
     for item in page.items() {
@@ -649,7 +704,11 @@ fn images_of(
                 continue;
             }
         };
-        out.push(Block::Paragraph(image_paragraph(image, &part, description)));
+        let top = page.geometry.height - (image.y + image.height);
+        out.push((
+            top,
+            Block::Paragraph(image_paragraph(image, &part, description)),
+        ));
     }
     out
 }
