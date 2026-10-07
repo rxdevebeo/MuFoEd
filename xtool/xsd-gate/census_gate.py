@@ -443,16 +443,20 @@ def _attribute_bag(
 def _changed_resources(
     before: zipfile.ZipFile, after: zipfile.ZipFile, named: set[str]
 ) -> list[tuple[str, str, str]]:
-    """Non-XML parts present on both sides whose bytes are not the same.
+    """Non-XML parts whose bytes the written package no longer has.
 
-    A missing part is the `dropped` signal. A part that is still there but no
-    longer the same resource is an inventory change a schema cannot see.
+    A missing part name is the `dropped` signal. A hash that is still present
+    under any name is the same resource: a rename, and a second copy of
+    identical bytes, are not a loss. A zip directory entry (a name ending in
+    `/`) is not a payload. A hash whose count falls to zero — recompressed
+    bytes, or a part that was removed — is an inventory change a schema
+    cannot see.
     """
     def hashes(archive: zipfile.ZipFile) -> tuple[collections.Counter, dict[str, str]]:
         bag: collections.Counter = collections.Counter()
         names: dict[str, str] = {}
         for name in archive.namelist():
-            if name.endswith((".xml", ".rels", ".vml")):
+            if name.endswith("/") or name.endswith((".xml", ".rels", ".vml")):
                 continue
             digest = hashlib.sha256(archive.read(name)).hexdigest()
             bag[digest] += 1
@@ -463,16 +467,15 @@ def _changed_resources(
     new_bag, _new_names = hashes(after)
     rows: list[tuple[str, str, str]] = []
     for digest, old_count in sorted(old_bag.items()):
-        removed = old_count - new_bag[digest]
-        if removed <= 0:
+        new_count = new_bag[digest]
+        if new_count > 0:
             continue
-        # Same bytes under a new part name are a rename, not a new resource.
         # A hash that is gone is a resource the written package no longer has.
         name = old_names[digest]
         label = f"resource:{normalize_part(name)}"
         file_name = name.rsplit("/", 1)[-1]
         named_flag = 1 if name in named or file_name in named or label in named else 0
-        detail = f"parent=|namespace=|sha256={digest}|named={named_flag}|removed={removed}"
+        detail = f"parent=|namespace=|sha256={digest}|named={named_flag}|removed={old_count}"
         rows.append((name, label, detail))
     return rows
 

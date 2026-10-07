@@ -598,6 +598,7 @@ def main() -> int:
     test_named_loss_requires_this_inputs_report()
     test_docpr_id_remap_requires_citation()
     test_p9_hint_cs_and_duplicate_rfonts()
+    test_p10_resource_identity()
     test_review_negative_controls_stay_unclassified()
     test_vanished_emits_qualified_context()
     test_one_of_two_same_nodes_is_visible()
@@ -609,6 +610,50 @@ def main() -> int:
     test_rounded_twip_duplicate_run_and_style()
     print("census_gate_selftest: pass")
     return 0
+
+
+def _bindocx(path: Path, parts: dict[str, bytes]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+
+
+def test_p10_resource_identity() -> None:
+    """T-P10-2 rename and identical-byte dedup are not losses; T-P10-3 recompress is."""
+    png = b"\x89PNG-same"
+    gif = b"GIF89a-unique"
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source = root / "in.docx"
+        written = root / "out.docx"
+        _bindocx(
+            source,
+            {
+                "word/media/image1.png": png,
+                "word/media/image2.png": png,
+                "word/media/image1.gif": gif,
+                "word/": b"",
+            },
+        )
+        _bindocx(written, {"word/media/image9.png": png})
+        with zipfile.ZipFile(source) as before, zipfile.ZipFile(written) as after:
+            rows = census_gate._changed_resources(before, after, set())
+        labels = {label for _name, label, _detail in rows}
+        if "resource:word/media/image#.png" in labels:
+            raise SystemExit(f"identical png bytes were a loss: {rows}")
+        if any(label.startswith("resource:word/") and "image" not in label for label in labels):
+            raise SystemExit(f"directory entry was a resource: {rows}")
+        if "resource:word/media/image#.gif" not in labels:
+            raise SystemExit(f"dropped gif was hidden: {rows}")
+        _bindocx(written, {"word/media/image1.png": b"\x89PNG-other"})
+        with zipfile.ZipFile(source) as before, zipfile.ZipFile(written) as after:
+            rows = census_gate._changed_resources(before, after, set())
+        labels = {label for _name, label, _detail in rows}
+        if "resource:word/media/image#.png" not in labels:
+            raise SystemExit(f"recompressed png was hidden: {rows}")
+        if "resource:word/media/image#.gif" not in labels:
+            raise SystemExit(f"dropped gif was hidden after recompress: {rows}")
 
 
 def test_p9_hint_cs_and_duplicate_rfonts() -> None:

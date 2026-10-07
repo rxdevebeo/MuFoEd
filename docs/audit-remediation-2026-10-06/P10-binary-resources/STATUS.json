@@ -1,0 +1,66 @@
+{
+  "package": "P10",
+  "slug": "binary-resources",
+  "visual_level": "V3",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 84,
+  "rows_after": 0,
+  "labels": [
+    "resource:word/media/image#.png",
+    "resource:word/",
+    "resource:_rels/",
+    "resource:word/media/image#.jpeg",
+    "resource:word/fonts/font#.odttf",
+    "resource:word/media/image#.gif"
+  ],
+  "witness_docs": [
+    "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+    "070_Innovations_and_New_Technologies.docx",
+    "1. First-Steps-in-Programming.docx",
+    "2. Simple-Calculation.docx",
+    "3. Simple-Conditions.docx",
+    "4. Complex-Conditions.docx",
+    "5. Loops.docx",
+    "6. Nested-Loops.docx",
+    "7. More-Complex-Loops.docx",
+    "8. Become-a-Software-Engineer.docx",
+    "009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+    "014_BG_Slokas_With_Transliteration_1_18.docx",
+    "090_Gritos_Chutes_E_Pontapes.docx",
+    "068_Madhurya_Kadambini_Roman_Sanskrit.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P10-1": true,
+    "T-P10-2": true,
+    "T-P10-3": true
+  },
+  "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "Fourteen witnesses: documents=14 validated=14 missing=0 unmatched_schema=1198 unclassified_element_changes=739 ours=0. Resource labels on the slice are 0. Exit 1 is the remaining non-resource inventory and the same 1198 unmatched schema messages as the full corpus. D05 is not PASS.",
+  "slice_unclassified_element_changes": 739,
+  "slice_resource_rows_before": 64,
+  "slice_resource_rows_after": 0,
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "full_corpus_refused": 0,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 4032,
+  "visual": {
+    "artifact": "visual/first-steps-page1.svg",
+    "roi_pixel_compare": "not_required",
+    "reason": "No PNG bytes were recompressed. SHA-256 identity is the proof."
+  },
+  "tz_items": [],
+  "notes": [
+    "Baseline is the post-P9 inventory (4153 unclassified, 84 resource rows), not a fresh count of the 2026-10-06 plan. Resource labels 84 → 0.",
+    "A resource row is emitted only when a SHA-256 digest is absent from the written package. A rename, and a second copy of identical bytes, are not a loss. Zip directory entries (names ending in /) are not resources. A digest that changes (recompress) stays unclassified. No resource:* disposition was added.",
+    "Shape a:blipFill is parsed and written, and the source bytes are copied. SoftUni image1.png/image2.png are one digest; the written package keeps that digest and the fill.",
+    "lc:lockedCanvas markup keeps its pictures. Image relationship ids inside the markup are retargeted at the copied bytes, so a regenerated rId cannot point the picture at a header. 014 image1.jpeg is word/media/image1.jpeg via r:embed, byte-identical.",
+    "Digests the model does not index (numbering bullet PNG, theme texture JPEG, VML pattern GIFs, empty odttf) are copied once under the source name when it is free. Bytes are not recompressed.",
+    "unmatched_schema stays 1198. unclassified 4153 → 4032 (84 resource rows plus element rows that disappeared because the referenced pictures are present). D05 is not PASS. M4 is not closed."
+  ],
+  "declared_transforms": []
+}

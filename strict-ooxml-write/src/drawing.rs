@@ -58,10 +58,9 @@ fn writable(
     location: &strict_ooxml_core::error::SourceLocation,
 ) -> bool {
     let (feature_id, reason) = match graphic {
-        Graphic::Picture(_)
-        | Graphic::Shape(_)
-        | Graphic::Group(_)
-        | Graphic::LockedCanvas(_) => return true,
+        Graphic::Picture(_) | Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_) => {
+            return true
+        }
         Graphic::Chart(refs) => match foreign(ctx, refs) {
             Ok(()) => return true,
             Err(reason) => ("c:chart", reason),
@@ -546,7 +545,7 @@ fn graphic(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, graphic_uri: Option<&str>, pa
         }
         Graphic::LockedCanvas(canvas) => {
             xml.attr("uri", strict_graphic_uri(graphic_uri, URI_LOCKED_CANVAS));
-            locked_canvas_element(xml, canvas);
+            locked_canvas_element(ctx, xml, canvas);
         }
         // A chart and a SmartArt diagram are references into parts the model does
         // not carry. `writable` has already refused the ones whose parts are not
@@ -688,7 +687,7 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     transform(xml, &xfrm, shape.extent.as_ref());
     geometry_element(xml, &shape.geometry);
     if let Some(fill) = &shape.fill {
-        fill_element(xml, fill);
+        fill_element(ctx, xml, fill);
     }
     if let Some(stroke) = &shape.stroke {
         stroke_element(xml, stroke);
@@ -856,7 +855,7 @@ fn point(xml: &mut XmlWriter, name: &'static str, x: i64, y: i64) {
     xml.end();
 }
 
-fn fill_element(xml: &mut XmlWriter, fill: &ShapeFill) {
+fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
     match fill {
         ShapeFill::None => xml.empty("a:noFill"),
         ShapeFill::Solid { color } => {
@@ -901,6 +900,34 @@ fn fill_element(xml: &mut XmlWriter, fill: &ShapeFill) {
                 shape_color(xml, background);
                 xml.end();
             }
+            xml.end();
+        }
+        ShapeFill::Blip { blip, fill_rect } => {
+            xml.start("a:blipFill");
+            xml.start("a:blip");
+            match ctx.media_rel(blip.resolved.as_ref()) {
+                Some(embed) => xml.attr("r:embed", embed),
+                None => ctx.report_unsupported(
+                    "a:blipFill/@r:embed",
+                    "shape fill has no embedded image relationship",
+                    &strict_ooxml_core::error::SourceLocation::unknown(),
+                ),
+            }
+            xml.end();
+            xml.start("a:stretch");
+            xml.start("a:fillRect");
+            for (name, value) in [
+                ("l", &fill_rect[0]),
+                ("t", &fill_rect[1]),
+                ("r", &fill_rect[2]),
+                ("b", &fill_rect[3]),
+            ] {
+                if let Some(value) = value {
+                    xml.attr(name, value.as_ref());
+                }
+            }
+            xml.end();
+            xml.end();
             xml.end();
         }
     }
@@ -1052,8 +1079,37 @@ fn body_properties(xml: &mut XmlWriter, body: &TextBoxBody) {
 }
 
 /// Writes a preserved `lc:lockedCanvas` subtree.
-fn locked_canvas_element(xml: &mut XmlWriter, canvas: &LockedCanvas) {
-    xml.raw_markup(canvas.markup.as_ref(), &["lc", "a", "r", "pic"]);
+///
+/// Image ids inside the markup are the source ids. They are rewritten to the
+/// ids this package allocated for the same bytes, so a later relationship
+/// (`rId8` as a header, for example) cannot steal the picture.
+fn locked_canvas_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, canvas: &LockedCanvas) {
+    let mut markup = canvas.markup.to_string();
+    // Two passes so a new id that equals some other source id is not rewritten
+    // again (`rId8` → `rId15`, then `rId15` → something else).
+    let mut planned = Vec::new();
+    for (old_id, part) in &canvas.images {
+        if let Some(new_id) = ctx.media_rel(Some(part)) {
+            if new_id != *old_id {
+                planned.push((old_id.clone(), new_id));
+            }
+        }
+    }
+    for (index, (old_id, _)) in planned.iter().enumerate() {
+        for attr in ["r:embed", "r:link", "r:id"] {
+            let from = format!("{attr}=\"{old_id}\"");
+            let token = format!("{attr}=\"@@rel{index}@@\"");
+            markup = markup.replace(&from, &token);
+        }
+    }
+    for (index, (_, new_id)) in planned.iter().enumerate() {
+        for attr in ["r:embed", "r:link", "r:id"] {
+            let token = format!("{attr}=\"@@rel{index}@@\"");
+            let to = format!("{attr}=\"{new_id}\"");
+            markup = markup.replace(&token, &to);
+        }
+    }
+    xml.raw_markup(&markup, &["lc", "a", "r", "pic"]);
 }
 
 /// Writes `wpg:wgp` (graphicData root) or a nested `wpg:grpSp`.
@@ -1061,12 +1117,7 @@ fn group_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape) {
     group_element_as(ctx, xml, group, "wpg:wgp");
 }
 
-fn group_element_as(
-    ctx: &mut Ctx<'_>,
-    xml: &mut XmlWriter,
-    group: &GroupShape,
-    tag: &'static str,
-) {
+fn group_element_as(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape, tag: &'static str) {
     xml.start(tag);
     xml.start("wpg:cNvGrpSpPr");
     xml.end();
@@ -1529,6 +1580,7 @@ mod tests {
                 graphic_uri: None,
                 graphic: Box::new(Graphic::LockedCanvas(LockedCanvas {
                     markup: markup.into(),
+                    images: Vec::new(),
                     location: SourceLocation::unknown(),
                 })),
                 location: SourceLocation::unknown(),

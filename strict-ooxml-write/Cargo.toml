@@ -12,6 +12,7 @@ keywords = ["ooxml", "docx", "wordprocessingml", "writer", "serialization"]
 categories = ["parser-implementations", "encoding"]
 
 [dependencies]
+sha2 = { workspace = true }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 

@@ -135,6 +135,25 @@ fn shape_items(
     h: f64,
 ) -> Vec<Item> {
     let mut items = Vec::new();
+    if let Some(ShapeFill::Blip { blip, .. }) = &shape.fill {
+        let part = blip.resolved.as_ref();
+        let href = part.and_then(|part| crate::paint::image::media_href(ctx, part));
+        let alt = shape
+            .descr
+            .clone()
+            .or_else(|| shape.name.clone())
+            .map_or_else(String::new, |value| value.to_string());
+        items.push(Item::Image(ImageItem {
+            x,
+            y,
+            w,
+            h,
+            href,
+            part: part.cloned(),
+            alt,
+            transform: xfrm_transform(shape.xfrm, x, y, w, h),
+        }));
+    }
     let paths = shape_paths(shape, w, h);
     let fill = shape.fill.as_ref().and_then(|fill| fill_color(ctx, fill));
     let (stroke, stroke_w, dash) = stroke_paint(ctx, shape.stroke.as_ref());
@@ -406,6 +425,7 @@ fn fill_color(ctx: &LayoutContext<'_>, fill: &ShapeFill) -> Option<String> {
         ShapeFill::Pattern { foreground, .. } => foreground
             .as_ref()
             .and_then(|color| resolve_shape_color(theme, color)),
+        ShapeFill::Blip { .. } => None,
     }
 }
 

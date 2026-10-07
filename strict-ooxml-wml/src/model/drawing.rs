@@ -147,6 +147,17 @@ pub enum ShapeFill {
         /// Background colour.
         background: Option<ShapeColor>,
     },
+    /// Image fill (`a:blipFill`).
+    ///
+    /// The bytes stay the source part. `fill_rect` is `a:fillRect` in the
+    /// source spelling (`l`, `t`, `r`, `b`), so a transitional thousandths
+    /// value is not rewritten into a percent string.
+    Blip {
+        /// The image.
+        blip: BlipRef,
+        /// `a:fillRect` attributes, source lexical form.
+        fill_rect: [Option<Arc<str>>; 4],
+    },
 }
 
 /// A shape outline (`a:ln`).
@@ -438,6 +449,11 @@ impl ForeignRefs {
 pub struct LockedCanvas {
     /// Strict-form XML of the `lc:lockedCanvas` element, including children.
     pub markup: Arc<str>,
+    /// Image relationships the markup still names, as `(source rId, part)`.
+    ///
+    /// The markup keeps the source ids. The writer allocates new ones, so these
+    /// pairs are what retargets `r:embed` at the copied bytes.
+    pub images: Vec<(String, PartId)>,
     /// Source location of the canvas root.
     pub location: SourceLocation,
 }

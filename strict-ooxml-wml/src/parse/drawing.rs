@@ -605,12 +605,15 @@ impl PartParser<'_> {
     fn capture_locked_canvas(&mut self, name: &QName, attrs: &[Attr]) -> Result<LockedCanvas> {
         let location = self.location();
         let mut markup = String::new();
+        let mut images = Vec::new();
+        self.note_canvas_image(attrs, &mut images);
         write_start_markup(&mut markup, name, attrs);
         let mut depth = 1u32;
         loop {
             match self.next_event()? {
                 XmlEvent::StartElement { name, attrs } => {
                     depth = depth.saturating_add(1);
+                    self.note_canvas_image(&attrs, &mut images);
                     write_start_markup(&mut markup, &name, &attrs);
                 }
                 XmlEvent::EndElement { name } => {
@@ -641,6 +644,7 @@ impl PartParser<'_> {
         );
         Ok(LockedCanvas {
             markup: std::sync::Arc::<str>::from(markup),
+            images,
             location,
         })
     }
@@ -750,22 +754,7 @@ impl PartParser<'_> {
                                 .as_ref()
                                 .and_then(|id| parser.resolve_relationship_target(id.as_str()));
                             if let Some(part) = &resolved {
-                                let content_type = parser.content_type(part);
-                                let kind = content_type.as_deref().map_or_else(
-                                    || {
-                                        let extension = part
-                                            .as_str()
-                                            .rsplit_once('.')
-                                            .map_or("", |(_, ext)| ext);
-                                        MediaKind::from_extension(extension)
-                                    },
-                                    MediaKind::from_content_type,
-                                );
-                                parser.media.insert(MediaItem {
-                                    part: part.clone(),
-                                    content_type,
-                                    kind,
-                                });
+                                parser.index_resolved_media(part);
                             }
                             blip = Some(BlipRef {
                                 embed,
@@ -787,6 +776,130 @@ impl PartParser<'_> {
                 }
             }
             Ok((blip, src_rect))
+        })
+    }
+
+    /// Indexes an image relationship carried by preserved canvas markup.
+    ///
+    /// Only image parts are recorded. A chart or header id in the same subtree
+    /// stays a relationship the pass-through already owns.
+    fn note_canvas_image(
+        &mut self,
+        attrs: &[Attr],
+        images: &mut Vec<(String, strict_ooxml_core::part::PartId)>,
+    ) {
+        for local in ["embed", "link", "id"] {
+            let Some(value) = attr_in_ns(attrs, RELS_STRICT_NS, local) else {
+                continue;
+            };
+            let Some(part) = self.resolve_relationship_target(value) else {
+                continue;
+            };
+            let content_type = self.content_type(&part);
+            let kind = content_type.as_deref().map_or_else(
+                || {
+                    let extension = part.as_str().rsplit_once('.').map_or("", |(_, ext)| ext);
+                    MediaKind::from_extension(extension)
+                },
+                MediaKind::from_content_type,
+            );
+            if kind == MediaKind::Other
+                && !content_type
+                    .as_deref()
+                    .is_some_and(|ct| ct.starts_with("image/"))
+            {
+                continue;
+            }
+            if images.iter().any(|(id, _)| id == value) {
+                continue;
+            }
+            self.index_resolved_media(&part);
+            images.push((value.to_owned(), part));
+        }
+    }
+
+    /// Records an embedded image part so the writer copies its bytes.
+    fn index_resolved_media(&mut self, part: &strict_ooxml_core::part::PartId) {
+        let content_type = self.content_type(part);
+        let kind = content_type.as_deref().map_or_else(
+            || {
+                let extension = part.as_str().rsplit_once('.').map_or("", |(_, ext)| ext);
+                MediaKind::from_extension(extension)
+            },
+            MediaKind::from_content_type,
+        );
+        self.media.insert(MediaItem {
+            part: part.clone(),
+            content_type,
+            kind,
+        });
+    }
+
+    /// Parses `a:blipFill` on a shape. The image part is indexed; `a:fillRect`
+    /// keeps the source spelling.
+    fn parse_shape_blip_fill(&mut self) -> Result<ShapeFill> {
+        self.nested(|parser| {
+            let mut blip = None;
+            let mut fill_rect = [None, None, None, None];
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "blip" {
+                            let embed = attr_in_ns(&attrs, RELS_STRICT_NS, "embed").map(RelId::new);
+                            let link = attr_in_ns(&attrs, RELS_STRICT_NS, "link").map(RelId::new);
+                            let resolved = embed
+                                .as_ref()
+                                .and_then(|id| parser.resolve_relationship_target(id.as_str()));
+                            if let Some(part) = &resolved {
+                                parser.index_resolved_media(part);
+                            }
+                            blip = Some(BlipRef {
+                                embed,
+                                link,
+                                resolved,
+                                location: parser.location(),
+                            });
+                            parser.skip_element()?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "stretch" {
+                            fill_rect = parser.parse_stretch_fill_rect()?;
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of blip fill")),
+                }
+            }
+            Ok(match blip {
+                Some(blip) => ShapeFill::Blip { blip, fill_rect },
+                None => ShapeFill::None,
+            })
+        })
+    }
+
+    /// Reads `a:fillRect` inside `a:stretch`, keeping each edge's source text.
+    fn parse_stretch_fill_rect(&mut self) -> Result<[Option<std::sync::Arc<str>>; 4]> {
+        self.nested(|parser| {
+            let mut rect = [None, None, None, None];
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "fillRect" {
+                            for (index, local) in ["l", "t", "r", "b"].into_iter().enumerate() {
+                                if let Some(value) = plain_attr(&attrs, local) {
+                                    rect[index] = Some(parser.intern(value));
+                                }
+                            }
+                        }
+                        parser.skip_element()?;
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of stretch")),
+                }
+            }
+            Ok(rect)
         })
     }
 
@@ -1148,6 +1261,7 @@ impl PartParser<'_> {
                 }))
             }
             "gradFill" => Ok(Some(self.parse_grad_fill()?)),
+            "blipFill" => Ok(Some(self.parse_shape_blip_fill()?)),
             "pattFill" => {
                 let preset = plain_attr(attrs, "prst").map(|v| self.intern(v));
                 self.nested(|parser| {
@@ -1768,9 +1882,7 @@ fn markup_prefix(ns: Option<&str>) -> Option<&'static str> {
         Some(DRAWINGML_STRICT_NS)
         | Some("http://schemas.openxmlformats.org/drawingml/2006/main") => Some("a"),
         Some(RELS_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/officeDocument/2006/relationships") => {
-            Some("r")
-        }
+        | Some("http://schemas.openxmlformats.org/officeDocument/2006/relationships") => Some("r"),
         Some(PICTURE_STRICT_NS)
         | Some("http://schemas.openxmlformats.org/drawingml/2006/picture") => Some("pic"),
         Some("http://www.w3.org/XML/1998/namespace") => Some("xml"),
@@ -1932,6 +2044,6 @@ fn fill_color(fill: &ShapeFill) -> Option<ShapeColor> {
         ShapeFill::Solid { color } => Some(color.clone()),
         ShapeFill::Gradient { stops, .. } => stops.first().map(|stop| stop.color.clone()),
         ShapeFill::Pattern { foreground, .. } => foreground.clone(),
-        ShapeFill::None => None,
+        ShapeFill::Blip { .. } | ShapeFill::None => None,
     }
 }

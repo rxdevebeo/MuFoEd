@@ -5,7 +5,9 @@
 //! media parts are named by index, and the ZIP keeps insertion order with a
 //! fixed timestamp (SC-1). Nothing depends on a hash map's iteration order.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+use sha2::{Digest, Sha256};
 
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
@@ -593,12 +595,7 @@ pub fn write_package(
         } else {
             "footer"
         };
-        let source_base = header_footer
-            .part
-            .as_str()
-            .rsplit('/')
-            .next()
-            .unwrap_or("");
+        let source_base = header_footer.part.as_str().rsplit('/').next().unwrap_or("");
         let name = if source_base.starts_with(role)
             && source_base.ends_with(".xml")
             && used_hf_names.insert(source_base.to_owned())
@@ -699,6 +696,7 @@ pub fn write_package(
     let mut media_map: BTreeMap<String, String> = BTreeMap::new();
     let mut media_targets: BTreeMap<String, String> = BTreeMap::new();
     let mut media_parts: Vec<(String, PartId)> = Vec::new();
+    let mut carried_digests: HashSet<[u8; 32]> = HashSet::new();
     for item in document.media.iter() {
         let source_key = item.part.as_str().to_owned();
         if media_targets.contains_key(&source_key) {
@@ -740,14 +738,10 @@ pub fn write_package(
     // The parts themselves. Each is written only when the model carries the
     // content for it, so a document does not acquire parts it did not have.
     let mut zip = ZipWriter::with_limits(options.limits);
-    add_part(
-        &mut zip,
-        MAIN_DOCUMENT,
-        {
-            ctx.begin_doc_pr_scope();
-            part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes()
-        },
-    )?;
+    add_part(&mut zip, MAIN_DOCUMENT, {
+        ctx.begin_doc_pr_scope();
+        part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes()
+    })?;
     if content_types.content_type_for(&PartId::new(STYLES_PART)) == Some(CONTENT_TYPE_STYLES) {
         add_part(
             &mut zip,
@@ -873,6 +867,7 @@ pub fn write_package(
                     let id = font_rels.add(&RelType::Font, name.clone(), false);
                     font_map.insert(source_part.as_str().to_owned(), id);
                     content_types.insert_default(extension, font_content_type(extension));
+                    carried_digests.insert(digest_of(&bytes));
                     font_parts.push((format!("/word/{name}"), source_part.clone(), bytes));
                 }
                 Err(error) => ctx.report_unsupported(
@@ -932,7 +927,9 @@ pub fn write_package(
         }
     }
     for (part, source_part) in &media_parts {
-        add_part(&mut zip, part, source.read_part(source_part)?)?;
+        let bytes = source.read_part(source_part)?;
+        carried_digests.insert(digest_of(&bytes));
+        add_part(&mut zip, part, bytes)?;
     }
     // W7: the copied parts, each next to its own `.rels`, in name order.
     for part in &part_extra_copies {
@@ -945,6 +942,7 @@ pub fn write_package(
         if !written_pass.insert(part.name.clone()) {
             continue;
         }
+        carried_digests.insert(digest_of(&part.bytes));
         add_part(&mut zip, part.name.as_str(), part.bytes.clone())?;
     }
 
@@ -977,6 +975,30 @@ pub fn write_package(
         )
         .into_bytes(),
     )?;
+    // A hash the model never indexed (a numbering bullet, a theme texture, a
+    // VML pattern tile, an empty embedded font) is still the source's bytes.
+    // Copy each missing digest once, under its own name when that name is free.
+    // A second copy of a digest the package already has is the same resource.
+    let mut taken: BTreeSet<String> = zip.part_names().into_iter().collect();
+    for source_part in source.parts() {
+        let name = source_part.as_str();
+        if !is_binary_resource(name) {
+            continue;
+        }
+        let Ok(bytes) = source.read_part(&source_part) else {
+            continue;
+        };
+        if !carried_digests.insert(digest_of(&bytes)) {
+            continue;
+        }
+        let dest = unused_part_name(&mut taken, name);
+        let content_type = source
+            .content_type(&source_part)
+            .unwrap_or_else(|| binary_content_type(&dest).to_owned());
+        content_types.insert_override(PartId::new(dest.as_str()), &content_type);
+        add_part(&mut zip, &dest, bytes)?;
+    }
+
     add_part(
         &mut zip,
         "/[Content_Types].xml",
@@ -1212,6 +1234,68 @@ fn office_relationship_ids(xml: &str) -> Vec<String> {
 
 fn add_part(zip: &mut ZipWriter, part: &str, bytes: Vec<u8>) -> Result<()> {
     zip.add_part(&PartId::new(part), bytes)
+}
+
+/// SHA-256 of part bytes. Identity for the resource census is this digest.
+fn digest_of(bytes: &[u8]) -> [u8; 32] {
+    let digest = Sha256::digest(bytes);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(digest.as_slice());
+    out
+}
+
+/// A package part whose bytes the census compares as a resource.
+///
+/// XML, relationships and VML are compared as markup. A trailing slash is a
+/// zip directory entry, not a payload.
+fn is_binary_resource(name: &str) -> bool {
+    let name = name.trim_start_matches('/');
+    if name.is_empty() || name.ends_with('/') {
+        return false;
+    }
+    let lower = name.to_ascii_lowercase();
+    !lower.ends_with(".xml") && !lower.ends_with(".rels") && !lower.ends_with(".vml")
+}
+
+/// `original` when it is free, otherwise `/word/media/preservedN.ext`.
+fn unused_part_name(taken: &mut BTreeSet<String>, original: &str) -> String {
+    let canonical = if original.starts_with('/') {
+        original.to_owned()
+    } else {
+        format!("/{original}")
+    };
+    if !taken.contains(&canonical) {
+        taken.insert(canonical.clone());
+        return canonical;
+    }
+    let extension = canonical.rsplit('.').next().unwrap_or("bin");
+    let mut n = 1u32;
+    loop {
+        let candidate = format!("/word/media/preserved{n}.{extension}");
+        if !taken.contains(&candidate) {
+            taken.insert(candidate.clone());
+            return candidate;
+        }
+        n = n.saturating_add(1);
+    }
+}
+
+/// Content type used when the source package does not declare one.
+fn binary_content_type(name: &str) -> &'static str {
+    let extension = name.rsplit('.').next().unwrap_or("");
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpeg" | "jpg" => "image/jpeg",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        "emf" => "image/x-emf",
+        "wmf" => "image/x-wmf",
+        "svg" => "image/svg+xml",
+        "odttf" | "otf" => "application/vnd.openxmlformats-officedocument.obfuscatedFont",
+        "ttf" => "application/x-font-ttf",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Collects the relationship ids of every hyperlink in the body, in order.
