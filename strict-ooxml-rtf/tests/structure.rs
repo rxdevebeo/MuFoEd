@@ -552,6 +552,52 @@ fn font_table_theme_selectors_round_trip_to_wml_theme_slots() {
 }
 
 #[test]
+fn font_table_fbidis_hint_does_not_change_the_declared_face() {
+    let source = br"{\rtf1{\fonttbl{\f0\fbidis\froman\fcharset0 Times New Roman;}}\f0 text}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let fonts = paragraph
+        .inlines
+        .iter()
+        .find_map(|inline| match inline {
+            Inline::Run(run) => run.props.fonts.as_ref(),
+            _ => None,
+        })
+        .expect("font properties");
+    assert_eq!(fonts.ascii.as_deref(), Some("Times New Roman"));
+}
+
+#[test]
+fn document_fbidis_keeps_one_font_active_instead_of_associated_font() {
+    let source = br"{\rtf1\fbidis{\fonttbl{\f0 Base;}{\f1 Associated;}}\f0 text\af1 still-base}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.report.loss_count, 0);
+    let document = reopened(source);
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let fonts = paragraph
+        .inlines
+        .iter()
+        .find_map(|inline| {
+            match inline {
+            Inline::Run(run)
+                if run.content.iter().any(|content| {
+                    matches!(content, RunContent::Text(value) if value.text.contains("still-base"))
+                }) => run.props.fonts.as_ref(),
+            _ => None,
+        }
+        })
+        .expect("font properties");
+    assert_eq!(fonts.ascii.as_deref(), Some("Base"));
+    assert_eq!(fonts.east_asia.as_deref(), Some("Base"));
+}
+
+#[test]
 fn unsupported_font_script_class_remains_an_explicit_loss() {
     let imported = import(
         br"{\rtf1{\fonttbl{\f0 Base;}}\fcs2\af0 text}",

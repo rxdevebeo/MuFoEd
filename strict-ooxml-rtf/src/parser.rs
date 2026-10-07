@@ -336,6 +336,7 @@ struct Parser<'a> {
     font_codepage: Option<i32>,
     font_theme: Option<FontTheme>,
     pending_font_theme: Option<FontTheme>,
+    single_font_active: bool,
     default_font: Option<i32>,
     pending_note_marker: Option<RtfSpan>,
     document_codepage: i32,
@@ -1029,6 +1030,9 @@ impl Parser<'_> {
         Ok(())
     }
     fn select_associated_font(&mut self, id: i32, span: RtfSpan) -> Result<(), RtfError> {
+        if self.single_font_active {
+            return Ok(());
+        }
         let Some(font) = self.fonts.get(&id) else {
             return self.issue(span, Severity::Loss, format!("undefined-font:{id}"));
         };
@@ -1981,7 +1985,7 @@ impl Parser<'_> {
                 }
                 "cpg" => self.font_codepage = n,
                 "fnil" | "froman" | "fswiss" | "fmodern" | "fscript" | "fdecor" | "ftech"
-                | "fbidi" | "fprq" => (),
+                | "fbidi" | "fbidis" | "fprq" => (),
                 "uc" => {
                     self.state.uc = n
                         .and_then(|x| usize::try_from(x).ok())
@@ -2127,6 +2131,9 @@ impl Parser<'_> {
         match name {
             "upr" => self.state.upr_children = Some(0),
             "rtf" if n == Some(1) && self.stack.len() == 1 => (),
+            // RichEdit writes this when the document uses one CHP font rather
+            // than associated script fonts; plain `\f` already seeds all WML slots.
+            "fbidis" => self.single_font_active = n != Some(0),
             "ansi" => self.state.codepage = 1252,
             "mac" => self.state.codepage = 10000,
             "pc" | "pca" => {
@@ -2850,6 +2857,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         font_codepage: None,
         font_theme: None,
         pending_font_theme: None,
+        single_font_active: false,
         default_font: None,
         pending_note_marker: None,
         document_codepage: 1252,
