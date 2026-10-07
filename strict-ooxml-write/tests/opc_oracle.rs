@@ -191,18 +191,27 @@ fn written_transitional_packages_match_lo_strict_opc_uris() {
         "lo-strict.docx must carry the OPC oracle signals"
     );
 
+    // The local corpus (`.gitignore`d) when present, plus the CC0 `ci-core`
+    // tier that CI fetches; a clean clone without either skips honestly.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
-    // Local-only corpus (`.gitignore`d); CI and clean clones skip honestly,
-    // same pattern as `normalize_roundtrip.rs`.
-    if !dir.is_dir() {
+    let mut paths = if dir.is_dir() {
+        list_docx(&dir)
+    } else {
+        Vec::new()
+    };
+    paths.extend(
+        strict_ooxml_testkit::corpus::tier(strict_ooxml_testkit::corpus::Tier::CiCore)
+            .into_iter()
+            .map(|doc| doc.path),
+    );
+    if paths.is_empty() {
         eprintln!(
-            "skipping written_transitional_packages_match_lo_strict_opc_uris: {} is not present",
-            dir.display()
+            "skipping written_transitional_packages_match_lo_strict_opc_uris: no local or CC0 corpus"
         );
         return;
     }
     let mut checked = 0usize;
-    for path in list_docx(&dir) {
+    for path in paths {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{name}: read: {error}"));
         let source = open_transitional(&bytes);
