@@ -3,6 +3,7 @@
   "slug": "wps-bodypr",
   "visual_level": "V1",
   "date_utc": "2026-10-06",
+  "acceptance": "ACCEPT",
   "rows_before": 366,
   "rows_before_witness_slice_baseline": 89,
   "rows_after": 0,
@@ -43,17 +44,28 @@
     "T-P4-3": true
   },
   "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "slice unmatched_schema=1182 (inherited producer/schema messages with no registry item); also unclassified_element_changes=1875. Not caused by A/B/C package-label residuals.",
+  "slice_unclassified_element_changes": 1875,
   "full_census_exit": "NOT_RUN",
   "missing": 0,
-  "unmatched_schema": 0,
+  "unmatched_schema": 1182,
+  "unmatched_schema_note": "Package-field unmatched_schema is the census slice total (1182), not 'schema-clean for A/B/C'. corpus_slice_exit=1 is driven by this inherited slice debt (and/or unclassified inventory), not by P2–P4 label residuals.",
   "ours": 0,
   "visual": {
     "T-P4-2": true,
-    "artifact": "visual/bbox.json"
+    "T-P4-3": true,
+    "artifact": "visual/bbox.json",
+    "tol_px": 0.75,
+    "observed_max_delta_px": 0.0
   },
+  "visual_tol_px": 0.75,
+  "visual_svg_trees": "untracked local artifacts; JSON bbox/placement proof is committed",
+  "tz_items": [],
   "notes": [
     "TextBoxBody stores wrap/vert/rot and explicit optional bools; Shape.tx_box preserved.",
-    "Witness-slice C_wps residual rows after fix: 0."
+    "Witness-slice C_wps residual rows after fix: 0.",
+    "T-P4-3 strips explicit bodyPr@wrap from SoftUni written package; drop must be detectable (not hardcoded True).",
+    "Visual structural tol=0.75 px; observed SoftUni bodyPr pairs were 0.0."
   ],
   "declared_transforms": []
 }

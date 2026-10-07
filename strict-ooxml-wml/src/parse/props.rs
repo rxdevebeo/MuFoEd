@@ -80,6 +80,11 @@ fn attr_on(attrs: &[Attr], local: &str) -> bool {
     wml_attr(attrs, local).is_some_and(|value| matches!(value, "true" | "on" | "1"))
 }
 
+/// `Some` when the attribute is present. `false` is explicit, not absent.
+fn attr_bool(attrs: &[Attr], local: &str) -> Option<bool> {
+    wml_attr(attrs, local).map(|value| matches!(value, "true" | "on" | "1"))
+}
+
 impl PartParser<'_> {
     /// Parses the children of a `w:pPr`.
     #[allow(clippy::too_many_lines)]
@@ -528,8 +533,10 @@ impl PartParser<'_> {
             after: self.measure_twips(attrs, "after", "w:spacing"),
             line: self.measure_twips(attrs, "line", "w:spacing"),
             line_rule: wml_attr(attrs, "lineRule").and_then(LineSpacingRule::from_strict),
-            after_autospacing: attr_on(attrs, "afterAutospacing"),
-            before_autospacing: attr_on(attrs, "beforeAutospacing"),
+            before_lines: self.measure_i32(attrs, "beforeLines", "w:spacing"),
+            after_lines: self.measure_i32(attrs, "afterLines", "w:spacing"),
+            after_autospacing: attr_bool(attrs, "afterAutospacing"),
+            before_autospacing: attr_bool(attrs, "beforeAutospacing"),
         }
     }
 
@@ -550,8 +557,12 @@ impl PartParser<'_> {
             end,
             first_line: self.measure_twips(attrs, "firstLine", "w:ind"),
             hanging: self.measure_twips(attrs, "hanging", "w:ind"),
-            start_chars: self.measure_i32(attrs, "startChars", "w:ind"),
-            end_chars: self.measure_i32(attrs, "endChars", "w:ind"),
+            start_chars: self
+                .measure_i32(attrs, "startChars", "w:ind")
+                .or_else(|| self.measure_i32(attrs, "leftChars", "w:ind")),
+            end_chars: self
+                .measure_i32(attrs, "endChars", "w:ind")
+                .or_else(|| self.measure_i32(attrs, "rightChars", "w:ind")),
             first_line_chars: self.measure_i32(attrs, "firstLineChars", "w:ind"),
             hanging_chars: self.measure_i32(attrs, "hangingChars", "w:ind"),
         }

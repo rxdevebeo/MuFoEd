@@ -9,6 +9,17 @@ use super::ids::StyleId;
 use super::props::{ParagraphProperties, RunProperties, TableProperties};
 use super::values::StyleType;
 
+/// One `w:tblStylePr` conditional format inside a table style.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TableStyleCondition {
+    /// `w:type` (`firstRow`, `band1Horz`, ...).
+    pub kind: Arc<str>,
+    /// Paragraph properties of the condition.
+    pub paragraph: ParagraphProperties,
+    /// Run properties of the condition.
+    pub run: RunProperties,
+}
+
 /// A single style definition (`w:style`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Style {
@@ -44,6 +55,8 @@ pub struct Style {
     pub paragraph: ParagraphProperties,
     /// Run properties of the style.
     pub run: RunProperties,
+    /// `w:tblStylePr` conditions, in document order.
+    pub conditions: Vec<TableStyleCondition>,
     /// Resolved `basedOn` chain, nearest ancestor first (excluding self).
     pub based_on_chain: Vec<StyleId>,
     /// Source location.

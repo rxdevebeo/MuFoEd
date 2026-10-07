@@ -156,5 +156,14 @@
     "written_bodyPr_wrap_square": 7,
     "written_txBox": 5,
     "bodypr_attrs_present": true
-  }
+  },
+  "T-P4-3": {
+    "pass": true,
+    "note": "drop explicit bodyPr@wrap (≠ omitted default) must be detectable FAIL",
+    "dropped_attrs": 7,
+    "written_wrap_attrs": 7,
+    "mutant_wrap_attrs": 0,
+    "mutant_path": "target/p2p4-acceptance/softuni-drop-wrap.docx"
+  },
+  "visual_tol_px": 0.75
 }

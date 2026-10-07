@@ -200,21 +200,21 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
         }
         N::Superscript(script) => {
             xml.start("m:sSup");
-            script_control(ctx, xml, script.control.as_deref());
+            script_control(ctx, xml, "m:sSupPr", script.control.as_deref());
             argument(ctx, xml, "m:e", &script.base);
             argument(ctx, xml, "m:sup", &script.superscript);
             xml.end();
         }
         N::Subscript(script) => {
             xml.start("m:sSub");
-            script_control(ctx, xml, script.control.as_deref());
+            script_control(ctx, xml, "m:sSubPr", script.control.as_deref());
             argument(ctx, xml, "m:e", &script.base);
             argument(ctx, xml, "m:sub", &script.subscript);
             xml.end();
         }
         N::SubSuperscript(script) => {
             xml.start("m:sSubSup");
-            script_control(ctx, xml, script.control.as_deref());
+            script_control(ctx, xml, "m:sSubSupPr", script.control.as_deref());
             argument(ctx, xml, "m:e", &script.base);
             argument(ctx, xml, "m:sub", &script.subscript);
             argument(ctx, xml, "m:sup", &script.superscript);
@@ -222,7 +222,7 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
         }
         N::PreScript(script) => {
             xml.start("m:sPre");
-            script_control(ctx, xml, script.control.as_deref());
+            script_control(ctx, xml, "m:sPrePr", script.control.as_deref());
             argument(ctx, xml, "m:sub", &script.subscript);
             argument(ctx, xml, "m:sup", &script.superscript);
             argument(ctx, xml, "m:e", &script.base);
@@ -675,10 +675,11 @@ fn control(
 fn script_control(
     ctx: &mut Ctx<'_>,
     xml: &mut XmlWriter,
+    name: &str,
     run_props: Option<&strict_ooxml_wml::model::props::RunProperties>,
 ) {
     if run_props.is_some() {
-        xml.start("m:sSupPr");
+        xml.start(name);
         control(ctx, xml, run_props);
         xml.end();
     }

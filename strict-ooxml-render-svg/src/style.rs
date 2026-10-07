@@ -44,6 +44,8 @@ pub struct ComputedRun {
     pub vanish: bool,
     /// Complex-script face (`w:rFonts/@w:cs`). Latin and Cyrillic keep [`Self::family`].
     pub complex_family: Option<String>,
+    /// Character width scale (`w:w`). `1.0` is 100% of the normal advance.
+    pub char_scale: f64,
 }
 
 impl Default for ComputedRun {
@@ -62,6 +64,7 @@ impl Default for ComputedRun {
             caps: false,
             vanish: false,
             complex_family: None,
+            char_scale: 1.0,
         }
     }
 }
@@ -385,6 +388,10 @@ fn apply_run_props_mode(
     }
     if let Some(spacing) = props.spacing {
         computed.spacing_pt = f64::from(spacing.value()) / 20.0;
+    }
+    if let Some(scale) = props.scale {
+        // `w:w` is a percentage of the normal advance (`100` and `100%`).
+        computed.char_scale = f64::from(scale) / 100.0;
     }
     // Complex-script toggles (`w:bCs`/`w:iCs`/`w:szCs`) are a parallel channel.
     // Direct run props: when RTL or a CS face is named, CS toggles assign (so
@@ -780,7 +787,8 @@ mod tests {
                 bold: TriState::On,
                 ..RunProperties::default()
             },
-            based_on_chain: Vec::new(),
+            conditions: Vec::new(),
+        based_on_chain: Vec::new(),
             location: location(),
         };
         base.run.size = Some(strict_ooxml_wml::model::values::HalfPoints(28));

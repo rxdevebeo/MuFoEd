@@ -478,14 +478,23 @@ fn document_properties(
     xml: &mut XmlWriter,
     doc_pr: &Option<DocPr>,
     fallback_name: &str,
-    _location: &strict_ooxml_core::error::SourceLocation,
+    location: &strict_ooxml_core::error::SourceLocation,
 ) {
     // `wp:docPr/@id` must be unique within the part. The parsed id is kept
     // when it is still free; only a missing or repeated id is freshly allocated.
-    let id = match doc_pr.as_ref().and_then(|pr| pr.id) {
+    let (id, remapped) = match doc_pr.as_ref().and_then(|pr| pr.id) {
         Some(id) => ctx.reserve_doc_pr_id(id),
-        None => ctx.next_doc_pr_id(),
+        None => (ctx.next_doc_pr_id(), false),
     };
+    if remapped {
+        // Cite so census TZ-48 can waive uniqueness remaps; an uncited foreign
+        // id rewrite (no expansion / no collision) must stay unclassified.
+        ctx.report_info(
+            "wp:docPr",
+            "docPr/@id remapped to keep uniqueness within the part",
+            location,
+        );
+    }
     xml.start("wp:docPr");
     xml.attr("id", id);
     xml.attr(
@@ -1357,6 +1366,128 @@ mod tests {
         assert!(text.contains("vert=\"horz\""), "{text}");
         assert!(text.contains("rot=\"0\""), "{text}");
         assert!(text.contains("anchorCtr=\"false\""), "{text}");
+    }
+
+    #[test]
+    fn dropping_non_default_body_pr_wrap_is_visible() {
+        // T-P4-3: wrap other than the omitted default must not compare equal
+        // to a silent drop, and the writer must emit the explicit value.
+        use strict_ooxml_wml::model::drawing::{Shape, ShapeGeometry, TextBox, TextBoxBody};
+
+        let keep = TextBoxBody {
+            wrap: Some("none".into()),
+            ..TextBoxBody::default()
+        };
+        let dropped = TextBoxBody {
+            wrap: None,
+            ..TextBoxBody::default()
+        };
+        assert_ne!(keep, dropped);
+
+        let drawing = Drawing {
+            kind: DrawingKind::Inline(InlineDrawing {
+                extent: Some(Extent {
+                    cx: Emu(100),
+                    cy: Emu(100),
+                }),
+                effect_extent: None,
+                doc_pr: None,
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
+                graphic_uri: None,
+                graphic: Box::new(Graphic::Shape(Shape {
+                    name: None,
+                    descr: None,
+                    tx_box: Some(true),
+                    geometry: ShapeGeometry::Preset("rect".into()),
+                    xfrm: None,
+                    offset: Some((Emu(0), Emu(0))),
+                    extent: Some(Extent {
+                        cx: Emu(100),
+                        cy: Emu(100),
+                    }),
+                    fill: None,
+                    stroke: None,
+                    text: Some(TextBox {
+                        body: Some(keep),
+                        blocks: Vec::new(),
+                        location: SourceLocation::unknown(),
+                    }),
+                    style: None,
+                    location: SourceLocation::unknown(),
+                })),
+                location: SourceLocation::unknown(),
+            }),
+            location: SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        drawing_element(&mut ctx, &mut xml, &drawing);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("wrap=\"none\""), "{text}");
+        assert!(!text.contains("wrap=\"square\""), "{text}");
+    }
+
+    #[test]
+    fn doc_pr_id_is_preserved_until_collision_forces_remap() {
+        use strict_ooxml_wml::model::drawing::DocPr;
+
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let loc = SourceLocation::unknown();
+        let mut xml = XmlWriter::new();
+
+        let first = Some(DocPr {
+            id: Some(7),
+            name: Some("a".into()),
+            descr: None,
+            title: None,
+        });
+        let second = Some(DocPr {
+            id: Some(7),
+            name: Some("b".into()),
+            descr: None,
+            title: None,
+        });
+        let third = Some(DocPr {
+            id: Some(9),
+            name: Some("c".into()),
+            descr: None,
+            title: None,
+        });
+        super::document_properties(&mut ctx, &mut xml, &first, "Picture", &loc);
+        super::document_properties(&mut ctx, &mut xml, &second, "Picture", &loc);
+        super::document_properties(&mut ctx, &mut xml, &third, "Picture", &loc);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("id=\"7\""), "{text}");
+        assert!(text.contains("id=\"9\""), "{text}");
+        // Collision on the second drawing forces a fresh id and cites wp:docPr.
+        assert!(
+            report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "wp:docPr"),
+            "{report}"
+        );
+        // Free id 9 must not be rewritten: a foreign remap without collision
+        // would rewrite it; the preserve path is the negative control.
+        let ids: Vec<_> = text
+            .split("wp:docPr")
+            .skip(1)
+            .filter_map(|chunk| {
+                let start = chunk.find("id=\"")?;
+                let rest = &chunk[start + 4..];
+                let end = rest.find('"')?;
+                rest.get(..end)?.parse::<u32>().ok()
+            })
+            .collect();
+        assert_eq!(ids.len(), 3, "{text}");
+        assert_eq!(ids[0], 7);
+        assert_ne!(ids[1], 7);
+        assert_eq!(ids[2], 9);
     }
 
     #[test]

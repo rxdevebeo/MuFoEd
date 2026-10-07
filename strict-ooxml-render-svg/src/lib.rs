@@ -95,6 +95,10 @@ pub enum MediaMode {
 }
 
 /// Which pages to render.
+///
+/// [`PageSelection::Range`] also caps layout: the paginator stops after
+/// producing `end` pages (1-based, inclusive). Page-number fields such as
+/// `NUMPAGES` then reflect that truncated count, not the full document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PageSelection {
     /// All pages.
@@ -116,6 +120,15 @@ impl PageSelection {
         match self {
             Self::All => true,
             Self::Range { start, end } => page >= start && page <= end,
+        }
+    }
+
+    /// Inclusive layout stop page for [`Self::Range`], or `None` for [`Self::All`].
+    #[must_use]
+    pub fn layout_end(self) -> Option<usize> {
+        match self {
+            Self::All => None,
+            Self::Range { end, .. } => Some(end),
         }
     }
 }
@@ -234,13 +247,17 @@ pub struct Page {
     pub warnings: Vec<String>,
 }
 
-/// Places every page of a document without painting it.
+/// Places pages of a document without painting them.
 ///
 /// This is the entry point for a second backend (Stage 8B, PDF): the SVG
 /// renderer is one *consumer* of the placement, not its owner. Sharing the
 /// placement is what makes the two backends agree — a PDF cannot disagree with
 /// the SVG about where a line went, because there is only one answer computed
 /// once.
+///
+/// [`RenderOptions::pages`] is honored during layout ([`PageSelection::Range`]
+/// stops the paginator after `end`) and again when returning pages: only
+/// indices selected by [`PageSelection::contains`] are included.
 ///
 /// Embedded images resolve to placeholders without a `media` source, exactly as
 /// [`render`] does; use [`render_with_media`] for the SVG that inlines them.
@@ -273,7 +290,13 @@ pub fn place_pages(
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
-    Ok(layout::paginate::layout_document(&context)?.pages)
+    Ok(layout::paginate::layout_document(&context)?
+        .pages
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| options.pages.contains(index + 1))
+        .map(|(_, page)| page)
+        .collect())
 }
 
 /// Renders a document without a media source.
@@ -348,11 +371,13 @@ mod tests {
     fn page_selection_contains() {
         assert!(PageSelection::All.contains(1));
         assert!(PageSelection::All.contains(999));
+        assert_eq!(PageSelection::All.layout_end(), None);
         let range = PageSelection::Range { start: 2, end: 3 };
         assert!(!range.contains(1));
         assert!(range.contains(2));
         assert!(range.contains(3));
         assert!(!range.contains(4));
+        assert_eq!(range.layout_end(), Some(3));
     }
 
     #[test]
@@ -401,6 +426,7 @@ mod tests {
             blocks = vec![Block::Table(Table {
                 props: TableProperties::default(),
                 grid: Vec::new(),
+                grid_change: None,
                 rows: vec![TableRow {
                     props: RowProperties::default(),
                     cells: vec![TableCell {

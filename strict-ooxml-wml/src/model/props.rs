@@ -215,6 +215,8 @@ pub struct RowProperties {
     pub alignment: Option<Justification>,
     /// Spacing between cells (`w:tblCellSpacing` / `w:tblPrEx`), AUD-46.
     pub cell_spacing: Option<Width>,
+    /// Borders from `w:tblPrEx/w:tblBorders`. Row exceptions are not `w:trPr`.
+    pub exception_borders: Borders,
     /// Revision id (`w:rsid`).
     pub rsid: Option<Arc<str>>,
     /// Source location of `w:trPr`.

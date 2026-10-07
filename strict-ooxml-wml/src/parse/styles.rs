@@ -5,7 +5,7 @@ use strict_ooxml_core::xml::XmlEvent;
 
 use crate::model::ids::StyleId;
 use crate::model::props::{ParagraphProperties, RunProperties, TableProperties};
-use crate::model::styles::{DocDefaults, Style, StyleTable};
+use crate::model::styles::{DocDefaults, Style, StyleTable, TableStyleCondition};
 use crate::model::support::SupportStatus;
 use crate::model::values::StyleType;
 
@@ -187,6 +187,7 @@ impl PartParser<'_> {
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
             let mut table_props = TableProperties::default();
+            let mut conditions = Vec::new();
 
             loop {
                 match parser.next_event()? {
@@ -245,16 +246,7 @@ impl PartParser<'_> {
                             "rPr" => run = parser.parse_run_properties()?,
                             "tblPr" => table_props = parser.parse_table_properties()?,
                             "tblStylePr" => {
-                                parser.record(
-                                    "w:tblStylePr",
-                                    SupportStatus::Partial,
-                                    Some(
-                                        "table style conditional formatting not modelled"
-                                            .to_owned(),
-                                    ),
-                                    Some(parser.location()),
-                                );
-                                parser.skip_element()?;
+                                conditions.push(parser.parse_table_style_condition(&attrs)?);
                             }
                             _ => {
                                 let feature = feature_id_for(&element);
@@ -300,9 +292,47 @@ impl PartParser<'_> {
                 paragraph,
                 run,
                 table: table_props,
+                conditions,
                 based_on_chain: Vec::new(),
                 location,
             }))
+        })
+    }
+
+    /// Reads one `w:tblStylePr`. Paragraph and run properties are kept.
+    fn parse_table_style_condition(
+        &mut self,
+        attrs: &[strict_ooxml_core::xml::Attr],
+    ) -> Result<TableStyleCondition> {
+        let kind = wml_attr(attrs, "type")
+            .map(std::sync::Arc::from)
+            .unwrap_or_else(|| std::sync::Arc::from(""));
+        self.nested(|parser| {
+            let mut paragraph = ParagraphProperties::default();
+            let mut run = RunProperties::default();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if is_wml(&name) && name.local() == "pPr" {
+                            paragraph = parser.parse_paragraph_properties()?.0;
+                        } else if is_wml(&name) && name.local() == "rPr" {
+                            run = parser.parse_run_properties()?;
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of table style condition"))
+                    }
+                }
+            }
+            Ok(TableStyleCondition {
+                kind,
+                paragraph,
+                run,
+            })
         })
     }
 }

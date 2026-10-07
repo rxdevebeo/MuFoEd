@@ -197,6 +197,9 @@ fn layout_once(
     let mut paginator = Paginator::new(ctx, geometry, assumed, page_start, page_format);
     paginator.section_index = 0;
     for (index, (start, end)) in runs.iter().enumerate() {
+        if paginator.selection_exhausted() {
+            break;
+        }
         let props = sections.get(index).map(|section| &section.properties);
         if index > 0 {
             // `w:type` on the *ending* section's sectPr describes the break
@@ -206,6 +209,9 @@ fn layout_once(
                 .and_then(|section| section.properties.section_type);
             let geometry = geometry_for(props, ctx.options.scale, Some(ctx));
             paginator.apply_section_break(break_type, geometry, index)?;
+            if paginator.selection_exhausted() {
+                break;
+            }
             if let Some(properties) = props {
                 if let Some(start) = properties
                     .page_number
@@ -232,8 +238,10 @@ fn layout_once(
             0,
         )?;
     }
-    append_endnotes(ctx, &mut paginator)?;
-    paginator.flush_pending()?;
+    if !paginator.selection_exhausted() {
+        append_endnotes(ctx, &mut paginator)?;
+        paginator.flush_pending()?;
+    }
     let mut has_fields = paginator.has_fields;
     // AUD-70: PAGE/NUMPAGES in headers/footers also force a second pass so
     // NUMPAGES sees the real page count.
@@ -349,6 +357,9 @@ fn layout_blocks(
     let mut pending_after = 0.0f64;
     let mut index = 0;
     while index < blocks.len() {
+        if paginator.selection_exhausted() {
+            return Ok(());
+        }
         if let Block::Paragraph(para) = &blocks[index] {
             if para.props.frame.is_some() {
                 let end = frame_group_end(blocks, index);
@@ -407,11 +418,17 @@ fn place_body_paragraph(
     // An empty paragraph that only carries `w:sectPr` is a boundary, not a line
     // of text. Letting it overflow would insert a blank page before the section
     // break that already starts the next page.
+    if paginator.selection_exhausted() {
+        return Ok(0.0);
+    }
     let boundary_marker = para.props.section.is_some() && para.inlines.is_empty();
     let mut pending_after = pending_after;
     if para.props.page_break_before.is_on() && !paginator.at_page_top() {
         paginator.keep_empty_page = true;
         paginator.page_break()?;
+        if paginator.selection_exhausted() {
+            return Ok(0.0);
+        }
         pending_after = 0.0;
     }
     let space_before = pt_to_px(
@@ -453,7 +470,13 @@ fn place_body_paragraph(
             .sum();
         if !paginator.at_page_top() && paginator.cursor + total > paginator.body_height() {
             paginator.page_break()?;
+            if paginator.selection_exhausted() {
+                return Ok(0.0);
+            }
         }
+    }
+    if paginator.selection_exhausted() {
+        return Ok(0.0);
     }
     let page = paginator.pages.len();
     let host_y = paginator.geometry.top + paginator.cursor;
@@ -697,6 +720,8 @@ struct Paginator<'a> {
     section_index: usize,
     /// Keep the next flushed empty page (explicit break / section break, AUD-75).
     keep_empty_page: bool,
+    /// `PageSelection::Range` already produced `end` pages; further content is dropped.
+    truncated: bool,
     /// Geometry deferred by a `continuous` section break until the next page.
     pending_geometry: Option<(Geometry, usize)>,
     /// Footnote ids rendered on the current page, in order.
@@ -773,6 +798,7 @@ impl<'a> Paginator<'a> {
             started: false,
             section_index: 0,
             keep_empty_page: false,
+            truncated: false,
             pending_geometry: None,
             page_footnotes: Vec::new(),
             pending: Vec::new(),
@@ -843,6 +869,9 @@ impl<'a> Paginator<'a> {
             SectionType::NextPage | SectionType::NextColumn => {
                 self.keep_empty_page = true;
                 self.page_break()?;
+                if self.selection_exhausted() {
+                    return Ok(());
+                }
                 // The break opened this page. An empty section (a blank PDF page)
                 // has nothing to paint, and `flush` would otherwise drop it.
                 self.keep_empty_page = true;
@@ -855,9 +884,12 @@ impl<'a> Paginator<'a> {
             SectionType::OddPage => {
                 self.keep_empty_page = true;
                 self.page_break()?;
-                while (self.pages.len() + 1).is_multiple_of(2) {
+                while !self.selection_exhausted() && (self.pages.len() + 1).is_multiple_of(2) {
                     self.keep_empty_page = true;
                     self.page_break()?;
+                }
+                if self.selection_exhausted() {
+                    return Ok(());
                 }
                 self.keep_empty_page = true;
                 self.base_geometry = geometry;
@@ -869,9 +901,12 @@ impl<'a> Paginator<'a> {
             SectionType::EvenPage => {
                 self.keep_empty_page = true;
                 self.page_break()?;
-                while !(self.pages.len() + 1).is_multiple_of(2) {
+                while !self.selection_exhausted() && !(self.pages.len() + 1).is_multiple_of(2) {
                     self.keep_empty_page = true;
                     self.page_break()?;
+                }
+                if self.selection_exhausted() {
+                    return Ok(());
                 }
                 self.keep_empty_page = true;
                 self.base_geometry = geometry;
@@ -915,6 +950,17 @@ impl<'a> Paginator<'a> {
         !self.started || (self.current.is_empty() && self.cursor <= 0.0)
     }
 
+    /// Whether [`PageSelection::Range`] already has its last requested page.
+    fn selection_exhausted(&self) -> bool {
+        self.truncated
+            || self
+                .ctx
+                .options
+                .pages
+                .layout_end()
+                .is_some_and(|end| self.pages.len() >= end)
+    }
+
     /// Adds vertical space before the next flow.
     ///
     /// Word/WPS apply `w:spacing/@w:before` at the top of a page by default
@@ -949,6 +995,10 @@ impl<'a> Paginator<'a> {
 
     /// Starts a new page, carrying deferred footnotes over as a continuation.
     fn page_break(&mut self) -> Result<()> {
+        if self.selection_exhausted() {
+            self.truncated = true;
+            return Ok(());
+        }
         self.check_page_capacity()?;
         if self.current.is_empty() && !self.started && !self.keep_empty_page {
             // A break before any content is ignored (no leading blank page),
@@ -957,6 +1007,19 @@ impl<'a> Paginator<'a> {
             return Ok(());
         }
         self.flush()?;
+        if self.selection_exhausted() {
+            // `PageSelection::Range` asked only for pages through `end`.
+            // Do not open the next page or keep laying out overflow.
+            self.truncated = true;
+            self.current.clear();
+            self.started = true;
+            self.keep_empty_page = false;
+            self.pending.clear();
+            self.page_footnotes.clear();
+            self.notes_height = 0.0;
+            self.continuation = false;
+            return Ok(());
+        }
         self.ctx.reset_frame_cursors();
         self.take_pending_geometry();
         self.cursor = 0.0;
@@ -1060,6 +1123,9 @@ impl<'a> Paginator<'a> {
 
     /// Places one flow item, breaking the page if it does not fit.
     fn place(&mut self, flow: Flow) -> Result<()> {
+        if self.selection_exhausted() {
+            return Ok(());
+        }
         match flow {
             Flow::PageBreak => {
                 self.keep_empty_page = true;
@@ -1070,6 +1136,9 @@ impl<'a> Paginator<'a> {
                 self.started = true;
                 if !self.current.is_empty() && self.cursor + image.h > self.body_height() {
                     self.page_break()?;
+                    if self.selection_exhausted() {
+                        return Ok(());
+                    }
                 }
                 let mut image = image;
                 image.y += self.geometry.top + self.cursor;
@@ -1081,6 +1150,9 @@ impl<'a> Paginator<'a> {
                 self.started = true;
                 if !self.current.is_empty() && self.cursor + height > self.body_height() {
                     self.page_break()?;
+                    if self.selection_exhausted() {
+                        return Ok(());
+                    }
                 }
                 let dy = self.geometry.top + self.cursor;
                 for item in &items {
@@ -1116,9 +1188,15 @@ impl<'a> Paginator<'a> {
 
     /// Places one table row, breaking the page and repeating header rows as needed.
     fn place_table_row(&mut self, row: &TableRowFlow) -> Result<()> {
+        if self.selection_exhausted() {
+            return Ok(());
+        }
         self.started = true;
         if !self.current.is_empty() && self.cursor + row.height > self.body_height() {
             self.page_break()?;
+            if self.selection_exhausted() {
+                return Ok(());
+            }
             self.repeat_table_headers()?;
         }
         self.place_row_items(row)
@@ -1150,6 +1228,9 @@ impl<'a> Paginator<'a> {
     }
 
     fn place_line(&mut self, mut line: TextLine) -> Result<()> {
+        if self.selection_exhausted() {
+            return Ok(());
+        }
         // An empty paragraph at the very top must still produce a page.
         self.started = true;
         if self.current.is_empty() {
@@ -1158,6 +1239,9 @@ impl<'a> Paginator<'a> {
             let extra = self.prospective_footnote_extra(&line);
             if self.cursor + line.height + extra > self.body_height() {
                 self.page_break()?;
+                if self.selection_exhausted() {
+                    return Ok(());
+                }
             }
             self.reserve_line_footnotes(&line);
         }
@@ -1258,6 +1342,9 @@ impl<'a> Paginator<'a> {
 
     /// Forces a page break when footnotes were deferred past the last page.
     fn flush_pending(&mut self) -> Result<()> {
+        if self.selection_exhausted() {
+            return Ok(());
+        }
         if !self.pending.is_empty() {
             self.page_break()?;
         }
@@ -1265,10 +1352,10 @@ impl<'a> Paginator<'a> {
     }
 
     fn finish(mut self) -> Result<(Layout, Vec<(f64, f64)>)> {
-        if self.started {
+        if self.started && !self.truncated {
             self.flush()?;
         }
-        if self.pages.is_empty() {
+        if self.pages.is_empty() && !self.selection_exhausted() {
             self.pages.push(PlacedPage {
                 width_px: self.geometry.width,
                 height_px: self.geometry.height,

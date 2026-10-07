@@ -649,6 +649,7 @@ pub(crate) fn declare_style(document: &mut Document) {
         },
         paragraph: ParagraphProperties::default(),
         run: RunProperties::default(),
+        conditions: Vec::new(),
         based_on_chain: Vec::new(),
         location: SourceLocation::unknown(),
     });

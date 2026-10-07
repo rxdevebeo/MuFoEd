@@ -1,0 +1,89 @@
+{
+  "package": "P5",
+  "documents": [
+    {
+      "path": "strict-ooxml-core/tests/docx/RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+      "role": "witness",
+      "source_sha256": "e51a270c10ff4422f022d205e20cdc5c1ad90155bf678f411579ec6bc2e36d67",
+      "written_sha256": "e54270f53df1ef88e21e0f76a0c83a1000b3c6693ed2d9056d53ff3cdd5ab7d1",
+      "written_path": "target/p5-corpus/docx/RM0090 16-23 Справочное руководство по STM32F4xx.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+      "role": "witness",
+      "source_sha256": "d0bbb44d604b2c18b744cfa9085da3d2a2a2428ad81cfea19d1de0e11c884583",
+      "written_sha256": "accb49cf2ceead69b0100eb6d72a7cd4abf56b39cbe863cb27c90361a9e196e0",
+      "written_path": "target/p5-corpus/cc0/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/064_40_Islamic_Books.docx",
+      "role": "witness",
+      "source_sha256": "26acb9dcce6543760106048cf071e7b4ab704f667f5aec31ea11f9fa897442f2",
+      "written_sha256": "69f14beeca156bc8c7002ecbb2e2031ad8270d03dee0478acb666402df2a89ac",
+      "written_path": "target/p5-corpus/cc0/064_40_Islamic_Books.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "witness",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "e49e7dd22630a054e6eafbccf36b69e4f4f274f70b21237aa63e0e6b787ad66b",
+      "written_path": "target/p5-corpus/docx/1. First-Steps-in-Programming.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/2. Simple-Calculation.docx",
+      "role": "witness",
+      "source_sha256": "a1eac8b9cba0231187e1ee67ebade3717fd5c61cfd0ed94b2d5e3de330c3c2bf",
+      "written_sha256": "3f2b5cdc9ad3e134a6b5562303da493507d0001363d6fbf93b07e609024850fb",
+      "written_path": "target/p5-corpus/docx/2. Simple-Calculation.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/3. Simple-Conditions.docx",
+      "role": "witness",
+      "source_sha256": "d5e2b824cf9a1d42d5c2ee366e1cdc70e3e9d48ec99306df0222bb17f19c8329",
+      "written_sha256": "2fedeeae13d45b3ebeb9514027616e92eaddf124a52f38c009b86e246d96d1a7",
+      "written_path": "target/p5-corpus/docx/3. Simple-Conditions.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/4. Complex-Conditions.docx",
+      "role": "witness",
+      "source_sha256": "3bc59ab7746a0dc24253c1ea59683ecad6a925d5f0ad85f9326307c0f771d1a6",
+      "written_sha256": "89d7d01096878da66bb7e6d7df1e16ff0b4f47ea15e2983cf7dd0522d55aa695",
+      "written_path": "target/p5-corpus/docx/4. Complex-Conditions.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/5. Loops.docx",
+      "role": "witness",
+      "source_sha256": "d57989e414fdd38fd816a5799c047b8e7516a21ec28f76ef492e1f375f469ff0",
+      "written_sha256": "9b1da3cde866f96288f32a66794a2acb7f6cbdbc7d35cacd239fe9ed2728e8ab",
+      "written_path": "target/p5-corpus/docx/5. Loops.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/6. Nested-Loops.docx",
+      "role": "witness",
+      "source_sha256": "a6a4fd73cf9a374b8a3e5daa279657e335b0da1ae8d1a63dd246d38ffcd08e6b",
+      "written_sha256": "363763afa270b95ffdc694951bfdfbb56d2859eb37c221677f13c7a960f824ac",
+      "written_path": "target/p5-corpus/docx/6. Nested-Loops.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/7. More-Complex-Loops.docx",
+      "role": "witness",
+      "source_sha256": "0abdf0a845af4b58691224f8c9f94febf426c1e991412fcff7e75a1218507d11",
+      "written_sha256": "012d4d24bd2e5397e6c3e7f705021526565e670bd9998b679fa9cf830f3aa04f",
+      "written_path": "target/p5-corpus/docx/7. More-Complex-Loops.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/8. Become-a-Software-Engineer.docx",
+      "role": "witness",
+      "source_sha256": "9dcc666b75f63a1c93c8189e7d79525cfc2460866bfdc149e09253b29093367a",
+      "written_sha256": "30d05100795cdc49b9d908c0db154b60193802dccc6df50d8f33a1c929c8ea29",
+      "written_path": "target/p5-corpus/docx/8. Become-a-Software-Engineer.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
+      "role": "remainder",
+      "source_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
+      "written_sha256": "7a14bbbf1478f9a3fec9f1468b130a97fd835f014e9a2f401658b91cf9367900",
+      "written_path": "target/p5-corpus/cc0/070_Innovations_and_New_Technologies.docx"
+    }
+  ]
+}

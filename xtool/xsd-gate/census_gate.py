@@ -61,6 +61,7 @@ import collections
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import posixpath
 import re
@@ -194,6 +195,11 @@ def vanished_elements(
                 new = etree.fromstring(after.read(part))
             except etree.XMLSyntaxError:
                 continue
+            _drop_duplicate_singletons(old)
+            _drop_duplicate_singletons(new)
+            if part == "word/styles.xml":
+                _keep_last_duplicate_style(old)
+                _keep_last_duplicate_style(new)
             old_rows = [
                 (local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(old)
@@ -300,8 +306,11 @@ def _changed_attributes(
     # Normalize before subtracting multisets: an old rId1 may have become
     # rId2 while the writer reused rId1 for a different resource. Cancelling
     # raw ids first loses both the equivalence and the target change.
-    old_bag, namespace_of = _attribute_bag(old, old_rels)
-    new_bag, _new_ns = _attribute_bag(new, new_rels)
+    old_bag, namespace_of, old_stripped = _attribute_bag(old, old_rels)
+    new_bag, _new_ns, new_stripped = _attribute_bag(new, new_rels)
+    # `w:type="pct"` stores fiftieths (`5000`) in Transitional and `100%` in
+    # Strict. Pair by element and type so a dxa `5000` cannot cancel a percent.
+    _cancel_percent_widths(old_stripped, new_stripped, old_bag, new_bag)
     appeared = collections.Counter(
         {
             key: count
@@ -324,7 +333,12 @@ def _changed_attributes(
         # transform. A different length stays a change. Strict CT_Charset also
         # renames @val to @characterSet while keeping the same code-page value.
         candidates = [attr_local]
-        renamed = {"left": "start", "right": "end"}.get(attr_local)
+        renamed = {
+            "left": "start",
+            "right": "end",
+            "leftChars": "startChars",
+            "rightChars": "endChars",
+        }.get(attr_local)
         if renamed is not None:
             candidates.append(renamed)
         if elem_local == "charset" and attr_local == "val":
@@ -363,7 +377,7 @@ def _changed_attributes(
 def _attribute_bag(
     root: etree._Element,
     relationships: dict[str, tuple] | None = None,
-) -> tuple[collections.Counter, dict[tuple[str, str | None, str, str], str | None]]:
+) -> tuple[collections.Counter, dict[tuple[str, str | None, str, str], str | None], etree._Element]:
     """Multiset of attributes with canonical element/parent/attribute namespaces."""
     bag: collections.Counter = collections.Counter()
     namespace_of = {}
@@ -393,7 +407,7 @@ def _attribute_bag(
             ):
                 value = "relationship:" + json.dumps(relationships[value], ensure_ascii=True)
             bag[(qname.localname, parent_local, attr, value, elem_key[2], elem_key[3], _prefix_or_uri(namespace))] += 1
-    return bag, namespace_of
+    return bag, namespace_of, copy
 
 
 def _changed_resources(
@@ -639,16 +653,186 @@ def _twips(text: str) -> float | None:
             return float(text[:-2]) * 20.0
         except ValueError:
             return None
-    if re.fullmatch(r"-?\d+", text):
-        return float(text)
+    # Producers emit `1872.0000000000002` and `-180.0`. The model keeps whole
+    # twips; a residual under half a hundredth of a twip is the same length.
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+        try:
+            return float(text)
+        except ValueError:
+            return None
     return None
+
+
+_WIDTH_ELEMENTS = frozenset({
+    "tblW", "tcW", "gridCol", "tblInd", "tblCellSpacing", "wBefore", "wAfter",
+})
+
+
+def _fiftieths_percent(text: str) -> float | None:
+    """`5000` fiftieths and `100%` are one Strict percentage width."""
+    if text.endswith("%"):
+        return _percent_number(text)
+    if not re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+        return None
+    number = float(text)
+    if abs(number - round(number)) > 1e-6:
+        return None
+    return round(number) / 50.0
+
+
+def _same_fiftieths(left: str, right: str) -> bool:
+    a, b = _fiftieths_percent(left), _fiftieths_percent(right)
+    return a is not None and b is not None and abs(a - b) < 1e-6
+
+
+def _cancel_percent_widths(
+    old: etree._Element,
+    new: etree._Element,
+    old_bag: collections.Counter,
+    new_bag: collections.Counter,
+) -> None:
+    """Drop pct-width spellings that are the same fiftieths-of-a-percent value.
+
+    The general attribute loop does not see `w:type`. Matching `5000` to `100%`
+    without the type would also hide a dxa width of 5000 twips.
+    """
+
+    def rows(root: etree._Element) -> list[tuple]:
+        found = []
+        for element in root.iter():
+            if not isinstance(element.tag, str):
+                continue
+            qname = etree.QName(element)
+            if qname.localname not in _WIDTH_ELEMENTS:
+                continue
+            parent = element.getparent()
+            if parent is None or not isinstance(parent.tag, str):
+                parent_local, parent_ns = None, ""
+            else:
+                parent_q = etree.QName(parent)
+                parent_local = parent_q.localname
+                parent_ns = _prefix_or_uri(parent_q.namespace)
+            elem_ns = _prefix_or_uri(qname.namespace)
+            width = None
+            width_ns = ""
+            kind = ""
+            for key, value in element.attrib.items():
+                if key.startswith("{"):
+                    attr_q = etree.QName(key)
+                    local, namespace = attr_q.localname, _prefix_or_uri(attr_q.namespace)
+                else:
+                    local, namespace = key, ""
+                if local == "w" and width is None:
+                    width, width_ns = value, namespace or elem_ns
+                elif local == "type" and not kind:
+                    kind = value
+            if width is None:
+                continue
+            identity = (qname.localname, parent_local, elem_ns, parent_ns, kind)
+            found.append((identity, width, width_ns))
+        return found
+
+    pools: dict[tuple, list] = {}
+    for identity, width, width_ns in rows(new):
+        pools.setdefault(identity, []).append([width, width_ns])
+    for identity, width, width_ns in rows(old):
+        if identity[4] != "pct":
+            continue
+        pool = pools.get(identity)
+        if not pool:
+            continue
+        for slot in pool:
+            other, other_ns = slot
+            if other is None or _same_measure(width, other) or not _same_fiftieths(width, other):
+                continue
+            slot[0] = None
+            _bag_drop(old_bag, identity, width, width_ns)
+            _bag_drop(new_bag, identity, other, other_ns)
+            break
+
+
+def _bag_drop(bag: collections.Counter, identity: tuple, value: str, attr_ns: str) -> None:
+    local, parent, elem_ns, parent_ns, _kind = identity
+    key = (local, parent, "w", value, elem_ns, parent_ns, attr_ns)
+    if bag[key] > 0:
+        bag[key] -= 1
+
+
+# Children a parent stores once. A second identical copy is producer noise;
+# two grid columns of the same width are not in this set and both stay.
+_SINGLETON_CHILDREN = {
+    "rPr": {
+        "sz", "szCs", "spacing", "w", "color", "kern", "position", "u",
+        "rFonts", "b", "i", "bCs", "iCs", "highlight", "em", "vertAlign",
+        "lang", "shd", "rStyle",
+    },
+    "pPr": {"spacing", "ind", "jc", "pStyle", "rPr", "pBdr", "shd", "tabs"},
+}
+
+
+def _drop_duplicate_singletons(root: etree._Element) -> None:
+    for parent in root.iter():
+        if not isinstance(parent.tag, str):
+            continue
+        allowed = _SINGLETON_CHILDREN.get(etree.QName(parent).localname)
+        if not allowed:
+            continue
+        seen: set[tuple] = set()
+        for child in list(parent):
+            if not isinstance(child.tag, str):
+                continue
+            local = etree.QName(child).localname
+            if local not in allowed or len(child):
+                continue
+            key = (local, tuple(sorted(child.attrib.items())))
+            if key in seen:
+                parent.remove(child)
+            else:
+                seen.add(key)
+
+
+def _keep_last_duplicate_style(root: etree._Element) -> None:
+    """A repeated `w:styleId` keeps the later definition. The model is a map."""
+    if not isinstance(root.tag, str) or etree.QName(root).localname != "styles":
+        return
+    seen: dict[str, etree._Element] = {}
+    for child in list(root):
+        if not isinstance(child.tag, str) or etree.QName(child).localname != "style":
+            continue
+        style_id = next(
+            (value for key, value in child.attrib.items() if etree.QName(key).localname == "styleId"),
+            None,
+        )
+        if style_id is None:
+            continue
+        previous = seen.get(style_id)
+        if previous is not None:
+            root.remove(previous)
+        seen[style_id] = child
+
+
+def _round_half_away(number: float) -> int:
+    """`f64::round`: halves go away from zero, matching the reader's twip store."""
+    if number >= 0:
+        return math.floor(number + 0.5)
+    return math.ceil(number - 0.5)
 
 
 def _same_measure(left: str, right: str) -> bool:
     if left == right:
         return True
     a, b = _twips(left), _twips(right)
-    return a is not None and b is not None and abs(a - b) < 0.051
+    if a is None or b is None:
+        return False
+    if abs(a - b) < 0.051:
+        return True
+    # A fractional twip and the whole twip the reader stores are one length.
+    # 3124 and 3125 differ by a whole twip and stay different.
+    return (
+        abs(a - b) < 1.0
+        and (a == _round_half_away(a) or b == _round_half_away(b))
+        and _round_half_away(a) == _round_half_away(b)
+    )
 
 
 def _same_hex(left: str, right: str) -> bool:
@@ -701,6 +885,12 @@ def _same_attr_value(
             a = a if left.endswith("%") else a / 1000.0
             b = b if right.endswith("%") else b / 1000.0
             return abs(a - b) < 1e-9
+    # `w:w/@w:val` is ST_TextScale: Strict writes `90%`, Transitional writes `90`.
+    # The number is a percentage of the normal character width, not a length.
+    if namespace == "w" and element == "w" and attr == "val":
+        a, b = _percent_number(left), _percent_number(right)
+        if a is not None and b is not None:
+            return abs(a - b) < 1e-6
     if attr == "percent":
         a, b = _percent_number(left), _percent_number(right)
         if a is not None and b is not None and abs(a - b) < 0.051:

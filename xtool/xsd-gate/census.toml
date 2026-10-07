@@ -596,3 +596,14 @@ elements = [
 ]
 summary = "T4 tblLook bitmask rewritten as individual Strict flags; compatSetting uri is regenerated"
 audit = "D05: Transitional w:tblLook/@val is the same six bits the writer emits as firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand. The attribute spelling change is a declared T4 rewrite, not a dropped look."
+
+[[item]]
+id = "TZ-48"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["wp:docPr@id"]
+parents = ["anchor", "inline"]
+requires_cited = ["wp:docPr"]
+summary = "wp:docPr/@id remapped only when a per-part uniqueness collision forces a new id"
+audit = "M2/P3: expanded grpSp/lockedCanvas trees can introduce extra drawings that collide with source ids. The writer cites wp:docPr on remap. A foreign id rewrite without that citation (no expansion / no collision report) stays unclassified and fails the gate."

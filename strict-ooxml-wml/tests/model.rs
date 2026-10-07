@@ -369,6 +369,7 @@ fn style_table_behaviour() {
         table: strict_ooxml_wml::model::props::TableProperties::default(),
         paragraph: ParagraphProperties::default(),
         run: strict_ooxml_wml::model::props::RunProperties::default(),
+        conditions: Vec::new(),
         based_on_chain: Vec::new(),
         location: location(),
     };
@@ -644,6 +645,7 @@ fn parse_options_default_builds() {
     let _: Table = Table {
         props: strict_ooxml_wml::model::props::TableProperties::default(),
         grid: Vec::new(),
+        grid_change: None,
         rows: Vec::new(),
         location: location(),
     };

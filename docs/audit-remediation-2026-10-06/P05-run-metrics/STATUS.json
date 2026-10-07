@@ -1,0 +1,69 @@
+{
+  "package": "P5",
+  "slug": "run-metrics",
+  "visual_level": "V1",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 197,
+  "rows_after": 15,
+  "labels": [
+    "w:w@val",
+    "w:sz",
+    "w:sz@val",
+    "w:szCs",
+    "w:szCs@val",
+    "w:spacing",
+    "w:ind",
+    "w:tab"
+  ],
+  "witness_docs": [
+    "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+    "018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+    "064_40_Islamic_Books.docx",
+    "1. First-Steps-in-Programming.docx",
+    "2. Simple-Calculation.docx",
+    "3. Simple-Conditions.docx",
+    "4. Complex-Conditions.docx",
+    "5. Loops.docx",
+    "6. Nested-Loops.docx",
+    "7. More-Complex-Loops.docx",
+    "8. Become-a-Software-Engineer.docx",
+    "070_Innovations_and_New_Technologies.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P5-1": true,
+    "T-P5-2": true,
+    "T-P5-3": true,
+    "T-P5-4": true
+  },
+  "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "Six witnesses remeasured with the release CLI. documents=6 validated=6 missing=0 unmatched_schema=1182 unclassified_element_changes=1497 ours=0. Exit 1 is inherited schema debt (the same 1182). It is not a P5 label failure. D05 is not PASS.",
+  "slice_unclassified_element_changes": 1497,
+  "full_census_exit": "NOT_RUN",
+  "full_corpus_documents": 221,
+  "full_corpus_refused": 0,
+  "missing": 0,
+  "unmatched_schema": 1182,
+  "ours": 0,
+  "visual": {
+    "T-P5-4": true,
+    "artifact": "visual/rm0090-page1.svg",
+    "bbox": "visual/bbox.json",
+    "tol_px": 0.25,
+    "observed_max_delta_px": 0.0
+  },
+  "visual_tol_px": 0.25,
+  "tz_items": [],
+  "notes": [
+    "Full-corpus package labels on 221 documents: 197 → 15. The 15 are all w:sz / w:sz@val / w:szCs@val in 070_Innovations_and_New_Technologies.docx.",
+    "Those 15 are run sizes inside v:group text boxes. The VML converter keeps one shape per w:pict, so the other grouped text boxes and their w:sz are dropped. No registry disposition was added for them.",
+    "w:spacing, w:ind, w:tab and w:w@val are 0 on the full corpus. SoftUni lessons 1–8 are 0. The corpus has these 8 numbered lessons, not the plan's ~20.",
+    "The earlier witness-slice baseline, measured before these writer fixes, was 133 → 0 on RM0090, 018, 064 and First-Steps. Plan 1324 predates MCE stripping and T2/T3.",
+    "T-P5-4 locks the RM0090 heading LCD-TFT: 32 px, width 143.953125 px, baseline gap to 16.1 of 85.212890625 px. Tolerance stays 0.25 px.",
+    "Positive and negative controls: half-point 24 vs 23, indent 720 vs 719, sdtEndPr sz 20 vs 19, subscript control sz 22 vs 21.",
+    "Retest 2026-10-07: cargo +1.92.0 test -p strict-ooxml-write --test p5_p6 (13 ok); -p strict-ooxml-render-svg --test p5_p6 --test-threads=1 (5 ok, ~43s). Root cause of prior OOM: PageSelection::Range was paint-only; paginator now early-stops at Range.end and place_pages filters by contains.",
+    "Residual 15 VML sz rows are out of P5 paint scope (converter keeps one shape per w:pict). full_census_exit remains NOT_RUN until M4. D05 is not PASS."
+  ],
+  "declared_transforms": []
+}

@@ -3,12 +3,12 @@
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
-use crate::model::block::{GridCol, SdtProperties, Table, TableCell, TableRow};
+use crate::model::block::{GridCol, SdtProperties, Table, TableCell, TableGridChange, TableRow};
 use crate::model::props::{CellProperties, RowProperties, TableProperties};
 use crate::model::support::SupportStatus;
 use crate::model::values::Twips;
 
-use super::{is_wml, PartParser};
+use super::{is_wml, parse_u32, wml_attr, PartParser};
 
 impl PartParser<'_> {
     /// Parses a table (`w:tbl`); its start element has been consumed.
@@ -17,6 +17,7 @@ impl PartParser<'_> {
         self.nested(|parser| {
             let mut props = TableProperties::default();
             let mut grid = Vec::new();
+            let mut grid_change = None;
             let mut rows = Vec::new();
             loop {
                 match parser.next_event()? {
@@ -28,7 +29,11 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "tblPr" => props = parser.parse_table_properties()?,
-                            "tblGrid" => grid = parser.parse_table_grid()?,
+                            "tblGrid" => {
+                                let parsed = parser.parse_table_grid()?;
+                                grid = parsed.0;
+                                grid_change = parsed.1.or(grid_change);
+                            }
                             "tr" => rows.push(parser.parse_table_row(&attrs)?),
                             "sdt" => {
                                 // AUD-41: row-level content control — unwrap `w:tr`
@@ -61,16 +66,18 @@ impl PartParser<'_> {
             Ok(Table {
                 props,
                 grid,
+                grid_change,
                 rows,
                 location,
             })
         })
     }
 
-    /// Parses `w:tblGrid`.
-    fn parse_table_grid(&mut self) -> Result<Vec<GridCol>> {
+    /// Parses `w:tblGrid`, including a following `w:tblGridChange`.
+    fn parse_table_grid(&mut self) -> Result<(Vec<GridCol>, Option<TableGridChange>)> {
         self.nested(|parser| {
             let mut grid = Vec::new();
+            let mut change = None;
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -80,15 +87,44 @@ impl PartParser<'_> {
                                     .measure_or_percent(&attrs, "w", "w:gridCol")
                                     .map(Twips),
                             });
+                            parser.skip_element()?;
+                        } else if is_wml(&name) && name.local() == "tblGridChange" {
+                            change = Some(parser.parse_grid_change(&attrs)?);
+                        } else {
+                            parser.skip_element()?;
                         }
-                        parser.skip_element()?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of table grid")),
                 }
             }
-            Ok(grid)
+            Ok((grid, change))
+        })
+    }
+
+    /// Parses `w:tblGridChange`: the previous `w:tblGrid` of a tracked change.
+    fn parse_grid_change(&mut self, attrs: &[Attr]) -> Result<TableGridChange> {
+        let id = wml_attr(attrs, "id").and_then(parse_u32).unwrap_or(0);
+        self.nested(|parser| {
+            let mut grid = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if is_wml(&name) && name.local() == "tblGrid" {
+                            grid = parser.parse_table_grid()?.0;
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of table grid change"))
+                    }
+                }
+            }
+            Ok(TableGridChange { id, grid })
         })
     }
 
@@ -118,13 +154,25 @@ impl PartParser<'_> {
                             continue;
                         }
                         match name.local() {
-                            "trPr" => props = parser.parse_row_properties()?,
+                            "trPr" => {
+                                // `w:tblPrEx` is the preceding sibling. Replacing
+                                // the row properties must keep the exception.
+                                let exception_borders = props.exception_borders.clone();
+                                let exception_spacing = props.cell_spacing.clone();
+                                props = parser.parse_row_properties()?;
+                                props.exception_borders = exception_borders;
+                                if props.cell_spacing.is_none() {
+                                    props.cell_spacing = exception_spacing;
+                                }
+                            }
                             "tblPrEx" => {
                                 // AUD-46: exception properties may carry cell spacing.
+                                // Borders on the exception are the row's own edges.
                                 let ex = parser.parse_table_properties()?;
                                 if props.cell_spacing.is_none() {
                                     props.cell_spacing = ex.cell_spacing;
                                 }
+                                props.exception_borders = ex.borders;
                                 parser.record(
                                     "w:tblPrEx",
                                     SupportStatus::Partial,
@@ -227,11 +275,12 @@ impl PartParser<'_> {
                         match name.local() {
                             "sdtPr" => {
                                 let parsed = parser.parse_sdt_properties()?;
-                                props.tag = parsed.0.or(props.tag);
-                                props.alias = parsed.1.or(props.alias);
-                                props.id = parsed.2.or(props.id);
-                                props.placeholder = parsed.3.or(props.placeholder);
-                                props.showing_placeholder |= parsed.4;
+                                props.tag = parsed.tag.or(props.tag);
+                                props.alias = parsed.alias.or(props.alias);
+                                props.id = parsed.id.or(props.id);
+                                props.placeholder = parsed.placeholder.or(props.placeholder);
+                                props.showing_placeholder |= parsed.showing_placeholder;
+                                props.run_props = parsed.run_props.or(props.run_props);
                             }
                             "sdtContent" => {
                                 rows.append(&mut parser.parse_table_row_children()?);
@@ -276,11 +325,12 @@ impl PartParser<'_> {
                         match name.local() {
                             "sdtPr" => {
                                 let parsed = parser.parse_sdt_properties()?;
-                                props.tag = parsed.0.or(props.tag);
-                                props.alias = parsed.1.or(props.alias);
-                                props.id = parsed.2.or(props.id);
-                                props.placeholder = parsed.3.or(props.placeholder);
-                                props.showing_placeholder |= parsed.4;
+                                props.tag = parsed.tag.or(props.tag);
+                                props.alias = parsed.alias.or(props.alias);
+                                props.id = parsed.id.or(props.id);
+                                props.placeholder = parsed.placeholder.or(props.placeholder);
+                                props.showing_placeholder |= parsed.showing_placeholder;
+                                props.run_props = parsed.run_props.or(props.run_props);
                             }
                             "sdtContent" => {
                                 cells.append(&mut parser.parse_table_cell_children()?);

@@ -280,16 +280,18 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
 fn spacing_element(xml: &mut XmlWriter, spacing: &Spacing) {
     xml.start("w:spacing");
     xml.attr_w_opt("before", spacing.before.map(|v| v.0));
+    xml.attr_w_opt("beforeLines", spacing.before_lines);
     xml.attr_w_opt("after", spacing.after.map(|v| v.0));
+    xml.attr_w_opt("afterLines", spacing.after_lines);
     xml.attr_w_opt("line", spacing.line.map(|v| v.0));
     if let Some(rule) = &spacing.line_rule {
         xml.attr_w("lineRule", rule.as_str());
     }
-    if spacing.before_autospacing {
-        xml.attr_w("beforeAutospacing", "true");
+    if let Some(value) = spacing.before_autospacing {
+        xml.attr_w("beforeAutospacing", if value { "true" } else { "false" });
     }
-    if spacing.after_autospacing {
-        xml.attr_w("afterAutospacing", "true");
+    if let Some(value) = spacing.after_autospacing {
+        xml.attr_w("afterAutospacing", if value { "true" } else { "false" });
     }
     xml.end();
 }
@@ -366,7 +368,7 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(color) = &props.color {
         color_element(xml, "w:color", color, props.color_theme.as_ref());
     }
-    if let Some(spacing) = props.spacing.filter(|v| v.0 != 0) {
+    if let Some(spacing) = props.spacing {
         xml.empty_attr_w("w:spacing", "val", spacing.0);
     }
     if let Some(width) = props.scale {
@@ -816,6 +818,21 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
         }
         _ => {}
     }
+}
+
+/// Writes `w:tblPrEx` when the row carries exception borders.
+pub fn row_exception(xml: &mut XmlWriter, props: &RowProperties) {
+    if borders_empty(&props.exception_borders) {
+        return;
+    }
+    xml.start("w:tblPrEx");
+    borders_element(
+        xml,
+        "w:tblBorders",
+        &props.exception_borders,
+        EdgeNames::Table,
+    );
+    xml.end();
 }
 
 /// Writes `w:trPr`.

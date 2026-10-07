@@ -7,7 +7,9 @@ use strict_ooxml_core::opc::rels::RelId;
 
 use super::ids::{ParaId, TextId};
 use super::inline::Inline;
-use super::props::{CellProperties, ParagraphProperties, RowProperties, TableProperties};
+use super::props::{
+    CellProperties, ParagraphProperties, RowProperties, RunProperties, TableProperties,
+};
 use super::revision::Revision;
 use super::values::{Rsids, Twips};
 
@@ -37,6 +39,18 @@ pub struct GridCol {
     pub width: Option<Twips>,
 }
 
+/// The grid a table had before a tracked change (`w:tblGridChange`).
+///
+/// The live [`Table::grid`] is what layout paints. This copy is the previous
+/// `w:tblGrid` Word stored inside the change markup.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TableGridChange {
+    /// Revision id (`w:id`).
+    pub id: u32,
+    /// Column widths before the change.
+    pub grid: Vec<GridCol>,
+}
+
 /// A table (`w:tbl`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Table {
@@ -44,6 +58,8 @@ pub struct Table {
     pub props: TableProperties,
     /// Table grid.
     pub grid: Vec<GridCol>,
+    /// Previous grid from `w:tblGrid/w:tblGridChange`, when the source had one.
+    pub grid_change: Option<TableGridChange>,
     /// Table rows.
     pub rows: Vec<TableRow>,
     /// Source location.
@@ -95,6 +111,10 @@ pub struct SdtProperties {
     pub placeholder: Option<Arc<str>>,
     /// Whether the control shows an empty placeholder.
     pub showing_placeholder: bool,
+    /// Placeholder run properties (`w:sdtPr/w:rPr`), including `w:sz`.
+    pub run_props: Option<RunProperties>,
+    /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
+    pub end_run_props: Option<RunProperties>,
     /// Source location of the `w:sdt` element.
     pub location: SourceLocation,
 }
@@ -112,6 +132,10 @@ pub struct SdtContainer {
     pub placeholder: Option<Arc<str>>,
     /// Whether the control shows an empty placeholder.
     pub showing_placeholder: bool,
+    /// Placeholder run properties (`w:sdtPr/w:rPr`), including `w:sz`.
+    pub run_props: Option<RunProperties>,
+    /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
+    pub end_run_props: Option<RunProperties>,
     /// Block content when the tag is block-level.
     pub blocks: Vec<Block>,
     /// Inline content when the tag is inline-level.
@@ -130,6 +154,8 @@ impl SdtContainer {
             id: self.id.clone(),
             placeholder: self.placeholder.clone(),
             showing_placeholder: self.showing_placeholder,
+            run_props: self.run_props.clone(),
+            end_run_props: self.end_run_props.clone(),
             location: self.location.clone(),
         }
     }

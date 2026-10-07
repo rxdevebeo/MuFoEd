@@ -475,6 +475,7 @@ pub(crate) fn table_of(planned: &PlannedTable, paragraphs: Vec<Vec<Vec<Paragraph
                 width: Some(Twips(*width)),
             })
             .collect(),
+        grid_change: None,
         rows,
         location: strict_ooxml_core::error::SourceLocation::unknown(),
     }

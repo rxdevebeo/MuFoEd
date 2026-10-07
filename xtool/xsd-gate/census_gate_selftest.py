@@ -253,6 +253,41 @@ def test_named_loss_requires_this_inputs_report() -> None:
         raise SystemExit("named_loss must match when this input's report names Pages")
 
 
+def test_docpr_id_remap_requires_citation() -> None:
+    """TZ-48 waives uniqueness remaps only when the write report cites wp:docPr."""
+    registry = census_gate.load_census()
+    item = next(entry for entry in registry if entry["id"] == "TZ-48")
+    where = "070.docx: word/document.xml"
+    label = "wp:docPr@id"
+    uncited = (
+        "parent=anchor|namespace=wp|parent_namespace=wp|attribute_namespace="
+        "|attr=id|was=37|removed=1|named=1|cited=a:theme,wps:wsp"
+    )
+    cited = (
+        "parent=anchor|namespace=wp|parent_namespace=wp|attribute_namespace="
+        "|attr=id|was=37|removed=1|named=1|cited=a:theme,wp:docPr,wps:wsp"
+    )
+    if census_gate.element_item_matches(item, where, label, uncited):
+        raise SystemExit("TZ-48 must not waive an uncited foreign docPr@id remap")
+    if not census_gate.element_item_matches(item, where, label, cited):
+        raise SystemExit("TZ-48 must match when the write report cites wp:docPr")
+    hits = census_gate.census_hits(
+        registry,
+        {
+            "message": [],
+            "element": [(where, label, uncited)],
+            "extension": [],
+            "dropped": [],
+            "unaccounted": [],
+            "lossy": [],
+            "picture": [],
+            "mce": [],
+        },
+    )
+    if not hits["unclassified_element_changes"]:
+        raise SystemExit("uncited docPr@id remap must stay unclassified (FAIL)")
+
+
 def test_review_negative_controls_stay_unclassified() -> None:
     """The 2026-10-05 controls: unknown settings, DrawingML, and a:left."""
     registry = census_gate.load_census()
@@ -460,6 +495,20 @@ def test_twip_and_point_are_one_measure() -> None:
         raise SystemExit("619 twips must equal 30.95pt")
     if census_gate._same_measure("619", "31pt"):
         raise SystemExit("31pt must stay a different length")
+    if not census_gate._same_measure("18", "17.99999999999983"):
+        raise SystemExit("a float twip that rounds to 18 is the same length")
+    if census_gate._same_measure("3125", "3124"):
+        raise SystemExit("one twip must stay a different length")
+    if not census_gate._same_attr_value("val", "90", "90%", "w", "w"):
+        raise SystemExit("text scale 90 and 90% are one ST_TextScale")
+    if census_gate._same_attr_value("val", "90", "91%", "w", "w"):
+        raise SystemExit("text scale 90 must not match 91%")
+    if census_gate._same_attr_value("val", "90", "90%", "sz", "w"):
+        raise SystemExit("percent spelling is not a half-point size")
+    if not census_gate._same_fiftieths("5000", "100%"):
+        raise SystemExit("5000 fiftieths is 100%")
+    if census_gate._same_fiftieths("5000", "99%"):
+        raise SystemExit("5000 fiftieths is not 99%")
     if not census_gate._same_hex("44546A", "44546a"):
         raise SystemExit("hex colour case is the same value")
     if census_gate._same_hex("44546A", "44546B"):
@@ -541,6 +590,7 @@ def main() -> int:
     test_decide_census_gate_matrix()
     test_context_match_rejects_wrong_parent()
     test_named_loss_requires_this_inputs_report()
+    test_docpr_id_remap_requires_citation()
     test_review_negative_controls_stay_unclassified()
     test_vanished_emits_qualified_context()
     test_one_of_two_same_nodes_is_visible()
@@ -548,6 +598,8 @@ def main() -> int:
     test_xsd_negative_control_still_fails()
     test_unnamed_element_loss_fails_as_ours()
     test_process_choice_inventory_does_not_count_fallback()
+    test_percent_width_keeps_its_type()
+    test_rounded_twip_duplicate_run_and_style()
     print("census_gate_selftest: pass")
     return 0
 
@@ -571,6 +623,96 @@ def test_namespace_identity_cannot_hide_a_change() -> None:
             _docx(output, {"word/document.xml": text})
             if not census_gate.vanished_elements(str(source), str(output), oracle, set()):
                 raise SystemExit("element/parent/attribute namespace change was hidden")
+
+
+def test_percent_width_keeps_its_type() -> None:
+    from types import SimpleNamespace
+
+    oracle = SimpleNamespace(declared={"tblW", "tcW", "gridCol", "document", "body", "tbl", "tblPr", "tblGrid", "tr", "tc", "tcPr", "p"})
+    with tempfile.TemporaryDirectory() as tmp:
+        source, output = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        _docx(source, {"word/document.xml": (
+            f"<w:document xmlns:w='{WML_T}'><w:body><w:tbl><w:tblPr>"
+            "<w:tblW w:w='5000' w:type='pct'/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w='3125'/></w:tblGrid>"
+            "<w:tr><w:tc><w:tcPr><w:tcW w:w='2500' w:type='dxa'/></w:tcPr><w:p/></w:tc></w:tr>"
+            "</w:tbl></w:body></w:document>"
+        )})
+        _docx(output, {"word/document.xml": (
+            f"<w:document xmlns:w='{WML_S}'><w:body><w:tbl><w:tblPr>"
+            "<w:tblW w:w='100%' w:type='pct'/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w='156.25pt'/></w:tblGrid>"
+            "<w:tr><w:tc><w:tcPr><w:tcW w:w='125pt' w:type='dxa'/></w:tcPr><w:p/></w:tc></w:tr>"
+            "</w:tbl></w:body></w:document>"
+        )})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        labels = {label for _part, label, _detail in rows}
+        if any(label in labels for label in ("w:tblW@w", "w:gridCol@w", "w:tcW@w")):
+            raise SystemExit(f"equivalent widths were losses: {rows}")
+        _docx(output, {"word/document.xml": (
+            f"<w:document xmlns:w='{WML_S}'><w:body><w:tbl><w:tblPr>"
+            "<w:tblW w:w='100%' w:type='pct'/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w='3124'/></w:tblGrid>"
+            "<w:tr><w:tc><w:tcPr><w:tcW w:w='100%' w:type='pct'/></w:tcPr><w:p/></w:tc></w:tr>"
+            "</w:tbl></w:body></w:document>"
+        )})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        labels = {label for _part, label, _detail in rows}
+        if "w:gridCol@w" not in labels:
+            raise SystemExit(f"one twip on gridCol must stay visible: {rows}")
+        if "w:tcW@w" not in labels and "w:tcW@type" not in labels:
+            raise SystemExit(f"dxa cell width rewritten as percent must stay visible: {rows}")
+
+
+def test_rounded_twip_duplicate_run_and_style() -> None:
+    from types import SimpleNamespace
+
+    oracle = SimpleNamespace(declared={
+        "document", "body", "p", "pPr", "r", "rPr", "t", "ind", "sz", "szCs",
+        "styles", "style", "spacing",
+    })
+    with tempfile.TemporaryDirectory() as tmp:
+        source, output = Path(tmp) / "in.docx", Path(tmp) / "out.docx"
+        _docx(source, {"word/document.xml": (
+            f"<w:document xmlns:w='{WML_T}'><w:body><w:p><w:pPr>"
+            "<w:ind w:left='71.33333333333312'/></w:pPr>"
+            "<w:r><w:rPr><w:sz w:val='23'/><w:sz w:val='23'/></w:rPr><w:t>A</w:t></w:r>"
+            "</w:p></w:body></w:document>"
+        )})
+        _docx(output, {"word/document.xml": (
+            f"<w:document xmlns:w='{WML_S}'><w:body><w:p><w:pPr>"
+            "<w:ind w:start='71'/></w:pPr>"
+            "<w:r><w:rPr><w:sz w:val='23'/></w:rPr><w:t>A</w:t></w:r>"
+            "</w:p></w:body></w:document>"
+        )})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        labels = {label for _part, label, _detail in rows}
+        if "w:ind@left" in labels or "w:sz" in labels or "w:sz@val" in labels:
+            raise SystemExit(f"rounded indent or duplicate sz was a loss: {rows}")
+        _docx(output, {"word/document.xml": (
+            f"<w:document xmlns:w='{WML_S}'><w:body><w:p><w:pPr>"
+            "<w:ind w:start='72'/></w:pPr>"
+            "<w:r><w:rPr><w:sz w:val='23'/></w:rPr><w:t>A</w:t></w:r>"
+            "</w:p></w:body></w:document>"
+        )})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        labels = {label for _part, label, _detail in rows}
+        if "w:ind@left" not in labels and "w:ind@start" not in labels:
+            raise SystemExit(f"a whole twip of indent must stay visible: {rows}")
+        _docx(source, {"word/styles.xml": (
+            f"<w:styles xmlns:w='{WML_T}'>"
+            "<w:style w:type='paragraph' w:styleId='Heading1'><w:rPr><w:sz w:val='32'/></w:rPr></w:style>"
+            "<w:style w:type='paragraph' w:styleId='Heading1'><w:rPr><w:sz w:val='36'/></w:rPr></w:style>"
+            "</w:styles>"
+        )})
+        _docx(output, {"word/styles.xml": (
+            f"<w:styles xmlns:w='{WML_S}'>"
+            "<w:style w:type='paragraph' w:styleId='Heading1'><w:rPr><w:sz w:val='36'/></w:rPr></w:style>"
+            "</w:styles>"
+        )})
+        rows = census_gate.vanished_elements(str(source), str(output), oracle, set())
+        if any(label == "w:sz@val" for _part, label, _detail in rows):
+            raise SystemExit(f"the earlier duplicate style was a loss: {rows}")
 
 
 if __name__ == "__main__":

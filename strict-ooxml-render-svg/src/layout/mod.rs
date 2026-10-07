@@ -638,7 +638,7 @@ impl LayoutContext<'_> {
                     }
                 }
             }
-            return width;
+            return width * run.char_scale;
         }
         let mut total = 0.0;
         let mut prev = None;
@@ -658,7 +658,7 @@ impl LayoutContext<'_> {
                 prev = Some(ch);
             }
         }
-        total * size_px + extra
+        (total * size_px + extra) * run.char_scale
     }
 
     /// Advance kind [`Self::measure`] currently produces for `text`.

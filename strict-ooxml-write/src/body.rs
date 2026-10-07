@@ -7,7 +7,10 @@ use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
 use strict_ooxml_wml::model::values::{BreakKind, Space, Twips, WidthKind};
 
 use crate::ctx::Ctx;
-use crate::props::{cell_properties, paragraph_properties, row_properties, table_properties};
+use crate::props::{
+    cell_properties, paragraph_properties, row_exception, row_properties, run_properties,
+    table_properties,
+};
 use crate::xml::{WriteError, XmlWriter};
 
 /// Checks the model against the writer's block-nesting budget.
@@ -468,13 +471,27 @@ pub fn table_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &Table) {
     // widest row's cells; a table with rows but zero columns is never left
     // without `w:tblGrid` by this branch.
     let grid = synthesize_grid(table);
-    if !grid.is_empty() {
+    if !grid.is_empty() || table.grid_change.is_some() {
         xml.start("w:tblGrid");
         for column in &grid {
             match column {
                 Some(width) => xml.empty_attr_w("w:gridCol", "w", width.0),
                 None => xml.empty("w:gridCol"),
             }
+        }
+        // `CT_TblGrid` puts `w:tblGridChange` after the live `w:gridCol`s.
+        if let Some(change) = &table.grid_change {
+            xml.start("w:tblGridChange");
+            xml.attr_w("id", change.id);
+            xml.start("w:tblGrid");
+            for column in &change.grid {
+                match column.width {
+                    Some(width) => xml.empty_attr_w("w:gridCol", "w", width.0),
+                    None => xml.empty("w:gridCol"),
+                }
+            }
+            xml.end();
+            xml.end();
         }
         xml.end();
     }
@@ -504,6 +521,7 @@ pub fn table_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &Table) {
 /// Writes one `w:tr`, re-wrapping cell-level content controls (AUD-41).
 fn table_row_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, row: &TableRow) {
     xml.start("w:tr");
+    row_exception(xml, &row.props);
     row_properties(xml, &row.props);
     let mut index = 0;
     while index < row.cells.len() {
@@ -548,6 +566,10 @@ fn write_sdt_around(
 ) {
     xml.start("w:sdt");
     xml.start("w:sdtPr");
+    // `CT_SdtPr` puts `w:rPr` ahead of alias/tag/id.
+    if let Some(run_props) = &sdt.run_props {
+        run_properties(xml, run_props);
+    }
     if let Some(alias) = sdt.alias.as_deref() {
         xml.empty_attr_w("w:alias", "val", alias);
     }
@@ -569,6 +591,11 @@ fn write_sdt_around(
         xml.empty("w:showingPlcHdr");
     }
     xml.end(); // sdtPr
+    if let Some(end_props) = &sdt.end_run_props {
+        xml.start("w:sdtEndPr");
+        run_properties(xml, end_props);
+        xml.end();
+    }
     xml.start("w:sdtContent");
     content(xml);
     xml.end();
@@ -695,6 +722,8 @@ mod tests {
             id: Some("42".into()),
             placeholder: None,
             showing_placeholder: false,
+            run_props: None,
+            end_run_props: None,
             blocks: vec![Block::Paragraph(text_paragraph("inside", Space::Default))],
             inlines: Vec::new(),
             location: location(),
@@ -730,6 +759,8 @@ mod tests {
             id: None,
             placeholder: Some("DefaultPlaceholder".into()),
             showing_placeholder: true,
+            run_props: None,
+            end_run_props: None,
             blocks: Vec::new(),
             inlines: Vec::new(),
             location: location(),
@@ -781,6 +812,7 @@ mod tests {
         let table = Table {
             props: TableProperties::default(),
             grid: Vec::new(),
+            grid_change: None,
             rows: vec![
                 row(vec![
                     cell_with_span(Some(2), None),
@@ -813,6 +845,7 @@ mod tests {
         let table = Table {
             props: TableProperties::default(),
             grid: Vec::new(),
+            grid_change: None,
             rows: vec![row(vec![
                 cell_with_span(None, Some(1000)),
                 cell_with_span(None, Some(2000)),
@@ -831,6 +864,7 @@ mod tests {
             grid: vec![GridCol {
                 width: Some(Twips(720)),
             }],
+            grid_change: None,
             rows: vec![row(vec![cell_with_span(Some(5), None)])],
             location: location(),
         };
@@ -844,6 +878,7 @@ mod tests {
         let table = Table {
             props: TableProperties::default(),
             grid: Vec::new(),
+            grid_change: None,
             rows: Vec::new(),
             location: location(),
         };

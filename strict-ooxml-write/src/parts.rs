@@ -183,6 +183,15 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
             "tblPr" if style.style_type == StyleType::Table => {
                 table_properties(xml, &style.table);
             }
+            "tblStylePr" => {
+                for condition in &style.conditions {
+                    xml.start("w:tblStylePr");
+                    xml.attr_w("type", condition.kind.as_ref());
+                    paragraph_properties(ctx, xml, &condition.paragraph, None);
+                    run_properties(xml, &condition.run);
+                    xml.end();
+                }
+            }
             _ => {}
         }
     }
@@ -1436,6 +1445,7 @@ mod tests {
                 size: Some(strict_ooxml_wml::model::values::HalfPoints(32)),
                 ..RunProperties::default()
             },
+            conditions: Vec::new(),
             based_on_chain: Vec::new(),
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         });
@@ -1478,7 +1488,8 @@ mod tests {
                     }),
                     ..RunProperties::default()
                 },
-                based_on_chain: Vec::new(),
+                conditions: Vec::new(),
+            based_on_chain: Vec::new(),
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             });
         }
@@ -1513,6 +1524,7 @@ mod tests {
                 }),
                 ..RunProperties::default()
             },
+            conditions: Vec::new(),
             based_on_chain: Vec::new(),
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         });

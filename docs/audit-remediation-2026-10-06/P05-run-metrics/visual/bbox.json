@@ -1,0 +1,29 @@
+{
+  "package": "P5",
+  "tol_px": 0.25,
+  "observed_max_delta_px": 0.0,
+  "svg": "visual/rm0090-page1.svg",
+  "T-P5-4_synthetic": {
+    "pass": true,
+    "scale_dpi": 96,
+    "half_points_24_size_px": 16.0,
+    "space_after_240_twips_delta_px": 16.0,
+    "char_scale_50_over_100_width_ratio": 0.5,
+    "full_width_px": 54.71875,
+    "scaled_width_px": 27.359375
+  },
+  "T-P5-4_rm0090": {
+    "pass": true,
+    "document": "RM0090 16-23 Справочное руководство по STM32F4xx.docx",
+    "paragraph": "16 Контроллер LCD-TFT (LTDC)",
+    "scale_dpi": 96,
+    "sz_half_points": 48,
+    "size_px": 32.0,
+    "width_px": 143.953125,
+    "next_heading": "16.1",
+    "next_sz_half_points": 34,
+    "next_size_px": 22.666666666666668,
+    "baseline_gap_px": 85.212890625,
+    "spacing": "after 240 twips and before 360 twips collapse to max = 24 px, plus the line boxes"
+  }
+}

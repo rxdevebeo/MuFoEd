@@ -34,20 +34,29 @@
     "T-P2-4-negative": true
   },
   "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "slice unmatched_schema=1182 (inherited producer/schema messages with no registry item); also unclassified_element_changes=1875. Not caused by A/B/C package-label residuals.",
+  "slice_unclassified_element_changes": 1875,
   "full_census_exit": "NOT_RUN",
   "missing": 0,
-  "unmatched_schema": 0,
+  "unmatched_schema": 1182,
+  "unmatched_schema_note": "Package-field unmatched_schema is the census slice total (1182), not 'schema-clean for A/B/C'. corpus_slice_exit=1 is driven by this inherited slice debt (and/or unclassified inventory), not by P2–P4 label residuals.",
   "ours": 0,
   "visual": {
     "T-P2-4": true,
     "T-P2-4-negative": true,
-    "artifact": "visual/bbox.json"
+    "artifact": "visual/bbox.json",
+    "tol_px": 0.75,
+    "observed_max_delta_px": 0.0
   },
+  "visual_tol_px": 0.75,
+  "visual_svg_trees": "untracked local artifacts; JSON bbox/placement proof is committed",
+  "tz_items": [],
   "notes": [
     "Primary loss was lc:lockedCanvas / a:grpSp trees dropped as Graphic::Other.",
     "Locked canvas is captured as Strict markup (Graphic::LockedCanvas).",
     "Witness-slice A_placement residual rows after fix: 0.",
-    "SoftUni unique media: 1 VML/AC-only PNG absent (SHA bag); remaps follow content digest (P10 residual)."
+    "SoftUni unique media: 1 VML/AC-only PNG absent (SHA bag); remaps follow content digest (P10 residual).",
+    "Visual structural tol=0.75 px (not WPS 0.25); observed pairs on 070 were 0.0."
   ],
   "declared_transforms": []
 }

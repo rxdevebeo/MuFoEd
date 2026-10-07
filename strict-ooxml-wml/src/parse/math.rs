@@ -721,34 +721,6 @@ fn argument_list(
     Ok(arguments)
 }
 
-/// Parses the single optional property element (`m:*Pr`) of a construct.
-///
-/// The property element is consumed *completely* (its start element, its
-/// children and its end tag), so the caller's loop resumes at the next sibling
-/// of the enclosing construct. A producer that repeats the element gets the
-/// first one parsed and the rest recorded as `Partial`.
-fn parse_properties(
-    parser: &mut PartParser<'_>,
-    element: &str,
-    mut skip_children: impl FnMut(&mut PartParser<'_>) -> Result<()>,
-) -> Result<()> {
-    loop {
-        match parser.next_event()? {
-            XmlEvent::StartElement { name, .. } => {
-                if name.local() == element {
-                    return skip_children(parser);
-                }
-                parser.skip_element()?;
-            }
-            // The property element is optional: the enclosing construct ends
-            // here, so there is nothing to parse.
-            XmlEvent::EndElement { .. } => return Ok(()),
-            XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-            XmlEvent::Eof => return Err(parser.invalid(format!("unexpected end of m:{element}"))),
-        }
-    }
-}
-
 /// Parses `m:f` (its start element has been consumed).
 fn parse_fraction(
     parser: &mut PartParser<'_>,
@@ -964,9 +936,7 @@ fn parse_script(
                     }
                     let local = name.local();
                     if local == property {
-                        parse_properties(parser, property, |parser| {
-                            parse_control_only(parser, &mut control)
-                        })?;
+                        parse_control_only(parser, &mut control)?;
                     } else if with_base && local == "e" {
                         arguments.push(required_argument(parser, scope)?);
                     } else if local == first || local == second {
@@ -1495,11 +1465,7 @@ fn parse_limit(
                         continue;
                     }
                     match name.local() {
-                        local if local == property => {
-                            parse_properties(parser, property, |parser| {
-                                parse_control_only(parser, &mut control)
-                            })?;
-                        }
+                        local if local == property => parse_control_only(parser, &mut control)?,
                         "e" => base = required_argument(parser, scope)?,
                         "lim" => limit = required_argument(parser, scope)?,
                         other => {

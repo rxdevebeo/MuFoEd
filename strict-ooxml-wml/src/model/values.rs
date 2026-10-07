@@ -686,10 +686,14 @@ pub struct Spacing {
     pub line: Option<Twips>,
     /// Line-spacing rule.
     pub line_rule: Option<LineSpacingRule>,
-    /// Space after the last line of a paragraph matching the next paragraph.
-    pub after_autospacing: bool,
-    /// Space before the first line of a paragraph matching the previous.
-    pub before_autospacing: bool,
+    /// Space before, in hundredths of a line (`w:beforeLines`).
+    pub before_lines: Option<i32>,
+    /// Space after, in hundredths of a line (`w:afterLines`).
+    pub after_lines: Option<i32>,
+    /// `w:afterAutospacing`. `None` means the attribute was absent.
+    pub after_autospacing: Option<bool>,
+    /// `w:beforeAutospacing`. `None` means the attribute was absent.
+    pub before_autospacing: Option<bool>,
 }
 
 /// Paragraph indentation (`w:ind`), direction-neutral.

@@ -310,14 +310,19 @@ impl<'a> Ctx<'a> {
     ///
     /// The id is only a uniqueness key. Reusing the source value keeps the
     /// drawing identity; a collision takes the next free id instead.
-    pub fn reserve_doc_pr_id(&mut self, id: u32) -> u32 {
+    ///
+    /// Returns `(id, remapped)`. `remapped` is true only when the requested id
+    /// could not be kept (zero or already used in this part). Callers must cite
+    /// `wp:docPr` on remap so census `TZ-48` can waive uniqueness rewrites —
+    /// a silent foreign remap without that citation stays unclassified.
+    pub fn reserve_doc_pr_id(&mut self, id: u32) -> (u32, bool) {
         if id == 0 || !self.used_doc_pr_ids.insert(id) {
-            return self.next_doc_pr_id();
+            return (self.next_doc_pr_id(), true);
         }
         if self.next_doc_pr_id <= id {
             self.next_doc_pr_id = id.saturating_add(1);
         }
-        id
+        (id, false)
     }
 
     /// Records a construct that could not be written at all.

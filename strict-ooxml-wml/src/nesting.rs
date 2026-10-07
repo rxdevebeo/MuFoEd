@@ -265,6 +265,7 @@ mod tests {
         Block::Table(Table {
             props: TableProperties::default(),
             grid: Vec::new(),
+            grid_change: None,
             rows: vec![TableRow {
                 props: RowProperties::default(),
                 cells: vec![TableCell {

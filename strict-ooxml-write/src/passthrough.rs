@@ -1170,6 +1170,7 @@ mod tests {
         let blocks = vec![Block::Table(Table {
             props: Default::default(),
             grid: Vec::new(),
+            grid_change: None,
             rows: vec![TableRow {
                 props: Default::default(),
                 cells: vec![TableCell {

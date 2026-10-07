@@ -464,6 +464,7 @@ fn invalid_xml_chars_are_reported_and_output_parses() {
         grid: vec![GridCol {
             width: Some(strict_ooxml_wml::model::values::Twips(1440)),
         }],
+        grid_change: None,
         rows: vec![TableRow {
             props: Default::default(),
             cells: vec![TableCell {
@@ -486,6 +487,8 @@ fn invalid_xml_chars_are_reported_and_output_parses() {
                 id: None,
                 placeholder: None,
                 showing_placeholder: false,
+                run_props: None,
+                end_run_props: None,
                 location: unknown.clone(),
             }),
             location: unknown.clone(),
@@ -509,6 +512,7 @@ fn invalid_xml_chars_are_reported_and_output_parses() {
         table: Default::default(),
         paragraph: Default::default(),
         run: Default::default(),
+        conditions: Vec::new(),
         based_on_chain: Vec::new(),
         location: unknown,
     });

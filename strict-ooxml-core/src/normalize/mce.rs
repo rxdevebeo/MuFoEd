@@ -283,7 +283,7 @@ pub(crate) fn record(
 /// `mc:AlternateContent` in the source.
 ///
 /// Appending would defer the Choice until after surrounding end tags were
-/// already written — SoftUni's `wp:positionV` wrapped in `Requires="wp14"`
+/// already written — `SoftUni` `wp:positionV` wrapped in `Requires="wp14"`
 /// then landed after `</wp:anchor></w:drawing>`, and the floating frame lost
 /// its page offset.
 pub(crate) fn queue(content: Vec<Event<'static>>, buffered: &mut VecDeque<Event<'static>>) {

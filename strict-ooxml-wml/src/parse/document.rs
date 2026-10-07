@@ -14,7 +14,7 @@ use crate::model::inline::{
     Bookmark, BookmarkId, CommentId, Directional, DirectionalKind, DirectionalVal, Field,
     FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent, Symbol, TextNode,
 };
-use crate::model::props::{ParagraphProperties, Section};
+use crate::model::props::{ParagraphProperties, RunProperties, Section};
 use crate::model::revision::{Revision, RevisionKind};
 use crate::model::support::SupportStatus;
 use crate::model::values::{BreakKind, FieldCharType, Rsids, Space};
@@ -25,6 +25,23 @@ use super::{
     attr_in_ns, feature_id_for, is_wml, parse_u32, val_attr, wml_attr, PartParser, MCE_NS, W14_NS,
     XML_NS,
 };
+
+/// Fields of `w:sdtPr` the model keeps.
+#[derive(Default)]
+pub(crate) struct ParsedSdtPr {
+    /// `w:tag`.
+    pub tag: Option<Arc<str>>,
+    /// `w:alias`.
+    pub alias: Option<Arc<str>>,
+    /// `w:id`.
+    pub id: Option<Arc<str>>,
+    /// `w:placeholder/w:docPart`.
+    pub placeholder: Option<Arc<str>>,
+    /// `w:showingPlcHdr`.
+    pub showing_placeholder: bool,
+    /// `w:rPr` of the placeholder, including half-point `w:sz`.
+    pub run_props: Option<RunProperties>,
+}
 
 impl PartParser<'_> {
     /// Parses the `w:document` root and its `w:body`.
@@ -910,6 +927,8 @@ impl PartParser<'_> {
             let mut id = None;
             let mut placeholder = None;
             let mut showing_placeholder = false;
+            let mut run_props = None;
+            let mut end_run_props = None;
             let mut blocks = Vec::new();
             let mut inlines = Vec::new();
             loop {
@@ -923,12 +942,14 @@ impl PartParser<'_> {
                         match name.local() {
                             "sdtPr" => {
                                 let props = parser.parse_sdt_properties()?;
-                                tag = props.0.or(tag);
-                                alias = props.1.or(alias);
-                                id = props.2.or(id);
-                                placeholder = props.3.or(placeholder);
-                                showing_placeholder |= props.4;
+                                tag = props.tag.or(tag);
+                                alias = props.alias.or(alias);
+                                id = props.id.or(id);
+                                placeholder = props.placeholder.or(placeholder);
+                                showing_placeholder |= props.showing_placeholder;
+                                run_props = props.run_props.or(run_props);
                             }
+                            "sdtEndPr" => end_run_props = parser.parse_sdt_end_properties()?,
                             "sdtContent" => {
                                 if is_block {
                                     let mut found = parser.parse_block_children()?;
@@ -954,6 +975,8 @@ impl PartParser<'_> {
                 id,
                 placeholder,
                 showing_placeholder,
+                run_props,
+                end_run_props,
                 blocks,
                 inlines,
                 location,
@@ -961,40 +984,52 @@ impl PartParser<'_> {
         })
     }
 
-    /// Parses `w:sdtPr`, returning `(tag, alias, id, placeholder, showing)`.
-    pub(crate) fn parse_sdt_properties(
-        &mut self,
-    ) -> Result<(
-        Option<Arc<str>>,
-        Option<Arc<str>>,
-        Option<Arc<str>>,
-        Option<Arc<str>>,
-        bool,
-    )> {
+    /// Parses `w:sdtEndPr`, which holds the end marker's `w:rPr`.
+    fn parse_sdt_end_properties(&mut self) -> Result<Option<crate::model::props::RunProperties>> {
         self.nested(|parser| {
-            let mut tag = None;
-            let mut alias = None;
-            let mut id = None;
-            let mut placeholder = None;
-            let mut showing = false;
+            let mut props = None;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, .. } => {
+                        if is_wml(&name) && name.local() == "rPr" {
+                            props = Some(parser.parse_run_properties()?);
+                        } else {
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => {
+                        return Err(parser.invalid("unexpected end of structured document end"))
+                    }
+                }
+            }
+            Ok(props)
+        })
+    }
+
+    /// Parses `w:sdtPr`.
+    pub(crate) fn parse_sdt_properties(&mut self) -> Result<ParsedSdtPr> {
+        self.nested(|parser| {
+            let mut parsed = ParsedSdtPr::default();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         match name.local() {
                             "tag" => {
-                                tag = val_attr(&attrs).map(|value| parser.intern(value));
+                                parsed.tag = val_attr(&attrs).map(|value| parser.intern(value));
                                 parser.skip_element()?;
                             }
                             "alias" => {
-                                alias = val_attr(&attrs).map(|value| parser.intern(value));
+                                parsed.alias = val_attr(&attrs).map(|value| parser.intern(value));
                                 parser.skip_element()?;
                             }
                             "id" => {
-                                id = val_attr(&attrs).map(|value| parser.intern(value));
+                                parsed.id = val_attr(&attrs).map(|value| parser.intern(value));
                                 parser.skip_element()?;
                             }
                             "showingPlcHdr" => {
-                                showing = true;
+                                parsed.showing_placeholder = true;
                                 parser.skip_element()?;
                             }
                             "placeholder" => {
@@ -1005,7 +1040,10 @@ impl PartParser<'_> {
                                 // reader actually asked for. Absent a `w:docPart`
                                 // value, there is nothing to carry and the field
                                 // stays `None`.
-                                placeholder = parser.parse_sdt_placeholder()?;
+                                parsed.placeholder = parser.parse_sdt_placeholder()?;
+                            }
+                            "rPr" => {
+                                parsed.run_props = Some(parser.parse_run_properties()?);
                             }
                             _ => parser.skip_element()?,
                         }
@@ -1015,7 +1053,7 @@ impl PartParser<'_> {
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of sdt properties")),
                 }
             }
-            Ok((tag, alias, id, placeholder, showing))
+            Ok(parsed)
         })
     }
 
