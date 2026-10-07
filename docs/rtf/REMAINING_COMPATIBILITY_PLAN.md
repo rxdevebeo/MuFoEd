@@ -118,16 +118,17 @@ resolved faces, shaping и DrawingML geometry. Для каждого совпа�
 проверяет `pdf.font.no_glyph` без ложного `pdf.font.missing`. Добавлен per-feature
 счётчик с bounded map (4096 имён, до 128 UTF-8 bytes каждое) и unattributed
 overflow totals. Текущий [rc01-loss-ledger.json](rc01-loss-ledger.json) обновлён
-после `9d934c0`:
-249,734 Loss, 95 Info, 456 feature names; суммы сходятся по каждому файлу. До
+после `ee0b012`:
+208,166 Loss, 95 Info, 455 feature names; суммы сходятся по каждому файлу. До
 RC02 было 1,327,900 Loss/459 features; `\\ab`, `\\ai`, `\\afs` сняли ровно
 350,991 событий; mapping определённых `\\af` снял ещё 274,969, а 48 ссылок на
 несуществующие definitions получили точные `undefined-font:*` labels. Mapping
 `\\lang`/`\\langnp` и `\\langfe`/`\\langfenp` снизил остаток на 178,013 Loss;
-script-font selector mapping снял ещё 274,193 события. Неизвестные LCID и
+script-font selector mapping снял ещё 274,193 события; `\\alang` снял ещё
+41,568 generic Loss при сохранении неизвестных LCID как Loss. Неизвестные LCID и
 неподдержанный `\\fcs` class остаются явными Loss. У четырёх документов
 усечён только retained detail stream; feature counters не усечены. Namespace
-`control:*` теперь даёт 205,950 loss events. Подтверждён общий parser fallback для
+`control:*` теперь даёт 164,380 loss events. Подтверждён общий parser fallback для
 unhandled control words (`parser.rs:2494`), но влияние каждого слова на вывод ещё
 не установлено. Ранжирование ledger задаёт triage, а не диагноз. Backlog остаётся
 unreviewed.
@@ -153,10 +154,14 @@ WML run fields `bCs`, `iCs`, `szCs`. `\\af` разрешается в East Asian
 `\\loch`, `\\hich`, `\\dbch`, `\\rtlch`/`\\ltrch` и `\\fcs0/1` выбирают WML font
 slot; последующие `\\f`/`\\af` обновляют этот slot, а group scope восстанавливается.
 Fixtures покрывают ASCII, High-ANSI, East-Asian, complex-script, unknown `\\fcs`
-и import → write → reopen. В корпусе осталось 249,734 Loss при 100/100
-text/resource Pass. Pagination — 62/100, pixels — 3/100; page counts прежние,
-три PDF hashes изменились. Это не полная визуальная приёмка. Следующий приоритет:
-`\\alang`, `\\fcharset` и font-table modifiers. Font registry, единый resolved face и
+и import → write → reopen. `\\alang` записывается в WML `bidi` language slot; LCID
+1093 сохраняется как `bn-IN`, неизвестные 1024 и 255 остаются Loss. В корпусе
+осталось 208,166 Loss при 100/100 text/resource Pass. Pagination — 62/100,
+pixels — 3/100; после этого mapping page counts и PDF hashes прежние. Это не
+полная визуальная приёмка. Следующий приоритет — 758 Loss по font-table theme
+selectors `\\fbimajor/minor`, `\\fdbmajor/minor`, `\\fhimajor/minor`,
+`\\flomajor/minor` и `\\fbidis`. `\\fcharset` и `\\fprq` уже читаются в font table.
+Font registry, единый resolved face и
 embedding остаются открытой частью RC02.
 
 Использовать shared face/shaping API после RC00. Определить один resolved face
