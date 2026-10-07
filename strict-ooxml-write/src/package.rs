@@ -597,7 +597,7 @@ pub fn write_package(
         };
         let source_base = header_footer.part.as_str().rsplit('/').next().unwrap_or("");
         let name = if source_base.starts_with(role)
-            && source_base.ends_with(".xml")
+            && ends_with_ignore_case(source_base, ".xml")
             && used_hf_names.insert(source_base.to_owned())
         {
             source_base.to_owned()
@@ -1242,6 +1242,15 @@ fn digest_of(bytes: &[u8]) -> [u8; 32] {
     out
 }
 
+/// Whether `name` ends with `suffix`, ignoring ASCII case.
+///
+/// OPC part names compare case-insensitively (ISO/IEC 29500-2 §9.1.1.1). Not
+/// `Path::extension`: `/_rels/.rels` has no extension to it.
+fn ends_with_ignore_case(name: &str, suffix: &str) -> bool {
+    name.len() >= suffix.len()
+        && name.as_bytes()[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix.as_bytes())
+}
+
 /// A package part whose bytes the census compares as a resource.
 ///
 /// XML, relationships and VML are compared as markup. A trailing slash is a
@@ -1251,8 +1260,9 @@ fn is_binary_resource(name: &str) -> bool {
     if name.is_empty() || name.ends_with('/') {
         return false;
     }
-    let lower = name.to_ascii_lowercase();
-    !lower.ends_with(".xml") && !lower.ends_with(".rels") && !lower.ends_with(".vml")
+    ![".xml", ".rels", ".vml"]
+        .iter()
+        .any(|suffix| ends_with_ignore_case(name, suffix))
 }
 
 /// `original` when it is free, otherwise `/word/media/preservedN.ext`.

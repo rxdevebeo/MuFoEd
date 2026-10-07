@@ -633,9 +633,7 @@ impl LayoutContext<'_> {
                             * size_px
                             * (1.0 - factor);
                     }
-                    if !ch.is_whitespace() {
-                        prev = Some(ch);
-                    } else if factor > 0.0 {
+                    if !ch.is_whitespace() || factor > 0.0 {
                         prev = Some(ch);
                     }
                 }
@@ -649,9 +647,7 @@ impl LayoutContext<'_> {
             let factor =
                 crate::style::compressed_char_factor(prev, ch, next, compress, plain_space_factor);
             total += self.font.advance_em(&family, ch, run.bold, run.italic) * factor;
-            if !ch.is_whitespace() {
-                prev = Some(ch);
-            } else if factor > 0.0 {
+            if !ch.is_whitespace() || factor > 0.0 {
                 prev = Some(ch);
             }
         }

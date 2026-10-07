@@ -626,7 +626,9 @@ pub(crate) fn declare_style(document: &mut Document) {
     use strict_ooxml_core::error::SourceLocation;
     #[cfg(feature = "raster")]
     use strict_ooxml_wml::model::ids::StyleId;
-    use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties, TableProperties};
+    use strict_ooxml_wml::model::props::{
+        CellProperties, ParagraphProperties, RowProperties, RunProperties, TableProperties,
+    };
     use strict_ooxml_wml::model::styles::Style;
     use strict_ooxml_wml::model::values::{StyleType, TableLook};
     document.styles.insert(Style {
@@ -649,8 +651,8 @@ pub(crate) fn declare_style(document: &mut Document) {
             look: Some(TableLook::default()),
             ..TableProperties::default()
         },
-        row: Default::default(),
-        cell: Default::default(),
+        row: RowProperties::default(),
+        cell: CellProperties::default(),
         paragraph: ParagraphProperties::default(),
         run: RunProperties::default(),
         conditions: Vec::new(),

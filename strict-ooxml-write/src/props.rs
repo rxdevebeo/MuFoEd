@@ -544,6 +544,7 @@ fn shading_element(xml: &mut XmlWriter, shading: &Shading) {
 }
 
 /// Attribute name set for a theme-colour triple on `CT_Color` / `CT_Shd` / `CT_Border`.
+#[derive(Clone, Copy)]
 enum ThemeAttrNames {
     Color,
     Fill,

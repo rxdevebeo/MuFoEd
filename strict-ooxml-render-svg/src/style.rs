@@ -309,7 +309,7 @@ fn border_pad_pt(border: Option<&Border>) -> f64 {
         return 0.0;
     };
     match border.style {
-        None | Some(BorderStyle::Nil) | Some(BorderStyle::None) => return 0.0,
+        None | Some(BorderStyle::Nil | BorderStyle::None) => return 0.0,
         Some(_) => {}
     }
     let space = f64::from(border.space.unwrap_or(0));
@@ -490,7 +490,7 @@ pub fn spacing_px(run: &ComputedRun, size_px: f64) -> f64 {
 pub fn compress_punctuation(control: Option<&str>) -> bool {
     matches!(
         control,
-        Some("compressPunctuation") | Some("compressPunctuationAndJapaneseKana")
+        Some("compressPunctuation" | "compressPunctuationAndJapaneseKana")
     )
 }
 

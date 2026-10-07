@@ -417,7 +417,8 @@ fn shape_paths(shape: &Shape, w: f64, h: f64) -> Vec<String> {
 fn fill_color(ctx: &LayoutContext<'_>, fill: &ShapeFill) -> Option<String> {
     let theme = ctx.document.theme.as_ref();
     match fill {
-        ShapeFill::None => None,
+        // A picture fill paints the picture, not a colour.
+        ShapeFill::None | ShapeFill::Blip { .. } => None,
         ShapeFill::Solid { color } => resolve_shape_color(theme, color),
         ShapeFill::Gradient { stops, .. } => stops
             .first()
@@ -425,7 +426,6 @@ fn fill_color(ctx: &LayoutContext<'_>, fill: &ShapeFill) -> Option<String> {
         ShapeFill::Pattern { foreground, .. } => foreground
             .as_ref()
             .and_then(|color| resolve_shape_color(theme, color)),
-        ShapeFill::Blip { .. } => None,
     }
 }
 
