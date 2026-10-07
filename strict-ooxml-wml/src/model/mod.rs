@@ -5,6 +5,7 @@
 //! constructs are preserved as opaque nodes (ADR-0004, STAGE-2 §6).
 
 pub mod block;
+pub mod chart;
 pub mod document;
 pub mod drawing;
 pub mod fonts;
@@ -25,6 +26,7 @@ pub use block::{
     AltChunkInfo, Block, GridCol, OpaqueBlock, Paragraph, SdtContainer, SdtProperties, Table,
     TableCell, TableRow,
 };
+pub use chart::{BarGrouping, ChartData, ChartKind, ChartSeries, LegendPosition};
 pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{
     AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,

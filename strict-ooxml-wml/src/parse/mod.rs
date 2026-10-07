@@ -8,6 +8,7 @@
 
 mod depth;
 
+pub mod chart;
 pub mod dispatch;
 pub mod document;
 pub mod drawing;
@@ -728,6 +729,8 @@ pub(crate) struct PartParser<'a> {
     pub(crate) capture_body_section: bool,
     /// Body-level `w:sectPr` captured while `capture_body_section` is set.
     pub(crate) body_section: Option<Section>,
+    /// Chart parts already read for this part's `c:chart` references.
+    pub(crate) charts: chart::ChartCache,
 }
 
 impl<'a> PartParser<'a> {
@@ -758,6 +761,7 @@ impl<'a> PartParser<'a> {
             section_gutter_at_top: false,
             capture_body_section: false,
             body_section: None,
+            charts: chart::ChartCache::new(limits),
         })
     }
 

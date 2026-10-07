@@ -81,11 +81,13 @@ pub(crate) fn graphic_items(
         Graphic::Picture(picture) => picture_items(ctx, picture, None, x, y, w, h),
         Graphic::Shape(shape) => shape_items(ctx, shape, x, y, w, h),
         Graphic::Group(group) => group_items(ctx, group, x, y, w, h),
-        Graphic::None
-        | Graphic::Chart(_)
-        | Graphic::Diagram(_)
-        | Graphic::LockedCanvas(_)
-        | Graphic::Other => {
+        // A chart is drawn from the cache the parser read out of its part; one
+        // whose part could not be read keeps the placeholder.
+        Graphic::Chart(refs) => match refs.chart.as_deref() {
+            Some(chart) => crate::paint::chart::chart_items(ctx, chart, x, y, w, h),
+            None => vec![placeholder(x, y, w, h)],
+        },
+        Graphic::None | Graphic::Diagram(_) | Graphic::LockedCanvas(_) | Graphic::Other => {
             vec![placeholder(x, y, w, h)]
         }
     }

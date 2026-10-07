@@ -580,7 +580,12 @@ impl PartParser<'_> {
         if name.local() == "chart" {
             // The attributes of *this* element, not of the `a:graphicData` that
             // carries it: `r:id` is where the chart part is named.
-            let graphic = Graphic::Chart(self.foreign_refs(attrs, &[R_ID]));
+            let mut refs = self.foreign_refs(attrs, &[R_ID]);
+            if let Some(rel_id) = refs.rels.first().cloned() {
+                let location = refs.location.clone();
+                refs.chart = self.chart_for(&rel_id, &location);
+            }
+            let graphic = Graphic::Chart(refs);
             self.skip_element()?;
             return Ok(Some(graphic));
         }
@@ -668,6 +673,7 @@ impl PartParser<'_> {
         }
         ForeignRefs {
             rels,
+            chart: None,
             location: self.location(),
         }
     }

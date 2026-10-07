@@ -15,7 +15,8 @@ const DEFAULT_IMAGE_PX: f64 = 96.0;
 /// Builds an [`ImageItem`] for an inline drawing.
 ///
 /// A supported inline raster picture resolves to its media part. Any other
-/// *picture-shaped* inline drawing with a declared extent — a chart, a diagram,
+/// *picture-shaped* inline drawing with a declared extent — a chart without
+/// readable cached data, a diagram,
 /// EMF/WMF, a missing blip — is reserved as a placeholder of that size: Stage 4
 /// cannot rasterize it, but reserving the extent keeps pagination aligned with
 /// the producer (S4F.6). An inline *shape or group* is not an image at all: it
@@ -36,6 +37,8 @@ pub(crate) fn layout_inline_image(
         Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_) | Graphic::Other => {
             return None
         }
+        // A chart whose cached data was read is drawn, not reserved.
+        Graphic::Chart(refs) if refs.chart.is_some() => return None,
         Graphic::None | Graphic::Picture(_) | Graphic::Chart(_) | Graphic::Diagram(_) => {}
     }
     let picture = inline.picture();

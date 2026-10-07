@@ -413,9 +413,10 @@ pub struct GroupShape {
 /// order.
 ///
 /// The parts behind those ids — the chart, the four SmartArt parts, whatever an
-/// embedded workbook hangs off — are **not** in the model: they are a producer's
-/// own XML, and modelling them would be modelling DrawingML charts. What the
-/// model owes a consumer is the reference itself, because a `c:chart` element
+/// embedded workbook hangs off — are **not** in the model as markup: they are a
+/// producer's own XML. A chart's cached values are read into
+/// [`chart`](Self::chart) so it can be drawn, but what the model owes a writer is
+/// the reference itself, because a `c:chart` element
 /// whose `r:id` points at nothing is unreadable content, and one that was
 /// silently rewritten into a picture is a lie.
 ///
@@ -427,6 +428,13 @@ pub struct ForeignRefs {
     /// The ids, in the order the element carries them: one for `c:chart`
     /// (`r:id`), four for `dgm:relIds` (`r:dm`, `r:lo`, `r:qs`, `r:cs`).
     pub rels: Vec<Arc<str>>,
+    /// Cached data of the chart part a `c:chart` points at, when it could be
+    /// read (see [`crate::model::chart`]). Always `None` for a diagram, for an
+    /// id that resolves to nothing and for a chart part that failed to parse.
+    ///
+    /// Shared behind an [`Arc`] so the drawing stays small and a chart part
+    /// referenced twice is parsed once.
+    pub chart: Option<Arc<crate::model::chart::ChartData>>,
     /// Source location of the element that carried them.
     pub location: SourceLocation,
 }
