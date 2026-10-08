@@ -3,7 +3,9 @@ use crate::{EditError, EditLimits};
 use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
-use strict_ooxml_wml::model::{Block, Document, Inline, Paragraph, ParagraphProperties, RunContent};
+use strict_ooxml_wml::model::{
+    Block, Document, Inline, Paragraph, ParagraphProperties, RunContent,
+};
 
 use super::address::{descend_mut, drawing_mut, mutate_story, paragraph_mut, run_mut, Story};
 use super::command::Edit;

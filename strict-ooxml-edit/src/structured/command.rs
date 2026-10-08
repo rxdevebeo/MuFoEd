@@ -24,7 +24,7 @@ pub struct EditFailure {
 }
 impl EditFailure {
     /// A failure of the batch as a whole.
-    fn batch(error: EditError) -> Self {
+    pub(super) fn batch(error: EditError) -> Self {
         Self {
             command: None,
             address: None,
