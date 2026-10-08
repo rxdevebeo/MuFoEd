@@ -1127,6 +1127,26 @@ fn copy_attributes(
             key.rsplit(':').next().unwrap_or(&key).to_owned()
         })
         .collect();
+    // A declaration this tag rewrites to its Strict URI binds that URI to the
+    // producer's prefix before any attribute is rewritten. Otherwise an
+    // attribute written before its own declaration (`<ax:ocx r:id=".."
+    // xmlns:r="..2006/relationships">`, CC0/099) asks for the Strict URI while
+    // the table still holds the Transitional one, and gets a minted `n2`
+    // prefix that nothing declares.
+    for attribute in start.attributes().flatten() {
+        let key = attribute.key.as_ref();
+        let Some(prefix) = key.strip_prefix(b"xmlns:") else {
+            continue;
+        };
+        let Ok(value) = attribute.normalized_value(context.xml_version) else {
+            continue;
+        };
+        let target =
+            map_uri(&value).or_else(|| repair_legacy_package_uri(&value).map(str::to_owned));
+        if let Some(strict) = target {
+            context.remember_prefix(prefix.to_vec(), strict);
+        }
+    }
     for attribute in start.attributes().flatten() {
         if drop_w_val && attribute.key.as_ref().ends_with(b":val") {
             continue;
@@ -2808,6 +2828,25 @@ mod tests {
     const TRANSITIONAL: &str = r#"<?xml version="1.0"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>"#;
+
+    /// An attribute written before its own namespace declaration keeps the
+    /// producer's prefix (`CC0/099`'s `word/activeX/activeX1.xml` came out
+    /// with an undeclared minted `n2:id`).
+    #[test]
+    fn an_attribute_before_its_declaration_keeps_its_prefix() {
+        let input = br#"<ax:ocx ax:classid="{D27CDB6E}" r:id="rId1" xmlns:ax="http://schemas.microsoft.com/office/2006/activeX" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let output = normalizer
+            .normalize(&PartId::new("/word/activeX/activeX1.xml"), input)
+            .expect("normalize");
+        let xml = String::from_utf8(output.to_vec()).expect("utf8");
+        assert!(xml.contains(r#"r:id="rId1""#), "{xml}");
+        assert!(
+            xml.contains(r#"xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships""#),
+            "{xml}"
+        );
+        assert!(!xml.contains("n2:"), "no undeclared minted prefix: {xml}");
+    }
 
     /// A part whose root is in an extension namespace keeps its root, so the
     /// normalized part is still a well-formed document (`CC0_DOCX_1/065`'s
