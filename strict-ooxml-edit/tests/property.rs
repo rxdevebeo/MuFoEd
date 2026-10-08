@@ -13,9 +13,9 @@
 
 use proptest::prelude::*;
 use strict_ooxml_core::opc::{OpenOptions, Package};
-use strict_ooxml_edit::{Address, Edit, EditLimits, Editor, FormatPatch, Story};
+use strict_ooxml_edit::{Address, ChangeSet, Edit, EditLimits, Editor, FormatPatch, Story};
 use strict_ooxml_testkit::DocxBuilder;
-use strict_ooxml_wml::model::{Document, TriState};
+use strict_ooxml_wml::model::{Block, Document, TriState};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
 const BODY: &str = concat!(
@@ -139,6 +139,27 @@ fn resolve(editor: &Editor<'_>, step: &Step) -> Edit {
     }
 }
 
+/// Whether every body block outside `change.blocks` is the block that stood
+/// in its place before, shifted by the changes in front of it.
+fn untouched_blocks_kept(before: &[Block], after: &[Block], change: &ChangeSet) -> bool {
+    let mut ranges: Vec<_> = change
+        .blocks
+        .iter()
+        .filter(|block| block.story == Story::Body)
+        .collect();
+    ranges.sort_by_key(|block| block.range.start);
+    let (mut now, mut then) = (0, 0);
+    for block in ranges {
+        let gap = block.range.start - now;
+        if after.get(now..block.range.start) != before.get(then..then + gap) {
+            return false;
+        }
+        now = block.range.end;
+        then += gap + block.replaced;
+    }
+    after.get(now..) == before.get(then..)
+}
+
 /// The whole model, as one comparable value.
 fn snapshot(document: &Document) -> String {
     format!("{document:?}")
@@ -159,10 +180,15 @@ proptest! {
         for chunk in steps.chunks(batch) {
             let edits: Vec<Edit> = chunk.iter().map(|step| resolve(&editor, step)).collect();
             let before = snapshot(editor.document());
+            let body = editor.document().body.blocks.clone();
             let revision = editor.revision();
             match editor.transact_detailed(revision, &edits) {
                 Ok(change) => {
                     prop_assert!(editor.validate().is_ok(), "accepted {edits:?} left an invalid model");
+                    prop_assert!(
+                        untouched_blocks_kept(&body, &editor.document().body.blocks, &change),
+                        "{:?} misses a changed block", change.blocks
+                    );
                     if change.invalidate_layout {
                         prop_assert_eq!(editor.revision(), revision + 1);
                         accepted += 1;
@@ -181,8 +207,13 @@ proptest! {
         }
         let result = snapshot(editor.document());
         for _ in 0..accepted {
+            let body = editor.document().body.blocks.clone();
             let revision = editor.revision();
-            prop_assert!(editor.undo(revision).is_ok());
+            let change = editor.undo(revision);
+            prop_assert!(change.is_ok());
+            if let Ok(change) = change {
+                prop_assert!(untouched_blocks_kept(&body, &editor.document().body.blocks, &change));
+            }
         }
         prop_assert_eq!(snapshot(editor.document()), original.clone(), "undo all");
         for _ in 0..accepted {

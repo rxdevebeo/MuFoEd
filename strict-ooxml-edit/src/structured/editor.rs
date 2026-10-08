@@ -1,5 +1,5 @@
 //! The editor: revisions, transactions and the undo/redo history.
-use crate::{ChangeSet, EditError, EditLimits};
+use crate::{BlockChange, ChangeSet, EditError, EditLimits};
 use std::collections::VecDeque;
 use strict_ooxml_wml::model::{Block, Document, ParaId, Paragraph};
 
@@ -168,7 +168,7 @@ impl<'a> Editor<'a> {
             return Err(EditFailure::batch(error));
         }
         if patches.iter().all(|patch| patch.before == patch.after) {
-            return Ok(self.changes(false));
+            return Ok(self.changes(Vec::new()));
         }
         let Some(next) = self.revision.checked_add(1) else {
             restore(self.document, &patches);
@@ -178,8 +178,9 @@ impl<'a> Editor<'a> {
             restore(self.document, &patches);
             return Err(EditFailure::batch(EditError::LimitExceeded));
         }
+        let blocks = forward(&patches);
         self.record(Change::Blocks(patches), bytes, next);
-        Ok(self.changes(true))
+        Ok(self.changes(blocks))
     }
     /// The transaction on a copy of the whole document, with note references
     /// given notes of their own.
@@ -195,7 +196,7 @@ impl<'a> Editor<'a> {
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
         validate(&candidate).map_err(EditFailure::batch)?;
         if same_content(self.document, &candidate) {
-            return Ok(self.changes(false));
+            return Ok(self.changes(Vec::new()));
         }
         let next = self
             .revision
@@ -206,6 +207,7 @@ impl<'a> Editor<'a> {
             return Err(EditFailure::batch(EditError::LimitExceeded));
         }
         let before = std::mem::replace(&mut *self.document, candidate);
+        let blocks = whole_story_changes(&before, self.document);
         self.notes_settled = true;
         self.record(
             Change::Whole {
@@ -215,7 +217,7 @@ impl<'a> Editor<'a> {
             bytes,
             next,
         );
-        Ok(self.changes(true))
+        Ok(self.changes(blocks))
     }
     /// Keeps `change` as the newest undo state and moves to `next`.
     fn record(&mut self, change: Change, bytes: usize, next: u64) {
@@ -250,18 +252,22 @@ impl<'a> Editor<'a> {
             .checked_add(1)
             .ok_or(EditError::LimitExceeded)?;
         let snapshot = self.undo.pop_back().ok_or(EditError::EmptyHistory)?;
-        match &snapshot.change {
-            Change::Blocks(patches) => restore(self.document, patches),
-            Change::Whole { before, .. } => {
+        let blocks = match &snapshot.change {
+            Change::Blocks(patches) => {
+                restore(self.document, patches);
+                backward(patches)
+            }
+            Change::Whole { before, after } => {
                 // The state before may share notes again.
                 self.document.clone_from(before);
                 self.notes_settled = has_no_notes(self.document);
+                whole_story_changes(after, self.document)
             }
-        }
+        };
         self.redo.push(snapshot);
         self.revision = next;
         self.support_stale = true;
-        Ok(self.changes(true))
+        Ok(self.changes(blocks))
     }
     /// Redo one transaction.
     pub fn redo(&mut self, revision: u64) -> Result<ChangeSet, EditError> {
@@ -274,17 +280,21 @@ impl<'a> Editor<'a> {
             .checked_add(1)
             .ok_or(EditError::LimitExceeded)?;
         let snapshot = self.redo.pop().ok_or(EditError::EmptyHistory)?;
-        match &snapshot.change {
-            Change::Blocks(patches) => reapply(self.document, patches),
-            Change::Whole { after, .. } => {
+        let blocks = match &snapshot.change {
+            Change::Blocks(patches) => {
+                reapply(self.document, patches);
+                forward(patches)
+            }
+            Change::Whole { before, after } => {
                 self.document.clone_from(after);
                 self.notes_settled = true;
+                whole_story_changes(before, self.document)
             }
-        }
+        };
         self.undo.push_back(snapshot);
         self.revision = next;
         self.support_stale = true;
-        Ok(self.changes(true))
+        Ok(self.changes(blocks))
     }
     fn check(&self, revision: u64) -> Result<(), EditError> {
         if self.revision == revision {
@@ -303,9 +313,11 @@ impl<'a> Editor<'a> {
             }
         }
     }
-    fn changes(&self, changed: bool) -> ChangeSet {
+    fn changes(&self, blocks: Vec<BlockChange>) -> ChangeSet {
+        let changed = !blocks.is_empty();
         ChangeSet {
             revision: self.revision,
+            blocks,
             paragraphs: if changed {
                 (0..self.document.body.blocks.len()).collect()
             } else {
@@ -412,6 +424,116 @@ fn inspect(patches: &[Patch]) -> (usize, bool) {
         notes |= text.contains("FootnoteRef(") || text.contains("EndnoteRef(");
     }
     (bytes, notes)
+}
+/// The block changes of `patches`, applied oldest first.
+fn forward(patches: &[Patch]) -> Vec<BlockChange> {
+    let mut changes = Vec::new();
+    for patch in patches {
+        fold(
+            &mut changes,
+            &patch.story,
+            patch.start,
+            patch.before.len(),
+            patch.after.len(),
+        );
+    }
+    finish(changes)
+}
+/// The block changes of undoing `patches`, newest first.
+fn backward(patches: &[Patch]) -> Vec<BlockChange> {
+    let mut changes = Vec::new();
+    for patch in patches.iter().rev() {
+        fold(
+            &mut changes,
+            &patch.story,
+            patch.start,
+            patch.after.len(),
+            patch.before.len(),
+        );
+    }
+    finish(changes)
+}
+/// Folds one replacement - `removed` blocks at `start` became `added` - into
+/// `changes`, which are kept disjoint and in the coordinates after it.
+///
+/// A change that overlaps or touches the replaced range is absorbed: the
+/// merged range covers both, and its `replaced` counts the original blocks
+/// under it - the blocks no earlier change touched, one for one, plus what
+/// each absorbed change replaced.
+fn fold(
+    changes: &mut Vec<BlockChange>,
+    story: &Story,
+    start: usize,
+    removed: usize,
+    added: usize,
+) {
+    let end = start + removed;
+    let (mut low, mut high) = (start, end);
+    let (mut current, mut original) = (0_usize, 0_usize);
+    let mut kept = Vec::with_capacity(changes.len() + 1);
+    for change in changes.drain(..) {
+        if change.story != *story || change.range.end < start {
+            kept.push(change);
+        } else if change.range.start > end {
+            let range = (change.range.start - removed + added)..(change.range.end - removed + added);
+            kept.push(BlockChange { range, ..change });
+        } else {
+            low = low.min(change.range.start);
+            high = high.max(change.range.end);
+            current += change.range.len();
+            original += change.replaced;
+        }
+    }
+    let span = high - low;
+    kept.push(BlockChange {
+        story: story.clone(),
+        range: low..(low + span - removed + added),
+        replaced: span - current + original,
+    });
+    *changes = kept;
+}
+/// `changes`, ordered by start within each story.
+fn finish(mut changes: Vec<BlockChange>) -> Vec<BlockChange> {
+    changes.sort_by_key(|change| change.range.start);
+    changes
+}
+/// Every story of `after` as one change, against its length in `before`.
+fn whole_story_changes(before: &Document, after: &Document) -> Vec<BlockChange> {
+    let length = |document: &Document, story: &Story| -> usize {
+        match story {
+            Story::Body => document.body.blocks.len(),
+            Story::HeaderFooter(part) => document
+                .headers_footers
+                .iter()
+                .find(|header| &header.part == part)
+                .map_or(0, |header| header.blocks.len()),
+            Story::Footnote(id) => document
+                .footnotes
+                .get(*id)
+                .map_or(0, |note| note.blocks.len()),
+            Story::Endnote(id) => document
+                .endnotes
+                .get(*id)
+                .map_or(0, |note| note.blocks.len()),
+        }
+    };
+    let mut stories = vec![Story::Body];
+    stories.extend(
+        after
+            .headers_footers
+            .iter()
+            .map(|header| Story::HeaderFooter(header.part.clone())),
+    );
+    stories.extend(after.footnotes.iter().map(|note| Story::Footnote(note.id)));
+    stories.extend(after.endnotes.iter().map(|note| Story::Endnote(note.id)));
+    stories
+        .into_iter()
+        .map(|story| BlockChange {
+            range: 0..length(after, &story),
+            replaced: length(before, &story),
+            story,
+        })
+        .collect()
 }
 /// Whether the document has no footnotes or endnotes for references to share.
 fn has_no_notes(document: &Document) -> bool {

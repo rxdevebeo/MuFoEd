@@ -134,16 +134,35 @@ impl Default for EditLimits {
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 /// Describes changed logical blocks, without inventing physical page numbers.
 pub struct ChangeSet {
     /// Revision after the operation.
     pub revision: u64,
-    /// Sorted changed body block indices.
+    /// Sorted changed body block indices. [`Editor`] lists every body block
+    /// whenever anything changed; [`blocks`](Self::blocks) is the precise form.
     pub paragraphs: Vec<usize>,
+    /// The top-level block ranges that changed, in every story, in the
+    /// coordinates after the operation; ordered by start within each story.
+    /// Blocks outside them are the same blocks as before, shifted by the
+    /// changes in front of them.
+    pub blocks: Vec<BlockChange>,
     /// Consumers must recalculate layout for these changes.
     pub invalidate_layout: bool,
     /// Parser support metadata is no longer current.
     pub invalidate_support: bool,
+}
+/// One contiguous range of a story's top-level blocks that an operation
+/// replaced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockChange {
+    /// The story the blocks belong to.
+    pub story: Story,
+    /// The range in the document after the operation.
+    pub range: Range<usize>,
+    /// How many blocks stood there before; it differs from `range.len()` where
+    /// blocks were inserted or removed.
+    pub replaced: usize,
 }
 /// Exclusive borrow prevents untracked changes while history is active.
 ///
