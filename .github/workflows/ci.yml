@@ -414,29 +414,41 @@ jobs:
         run: |
           cargo +nightly llvm-cov -p strict-ooxml-core --all-features --locked --branch \
             --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
-            --fail-under-lines 85 --json --summary-only \
+            --json --summary-only \
             --output-path target/cov-ci-branch/core-branch.json
+          # Both floors are judged here, after both numbers are printed: a
+          # failed --fail-under-lines inside cargo-llvm-cov stopped the step
+          # without saying by how much (CI #55).
           python - <<'PY'
           import json,sys
-          t=json.load(open("target/cov-ci-branch/core-branch.json"))["data"][0]["totals"]["branches"]
-          c,n=t.get("covered",0),t.get("count",0)
-          pct=(100.0*c/n) if n else 0.0
-          print(f"core branches {c}/{n} = {pct:.4f}%")
-          sys.exit(0 if pct+1e-9>=70.0 else 1)
+          totals=json.load(open("target/cov-ci-branch/core-branch.json"))["data"][0]["totals"]
+          def pct(kind):
+              t=totals[kind]; c,n=t.get("covered",0),t.get("count",0)
+              return c,n,(100.0*c/n) if n else 0.0
+          lc,ln,lines=pct("lines"); bc,bn,branches=pct("branches")
+          print(f"core lines {lc}/{ln} = {lines:.4f}% (floor 85)")
+          print(f"core branches {bc}/{bn} = {branches:.4f}% (floor 70)")
+          sys.exit(0 if lines+1e-9>=85.0 and branches+1e-9>=70.0 else 1)
           PY
       - name: Branch coverage (wml ≥70%)
         run: |
           cargo +nightly llvm-cov -p strict-ooxml-wml --all-features --locked --branch \
             --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
-            --fail-under-lines 85 --json --summary-only \
+            --json --summary-only \
             --output-path target/cov-ci-branch/wml-branch.json
+          # Both floors are judged here, after both numbers are printed: a
+          # failed --fail-under-lines inside cargo-llvm-cov stopped the step
+          # without saying by how much (CI #55).
           python - <<'PY'
           import json,sys
-          t=json.load(open("target/cov-ci-branch/wml-branch.json"))["data"][0]["totals"]["branches"]
-          c,n=t.get("covered",0),t.get("count",0)
-          pct=(100.0*c/n) if n else 0.0
-          print(f"wml branches {c}/{n} = {pct:.4f}%")
-          sys.exit(0 if pct+1e-9>=70.0 else 1)
+          totals=json.load(open("target/cov-ci-branch/wml-branch.json"))["data"][0]["totals"]
+          def pct(kind):
+              t=totals[kind]; c,n=t.get("covered",0),t.get("count",0)
+              return c,n,(100.0*c/n) if n else 0.0
+          lc,ln,lines=pct("lines"); bc,bn,branches=pct("branches")
+          print(f"wml lines {lc}/{ln} = {lines:.4f}% (floor 85)")
+          print(f"wml branches {bc}/{bn} = {branches:.4f}% (floor 70)")
+          sys.exit(0 if lines+1e-9>=85.0 and branches+1e-9>=70.0 else 1)
           PY
 
   corpus-full:
