@@ -305,6 +305,22 @@ _TBL_LOOK = (
 )
 
 
+_WML_STRICT = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+
+
+def _text_boxes(element: etree._Element) -> list[etree._Element]:
+    """The outermost `w:txbxContent` under `element`, in document order."""
+    found: list[etree._Element] = []
+    for child in element:
+        if not isinstance(child.tag, str):
+            continue
+        if etree.QName(child).localname == "txbxContent":
+            found.append(child)
+        else:
+            found.extend(_text_boxes(child))
+    return found
+
+
 def _table_look(element: etree._Element) -> list[str]:
     """`w:tblLook` as its six flags, whether written as a hex `val` or as attributes."""
     flags: dict[str, bool] = {}
@@ -393,6 +409,15 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
             chunks.append(f"<{namespace} tblLook")
             chunks.append(" ".join(_table_look(element)))
             return
+        # A drawing counts by the text of its text boxes. VML becomes DrawingML
+        # (T7) and its geometry, locks and extensions are attribute and element
+        # rows of this part; the header's identity is what it says.
+        if local in {"pict", "drawing"} and namespace == _WML_STRICT:
+            chunks.append(f"<{namespace} drawing")
+            for box in _text_boxes(element):
+                for child in box:
+                    walk(child, chunks)
+            return
         # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
         pct = any(
             etree.QName(key).localname == "type" and value == "pct"
@@ -421,19 +446,22 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
             name = _DIRECTION_ATTRS.get(name, name)
             attributes.append(f"{attr_ns} {name}={value}")
         children = [child for child in element if isinstance(child.tag, str)]
-        # An empty property bag says nothing; the writer leaves it out.
-        if qname.localname in property_bags and not attributes and not children:
+        if qname.localname in property_bags:
+            children.sort(key=lambda child: etree.QName(child).localname)
+        inner: list[str] = []
+        for child in children:
+            walk(child, inner)
+        text = (element.text or "").strip()
+        # An empty property bag says nothing - also once its nil borders are
+        # gone; the writer leaves it out.
+        if qname.localname in property_bags and not attributes and not inner and not text:
             return
         chunks.append(f"<{namespace} {local}")
         if attributes:
             chunks.append(" ".join(sorted(attributes)))
-        text = (element.text or "").strip()
         if text:
             chunks.append(text)
-        if qname.localname in property_bags:
-            children.sort(key=lambda child: etree.QName(child).localname)
-        for child in children:
-            walk(child, chunks)
+        chunks.extend(inner)
 
     chunks: list[str] = []
     walk(root, chunks)

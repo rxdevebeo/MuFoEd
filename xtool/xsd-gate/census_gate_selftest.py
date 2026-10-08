@@ -699,6 +699,22 @@ def test_p12_header_digest_ignores_the_strict_spellings() -> None:
     banded = table_written.replace(b'w:noHBand="0"', b'w:noHBand="1"')
     if census_gate._semantic_part_digest(table_source) == census_gate._semantic_part_digest(banded):
         raise SystemExit("a different table look matched")
+    vml = (
+        f'<w:hdr xmlns:w="{transitional}" xmlns:v="urn:schemas-microsoft-com:vml"><w:p><w:r><w:pict>'
+        f'<v:shape style="position:absolute"><v:textbox><w:txbxContent><w:p><w:r><w:t>Logo</w:t>'
+        f"</w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p></w:hdr>"
+    ).encode()
+    dml = (
+        f'<w:hdr xmlns:w="{strict}" xmlns:wp="http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing">'
+        f"<w:p><w:r><w:drawing><wp:anchor><wp:txbx><w:txbxContent><w:p><w:r><w:t>Logo</w:t></w:r></w:p>"
+        f"</w:txbxContent></wp:txbx></wp:anchor></w:drawing></w:r></w:p></w:hdr>"
+    ).encode()
+    if census_gate._semantic_part_digest(vml) != census_gate._semantic_part_digest(dml):
+        raise SystemExit("a VML text box converted to DrawingML was a different header")
+    if census_gate._semantic_part_digest(vml) == census_gate._semantic_part_digest(
+        dml.replace(b"Logo", b"Other")
+    ):
+        raise SystemExit("a text box with different text matched")
     moved = written.replace(b'w:start="6pt"', b'w:start="7pt"')
     if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(moved):
         raise SystemExit("a different indent matched")
