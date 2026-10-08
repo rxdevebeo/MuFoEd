@@ -282,7 +282,7 @@ fn t_p9_object_defaults_keep_the_def_rpr_faces_and_the_rest_of_the_element() {
 
 /// The jinja2-demo construct, built here so it runs everywhere: a numbering
 /// level whose `w:rPr` carries two `w:rFonts`, the second adding only
-/// `w:cs="OpenSymbol"` (LibreOffice writes bullets this way). The bullet's
+/// `w:cs="OpenSymbol"` (`LibreOffice` writes bullets this way). The bullet's
 /// Symbol faces and the second element's complex-script face must all survive.
 #[test]
 fn t_p9_numbering_second_rfonts_keeps_both_faces_synthetic() {

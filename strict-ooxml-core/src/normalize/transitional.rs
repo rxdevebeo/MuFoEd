@@ -4286,7 +4286,7 @@ mod tests {
         );
     }
 
-    /// AUD-100: LibreOffice writes both spellings; renaming `val` must not
+    /// AUD-100: `LibreOffice` writes both spellings; renaming `val` must not
     /// duplicate `characterSet`.
     #[allow(clippy::doc_markdown)]
     #[test]

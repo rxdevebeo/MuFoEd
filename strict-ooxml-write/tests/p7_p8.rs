@@ -1,7 +1,7 @@
 //! P7–P8: theme colours and explicit colours survive a Strict rewrite.
 //!
 //! Positive controls keep `themeColor`/`themeTint`/`themeShade`, `themeFill*`,
-//! hex `w:color/@val`, and DrawingML `a:schemeClr/@val`. Negative controls
+//! hex `w:color/@val`, and `DrawingML` `a:schemeClr/@val`. Negative controls
 //! change one slot or one hex digit and require the written package to show
 //! that change. Lexical theme drop at the same hex is not equivalence (plan §8).
 
@@ -219,7 +219,7 @@ fn t_p7_3_accent_slot_change_is_visible() {
 /// Contoso-template styles (CC0/023): themeColor / themeFill token counts survive a Strict rewrite.
 ///
 /// Counts are substring occurrences in `word/styles.xml` (themeFill includes
-/// themeFillTint/Shade), matching the P7 receipt note (1277 / 784).
+/// `themeFillTint`/`themeFillShade`), matching the P7 receipt note (1277 / 784).
 #[test]
 fn t_p7_contoso_styles_theme_token_counts_match_source() {
     // CC0/023 is built on the same style template as the local Contoso guide

@@ -1,6 +1,6 @@
 //! AUD-20 / ADR-0015: OPC URIs in written packages match the corpus oracle.
 //!
-//! Values are taken from Word/LibreOffice Strict packages on disk, not from
+//! Values are taken from Word/`LibreOffice` Strict packages on disk, not from
 //! our registry. A drift between the writer and the files means we invented a
 //! URI the standard does not use.
 
