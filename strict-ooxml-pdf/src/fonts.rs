@@ -385,9 +385,7 @@ impl PdfFont {
     /// The codes this reader can turn into characters, for diagnostics.
     #[must_use]
     pub fn mapped_codes(&self) -> usize {
-        self.to_unicode
-            .len()
-            .saturating_add(self.differences.len())
+        self.to_unicode.len().saturating_add(self.differences.len())
     }
 }
 
@@ -599,9 +597,7 @@ fn read_to_unicode(
     // is for a caller to read.
     let mut reported_invalid = false;
     while let Some(found) = text.get(cursor..).and_then(|rest| rest.find("begin")) {
-        let tag_start = cursor
-            .saturating_add(found)
-            .saturating_add("begin".len());
+        let tag_start = cursor.saturating_add(found).saturating_add("begin".len());
         let after_begin = text.get(tag_start..).unwrap_or_default();
         let (tag, section_start) = if after_begin.starts_with("bfchar") {
             ("bfchar", tag_start.saturating_add("bfchar".len()))

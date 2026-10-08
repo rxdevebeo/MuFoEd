@@ -240,7 +240,10 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
         while bytes.get(end).is_some_and(|&byte| is_regular(byte)) {
             end = end.saturating_add(1);
         }
-        return Some((Value::Name(bytes.get(index.saturating_add(1)..end)?.to_vec()), end));
+        return Some((
+            Value::Name(bytes.get(index.saturating_add(1)..end)?.to_vec()),
+            end,
+        ));
     }
     if first == b'[' {
         // Skip array values we do not need (e.g. Decode).

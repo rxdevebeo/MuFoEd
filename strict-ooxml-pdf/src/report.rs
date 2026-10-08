@@ -89,9 +89,7 @@ impl ReadReport {
             entry.count = entry.count.saturating_add(loss.count);
         }
         self.unmapped_glyphs = self.unmapped_glyphs.saturating_add(other.unmapped_glyphs);
-        self.estimated_widths = self
-            .estimated_widths
-            .saturating_add(other.estimated_widths);
+        self.estimated_widths = self.estimated_widths.saturating_add(other.estimated_widths);
     }
 
     /// The losses, ordered by id then detail.

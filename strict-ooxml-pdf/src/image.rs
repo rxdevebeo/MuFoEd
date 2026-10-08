@@ -721,8 +721,10 @@ impl hayro_jbig2::Decoder for Jbig2Luma8 {
 
     fn push_pixel_chunk(&mut self, black: bool, chunk_count: u32) {
         let byte = if black { 0x00 } else { 0xFF };
-        self.output
-            .extend(std::iter::repeat_n(byte, (chunk_count as usize).saturating_mul(8)));
+        self.output.extend(std::iter::repeat_n(
+            byte,
+            (chunk_count as usize).saturating_mul(8),
+        ));
     }
 
     fn next_line(&mut self) {}
