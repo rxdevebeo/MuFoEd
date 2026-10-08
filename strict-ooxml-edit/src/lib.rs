@@ -1,4 +1,17 @@
 //! Transactional editing over the existing WML document. See `docs/EDITING_PLAN.md`.
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable
+    )
+)]
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::ops::Range;
 use strict_ooxml_wml::model::{

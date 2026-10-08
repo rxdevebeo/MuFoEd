@@ -18,6 +18,19 @@
 //! and until one exists a *page* cannot be sent to a model - only the images a
 //! page already carries. That is why [`FigureClassifier`] is usable today and
 //! [`TextRecovery`] is a trait with no producer: see `O-3` and `O-11`.
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable
+    )
+)]
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]

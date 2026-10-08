@@ -568,9 +568,9 @@ fn fold(chars: &[char], sensitive: bool) -> (Vec<char>, Vec<Option<usize>>) {
                 keys.push(lower);
                 boundaries.push(None);
             }
-            *boundaries
-                .last_mut()
-                .expect("each lowercase emits a character") = Some(index + 1);
+            if let Some(last) = boundaries.last_mut() {
+                *last = Some(index + 1);
+            }
         }
     }
     (keys, boundaries)

@@ -282,7 +282,7 @@ fn read_line(reader: &mut impl BufRead) -> std::io::Result<LineRead> {
     let mut out = Vec::new();
     // One extra byte past the ceiling so a line that fills the take without a
     // newline is distinguishable from a legal line that ends exactly at 8 KiB.
-    let mut limited = reader.take(u64::try_from(MAX_LINE_BYTES + 1).expect("line cap fits u64"));
+    let mut limited = reader.take(u64::try_from(MAX_LINE_BYTES + 1).unwrap_or(u64::MAX));
     let read = limited.read_until(b'\n', &mut out)?;
     if read == 0 {
         return Ok(LineRead::Eof);

@@ -1435,7 +1435,8 @@ fn apply_substitute_width_reflow(
     // gaps by the following run's factor so later origins stay consistent.
     let snapshot: Vec<(f64, f64)> = items.iter().map(|item| (item.x, item.width)).collect();
     let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by(|a, b| snapshot[*a].0.partial_cmp(&snapshot[*b].0).unwrap());
+    // `total_cmp`: a NaN origin from hostile metrics must not abort the sort.
+    order.sort_by(|a, b| snapshot[*a].0.total_cmp(&snapshot[*b].0));
     let mut cursor = origin;
     let mut prev_right = origin;
     for &idx in &order {

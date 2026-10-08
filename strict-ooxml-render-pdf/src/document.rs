@@ -213,9 +213,11 @@ pub fn render_with_source(
             {
                 let mut xobjects = resources.x_objects();
                 for (part, (id, _)) in &objects.images {
-                    let name = image_names.get(part).unwrap_or_else(|| {
-                        panic!("{} was named before it was drawn", part.as_str())
-                    });
+                    // Every drawn image was named first; an unnamed one is
+                    // never referenced from a content stream, so skip it.
+                    let Some(name) = image_names.get(part) else {
+                        continue;
+                    };
                     xobjects.pair(Name(name.as_bytes()), *id);
                 }
             }
@@ -571,11 +573,12 @@ impl PageWriter<'_> {
             self.report.record_placeholder(&image.alt);
             return;
         }
-        let name = self
-            .names
-            .get(part)
-            .unwrap_or_else(|| panic!("{} was named before it was drawn", part.as_str()))
-            .clone();
+        // Images are named before drawing; one that was not degrades to a
+        // placeholder instead of a dangling resource reference.
+        let Some(name) = self.names.get(part).cloned() else {
+            self.report.record_placeholder(&image.alt);
+            return;
+        };
         self.images.insert(part.clone(), name.clone());
         self.content.save_state();
         self.content.transform([

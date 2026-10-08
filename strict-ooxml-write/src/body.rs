@@ -125,9 +125,12 @@ pub fn paragraph_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &Par
 fn write_inlines_with_revisions(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inlines: &[Inline]) {
     let mut index = 0;
     while index < inlines.len() {
-        match &inlines[index] {
-            Inline::Run(run) if run.revision.is_some() => {
-                let revision = run.revision.as_ref().expect("checked");
+        let revision = match &inlines[index] {
+            Inline::Run(run) => run.revision.as_ref(),
+            _ => None,
+        };
+        match revision {
+            Some(revision) => {
                 let start = index;
                 index += 1;
                 while index < inlines.len() {
@@ -151,8 +154,8 @@ fn write_inlines_with_revisions(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inlines:
                 }
                 xml.end();
             }
-            other => {
-                inline_item(ctx, xml, other);
+            None => {
+                inline_item(ctx, xml, &inlines[index]);
                 index += 1;
             }
         }

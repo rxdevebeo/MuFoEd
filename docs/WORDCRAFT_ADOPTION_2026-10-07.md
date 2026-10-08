@@ -3,6 +3,7 @@
 **Источник:** [storytold/wordcraft](https://github.com/storytold/wordcraft) (clean-room Word на Rust; см. также `AGENTS.md` в том репо).  
 **Дата:** 2026-10-07  
 **Контекст:** заметки после обзора; не ADR и не обязательство внедрять сразу.  
+**Обновлено:** 2026-10-08 — сверено с кодом после слияния `task/hardening-2026-10-07`; план §5 принят к реализации (ветка `task/never-crash-2026-10-08`).  
 **Связано у нас:** `docs/fuzz-protocol.md`, `docs/core-limits-audit.md`, workspace lints в корневом `Cargo.toml`, property-тесты `*_never_panic*`.
 
 WordCraft — редактор с UX-паритетом Word. StrictLib — Strict OOXML write/render с доказательной приёмкой (census, inventory). Цели разные; ниже только то, что полезно **нам**.
@@ -15,8 +16,8 @@ WordCraft — редактор с UX-паритетом Word. StrictLib — Stri
 
 | Идея WordCraft | Как применить в StrictLib | Не путать с |
 |---|---|---|
-| Слои: семантика → layout (display list) → draw | Явно держать модель/write отдельно от пагинации и от SVG/PDF/raster. Один layout — несколько бэкендов. | Census/Strict identity пакета — **другая ось**, layout её не заменяет |
-| Font resolve: metric-compatible substitutes + Windows ascent/descent | Для `render-svg` / `render-pdf`: Carlito↔Calibri, Caladea↔Cambria, Liberation; линия как у Word | Не бандлить проприетарные шрифты; не подменять identity embedded fonts в write |
+| Слои: семантика → layout (display list) → draw | **Уже в основном так:** `render-pdf` не раскладывает сам, а берёт `place_pages` и `layout::{RectItem, LineItem, ImageItem, …}` из `render-svg`. Осталось оформить display list как явный модуль/API, а не набор реэкспортов. | Census/Strict identity пакета — **другая ось**, layout её не заменяет |
+| Font resolve: metric-compatible substitutes + Windows ascent/descent | **Таблица подстановок уже есть** (`render-svg/src/font/family.rs`, `render-pdf/src/font.rs`: Carlito, Caladea, Liberation). Не хватает теста метрик строки (ascent/descent/line gap как у Word). | Не бандлить проприетарные шрифты; не подменять identity embedded fonts в write |
 | PDF: selectable text, subset fonts, JPEG passthrough, tagged (best effort) | Сверять с нашим PDF-пайплайном; не ломать text extraction ради «красивой картинки» | Их `krilla`-стек не обязан быть нашим |
 | Честная метрика «команды ≠ глубина» | Для визуала: отдельно % inventory cleared vs реальная pixel/layout fidelity | Их `parity.md` (кнопки ленты) нам не подходит |
 
@@ -87,15 +88,35 @@ WordCraft — редактор с UX-паритетом Word. StrictLib — Stri
 5. Рекурсия (стили, numbering, DrawingML): явный max depth → `Err` / degrade.
 6. Новый публичный API — `Result`; «ещё не умеем» ≠ panic.
 
-**Постепенный clippy (не big-bang):**
+**Clippy-запрет (сделано 2026-10-08, сразу на весь workspace).** Замер показал, что
+вне `#[cfg(test)]` оставалось всего 17 мест с `unwrap`/`expect`/`panic!`/`unreachable!`,
+поэтому поэтапность не понадобилась. Во всех библиотечных корнях и в `main.rs` CLI/view:
 
-```toml
-# сначала на crate roots write / render-pdf / render-svg / cli entry:
-# #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-# затем подтянуть wml/core после зачистки
+```rust
+#![cfg_attr(not(test), deny(
+    clippy::unwrap_used, clippy::expect_used, clippy::panic,
+    clippy::todo, clippy::unimplemented, clippy::unreachable
+))]
 ```
 
-Workspace сейчас `missing_panics_doc = "allow"` — не отменяет запрет паник в коде.
+`not(test)` оставляет `unwrap` в unit-тестах; интеграционные тесты — отдельные
+крейты, на них атрибут не действует. Исключения — только точечный `#[allow(…, reason = "…")]`
+(сейчас один: `fidelity::GatePolicy::shared`, тестовый гейт без политики обязан остановиться).
+Вне запрета: `strict-ooxml-testkit`, `xtool`.
+
+Найденное при зачистке: `partial_cmp(..).unwrap()` в сортировке глифов
+(`render-svg/src/layout/paragraph.rs`) паниковал на NaN-координате из враждебных метрик —
+заменён на `total_cmp`.
+
+Workspace `missing_panics_doc = "allow"` — не отменяет запрет паник в коде.
+
+**Что clippy-запрет не ловит** (порядок по реальному вкладу в краши):
+
+1. **Индексация `[i]` и срезы `[a..b]`** — основной оставшийся источник паник, его и находит fuzz.
+   Лечение: `clippy::indexing_slicing` по одному крейту (начать с `pdf`, затем `convert`, `write`).
+2. **Арифметика.** В debug переполнение — паника, в release — молча неверный размер.
+   Лечение: `clippy::arithmetic_side_effects` в парсерах размеров/смещений (`pdf`, `core::zip`), `checked_*`/`saturating_*`.
+3. **`assert!` / `debug_assert!` в библиотечном коде** — допустимы только для внутренних инвариантов, не для входных данных.
 
 ### 4.3. Доказательства (обязательные гейты)
 
@@ -124,7 +145,32 @@ Package::open → support_report → render (N страниц) → write_package
 - [ ] Если чинили panic — есть регрессия (unit, proptest или fuzz seed).
 - [ ] Render: неизвестный ресурс не роняет процесс (report + placeholder/skip).
 
-### 4.5. Что не смешивать с never-crash
+### 4.5. Стек и рекурсия
+
+**Переполнение стека — не паника.** `catch_unwind` его не ловит, процесс получает abort.
+Это единственный реальный краш цикла 2026-10-07: 12 вложенных таблиц переполняли
+стек тестового потока в debug-сборке (кадр рекурсивной функции резервирует место под
+*все* её локальные переменные). Что сделано и что держим:
+
+- **Явный лимит глубины на каждом рекурсивном пути:** вложенные таблицы, вложенные
+  inline-контейнеры (`max_inline_nesting = 16`), SDT, группы DrawingML, наследование
+  стилей и нумерации. Превышение → `Err`/limit или деградация с report, не рекурсия дальше.
+- **Тонкие кадры:** тяжёлые ветви рекурсивной функции — в `#[inline(never)]`-помощники
+  (так кадр `open` для 12 таблиц ужался 1031 → 583 KiB).
+- **Stack-probe как гейт:** тест с порогами `STACK-PROBE stage=open|svg|write|pdf`
+  (testkit, nesting) — регрессия кадра ловится до fuzz.
+- **Библиотека не требует от вызывающего большого стека.** 64 MiB-поток в CLI — страховка
+  для CLI, не контракт; документированный бюджет — стандартные 2 MiB потока Rust на
+  документе в пределах лимитов по умолчанию.
+
+### 4.6. Бюджеты PDF-ридера
+
+К лимитам ZIP/XML (`core/limits.rs`) добавились лимиты чтения PDF (цикл 2026-10-07):
+`LimitKind::ObjectStreamBytes` (суммарная распаковка object streams — защита от ObjStm-бомбы)
+и `max_cached_form_bytes` (кэш form XObject). Новые декодеры (CCITT, JBIG2, JPX) обязаны
+иметь такой же явный бюджет выхода до того, как попадут в путь convert.
+
+### 4.7. Что не смешивать с never-crash
 
 - **Census FAIL / unclassified** — это fidelity, не crash.
 - **Отказ открыть Transitional в StrictOnly** — корректный `Err`.
@@ -132,13 +178,20 @@ Package::open → support_report → render (N страниц) → write_package
 
 ---
 
-## 5. Рекомендуемый порядок внедрения (если решим делать)
+## 5. Порядок внедрения (принят 2026-10-08)
 
-1. Зафиксировать этот документ как ориентир (сделано).
-2. Включить `clippy::unwrap_used` / `expect_used` / `panic` на `strict-ooxml-cli` + render crates; чинить по мере CI.
-3. Добавить один интеграционный `convert_pipeline_never_panics` (proptest или corpus hostile) рядом с `fuzz_docx_full`.
-4. Для визуала: вынести «display list» как границу API, если ещё размазано между SVG и PDF.
-5. Font substitution таблицу — только в render, с тестом метрик строки; write не трогать.
+| # | Шаг | Статус |
+|---|---|---|
+| 1 | Документ сверен с кодом | сделано |
+| 2 | `deny(unwrap_used, expect_used, panic, todo, unimplemented, unreachable)` во всех библиотечных крейтах, CLI и view; 17 мест исправлено | сделано, ветка `task/never-crash-2026-10-08` |
+| 3 | Явные лимиты глубины на всех рекурсивных путях + stack-probe как гейт (§4.5) | в работе |
+| 4 | `convert_pipeline_never_panics`: `Package::open → render → write → reopen` на CC0 ci-core + proptest-мутации байтов | в работе |
+| 5 | `clippy::indexing_slicing`, затем `arithmetic_side_effects`: `pdf` → `convert` → `write` → остальные | в работе |
+| 6 | Fuzz 24h как release-гейт Stage-7: назначить владельца и дату | открыто |
+| 7 | Display list как явный модуль; тест метрик строки для подстановочных шрифтов | позже |
+
+Hostile-корпус пополнять из CC0 lock-файла: документы, на которых census даёт отказ
+или limit, — готовые hostile-фикстуры.
 
 ---
 

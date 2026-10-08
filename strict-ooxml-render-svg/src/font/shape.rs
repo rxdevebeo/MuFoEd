@@ -329,7 +329,7 @@ fn with_parsed_face<R>(resolved: &ResolvedFace, body: impl FnOnce(&CachedFace) -
                 instance,
             });
         }
-        Some(body(faces.get(&key).expect("parsed face just stored")))
+        faces.get(&key).map(body)
     })
 }
 

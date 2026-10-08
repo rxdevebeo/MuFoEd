@@ -1184,7 +1184,8 @@ fn apply(document: &mut Document, edit: &Edit, limits: EditLimits) -> Result<(),
                         super::replace_text(p, &runs, range, text);
                     }
                     Edit::Format { patch, .. } => super::format_text(p, &runs, range, patch),
-                    _ => unreachable!(),
+                    // The outer arm admits only the variants matched above.
+                    _ => return Err(EditError::UnsupportedContent),
                 }
             }
             Edit::ParagraphProperties { properties, .. } => {
@@ -1321,7 +1322,8 @@ fn apply(document: &mut Document, edit: &Edit, limits: EditLimits) -> Result<(),
                         }
                         t.rows.remove(*index);
                     }
-                    _ => unreachable!(),
+                    // The outer arm admits only the variants matched above.
+                    _ => return Err(EditError::UnsupportedContent),
                 }
             }
         }
