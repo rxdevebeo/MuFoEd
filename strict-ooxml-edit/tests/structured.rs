@@ -755,16 +755,25 @@ fn a_format_patch_sets_and_clears_the_wider_run_properties() {
     let props = &middle.props;
     assert_eq!(props.strike, TriState::On);
     assert_eq!(props.small_caps, TriState::On);
-    assert_eq!((props.size, props.size_cs), (Some(HalfPoints(28)), Some(HalfPoints(28))));
+    assert_eq!(
+        (props.size, props.size_cs),
+        (Some(HalfPoints(28)), Some(HalfPoints(28)))
+    );
     assert_eq!(props.color, Some(Color::new("00FF00")));
-    assert_eq!(props.color_theme, None, "a set colour drops the theme colour");
+    assert_eq!(
+        props.color_theme, None,
+        "a set colour drops the theme colour"
+    );
     assert_eq!(props.highlight, Some(Highlight::Yellow));
     assert_eq!(props.fonts, Some(fonts));
     assert_eq!(props.vert_align, Some(VertAlign::Superscript));
     let Inline::Run(left) = &p.inlines[0] else {
         panic!("run")
     };
-    assert!(left.props.color_theme.is_some(), "outside the range nothing changes");
+    assert!(
+        left.props.color_theme.is_some(),
+        "outside the range nothing changes"
+    );
 
     e.transact(
         1,
@@ -787,7 +796,10 @@ fn a_format_patch_sets_and_clears_the_wider_run_properties() {
         panic!("run")
     };
     assert_eq!((middle.props.size, middle.props.size_cs), (None, None));
-    assert_eq!((middle.props.color.clone(), middle.props.vert_align), (None, None));
+    assert_eq!(
+        (middle.props.color.clone(), middle.props.vert_align),
+        (None, None)
+    );
     assert_eq!(middle.props.highlight, Some(Highlight::Yellow), "untouched");
 }
 
@@ -805,8 +817,16 @@ fn grapheme_boundaries_refuse_a_cut_inside_a_cluster_when_asked() {
         at: Address::body(0),
         offset,
     };
-    assert_eq!(e.transact(0, &[cut(1)]), Err(EditError::InvalidRange), "inside é");
-    assert_eq!(e.transact(0, &[cut(4)]), Err(EditError::InvalidRange), "inside the emoji");
+    assert_eq!(
+        e.transact(0, &[cut(1)]),
+        Err(EditError::InvalidRange),
+        "inside é"
+    );
+    assert_eq!(
+        e.transact(0, &[cut(4)]),
+        Err(EditError::InvalidRange),
+        "inside the emoji"
+    );
     assert!(e.transact(0, &[cut(2)]).is_ok(), "between é and x");
 
     // Off by default: scalar offsets as before.
