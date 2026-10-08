@@ -17,7 +17,7 @@
 | P0, P2–P7, P9–P11, P13 | сделано (ACCEPT/PASS) | P2: визуальный допуск среза 0,75 px; P3/P11: `descr` у `wp:docPr`/`pic:cNvPr` перешёл в хвост P15; P5: линии VML-групп выбрасываются (`T7.vml-group`), waiver нет; P5/P6: тесты на RM0090 пропускаются без локального корпуса — нужны синтетические двойники |
 | P1 | сделано, перепроверено 2026-10-08 | перепроверка (hostq `wps`) нашла регрессию от `9d9b372` на с. 56 (подписи в таблице с `framePr`, до 0,67 px), исправлено `93b054a`: PASS 26/26 ≤ 0,25 px с `--wps-times`; запас `p104.modern.5` по-прежнему 0,002 px; без калибровки — до 3,4 px (по замыслу); Rust-теста на Clio нет (корпус локальный) |
 | P8 | частично | 21 строка: `a:srgbClr` в `a14:hiddenFill`, `a:sysClr`, одна `w:shd` |
-| P12 | частично | footnote/endnote −1 закрыт; `headerReference@id` 78 и `footerReference@id` 61 — реальные расхождения содержимого |
+| P12 | закрыт (кроме VML) | footnote/endnote −1 закрыт; `headerReference@id`/`footerReference@id` 139 → 10 частей: semantic digest (Strict-написания, MCE, текст надписей, `w:sym@char`), писатель сохраняет `w:cs`, `autoSpaceDE/DN`, `adjustRightInd`; остаток — VML-линии/фигуры (T7), уходит в VML-группы |
 | P14 | сделано, перезамер | после `5446135` (SDT-свойства сохраняются) `w:dataBinding`/`w:text` должны уйти; TZ-32 в `census.toml` устарел |
 | P15 | частично | 4032 → 784 (census на хосте `f71d960`: unclassified=762); крупнейшее: hdr/ftrRef 78/61, `a:ext` 64, `w:compat` 39, `docPr@descr` 34, `pic:cNvPr@descr` 33 |
 
@@ -29,7 +29,7 @@ M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waive
 нет; `CENSUS-LOCAL` устарел — ночной census уже в CI (`ci.yml`), `census-baseline.json` не закоммичен.
 
 Порядок дальше: ~~перепроверка P1~~ → ~~синтетические двойники P5/P6~~ → база census и `CENSUS-LOCAL` →
-~~`unmatched_schema`~~ → P12 → P15 по метке → P8 → VML-группы → M5 (Word).
+~~`unmatched_schema`~~ → ~~P12~~ → P15 по метке → P8 → VML-группы → M5 (Word).
 
 Этот план не заменяет критерии приёмки D05/D06. Он задаёт **порядок работ по визуальному ущербу** и фиксирует, **на каких документах** каждый пункт измерять.
 
@@ -328,6 +328,14 @@ SHA-256: `4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462`
 **Тесты.** T-P12-1 semantic header part equality (не SHA регенерированного XML); T-P12-2 separator id −1 disposition; T-P12-3 negative: чужой footnote id не маскируется.
 
 **Визуал.** Низкий, если содержимое hdr/ftr сохранено — проверить один header text roundtrip.
+
+**STATUS 2026-10-09.** census на `a4a136e`: unmatched_schema 0, unclassified 646 → 633. Digest
+(`_semantic_part_digest`) сравнивает смысл части: Strict-написания (`start/end`, твипы, on/off, `tblLook`,
+pct), выбранную ветку `mc:AlternateContent`, рисунок — по тексту надписей, `w:sym@char` с ремапом F0xx.
+Писатель терял `w:cs` (024, 038, 066, 097) и выключенные `autoSpaceDE/DN`/`adjustRightInd` (070) —
+исправлено, тест `strict-ooxml-write/tests/p12_headers.rs`. Осталось 10 частей (001, 065, 090, 100):
+VML-линии и фигуры без надписи, которые T7 теряет, — это пункт «VML-группы». Дампы частей пишутся в
+`census-reports/semantic-parts/` при `--write-reports`.
 
 ---
 
