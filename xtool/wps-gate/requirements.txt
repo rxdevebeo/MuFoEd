@@ -1,0 +1,7 @@
+# The WPS geometry gate's own dependency (xtool/wps-gate/README.md).
+#
+# pdfplumber reads the glyph origins of the WPS reference PDFs in
+# docs/audit-2026-10-04/visual-thesis/wps-reference/; the selftests that use
+# synthetic glyphs do not need it. Like the XSD gate's lxml, it is installed in
+# the gate's Python, never in the crate graph.
+pdfplumber>=0.11,<0.12

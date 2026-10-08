@@ -1007,7 +1007,13 @@ function Invoke-Wps {
         $render = @($script:Toolchain, 'run', '-p', 'strict-ooxml-cli', '--release', '--', 'render', '--transitional', '--pages', '54-104', '--out', $svg)
         if ($variant -eq 'wps-times') { $render += '--wps-times' }
         $render += $clio
-        $steps += Invoke-Logged -Name ('render-' + $variant) -Exe 'cargo' -Arguments $render -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $cargoEnv -OutDir $OutDir
+        $rendered = Invoke-Logged -Name ('render-' + $variant) -Exe 'cargo' -Arguments $render -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $cargoEnv -OutDir $OutDir
+        # The CLI exits 1 (EXIT_PROBLEM) when the document has unsupported
+        # mechanisms - Clio has three - and still writes every page; the
+        # render failed only if no page was written.
+        $pages = @(Get-ChildItem -LiteralPath $svgDir -Filter '*.svg' -ErrorAction SilentlyContinue)
+        if ($rendered.exit -eq 1 -and $pages.Count -gt 0) { $rendered.exit = 0 }
+        $steps += $rendered
         $ledger = Join-Path $OutDir ('wps-ledger-' + $variant + '.json')
         $steps += Invoke-Logged -Name ('ledger-' + $variant) -Exe $script:Python -Arguments @('xtool/wps-gate/wps_ledger.py', '--root', $wt, '--out', $ledger) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
         $steps += Invoke-Logged -Name ('p1-selftest-' + $variant) -Exe $script:Python -Arguments @('xtool/wps-gate/wps_p1_gate_selftest.py') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
