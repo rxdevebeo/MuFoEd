@@ -208,12 +208,7 @@ impl<'session, 'document> Operations<'session, 'document> {
                 .iter()
                 .map(|note| Story::Footnote(note.id)),
         );
-        stories.extend(
-            document
-                .endnotes
-                .iter()
-                .map(|note| Story::Endnote(note.id)),
-        );
+        stories.extend(document.endnotes.iter().map(|note| Story::Endnote(note.id)));
         let mut commands = Vec::new();
         for story in &stories {
             // Last first: a mark that goes away removes the block after its

@@ -647,13 +647,17 @@ const TRACKED: &str = concat!(
 );
 
 fn no_revisions(d: &Document) -> bool {
-    d.body.blocks.iter().filter_map(|b| b.as_paragraph()).all(|p| {
-        p.revision.is_none()
-            && p.inlines.iter().all(|i| match i {
-                strict_ooxml_wml::model::Inline::Run(r) => r.revision.is_none(),
-                _ => true,
-            })
-    })
+    d.body
+        .blocks
+        .iter()
+        .filter_map(|b| b.as_paragraph())
+        .all(|p| {
+            p.revision.is_none()
+                && p.inlines.iter().all(|i| match i {
+                    strict_ooxml_wml::model::Inline::Run(r) => r.revision.is_none(),
+                    _ => true,
+                })
+        })
 }
 
 #[test]
@@ -697,7 +701,10 @@ fn accepting_one_paragraph_leaves_the_others_tracked() {
     .unwrap();
     assert_eq!(text(e.document()), ["keep new", "joined", " next"]);
     let second = e.document().body.blocks[1].as_paragraph().unwrap();
-    assert!(second.revision.is_some(), "only the addressed paragraph changes");
+    assert!(
+        second.revision.is_some(),
+        "only the addressed paragraph changes"
+    );
 }
 
 fn tracked(at: usize, range: std::ops::Range<usize>, text: &str) -> strict_ooxml_edit::Edit {
