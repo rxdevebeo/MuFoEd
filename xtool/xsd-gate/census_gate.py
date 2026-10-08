@@ -285,10 +285,11 @@ def _strict_namespace_map() -> dict[str, str]:
 _STRICT_NS = _strict_namespace_map()
 
 
-# When set (`--write-reports DIR`), the semantic text of every header and footer
-# is kept under DIR/semantic-parts/, so a relationship row that differs can be
-# explained by diffing the two sides instead of by guessing.
-_SEMANTIC_DUMP: Path | None = None
+# With `--write-reports DIR` the semantic text of every header and footer is
+# kept under DIR/semantic-parts/, so a relationship row that differs can be
+# explained by diffing the two sides instead of by guessing. An environment
+# variable, not a global: the comparisons run in worker processes.
+_SEMANTIC_DUMP_ENV = "CENSUS_SEMANTIC_DUMP"
 
 
 def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
@@ -338,9 +339,10 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
     chunks: list[str] = []
     walk(root, chunks)
     text = "\n".join(chunks)
-    if _SEMANTIC_DUMP is not None and dump_name:
-        _SEMANTIC_DUMP.mkdir(parents=True, exist_ok=True)
-        (_SEMANTIC_DUMP / dump_name).write_text(text, encoding="utf-8")
+    dump = os.environ.get(_SEMANTIC_DUMP_ENV)
+    if dump and dump_name:
+        Path(dump).mkdir(parents=True, exist_ok=True)
+        (Path(dump) / dump_name).write_text(text, encoding="utf-8")
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -1655,7 +1657,6 @@ def loss_report(
 
 
 def main(argv: list[str]) -> int:
-    global _SEMANTIC_DUMP
     parser = argparse.ArgumentParser(
         description="Census the Transitional -> Strict path against the Strict schemas."
     )
@@ -1861,7 +1862,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         total_out += label_out
 
         if args.write_reports:
-            _SEMANTIC_DUMP = Path(args.write_reports) / "semantic-parts"
+            os.environ[_SEMANTIC_DUMP_ENV] = str(Path(args.write_reports) / "semantic-parts")
         rows, failures = loss_report(corpus, cli, args.write_reports, only)
         counts = collections.Counter()
         for row in rows:
