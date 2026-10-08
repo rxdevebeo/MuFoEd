@@ -402,10 +402,35 @@ fn replace_text(
         offset = end;
     }
     if !replacement.is_empty() {
-        prefix.push(text_run(template, replacement.to_owned()));
+        push_merged(&mut prefix, text_run(template, replacement.to_owned()));
+    }
+    let mut suffix = suffix.into_iter();
+    if let Some(first) = suffix.next() {
+        push_merged(&mut prefix, first);
     }
     prefix.extend(suffix);
     paragraph.inlines = prefix;
+}
+/// Pushes `next`, merging it into the last inline when both are single-text
+/// runs with the same properties.
+///
+/// Used at the edit's own seams only - the inserted text, and the first piece
+/// after the range - so a keystroke extends its run and a deletion inside a
+/// run joins the two halves again, instead of leaving a run per keystroke.
+/// Runs away from the edit stay as the document had them.
+fn push_merged(out: &mut Vec<Inline>, next: Inline) {
+    if let (Some(Inline::Run(last)), Inline::Run(run)) = (out.last_mut(), &next) {
+        if last.props == run.props && last.revision == run.revision {
+            if let ([RunContent::Text(left)], [RunContent::Text(right)]) =
+                (last.content.as_mut_slice(), run.content.as_slice())
+            {
+                left.text.push_str(&right.text);
+                left.space = Space::Preserve;
+                return;
+            }
+        }
+    }
+    out.push(next);
 }
 fn patch_properties(props: &mut RunProperties, patch: &FormatPatch) {
     if let Some(v) = patch.bold {
