@@ -770,7 +770,10 @@ fn tracked_text_keeps_the_old_text_deleted_and_extends_its_own_insertion() {
         })
         .collect();
     assert_eq!(ids.len(), 2);
-    assert_ne!(ids[0], ids[1], "the deletion and the insertion are two changes");
+    assert_ne!(
+        ids[0], ids[1],
+        "the deletion and the insertion are two changes"
+    );
 
     let mut o = Operations::new(&mut e, OperationLimits::default());
     o.accept_all(3).unwrap();

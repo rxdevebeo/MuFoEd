@@ -873,11 +873,9 @@ fn text_beside_a_tracked_run_is_editable_and_the_run_stays_whole() {
     use strict_ooxml_wml::model::Inline;
 
     // "keep " + deleted "old" + " tail": offsets count the deleted text.
-    let mut d = doc(
-        "<w:p><w:r><w:t xml:space=\"preserve\">keep </w:t></w:r>\
+    let mut d = doc("<w:p><w:r><w:t xml:space=\"preserve\">keep </w:t></w:r>\
          <w:del w:id=\"1\" w:author=\"A\"><w:r><w:delText>old</w:delText></w:r></w:del>\
-         <w:r><w:t xml:space=\"preserve\"> tail</w:t></w:r></w:p>",
-    );
+         <w:r><w:t xml:space=\"preserve\"> tail</w:t></w:r></w:p>");
     let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
     let text = |range: std::ops::Range<usize>, text: &str| Edit::Text {
         at: Address::body(0),
@@ -885,7 +883,11 @@ fn text_beside_a_tracked_run_is_editable_and_the_run_stays_whole() {
         text: text.into(),
     };
     let tracked = Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
-    assert_eq!(e.transact(0, &[text(6..6, "x")]), tracked, "inside the deletion");
+    assert_eq!(
+        e.transact(0, &[text(6..6, "x")]),
+        tracked,
+        "inside the deletion"
+    );
     assert_eq!(e.transact(0, &[text(4..6, "")]), tracked, "across its edge");
     // Right after the deleted run: the typed text is not part of the deletion.
     e.transact(0, &[text(8..8, "!")]).unwrap();
