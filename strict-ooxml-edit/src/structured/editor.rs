@@ -7,7 +7,7 @@ use super::address::{addresses, mutate_story, read_paragraph, Address, Container
 use super::apply::apply;
 use super::command::{Edit, EditFailure};
 use super::notes::split_shared_notes;
-use super::validate::validate;
+use super::validate::{validate, validate_patch};
 
 /// Structural editor over the live WML document; `EditSession` is a body-only
 /// view of it.
@@ -163,7 +163,20 @@ impl<'a> Editor<'a> {
             restore(self.document, &patches);
             return self.transact_whole(commands);
         }
-        if let Err(error) = validate(self.document, &self.limits.resource) {
+        // One patch (a keystroke, a format, a split) is checked where it can
+        // have broken something; a batch, whose later commands may rework what
+        // earlier ones did, gets the whole model checked.
+        let checked = match patches.as_slice() {
+            [patch] => validate_patch(
+                self.document,
+                &self.limits.resource,
+                &patch.story,
+                &patch.before,
+                &patch.after,
+            ),
+            _ => validate(self.document, &self.limits.resource),
+        };
+        if let Err(error) = checked {
             restore(self.document, &patches);
             return Err(EditFailure::batch(error));
         }
@@ -570,13 +583,21 @@ mod tests {
     use strict_ooxml_wml::{parse_document, ParseOptions};
 
     fn document() -> Document {
+        // A bookmark across paragraphs, a complex field and a section break:
+        // the invariants that span blocks, which a patch is checked against
+        // only when it touches their marks.
         let body = concat!(
-            "<w:p><w:r><w:t>Alpha beta</w:t></w:r></w:p>",
+            "<w:p><w:bookmarkStart w:id=\"1\" w:name=\"b\"/><w:r><w:t>Alpha beta</w:t></w:r></w:p>",
+            "<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>",
+            "<w:r><w:instrText>PAGE</w:instrText></w:r>",
+            "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>",
+            "<w:p><w:pPr><w:sectPr/></w:pPr><w:r><w:t>first section</w:t></w:r></w:p>",
             "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/></w:tblGrid>",
             "<w:tr><w:tc><w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
             "<w:sdt><w:sdtContent><w:p><w:r><w:t>sdt</w:t></w:r></w:p></w:sdtContent></w:sdt>",
-            "<w:p><w:r><w:t>gamma</w:t></w:r></w:p>",
+            "<w:p><w:r><w:t>gamma</w:t></w:r><w:bookmarkEnd w:id=\"1\"/></w:p>",
             "<w:p><w:r><w:t>last</w:t></w:r></w:p>",
+            "<w:sectPr/>",
         );
         let bytes = DocxBuilder::strict().body(body).build();
         let package = Package::open_reader(&bytes[..], &OpenOptions::default()).expect("package");
