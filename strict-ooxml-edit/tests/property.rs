@@ -11,6 +11,8 @@
 //! and over the whole sequence: undoing every accepted transaction restores
 //! the original document exactly, and redoing them all restores the result.
 
+use std::fmt::Write as _;
+
 use proptest::prelude::*;
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_edit::{Address, ChangeSet, Edit, EditLimits, Editor, FormatPatch, Story};
@@ -228,9 +230,10 @@ proptest! {
 fn typing_keeps_only_the_touched_paragraph_in_history() {
     // Roadmap stage 1: a keystroke used to keep two copies of the whole
     // document in the undo history.
-    let body: String = (0..1_000)
-        .map(|index| format!("<w:p><w:r><w:t>Paragraph {index} of body text.</w:t></w:r></w:p>"))
-        .collect();
+    let mut body = String::new();
+    for index in 0..1_000 {
+        let _ = write!(body, "<w:p><w:r><w:t>Paragraph {index} of body text.</w:t></w:r></w:p>");
+    }
     let xml = format!(
         "<w:document xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\">\
          <w:body>{body}</w:body></w:document>"
@@ -255,9 +258,11 @@ fn typing_keeps_only_the_touched_paragraph_in_history() {
             )
             .expect("type");
     }
-    // Fifty whole-document snapshots would be a hundred times `whole`.
+    // Fifty whole-document snapshots would be a hundred times `whole`. The
+    // touched paragraph itself grows: each insertion splits its run, so late
+    // steps keep dozens of runs - a few times `whole` in all, not a hundred.
     assert!(
-        editor.history_bytes() < whole,
+        editor.history_bytes() < whole * 4,
         "history {} bytes against a {whole}-byte document",
         editor.history_bytes()
     );
