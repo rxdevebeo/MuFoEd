@@ -1,6 +1,32 @@
 # Расширение ядра редактирования StrictLib
 
-Дата: 5 октября 2026 года. Статус: архитектурные решения и план реализации; код этой очереди еще не написан. Основание: исходный список оставшихся возможностей в обсуждении, [Stage-10](STAGE-10-TASK.md), [E01–E06](EDITING_PLAN.md), [Operations](EDITING_OPERATIONS.md). Базовые коммиты: `efccd98`, `015e0c7`. Визуальный аудит остается самостоятельной приемкой.
+Дата: 5 октября 2026 года. Статус на 8 октября — см. раздел «Статус на 2026-10-08» ниже; работа 2026-10-08 шла по [EDITING_ROADMAP_2026-10-08.md](EDITING_ROADMAP_2026-10-08.md) и частично закрыла K00, K07, K13. Основание: исходный список оставшихся возможностей в обсуждении, [Stage-10](STAGE-10-TASK.md), [E01–E06](EDITING_PLAN.md), [Operations](EDITING_OPERATIONS.md). Базовые коммиты: `efccd98`, `015e0c7`. Визуальный аудит остается самостоятельной приемкой.
+
+## Статус на 2026-10-08 (сверка с кодом master)
+
+Архитектура этого плана (`EditContext`, `ResourceOverlay`, `NodeId`, `EditPlan`/`EditReport`,
+`validate_document` в WML) в коде не появилась; часть целей закрыта другим путём.
+
+| Очередь | Статус | Что есть / чего не хватает |
+|---|---|---|
+| K00 context/identity/evidence | частично | есть: атомарные патч-транзакции, `EditFailure { command, address, error }`, `ChangeSet.blocks`, `IdIndex`; нет: `EditContext`, ресурсная дельта, session `NodeId`, журнал |
+| K01 общий validator | частично | есть: `validate`/`validate_patch` в edit, типизированный `Invariant`, лимиты документа; нет: `validate_document` в WML, remove/replace в таблицах стилей/нумерации/сносок/медиа |
+| K02 стили/списки | не начато | |
+| K03 сноски | не начато | есть только `split_shared_notes` (копия ссылки получает свою сноску) |
+| K04 секции/колонтитулы | не начато | есть только защита границ (`Invariant::SectionBoundary`) |
+| K05 новые изображения | не начато | `Edit::Drawing` меняет геометрию, байты — из исходного `Source` |
+| K06 rich split/join, move | не начато | `move_block` только внутри контейнера |
+| K07 accept/reject, трекинг | частично | есть: `AcceptRevisions`/`RejectRevisions`, `Operations::accept_all`/`reject_all`, `TrackedText`; нет: выбор по id/диапазону, парность move, трекинг знака абзаца, `rPrChange`/`pPrChange` в модели |
+| K08 поля/TOC | не начато | есть защита `Unsupported::FieldResult` |
+| K09 merge/split cells | не начато | |
+| K10 импорт/слияние | не начато | |
+| K11 repair | не начато | |
+| K12 diff/EditReport/CLI | не начато | |
+| K13 графемы/ввод/hit | частично | есть: `EditLimits::grapheme_boundaries`, UTF-16 ↔ scalar; нет: IME, clipboard, hit по геометрии |
+| K14 UI, K15 identity manifest | не начато | |
+
+В матрице §1 строка «Accept/reject — команд решения нет» устарела. Порядок дальше: K01
+(основа K02–K05) → K09 (независим) → K02 → K03 → K00-минимум (`ResourceOverlay`) → K04 → K05.
 
 ## 1. Цель и полнота покрытия
 
