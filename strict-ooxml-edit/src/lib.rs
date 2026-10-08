@@ -413,19 +413,18 @@ impl<'a> EditSession<'a> {
     }
 }
 
+/// The paragraph's runs with their text, for an edit by scalar offsets.
+///
+/// Runs with a tracked change are included and count in the offsets - their
+/// text is on the page, struck through or underlined - but stay whole: see
+/// [`check_tracked`].
 fn plain_runs(paragraph: &Paragraph, max: usize) -> Result<Vec<(Run, String)>, EditError> {
-    if paragraph.revision.is_some() {
-        return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
-    }
     let mut count = 0_usize;
     let mut runs = Vec::new();
     for inline in &paragraph.inlines {
         let Inline::Run(run) = inline else {
             return Err(EditError::UnsupportedContent(Unsupported::Inline));
         };
-        if run.revision.is_some() {
-            return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
-        }
         let mut text = String::new();
         for content in &run.content {
             let RunContent::Text(node) = content else {
@@ -445,6 +444,27 @@ fn plain_runs(paragraph: &Paragraph, max: usize) -> Result<Vec<(Run, String)>, E
 }
 fn slice(text: &str, start: usize, end: usize) -> String {
     text.chars().skip(start).take(end - start).collect()
+}
+/// Refuses a range that would cut into or replace part of a run with a
+/// tracked change: until the change is accepted or rejected the run is one
+/// unit. An insertion at either edge of such a run is fine.
+fn check_tracked(runs: &[(Run, String)], range: &Range<usize>) -> Result<(), EditError> {
+    let mut offset = 0;
+    for (run, text) in runs {
+        let end = offset + text.chars().count();
+        if run.revision.is_some() {
+            let touches = if range.is_empty() {
+                offset < range.start && range.start < end
+            } else {
+                range.start < end && offset < range.end
+            };
+            if touches {
+                return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+            }
+        }
+        offset = end;
+    }
+    Ok(())
 }
 fn text_run(template: Option<&Run>, text: String) -> Inline {
     let mut run = template.cloned().unwrap_or(Run {
@@ -508,7 +528,12 @@ fn replace_text(
         offset = end;
     }
     if !replacement.is_empty() {
-        push_merged(&mut prefix, text_run(template, replacement.to_owned()));
+        let mut inserted = text_run(template, replacement.to_owned());
+        // Typed next to a tracked run, the text is not part of that change.
+        if let Inline::Run(run) = &mut inserted {
+            run.revision = None;
+        }
+        push_merged(&mut prefix, inserted);
     }
     let mut suffix = suffix.into_iter();
     if let Some(first) = suffix.next() {

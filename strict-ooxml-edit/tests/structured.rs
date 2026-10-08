@@ -866,3 +866,54 @@ fn typing_and_deleting_inside_a_run_keep_it_one_run() {
     };
     assert_eq!(p.inlines.len(), 1, "{:?}", p.inlines);
 }
+
+#[test]
+fn text_beside_a_tracked_run_is_editable_and_the_run_stays_whole() {
+    use strict_ooxml_edit::Unsupported;
+    use strict_ooxml_wml::model::Inline;
+
+    // "keep " + deleted "old" + " tail": offsets count the deleted text.
+    let mut d = doc(
+        "<w:p><w:r><w:t xml:space=\"preserve\">keep </w:t></w:r>\
+         <w:del w:id=\"1\" w:author=\"A\"><w:r><w:delText>old</w:delText></w:r></w:del>\
+         <w:r><w:t xml:space=\"preserve\"> tail</w:t></w:r></w:p>",
+    );
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let text = |range: std::ops::Range<usize>, text: &str| Edit::Text {
+        at: Address::body(0),
+        range,
+        text: text.into(),
+    };
+    let tracked = Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+    assert_eq!(e.transact(0, &[text(6..6, "x")]), tracked, "inside the deletion");
+    assert_eq!(e.transact(0, &[text(4..6, "")]), tracked, "across its edge");
+    // Right after the deleted run: the typed text is not part of the deletion.
+    e.transact(0, &[text(8..8, "!")]).unwrap();
+    e.transact(1, &[text(0..4, "KEEP")]).unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let tracked_runs: Vec<_> = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            Inline::Run(r) if r.revision.is_some() => Some(r),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tracked_runs.len(), 1, "the deletion is untouched");
+    let untracked: String = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            Inline::Run(r) if r.revision.is_none() => Some(&r.content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|c| match c {
+            strict_ooxml_wml::model::RunContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(untracked, "KEEP ! tail", "{:?}", p.inlines);
+}

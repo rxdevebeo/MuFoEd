@@ -102,9 +102,12 @@ pub(super) fn apply(
                 let runs = crate::plain_runs(p, limits.paragraph_scalars)?;
                 let count = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(count, &(*offset..*offset))?;
+                crate::check_tracked(&runs, &(*offset..*offset))?;
                 check_graphemes(limits, &runs, &(*offset..*offset))?;
                 assign_id(p, ids, false)?;
                 let mut right = p.clone();
+                // The original mark, tracked or not, ends the right half.
+                p.revision = None;
                 assign_id(&mut right, ids, true)?;
                 crate::replace_text(p, &runs, &(*offset..count), "");
                 crate::replace_text(&mut right, &runs, &(0..*offset), "");
@@ -116,6 +119,11 @@ pub(super) fn apply(
                 let right = paragraph_mut(blocks, at.block + 1)?.clone();
                 if left.props.section.is_some() {
                     return Err(EditError::InvalidModel(Invariant::SectionBoundary));
+                }
+                // A tracked mark is resolved by accepting or rejecting it, not
+                // by an untracked join that would drop it.
+                if left.revision.is_some() || right.revision.is_some() {
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 let a = crate::plain_runs(&left, limits.paragraph_scalars)?;
                 let b = crate::plain_runs(&right, limits.paragraph_scalars)?;
@@ -138,6 +146,7 @@ pub(super) fn apply(
                 let total = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(total, range)?;
                 check_graphemes(limits, &runs, range)?;
+                crate::check_tracked(&runs, range)?;
                 match edit {
                     Edit::Text { text, .. } => {
                         valid_text(text)?;
