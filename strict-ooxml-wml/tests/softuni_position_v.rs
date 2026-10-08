@@ -1,4 +1,4 @@
-//! SoftUni `positionV` wrapped in `mc:AlternateContent` (wp14 pct vs EMU).
+//! SoftUni `positionV` wrapped in `mc:AlternateContent` (`wp14` pct vs EMU).
 
 use std::sync::Arc;
 
@@ -66,8 +66,7 @@ fn walk_count(block: &Block, out: &mut Vec<String>, opaque: &mut usize, drawings
                 walk_inline_count(inline, out, opaque, drawings);
             }
         }
-        Block::Opaque(_) => {}
-        _ => {}
+        Block::Opaque(_) | Block::AltChunk(_) => {}
     }
 }
 

@@ -488,7 +488,7 @@ impl<'c, 'a> Painter<'c, 'a> {
             Align::End => x - width,
         };
         let scale = self.ctx.options.scale;
-        let size_pt = if scale > 0.0 {
+        let point_size = if scale > 0.0 {
             size_px * 72.0 / scale
         } else {
             9.0
@@ -500,7 +500,7 @@ impl<'c, 'a> Painter<'c, 'a> {
             text: text.to_owned(),
             run: ComputedRun {
                 family: FAMILY.to_owned(),
-                size_pt: finite(size_pt),
+                point_size: finite(point_size),
                 color: Some(TEXT_COLOR.to_owned()),
                 ..ComputedRun::default()
             },

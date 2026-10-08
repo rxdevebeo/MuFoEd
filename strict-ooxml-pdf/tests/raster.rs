@@ -150,18 +150,12 @@ fn the_picture_has_the_document_on_it() {
     );
 }
 
-/// A page that has nothing on it rasterizes to nothing, and that is the truth
-/// rather than a failure.
-///
-/// `strict-profile` page 1 carries a chart and a SmartArt diagram, and this
-/// project does not draw either: it reserves their extent so the pagination
-/// matches the producer (ADR-0006). The PDF we wrote therefore has an empty
-/// first page, and a picture of it is white. Saying so in a test is the point —
-/// the alternative is a gate that scores a white page as 0.95 SSIM and calls it
-/// fidelity, and one that scores it as 0.0 and calls it a bug. Both would be
-/// wrong, and the second would send somebody looking for a rasterizer fault.
+/// `strict-profile` page 1 carries a chart and a SmartArt diagram. They used
+/// to be reserved space only (ADR-0006), and this test pinned the resulting
+/// white page; charts are now drawn from their cached data, so the page has ink
+/// of its own (the diagram is still reserved space).
 #[test]
-fn a_page_with_nothing_on_it_is_white() {
+fn the_chart_page_is_drawn() {
     let pdf = source_pdf("strict-profile.docx");
     let rasterizer = Rasterizer::new(&pdf, PdfLimits::default()).expect("rasterizer");
     let options = RasterOptions {
@@ -170,10 +164,9 @@ fn a_page_with_nothing_on_it_is_white() {
     };
     assert_eq!(rasterizer.page_count(), 2);
     let first = rasterizer.page_png(1, &options).expect("rasterize");
-    assert_eq!(
-        dark_pixels(&first),
-        0,
-        "the chart page has no ink because the PDF has none"
+    assert!(
+        dark_pixels(&first) > 0,
+        "the chart page has ink now that charts are drawn"
     );
     let second = rasterizer.page_png(2, &options).expect("rasterize");
     assert!(

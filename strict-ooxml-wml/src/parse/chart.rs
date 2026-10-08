@@ -1,7 +1,7 @@
 //! Reading the cached data of a DrawingML chart part (`c:chartSpace`).
 //!
 //! A `c:chart r:id` in a drawing names a chart part through the relationships
-//! of the part being parsed. [`PartParser::chart_for`] resolves that id, reads
+//! of the part being parsed. `PartParser::chart_for` resolves that id, reads
 //! the part through the package (so the package's part-size limits and its
 //! normalizer apply) and parses it into a [`ChartData`].
 //!
