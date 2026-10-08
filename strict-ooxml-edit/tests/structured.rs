@@ -1,6 +1,8 @@
 //! Structural editing regressions use independently generated documents.
 use strict_ooxml_core::opc::{OpenOptions, Package};
-use strict_ooxml_edit::{Address, Container, Edit, EditError, EditLimits, Editor, Story};
+use strict_ooxml_edit::{
+    Address, Container, Edit, EditError, EditLimits, Editor, Invariant, Story, Unsupported,
+};
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::{
     model::{Block, Document},
@@ -78,7 +80,7 @@ fn nested_cell_split_and_delete_keeps_final_paragraph() {
     e.transact(1, &[Edit::Delete { at: at.clone() }]).unwrap();
     assert_eq!(
         e.transact(2, &[Edit::Delete { at }]),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::TableTopology))
     );
 }
 #[test]
@@ -172,7 +174,7 @@ fn section_boundary_moves_right_on_split_and_join_cannot_cross_it() {
                 at: Address::body(1)
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::SectionBoundary))
     );
     e.transact(
         1,
@@ -331,7 +333,7 @@ fn dangling_boundaries_and_unknown_nested_style_are_atomic() {
                 inline: Box::new(Inline::BookmarkStart(Bookmark::new("1", "x")))
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::Bookmark))
     );
     assert_eq!(e.document().body, original);
     assert_eq!(
@@ -346,7 +348,7 @@ fn dangling_boundaries_and_unknown_nested_style_are_atomic() {
                 })
             }]
         ),
-        Err(EditError::UnknownStyle)
+        Err(EditError::UnknownStyle(StyleId::new("missing")))
     );
     e.transact(
         0,
@@ -374,7 +376,7 @@ fn dangling_boundaries_and_unknown_nested_style_are_atomic() {
                 index: 0
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::Bookmark))
     );
 }
 #[test]
@@ -435,7 +437,7 @@ fn table_properties_grid_rows_and_merge_topology_validate_atomically() {
                 })
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::TableTopology))
     );
     e.transact(
         1,
@@ -469,7 +471,7 @@ fn table_properties_grid_rows_and_merge_topology_validate_atomically() {
                 index: 0
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::TableTopology))
     );
     e.undo(2).unwrap();
     e.undo(3).unwrap();
@@ -633,7 +635,7 @@ fn cached_field_text_and_paragraph_total_limit_are_protected() {
                 text: "2".into()
             }]
         ),
-        Err(EditError::UnsupportedContent)
+        Err(EditError::UnsupportedContent(Unsupported::FieldResult))
     );
     let mut d = doc("<w:p><w:r><w:t>ab</w:t><w:tab/><w:t>cd</w:t></w:r></w:p>");
     let mut e = Editor::new(
@@ -863,4 +865,57 @@ fn typing_and_deleting_inside_a_run_keep_it_one_run() {
         panic!("paragraph")
     };
     assert_eq!(p.inlines.len(), 1, "{:?}", p.inlines);
+}
+
+#[test]
+fn text_beside_a_tracked_run_is_editable_and_the_run_stays_whole() {
+    use strict_ooxml_edit::Unsupported;
+    use strict_ooxml_wml::model::Inline;
+
+    // "keep " + deleted "old" + " tail": offsets count the deleted text.
+    let mut d = doc("<w:p><w:r><w:t xml:space=\"preserve\">keep </w:t></w:r>\
+         <w:del w:id=\"1\" w:author=\"A\"><w:r><w:delText>old</w:delText></w:r></w:del>\
+         <w:r><w:t xml:space=\"preserve\"> tail</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let text = |range: std::ops::Range<usize>, text: &str| Edit::Text {
+        at: Address::body(0),
+        range,
+        text: text.into(),
+    };
+    let tracked = Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+    assert_eq!(
+        e.transact(0, &[text(6..6, "x")]),
+        tracked,
+        "inside the deletion"
+    );
+    assert_eq!(e.transact(0, &[text(4..6, "")]), tracked, "across its edge");
+    // Right after the deleted run: the typed text is not part of the deletion.
+    e.transact(0, &[text(8..8, "!")]).unwrap();
+    e.transact(1, &[text(0..4, "KEEP")]).unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let tracked_runs: Vec<_> = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            Inline::Run(r) if r.revision.is_some() => Some(r),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tracked_runs.len(), 1, "the deletion is untouched");
+    let untracked: String = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            Inline::Run(r) if r.revision.is_none() => Some(&r.content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|c| match c {
+            strict_ooxml_wml::model::RunContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(untracked, "KEEP ! tail", "{:?}", p.inlines);
 }

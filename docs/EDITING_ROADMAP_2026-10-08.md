@@ -23,8 +23,8 @@ undo-all/redo-all восстанавливают документ точно). �
 | 3.2 лимиты документа | сделано (`EditLimits::resource`, `Package::limits`) |
 | 3.3 `FormatPatch` шире | сделано |
 | 3.4 графемы | сделано, опция `EditLimits::grapheme_boundaries` (по умолчанию выкл.) |
-| 3.5 `EditError` с данными | не начато |
-| 3.6 отслеживаемые изменения | не начато |
+| 3.5 `EditError` с данными | сделано: `UnsupportedContent(Unsupported)`, `UnknownStyle(StyleId)`, `InvalidModel(Invariant)` |
+| 3.6 отслеживаемые изменения | сделано: шаг 1 `AcceptRevisions`/`RejectRevisions` + `Operations::accept_all`/`reject_all`; шаг 2 правка рядом с ревизиями; шаг 3 `Edit::TrackedText`. Не сделано: трекинг форматирования (`w:rPrChange`/`w:pPrChange` в модели нет), трекинг Split/Join/Insert/Delete (знак абзаца) |
 | 3.7 мелочи | `VecDeque` для redo — сделано; индекс id абзацев (`IdIndex`) — сделано; `ParaId → Address` для `find` — нет |
 
 ### Замеры (`cargo bench -p strict-ooxml-edit --bench editing`, хост, release)

@@ -114,7 +114,7 @@ fn moved_row_changes_order_and_undo() {
     e.undo(1).unwrap();
     assert_eq!(e.document().body, original);
 }
-use strict_ooxml_edit::{Container, Edit, EditError, OperationError};
+use strict_ooxml_edit::{Container, Edit, EditError, Invariant, OperationError};
 #[test]
 fn lowercase_expansion_never_splits_an_original_scalar() {
     let mut d = doc("<w:p><w:r><w:t>İ i X🙂</w:t></w:r></w:p>");
@@ -428,7 +428,9 @@ fn illegal_moves_are_atomic_and_preserve_redo() {
     );
     assert!(matches!(
         result,
-        Err(OperationError::Edit(EditError::InvalidModel))
+        Err(OperationError::Edit(EditError::InvalidModel(
+            Invariant::SectionBoundary
+        )))
     ));
     assert_eq!(e.document().body, original);
     let dest = Address {
@@ -516,7 +518,9 @@ fn cell_move_respects_final_paragraph_and_row_merge_rolls_back() {
     let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
     assert!(matches!(
         Operations::new(&mut e, OperationLimits::default()).move_row(0, &Address::body(0), 0, 2),
-        Err(OperationError::Edit(EditError::InvalidModel))
+        Err(OperationError::Edit(EditError::InvalidModel(
+            Invariant::TableTopology
+        )))
     ));
     assert_eq!(e.document().body, original);
     assert_eq!(e.revision(), 0);
@@ -628,4 +632,154 @@ fn shape_textbox_search_replace_and_move_stay_in_scope() {
     e.undo(3).unwrap();
     e.undo(4).unwrap();
     assert_eq!(e.document().body, original);
+}
+
+/// A paragraph with an insertion and a deletion, then a paragraph whose mark
+/// was deleted, then the centred paragraph its text would join.
+const TRACKED: &str = concat!(
+    "<w:p><w:r><w:t xml:space=\"preserve\">keep </w:t></w:r>",
+    "<w:ins w:id=\"1\" w:author=\"A\"><w:r><w:t>new</w:t></w:r></w:ins>",
+    "<w:del w:id=\"2\" w:author=\"A\"><w:r><w:delText>old</w:delText></w:r></w:del></w:p>",
+    "<w:p><w:pPr><w:rPr><w:del w:id=\"3\" w:author=\"A\"/></w:rPr></w:pPr>",
+    "<w:r><w:t>joined</w:t></w:r></w:p>",
+    "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>",
+    "<w:r><w:t xml:space=\"preserve\"> next</w:t></w:r></w:p>",
+);
+
+fn no_revisions(d: &Document) -> bool {
+    d.body
+        .blocks
+        .iter()
+        .filter_map(|b| b.as_paragraph())
+        .all(|p| {
+            p.revision.is_none()
+                && p.inlines.iter().all(|i| match i {
+                    strict_ooxml_wml::model::Inline::Run(r) => r.revision.is_none(),
+                    _ => true,
+                })
+        })
+}
+
+#[test]
+fn accepting_every_change_keeps_insertions_and_joins_a_deleted_mark() {
+    let mut d = doc(TRACKED);
+    let before = d.body.clone();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.accept_all(0).unwrap();
+    assert_eq!(text(e.document()), ["keep new", "joined next"]);
+    assert!(no_revisions(e.document()));
+    let joined = e.document().body.blocks[1].as_paragraph().unwrap();
+    assert!(
+        joined.props.alignment.is_some(),
+        "the surviving mark is the next paragraph's"
+    );
+    e.undo(1).unwrap();
+    assert_eq!(e.document().body, before);
+}
+
+#[test]
+fn rejecting_every_change_keeps_deletions_and_the_marks() {
+    let mut d = doc(TRACKED);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.reject_all(0).unwrap();
+    assert_eq!(text(e.document()), ["keep old", "joined", " next"]);
+    assert!(no_revisions(e.document()));
+}
+
+#[test]
+fn accepting_one_paragraph_leaves_the_others_tracked() {
+    let mut d = doc(TRACKED);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    e.transact(
+        0,
+        &[strict_ooxml_edit::Edit::AcceptRevisions {
+            at: Address::body(0),
+        }],
+    )
+    .unwrap();
+    assert_eq!(text(e.document()), ["keep new", "joined", " next"]);
+    let second = e.document().body.blocks[1].as_paragraph().unwrap();
+    assert!(
+        second.revision.is_some(),
+        "only the addressed paragraph changes"
+    );
+}
+
+fn tracked(at: usize, range: std::ops::Range<usize>, text: &str) -> strict_ooxml_edit::Edit {
+    strict_ooxml_edit::Edit::TrackedText {
+        at: Address::body(at),
+        range,
+        text: text.into(),
+        author: "Reviewer".into(),
+        date: Some("2026-10-08T12:00:00Z".into()),
+    }
+}
+
+/// Every run's text with its tracked kind: `+` inserted, `-` deleted.
+fn marked(d: &Document) -> Vec<String> {
+    let p = d.body.blocks[0].as_paragraph().unwrap();
+    p.inlines
+        .iter()
+        .filter_map(|i| match i {
+            strict_ooxml_wml::model::Inline::Run(r) => Some(r),
+            _ => None,
+        })
+        .map(|r| {
+            let text: String = r
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    strict_ooxml_wml::model::RunContent::Text(t) => Some(t.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let mark = match r.revision.as_ref().map(|v| v.kind) {
+                Some(strict_ooxml_wml::model::RevisionKind::Insert) => "+",
+                Some(strict_ooxml_wml::model::RevisionKind::Delete) => "-",
+                _ => "",
+            };
+            format!("{mark}{text}")
+        })
+        .collect()
+}
+
+#[test]
+fn tracked_text_keeps_the_old_text_deleted_and_extends_its_own_insertion() {
+    let mut d = doc("<w:p><w:r><w:t>hello world</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    e.transact(0, &[tracked(0, 6..11, "there")]).unwrap();
+    assert_eq!(marked(e.document()), ["hello ", "-world", "+there"]);
+    // Typing at the end of the insertion extends it; deleting inside it takes
+    // the inserted text back instead of marking it deleted.
+    e.transact(1, &[tracked(0, 16..16, "!")]).unwrap();
+    e.transact(2, &[tracked(0, 11..12, "")]).unwrap();
+    assert_eq!(marked(e.document()), ["hello ", "-world", "+here!"]);
+    let p = e.document().body.blocks[0].as_paragraph().unwrap();
+    let ids: Vec<u32> = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            strict_ooxml_wml::model::Inline::Run(r) => r.revision.as_ref(),
+            _ => None,
+        })
+        .map(|v| {
+            assert_eq!(v.author.as_deref(), Some("Reviewer"));
+            v.id
+        })
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(
+        ids[0], ids[1],
+        "the deletion and the insertion are two changes"
+    );
+
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.accept_all(3).unwrap();
+    assert_eq!(text(e.document()), ["hello here!"]);
+    e.undo(4).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.reject_all(5).unwrap();
+    assert_eq!(text(e.document()), ["hello world"]);
 }

@@ -1,16 +1,17 @@
 //! Applying one command to a candidate document.
-use crate::{EditError, EditLimits};
+use crate::{EditError, EditLimits, Invariant, Unsupported};
 use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_wml::model::{
-    Block, Document, Inline, Paragraph, ParagraphProperties, RunContent,
+    Block, Document, Inline, Paragraph, ParagraphProperties, Revision, RevisionKind, RunContent,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::address::{descend_mut, drawing_mut, mutate_story, paragraph_mut, run_mut, Story};
 use super::command::Edit;
 use super::ids::{assign_id, fresh_ids, IdIndex};
+use super::revisions::resolve;
 use super::validate::contains_boundary;
 
 fn empty_paragraph() -> Paragraph {
@@ -71,27 +72,7 @@ pub(super) fn apply(
     limits: EditLimits,
     ids: &mut IdIndex,
 ) -> Result<(), EditError> {
-    let at = match edit {
-        Edit::Split { at, .. }
-        | Edit::Join { at }
-        | Edit::Insert { at, .. }
-        | Edit::Delete { at }
-        | Edit::Text { at, .. }
-        | Edit::Format { at, .. }
-        | Edit::ParagraphProperties { at, .. }
-        | Edit::Frame { at, .. }
-        | Edit::RunProperties { at, .. }
-        | Edit::TextNode { at, .. }
-        | Edit::InsertInline { at, .. }
-        | Edit::DeleteInline { at, .. }
-        | Edit::TableProperties { at, .. }
-        | Edit::CellProperties { at, .. }
-        | Edit::Grid { at, .. }
-        | Edit::InsertRow { at, .. }
-        | Edit::DeleteRow { at, .. }
-        | Edit::Drawing { at, .. }
-        | Edit::Identify { at } => at,
-    };
+    let at = edit.address();
     mutate_story(document, &at.story, |root| {
         let blocks = descend_mut(root, &at.containers)?;
         match edit {
@@ -106,7 +87,7 @@ pub(super) fn apply(
             Edit::Delete { .. } => {
                 let b = blocks.get(at.block).ok_or(EditError::InvalidParagraph)?;
                 if contains_boundary(b) {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
                 }
                 blocks.remove(at.block);
                 if blocks.is_empty() && at.containers.is_empty() && matches!(at.story, Story::Body)
@@ -121,9 +102,12 @@ pub(super) fn apply(
                 let runs = crate::plain_runs(p, limits.paragraph_scalars)?;
                 let count = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(count, &(*offset..*offset))?;
+                crate::check_tracked(&runs, &(*offset..*offset))?;
                 check_graphemes(limits, &runs, &(*offset..*offset))?;
                 assign_id(p, ids, false)?;
                 let mut right = p.clone();
+                // The original mark, tracked or not, ends the right half.
+                p.revision = None;
                 assign_id(&mut right, ids, true)?;
                 crate::replace_text(p, &runs, &(*offset..count), "");
                 crate::replace_text(&mut right, &runs, &(0..*offset), "");
@@ -134,7 +118,12 @@ pub(super) fn apply(
                 let mut left = paragraph_mut(blocks, at.block)?.clone();
                 let right = paragraph_mut(blocks, at.block + 1)?.clone();
                 if left.props.section.is_some() {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
+                }
+                // A tracked mark is resolved by accepting or rejecting it, not
+                // by an untracked join that would drop it.
+                if left.revision.is_some() || right.revision.is_some() {
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 let a = crate::plain_runs(&left, limits.paragraph_scalars)?;
                 let b = crate::plain_runs(&right, limits.paragraph_scalars)?;
@@ -157,6 +146,7 @@ pub(super) fn apply(
                 let total = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(total, range)?;
                 check_graphemes(limits, &runs, range)?;
+                crate::check_tracked(&runs, range)?;
                 match edit {
                     Edit::Text { text, .. } => {
                         valid_text(text)?;
@@ -169,13 +159,13 @@ pub(super) fn apply(
                     }
                     Edit::Format { patch, .. } => crate::format_text(p, &runs, range, patch),
                     // The outer arm admits only the variants matched above.
-                    _ => return Err(EditError::UnsupportedContent),
+                    _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
                 }
             }
             Edit::ParagraphProperties { properties, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if properties.section != p.props.section {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
                 }
                 p.props = *properties.clone();
             }
@@ -188,7 +178,7 @@ pub(super) fn apply(
             } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 run_mut(&mut p.inlines, inline)?.props = *properties.clone();
             }
@@ -202,10 +192,10 @@ pub(super) fn apply(
                 valid_text(text)?;
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 if complex_fields(&p.inlines) {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::FieldResult));
                 }
                 let paragraph_count = text_count(&p.inlines);
                 let run = run_mut(&mut p.inlines, inline)?;
@@ -215,7 +205,7 @@ pub(super) fn apply(
                     .iter()
                     .any(|c| matches!(c, RunContent::InstrText(_) | RunContent::FieldChar(_)))
                 {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::FieldResult));
                 }
                 let Some(RunContent::Text(node)) = run.content.get_mut(*content) else {
                     return Err(EditError::InvalidParagraph);
@@ -241,7 +231,7 @@ pub(super) fn apply(
             Edit::InsertInline { index, inline, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 if *index > p.inlines.len() {
                     return Err(EditError::InvalidRange);
@@ -254,7 +244,7 @@ pub(super) fn apply(
             Edit::DeleteInline { index, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 if *index >= p.inlines.len() {
                     return Err(EditError::InvalidRange);
@@ -271,6 +261,45 @@ pub(super) fn apply(
                 *drawing_mut(&mut p.inlines, inline, *content)? = *drawing.clone();
             }
             Edit::Identify { .. } => assign_id(paragraph_mut(blocks, at.block)?, ids, false)?,
+            Edit::TrackedText {
+                range,
+                text,
+                author,
+                date,
+                ..
+            } => {
+                let p = paragraph_mut(blocks, at.block)?;
+                let runs = crate::plain_runs(p, limits.paragraph_scalars)?;
+                let total: usize = runs.iter().map(|(_, t)| t.chars().count()).sum();
+                check_range(total, range)?;
+                check_graphemes(limits, &runs, range)?;
+                valid_text(text)?;
+                // The replaced text stays on the page, so only growth counts.
+                if total.saturating_add(text.chars().count()) > limits.paragraph_scalars {
+                    return Err(EditError::LimitExceeded);
+                }
+                let marks = if let Some(insertion) = crate::inside_insertion(&runs, range) {
+                    crate::Marks {
+                        deleted: None,
+                        inserted: Some(insertion),
+                    }
+                } else {
+                    crate::check_tracked(&runs, range)?;
+                    let mut stamp = |kind| Revision {
+                        kind,
+                        id: ids.next_revision(),
+                        author: Some(author.as_str().into()),
+                        date: date.as_deref().map(Into::into),
+                    };
+                    crate::Marks {
+                        deleted: (!range.is_empty()).then(|| stamp(RevisionKind::Delete)),
+                        inserted: (!text.is_empty()).then(|| stamp(RevisionKind::Insert)),
+                    }
+                };
+                crate::replace_text_with(p, &runs, range, text, &marks);
+            }
+            Edit::AcceptRevisions { .. } => resolve(blocks, at.block, true)?,
+            Edit::RejectRevisions { .. } => resolve(blocks, at.block, false)?,
             _ => {
                 let Some(Block::Table(t)) = blocks.get_mut(at.block) else {
                     return Err(EditError::InvalidParagraph);
@@ -307,7 +336,7 @@ pub(super) fn apply(
                         t.rows.remove(*index);
                     }
                     // The outer arm admits only the variants matched above.
-                    _ => return Err(EditError::UnsupportedContent),
+                    _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
                 }
             }
         }

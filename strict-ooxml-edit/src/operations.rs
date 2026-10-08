@@ -1,5 +1,5 @@
 //! Read-only query planning and compound operations over public editing commands.
-use crate::{Address, ChangeSet, EditError, Editor, Story};
+use crate::{Address, ChangeSet, EditError, Editor, Story, Unsupported};
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_wml::model::{ParaId, StyleId};
@@ -183,6 +183,50 @@ impl<'session, 'document> Operations<'session, 'document> {
         } else {
             Err(EditError::StaleRevision.into())
         }
+    }
+    /// Accepts every tracked change in every story as one transaction.
+    pub fn accept_all(&mut self, revision: u64) -> Result<ChangeSet, OperationError> {
+        self.resolve_all(revision, true)
+    }
+    /// Rejects every tracked change in every story as one transaction.
+    pub fn reject_all(&mut self, revision: u64) -> Result<ChangeSet, OperationError> {
+        self.resolve_all(revision, false)
+    }
+    fn resolve_all(&mut self, revision: u64, accept: bool) -> Result<ChangeSet, OperationError> {
+        self.check(revision)?;
+        let document = self.editor.document();
+        let mut stories = vec![Story::Body];
+        stories.extend(
+            document
+                .headers_footers
+                .iter()
+                .map(|part| Story::HeaderFooter(part.part.clone())),
+        );
+        stories.extend(
+            document
+                .footnotes
+                .iter()
+                .map(|note| Story::Footnote(note.id)),
+        );
+        stories.extend(document.endnotes.iter().map(|note| Story::Endnote(note.id)));
+        let mut commands = Vec::new();
+        for story in &stories {
+            // Last first: a mark that goes away removes the block after its
+            // paragraph, which leaves every earlier address as it was.
+            for at in self.editor.paragraphs(story)?.into_iter().rev() {
+                if crate::structured::has_revisions(self.editor.paragraph(&at)?) {
+                    commands.push(if accept {
+                        crate::Edit::AcceptRevisions { at }
+                    } else {
+                        crate::Edit::RejectRevisions { at }
+                    });
+                }
+            }
+        }
+        if commands.len() > self.limits.commands {
+            return Err(OperationError::LimitExceeded);
+        }
+        Ok(self.editor.transact(revision, &commands)?)
     }
     /// Finds text or paragraph metadata without issuing editing commands.
     pub fn search(
@@ -747,7 +791,7 @@ fn read_inline<'a>(items: &'a [Inline], path: &[usize]) -> Result<&'a Inline, Op
         Inline::Hyperlink(v) => &v.inlines,
         Inline::SdtInline(v) => &v.inlines,
         Inline::Directional(v) => &v.inlines,
-        _ => return Err(EditError::UnsupportedContent.into()),
+        _ => return Err(EditError::UnsupportedContent(Unsupported::Target).into()),
     };
     read_inline(children, rest)
 }
@@ -755,7 +799,9 @@ fn graphic(d: &Drawing) -> Result<&Graphic, OperationError> {
     match &d.kind {
         DrawingKind::Inline(v) => Ok(&v.graphic),
         DrawingKind::Anchor(v) => Ok(&v.graphic),
-        DrawingKind::Opaque(_) => Err(EditError::UnsupportedContent.into()),
+        DrawingKind::Opaque(_) => {
+            Err(EditError::UnsupportedContent(Unsupported::OpaqueDrawing).into())
+        }
     }
 }
 fn block_ids(blocks: &[Block]) -> Vec<Option<ParaId>> {
