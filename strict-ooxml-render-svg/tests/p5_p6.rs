@@ -339,3 +339,71 @@ fn t_p6_2_rm0090_table_columns() {
         column2 + col2 / 2.0
     );
 }
+
+/// T-P5-4, synthetic twin of the RM0090 heading pair (the witness is not in the
+/// repository and its test skips without the local corpus): space after 240 on
+/// a 24 pt heading and space before 360 on the 17 pt heading below it meet as
+/// the larger of the two - 360 twips, 24 px - not as their sum.
+#[test]
+fn t_p5_4_heading_spacing_twin() {
+    let gap = |after: &str, before: &str| {
+        let items = placed(&section(&format!(
+            "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"{after}\"/></w:pPr>\
+<w:r><w:rPr><w:sz w:val=\"48\"/></w:rPr><w:t>Heading</w:t></w:r></w:p>\
+<w:p><w:pPr><w:spacing w:before=\"{before}\" w:after=\"0\"/></w:pPr>\
+<w:r><w:rPr><w:sz w:val=\"34\"/></w:rPr><w:t>Next</w:t></w:r></w:p>"
+        )));
+        let heading = text_item(&items, "Heading");
+        assert!((heading.size_px - 32.0).abs() <= 0.25, "sz 48 is 32 px");
+        let next = text_item(&items, "Next");
+        assert!(
+            (next.size_px - 34.0 / 2.0 * 96.0 / 72.0).abs() <= 0.25,
+            "sz 34 is 22.667 px"
+        );
+        next.baseline - heading.baseline
+    };
+    let added = gap("240", "360") - gap("0", "0");
+    assert!(
+        (added - 24.0).abs() <= 0.25,
+        "after 240 and before 360 meet as 24 px, got {added}"
+    );
+}
+
+/// T-P6-2, synthetic twin of the RM0090 table: an auto-width table on a grid of
+/// 1917 and 2579 twips keeps the grid, centers its header and starts a
+/// left-aligned cell one default margin (108 twips) into its column.
+#[test]
+fn t_p6_2_auto_table_columns_twin() {
+    let items = placed(&section(
+        "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"1917\"/><w:gridCol w:w=\"2579\"/></w:tblGrid>\
+<w:tr><w:tc><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:t>Head</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:t>Wide</w:t></w:r></w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:r><w:t>Left</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>Right</w:t></w:r></w:p></w:tc></w:tr>\
+</w:tbl>",
+    ));
+    let col1 = 1917.0 / 15.0;
+    let col2 = 2579.0 / 15.0;
+    let left = text_item(&items, "Left");
+    let right = text_item(&items, "Right");
+    // Both start one margin into their columns, so they are a column apart.
+    assert!(
+        (right.x - left.x - col1).abs() <= 0.25,
+        "the second column starts {col1} px after the first, got {}",
+        right.x - left.x
+    );
+    let pad = 108.0 / 15.0;
+    let column1 = left.x - pad;
+    let head = text_item(&items, "Head");
+    let wide = text_item(&items, "Wide");
+    let centre = |text: &strict_ooxml_render_svg::TextItem| text.x + text.width / 2.0;
+    assert!(
+        (centre(head) - (column1 + col1 / 2.0)).abs() <= 0.25,
+        "the header is centered in the 1917 twip column"
+    );
+    assert!(
+        (centre(wide) - (column1 + col1 + col2 / 2.0)).abs() <= 0.25,
+        "the header is centered in the 2579 twip column"
+    );
+}
