@@ -151,6 +151,12 @@ pub struct EditLimits {
     /// reader would have refused nor be refused one it accepted.
     /// `StrictDocument::edit` fills it from the package.
     pub resource: ResourceLimits,
+    /// Refuse text, format and split ranges whose ends fall inside a
+    /// user-perceived character (an extended grapheme cluster: an emoji with
+    /// a joiner, a flag, a letter and its combining mark) with
+    /// [`EditError::InvalidRange`]. Off by default in this release; offsets
+    /// are Unicode scalars either way.
+    pub grapheme_boundaries: bool,
 }
 impl Default for EditLimits {
     fn default() -> Self {
@@ -158,6 +164,7 @@ impl Default for EditLimits {
             history_transactions: 100,
             paragraph_scalars: 1_000_000,
             resource: ResourceLimits::default(),
+            grapheme_boundaries: false,
         }
     }
 }

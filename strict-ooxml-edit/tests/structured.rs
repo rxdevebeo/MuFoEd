@@ -790,3 +790,27 @@ fn a_format_patch_sets_and_clears_the_wider_run_properties() {
     assert_eq!((middle.props.color.clone(), middle.props.vert_align), (None, None));
     assert_eq!(middle.props.highlight, Some(Highlight::Yellow), "untouched");
 }
+
+#[test]
+fn grapheme_boundaries_refuse_a_cut_inside_a_cluster_when_asked() {
+    // "e" + combining acute, then a family emoji joined by ZWJs.
+    let body = "<w:p><w:r><w:t>e\u{301}x\u{1F468}\u{200D}\u{1F469}</w:t></w:r></w:p>";
+    let limits = EditLimits {
+        grapheme_boundaries: true,
+        ..EditLimits::default()
+    };
+    let mut d = doc(body);
+    let mut e = Editor::new(&mut d, limits).unwrap();
+    let cut = |offset: usize| Edit::Split {
+        at: Address::body(0),
+        offset,
+    };
+    assert_eq!(e.transact(0, &[cut(1)]), Err(EditError::InvalidRange), "inside é");
+    assert_eq!(e.transact(0, &[cut(4)]), Err(EditError::InvalidRange), "inside the emoji");
+    assert!(e.transact(0, &[cut(2)]).is_ok(), "between é and x");
+
+    // Off by default: scalar offsets as before.
+    let mut d = doc(body);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    assert!(e.transact(0, &[cut(1)]).is_ok());
+}

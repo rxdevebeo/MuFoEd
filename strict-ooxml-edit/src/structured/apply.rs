@@ -3,6 +3,7 @@ use crate::{EditError, EditLimits};
 use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
+use unicode_segmentation::UnicodeSegmentation;
 use strict_ooxml_wml::model::{
     Block, Document, Inline, Paragraph, ParagraphProperties, RunContent,
 };
@@ -49,6 +50,29 @@ fn check_range(total: usize, range: &Range<usize>) -> Result<(), EditError> {
         Err(EditError::InvalidRange)
     } else {
         Ok(())
+    }
+}
+/// With [`EditLimits::grapheme_boundaries`], refuses a range whose ends fall
+/// inside a user-perceived character of the paragraph's text.
+fn check_graphemes(
+    limits: EditLimits,
+    runs: &[(strict_ooxml_wml::model::Run, String)],
+    range: &Range<usize>,
+) -> Result<(), EditError> {
+    if !limits.grapheme_boundaries {
+        return Ok(());
+    }
+    let text: String = runs.iter().map(|(_, text)| text.as_str()).collect();
+    let mut boundaries = HashSet::from([0]);
+    let mut offset = 0;
+    for grapheme in text.graphemes(true) {
+        offset += grapheme.chars().count();
+        boundaries.insert(offset);
+    }
+    if boundaries.contains(&range.start) && boundaries.contains(&range.end) {
+        Ok(())
+    } else {
+        Err(EditError::InvalidRange)
     }
 }
 #[allow(clippy::too_many_lines)]
@@ -112,6 +136,7 @@ pub(super) fn apply(
                 let runs = crate::plain_runs(p, limits.paragraph_scalars)?;
                 let count = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(count, &(*offset..*offset))?;
+                check_graphemes(limits, &runs, &(*offset..*offset))?;
                 assign_id(p, &mut ids, false)?;
                 let mut right = p.clone();
                 assign_id(&mut right, &mut ids, true)?;
@@ -146,6 +171,7 @@ pub(super) fn apply(
                 let runs = crate::plain_runs(p, limits.paragraph_scalars)?;
                 let total = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(total, range)?;
+                check_graphemes(limits, &runs, range)?;
                 match edit {
                     Edit::Text { text, .. } => {
                         valid_text(text)?;
