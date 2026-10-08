@@ -821,7 +821,8 @@ impl TransitionalNormalizer {
         // children still go through the removal rules.
         let is_root = context.root.is_none();
         if is_root {
-            let raw: &[u8] = start.name().as_ref();
+            let name = start.name();
+            let raw: &[u8] = name.as_ref();
             context.root = Some(
                 raw.iter()
                     .position(|byte| *byte == b':')
