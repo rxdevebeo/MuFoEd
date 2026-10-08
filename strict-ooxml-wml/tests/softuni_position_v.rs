@@ -1,4 +1,4 @@
-//! SoftUni `positionV` wrapped in `mc:AlternateContent` (`wp14` pct vs EMU).
+//! `SoftUni` `positionV` wrapped in `mc:AlternateContent` (`wp14` pct vs EMU).
 
 use std::sync::Arc;
 
