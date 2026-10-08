@@ -211,6 +211,34 @@ mod images {
     }
 
     #[test]
+    fn the_public_decoder_ends_a_mask_cycle_too() {
+        // `image::decode_from` has no cache, so the cache's cycle set did not
+        // cover it: a self-referencing `/SMask` recursed until the stack ended.
+        let mut pdf = PdfBuilder::new();
+        let image = pdf.reserve();
+        pdf.set_stream(
+            image,
+            &format!(
+                "/Type /XObject /Subtype /Image /Width 2 /Height 2 \
+                 /ColorSpace /DeviceGray /BitsPerComponent 8 /SMask {image} 0 R"
+            ),
+            &[0, 0, 0, 0],
+            false,
+        );
+        pdf.page_with(
+            b"q 10 0 0 10 10 10 cm /Im Do Q",
+            &format!("<< /XObject << /Im {image} 0 R >> >>"),
+        );
+        let bytes = pdf.build();
+        let decoded = assert_survives("decode a self-masked image", move || {
+            let document = lopdf::Document::load_mem(&bytes).expect("load");
+            strict_ooxml_pdf::image::decode_from((image, 0), &document, &PdfLimits::default())
+                .map(|(_, width, height)| (width, height))
+        });
+        assert_eq!(decoded.ok(), Some((2, 2)));
+    }
+
+    #[test]
     fn a_cycle_of_two_masks_is_refused_without_recursing() {
         // A -> B -> A: the shape a single self-reference does not cover.
         let mut pdf = PdfBuilder::new();

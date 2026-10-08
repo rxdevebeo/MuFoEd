@@ -905,16 +905,13 @@ fn interpret_from(
             }
             "sc" | "scn" | "SC" | "SCN" => {
                 let components: Vec<f64> = args.iter().filter_map(number_of).collect();
-                let colour = match components.len() {
-                    1 => Rgb(components[0], components[0], components[0]),
-                    3 => Rgb(components[0], components[1], components[2]),
-                    4 => Rgb(
-                        (1.0 - components[0]).clamp(0.0, 1.0)
-                            * (1.0 - components[3]).clamp(0.0, 1.0),
-                        (1.0 - components[1]).clamp(0.0, 1.0)
-                            * (1.0 - components[3]).clamp(0.0, 1.0),
-                        (1.0 - components[2]).clamp(0.0, 1.0)
-                            * (1.0 - components[3]).clamp(0.0, 1.0),
+                let colour = match *components.as_slice() {
+                    [gray] => Rgb(gray, gray, gray),
+                    [red, green, blue] => Rgb(red, green, blue),
+                    [cyan, magenta, yellow, black] => Rgb(
+                        (1.0 - cyan).clamp(0.0, 1.0) * (1.0 - black).clamp(0.0, 1.0),
+                        (1.0 - magenta).clamp(0.0, 1.0) * (1.0 - black).clamp(0.0, 1.0),
+                        (1.0 - yellow).clamp(0.0, 1.0) * (1.0 - black).clamp(0.0, 1.0),
                     ),
                     _ => {
                         out.ignored.push(Ignored::new(
