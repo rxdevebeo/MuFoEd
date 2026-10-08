@@ -192,3 +192,42 @@ proptest! {
         prop_assert_eq!(snapshot(editor.document()), result, "redo all");
     }
 }
+
+#[test]
+fn typing_keeps_only_the_touched_paragraph_in_history() {
+    // Roadmap stage 1: a keystroke used to keep two copies of the whole
+    // document in the undo history.
+    let body: String = (0..1_000)
+        .map(|index| format!("<w:p><w:r><w:t>Paragraph {index} of body text.</w:t></w:r></w:p>"))
+        .collect();
+    let xml = format!(
+        "<w:document xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\">\
+         <w:body>{body}</w:body></w:document>"
+    );
+    let bytes = DocxBuilder::strict()
+        .part("word/document.xml", xml.into_bytes())
+        .build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).expect("package");
+    let mut document = parse_document(&package, &ParseOptions::default()).expect("document");
+    let whole = snapshot(&document).len();
+    let mut editor = Editor::new(&mut document, EditLimits::default()).expect("editor");
+    for offset in 0..50 {
+        let revision = editor.revision();
+        editor
+            .transact(
+                revision,
+                &[Edit::Text {
+                    at: Address::body(500),
+                    range: offset..offset,
+                    text: "x".to_owned(),
+                }],
+            )
+            .expect("type");
+    }
+    // Fifty whole-document snapshots would be a hundred times `whole`.
+    assert!(
+        editor.history_bytes() < whole,
+        "history {} bytes against a {whole}-byte document",
+        editor.history_bytes()
+    );
+}

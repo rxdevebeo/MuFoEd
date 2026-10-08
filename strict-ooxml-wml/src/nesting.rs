@@ -462,7 +462,7 @@ mod tests {
             unreachable!("drawing() builds one inline drawing")
         };
         if let DrawingKind::Inline(inline) = &mut found.kind {
-            inline.graphic = Box::new(graphic);
+            *inline.graphic = graphic;
         }
         found
     }

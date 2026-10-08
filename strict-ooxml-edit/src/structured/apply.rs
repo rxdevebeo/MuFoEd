@@ -1,5 +1,6 @@
 //! Applying one command to a candidate document.
 use crate::{EditError, EditLimits};
+use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_wml::model::{Block, Document, Inline, Paragraph, ParagraphProperties, RunContent};
@@ -19,6 +20,17 @@ fn empty_paragraph() -> Paragraph {
         text_id: None,
         location: SourceLocation::unknown(),
     }
+}
+/// Whether `edit` mints paragraph identities, and so needs every id in use.
+fn mints_ids(edit: &Edit) -> bool {
+    matches!(
+        edit,
+        Edit::Insert { .. }
+            | Edit::Delete { .. }
+            | Edit::Split { .. }
+            | Edit::Identify { .. }
+            | Edit::InsertRow { .. }
+    )
 }
 fn valid_text(text: &str) -> Result<(), EditError> {
     if text
@@ -43,7 +55,11 @@ pub(super) fn apply(
     edit: &Edit,
     limits: EditLimits,
 ) -> Result<(), EditError> {
-    let mut ids = all_ids(document);
+    let mut ids = if mints_ids(edit) {
+        all_ids(document)
+    } else {
+        HashSet::new()
+    };
     let at = match edit {
         Edit::Split { at, .. }
         | Edit::Join { at }
