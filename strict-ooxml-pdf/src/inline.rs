@@ -44,8 +44,9 @@ pub fn extract(bytes: &[u8]) -> (Vec<u8>, Vec<InlineImage>) {
             } else {
                 // A BI we cannot finish: copy the BI token and continue so
                 // the rest of the stream still tokenises.
-                out.extend_from_slice(bytes.get(start..start + 2).unwrap_or_default());
-                index = start + 2;
+                let end = start.saturating_add(2);
+                out.extend_from_slice(bytes.get(start..end).unwrap_or_default());
+                index = end;
             }
         } else {
             out.extend_from_slice(bytes.get(index..).unwrap_or_default());
@@ -58,11 +59,14 @@ pub fn extract(bytes: &[u8]) -> (Vec<u8>, Vec<InlineImage>) {
 /// Finds `BI` as a free-standing operator at or after `from`.
 fn find_bi(bytes: &[u8], from: usize) -> Option<usize> {
     let mut index = from;
-    while let Some(pair) = bytes.get(index..index + 2) {
-        if pair == b"BI" && is_delim_before(bytes, index) && is_delim_after(bytes, index + 2) {
+    while let Some(pair) = bytes.get(index..index.saturating_add(2)) {
+        if pair == b"BI"
+            && is_delim_before(bytes, index)
+            && is_delim_after(bytes, index.saturating_add(2))
+        {
             return Some(index);
         }
-        index += 1;
+        index = index.saturating_add(1);
     }
     None
 }
@@ -99,26 +103,26 @@ fn is_delimiter(byte: u8) -> bool {
 /// Consumes one inline image starting at `BI`. Returns the index after `EI`.
 fn take_inline(bytes: &[u8], bi: usize) -> Option<(usize, InlineImage)> {
     // Skip "BI" and whitespace.
-    let mut index = bi + 2;
+    let mut index = bi.saturating_add(2);
     while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
-        index += 1;
+        index = index.saturating_add(1);
     }
     let (id_at, dict) = parse_inline_dict(bytes, index)?;
     // Skip "ID" and the single whitespace that follows (ISO 32000-1 §8.9.7).
-    let mut data_start = id_at + 2;
+    let mut data_start = id_at.saturating_add(2);
     if bytes
         .get(data_start)
         .is_some_and(|&byte| is_whitespace(byte))
     {
-        data_start += 1;
+        data_start = data_start.saturating_add(1);
     }
     let (ei_at, data_end) = find_ei(bytes, data_start, &dict)?;
     let data = bytes.get(data_start..data_end)?.to_vec();
     let image = decode_inline(&dict, &data);
     let after = {
-        let mut end = ei_at + 2;
+        let mut end = ei_at.saturating_add(2);
         while bytes.get(end).is_some_and(|&byte| is_whitespace(byte)) {
-            end += 1;
+            end = end.saturating_add(1);
         }
         end
     };
@@ -159,27 +163,27 @@ fn parse_inline_dict(bytes: &[u8], mut index: usize) -> Option<(usize, InlineDic
     };
     while index < bytes.len() {
         while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
-            index += 1;
+            index = index.saturating_add(1);
         }
         if bytes
-            .get(index..index + 2)
+            .get(index..index.saturating_add(2))
             .is_some_and(|pair| pair == b"ID")
             && is_delim_before(bytes, index)
-            && is_delim_after(bytes, index + 2)
+            && is_delim_after(bytes, index.saturating_add(2))
         {
             return Some((index, dict));
         }
         if bytes.get(index) != Some(&b'/') {
             return None;
         }
-        index += 1;
+        index = index.saturating_add(1);
         let key_start = index;
         while bytes.get(index).is_some_and(|&byte| is_regular(byte)) {
-            index += 1;
+            index = index.saturating_add(1);
         }
         let key = bytes.get(key_start..index)?;
         while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
-            index += 1;
+            index = index.saturating_add(1);
         }
         let (value, next) = parse_value(bytes, index)?;
         index = next;
@@ -232,26 +236,29 @@ impl Value {
 fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
     let first = *bytes.get(index)?;
     if first == b'/' {
-        let mut end = index + 1;
+        let mut end = index.saturating_add(1);
         while bytes.get(end).is_some_and(|&byte| is_regular(byte)) {
-            end += 1;
+            end = end.saturating_add(1);
         }
-        return Some((Value::Name(bytes.get(index + 1..end)?.to_vec()), end));
+        return Some((
+            Value::Name(bytes.get(index.saturating_add(1)..end)?.to_vec()),
+            end,
+        ));
     }
     if first == b'[' {
         // Skip array values we do not need (e.g. Decode).
-        let mut end = index + 1;
-        let mut depth = 1;
+        let mut end = index.saturating_add(1);
+        let mut depth: u32 = 1;
         while depth > 0 {
             let Some(&byte) = bytes.get(end) else {
                 break;
             };
             match byte {
-                b'[' => depth += 1,
-                b']' => depth -= 1,
+                b'[' => depth = depth.saturating_add(1),
+                b']' => depth = depth.saturating_sub(1),
                 _ => {}
             }
-            end += 1;
+            end = end.saturating_add(1);
         }
         return Some((Value::Other, end));
     }
@@ -261,7 +268,7 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
             .get(end)
             .is_some_and(|&byte| byte.is_ascii_digit() || matches!(byte, b'-' | b'+' | b'.'))
         {
-            end += 1;
+            end = end.saturating_add(1);
         }
         let text = std::str::from_utf8(bytes.get(index..end)?).ok()?;
         let number = text.parse::<f64>().ok()?;
@@ -270,9 +277,9 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
     // Bare name without slash (rare) or unknown token: skip one token.
     let mut end = index;
     while bytes.get(end).is_some_and(|&byte| is_regular(byte)) {
-        end += 1;
+        end = end.saturating_add(1);
     }
-    Some((Value::Other, end.max(index + 1)))
+    Some((Value::Other, end.max(index.saturating_add(1))))
 }
 
 /// Finds `EI` after `data_start`. Prefer the length implied by the dictionary;
@@ -280,14 +287,16 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
 fn find_ei(bytes: &[u8], data_start: usize, dict: &InlineDict) -> Option<(usize, usize)> {
     if let Some(expected) = dict.expected_bytes() {
         let data_end = data_start.checked_add(expected)?;
-        if data_end + 2 <= bytes.len() {
+        if data_end.saturating_add(2) <= bytes.len() {
             let mut ei = data_end;
             // Optional whitespace between samples and EI.
             while bytes.get(ei).is_some_and(|&byte| is_whitespace(byte)) {
-                ei += 1;
+                ei = ei.saturating_add(1);
             }
-            if bytes.get(ei..ei + 2).is_some_and(|pair| pair == b"EI")
-                && is_delim_after(bytes, ei + 2)
+            if bytes
+                .get(ei..ei.saturating_add(2))
+                .is_some_and(|pair| pair == b"EI")
+                && is_delim_after(bytes, ei.saturating_add(2))
             {
                 return Some((ei, data_end.min(ei)));
             }
@@ -295,7 +304,7 @@ fn find_ei(bytes: &[u8], data_start: usize, dict: &InlineDict) -> Option<(usize,
     }
     // Delimiter search: whitespace (or start-of-data) + EI + whitespace/delimiter/end.
     let mut index = data_start;
-    while let Some(pair) = bytes.get(index..index + 2) {
+    while let Some(pair) = bytes.get(index..index.saturating_add(2)) {
         let space_before = index > data_start
             && index
                 .checked_sub(1)
@@ -303,13 +312,17 @@ fn find_ei(bytes: &[u8], data_start: usize, dict: &InlineDict) -> Option<(usize,
                 .is_some_and(|&byte| is_whitespace(byte));
         if pair == b"EI"
             && (index == data_start || space_before)
-            && is_delim_after(bytes, index + 2)
+            && is_delim_after(bytes, index.saturating_add(2))
         {
             // data_end excludes the whitespace before EI when present.
-            let data_end = if space_before { index - 1 } else { index };
+            let data_end = if space_before {
+                index.saturating_sub(1)
+            } else {
+                index
+            };
             return Some((index, data_end));
         }
-        index += 1;
+        index = index.saturating_add(1);
     }
     None
 }

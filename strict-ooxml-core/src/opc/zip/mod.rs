@@ -11,6 +11,8 @@
 //! The counterpart [`write`](mod@write) module serializes a package back to bytes
 //! deterministically (`STAGE-8-TASK.md` §3, W5).
 
+#![cfg_attr(not(test), deny(clippy::arithmetic_side_effects))]
+
 pub mod write;
 
 use std::collections::HashMap;
@@ -190,8 +192,8 @@ impl ZipArchive {
                 "bad local file header signature".to_owned(),
             ));
         }
-        let name_len = usize::from(u16_at(data, offset + 26)?);
-        let extra_len = usize::from(u16_at(data, offset + 28)?);
+        let name_len = usize::from(u16_at(data, offset_add(offset, 26)?)?);
+        let extra_len = usize::from(u16_at(data, offset_add(offset, 28)?)?);
         let data_start = offset
             .checked_add(30)
             .and_then(|v| v.checked_add(name_len))
@@ -225,9 +227,9 @@ impl CentralDirectory {
     #[allow(clippy::too_many_lines)]
     fn parse(data: &[u8], limits: &ResourceLimits) -> Result<Self> {
         let eocd = find_eocd(data)?;
-        let mut entries_total = u64::from(u16_at(data, eocd + 10)?);
-        let mut cd_size = u64::from(u32_at(data, eocd + 12)?);
-        let mut cd_offset = u64::from(u32_at(data, eocd + 16)?);
+        let mut entries_total = u64::from(u16_at(data, offset_add(eocd, 10)?)?);
+        let mut cd_size = u64::from(u32_at(data, offset_add(eocd, 12)?)?);
+        let mut cd_offset = u64::from(u32_at(data, offset_add(eocd, 16)?)?);
 
         let needs_zip64 =
             entries_total == 0xFFFF || cd_size == 0xFFFF_FFFF || cd_offset == 0xFFFF_FFFF;
@@ -270,22 +272,25 @@ impl CentralDirectory {
         let mut entries = Vec::with_capacity(usize::try_from(entries_total.min(4096)).unwrap_or(0));
         let mut pos = cd_start;
         for _ in 0..entries_total {
-            if data.get(pos..pos + 4) != Some(CENTRAL_SIG.as_slice()) {
+            let sig = pos
+                .checked_add(4)
+                .and_then(|sig_end| data.get(pos..sig_end));
+            if sig != Some(CENTRAL_SIG.as_slice()) {
                 return Err(StrictError::InvalidZip(
                     "bad central directory entry signature".to_owned(),
                 ));
             }
-            let flags = u16_at(data, pos + 8)?;
-            let method = u16_at(data, pos + 10)?;
-            let crc32 = u32_at(data, pos + 16)?;
-            let mut compressed_size = u64::from(u32_at(data, pos + 20)?);
-            let mut uncompressed_size = u64::from(u32_at(data, pos + 24)?);
-            let name_len = usize::from(u16_at(data, pos + 28)?);
-            let extra_len = usize::from(u16_at(data, pos + 30)?);
-            let comment_len = usize::from(u16_at(data, pos + 32)?);
-            let mut local_header_offset = u64::from(u32_at(data, pos + 42)?);
+            let flags = u16_at(data, offset_add(pos, 8)?)?;
+            let method = u16_at(data, offset_add(pos, 10)?)?;
+            let crc32 = u32_at(data, offset_add(pos, 16)?)?;
+            let mut compressed_size = u64::from(u32_at(data, offset_add(pos, 20)?)?);
+            let mut uncompressed_size = u64::from(u32_at(data, offset_add(pos, 24)?)?);
+            let name_len = usize::from(u16_at(data, offset_add(pos, 28)?)?);
+            let extra_len = usize::from(u16_at(data, offset_add(pos, 30)?)?);
+            let comment_len = usize::from(u16_at(data, offset_add(pos, 32)?)?);
+            let mut local_header_offset = u64::from(u32_at(data, offset_add(pos, 42)?)?);
 
-            let name_start = pos + 46;
+            let name_start = offset_add(pos, 46)?;
             let name_end = name_start
                 .checked_add(name_len)
                 .ok_or_else(|| StrictError::InvalidZip("name length overflow".to_owned()))?;
@@ -379,11 +384,11 @@ impl Zip64Extra {
     /// slots positionally would put it into the uncompressed size.
     fn parse(extra: &[u8], wanted: Zip64Fields) -> Result<Self> {
         let mut out = Self::default();
-        let mut pos = 0;
-        while pos + 4 <= extra.len() {
+        let mut pos: usize = 0;
+        while pos.checked_add(4).is_some_and(|end| end <= extra.len()) {
             let id = u16_at(extra, pos)?;
-            let size = usize::from(u16_at(extra, pos + 2)?);
-            let body_start = pos + 4;
+            let size = usize::from(u16_at(extra, offset_add(pos, 2)?)?);
+            let body_start = offset_add(pos, 4)?;
             let body_end = body_start
                 .checked_add(size)
                 .ok_or_else(|| StrictError::InvalidZip("zip64 extra overflow".to_owned()))?;
@@ -391,13 +396,14 @@ impl Zip64Extra {
                 .get(body_start..body_end)
                 .ok_or_else(|| StrictError::InvalidZip("zip64 extra out of bounds".to_owned()))?;
             if id == 0x0001 {
-                let mut p = 0;
+                let mut p: usize = 0;
                 let mut take = |wanted: bool| -> Result<Option<u64>> {
-                    if !wanted || body.len() < p + 8 {
-                        return Ok(None);
-                    }
+                    let end = match p.checked_add(8) {
+                        Some(end) if wanted && end <= body.len() => end,
+                        _ => return Ok(None),
+                    };
                     let value = u64_at(body, p)?;
-                    p += 8;
+                    p = end;
                     Ok(Some(value))
                 };
                 out.uncompressed_size = take(wanted.uncompressed_size)?;
@@ -412,20 +418,23 @@ impl Zip64Extra {
 
 /// Returns the absolute offset of the End-Of-Central-Directory record.
 fn find_eocd(data: &[u8]) -> Result<usize> {
-    if data.len() < 22 {
-        return Err(StrictError::InvalidZip("archive too small".to_owned()));
-    }
-    let last = data.len() - 22;
+    let last = data
+        .len()
+        .checked_sub(22)
+        .ok_or_else(|| StrictError::InvalidZip("archive too small".to_owned()))?;
     let first = data.len().saturating_sub(22 + 65_535);
-    let mut end = last + 1;
+    let mut end = offset_add(last, 1)?;
     while end > first {
         let Some(hay) = data.get(first..end) else {
             break;
         };
         match memchr::memrchr(b'P', hay) {
             Some(p) => {
-                let abs = first + p;
-                if data.get(abs..abs + 4) == Some(EOCD_SIG.as_slice()) {
+                let abs = offset_add(first, p)?;
+                let sig = abs
+                    .checked_add(4)
+                    .and_then(|sig_end| data.get(abs..sig_end));
+                if sig == Some(EOCD_SIG.as_slice()) {
                     return Ok(abs);
                 }
                 end = abs;
@@ -448,7 +457,7 @@ fn parse_zip64(data: &[u8], eocd: usize) -> Result<(u64, u64, u64)> {
             "ZIP64 locator signature invalid".to_owned(),
         ));
     }
-    let record_offset = u64_at(data, locator + 8)?;
+    let record_offset = u64_at(data, offset_add(locator, 8)?)?;
     let record = usize::try_from(record_offset)
         .map_err(|_| StrictError::InvalidZip("ZIP64 record offset too large".to_owned()))?;
     if slice_at(data, record, 4)? != ZIP64_EOCD_SIG {
@@ -456,10 +465,16 @@ fn parse_zip64(data: &[u8], eocd: usize) -> Result<(u64, u64, u64)> {
             "ZIP64 record signature invalid".to_owned(),
         ));
     }
-    let total = u64_at(data, record + 32)?;
-    let cd_size = u64_at(data, record + 40)?;
-    let cd_offset = u64_at(data, record + 48)?;
+    let total = u64_at(data, offset_add(record, 32)?)?;
+    let cd_size = u64_at(data, offset_add(record, 40)?)?;
+    let cd_offset = u64_at(data, offset_add(record, 48)?)?;
     Ok((total, cd_size, cd_offset))
+}
+
+/// `base + delta` as an archive offset; overflow means a malformed archive.
+fn offset_add(base: usize, delta: usize) -> Result<usize> {
+    base.checked_add(delta)
+        .ok_or_else(|| StrictError::InvalidZip("offset overflow".to_owned()))
 }
 
 fn slice_at(data: &[u8], offset: usize, len: usize) -> Result<&[u8]> {
@@ -527,7 +542,8 @@ impl Inner<'_> {
                     return Ok(0);
                 };
                 target.copy_from_slice(source);
-                *pos += n;
+                // `pos + n <= data.len()`: `n` is bounded by the remaining slice.
+                *pos = pos.saturating_add(n);
                 Ok(n)
             }
             Inner::Deflate {
@@ -545,7 +561,8 @@ impl Inner<'_> {
                 loop {
                     let pending = input.get(*in_pos..).unwrap_or_default();
                     let result = inflate(state, pending, out, MZFlush::None);
-                    *in_pos += result.bytes_consumed;
+                    // Bounded by `input.len()`: inflate consumes at most `pending`.
+                    *in_pos = in_pos.saturating_add(result.bytes_consumed);
                     match result.status {
                         Ok(MZStatus::StreamEnd) => *done = true,
                         Ok(_) => {}
@@ -595,7 +612,8 @@ impl Read for PartReader<'_> {
             ));
         }
         self.crc = crc32_update(self.crc, window.get(..n).unwrap_or_default());
-        self.produced += n as u64;
+        // Bounded by `expected_len`; saturation keeps the limit check sound.
+        self.produced = self.produced.saturating_add(n as u64);
         if self.produced > self.max_len {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -635,7 +653,7 @@ fn crc32_update(crc: u32, data: &[u8]) -> u32 {
         let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
         // `index <= 0xFF < CRC_TABLE.len()`, so the fallback is dead (and elided).
         let entry = CRC_TABLE.get(index).copied().unwrap_or_default();
-        crc = (crc >> 8) ^ entry;
+        crc = crc.wrapping_shr(8) ^ entry;
     }
     !crc
 }
@@ -650,20 +668,20 @@ static CRC_TABLE: [u32; 256] = build_crc_table();
 )]
 const fn build_crc_table() -> [u32; 256] {
     let mut table = [0u32; 256];
-    let mut index = 0;
+    let mut index: usize = 0;
     while index < 256 {
         let mut crc = index as u32;
-        let mut bit = 0;
+        let mut bit: u32 = 0;
         while bit < 8 {
             crc = if crc & 1 == 1 {
-                (crc >> 1) ^ 0xEDB8_8320
+                crc.wrapping_shr(1) ^ 0xEDB8_8320
             } else {
-                crc >> 1
+                crc.wrapping_shr(1)
             };
-            bit += 1;
+            bit = bit.wrapping_add(1);
         }
         table[index] = crc;
-        index += 1;
+        index = index.wrapping_add(1);
     }
     table
 }

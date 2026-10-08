@@ -359,7 +359,7 @@ impl PathBuilder {
             .iter()
             .map(|subpath| subpath.points.len())
             .sum::<usize>()
-            + self.current.len()
+            .saturating_add(self.current.len())
     }
 
     /// Moves to a point, starting a new subpath. Returns points added.
@@ -658,7 +658,7 @@ impl PageBudget {
             self.stopped = Some("operations");
             return false;
         }
-        self.operations += 1;
+        self.operations = self.operations.saturating_add(1);
         true
     }
 
@@ -671,7 +671,7 @@ impl PageBudget {
             self.stopped = Some("glyphs");
             return false;
         }
-        self.glyphs += 1;
+        self.glyphs = self.glyphs.saturating_add(1);
         true
     }
 
@@ -1173,10 +1173,10 @@ fn interpret_from(
                     number_at(args, 3),
                 ) {
                     let mut added = path.move_to(x, y);
-                    added += path.line_to(x + w, y);
-                    added += path.line_to(x + w, y + h);
-                    added += path.line_to(x, y + h);
-                    added += path.close();
+                    added = added.saturating_add(path.line_to(x + w, y));
+                    added = added.saturating_add(path.line_to(x + w, y + h));
+                    added = added.saturating_add(path.line_to(x, y + h));
+                    added = added.saturating_add(path.close());
                     if !budget.charge_path_points(added, &limits) {
                         break;
                     }
@@ -1372,13 +1372,15 @@ fn place_form(
         limits,
         tolerance,
         seed,
-        depth + 1,
+        depth.saturating_add(1),
         budget,
     )?;
     out.items.extend(content.items);
     out.ignored.extend(content.ignored);
-    out.unmapped_glyphs += content.unmapped_glyphs;
-    out.estimated_widths += content.estimated_widths;
+    out.unmapped_glyphs = out.unmapped_glyphs.saturating_add(content.unmapped_glyphs);
+    out.estimated_widths = out
+        .estimated_widths
+        .saturating_add(content.estimated_widths);
     Ok(())
 }
 
@@ -1578,7 +1580,7 @@ fn render_glyph(
         || font.differences.contains_key(&(code as u8))
         || (font.encoding_stated && character.is_some());
     if character.is_none() {
-        out.unmapped_glyphs += 1;
+        out.unmapped_glyphs = out.unmapped_glyphs.saturating_add(1);
     }
     let ch = character.unwrap_or_else(|| "\u{fffd}".to_owned());
     let (ascent, descent) = font.vertical_metrics();
@@ -1586,7 +1588,7 @@ fn render_glyph(
     let estimated = measured.is_estimated();
     let _width = measured.value();
     if estimated {
-        out.estimated_widths += 1;
+        out.estimated_widths = out.estimated_widths.saturating_add(1);
     }
     Some(Glyph {
         text: ch,
@@ -1675,10 +1677,11 @@ fn matrix_from(args: &[Object]) -> Option<Matrix> {
 /// The fonts a page used, by resource name, in the order they were reached.
 #[must_use]
 pub fn fonts_used(content: &Content) -> BTreeMap<String, usize> {
-    let mut out = BTreeMap::new();
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
     for item in &content.items {
         if let Item::Glyph(glyph) = item {
-            *out.entry(glyph.font.clone()).or_default() += 1;
+            let count = out.entry(glyph.font.clone()).or_default();
+            *count = count.saturating_add(1);
         }
     }
     out

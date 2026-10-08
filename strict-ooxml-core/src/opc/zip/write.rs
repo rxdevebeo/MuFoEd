@@ -127,7 +127,7 @@ impl ZipWriter {
             return Err(StrictError::LimitExceeded {
                 kind: LimitKind::ZipEntries,
                 limit: self.limits.max_zip_entries as u64,
-                actual: self.entries.len() as u64 + 1,
+                actual: (self.entries.len() as u64).saturating_add(1),
             });
         }
         let data = data.into();
@@ -138,7 +138,8 @@ impl ZipWriter {
                 actual: data.len() as u64,
             });
         }
-        self.total += data.len() as u64;
+        // Saturating: the limit check right after still refuses.
+        self.total = self.total.saturating_add(data.len() as u64);
         if self.total > self.limits.max_total_uncompressed {
             return Err(StrictError::LimitExceeded {
                 kind: LimitKind::TotalUncompressed,

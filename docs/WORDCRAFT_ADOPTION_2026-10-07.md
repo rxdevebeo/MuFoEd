@@ -203,7 +203,7 @@ Package::open → support_report → render (N страниц) → write_package
 | 2 | `deny(unwrap_used, expect_used, panic, todo, unimplemented, unreachable)` во всех библиотечных крейтах, CLI и view; 17 мест исправлено | сделано, ветка `task/never-crash-2026-10-08` |
 | 3 | Явные лимиты глубины на всех рекурсивных путях (§4.5): группы, `mc:AlternateContent`, обход run content, все части в writer | сделано |
 | 4 | `pipeline_never_panics`: `open → report → svg → pdf → write → reopen` на CC0 ci-core + proptest-мутации тела | сделано |
-| 5 | `clippy::indexing_slicing` во всех библиотечных крейтах (кроме тестовой `fidelity`), один `allow` — const-построение CRC-таблицы | сделано; далее `arithmetic_side_effects` |
+| 5 | `clippy::indexing_slicing` во всех библиотечных крейтах (кроме тестовой `fidelity`), один `allow` — const-построение CRC-таблицы | сделано; `arithmetic_side_effects` — сделано в `pdf` и `core::opc::zip` (2026-10-08) |
 | 6 | Fuzz 24h как release-гейт Stage-7: назначить владельца и дату | открыто |
 | 7 | Display list как явный модуль; тест метрик строки для подстановочных шрифтов | позже |
 
