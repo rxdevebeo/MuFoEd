@@ -20,10 +20,7 @@ pub(super) fn contains_boundary(b: &Block) -> bool {
         _ => false,
     }
 }
-pub(crate) fn validate(
-    document: &Document,
-    limits: &ResourceLimits,
-) -> Result<(), EditError> {
+pub(crate) fn validate(document: &Document, limits: &ResourceLimits) -> Result<(), EditError> {
     crate::validate_body(document)?;
     strict_ooxml_wml::nesting::check_document(document, limits)
         .map_err(|_| EditError::LimitExceeded)?;
@@ -106,8 +103,7 @@ pub(super) fn validate_patch(
     if before.iter().chain(after).any(contains_boundary) {
         return validate(document, limits);
     }
-    strict_ooxml_wml::nesting::check_blocks(after, limits)
-        .map_err(|_| EditError::LimitExceeded)?;
+    strict_ooxml_wml::nesting::check_blocks(after, limits).map_err(|_| EditError::LimitExceeded)?;
     crate::validate_blocks(after, document, &mut HashSet::new(), 0)?;
     validate_structure(after, document)?;
     let mut frames = false;
@@ -156,8 +152,12 @@ fn identities(blocks: &[Block]) -> Vec<(Option<String>, Option<String>)> {
     let mut out = Vec::new();
     each_paragraph(blocks, &mut |p| {
         out.push((
-            p.para_id.as_ref().map(|id| id.as_str().to_ascii_uppercase()),
-            p.text_id.as_ref().map(|id| id.as_str().to_ascii_uppercase()),
+            p.para_id
+                .as_ref()
+                .map(|id| id.as_str().to_ascii_uppercase()),
+            p.text_id
+                .as_ref()
+                .map(|id| id.as_str().to_ascii_uppercase()),
         ));
     });
     out

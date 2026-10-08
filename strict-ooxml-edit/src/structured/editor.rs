@@ -597,6 +597,7 @@ mod tests {
             "<w:sdt><w:sdtContent><w:p><w:r><w:t>sdt</w:t></w:r></w:p></w:sdtContent></w:sdt>",
             "<w:p><w:r><w:t>gamma</w:t></w:r><w:bookmarkEnd w:id=\"1\"/></w:p>",
             "<w:p><w:r><w:t>last</w:t></w:r></w:p>",
+            "<w:sectPr/>",
         );
         let bytes = DocxBuilder::strict().body(body).build();
         let package = Package::open_reader(&bytes[..], &OpenOptions::default()).expect("package");
