@@ -149,8 +149,10 @@ fn each_paragraph(blocks: &[Block], f: &mut dyn FnMut(&Paragraph)) {
         }
     }
 }
+/// A paragraph's id and text id, uppercased.
+type Identity = (Option<String>, Option<String>);
 /// The paragraph and text identities under `blocks`, in order.
-fn identities(blocks: &[Block]) -> Vec<(Option<String>, Option<String>)> {
+fn identities(blocks: &[Block]) -> Vec<Identity> {
     let mut out = Vec::new();
     each_paragraph(blocks, &mut |p| {
         out.push((
@@ -177,7 +179,10 @@ fn identities_kept(ids: &IdIndex, before: &[Block], after: &[Block]) -> Result<b
     if old == new {
         return Ok(true);
     }
-    if new.iter().any(|(para, text)| para.is_none() && text.is_some()) {
+    if new
+        .iter()
+        .any(|(para, text)| para.is_none() && text.is_some())
+    {
         return Err(EditError::InvalidModel);
     }
     let paragraphs = grown(&old, &new, |(para, _)| para.as_deref());
@@ -186,9 +191,9 @@ fn identities_kept(ids: &IdIndex, before: &[Block], after: &[Block]) -> Result<b
 }
 /// The ids `pick` reads that occur more often in `new` than in `old`.
 fn grown<'a>(
-    old: &'a [(Option<String>, Option<String>)],
-    new: &'a [(Option<String>, Option<String>)],
-    pick: fn(&'a (Option<String>, Option<String>)) -> Option<&'a str>,
+    old: &'a [Identity],
+    new: &'a [Identity],
+    pick: fn(&'a Identity) -> Option<&'a str>,
 ) -> Vec<&'a str> {
     let mut counts: HashMap<&str, isize> = HashMap::new();
     for id in new.iter().filter_map(pick) {
