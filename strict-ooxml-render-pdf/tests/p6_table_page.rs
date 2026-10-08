@@ -19,7 +19,7 @@ fn t_p6_2_rm0090_table_page_is_one_pdf_page() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
     let witness = std::fs::read_dir(&dir).ok().and_then(|entries| {
         entries
-            .filter_map(|entry| entry.ok())
+            .filter_map(Result::ok)
             .map(|entry| entry.path())
             .find(|path| {
                 path.file_name()

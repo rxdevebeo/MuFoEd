@@ -298,6 +298,9 @@ pub struct Vector {
     pub even_odd: bool,
     /// The transform the path was built in, so a consumer can place it.
     pub ctm: Matrix,
+    /// Dash pattern from `d`, in points (already scaled by the CTM); empty for
+    /// a solid line. At most 16 entries, each finite and non-negative.
+    pub dash: Vec<f64>,
 }
 
 /// A placed image.
@@ -499,6 +502,8 @@ struct State {
     line_cap: LineCap,
     line_join: LineJoin,
     miter_limit: f64,
+    /// Dash pattern from `d`, in user space; empty for solid.
+    dash: Vec<f64>,
     font_name: Option<String>,
     font_size: f64,
     char_spacing: f64,
@@ -519,6 +524,7 @@ impl Default for State {
             line_cap: LineCap::Butt,
             line_join: LineJoin::Miter,
             miter_limit: 10.0,
+            dash: Vec::new(),
             font_name: None,
             font_size: 0.0,
             char_spacing: 0.0,
@@ -956,11 +962,20 @@ fn interpret_from(
                 }
             }
             "d" => {
-                // The dash pattern is carried for a report but not applied: a
-                // PDF dash is in user space and the consumer decides.
-                if !args.is_empty() {
-                    out.ignored
-                        .push(Ignored::new("pdf.dash", "dash pattern is not carried"));
+                // `[on off ...] phase d`. The phase is not carried: a consumer
+                // that draws the pattern starts it at the path's first point,
+                // which is where every producer this reads puts it.
+                current.dash = match args.first() {
+                    Some(Object::Array(items)) => items
+                        .iter()
+                        .filter_map(number_of)
+                        .filter(|value| value.is_finite() && *value >= 0.0)
+                        .take(16)
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                if current.dash.iter().all(|value| *value == 0.0) {
+                    current.dash.clear();
                 }
             }
             "gs" => out
@@ -1314,6 +1329,7 @@ fn paint(
         miter_limit: state.miter_limit,
         even_odd,
         ctm: state.ctm,
+        dash: state.dash.iter().map(|value| value * scale).collect(),
     }));
 }
 
