@@ -428,7 +428,9 @@ fn illegal_moves_are_atomic_and_preserve_redo() {
     );
     assert!(matches!(
         result,
-        Err(OperationError::Edit(EditError::InvalidModel(Invariant::SectionBoundary)))
+        Err(OperationError::Edit(EditError::InvalidModel(
+            Invariant::SectionBoundary
+        )))
     ));
     assert_eq!(e.document().body, original);
     let dest = Address {
@@ -516,7 +518,9 @@ fn cell_move_respects_final_paragraph_and_row_merge_rolls_back() {
     let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
     assert!(matches!(
         Operations::new(&mut e, OperationLimits::default()).move_row(0, &Address::body(0), 0, 2),
-        Err(OperationError::Edit(EditError::InvalidModel(Invariant::TableTopology)))
+        Err(OperationError::Edit(EditError::InvalidModel(
+            Invariant::TableTopology
+        )))
     ));
     assert_eq!(e.document().body, original);
     assert_eq!(e.revision(), 0);

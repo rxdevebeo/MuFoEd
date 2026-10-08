@@ -131,14 +131,21 @@ impl std::fmt::Display for EditError {
                 f.write_str("the address does not name an editable paragraph")
             }
             Self::UnsupportedContent(what) => {
-                write!(f, "the paragraph holds content this edit cannot change: {what}")
+                write!(
+                    f,
+                    "the paragraph holds content this edit cannot change: {what}"
+                )
             }
             Self::InvalidRange => f.write_str("the range is reversed or past the end of the text"),
             Self::InvalidText => {
                 f.write_str("the text holds a character XML or a paragraph cannot carry")
             }
             Self::UnknownStyle(id) => {
-                write!(f, "style `{}` does not exist or is of the wrong type", id.as_str())
+                write!(
+                    f,
+                    "style `{}` does not exist or is of the wrong type",
+                    id.as_str()
+                )
             }
             Self::InvalidModel(invariant) => {
                 write!(f, "the edit would break a model invariant: {invariant}")
