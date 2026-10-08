@@ -146,7 +146,7 @@ fn witness(prefix: &str) -> Option<std::path::PathBuf> {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
     let found = std::fs::read_dir(&dir).ok().and_then(|entries| {
         entries
-            .filter_map(|entry| entry.ok())
+            .filter_map(Result::ok)
             .map(|entry| entry.path())
             .find(|path| {
                 path.file_name()
@@ -332,7 +332,7 @@ fn t_p6_2_rm0090_table_columns() {
         }
         end = next;
     }
-    let center2 = (right.x + end) / 2.0;
+    let center2 = f64::midpoint(right.x, end);
     assert!(
         (center2 - (column2 + col2 / 2.0)).abs() <= 0.25,
         "second column center {center2}, expected {:.2} from gridCol 2579",
