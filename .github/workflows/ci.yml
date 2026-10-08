@@ -453,7 +453,9 @@ jobs:
           path: testdata
           key: cc0-ci-full-${{ hashFiles('testdata-lock/cc0.toml') }}
       - name: Fetch the whole CC0 corpus
-        run: cargo run -p xtool --release --locked -- corpus fetch --tier ci-full
+        # Up to three documents may stay unfetched (archive.org nodes come and
+        # go); the step lists them, and the cached testdata/ fills in next night.
+        run: cargo run -p xtool --release --locked -- corpus fetch --tier ci-full --allow-failures 3
       - name: Corpus tests over the fetched documents
         run: cargo test --workspace --all-features --release --test docx_corpus --test corpus
         env:
