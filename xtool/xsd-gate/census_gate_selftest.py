@@ -617,6 +617,7 @@ def main() -> int:
     test_p10_resource_identity()
     test_p11_graphic_uri_pair()
     test_p12_header_digest_keeps_text()
+    test_p12_header_digest_ignores_the_strict_spellings()
     test_p12_foreign_footnote_id_is_not_waived()
     test_p13_ignorable_is_narrow()
     test_p14_alias_is_not_a_docpart_waiver()
@@ -662,6 +663,30 @@ def test_p12_header_digest_keeps_text() -> None:
     ).encode()
     if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(changed):
         raise SystemExit("a changed header paragraph matched")
+
+
+def test_p12_header_digest_ignores_the_strict_spellings() -> None:
+    """The writer's Strict spellings of one header are the same part."""
+    transitional = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    source = (
+        f'<w:hdr xmlns:w="{transitional}"><w:p><w:pPr><w:jc w:val="right"/>'
+        f'<w:ind w:left="120" w:firstLine="0"/></w:pPr><w:r><w:rPr><w:b w:val="0"/></w:rPr>'
+        f"<w:t>Page</w:t></w:r><w:r><w:rPr/><w:t>1</w:t></w:r></w:p></w:hdr>"
+    ).encode()
+    written = (
+        f'<w:hdr xmlns:w="{strict}"><w:p><w:pPr><w:jc w:val="end"/>'
+        f'<w:ind w:start="6pt" w:firstLine="0pt"/></w:pPr><w:r><w:rPr><w:b w:val="false"/></w:rPr>'
+        f'<w:t xml:space="preserve">Page</w:t></w:r><w:r><w:t>1</w:t></w:r></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
+        raise SystemExit("the Strict spelling of a header was a different part")
+    moved = written.replace(b'w:start="6pt"', b'w:start="7pt"')
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(moved):
+        raise SystemExit("a different indent matched")
+    centred = written.replace(b'w:val="end"', b'w:val="center"')
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(centred):
+        raise SystemExit("a different alignment matched")
 
 
 def test_p12_foreign_footnote_id_is_not_waived() -> None:

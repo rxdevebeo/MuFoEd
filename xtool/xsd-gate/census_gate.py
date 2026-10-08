@@ -292,6 +292,36 @@ _STRICT_NS = _strict_namespace_map()
 _SEMANTIC_DUMP_ENV = "CENSUS_SEMANTIC_DUMP"
 
 
+_XML_NS = "http://www.w3.org/XML/1998/namespace"
+# T3 renames these attributes; the values stay.
+_DIRECTION_ATTRS = {
+    "left": "start", "right": "end", "leftChars": "startChars", "rightChars": "endChars",
+}
+
+
+def _canonical_value(name: str, value: str) -> str | None:
+    """One spelling per meaning, as `_same_attr_value` compares them.
+
+    `None` drops a default on/off `val`. On/off and direction words collapse to
+    one token, and a length is written in twips whether it came as `120` or
+    `6pt`. Both sides go through this, so a different value stays different.
+    """
+    lowered = value.lower()
+    if name == "val":
+        if lowered in {"true", "on", "1"}:
+            return None
+        if lowered in {"false", "off", "0"}:
+            return "false"
+        if lowered in {"left", "start"}:
+            return "start"
+        if lowered in {"right", "end"}:
+            return "end"
+    twips = _twips(value)
+    if twips is not None:
+        return f"{round(twips, 2):g}tw"
+    return value
+
+
 def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
     """Header and footer identity after the Strict rewrite.
 
@@ -313,24 +343,33 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
             return
         qname = etree.QName(element)
         namespace = _STRICT_NS.get(qname.namespace or "", qname.namespace or "")
-        chunks.append(f"<{namespace} {qname.localname}")
         attributes: list[str] = []
         for key, value in element.attrib.items():
             attr = etree.QName(key)
-            if attr.localname in _EDITOR_ATTRS or attr.localname == "Ignorable":
+            name = attr.localname
+            if name in _EDITOR_ATTRS or name == "Ignorable":
                 continue
-            if qname.localname == "rFonts" and attr.localname == "hint" and value.lower() == "cs":
+            # The writer spells out xml:space on every text run.
+            if attr.namespace == _XML_NS and name == "space":
                 continue
-            if attr.localname == "val" and value.lower() in {"true", "on"}:
+            if qname.localname == "rFonts" and name == "hint" and value.lower() == "cs":
+                continue
+            value = _canonical_value(name, value)
+            if value is None:
                 continue
             attr_ns = _STRICT_NS.get(attr.namespace or "", attr.namespace or "")
-            attributes.append(f"{attr_ns} {attr.localname}={value}")
+            name = _DIRECTION_ATTRS.get(name, name)
+            attributes.append(f"{attr_ns} {name}={value}")
+        children = [child for child in element if isinstance(child.tag, str)]
+        # An empty property bag says nothing; the writer leaves it out.
+        if qname.localname in property_bags and not attributes and not children:
+            return
+        chunks.append(f"<{namespace} {qname.localname}")
         if attributes:
             chunks.append(" ".join(sorted(attributes)))
         text = (element.text or "").strip()
         if text:
             chunks.append(text)
-        children = [child for child in element if isinstance(child.tag, str)]
         if qname.localname in property_bags:
             children.sort(key=lambda child: etree.QName(child).localname)
         for child in children:
@@ -388,8 +427,11 @@ def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
             # A regenerated header or footer is a different zip entry even when
             # the paragraphs are the same. The relationship row is the part
             # identity; attribute losses inside the part stay their own rows.
+            package = Path(archive.filename or "package")
+            # The written copy keeps the input's file name; its folder tells
+            # the two sides apart.
             dump_name = (
-                f"{Path(archive.filename or 'package').name}--{resolved.replace('/', '_')}.txt"
+                f"{package.parent.name}--{package.name}--{resolved.replace('/', '_')}.txt"
             )
             digest = (
                 _semantic_part_digest(payload, dump_name)
