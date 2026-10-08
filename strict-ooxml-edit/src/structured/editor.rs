@@ -51,7 +51,7 @@ struct Snapshot {
 impl<'a> Editor<'a> {
     /// Opens an exclusive session.
     pub fn new(document: &'a mut Document, limits: EditLimits) -> Result<Self, EditError> {
-        validate(document)?;
+        validate(document, &limits.resource)?;
         let notes_settled = has_no_notes(document);
         Ok(Self {
             document,
@@ -97,7 +97,7 @@ impl<'a> Editor<'a> {
     }
     /// Explicitly validates the current model and all editable stories.
     pub fn validate(&self) -> Result<(), EditError> {
-        validate(self.document)
+        validate(self.document, &self.limits.resource)
     }
     /// Reads a paragraph without bypassing the command protocol.
     pub fn paragraph(&self, at: &Address) -> Result<&Paragraph, EditError> {
@@ -163,7 +163,7 @@ impl<'a> Editor<'a> {
             restore(self.document, &patches);
             return self.transact_whole(commands);
         }
-        if let Err(error) = validate(self.document) {
+        if let Err(error) = validate(self.document, &self.limits.resource) {
             restore(self.document, &patches);
             return Err(EditFailure::batch(error));
         }
@@ -194,7 +194,7 @@ impl<'a> Editor<'a> {
             })?;
         }
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
-        validate(&candidate).map_err(EditFailure::batch)?;
+        validate(&candidate, &self.limits.resource).map_err(EditFailure::batch)?;
         if same_content(self.document, &candidate) {
             return Ok(self.changes(Vec::new()));
         }

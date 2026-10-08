@@ -17,13 +17,13 @@ pub(super) fn contains_boundary(b: &Block) -> bool {
         _ => false,
     }
 }
-pub(crate) fn validate(document: &Document) -> Result<(), EditError> {
+pub(crate) fn validate(
+    document: &Document,
+    limits: &strict_ooxml_core::limits::ResourceLimits,
+) -> Result<(), EditError> {
     crate::validate_body(document)?;
-    strict_ooxml_wml::nesting::check_document(
-        document,
-        &strict_ooxml_core::limits::ResourceLimits::default(),
-    )
-    .map_err(|_| EditError::LimitExceeded)?;
+    strict_ooxml_wml::nesting::check_document(document, limits)
+        .map_err(|_| EditError::LimitExceeded)?;
     validate_global_references(document)?;
     for story in std::iter::once(&document.body.blocks)
         .chain(document.headers_footers.iter().map(|h| &h.blocks))

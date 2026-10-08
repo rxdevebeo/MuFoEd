@@ -641,6 +641,7 @@ fn cached_field_text_and_paragraph_total_limit_are_protected() {
         EditLimits {
             paragraph_scalars: 4,
             history_transactions: 2,
+            ..EditLimits::default()
         },
     )
     .unwrap();

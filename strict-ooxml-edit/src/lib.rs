@@ -14,6 +14,7 @@
 )]
 use std::collections::HashSet;
 use std::ops::Range;
+use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_wml::model::{
     Block, Document, Inline, Paragraph, Run, RunContent, RunProperties, Space, StyleId, StyleType,
     TextNode, TriState, Underline,
@@ -124,12 +125,18 @@ pub struct EditLimits {
     pub history_transactions: usize,
     /// Maximum scalar count of an edited paragraph.
     pub paragraph_scalars: usize,
+    /// The nesting budgets an edited model must stay within: those the
+    /// document was opened with, so an edit can neither produce a model the
+    /// reader would have refused nor be refused one it accepted.
+    /// `StrictDocument::edit` fills it from the package.
+    pub resource: ResourceLimits,
 }
 impl Default for EditLimits {
     fn default() -> Self {
         Self {
             history_transactions: 100,
             paragraph_scalars: 1_000_000,
+            resource: ResourceLimits::default(),
         }
     }
 }

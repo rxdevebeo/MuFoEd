@@ -359,6 +359,12 @@ impl Package {
         self.conformance
     }
 
+    /// Returns the resource limits the package was opened with.
+    #[must_use]
+    pub fn limits(&self) -> ResourceLimits {
+        self.limits
+    }
+
     /// Returns whether a configured `RawNormalizer` has changed any part of
     /// this package read so far.
     ///

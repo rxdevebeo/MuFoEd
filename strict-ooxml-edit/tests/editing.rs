@@ -162,6 +162,7 @@ fn enforces_history_and_text_limits() {
         EditLimits {
             history_transactions: 1,
             paragraph_scalars: 5,
+            ..EditLimits::default()
         },
     )
     .unwrap();
