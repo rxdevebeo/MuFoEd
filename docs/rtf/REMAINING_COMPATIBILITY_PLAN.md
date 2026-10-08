@@ -601,3 +601,29 @@ comparator и WPS reference PDF (лежат в sibling worktree `rtf-import`). �
 разрыв shaping/metrics. Font-инфраструктура RC02 (resolved face, registry, owned
 shaping, exact SVG/PDF delivery, extraction, профиль, bounded CLI) завершена;
 формальный `Verified` не выставлен, пока приёмка не снята внешним harness.
+
+### RC03: shaping и bidi — 2026-10-08
+
+Начат RC03. Второй shaper не создаётся: RTF использует существующий
+harfrust/cluster pipeline. Добавлены три pinned OFL witness'а рядом с CJK и
+Devanagari — Arabic, Tamil, Bengali (`strict-ooxml-render-svg/fonts/witnesses/`),
+сгенерированные тем же `xtool/rtf/font_witnesses.py` (fontTools 4.60.1,
+uharfbuzz 0.56.3); cjk.otf и devanagari.ttf воспроизводятся побайтно идентично,
+manifest фиксирует source/fixture SHA-256, license и copyright.
+
+`tests/font_witnesses.rs` теперь прогоняет пять скриптов и сверяет glyph id,
+UTF-8 cluster, x/y advance, x/y offset и origin с независимым native HarfBuzz
+TSV — все проходят. Отдельный witness проверяет: `unicode_cluster_map`
+реконструирует логическую строку точно, каждый cluster — непустой и на
+char-boundary, `unicode_x_positions_px` даёт ровно одну позицию на скаляр, а у
+Arabic логический первый скаляр стоит правее визуального левого края (значит
+произошла визуальная перестановка, а не LTR-накопление). Артефакты:
+[compatibility/RC03/STATUS.json](compatibility/RC03/STATUS.json),
+[tests.md](compatibility/RC03/tests.md),
+[witnesses.json](compatibility/RC03/witnesses.json).
+
+Открыто/Blocked: корпусные свидетели 007 Sanskrit, 010 Arabic, 011 Tamil,
+018 Bengali требуют их реальных system faces (не забандлены, не лицензированы)
+и RTF-источников из sibling worktree; полноценная PDF Unicode cluster extraction
+для новых скриптов, границы переноса shaped clusters и mixed LTR/RTL внутри
+одного run остаются. RC03 остаётся InProgress.

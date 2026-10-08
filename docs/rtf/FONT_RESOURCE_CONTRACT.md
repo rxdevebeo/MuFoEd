@@ -186,10 +186,12 @@ PDF can subset the selected collection face; subset failures retain original req
 
 Renamed finite-coverage OFL derivatives of pinned Noto CJK SC and Noto Sans
 Devanagari are checked in under `strict-ooxml-render-svg/fonts/witnesses`, with
-copyright, license and source/fixture hashes in `manifest.json`. They are test
-programs, not automatic fallbacks or general-purpose script coverage. Regenerate
-with `xtool/rtf/font_witnesses.py`, fontTools 4.60.1 and uharfbuzz 0.56.3; provide
-the pinned source programs via `--source` and the fixture directory via `--output`.
+copyright, license and source/fixture hashes in `manifest.json`. RC03 adds the
+same class of pinned witnesses for Arabic, Tamil and Bengali
+(`arabic.ttf`/`tamil.ttf`/`bengali.ttf`). They are test programs, not automatic
+fallbacks or general-purpose script coverage. Regenerate with
+`xtool/rtf/font_witnesses.py`, fontTools 4.60.1 and uharfbuzz 0.56.3; provide the
+pinned source programs via `--source` and the fixture directory via `--output`.
 The independent native HarfBuzz 14.6.0 oracle verifies original/subset glyph names
 and unchanged geometry; Rust witnesses compare glyph IDs, UTF-8 clusters, advances,
 offsets and origins against saved TSV data. HarfBuzz API use is independent of

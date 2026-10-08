@@ -20,6 +20,15 @@ SOURCES = [
     ("devanagari", "NotoSansDevanagari-Regular.ttf", "385e78e6359a9d88a0f243d53b1209d7548361ba2194e2b9ec779bcaa7e8949d",
      "ffebf8c1ee449e544955a7e813c54f9b73848eac", "notofonts/noto-fonts", "hinted/ttf/NotoSansDevanagari", "Devanagari-OFL.txt",
      "StrictLib Witness Devanagari", "कर्मनमस्तेहिन्दीक्षि0123"),
+    ("arabic", "NotoSansArabic-Regular.ttf", "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
+     "ffebf8c1ee449e544955a7e813c54f9b73848eac", "notofonts/noto-fonts", "hinted/ttf/NotoSansArabic", "Arabic-OFL.txt",
+     "StrictLib Witness Arabic", "السلام عليكم 0123"),
+    ("tamil", "NotoSansTamil-Regular.ttf", "6532db33b8b264abe3a098a40619feb489b5ddf5ab1d2b46e72b51eeb548001b",
+     "ffebf8c1ee449e544955a7e813c54f9b73848eac", "notofonts/noto-fonts", "hinted/ttf/NotoSansTamil", "Tamil-OFL.txt",
+     "StrictLib Witness Tamil", "தமிழ் எழுத்து 0123"),
+    ("bengali", "NotoSansBengali-Regular.ttf", "6300c5370cd688b0641343de4c786de6d412bb6c578d129dae75e93a0322dcab",
+     "ffebf8c1ee449e544955a7e813c54f9b73848eac", "notofonts/noto-fonts", "hinted/ttf/NotoSansBengali", "Bengali-OFL.txt",
+     "StrictLib Witness Bengali", "বাংলা লিপি ক্ষি 0123"),
 ]
 
 def digest(data):

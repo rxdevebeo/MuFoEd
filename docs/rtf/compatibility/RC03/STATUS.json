@@ -1,0 +1,54 @@
+{
+  "card": "RC03",
+  "status": "InProgress",
+  "updated": "2026-10-08",
+  "scope": "complex-script shaping geometry, bidirectional order and Unicode clusters",
+  "base_commit": "fe7da50",
+  "dependencies": ["RC02"],
+  "implemented": [
+    "reuses the existing harfrust/cluster pipeline (no second RTF shaper)",
+    "pinned OFL Arabic, Tamil and Bengali witnesses (renamed finite subsets)",
+    "independent native HarfBuzz geometry oracle for RTL and Indic",
+    "logical scalar order covered exactly once per run",
+    "one x position per logical scalar",
+    "RTL visual reordering witness",
+    "strict SVG delivery of the new witness faces"
+  ],
+  "remaining": [
+    "RTF corpus witnesses 007 Sanskrit, 010 Arabic, 011 Tamil, 018 Bengali on their real system faces",
+    "PDF Unicode cluster extraction for the new scripts over the shared ActualText path",
+    "line-break boundary policy across shaped clusters",
+    "mixed LTR/RTL segmentation within a single run"
+  ],
+  "blocked": [
+    {
+      "item": "corpus script witnesses (007/010/011/018)",
+      "contract": "the original system faces (Sanskrit 2003, Vijaya, Amar Bangla Normal) and the RTF sources",
+      "reason": "the corpus sources live in the sibling worktree; the named faces are not bundled or provided as licensed assets, and no rasterizer (poppler) is available for the visual half."
+    }
+  ],
+  "checks": {
+    "native_harfbuzz_geometry": {
+      "status": "Pass",
+      "groups": 5,
+      "test": "strict-ooxml-render-svg/tests/font_witnesses.rs",
+      "families": [
+        "StrictLib Witness CJK SC",
+        "StrictLib Witness Devanagari",
+        "StrictLib Witness Arabic",
+        "StrictLib Witness Tamil",
+        "StrictLib Witness Bengali"
+      ],
+      "comparison": "glyph id, UTF-8 cluster, x/y advance, x/y offset and origin match saved native HarfBuzz TSV"
+    },
+    "logical_order_and_reorder": {
+      "status": "Pass",
+      "assertions": [
+        "unicode_cluster_map reconstructs the logical string exactly",
+        "every cluster span is non-empty and on char boundaries",
+        "unicode_x_positions_px returns one position per scalar",
+        "the Arabic logical start is right of the visual left edge"
+      ]
+    }
+  }
+}

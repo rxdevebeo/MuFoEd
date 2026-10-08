@@ -33,6 +33,48 @@
       "license_file": "Devanagari-OFL.txt",
       "modifications": "finite text subset with all layout features and closure; renamed family/PostScript/CFF names; unchanged timestamps",
       "oracle": "native HarfBuzz, default features, und, guessed properties, MONOTONE_CHARACTERS; original/subset glyph names and geometry identical"
+    },
+    {
+      "id": "arabic",
+      "family": "StrictLib Witness Arabic",
+      "source_url": "https://github.com/notofonts/noto-fonts/blob/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSansArabic/NotoSansArabic-Regular.ttf",
+      "source_sha256": "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
+      "source_bytes": 240456,
+      "fixture": "arabic.ttf",
+      "fixture_sha256": "6deabd8a31351283e73ac27bb08b8f1d89a35e51a56953c86c83ccec4919feb8",
+      "fixture_bytes": 12364,
+      "text": "السلام عليكم 0123",
+      "license_file": "Arabic-OFL.txt",
+      "modifications": "finite text subset with all layout features and closure; renamed family/PostScript/CFF names; unchanged timestamps",
+      "oracle": "native HarfBuzz, default features, und, guessed properties, MONOTONE_CHARACTERS; original/subset glyph names and geometry identical"
+    },
+    {
+      "id": "tamil",
+      "family": "StrictLib Witness Tamil",
+      "source_url": "https://github.com/notofonts/noto-fonts/blob/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSansTamil/NotoSansTamil-Regular.ttf",
+      "source_sha256": "6532db33b8b264abe3a098a40619feb489b5ddf5ab1d2b46e72b51eeb548001b",
+      "source_bytes": 74248,
+      "fixture": "tamil.ttf",
+      "fixture_sha256": "03fbe52651a19773aa1a42ae8b799448d05a1f4e4bf647b78981c058e3b9f4f2",
+      "fixture_bytes": 10216,
+      "text": "தமிழ் எழுத்து 0123",
+      "license_file": "Tamil-OFL.txt",
+      "modifications": "finite text subset with all layout features and closure; renamed family/PostScript/CFF names; unchanged timestamps",
+      "oracle": "native HarfBuzz, default features, und, guessed properties, MONOTONE_CHARACTERS; original/subset glyph names and geometry identical"
+    },
+    {
+      "id": "bengali",
+      "family": "StrictLib Witness Bengali",
+      "source_url": "https://github.com/notofonts/noto-fonts/blob/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSansBengali/NotoSansBengali-Regular.ttf",
+      "source_sha256": "6300c5370cd688b0641343de4c786de6d412bb6c578d129dae75e93a0322dcab",
+      "source_bytes": 200048,
+      "fixture": "bengali.ttf",
+      "fixture_sha256": "642ce3d38ac1dc8d387657a36b7d9ddd1a6db979b7e6df6ef93dd64f8bf236c5",
+      "fixture_bytes": 20108,
+      "text": "বাংলা লিপি ক্ষি 0123",
+      "license_file": "Bengali-OFL.txt",
+      "modifications": "finite text subset with all layout features and closure; renamed family/PostScript/CFF names; unchanged timestamps",
+      "oracle": "native HarfBuzz, default features, und, guessed properties, MONOTONE_CHARACTERS; original/subset glyph names and geometry identical"
     }
   ]
 }

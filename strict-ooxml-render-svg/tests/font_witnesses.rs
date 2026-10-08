@@ -102,3 +102,90 @@ fn devanagari_owned_geometry_matches_native_harfbuzz_without_claiming_script_acc
         true,
     );
 }
+
+/// RC03: every scalar survives in logical order, one x per scalar, and a
+/// bidirectional script actually places its logical start away from the visual
+/// left edge (proving reordering ran rather than a left-to-right accumulation).
+fn assert_logical_order_is_preserved(
+    family: &str,
+    bytes: &'static [u8],
+    text: &str,
+    expect_visual_reorder: bool,
+) {
+    use strict_ooxml_render_svg::font::{
+        shape_resource, unicode_cluster_map, unicode_x_positions_px,
+    };
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(vec![asset(family, bytes)], FontRegistryLimits::default())
+            .unwrap(),
+    );
+    let face = registry.resolve(family, false, false).unwrap();
+    let shaped = shape_resource(text, &face).unwrap();
+    let map = unicode_cluster_map(text, &shaped);
+    let joined: String = map.iter().map(|(ch, _, _)| *ch).collect();
+    assert_eq!(joined, text, "logical scalar order must be preserved");
+    assert_eq!(
+        shaped.clusters.first().map(|cluster| cluster.byte_start),
+        Some(0)
+    );
+    for cluster in &shaped.clusters {
+        assert!(cluster.byte_start < cluster.byte_end, "{cluster:?}");
+        assert!(text.is_char_boundary(cluster.byte_start));
+        assert!(text.is_char_boundary(cluster.byte_end));
+    }
+    let positions = unicode_x_positions_px(text, &shaped, 0.0, 16.0);
+    assert_eq!(positions.len(), text.chars().count());
+    if expect_visual_reorder {
+        let first_x = positions.first().copied().unwrap();
+        let min_x = positions.iter().copied().fold(f64::INFINITY, f64::min);
+        assert!(
+            first_x > min_x + 1e-6,
+            "RTL logical start must sit right of the visual left edge: {positions:?}"
+        );
+    }
+}
+
+#[test]
+fn arabic_rtl_geometry_matches_native_harfbuzz_and_reorders_visually() {
+    let family = "StrictLib Witness Arabic";
+    let bytes = include_bytes!("../fonts/witnesses/arabic.ttf");
+    let text = include_str!("../fonts/witnesses/arabic.txt");
+    verify(
+        family,
+        bytes,
+        text,
+        include_str!("../fonts/witnesses/arabic.tsv"),
+        true,
+    );
+    assert_logical_order_is_preserved(family, bytes, text, true);
+}
+
+#[test]
+fn tamil_geometry_matches_native_harfbuzz_and_keeps_logical_order() {
+    let family = "StrictLib Witness Tamil";
+    let bytes = include_bytes!("../fonts/witnesses/tamil.ttf");
+    let text = include_str!("../fonts/witnesses/tamil.txt");
+    verify(
+        family,
+        bytes,
+        text,
+        include_str!("../fonts/witnesses/tamil.tsv"),
+        true,
+    );
+    assert_logical_order_is_preserved(family, bytes, text, false);
+}
+
+#[test]
+fn bengali_geometry_matches_native_harfbuzz_and_keeps_logical_order() {
+    let family = "StrictLib Witness Bengali";
+    let bytes = include_bytes!("../fonts/witnesses/bengali.ttf");
+    let text = include_str!("../fonts/witnesses/bengali.txt");
+    verify(
+        family,
+        bytes,
+        text,
+        include_str!("../fonts/witnesses/bengali.tsv"),
+        true,
+    );
+    assert_logical_order_is_preserved(family, bytes, text, false);
+}
