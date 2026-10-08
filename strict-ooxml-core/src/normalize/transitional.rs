@@ -2346,7 +2346,7 @@ fn apply_direction_rename<'a>(
     }
 }
 
-/// T4 for the DrawingML and chart percentages: `None` when `element`/`local`
+/// T4 for the `DrawingML` and chart percentages: `None` when `element`/`local`
 /// is no percentage carrier or `value` already has the Strict form.
 fn percent_value(
     element: &str,
