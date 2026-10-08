@@ -461,13 +461,7 @@ fn backward(patches: &[Patch]) -> Vec<BlockChange> {
 /// merged range covers both, and its `replaced` counts the original blocks
 /// under it - the blocks no earlier change touched, one for one, plus what
 /// each absorbed change replaced.
-fn fold(
-    changes: &mut Vec<BlockChange>,
-    story: &Story,
-    start: usize,
-    removed: usize,
-    added: usize,
-) {
+fn fold(changes: &mut Vec<BlockChange>, story: &Story, start: usize, removed: usize, added: usize) {
     let end = start + removed;
     let (mut low, mut high) = (start, end);
     let (mut current, mut original) = (0_usize, 0_usize);
@@ -476,7 +470,8 @@ fn fold(
         if change.story != *story || change.range.end < start {
             kept.push(change);
         } else if change.range.start > end {
-            let range = (change.range.start - removed + added)..(change.range.end - removed + added);
+            let range =
+                (change.range.start - removed + added)..(change.range.end - removed + added);
             kept.push(BlockChange { range, ..change });
         } else {
             low = low.min(change.range.start);

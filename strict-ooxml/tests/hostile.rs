@@ -623,7 +623,7 @@ mod nesting {
 }
 
 mod drawing_nesting {
-    //! Never-crash step 3: DrawingML groups and `mc:AlternateContent`, the two
+    //! Never-crash step 3: `DrawingML` groups and `mc:AlternateContent`, the two
     //! recursions that only `max_xml_depth` used to bound.
 
     use super::*;
