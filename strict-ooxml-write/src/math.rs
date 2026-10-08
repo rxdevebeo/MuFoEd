@@ -635,9 +635,9 @@ fn argument(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, name: &'static str, argument
             &argument.location,
         );
     }
-    if properties.control.is_some() {
+    if let Some(control) = properties.control.as_deref() {
         xml.start("m:ctrlPr");
-        crate::props::run_properties(xml, properties.control.as_deref().expect("checked"));
+        crate::props::run_properties(xml, control);
         xml.end();
     }
     for child in &argument.nodes {

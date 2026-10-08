@@ -581,7 +581,9 @@ impl TransitionalNormalizer {
                 "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
             ),
             VmlFallback::Drop => format!("VML {class} dropped by policy"),
-            VmlFallback::Convert => unreachable!("only called when the policy is not Convert"),
+            // Callers reach here only off the Convert policy; should one not,
+            // the drop is still reported rather than aborting the open.
+            VmlFallback::Convert => format!("VML {class} dropped: not converted to DrawingML"),
         };
         report.record_loss(LossRecord {
             transform_id: "T7.vml",

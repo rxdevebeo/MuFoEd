@@ -72,7 +72,19 @@
 //! text-box and formula nesting, and per-page PDF content. A document past a
 //! budget is an error or a recorded skip, never a panic or an unbounded
 //! allocation; the `hostile` test suites and the fuzz targets hold that line.
-
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable
+    )
+)]
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]

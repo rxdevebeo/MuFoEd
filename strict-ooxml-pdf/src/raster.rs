@@ -243,7 +243,7 @@ impl Rasterizer {
             let start = row as usize * stride + left as usize * 4;
             let end = (start + width as usize * 4).min(source.len());
             let start = start.min(source.len());
-            out.extend_from_slice(&source[start..end]);
+            out.extend_from_slice(source.get(start..end).unwrap_or_default());
         }
         encode(&out, Size { width, height })
     }

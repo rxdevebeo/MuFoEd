@@ -264,10 +264,11 @@ pub(crate) fn runs_of(
 ) -> Vec<Vec<usize>> {
     let mut runs: Vec<Vec<usize>> = Vec::new();
     let mut current: Vec<usize> = Vec::new();
-    for index in items.keys().copied() {
-        let item = &items[&index];
+    for (&index, item) in items {
         let continues = current.last().is_some_and(|last| {
-            let before = &items[last];
+            let Some(before) = items.get(last) else {
+                return false;
+            };
             before.text == item.text
                 && (before.text_x - item.text_x).abs() <= rules.same_text_tolerance_pt
                 // The lines between the previous item's text and this item's
@@ -537,8 +538,10 @@ fn describe(values: &[u32]) -> String {
 fn jumps(values: &[u32]) -> Vec<u32> {
     values
         .windows(2)
-        .filter(|pair| pair[1] != pair[0] + 1)
-        .map(|pair| pair[1])
+        .filter_map(|pair| match *pair {
+            [previous, next] if previous.checked_add(1) != Some(next) => Some(next),
+            _ => None,
+        })
         .collect()
 }
 
@@ -555,20 +558,22 @@ fn numbered_runs(
 ) -> Vec<Vec<usize>> {
     let mut runs: Vec<Vec<usize>> = Vec::new();
     let mut current: Vec<usize> = Vec::new();
-    for index in items.keys().copied() {
+    for (&index, item) in items {
         let continues = current.last().is_some_and(|last| {
-            let before = &items[last];
+            let Some(before) = items.get(last) else {
+                return false;
+            };
             let same_format = numbers
                 .get(last)
                 .zip(numbers.get(&index))
                 .is_some_and(|(a, b)| a.format == b.format);
             same_format
-                && (before.text_x - items[&index].text_x).abs() <= rules.same_text_tolerance_pt
+                && (before.text_x - item.text_x).abs() <= rules.same_text_tolerance_pt
                 && only_continuations(
                     lines,
                     before.marker_line + 2,
                     index.saturating_sub(1),
-                    items[&index].text_x,
+                    item.text_x,
                 )
         });
         if !continues {
@@ -623,7 +628,7 @@ fn numbered_candidates(
         else {
             continue;
         };
-        let Some(marker) = lines.get(marker_line) else {
+        let (Some(marker), Some(text)) = (lines.get(marker_line), lines.get(text_line)) else {
             continue;
         };
         out.insert(
@@ -636,7 +641,7 @@ fn numbered_candidates(
                     // printed twice.
                     text: String::new(),
                     marker_x: marker.x,
-                    text_x: lines[text_line].x,
+                    text_x: text.x,
                     num_id: NumId(0),
                     numbered: false,
                 },

@@ -641,6 +641,7 @@ fn cached_field_text_and_paragraph_total_limit_are_protected() {
         EditLimits {
             paragraph_scalars: 4,
             history_transactions: 2,
+            ..EditLimits::default()
         },
     )
     .unwrap();
@@ -708,4 +709,158 @@ fn a_copied_note_reference_gets_its_own_note() {
         e.document().footnotes.get(2).is_none(),
         "undo removes the copy"
     );
+}
+
+#[test]
+fn a_format_patch_sets_and_clears_the_wider_run_properties() {
+    use strict_ooxml_edit::FormatPatch;
+    use strict_ooxml_wml::model::{
+        Color, Fonts, HalfPoints, Highlight, Inline, TriState, VertAlign,
+    };
+
+    let mut d = doc(
+        "<w:p><w:r><w:rPr><w:color w:val=\"FF0000\" w:themeColor=\"accent1\"/></w:rPr>\
+         <w:t>abcdef</w:t></w:r></w:p>",
+    );
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let fonts = Fonts {
+        ascii: Some("Carlito".into()),
+        ..Fonts::default()
+    };
+    e.transact(
+        0,
+        &[Edit::Format {
+            at: Address::body(0),
+            range: 1..3,
+            patch: FormatPatch {
+                strike: Some(TriState::On),
+                small_caps: Some(TriState::On),
+                size: Some(Some(HalfPoints(28))),
+                color: Some(Some(Color::new("00FF00"))),
+                highlight: Some(Some(Highlight::Yellow)),
+                fonts: Some(Some(fonts.clone())),
+                vert_align: Some(Some(VertAlign::Superscript)),
+                ..Default::default()
+            },
+        }],
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    assert_eq!(p.inlines.len(), 3, "the range is split out of the run");
+    let Inline::Run(middle) = &p.inlines[1] else {
+        panic!("run")
+    };
+    let props = &middle.props;
+    assert_eq!(props.strike, TriState::On);
+    assert_eq!(props.small_caps, TriState::On);
+    assert_eq!(
+        (props.size, props.size_cs),
+        (Some(HalfPoints(28)), Some(HalfPoints(28)))
+    );
+    assert_eq!(props.color, Some(Color::new("00FF00")));
+    assert_eq!(
+        props.color_theme, None,
+        "a set colour drops the theme colour"
+    );
+    assert_eq!(props.highlight, Some(Highlight::Yellow));
+    assert_eq!(props.fonts, Some(fonts));
+    assert_eq!(props.vert_align, Some(VertAlign::Superscript));
+    let Inline::Run(left) = &p.inlines[0] else {
+        panic!("run")
+    };
+    assert!(
+        left.props.color_theme.is_some(),
+        "outside the range nothing changes"
+    );
+
+    e.transact(
+        1,
+        &[Edit::Format {
+            at: Address::body(0),
+            range: 1..3,
+            patch: FormatPatch {
+                size: Some(None),
+                color: Some(None),
+                vert_align: Some(None),
+                ..Default::default()
+            },
+        }],
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let Inline::Run(middle) = &p.inlines[1] else {
+        panic!("run")
+    };
+    assert_eq!((middle.props.size, middle.props.size_cs), (None, None));
+    assert_eq!(
+        (middle.props.color.clone(), middle.props.vert_align),
+        (None, None)
+    );
+    assert_eq!(middle.props.highlight, Some(Highlight::Yellow), "untouched");
+}
+
+#[test]
+fn grapheme_boundaries_refuse_a_cut_inside_a_cluster_when_asked() {
+    // "e" + combining acute, then a family emoji joined by ZWJs.
+    let body = "<w:p><w:r><w:t>e\u{301}x\u{1F468}\u{200D}\u{1F469}</w:t></w:r></w:p>";
+    let limits = EditLimits {
+        grapheme_boundaries: true,
+        ..EditLimits::default()
+    };
+    let mut d = doc(body);
+    let mut e = Editor::new(&mut d, limits).unwrap();
+    let cut = |offset: usize| Edit::Split {
+        at: Address::body(0),
+        offset,
+    };
+    assert_eq!(
+        e.transact(0, &[cut(1)]),
+        Err(EditError::InvalidRange),
+        "inside é"
+    );
+    assert_eq!(
+        e.transact(0, &[cut(4)]),
+        Err(EditError::InvalidRange),
+        "inside the emoji"
+    );
+    assert!(e.transact(0, &[cut(2)]).is_ok(), "between é and x");
+
+    // Off by default: scalar offsets as before.
+    let mut d = doc(body);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    assert!(e.transact(0, &[cut(1)]).is_ok());
+}
+
+#[test]
+fn typing_and_deleting_inside_a_run_keep_it_one_run() {
+    let mut d = doc("<w:p><w:r><w:t>abcdef</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    for (revision, offset) in [(0, 3), (1, 4), (2, 0), (3, 9)] {
+        e.transact(
+            revision,
+            &[Edit::Text {
+                at: Address::body(0),
+                range: offset..offset,
+                text: "x".into(),
+            }],
+        )
+        .unwrap();
+    }
+    e.transact(
+        4,
+        &[Edit::Text {
+            at: Address::body(0),
+            range: 2..5,
+            text: String::new(),
+        }],
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    assert_eq!(p.inlines.len(), 1, "{:?}", p.inlines);
 }

@@ -81,6 +81,18 @@ pub enum LimitKind {
     ///
     /// As [`MathNodes`](Self::MathNodes): no longer returned by `parse_document`.
     MathDepth,
+    /// `ResourceLimits::max_group_nesting`.
+    ///
+    /// Not returned by `parse_document`, which skips a group past the bound and
+    /// records it; the renderer and the writer return it for a model built by
+    /// hand.
+    GroupNesting,
+    /// `ResourceLimits::max_inline_nesting`.
+    ///
+    /// Not returned by `parse_document`, which skips a wrapper past the bound and
+    /// records it; the renderer and the writer return it for a model built by
+    /// hand.
+    InlineNesting,
 }
 
 impl LimitKind {
@@ -103,6 +115,8 @@ impl LimitKind {
             Self::ZipWriteField => "zip_write_field",
             Self::MathNodes => "math_nodes",
             Self::MathDepth => "math_depth",
+            Self::GroupNesting => "group_nesting",
+            Self::InlineNesting => "inline_nesting",
         }
     }
 }

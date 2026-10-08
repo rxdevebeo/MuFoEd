@@ -149,7 +149,8 @@ impl Meter {
         // the third byte; the scan follows it there, or it would undercount.
         let (produced, consumed) = self.inflate(data, DataFormat::Zlib);
         let (produced, consumed) = if produced == 0 && data.len() > 2 {
-            let (raw_produced, raw_consumed) = self.inflate(&data[2..], DataFormat::Raw);
+            let raw = data.get(2..).unwrap_or_default();
+            let (raw_produced, raw_consumed) = self.inflate(raw, DataFormat::Raw);
             (raw_produced, consumed.max(raw_consumed.saturating_add(2)))
         } else {
             (produced, consumed)
@@ -207,7 +208,7 @@ fn locate_stream(bytes: &[u8], type_at: usize) -> Option<StreamSpan> {
         let obj = rfind(bytes, b"obj", floor, before)?;
         before = obj;
         let open = skip_space(bytes, obj + b"obj".len());
-        if !bytes[open..].starts_with(b"<<") {
+        if !bytes.get(open..).unwrap_or_default().starts_with(b"<<") {
             continue;
         }
         let Some(dictionary) = parse_dictionary(bytes, open) else {
@@ -217,13 +218,18 @@ fn locate_stream(bytes: &[u8], type_at: usize) -> Option<StreamSpan> {
             continue;
         }
         let keyword = skip_space(bytes, dictionary.end);
-        if !bytes[keyword..].starts_with(b"stream") {
+        if !bytes
+            .get(keyword..)
+            .unwrap_or_default()
+            .starts_with(b"stream")
+        {
             return None;
         }
         let mut data_start = keyword + b"stream".len();
-        if bytes[data_start..].starts_with(b"\r\n") {
+        let after_keyword = bytes.get(data_start..).unwrap_or_default();
+        if after_keyword.starts_with(b"\r\n") {
             data_start += 2;
-        } else if bytes[data_start..].starts_with(b"\n") || bytes[data_start..].starts_with(b"\r") {
+        } else if after_keyword.starts_with(b"\n") || after_keyword.starts_with(b"\r") {
             data_start += 1;
         }
         // `lopdf` trusts `/Length` only when `endstream` follows it; otherwise
@@ -233,7 +239,8 @@ fn locate_stream(bytes: &[u8], type_at: usize) -> Option<StreamSpan> {
             data_start
                 .checked_add(*length)
                 .filter(|end| *end <= bytes.len())
-                .is_some_and(|end| bytes[skip_space(bytes, end)..].starts_with(b"endstream"))
+                .and_then(|end| bytes.get(skip_space(bytes, end)..))
+                .is_some_and(|rest| rest.starts_with(b"endstream"))
         });
         return Some(StreamSpan {
             data_start,
@@ -268,13 +275,13 @@ impl Dictionary {
 /// `>>` inside `(…)` does not end the dictionary early.
 fn parse_dictionary(bytes: &[u8], open: usize) -> Option<Dictionary> {
     let limit = bytes.len().min(open.saturating_add(DICTIONARY_WINDOW));
-    let window = &bytes[..limit];
+    let window = bytes.get(..limit)?;
     let mut depth = 0usize;
     let mut index = open;
     let mut length = None;
     let mut flate = false;
-    while index < window.len() {
-        match window[index] {
+    while let Some(&byte) = window.get(index) {
+        match byte {
             b'<' if window.get(index + 1) == Some(&b'<') => {
                 depth += 1;
                 index += 2;
@@ -324,7 +331,9 @@ fn parse_dictionary(bytes: &[u8], open: usize) -> Option<Dictionary> {
 /// (`12 0 R`) or anything else. Returns where parsing stopped.
 fn direct_integer(bytes: &[u8], from: usize) -> (Option<usize>, usize) {
     let start = skip_space(bytes, from);
-    let digits = bytes[start..]
+    let digits = bytes
+        .get(start..)
+        .unwrap_or_default()
         .iter()
         .take_while(|byte| byte.is_ascii_digit())
         .count();
@@ -332,12 +341,15 @@ fn direct_integer(bytes: &[u8], from: usize) -> (Option<usize>, usize) {
         return (None, start);
     }
     let end = start + digits;
-    let value = std::str::from_utf8(&bytes[start..end])
-        .ok()
+    let value = bytes
+        .get(start..end)
+        .and_then(|digits| std::str::from_utf8(digits).ok())
         .and_then(|text| text.parse::<usize>().ok());
     // `12 0 R` is a reference, not a length.
     let next = skip_space(bytes, end);
-    let generation = bytes[next..]
+    let generation = bytes
+        .get(next..)
+        .unwrap_or_default()
         .iter()
         .take_while(|byte| byte.is_ascii_digit())
         .count();
@@ -403,7 +415,7 @@ fn read_name(bytes: &[u8], slash: usize) -> Option<(&[u8], usize)> {
     let start = slash.checked_add(1)?;
     let rest = bytes.get(start..)?;
     let len = rest.iter().take_while(|byte| is_regular(**byte)).count();
-    Some((&rest[..len], start + len))
+    Some((rest.get(..len)?, start + len))
 }
 
 /// A PDF regular character: neither white space nor a delimiter.
@@ -421,7 +433,7 @@ fn is_space(byte: u8) -> bool {
 
 fn skip_space(bytes: &[u8], from: usize) -> usize {
     let mut index = from.min(bytes.len());
-    while index < bytes.len() && is_space(bytes[index]) {
+    while bytes.get(index).is_some_and(|&byte| is_space(byte)) {
         index += 1;
     }
     index
@@ -429,7 +441,10 @@ fn skip_space(bytes: &[u8], from: usize) -> usize {
 
 fn skip_comment(bytes: &[u8], from: usize) -> usize {
     let mut index = from;
-    while index < bytes.len() && bytes[index] != b'\n' && bytes[index] != b'\r' {
+    while bytes
+        .get(index)
+        .is_some_and(|&byte| byte != b'\n' && byte != b'\r')
+    {
         index += 1;
     }
     index
@@ -443,8 +458,8 @@ fn skip_hex_string(bytes: &[u8], from: usize) -> Option<usize> {
 fn skip_literal_string(bytes: &[u8], from: usize) -> Option<usize> {
     let mut depth = 0usize;
     let mut index = from;
-    while index < bytes.len() {
-        match bytes[index] {
+    while let Some(&byte) = bytes.get(index) {
+        match byte {
             b'\\' => index += 2,
             b'(' => {
                 depth += 1;

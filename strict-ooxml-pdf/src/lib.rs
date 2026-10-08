@@ -37,7 +37,20 @@
 //! and path flattening; the corpus round trip against a PDF this workspace wrote
 //! (`O-9`); and the pixel gate over the WPS references (`O-2`), which reads this
 //! crate's own output back and rasterizes it. See `STAGE-8-OPEN.md`.
-
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::indexing_slicing
+    )
+)]
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]

@@ -271,10 +271,12 @@ impl XmlWriter {
         // The name ends at the first delimiter after it: a space starts the
         // attributes, `>` ends the tag. Scanning for `>` alone would swallow the
         // attributes into the name.
-        let name_end = self.out[name_start..]
-            .find([' ', '>', '/'])
-            .map_or(self.out.len(), |offset| name_start + offset);
-        let name = self.out[name_start..name_end].to_owned();
+        let name = self
+            .out
+            .get(name_start..)
+            .and_then(|tag| tag.split([' ', '>', '/']).next())
+            .unwrap_or_default()
+            .to_owned();
         self.out.push_str("</");
         self.out.push_str(&name);
         self.out.push('>');
@@ -395,7 +397,10 @@ impl XmlWriter {
         if declarations.is_empty() {
             return;
         }
-        let name_end = self.out[at..]
+        let Some(root) = self.out.get(at..) else {
+            return;
+        };
+        let name_end = root
             .find([' ', '>', '/'])
             .map_or(self.out.len(), |offset| at + offset);
         self.out.insert_str(name_end, &declarations);

@@ -94,15 +94,19 @@ impl FormCache {
                     .map(number_of_object)
                     .collect::<Option<Vec<f64>>>()
             })
-            .filter(|values| values.len() == 6)
-            .map_or(Matrix::IDENTITY, |values| Matrix {
-                a: values[0],
-                b: values[1],
-                c: values[2],
-                d: values[3],
-                e: values[4],
-                f: values[5],
-            });
+            .and_then(|values| match *values.as_slice() {
+                // ISO 32000-1 8.3.3: [sx ky kx sy tx ty].
+                [sx, ky, kx, sy, tx, ty] => Some(Matrix {
+                    a: sx,
+                    b: ky,
+                    c: kx,
+                    d: sy,
+                    e: tx,
+                    f: ty,
+                }),
+                _ => None,
+            })
+            .unwrap_or(Matrix::IDENTITY);
         let resources = stream.dict.get(b"Resources").ok().cloned();
         let decoded = Rc::new(DecodedForm {
             operations: Rc::new(operations),

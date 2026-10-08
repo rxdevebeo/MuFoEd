@@ -855,19 +855,25 @@ fn remove_element(bytes: &[u8], name: &str) -> Vec<u8> {
             return out;
         };
         if after != b'>' && after != b'/' && after != b' ' {
-            out.extend_from_slice(&rest[..at + open.len()]);
-            rest = &rest[at + open.len()..];
+            // In bounds: the byte at `at + open.len()` exists.
+            let Some((head, next)) = rest.split_at_checked(at + open.len()) else {
+                break;
+            };
+            out.extend_from_slice(head);
+            rest = next;
             continue;
         }
-        out.extend_from_slice(&rest[..at]);
-        let tail = &rest[at..];
-        if tail.starts_with(empty.as_bytes()) {
-            rest = &tail[empty.len()..];
+        let Some((head, tail)) = rest.split_at_checked(at) else {
+            break;
+        };
+        out.extend_from_slice(head);
+        if let Some(next) = tail.strip_prefix(empty.as_bytes()) {
+            rest = next;
             continue;
         }
         match find(tail, close.as_bytes()) {
             Some(end) => {
-                rest = &tail[end + close.len()..];
+                rest = tail.get(end + close.len()..).unwrap_or_default();
             }
             // An opening tag with no matching close: the input was not
             // well-formed, and cutting at the end would invent a removal that
@@ -919,9 +925,12 @@ fn replace_all(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     let mut rest = bytes;
     while let Some(at) = find(rest, from) {
-        out.extend_from_slice(&rest[..at]);
+        let Some((head, tail)) = rest.split_at_checked(at) else {
+            break;
+        };
+        out.extend_from_slice(head);
         out.extend_from_slice(to);
-        rest = &rest[at + from.len()..];
+        rest = tail.get(from.len()..).unwrap_or_default();
     }
     out.extend_from_slice(rest);
     out
@@ -975,8 +984,10 @@ fn without_shadow_relationships(bytes: &[u8]) -> Vec<u8> {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find("<Relationship ") {
-        out.push_str(&rest[..start]);
-        let element = &rest[start..];
+        let Some((before, element)) = rest.split_at_checked(start) else {
+            break;
+        };
+        out.push_str(before);
         let Some(end) = element.find('>') else {
             out.push_str(element);
             rest = "";
@@ -997,6 +1008,10 @@ fn strict_rels_namespace(bytes: &[u8]) -> Vec<u8> {
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    // `windows(0)` panics; an empty needle matches nothing worth replacing.
+    if needle.is_empty() {
+        return None;
+    }
     haystack
         .windows(needle.len())
         .position(|window| window == needle)

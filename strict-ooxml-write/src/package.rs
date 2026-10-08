@@ -519,12 +519,35 @@ pub fn write_package(
     // recurse the serializer as deep as the model goes, and the reader that
     // produced it would never have let it exist. A model built in code has had no
     // such reader, so this is the first place that can say no (AUD-05 п.3).
-    crate::body::check_block_nesting(&document.body.blocks, &options.limits).map_err(|error| {
-        StrictError::Write {
-            part: PartId::new(MAIN_DOCUMENT),
-            detail: error.to_string(),
-        }
-    })?;
+    // Every story, not the body alone: a header or a note is serialized by the
+    // same recursive writer.
+    let stories = std::iter::once((PartId::new(MAIN_DOCUMENT), &document.body.blocks))
+        .chain(
+            document
+                .headers_footers
+                .iter()
+                .map(|story| (story.part.clone(), &story.blocks)),
+        )
+        .chain(
+            document
+                .footnotes
+                .iter()
+                .map(|note| (PartId::new(FOOTNOTES_PART), &note.blocks)),
+        )
+        .chain(
+            document
+                .endnotes
+                .iter()
+                .map(|note| (PartId::new(ENDNOTES_PART), &note.blocks)),
+        );
+    for (part, blocks) in stories {
+        crate::body::check_block_nesting(blocks, &options.limits).map_err(|error| {
+            StrictError::Write {
+                part,
+                detail: error.to_string(),
+            }
+        })?;
+    }
     let mut report = crate::WriteReport::new();
     // AUD-42: the parser drops customXml/smartTag wrappers (content kept). The
     // writer cannot restore them — surface the Ignorable loss once per feature.
@@ -1093,8 +1116,9 @@ fn bind_part_foreign(
         else {
             continue;
         };
+        let reached = source.reachable_parts(&target);
         let mut seeds = vec![target];
-        if let Ok(reached) = source.reachable_parts(&seeds[0]) {
+        if let Ok(reached) = reached {
             seeds.extend(reached);
         }
         for seed in seeds {
@@ -1216,15 +1240,16 @@ fn office_relationship_ids(xml: &str) -> Vec<String> {
         let needle = format!(" r:{attr}=\"");
         let mut rest = xml;
         while let Some(at) = rest.find(&needle) {
-            let value_start = &rest[at + needle.len()..];
-            let Some(end) = value_start.find('"') else {
+            let Some(value_start) = rest.get(at + needle.len()..) else {
                 break;
             };
-            let value = value_start[..end].to_owned();
+            let Some((value, after)) = value_start.split_once('"') else {
+                break;
+            };
             if !value.is_empty() {
-                out.insert(value);
+                out.insert(value.to_owned());
             }
-            rest = &value_start[end + 1..];
+            rest = after;
         }
     }
     out.into_vec()
@@ -1247,8 +1272,10 @@ fn digest_of(bytes: &[u8]) -> [u8; 32] {
 /// OPC part names compare case-insensitively (ISO/IEC 29500-2 §9.1.1.1). Not
 /// `Path::extension`: `/_rels/.rels` has no extension to it.
 fn ends_with_ignore_case(name: &str, suffix: &str) -> bool {
-    name.len() >= suffix.len()
-        && name.as_bytes()[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix.as_bytes())
+    name.len()
+        .checked_sub(suffix.len())
+        .and_then(|start| name.as_bytes().get(start..))
+        .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix.as_bytes()))
 }
 
 /// A package part whose bytes the census compares as a resource.

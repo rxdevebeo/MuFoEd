@@ -12,6 +12,19 @@
 //! With no directory it serves every known corpus that contains documents, and
 //! the page can switch between them. Directories on the command line replace
 //! that list.
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable
+    )
+)]
 
 mod http;
 mod ui;
@@ -21,7 +34,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use http::Response;
 use strict_ooxml_view::{discover, failed, render, Cache, DocumentView, Entry};
@@ -164,7 +177,7 @@ impl State {
         if let Some(cached) = self
             .caches
             .lock()
-            .expect("viewer cache")
+            .unwrap_or_else(PoisonError::into_inner)
             .get(&corpus.id)
             .and_then(|cache| cache.get(name).cloned())
         {
@@ -179,7 +192,7 @@ impl State {
         };
         self.caches
             .lock()
-            .expect("viewer cache")
+            .unwrap_or_else(PoisonError::into_inner)
             .entry(corpus.id.clone())
             .or_default()
             .insert(view.clone());

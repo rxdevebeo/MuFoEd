@@ -2201,6 +2201,7 @@ dependencies = [
 name = "strict-ooxml"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "roxmltree 0.20.0",
  "strict-ooxml-convert",
  "strict-ooxml-core",
@@ -2260,7 +2261,9 @@ dependencies = [
 name = "strict-ooxml-edit"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "png",
+ "proptest",
  "strict-ooxml-core",
  "strict-ooxml-render-svg",
  "strict-ooxml-testkit",

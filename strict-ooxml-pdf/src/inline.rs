@@ -35,7 +35,7 @@ pub fn extract(bytes: &[u8]) -> (Vec<u8>, Vec<InlineImage>) {
     let mut index = 0;
     while index < bytes.len() {
         if let Some(start) = find_bi(bytes, index) {
-            out.extend_from_slice(&bytes[index..start]);
+            out.extend_from_slice(bytes.get(index..start).unwrap_or_default());
             if let Some((after, image)) = take_inline(bytes, start) {
                 let n = images.len();
                 images.push(image);
@@ -44,11 +44,11 @@ pub fn extract(bytes: &[u8]) -> (Vec<u8>, Vec<InlineImage>) {
             } else {
                 // A BI we cannot finish: copy the BI token and continue so
                 // the rest of the stream still tokenises.
-                out.extend_from_slice(&bytes[start..start + 2]);
+                out.extend_from_slice(bytes.get(start..start + 2).unwrap_or_default());
                 index = start + 2;
             }
         } else {
-            out.extend_from_slice(&bytes[index..]);
+            out.extend_from_slice(bytes.get(index..).unwrap_or_default());
             break;
         }
     }
@@ -58,12 +58,8 @@ pub fn extract(bytes: &[u8]) -> (Vec<u8>, Vec<InlineImage>) {
 /// Finds `BI` as a free-standing operator at or after `from`.
 fn find_bi(bytes: &[u8], from: usize) -> Option<usize> {
     let mut index = from;
-    while index + 2 <= bytes.len() {
-        if bytes[index] == b'B'
-            && bytes[index + 1] == b'I'
-            && is_delim_before(bytes, index)
-            && is_delim_after(bytes, index + 2)
-        {
+    while let Some(pair) = bytes.get(index..index + 2) {
+        if pair == b"BI" && is_delim_before(bytes, index) && is_delim_after(bytes, index + 2) {
             return Some(index);
         }
         index += 1;
@@ -72,11 +68,21 @@ fn find_bi(bytes: &[u8], from: usize) -> Option<usize> {
 }
 
 fn is_delim_before(bytes: &[u8], index: usize) -> bool {
-    index == 0 || is_whitespace(bytes[index - 1]) || is_delimiter(bytes[index - 1])
+    index
+        .checked_sub(1)
+        .and_then(|before| bytes.get(before))
+        .is_none_or(|&byte| is_whitespace(byte) || is_delimiter(byte))
 }
 
 fn is_delim_after(bytes: &[u8], index: usize) -> bool {
-    index >= bytes.len() || is_whitespace(bytes[index]) || is_delimiter(bytes[index])
+    bytes
+        .get(index)
+        .is_none_or(|&byte| is_whitespace(byte) || is_delimiter(byte))
+}
+
+/// Neither white space nor a delimiter.
+fn is_regular(byte: u8) -> bool {
+    !is_whitespace(byte) && !is_delimiter(byte)
 }
 
 fn is_whitespace(byte: u8) -> bool {
@@ -94,21 +100,24 @@ fn is_delimiter(byte: u8) -> bool {
 fn take_inline(bytes: &[u8], bi: usize) -> Option<(usize, InlineImage)> {
     // Skip "BI" and whitespace.
     let mut index = bi + 2;
-    while index < bytes.len() && is_whitespace(bytes[index]) {
+    while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
         index += 1;
     }
     let (id_at, dict) = parse_inline_dict(bytes, index)?;
     // Skip "ID" and the single whitespace that follows (ISO 32000-1 §8.9.7).
     let mut data_start = id_at + 2;
-    if data_start < bytes.len() && is_whitespace(bytes[data_start]) {
+    if bytes
+        .get(data_start)
+        .is_some_and(|&byte| is_whitespace(byte))
+    {
         data_start += 1;
     }
     let (ei_at, data_end) = find_ei(bytes, data_start, &dict)?;
-    let data = bytes[data_start..data_end].to_vec();
+    let data = bytes.get(data_start..data_end)?.to_vec();
     let image = decode_inline(&dict, &data);
     let after = {
         let mut end = ei_at + 2;
-        while end < bytes.len() && is_whitespace(bytes[end]) {
+        while bytes.get(end).is_some_and(|&byte| is_whitespace(byte)) {
             end += 1;
         }
         end
@@ -149,26 +158,27 @@ fn parse_inline_dict(bytes: &[u8], mut index: usize) -> Option<(usize, InlineDic
         filter: None,
     };
     while index < bytes.len() {
-        while index < bytes.len() && is_whitespace(bytes[index]) {
+        while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
             index += 1;
         }
-        if index + 2 <= bytes.len()
-            && &bytes[index..index + 2] == b"ID"
+        if bytes
+            .get(index..index + 2)
+            .is_some_and(|pair| pair == b"ID")
             && is_delim_before(bytes, index)
             && is_delim_after(bytes, index + 2)
         {
             return Some((index, dict));
         }
-        if index >= bytes.len() || bytes[index] != b'/' {
+        if bytes.get(index) != Some(&b'/') {
             return None;
         }
         index += 1;
         let key_start = index;
-        while index < bytes.len() && !is_whitespace(bytes[index]) && !is_delimiter(bytes[index]) {
+        while bytes.get(index).is_some_and(|&byte| is_regular(byte)) {
             index += 1;
         }
-        let key = &bytes[key_start..index];
-        while index < bytes.len() && is_whitespace(bytes[index]) {
+        let key = bytes.get(key_start..index)?;
+        while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
             index += 1;
         }
         let (value, next) = parse_value(bytes, index)?;
@@ -220,22 +230,23 @@ impl Value {
 }
 
 fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
-    if index >= bytes.len() {
-        return None;
-    }
-    if bytes[index] == b'/' {
+    let first = *bytes.get(index)?;
+    if first == b'/' {
         let mut end = index + 1;
-        while end < bytes.len() && !is_whitespace(bytes[end]) && !is_delimiter(bytes[end]) {
+        while bytes.get(end).is_some_and(|&byte| is_regular(byte)) {
             end += 1;
         }
-        return Some((Value::Name(bytes[index + 1..end].to_vec()), end));
+        return Some((Value::Name(bytes.get(index + 1..end)?.to_vec()), end));
     }
-    if bytes[index] == b'[' {
+    if first == b'[' {
         // Skip array values we do not need (e.g. Decode).
         let mut end = index + 1;
         let mut depth = 1;
-        while end < bytes.len() && depth > 0 {
-            match bytes[end] {
+        while depth > 0 {
+            let Some(&byte) = bytes.get(end) else {
+                break;
+            };
+            match byte {
                 b'[' => depth += 1,
                 b']' => depth -= 1,
                 _ => {}
@@ -244,20 +255,21 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
         }
         return Some((Value::Other, end));
     }
-    if bytes[index].is_ascii_digit() || bytes[index] == b'-' || bytes[index] == b'+' {
+    if first.is_ascii_digit() || first == b'-' || first == b'+' {
         let mut end = index;
-        while end < bytes.len()
-            && (bytes[end].is_ascii_digit() || matches!(bytes[end], b'-' | b'+' | b'.'))
+        while bytes
+            .get(end)
+            .is_some_and(|&byte| byte.is_ascii_digit() || matches!(byte, b'-' | b'+' | b'.'))
         {
             end += 1;
         }
-        let text = std::str::from_utf8(&bytes[index..end]).ok()?;
+        let text = std::str::from_utf8(bytes.get(index..end)?).ok()?;
         let number = text.parse::<f64>().ok()?;
         return Some((Value::Number(number as u32), end));
     }
     // Bare name without slash (rare) or unknown token: skip one token.
     let mut end = index;
-    while end < bytes.len() && !is_whitespace(bytes[end]) && !is_delimiter(bytes[end]) {
+    while bytes.get(end).is_some_and(|&byte| is_regular(byte)) {
         end += 1;
     }
     Some((Value::Other, end.max(index + 1)))
@@ -271,10 +283,11 @@ fn find_ei(bytes: &[u8], data_start: usize, dict: &InlineDict) -> Option<(usize,
         if data_end + 2 <= bytes.len() {
             let mut ei = data_end;
             // Optional whitespace between samples and EI.
-            while ei < bytes.len() && is_whitespace(bytes[ei]) {
+            while bytes.get(ei).is_some_and(|&byte| is_whitespace(byte)) {
                 ei += 1;
             }
-            if ei + 2 <= bytes.len() && &bytes[ei..ei + 2] == b"EI" && is_delim_after(bytes, ei + 2)
+            if bytes.get(ei..ei + 2).is_some_and(|pair| pair == b"EI")
+                && is_delim_after(bytes, ei + 2)
             {
                 return Some((ei, data_end.min(ei)));
             }
@@ -282,17 +295,18 @@ fn find_ei(bytes: &[u8], data_start: usize, dict: &InlineDict) -> Option<(usize,
     }
     // Delimiter search: whitespace (or start-of-data) + EI + whitespace/delimiter/end.
     let mut index = data_start;
-    while index + 2 <= bytes.len() {
-        if &bytes[index..index + 2] == b"EI"
-            && (index == data_start || is_whitespace(bytes[index - 1]))
+    while let Some(pair) = bytes.get(index..index + 2) {
+        let space_before = index > data_start
+            && index
+                .checked_sub(1)
+                .and_then(|before| bytes.get(before))
+                .is_some_and(|&byte| is_whitespace(byte));
+        if pair == b"EI"
+            && (index == data_start || space_before)
             && is_delim_after(bytes, index + 2)
         {
             // data_end excludes the whitespace before EI when present.
-            let data_end = if index > data_start && is_whitespace(bytes[index - 1]) {
-                index - 1
-            } else {
-                index
-            };
+            let data_end = if space_before { index - 1 } else { index };
             return Some((index, data_end));
         }
         index += 1;

@@ -207,11 +207,6 @@ struct Grid {
 }
 
 impl Grid {
-    /// The number of columns.
-    fn columns(&self) -> usize {
-        self.xs.len() - 1
-    }
-
     /// The number of rows.
     fn rows(&self) -> usize {
         self.ys.len() - 1
@@ -294,10 +289,8 @@ pub(crate) struct Plan {
 
 impl Plan {
     /// Whether a line is the first line of a table, and which one.
-    pub(crate) fn starts_table(&self, line: usize) -> Option<usize> {
-        self.tables
-            .iter()
-            .position(|table| table.first_line == line)
+    pub(crate) fn starts_table(&self, line: usize) -> Option<&PlannedTable> {
+        self.tables.iter().find(|table| table.first_line == line)
     }
 
     /// Whether a line belongs to a table and must not become a paragraph.
@@ -608,7 +601,10 @@ fn components(rules: &[Rule], tolerance: f64) -> Vec<Vec<usize>> {
                         continue;
                     };
                     for &other in others {
-                        if touches(&rules[other], x, y, tolerance) {
+                        if rules
+                            .get(other)
+                            .is_some_and(|candidate| touches(candidate, x, y, tolerance))
+                        {
                             union(&mut parent, index, other);
                         }
                     }
@@ -642,28 +638,26 @@ fn components(rules: &[Rule], tolerance: f64) -> Vec<Vec<usize>> {
 /// That is O(n log n + k) rather than a pairwise scan of every horizontal against
 /// every vertical.
 fn union_crossings(rules: &[Rule], parent: &mut [usize], tolerance: f64) {
-    let mut verticals: Vec<usize> = rules
+    let mut verticals: Vec<(usize, &Rule)> = rules
         .iter()
         .enumerate()
         .filter(|(_, rule)| !rule.horizontal())
-        .map(|(index, _)| index)
         .collect();
-    verticals.sort_by(|&left, &right| {
-        rules[left]
-            .x0
-            .partial_cmp(&rules[right].x0)
+    verticals.sort_by(|(_, left), (_, right)| {
+        left.x0
+            .partial_cmp(&right.x0)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     for (index, rule) in rules.iter().enumerate() {
         if !rule.horizontal() {
             continue;
         }
-        let lo = verticals.partition_point(|&other| rules[other].x0 < rule.x0 - tolerance);
-        for &other in &verticals[lo..] {
-            if rules[other].x0 > rule.x1 + tolerance {
+        let lo = verticals.partition_point(|(_, vertical)| vertical.x0 < rule.x0 - tolerance);
+        for &(other, vertical) in verticals.iter().skip(lo) {
+            if vertical.x0 > rule.x1 + tolerance {
                 break;
             }
-            if crosses(rule, &rules[other], tolerance) {
+            if crosses(rule, vertical, tolerance) {
                 union(parent, index, other);
             }
         }
@@ -693,9 +687,16 @@ fn touches(rule: &Rule, x: f64, y: f64, tolerance: f64) -> bool {
 }
 
 fn root(parent: &mut [usize], mut index: usize) -> usize {
-    while parent[index] != index {
-        parent[index] = parent[parent[index]];
-        index = parent[index];
+    while let Some(&next) = parent.get(index) {
+        if next == index {
+            break;
+        }
+        // Path halving: point at the grandparent, then step to it.
+        let grandparent = parent.get(next).copied().unwrap_or(next);
+        if let Some(slot) = parent.get_mut(index) {
+            *slot = grandparent;
+        }
+        index = grandparent;
     }
     index
 }
@@ -705,7 +706,9 @@ fn union(parent: &mut [usize], left: usize, right: usize) {
     if left != right {
         // The lower index wins, so the representative does not depend on the
         // order the pairs were compared in.
-        parent[left.max(right)] = left.min(right);
+        if let Some(slot) = parent.get_mut(left.max(right)) {
+            *slot = left.min(right);
+        }
     }
 }
 
@@ -716,7 +719,10 @@ fn grid_of(
     config: &TableRules,
     max_table_cells: usize,
 ) -> Result<Grid, Rejected> {
-    let member: Vec<&Rule> = component.iter().map(|index| &rules[*index]).collect();
+    let member: Vec<&Rule> = component
+        .iter()
+        .filter_map(|&index| rules.get(index))
+        .collect();
     let verticals: Vec<&Rule> = member.iter().copied().filter(|r| !r.horizontal()).collect();
     let horizontals: Vec<&Rule> = member.iter().copied().filter(|r| r.horizontal()).collect();
     if verticals.len() < 2 || horizontals.len() < 2 {
@@ -792,8 +798,7 @@ fn grid_of(
         color: common(&colors),
         thickness: mode(&thicknesses).map_or(1.0, hundredths),
     };
-    let (last_x, last_y) = (grid.xs.len() - 1, grid.ys.len() - 1);
-    if last_x == 0 || last_y == 0 {
+    if grid.xs.len() < 2 || grid.ys.len() < 2 {
         // Every rule of this figure landed on one boundary, so it bounds nothing.
         // Only a caller who asked for no columns and no rows at all can get here,
         // and they get a refusal rather than an empty table.
@@ -803,31 +808,13 @@ fn grid_of(
         });
     }
     // The outer frame is what makes a grid a region rather than a set of lines.
-    let closed = [
-        grid.vertical[0].as_slice(),
-        grid.vertical[last_x].as_slice(),
-    ]
-    .iter()
-    .all(|intervals| {
-        covers(
-            intervals,
-            grid.ys[0],
-            grid.ys[last_y],
-            config.min_cover_ratio,
-        )
-    }) && [
-        grid.horizontal[0].as_slice(),
-        grid.horizontal[last_y].as_slice(),
-    ]
-    .iter()
-    .all(|intervals| {
-        covers(
-            intervals,
-            grid.xs[0],
-            grid.xs[last_x],
-            config.min_cover_ratio,
-        )
-    });
+    let side_covers = |side: Option<&Vec<(f64, f64)>>, from: f64, to: f64| {
+        side.is_some_and(|intervals| covers(intervals, from, to, config.min_cover_ratio))
+    };
+    let closed = side_covers(grid.vertical.first(), grid.top(), grid.bottom())
+        && side_covers(grid.vertical.last(), grid.top(), grid.bottom())
+        && side_covers(grid.horizontal.first(), grid.left(), grid.right())
+        && side_covers(grid.horizontal.last(), grid.left(), grid.right());
     if !closed {
         return Err(Rejected::OpenFrame);
     }
@@ -870,32 +857,33 @@ fn attach(
         if !within(line, grid.left(), grid.right(), config.tolerance) {
             continue;
         }
-        let row = (0..grid.rows())
-            .find(|row| line.baseline < grid.ys[row + 1])
+        let row = grid
+            .ys
+            .iter()
+            .skip(1)
+            .position(|&bottom| line.baseline < bottom)
             .unwrap_or(grid.rows() - 1);
-        row_of[index] = Some(row);
+        if let Some(slot) = row_of.get_mut(index) {
+            *slot = Some(row);
+        }
         first_line.get_or_insert(index);
     }
     let first_line = first_line.ok_or(Rejected::NoText)?;
     let mut rows: Vec<PlannedRow> = Vec::with_capacity(grid.rows());
     let mut merged = 0;
-    for row in 0..grid.rows() {
-        let band = (grid.ys[row], grid.ys[row + 1]);
+    for (row, (&top, &bottom)) in grid.ys.iter().zip(grid.ys.iter().skip(1)).enumerate() {
         let mut cells: Vec<PlannedCell> = Vec::new();
-        for column in 0..grid.columns() {
-            if column > 0
-                && !covers(
-                    &grid.vertical[column],
-                    band.0,
-                    band.1,
-                    config.min_cover_ratio,
-                )
-            {
+        for (column, (&left, &right)) in grid.xs.iter().zip(grid.xs.iter().skip(1)).enumerate() {
+            let ruled = grid
+                .vertical
+                .get(column)
+                .is_some_and(|intervals| covers(intervals, top, bottom, config.min_cover_ratio));
+            if column > 0 && !ruled {
                 // No rule between this column and the last one: they are one
                 // cell, and the ink says so.
                 if let Some(previous) = cells.last_mut() {
                     previous.span += 1;
-                    previous.width = grid.xs[column + 1] - previous.left;
+                    previous.width = right - previous.left;
                     merged += 1;
                     continue;
                 }
@@ -904,8 +892,8 @@ fn attach(
                 column,
                 span: 1,
                 merge: None,
-                left: grid.xs[column],
-                width: grid.xs[column + 1] - grid.xs[column],
+                left,
+                width: right - left,
                 lines: Vec::new(),
             });
         }
@@ -927,7 +915,7 @@ fn attach(
             cell.lines = strict_ooxml_pdf::text::lines(&items);
         }
         rows.push(PlannedRow {
-            height: band.1 - band.0,
+            height: bottom - top,
             cells,
         });
     }
@@ -936,44 +924,47 @@ fn attach(
     // not, the rules and the text describe two different things, and choosing
     // between them is worse than saying the grid was not understood.
     for row in 0..rows.len().saturating_sub(1) {
-        for index in 0..rows[row].cells.len() {
-            let (column, span, width) = {
-                let cell = &rows[row].cells[index];
-                (cell.column, cell.span, cell.width)
+        // The rows above this one, this one, and the one below it.
+        let Some(([earlier @ .., current], [below, ..])) = rows.split_at_mut_checked(row + 1)
+        else {
+            break;
+        };
+        let Some(rule) = grid.horizontal.get(row + 1) else {
+            break;
+        };
+        for cell in &mut current.cells {
+            let (column, span, width) = (cell.column, cell.span, cell.width);
+            let Some(&left) = grid.xs.get(column) else {
+                continue;
             };
-            if covers(
-                &grid.horizontal[row + 1],
-                grid.xs[column],
-                grid.xs[column] + width,
-                config.min_cover_ratio,
-            ) {
+            if covers(rule, left, left + width, config.min_cover_ratio) {
                 continue;
             }
-            let continues = rows[row + 1]
+            let continues = below
                 .cells
-                .iter()
-                .position(|cell| cell.column == column && cell.span == span);
+                .iter_mut()
+                .find(|other| other.column == column && other.span == span);
             let Some(next) = continues else {
                 return Err(Rejected::DanglingSpan);
             };
-            let above = row
-                .checked_sub(1)
+            let above = earlier
+                .last()
                 .and_then(|above| {
-                    rows[above]
+                    above
                         .cells
                         .iter()
-                        .find(|cell| cell.column == column && cell.span == span)
+                        .find(|other| other.column == column && other.span == span)
                 })
-                .is_some_and(|cell| cell.merge.is_some());
+                .is_some_and(|other| other.merge.is_some());
             // The cell the rule is missing under is the top of the merged region
             // and the one below it is its continuation; the first cell of a run
             // is the one that says `restart`, exactly as WML spells it.
-            rows[row].cells[index].merge = Some(if above {
+            cell.merge = Some(if above {
                 VerticalMerge::Continue
             } else {
                 VerticalMerge::Restart
             });
-            rows[row + 1].cells[next].merge = Some(VerticalMerge::Continue);
+            next.merge = Some(VerticalMerge::Continue);
             merged += 1;
         }
     }
@@ -986,9 +977,9 @@ fn attach(
     if filled < config.min_filled_cells {
         return Err(Rejected::NotEnoughText { filled, total });
     }
-    for (index, row) in row_of.iter().enumerate() {
+    for (slot, row) in owner.iter_mut().zip(&row_of) {
         if row.is_some() {
-            owner[index] = Some(table);
+            *slot = Some(table);
         }
     }
     Ok(PlannedTable {
@@ -996,8 +987,9 @@ fn attach(
         width: grid.right() - grid.left(),
         columns: grid
             .xs
-            .windows(2)
-            .map(|pair| to_twips(pair[1] - pair[0]))
+            .iter()
+            .zip(grid.xs.iter().skip(1))
+            .map(|(left, right)| to_twips(right - left))
             .collect(),
         color: grid.color,
         thickness: grid.thickness,

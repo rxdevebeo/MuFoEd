@@ -622,6 +622,113 @@ mod nesting {
     }
 }
 
+mod drawing_nesting {
+    //! Never-crash step 3: `DrawingML` groups and `mc:AlternateContent`, the two
+    //! recursions that only `max_xml_depth` used to bound.
+
+    use super::*;
+    use strict_ooxml_report::FeatureStatus;
+    use strict_ooxml_testkit::xml::{nested, nested_groups};
+
+    const MCE: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+
+    fn feature(document: &StrictDocument, id: &str) -> Option<(FeatureStatus, Option<String>)> {
+        document
+            .support_report()
+            .features
+            .iter()
+            .find(|feature| feature.feature_id == id)
+            .map(|feature| (feature.status, feature.message.clone()))
+    }
+
+    fn open_ok(body: &str) -> StrictDocument {
+        let bytes = DocxBuilder::strict().body(body).build();
+        assert_survives("open", move || {
+            let options = OpenOptions::default();
+            StrictDocument::open_reader(Cursor::new(bytes), &options).expect("open")
+        })
+    }
+
+    fn pipeline(document: StrictDocument) {
+        assert_survives("pipeline", move || {
+            let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+            assert!(svg.is_ok(), "render_svg: {svg:?}");
+            let written = strict_ooxml::write_package(
+                document.document(),
+                Some(document.package()),
+                &strict_ooxml::WriteOptions::default(),
+            );
+            assert!(written.is_ok(), "write_package");
+        });
+    }
+
+    #[test]
+    fn sixteen_nested_groups_are_read_and_survive_the_pipeline() {
+        let document = open_ok(&nested_groups(16));
+        assert_eq!(
+            feature(&document, "wpg:wgp").map(|entry| entry.0),
+            Some(FeatureStatus::Supported)
+        );
+        pipeline(document);
+    }
+
+    #[test]
+    fn a_group_past_its_budget_costs_its_content_not_the_document() {
+        // About 250 groups fit under `max_xml_depth`; before the group budget
+        // every walk of the model recursed once per level of them.
+        let document = open_ok(&format!(
+            "<w:p><w:r><w:t>before</w:t></w:r></w:p>{}<w:p><w:r><w:t>after</w:t></w:r></w:p>",
+            nested_groups(200)
+        ));
+        let (status, message) = feature(&document, "wpg:wgp").expect("wpg:wgp is reported");
+        assert_eq!(status, FeatureStatus::Unsupported);
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| text.contains("max_group_nesting (16)")),
+            "{message:?}"
+        );
+        assert_eq!(document.document().body.blocks.len(), 3);
+        pipeline(document);
+    }
+
+    #[test]
+    fn a_chain_of_alternate_content_costs_its_content_not_the_stack() {
+        let chain = nested(
+            &format!("<mc:AlternateContent xmlns:mc=\"{MCE}\"><mc:Fallback>"),
+            "</mc:Fallback></mc:AlternateContent>",
+            "<w:p><w:r><w:t>deep</w:t></w:r></w:p>",
+            100,
+        );
+        let document = open_ok(&format!(
+            "<w:p><w:r><w:t>before</w:t></w:r></w:p>{chain}<w:p><w:r><w:t>after</w:t></w:r></w:p>"
+        ));
+        // The in-budget wrappers recorded themselves first, so the message is
+        // theirs; the status is the worst of all the records.
+        let (status, _) =
+            feature(&document, "mc:AlternateContent").expect("mc:AlternateContent is reported");
+        assert_eq!(status, FeatureStatus::Unsupported);
+        assert_eq!(
+            document.document().body.blocks.len(),
+            2,
+            "the deep paragraph is skipped"
+        );
+        pipeline(document);
+    }
+
+    #[test]
+    fn eight_levels_of_alternate_content_are_still_read() {
+        let chain = nested(
+            &format!("<mc:AlternateContent xmlns:mc=\"{MCE}\"><mc:Fallback>"),
+            "</mc:Fallback></mc:AlternateContent>",
+            "<w:p><w:r><w:t>deep</w:t></w:r></w:p>",
+            8,
+        );
+        let document = open_ok(&chain);
+        assert_eq!(document.document().body.blocks.len(), 1);
+    }
+}
+
 mod inline_nesting {
     //! Inline wrappers against `max_inline_nesting`.
     //!

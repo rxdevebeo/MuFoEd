@@ -110,6 +110,20 @@ pub struct ResourceLimits {
     /// `Unsupported`, and the rest of the document is read - the trade
     /// [`max_text_box_nesting`](Self::max_text_box_nesting) makes.
     pub max_inline_nesting: u32,
+    /// Maximum nesting of `DrawingML` group shapes (`wpg:wgp` / `wpg:grpSp`).
+    /// Default: 16.
+    ///
+    /// Before this bound a group was capped only by
+    /// [`max_xml_depth`](Self::max_xml_depth) - one XML level per group, so
+    /// about 250 groups deep - and every later walk (render, write, edit, the
+    /// recursive drop of the model) recursed once per level. Word's UI nests
+    /// groups a handful of levels; sixteen leaves room for generated drawings.
+    ///
+    /// As with text boxes, the parser does not refuse a document over it: the
+    /// group past the bound loses its content and `wpg:wgp` is recorded as
+    /// `Unsupported`. The renderer and the writer return
+    /// `LimitKind::GroupNesting` for a model built by hand that goes past it.
+    pub max_group_nesting: u32,
     /// Maximum number of nodes in one `m:oMath`. Default: 4096.
     ///
     /// Per formula, not per package: a document may carry a thousand formulas,
@@ -150,6 +164,7 @@ impl Default for ResourceLimits {
             max_block_nesting: 12,
             max_text_box_nesting: 5,
             max_inline_nesting: 16,
+            max_group_nesting: 16,
             max_math_nodes: 4096,
             max_math_depth: 64,
             max_support_features: 10_000,
@@ -179,6 +194,7 @@ mod tests {
         assert_eq!(limits.max_block_nesting, 12);
         assert_eq!(limits.max_text_box_nesting, 5);
         assert_eq!(limits.max_inline_nesting, 16);
+        assert_eq!(limits.max_group_nesting, 16);
         assert_eq!(limits.max_math_nodes, 4096);
         assert_eq!(limits.max_math_depth, 64);
         assert_eq!(limits.max_support_features, 10_000);

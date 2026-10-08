@@ -936,12 +936,7 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             xml.end();
             xml.start("a:stretch");
             xml.start("a:fillRect");
-            for (name, value) in [
-                ("l", &fill_rect[0]),
-                ("t", &fill_rect[1]),
-                ("r", &fill_rect[2]),
-                ("b", &fill_rect[3]),
-            ] {
+            for (name, value) in ["l", "t", "r", "b"].into_iter().zip(fill_rect) {
                 if let Some(value) = value {
                     xml.attr(name, value.as_ref());
                 }

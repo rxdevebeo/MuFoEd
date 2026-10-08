@@ -358,9 +358,11 @@ pub fn decode_from(
     limits: &PdfLimits,
 ) -> Result<(Encoded, u32, u32), Reject> {
     // Without a cache, a soft mask is decoded by decoding it: the public entry
-    // point is the one place that has no cache to ask.
+    // point is the one place that has no cache to ask. A mask has no mask of its
+    // own (ISO 32000-1 8.9.2.4), so it is decoded without following one - which
+    // also ends a `/SMask` cycle after one step instead of recursing forever.
     decode_inner(id, document, limits, &|mask_id| {
-        decode_from(mask_id, document, limits).ok()
+        decode_inner(mask_id, document, limits, &|_| None).ok()
     })
 }
 
@@ -669,7 +671,9 @@ pub(crate) fn expand_gray1_to_eight(
     for row in 0..height as usize {
         let row_start = row * row_bytes;
         for x in 0..width as usize {
-            let byte = packed[row_start + x / 8];
+            let Some(&byte) = packed.get(row_start + x / 8) else {
+                return Err(Reject::Broken("samples are truncated"));
+            };
             let bit = (byte >> (7 - (x % 8))) & 1;
             out.push(if bit == 0 { 0 } else { 255 });
         }
@@ -931,26 +935,35 @@ fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
     }
     let mut index = 2;
     while index + 9 < bytes.len() {
-        if bytes[index] != 0xFF {
+        if bytes.get(index) != Some(&0xFF) {
             index += 1;
             continue;
         }
-        let marker = bytes[index + 1];
+        let marker = *bytes.get(index + 1)?;
         if (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
-            let height = u16::from_be_bytes([bytes[index + 5], bytes[index + 6]]);
-            let width = u16::from_be_bytes([bytes[index + 7], bytes[index + 8]]);
+            let height = be_u16(bytes, index + 5)?;
+            let width = be_u16(bytes, index + 7)?;
             if width == 0 || height == 0 {
                 return None;
             }
             return Some((u32::from(width), u32::from(height)));
         }
-        let length = u16::from_be_bytes([bytes[index + 2], bytes[index + 3]]);
+        let length = be_u16(bytes, index + 2)?;
         if length < 2 {
             return None;
         }
         index += 2 + usize::from(length);
     }
     None
+}
+
+/// The big-endian `u16` at `at`, if the bytes reach that far.
+fn be_u16(bytes: &[u8], at: usize) -> Option<u16> {
+    bytes
+        .get(at..)?
+        .first_chunk::<2>()
+        .copied()
+        .map(u16::from_be_bytes)
 }
 
 #[cfg(test)]

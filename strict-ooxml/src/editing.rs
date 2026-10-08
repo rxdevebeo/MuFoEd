@@ -24,6 +24,11 @@ impl StrictDocument {
             .map_or_else(PipelineSummary::new, |r| {
                 PipelineSummary::from_normalization(PipelineStage::Normalize, &r)
             });
+        // The model must stay within the budgets the document was read under.
+        let limits = EditLimits {
+            resource: self.package.limits(),
+            ..limits
+        };
         let editor = Editor::new(&mut self.document, limits)?.with_pipeline(pipeline);
         let was_dirty = self.support_dirty;
         Ok(DocumentEditor {

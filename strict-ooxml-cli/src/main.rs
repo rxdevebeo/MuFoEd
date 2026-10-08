@@ -33,6 +33,19 @@
 //!
 //! `render` returns `0` on success, `1` when the document was rendered but the
 //! Feature Report has `unsupported`/`error` blockers, and `2` on failure.
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable
+    )
+)]
 
 // Every line this tool prints goes through `terminal_safe`: part names,
 // relationship ids and targets, content types, loss details and error messages

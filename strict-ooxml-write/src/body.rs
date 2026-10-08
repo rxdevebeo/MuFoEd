@@ -123,37 +123,43 @@ pub fn paragraph_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, paragraph: &Par
 
 /// Writes inlines, grouping consecutive runs that share the same revision wrapper.
 fn write_inlines_with_revisions(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inlines: &[Inline]) {
-    let mut index = 0;
-    while index < inlines.len() {
-        match &inlines[index] {
-            Inline::Run(run) if run.revision.is_some() => {
-                let revision = run.revision.as_ref().expect("checked");
-                let start = index;
-                index += 1;
-                while index < inlines.len() {
-                    match &inlines[index] {
-                        Inline::Run(next) if next.revision.as_ref() == Some(revision) => {
-                            index += 1;
+    let mut rest = inlines;
+    while let Some((first, tail)) = rest.split_first() {
+        let revision = match first {
+            Inline::Run(run) => run.revision.as_ref(),
+            _ => None,
+        };
+        match revision {
+            Some(revision) => {
+                let shared = tail
+                    .iter()
+                    .take_while(|inline| {
+                        if let Inline::Run(next) = inline {
+                            next.revision.as_ref() == Some(revision)
+                        } else {
+                            false
                         }
-                        _ => break,
-                    }
-                }
+                    })
+                    .count();
+                // `shared` counts a prefix of `tail`, so both ranges are in bounds.
+                let group = rest.get(..=shared).unwrap_or_default();
+                rest = tail.get(shared..).unwrap_or_default();
                 let tag = format!("w:{}", revision.kind.as_str());
                 xml.start(&tag);
                 xml.attr_w("id", revision.id);
                 xml.attr_w_opt("author", revision.author.as_deref());
                 xml.attr_w_opt("date", revision.date.as_deref());
                 let deleted = revision.kind.is_deletion();
-                for inline in &inlines[start..index] {
+                for inline in group {
                     if let Inline::Run(run) = inline {
                         run_element_body(ctx, xml, run, deleted);
                     }
                 }
                 xml.end();
             }
-            other => {
-                inline_item(ctx, xml, other);
-                index += 1;
+            None => {
+                inline_item(ctx, xml, first);
+                rest = tail;
             }
         }
     }
@@ -512,22 +518,24 @@ pub fn table_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &Table) {
     }
     // AUD-41: consecutive rows that share the same unwrapped `sdtPr` are
     // re-wrapped in one `w:sdt` so parse → write → parse keeps the control.
-    let mut index = 0;
-    while index < table.rows.len() {
-        if let Some(sdt) = &table.rows[index].sdt {
-            let mut end = index + 1;
-            while end < table.rows.len() && table.rows[end].sdt.as_ref() == Some(sdt) {
-                end += 1;
-            }
+    let mut rest: &[TableRow] = &table.rows;
+    while let Some((first, tail)) = rest.split_first() {
+        if let Some(sdt) = &first.sdt {
+            let shared = tail
+                .iter()
+                .take_while(|next| next.sdt.as_ref() == Some(sdt))
+                .count();
+            // `shared` counts a prefix of `tail`, so both ranges are in bounds.
+            let group = rest.get(..=shared).unwrap_or_default();
+            rest = tail.get(shared..).unwrap_or_default();
             write_sdt_around(ctx, xml, sdt, |ctx, xml| {
-                for row in &table.rows[index..end] {
+                for row in group {
                     table_row_element(ctx, xml, row);
                 }
             });
-            index = end;
         } else {
-            table_row_element(ctx, xml, &table.rows[index]);
-            index += 1;
+            table_row_element(ctx, xml, first);
+            rest = tail;
         }
     }
     xml.end();
@@ -538,22 +546,24 @@ fn table_row_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, row: &TableRow) {
     xml.start("w:tr");
     row_exception(xml, &row.props);
     row_properties(xml, &row.props);
-    let mut index = 0;
-    while index < row.cells.len() {
-        if let Some(sdt) = &row.cells[index].sdt {
-            let mut end = index + 1;
-            while end < row.cells.len() && row.cells[end].sdt.as_ref() == Some(sdt) {
-                end += 1;
-            }
+    let mut rest: &[TableCell] = &row.cells;
+    while let Some((first, tail)) = rest.split_first() {
+        if let Some(sdt) = &first.sdt {
+            let shared = tail
+                .iter()
+                .take_while(|next| next.sdt.as_ref() == Some(sdt))
+                .count();
+            // `shared` counts a prefix of `tail`, so both ranges are in bounds.
+            let group = rest.get(..=shared).unwrap_or_default();
+            rest = tail.get(shared..).unwrap_or_default();
             write_sdt_around(ctx, xml, sdt, |ctx, xml| {
-                for cell in &row.cells[index..end] {
+                for cell in group {
                     table_cell_element(ctx, xml, cell);
                 }
             });
-            index = end;
         } else {
-            table_cell_element(ctx, xml, &row.cells[index]);
-            index += 1;
+            table_cell_element(ctx, xml, first);
+            rest = tail;
         }
     }
     xml.end();
@@ -821,17 +831,23 @@ fn strict_prefix_mappings(mappings: &str) -> String {
     let mut out = String::with_capacity(mappings.len());
     let mut rest = mappings;
     while let Some(start) = rest.find(['\'', '"']) {
-        let quote = rest[start..].chars().next().unwrap_or('\'');
-        out.push_str(&rest[..=start]);
-        let after = &rest[start + 1..];
-        let Some(end) = after.find(quote) else {
+        let Some((before, from_quote)) = rest.split_at_checked(start) else {
+            break;
+        };
+        let mut chars = from_quote.chars();
+        let Some(quote) = chars.next() else {
+            break;
+        };
+        out.push_str(before);
+        out.push(quote);
+        let after = chars.as_str();
+        let Some((uri, tail)) = after.split_once(quote) else {
             out.push_str(after);
             return out;
         };
-        let uri = &after[..end];
         out.push_str(strict_ooxml_core::ns::registry::strict_form(uri).unwrap_or(uri));
         out.push(quote);
-        rest = &after[end + 1..];
+        rest = tail;
     }
     out.push_str(rest);
     out

@@ -9,11 +9,12 @@ use crate::model::SupportReport;
 /// Serializes a report to pretty JSON, terminated by `\n`.
 ///
 /// Serialization cannot fail for the report model (it contains no fallible
-/// custom serializers), so this function is infallible.
+/// custom serializers); should that ever change, the error itself is emitted
+/// as a JSON object instead of a panic.
 #[must_use]
 pub fn to_json(report: &SupportReport) -> String {
-    let mut out =
-        serde_json::to_string_pretty(report).expect("SupportReport serialization is infallible");
+    let mut out = serde_json::to_string_pretty(report)
+        .unwrap_or_else(|error| serde_json::json!({ "error": error.to_string() }).to_string());
     out.push('\n');
     out
 }
