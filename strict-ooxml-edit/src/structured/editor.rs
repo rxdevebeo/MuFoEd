@@ -6,6 +6,7 @@ use strict_ooxml_wml::model::{Block, Document, ParaId, Paragraph};
 use super::address::{addresses, mutate_story, read_paragraph, Address, Container, Story};
 use super::apply::apply;
 use super::command::{Edit, EditFailure};
+use super::ids::IdIndex;
 use super::notes::split_shared_notes;
 use super::validate::{validate, validate_patch};
 
@@ -24,6 +25,8 @@ pub struct Editor<'a> {
     /// transaction that touches no reference can skip the whole-document walk
     /// that would give one a copy.
     notes_settled: bool,
+    /// The paragraph identities in the document, kept by every patch.
+    ids: IdIndex,
 }
 /// A replaced range of one story's top-level blocks.
 #[derive(Clone)]
@@ -53,6 +56,7 @@ impl<'a> Editor<'a> {
     pub fn new(document: &'a mut Document, limits: EditLimits) -> Result<Self, EditError> {
         validate(document, &limits.resource)?;
         let notes_settled = has_no_notes(document);
+        let ids = IdIndex::of(document);
         Ok(Self {
             document,
             revision: 0,
@@ -63,6 +67,7 @@ impl<'a> Editor<'a> {
             support_stale: false,
             input_pipeline: strict_ooxml_core::pipeline::PipelineSummary::new(),
             notes_settled,
+            ids,
         })
     }
     /// Reads the current document.
@@ -143,10 +148,10 @@ impl<'a> Editor<'a> {
         // so a refusal anywhere restores exactly what was there.
         let mut patches = Vec::with_capacity(commands.len());
         for (index, command) in commands.iter().enumerate() {
-            match apply_patched(self.document, command, self.limits) {
+            match apply_patched(self.document, command, self.limits, &mut self.ids) {
                 Ok(patch) => patches.push(patch),
                 Err(error) => {
-                    restore(self.document, &patches);
+                    self.restore(&patches);
                     return Err(EditFailure {
                         command: Some(index),
                         address: Some(command.address().clone()),
@@ -160,7 +165,7 @@ impl<'a> Editor<'a> {
         // own, and that renumbers across the document: the whole-document path
         // takes such a transaction.
         if mentions_notes {
-            restore(self.document, &patches);
+            self.restore(&patches);
             return self.transact_whole(commands);
         }
         // One patch (a keystroke, a format, a split) is checked where it can
@@ -170,6 +175,7 @@ impl<'a> Editor<'a> {
             [patch] => validate_patch(
                 self.document,
                 &self.limits.resource,
+                &self.ids,
                 &patch.story,
                 &patch.before,
                 &patch.after,
@@ -177,18 +183,18 @@ impl<'a> Editor<'a> {
             _ => validate(self.document, &self.limits.resource),
         };
         if let Err(error) = checked {
-            restore(self.document, &patches);
+            self.restore(&patches);
             return Err(EditFailure::batch(error));
         }
         if patches.iter().all(|patch| patch.before == patch.after) {
             return Ok(self.changes(Vec::new()));
         }
         let Some(next) = self.revision.checked_add(1) else {
-            restore(self.document, &patches);
+            self.restore(&patches);
             return Err(EditFailure::batch(EditError::LimitExceeded));
         };
         if self.limits.history_transactions > 0 && bytes > self.history_byte_limit {
-            restore(self.document, &patches);
+            self.restore(&patches);
             return Err(EditFailure::batch(EditError::LimitExceeded));
         }
         let blocks = forward(&patches);
@@ -200,7 +206,10 @@ impl<'a> Editor<'a> {
     fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
         let mut candidate = self.document.clone();
         for (index, command) in commands.iter().enumerate() {
-            apply(&mut candidate, command, self.limits).map_err(|error| EditFailure {
+            // The index as it stands in the candidate, per command: what the
+            // whole-document path has always minted against.
+            let mut ids = IdIndex::of(&candidate);
+            apply(&mut candidate, command, self.limits, &mut ids).map_err(|error| EditFailure {
                 command: Some(index),
                 address: Some(command.address().clone()),
                 error,
@@ -221,6 +230,7 @@ impl<'a> Editor<'a> {
         }
         let before = std::mem::replace(&mut *self.document, candidate);
         let blocks = whole_story_changes(&before, self.document);
+        self.ids = IdIndex::of(self.document);
         self.notes_settled = true;
         self.record(
             Change::Whole {
@@ -231,6 +241,14 @@ impl<'a> Editor<'a> {
             next,
         );
         Ok(self.changes(blocks))
+    }
+    /// Puts back what `patches` replaced, newest first, in the document and in
+    /// the id index.
+    fn restore(&mut self, patches: &[Patch]) {
+        restore(self.document, patches);
+        for patch in patches.iter().rev() {
+            self.ids.settle(&patch.after, &patch.before);
+        }
     }
     /// Keeps `change` as the newest undo state and moves to `next`.
     fn record(&mut self, change: Change, bytes: usize, next: u64) {
@@ -267,12 +285,13 @@ impl<'a> Editor<'a> {
         let snapshot = self.undo.pop_back().ok_or(EditError::EmptyHistory)?;
         let blocks = match &snapshot.change {
             Change::Blocks(patches) => {
-                restore(self.document, patches);
+                self.restore(patches);
                 backward(patches)
             }
             Change::Whole { before, after } => {
                 // The state before may share notes again.
                 self.document.clone_from(before);
+                self.ids = IdIndex::of(self.document);
                 self.notes_settled = has_no_notes(self.document);
                 whole_story_changes(after, self.document)
             }
@@ -296,10 +315,14 @@ impl<'a> Editor<'a> {
         let blocks = match &snapshot.change {
             Change::Blocks(patches) => {
                 reapply(self.document, patches);
+                for patch in patches {
+                    self.ids.settle(&patch.before, &patch.after);
+                }
                 forward(patches)
             }
             Change::Whole { before, after } => {
                 self.document.clone_from(after);
+                self.ids = IdIndex::of(self.document);
                 self.notes_settled = true;
                 whole_story_changes(before, self.document)
             }
@@ -368,6 +391,7 @@ fn apply_patched(
     document: &mut Document,
     command: &Edit,
     limits: EditLimits,
+    ids: &mut IdIndex,
 ) -> Result<Patch, EditError> {
     let story = command.address().story.clone();
     let (start, end) = region(command);
@@ -388,7 +412,7 @@ fn apply_patched(
             .unwrap_or_default();
         Ok(())
     })?;
-    let result = apply(document, command, limits);
+    let result = apply(document, command, limits, ids);
     let _ = mutate_story(document, &patch.story, |root| {
         // The range grew or shrank by as much as the story did.
         let span = (patch.before.len() + root.len()).saturating_sub(length);
@@ -400,8 +424,12 @@ fn apply_patched(
         Ok(())
     });
     match result {
-        Ok(()) => Ok(patch),
+        Ok(()) => {
+            ids.settle(&patch.before, &patch.after);
+            Ok(patch)
+        }
         Err(error) => {
+            ids.release_claims();
             restore(document, std::slice::from_ref(&patch));
             Err(error)
         }

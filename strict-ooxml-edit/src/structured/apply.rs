@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::address::{descend_mut, drawing_mut, mutate_story, paragraph_mut, run_mut, Story};
 use super::command::Edit;
-use super::ids::{all_ids, assign_id, fresh_ids};
+use super::ids::{assign_id, fresh_ids, IdIndex};
 use super::validate::contains_boundary;
 
 fn empty_paragraph() -> Paragraph {
@@ -23,17 +23,6 @@ fn empty_paragraph() -> Paragraph {
         text_id: None,
         location: SourceLocation::unknown(),
     }
-}
-/// Whether `edit` mints paragraph identities, and so needs every id in use.
-fn mints_ids(edit: &Edit) -> bool {
-    matches!(
-        edit,
-        Edit::Insert { .. }
-            | Edit::Delete { .. }
-            | Edit::Split { .. }
-            | Edit::Identify { .. }
-            | Edit::InsertRow { .. }
-    )
 }
 fn valid_text(text: &str) -> Result<(), EditError> {
     if text
@@ -80,12 +69,8 @@ pub(super) fn apply(
     document: &mut Document,
     edit: &Edit,
     limits: EditLimits,
+    ids: &mut IdIndex,
 ) -> Result<(), EditError> {
-    let mut ids = if mints_ids(edit) {
-        all_ids(document)
-    } else {
-        HashSet::new()
-    };
     let at = match edit {
         Edit::Split { at, .. }
         | Edit::Join { at }
@@ -115,7 +100,7 @@ pub(super) fn apply(
                     return Err(EditError::InvalidParagraph);
                 }
                 let mut b = *block.clone();
-                fresh_ids(std::slice::from_mut(&mut b), &mut ids)?;
+                fresh_ids(std::slice::from_mut(&mut b), ids)?;
                 blocks.insert(at.block, b);
             }
             Edit::Delete { .. } => {
@@ -127,7 +112,7 @@ pub(super) fn apply(
                 if blocks.is_empty() && at.containers.is_empty() && matches!(at.story, Story::Body)
                 {
                     let mut p = empty_paragraph();
-                    assign_id(&mut p, &mut ids, true)?;
+                    assign_id(&mut p, ids, true)?;
                     blocks.push(Block::Paragraph(p));
                 }
             }
@@ -137,9 +122,9 @@ pub(super) fn apply(
                 let count = runs.iter().map(|(_, t)| t.chars().count()).sum();
                 check_range(count, &(*offset..*offset))?;
                 check_graphemes(limits, &runs, &(*offset..*offset))?;
-                assign_id(p, &mut ids, false)?;
+                assign_id(p, ids, false)?;
                 let mut right = p.clone();
-                assign_id(&mut right, &mut ids, true)?;
+                assign_id(&mut right, ids, true)?;
                 crate::replace_text(p, &runs, &(*offset..count), "");
                 crate::replace_text(&mut right, &runs, &(0..*offset), "");
                 p.props.section = None;
@@ -285,7 +270,7 @@ pub(super) fn apply(
                 let p = paragraph_mut(blocks, at.block)?;
                 *drawing_mut(&mut p.inlines, inline, *content)? = *drawing.clone();
             }
-            Edit::Identify { .. } => assign_id(paragraph_mut(blocks, at.block)?, &mut ids, false)?,
+            Edit::Identify { .. } => assign_id(paragraph_mut(blocks, at.block)?, ids, false)?,
             _ => {
                 let Some(Block::Table(t)) = blocks.get_mut(at.block) else {
                     return Err(EditError::InvalidParagraph);
@@ -311,7 +296,7 @@ pub(super) fn apply(
                         }
                         let mut row = *row.clone();
                         for c in &mut row.cells {
-                            fresh_ids(&mut c.blocks, &mut ids)?;
+                            fresh_ids(&mut c.blocks, ids)?;
                         }
                         t.rows.insert(*index, row);
                     }
