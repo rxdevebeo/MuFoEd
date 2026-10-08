@@ -4,22 +4,22 @@ Rust toolkit for reading, normalizing and rendering **WordprocessingML Strict**
 documents (ISO/IEC 29500-1:2008), with controlled normalization of Transitional
 (ISO/IEC 29500-4:2008) input.
 
-Design documents live in the repository root:
+Design documents live in [`docs/`](docs/):
 
-- `TZ-STRICT-OOXML-RUST.md` — full technical specification (v2.1).
-- `REWORK-AUDIT-2026-10.md` — audit close-out plan (AUD-00…AUD-94); current
-  execution status and accepted deviations (ADR-0015…0019).
-- `base_target.md` — the original (1.0) specification.
-- `STAGE-1-TASK.md`, `STAGE-1-REWORK.md` — Stage-1 task and rework.
-- `STAGE-2-TASK.md`, `STAGE-2-REWORK.md` — Stage-2 task and rework.
-- `STAGE-3-TASK.md` — Stage-3 task (Feature Report).
-- `STAGE-4-TASK.md` — Stage-4 task (SVG rendering).
-- `STAGE-5-TASK.md`, `STAGE-5B-TASK.md` — Stage-5 tasks (5A extended support,
-  5B DrawingML + page borders).
-- `STAGE-8-TASK.md` — Stage-8 task: PDF ↔ Strict conversion in four phases.
-- `docs/stage-2-report.md`, `docs/stage-3-report.md`, `docs/stage-4-report.md`,
-  `docs/stage-5-report.md`, `docs/stage-5b-report.md` — stage delivery reports.
-- `docs/adr/` — accepted architecture decision records (incl. ADR-0004/0005/0006).
+- [`TZ-STRICT-OOXML-RUST.md`](docs/TZ-STRICT-OOXML-RUST.md) — full technical
+  specification (v2.1); [`base_target.md`](docs/base_target.md) — the original (1.0).
+- [`GATE-STRATEGY.md`](docs/GATE-STRATEGY.md) — what the gates check and how a
+  waiver is granted ([`waivers.toml`](docs/waivers.toml)).
+- [`REWORK-AUDIT-2026-10.md`](docs/REWORK-AUDIT-2026-10.md) — audit close-out plan
+  (AUD-00…AUD-94) and accepted deviations (ADR-0015…0019).
+- Current plans: [`WORDCRAFT_ADOPTION_2026-10-07.md`](docs/WORDCRAFT_ADOPTION_2026-10-07.md)
+  (never-crash), [`EDITING_ROADMAP_2026-10-08.md`](docs/EDITING_ROADMAP_2026-10-08.md)
+  (editor), [`CC0_CORPUS_MIGRATION_PLAN.md`](docs/CC0_CORPUS_MIGRATION_PLAN.md) (test corpus);
+  the latest journal is [`HARDENING_2026-10-07.md`](docs/HARDENING_2026-10-07.md).
+- History: the stage tasks, reworks and acceptances (`STAGE-*.md`), the session
+  hand-offs (`SESSION-HANDOFF*.md`), the stage reports (`stage-*-report.md`) and
+  the audit trail (`AUDIT_*`, `audit-*`).
+- [`docs/adr/`](docs/adr/) — accepted architecture decision records.
 
 ## Workspace layout
 
