@@ -1133,6 +1133,16 @@ def _same_attr_value(
             a = a if left.endswith("%") else a / 1000.0
             b = b if right.endswith("%") else b / 1000.0
             return abs(a - b) < 1e-9
+    # Chart amounts are whole percents on both sides: Transitional `150`, Strict
+    # `150%` (T4.chart-percent) - the same number, unlike DrawingML thousandths.
+    chart_percent = namespace == "c" and attr == "val" and element in {
+        "gapWidth", "gapDepth", "overlap", "lblOffset", "holeSize",
+        "secondPieSize", "bubbleScale", "depthPercent", "hPercent",
+    }
+    if chart_percent:
+        a, b = _percent_number(left), _percent_number(right)
+        if a is not None and b is not None:
+            return abs(a - b) < 1e-9
     # `w:w/@w:val` is ST_TextScale: Strict writes `90%`, Transitional writes `90`.
     # The number is a percentage of the normal character width, not a length.
     if namespace == "w" and element == "w" and attr == "val":

@@ -2346,6 +2346,29 @@ fn apply_direction_rename<'a>(
     }
 }
 
+/// T4 for the `DrawingML` and chart percentages: `None` when `element`/`local`
+/// is no percentage carrier or `value` already has the Strict form.
+fn percent_value(
+    element: &str,
+    local: &str,
+    value: &str,
+    report: &mut NormalizationReport,
+) -> Option<String> {
+    if tables::is_drawingml_percentage_attr(element, local) {
+        let mapped = tables::drawingml_thousandths_percent(value)?;
+        report.record_mapping("T4.dml-percent", value, &mapped);
+        return Some(mapped);
+    }
+    // `c:gapWidth`/`c:overlap`/`c:lblOffset`... are `150`, `-100`, `100` in
+    // Transitional and `150%`, `-100%`, `100%` in Strict - not thousandths.
+    if tables::is_chart_whole_percent_attr(element, local) {
+        let mapped = tables::whole_percent(value)?;
+        report.record_mapping("T4.chart-percent", value, &mapped);
+        return Some(mapped);
+    }
+    None
+}
+
 /// Applies T4 and T2 to an attribute value, returning `None` when neither
 /// applies and the original must therefore be kept.
 #[allow(clippy::too_many_arguments)]
@@ -2436,11 +2459,8 @@ fn mapped_value(
     // `ST_Percentage` wants a `%` form (`65%`), not bare thousandths (`65000`).
     // Attribute URIs are usually empty (unprefixed `val`/`pos`), so the carrier
     // is identified by the element local name, not the attribute namespace.
-    if tables::is_drawingml_percentage_attr(element, local) {
-        if let Some(mapped) = tables::drawingml_thousandths_percent(value) {
-            report.record_mapping("T4.dml-percent", value, &mapped);
-            return Some(mapped);
-        }
+    if let Some(mapped) = percent_value(element, local, value, report) {
+        return Some(mapped);
     }
     // ---- T4: math `ST_OnOff` rejects the Transitional `on`/`off` tokens ----
     // Only on/off carriers. `m:lMargin`/`m:rMargin` also use `@m:val` but hold

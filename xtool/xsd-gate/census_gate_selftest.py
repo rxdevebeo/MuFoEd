@@ -351,6 +351,19 @@ def test_one_of_two_same_nodes_is_visible() -> None:
             raise SystemExit(f"one of two w:p was hidden: {rows}")
 
 
+def test_chart_whole_percents_are_one_value() -> None:
+    same = census_gate._same_attr_value
+    if not same("val", "150", "150%", element="gapWidth", namespace="c"):
+        raise SystemExit("c:gapWidth 150 and 150% are one amount")
+    if not same("val", "-100", "-100%", element="overlap", namespace="c"):
+        raise SystemExit("c:overlap -100 and -100% are one amount")
+    # Not thousandths: 100 is 100%, so 100000% is a different label offset.
+    if same("val", "100", "0.1%", element="lblOffset", namespace="c"):
+        raise SystemExit("c:lblOffset must not use the DrawingML thousandths rule")
+    if same("val", "150", "160%", element="gapWidth", namespace="c"):
+        raise SystemExit("a different gap must stay visible")
+
+
 def test_attribute_value_and_resource_bytes() -> None:
     config = xsd_gate.load_config()
     oracle = xsd_gate.Oracle(xsd_gate.locate_schemas(config))
@@ -613,6 +626,7 @@ def main() -> int:
     test_vanished_emits_qualified_context()
     test_one_of_two_same_nodes_is_visible()
     test_attribute_value_and_resource_bytes()
+    test_chart_whole_percents_are_one_value()
     test_xsd_negative_control_still_fails()
     test_unnamed_element_loss_fails_as_ours()
     test_process_choice_inventory_does_not_count_fallback()

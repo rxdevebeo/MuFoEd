@@ -21,12 +21,15 @@
 | P14 | сделано, перезамер | после `5446135` (SDT-свойства сохраняются) `w:dataBinding`/`w:text` должны уйти; TZ-32 в `census.toml` устарел |
 | P15 | частично | 4032 → 784 (census на хосте `f71d960`: unclassified=762); крупнейшее: hdr/ftrRef 78/61, `a:ext` 64, `w:compat` 39, `docPr@descr` 34, `pic:cNvPr@descr` 33 |
 
-Отдельно: **`unmatched_schema = 1198`** (в D05 было 0; рост с P2) — блокирует M4. Вехи: M1 PASS,
+Отдельно: ~~`unmatched_schema = 1198`~~ → **0** (census на `3332800`, 2026-10-08): все 1198 были
+процентами DrawingML/диаграмм, которых не было в T4 нормализатора (`a:spcPct` 1161, `a:miter@lim` 30,
+`a:buSzPct` 7 — тысячные; `c:lblOffset`/`c:gapWidth`/`c:overlap` — целые проценты, новое правило
+`T4.chart-percent`); census сравнивает целые проценты диаграмм как одно значение. Unclassified — 763. Вехи: M1 PASS,
 M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waiver на остатки P8/P12/P15
 нет; `CENSUS-LOCAL` устарел — ночной census уже в CI (`ci.yml`), `census-baseline.json` не закоммичен.
 
 Порядок дальше: ~~перепроверка P1~~ → ~~синтетические двойники P5/P6~~ → база census и `CENSUS-LOCAL` →
-`unmatched_schema` → P12 → P15 по метке → P8 → VML-группы → M5 (Word).
+~~`unmatched_schema`~~ → P12 → P15 по метке → P8 → VML-группы → M5 (Word).
 
 Этот план не заменяет критерии приёмки D05/D06. Он задаёт **порядок работ по визуальному ущербу** и фиксирует, **на каких документах** каждый пункт измерять.
 
