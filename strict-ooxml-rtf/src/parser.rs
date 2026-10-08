@@ -2320,6 +2320,10 @@ impl Parser<'_> {
             "tldot" => self.state.tab_leader = Some(TabLeader::Dot),
             "tlhyph" => self.state.tab_leader = Some(TabLeader::Hyphen),
             "tlul" => self.state.tab_leader = Some(TabLeader::Underscore),
+            "tlth" => self.state.tab_leader = Some(TabLeader::Heavy),
+            "tleq" => {
+                self.issue(span, Severity::Loss, "tab:leader-equal-unsupported")?;
+            }
             "tx" => {
                 let position = n.ok_or(RtfError::Malformed {
                     offset: span.start,
@@ -2420,6 +2424,37 @@ impl Parser<'_> {
                 } else {
                     self.state.run.size = Some(HalfPoints(size));
                 }
+            }
+            "charscalex" => {
+                let percent = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing character scale",
+                })?;
+                match u16::try_from(percent) {
+                    Ok(scale) if scale <= 600 => self.state.run.scale = Some(scale),
+                    _ => self.issue(span, Severity::Loss, "run:char-scale-out-of-range")?,
+                }
+            }
+            "expnd" | "expndtw" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing character spacing",
+                })?;
+                // `\expnd` is in quarter-points, `\expndtw` in twips (five per
+                // quarter-point); `w:spacing` is twips.
+                let twips = if name == "expnd" {
+                    value.checked_mul(5)
+                } else {
+                    Some(value)
+                };
+                match twips {
+                    Some(twips) => self.state.run.spacing = Some(Twips(twips)),
+                    None => self.issue(span, Severity::Loss, "run:char-spacing-overflow")?,
+                }
+            }
+            "aexpnd" => {
+                // Associated (complex-script) expansion has no WML run slot.
+                self.issue(span, Severity::Loss, "run:associated-spacing-unsupported")?;
             }
             "super" => self.state.run.vert_align = Some(VertAlign::Superscript),
             "sub" => self.state.run.vert_align = Some(VertAlign::Subscript),

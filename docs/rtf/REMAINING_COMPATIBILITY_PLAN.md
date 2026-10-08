@@ -627,3 +627,26 @@ Arabic логический первый скаляр стоит правее в
 и RTF-источников из sibling worktree; полноценная PDF Unicode cluster extraction
 для новых скриптов, границы переноса shaped clusters и mixed LTR/RTL внутри
 одного run остаются. RC03 остаётся InProgress.
+
+### RC04: character geometry mapping — 2026-10-08
+
+Начат RC04 (styles и текстовые метрики; общие metric-фиксы берутся из P5, RTF
+очередь добавляет mapping и witnesses). Первый срез закрыл три ранее
+отбрасываемых run/paragraph control'а и закрепил их import → Strict write →
+reopen regression'ом (`strict-ooxml-rtf/tests/structure.rs`):
+
+- `\charscalexN` → `w:rPr/w:w` (процент; `0..=600`, вне диапазона — явный Loss);
+- `\expndN` → `w:rPr/w:spacing` (quarter-points → twips, `N*5`), `\expndtwN` →
+  twips; переполнение — явный Loss;
+- `\tlth` → `w:tab/@w:leader="heavy"`; `\tleq` и `\aexpnd` получают явный Loss
+  (нет WML-эквивалента);
+- `\plain` сбрасывает `scale`/`spacing` вместе со всем `RunProperties`.
+
+Артефакты: [compatibility/RC04/STATUS.json](compatibility/RC04/STATUS.json),
+[tests.md](compatibility/RC04/tests.md). Проверки: RTF structure 31 + import 36
+Pass; workspace clippy `-D warnings` (MSRV 1.92) и rustfmt Pass.
+
+Открыто/Blocked: независимые effective-style facts из WPS reference index
+(document defaults → paragraph style → character style → direct), probes для
+tabs/leaders, keep/widow и section defaults на 019/039 и затем 052/076, а также
+targeted pixel/geometry приёмка (нужен rasterizer). RC04 остаётся InProgress.

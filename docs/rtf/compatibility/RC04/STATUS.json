@@ -1,0 +1,46 @@
+{
+  "card": "RC04",
+  "status": "InProgress",
+  "updated": "2026-10-08",
+  "scope": "style cascade and paragraph/run text geometry",
+  "base_commit": "a53042b",
+  "dependencies": ["RC02"],
+  "implemented": [
+    "character scaling w:rPr/w:w from \\charscalex (bounded 0..=600, explicit Loss otherwise)",
+    "character spacing w:rPr/w:spacing from \\expnd (quarter-points) and \\expndtw (twips)",
+    "heavy tab leader from \\tlth; explicit Loss for unsupported \\tleq",
+    "explicit Loss for associated-script \\aexpnd with no WML run slot",
+    "\\plain resets scale/spacing through the default run properties",
+    "import -> Strict write -> reopen regression for all of the above"
+  ],
+  "remaining": [
+    "independent effective-style facts from the WPS reference index for the corpus cascade",
+    "tab/leader and keep/widow geometry probes on 019/039, then 052/076",
+    "section defaults and document defaults probes",
+    "targeted pixel/geometry acceptance (needs the external rasterizer)"
+  ],
+  "blocked": [
+    {
+      "item": "targeted pixels and full geometry acceptance",
+      "contract": "poppler/rasterizer plus the pinned pixel comparator and WPS references",
+      "reason": "no rasterizer is installed in this environment; the sibling worktree holds the references."
+    }
+  ],
+  "checks": {
+    "character_geometry_roundtrip": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::character_scale_spacing_and_tab_leaders_roundtrip",
+      "assertions": [
+        "\\charscalex150 -> scale Some(150)",
+        "\\expnd4 -> spacing Some(Twips(20))",
+        "\\expndtw12 -> spacing Some(Twips(12))",
+        "\\plain clears scale and spacing",
+        "\\tlth \\tx1000 -> tab stop leader heavy"
+      ]
+    },
+    "rtf_suite": {
+      "status": "Pass",
+      "detail": "strict-ooxml-rtf structure 31 + import 36"
+    }
+  }
+}

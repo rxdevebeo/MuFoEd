@@ -2,7 +2,7 @@
 #![allow(clippy::default_trait_access)]
 use strict_ooxml_rtf::{import, RtfOptions};
 use strict_ooxml_wml::model::{
-    AbstractNumId, Block, Ilvl, Inline, NumId, RunContent, StyleId, TriState,
+    AbstractNumId, Block, Ilvl, Inline, NumId, RunContent, StyleId, TabLeader, TriState, Twips,
 };
 
 #[test]
@@ -766,6 +766,54 @@ fn paragraph_and_character_styles_inherit_and_roundtrip() {
         };
         assert_eq!(run.props.style, Some(StyleId::new("rtf-cs2")));
     }
+}
+
+#[test]
+fn character_scale_spacing_and_tab_leaders_roundtrip() {
+    // `\charscalex150` -> `w:w` 150; `\expnd4` is 4 quarter-points -> 20 twips;
+    // `\expndtw12` is 12 twips; `\plain` resets both; `\tlth` is a heavy leader.
+    let input =
+        br"{\rtf1\pard\charscalex150\expnd4 scaled\plain reset\par\tlth\tx1000\tab thick\par}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let Block::Paragraph(scaled) = &document.body.blocks[0] else {
+            panic!()
+        };
+        let Inline::Run(scaled_run) = &scaled.inlines[0] else {
+            panic!()
+        };
+        assert_eq!(scaled_run.props.scale, Some(150));
+        assert_eq!(scaled_run.props.spacing, Some(Twips(20)));
+        let Inline::Run(reset_run) = &scaled.inlines[1] else {
+            panic!()
+        };
+        assert_eq!(reset_run.props.scale, None);
+        assert_eq!(reset_run.props.spacing, None);
+
+        let Block::Paragraph(tabbed) = &document.body.blocks[1] else {
+            panic!()
+        };
+        let stop = tabbed
+            .props
+            .tabs
+            .iter()
+            .find(|stop| stop.position == Twips(1000))
+            .expect("tab stop");
+        assert_eq!(stop.leader, Some(TabLeader::Heavy));
+    }
+
+    let escaped = import(br"{\rtf1\expndtw12 twelve\par}", &RtfOptions::default())
+        .unwrap()
+        .document;
+    let Block::Paragraph(paragraph) = &escaped.body.blocks[0] else {
+        panic!()
+    };
+    let Inline::Run(run) = &paragraph.inlines[0] else {
+        panic!()
+    };
+    assert_eq!(run.props.spacing, Some(Twips(12)));
 }
 
 #[test]
