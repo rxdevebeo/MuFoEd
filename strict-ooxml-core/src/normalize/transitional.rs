@@ -819,7 +819,15 @@ impl TransitionalNormalizer {
         // namespace (`w15:commentsEx`, `w16cid:commentsIds`, ...) would otherwise
         // be written with no root element at all, which is not XML. Its
         // children still go through the removal rules.
-        let is_root = !std::mem::replace(&mut context.root_seen, true);
+        let is_root = context.root.is_none();
+        if is_root {
+            let raw: &[u8] = start.name().as_ref();
+            context.root = Some(
+                raw.iter()
+                    .position(|byte| *byte == b':')
+                    .map(|colon| raw[..colon].to_vec()),
+            );
+        }
         if !is_root {
             if let Some(dropped) =
                 drop_unsupported_start(empty, &local, &uri, &qualified, &location, report)
@@ -1583,8 +1591,10 @@ pub(crate) struct PartContext {
     vml_picture_prefixes: Vec<(&'static str, &'static str)>,
     /// Whether the part's root element has been written yet.
     root_written: bool,
-    /// Whether the part's root start tag has been seen (see `rewrite_start`).
-    root_seen: bool,
+    /// The part's root start tag, once seen: `Some(prefix)` (`Some(None)` for
+    /// an unprefixed root). The root is never dropped, and an extension
+    /// namespace that names it keeps its `xmlns:` declaration (`rewrite_start`).
+    root: Option<Option<Vec<u8>>>,
     /// Next `wp:docPr/@id` this part hands out, for a converted VML picture.
     doc_pr_id: u32,
     /// The markup-compatibility policy this write runs with.
@@ -1639,7 +1649,7 @@ impl PartContext {
             doc_pr_id: 0,
             vml_picture_prefixes: Vec::new(),
             root_written: false,
-            root_seen: false,
+            root: None,
             mce: McePolicy::default(),
             invariants: InvariantMode::default(),
             direction: DirectionPolicy::default(),
@@ -2514,6 +2524,17 @@ fn map_namespace_declaration(
     }
     if VML_NAMESPACES.contains(&value) || tables::is_ignorable_extension(value) {
         context.remember_prefix(prefix.as_bytes().to_vec(), value.to_owned());
+        // The root's own namespace stays declared: the root is kept even when
+        // its namespace is an extension (`w15:commentsEx`), and an element
+        // whose prefix is undeclared is not XML.
+        let names_the_root = context
+            .root
+            .as_ref()
+            .and_then(Option::as_deref)
+            .is_some_and(|root| root == prefix.as_bytes());
+        if names_the_root {
+            return Some((format!("xmlns:{prefix}"), value.to_owned()));
+        }
         context.forget_declaration(prefix.as_bytes());
         return None;
     }
@@ -2783,7 +2804,7 @@ mod tests {
 <w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>"#;
 
     /// A part whose root is in an extension namespace keeps its root, so the
-    /// normalized part is still a well-formed document (CC0_DOCX_1/065's
+    /// normalized part is still a well-formed document (`CC0_DOCX_1/065`'s
     /// `word/commentsExtended.xml` came out empty).
     #[test]
     fn an_extension_namespace_root_is_kept() {
@@ -2794,6 +2815,10 @@ mod tests {
             .expect("normalize");
         let xml = String::from_utf8(output.to_vec()).expect("utf8");
         assert!(xml.contains("<w15:commentsEx"), "the root survives: {xml}");
+        assert!(
+            xml.contains("xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\""),
+            "and its prefix stays declared: {xml}"
+        );
         assert!(
             xml.trim_end().ends_with("</w15:commentsEx>") || xml.trim_end().ends_with("/>"),
             "and is closed: {xml}"
