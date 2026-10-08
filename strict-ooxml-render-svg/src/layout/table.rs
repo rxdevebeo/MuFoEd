@@ -906,7 +906,12 @@ pub(crate) fn framed_table_items(
     frame_width: f64,
     depth: u32,
 ) -> Vec<Item> {
+    // A table whose paragraphs share one `w:framePr` is a frame: its Exact
+    // lines follow the WPS frame rule, as in `layout_frame_contents` (Clio
+    // p. 56, the bold position labels of the framed SNP table).
+    let was_in_frame = ctx.in_frame.replace(true);
     let flows = layout_table(ctx, table, origin_x, frame_width.max(1.0), depth, false);
+    ctx.in_frame.set(was_in_frame);
     let mut items = Vec::new();
     let mut y = origin_y;
     for flow in flows {
