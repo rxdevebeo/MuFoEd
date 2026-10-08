@@ -2,7 +2,7 @@
   "card": "RC02",
   "status": "InProgress",
   "updated": "2026-10-08",
-  "scope": "cluster ActualText, independent Unicode extraction and bounded CLI font assets",
+  "scope": "cluster ActualText, extraction decision, reviewed script profile and bounded CLI font assets",
   "base_commit": "fe7da50",
   "implemented": [
     "shared bytes lifetime",
@@ -37,13 +37,24 @@
     "independent native HarfBuzz geometry oracle",
     "strict positive CJK SVG/PDF/RTF witness",
     "logical UTF-16 ActualText for complete multi-glyph clusters",
-    "bounded CLI font asset configuration (--fonts manifest)"
+    "bounded CLI font asset configuration (--fonts manifest)",
+    "reviewed font/script support profile (profile.md)"
   ],
   "remaining": [
-    "reader compatibility beyond ActualText-aware extraction; lopdf ignores ActualText",
     "full complex-script placement and visual acceptance",
-    "reviewed font/script support profile",
     "full corpus visual acceptance"
+  ],
+  "blocked": [
+    {
+      "item": "full corpus visual acceptance (pagination/pixel)",
+      "contract": "poppler pdfinfo/pdftoppm plus the pinned pixel comparator and the WPS reference PDFs",
+      "reason": "poppler is not installed in this environment; the WPS reference PDFs exist in the sibling worktree at C:/Users/gamer/.codex/worktrees/rtf-import/StrictLib/target/rtf-import/visual-corpus-v1. Even with the harness present, the measured 3/100 document pixel Pass rate is a shaping/metrics gap (RC03/RC04), not a font-resolution defect."
+    },
+    {
+      "item": "full complex-script placement and visual acceptance",
+      "contract": "independent cluster/geometry oracle and rasterized references for complex scripts",
+      "reason": "RC03 shaping and RC04 metrics own the remaining glyph placement; the Devanagari witness is deliberately degraded (font.script.degraded)."
+    }
   ],
   "checks": {
     "full_svg_pdf_public_api": {
@@ -169,6 +180,19 @@
       "process_tests": 1,
       "bounds": "FontRegistryLimits::default, no system discovery, pinned sha256",
       "clippy_msrv": "cargo +1.92.0 clippy --workspace --all-targets --all-features -- -D warnings: Pass"
+    },
+    "reviewed_profile": {
+      "status": "Reviewed",
+      "document": "docs/rtf/compatibility/RC02/profile.md",
+      "basis": "font-alias.verification.json, fonts/witnesses/manifest.json, native HarfBuzz oracle, ActualText extraction witness",
+      "decision": "font resolution/registry/shaping/embedding complete for finite witnesses; visual acceptance deferred to RC03/RC04"
+    },
+    "extraction_decision": {
+      "status": "DocumentedLimitation",
+      "mechanism": "UTF-16 ActualText on multi-glyph clusters",
+      "compliant_readers": "MuPDF 1.26.7 / PyMuPDF 1.26.4 extract exactly",
+      "ignoring_readers": "lopdf text helper falls back to per-CID ToUnicode and shows replacement chars",
+      "note": "spec mechanism, not a renderer defect; universal reader compatibility is not claimed"
     }
   }
 }

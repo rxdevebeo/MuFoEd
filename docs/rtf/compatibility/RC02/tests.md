@@ -139,3 +139,28 @@ refuses a wrong hash with exit 2. `cargo +1.92.0 clippy --workspace
 RTF-added `indexing_slicing`/`if_same_then_else`/`items_after_statements` spots
 that the newly merged crate-level denies exposed. Corpus/visual/pixel gates were
 not rerun; this slice adds configuration, not a new positive-corpus measurement.
+
+
+## RC02 reviewed support profile and extraction decision (2026-10-08)
+
+[profile.md](profile.md) is the reviewed script/font support profile: Latin/
+Cyrillic/Greek supported through bundled faces and aliases; East Asian supported
+for the finite pinned CJK witness; Devanagari degraded (geometry/embedding and
+ActualText extraction pass, strict rendering refuses on `font.script.degraded`);
+other complex scripts unsupported; variable/collection faces supported for
+delivery (SVG rejects collections); missing requests degraded by default and
+rejected under the strict policy. Each row states its independent evidence and its
+explicit limits.
+
+Extraction decision: multi-glyph clusters emit spec-compliant UTF-16
+`/ActualText`; ActualText-aware readers (MuPDF/Adobe/PDFium) extract exactly, while
+readers that ignore ActualText (the `lopdf` helper used as an independent oracle)
+fall back to per-CID `ToUnicode` and show replacement characters. That is recorded
+as a documented reader limitation, not an open renderer defect.
+
+The two acceptance items remain **Blocked**: full complex-script placement/visual
+acceptance is owned by RC03 shaping / RC04 metrics, and the full corpus
+pagination/pixel gate needs poppler (`pdfinfo`/`pdftoppm`) plus the pinned
+comparator and the WPS reference PDFs (present in the sibling `rtf-import`
+worktree). Neither is a font-resolution defect. `STATUS.json` records the concrete
+blockers.

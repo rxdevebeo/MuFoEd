@@ -3,7 +3,7 @@
 Дата: 7 октября 2026. Историческая база RTF: `a7b3c9f`, ветка `codex/rtf-import`.
 Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `5cccef4`
 (merge `master` `956948f` от 8 октября; см. «RC00: повторная интеграция master»); подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
-Карточки остаются планом; RC00/RC01 частично закрыты, RC02 начат. Таблица ниже — исторический снимок 5 октября и не описывает новый прогон.
+Карточки остаются планом; RC00/RC01 частично закрыты, RC02 font-инфраструктура завершена, приёмка Blocked на внешнем harness. Таблица ниже — исторический снимок 5 октября и не описывает новый прогон.
 ## Цель и исходное состояние
 
 Цель — закрыть совместимость пользовательского корпуса из 100 RTF по содержимому,
@@ -573,3 +573,31 @@ Pass; при merge также исправлены RTF-участки `indexing_
 `if_same_then_else`, `items_after_statements`, ставшие ошибками из-за новых
 crate-level deny из master. Corpus/visual/pixel gates не перезапускались: срез
 добавляет конфигурацию, а не новое измерение корпуса. RC02 остаётся InProgress.
+
+### RC02: reviewed profile и решение по extraction — 2026-10-08
+
+Добавлен reviewed профиль [compatibility/RC02/profile.md](compatibility/RC02/profile.md):
+Latin/Cyrillic/Greek — Supported (bundled faces, alias-regression через `pypdf`);
+East Asian — Supported для конечного pinned CJK witness (native HarfBuzz geometry,
+strict SVG/PDF/RTF, ActualText extraction); Devanagari — Degraded (geometry и
+embedding проходят, strict отказывает на `font.script.degraded`); прочие complex
+scripts — Unsupported; variable/collection faces — delivery Supported (SVG
+отклоняет collections); missing request — Degraded по умолчанию и Reject в строгом
+профиле. Каждая строка указывает независимое evidence и явные границы; конечный
+witness не выдаётся за общую поддержку письменности.
+
+Зафиксировано решение по reader compatibility: multi-glyph clusters несут
+spec-compliant UTF-16 `/ActualText`; ActualText-aware readers (MuPDF/Adobe/PDFium)
+извлекают точно (MuPDF-witness), а readers, игнорирующие ActualText (независимый
+oracle `lopdf`), падают обратно на per-CID `ToUnicode` и дают replacement
+characters. Это документированное ограничение reader'а, а не открытый дефект
+рендерера; универсальная совместимость reader'ов не заявляется.
+
+Два пункта приёмки переведены в **Blocked** с конкретным контрактом: полная
+complex-script visual приёмка принадлежит RC03 shaping / RC04 metrics, а полный
+corpus pagination/pixel gate требует poppler (`pdfinfo`/`pdftoppm`), pinned
+comparator и WPS reference PDF (лежат в sibling worktree `rtf-import`). Ни то, ни
+другое не является дефектом font resolution; измеренный 3/100 pixel Pass —
+разрыв shaping/metrics. Font-инфраструктура RC02 (resolved face, registry, owned
+shaping, exact SVG/PDF delivery, extraction, профиль, bounded CLI) завершена;
+формальный `Verified` не выставлен, пока приёмка не снята внешним harness.
