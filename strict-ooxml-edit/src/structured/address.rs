@@ -63,7 +63,7 @@ impl Address {
         }
     }
 }
-fn story_blocks<'a>(document: &'a Document, story: &Story) -> Result<&'a [Block], EditError> {
+pub(super) fn story_blocks<'a>(document: &'a Document, story: &Story) -> Result<&'a [Block], EditError> {
     Ok(match story {
         Story::Body => &document.body.blocks,
         Story::HeaderFooter(part) => {

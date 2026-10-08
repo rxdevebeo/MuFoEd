@@ -1,9 +1,12 @@
 //! The model invariants an accepted transaction must keep.
 use crate::EditError;
 use std::collections::HashSet;
-use strict_ooxml_wml::model::{Block, Document, Drawing, DrawingKind, Graphic, Inline, RunContent};
+use strict_ooxml_core::limits::ResourceLimits;
+use strict_ooxml_wml::model::{
+    Block, Document, Drawing, DrawingKind, FieldCharType, Graphic, Inline, Paragraph, RunContent,
+};
 
-use super::address::{addresses, read_paragraph, Story};
+use super::address::{addresses, read_paragraph, story_blocks, visit_boxes, visit_drawings, Story};
 
 pub(super) fn contains_boundary(b: &Block) -> bool {
     match b {
@@ -19,7 +22,7 @@ pub(super) fn contains_boundary(b: &Block) -> bool {
 }
 pub(crate) fn validate(
     document: &Document,
-    limits: &strict_ooxml_core::limits::ResourceLimits,
+    limits: &ResourceLimits,
 ) -> Result<(), EditError> {
     crate::validate_body(document)?;
     strict_ooxml_wml::nesting::check_document(document, limits)
@@ -49,31 +52,179 @@ pub(crate) fn validate(
     stories.extend(document.footnotes.iter().map(|n| Story::Footnote(n.id)));
     stories.extend(document.endnotes.iter().map(|n| Story::Endnote(n.id)));
     for story in stories {
-        let mut ids = HashSet::new();
-        let mut text_ids = HashSet::new();
-        for address in addresses(document, &story)? {
-            let p = read_paragraph(document, &address)?;
-            if p.para_id
-                .as_ref()
-                .is_some_and(|id| !ids.insert(id.as_str().to_ascii_uppercase()))
-            {
-                return Err(EditError::InvalidModel);
-            }
-            if p.text_id.as_ref().is_some_and(|id| {
-                p.para_id.is_none() || !text_ids.insert(id.as_str().to_ascii_uppercase())
-            }) {
-                return Err(EditError::InvalidModel);
-            }
-            if let Some(frame) = &p.props.frame {
-                if frame.width.is_some_and(|v| v.value() < 0)
-                    || frame.height.is_some_and(|v| v.value() < 0)
-                {
-                    return Err(EditError::InvalidModel);
-                }
-            }
+        validate_story_ids(document, &story)?;
+    }
+    Ok(())
+}
+/// Paragraph identities are unique within `story`, a text id needs a paragraph
+/// id, and frames are not negative.
+fn validate_story_ids(document: &Document, story: &Story) -> Result<(), EditError> {
+    let mut ids = HashSet::new();
+    let mut text_ids = HashSet::new();
+    for address in addresses(document, story)? {
+        let p = read_paragraph(document, &address)?;
+        if p.para_id
+            .as_ref()
+            .is_some_and(|id| !ids.insert(id.as_str().to_ascii_uppercase()))
+        {
+            return Err(EditError::InvalidModel);
+        }
+        if p.text_id.as_ref().is_some_and(|id| {
+            p.para_id.is_none() || !text_ids.insert(id.as_str().to_ascii_uppercase())
+        }) {
+            return Err(EditError::InvalidModel);
+        }
+        if negative_frame(p) {
+            return Err(EditError::InvalidModel);
         }
     }
     Ok(())
+}
+fn negative_frame(p: &Paragraph) -> bool {
+    p.props.frame.as_ref().is_some_and(|frame| {
+        frame.width.is_some_and(|v| v.value() < 0) || frame.height.is_some_and(|v| v.value() < 0)
+    })
+}
+/// The model after one patch of `story` that replaced `before` with `after`
+/// (its final state), checked where the patch can have broken something.
+///
+/// Local invariants - nesting, styles, table topology, numbering, frames -
+/// are checked on `after` alone. The ones that span blocks are checked across
+/// the story only if the patch changed their input: paragraph identities if
+/// the identities under the patch differ, bookmark/comment/field pairing if
+/// its boundary marks differ. A section boundary on either side changes the
+/// section structure and the header and footer references with it, so that
+/// patch gets the full [`validate`]. Styles, numbering and the rest of the
+/// global references are not edited by any command.
+pub(super) fn validate_patch(
+    document: &Document,
+    limits: &ResourceLimits,
+    story: &Story,
+    before: &[Block],
+    after: &[Block],
+) -> Result<(), EditError> {
+    if before.iter().chain(after).any(contains_boundary) {
+        return validate(document, limits);
+    }
+    strict_ooxml_wml::nesting::check_blocks(after, limits)
+        .map_err(|_| EditError::LimitExceeded)?;
+    crate::validate_blocks(after, document, &mut HashSet::new(), 0)?;
+    validate_structure(after, document)?;
+    let mut frames = false;
+    each_paragraph(after, &mut |p| frames |= negative_frame(p));
+    if frames {
+        return Err(EditError::InvalidModel);
+    }
+    if identities(before) != identities(after) {
+        validate_story_ids(document, story)?;
+    }
+    if boundary_marks(before) != boundary_marks(after) {
+        validate_boundaries(story_blocks(document, story)?)?;
+    }
+    Ok(())
+}
+/// Calls `f` with every paragraph under `blocks`, in tables, block SDTs and
+/// the text boxes of drawings - the paragraphs [`addresses`] lists.
+fn each_paragraph(blocks: &[Block], f: &mut dyn FnMut(&Paragraph)) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(p) => {
+                f(p);
+                visit_drawings(&p.inlines, &[], &mut |drawing, _, _| {
+                    let graphic = match &drawing.kind {
+                        DrawingKind::Inline(v) => v.graphic.as_ref(),
+                        DrawingKind::Anchor(v) => v.graphic.as_ref(),
+                        DrawingKind::Opaque(_) => return,
+                    };
+                    visit_boxes(graphic, &[], &mut |inner, _| each_paragraph(inner, f));
+                });
+            }
+            Block::Table(t) => {
+                for r in &t.rows {
+                    for c in &r.cells {
+                        each_paragraph(&c.blocks, f);
+                    }
+                }
+            }
+            Block::SdtBlock(s) => each_paragraph(&s.blocks, f),
+            _ => {}
+        }
+    }
+}
+/// The paragraph and text identities under `blocks`, in order.
+fn identities(blocks: &[Block]) -> Vec<(Option<String>, Option<String>)> {
+    let mut out = Vec::new();
+    each_paragraph(blocks, &mut |p| {
+        out.push((
+            p.para_id.as_ref().map(|id| id.as_str().to_ascii_uppercase()),
+            p.text_id.as_ref().map(|id| id.as_str().to_ascii_uppercase()),
+        ));
+    });
+    out
+}
+/// One input of [`validate_boundaries`].
+#[derive(PartialEq, Eq)]
+enum Mark {
+    BookmarkStart(String),
+    BookmarkEnd(String),
+    CommentStart(String),
+    CommentEnd(String),
+    FieldChar(FieldCharType),
+    FieldOpen,
+    FieldClose,
+}
+/// The marks [`validate_boundaries`] reads under `blocks`, in its walk order:
+/// two ranges with the same marks leave its verdict on the story unchanged.
+fn boundary_marks(blocks: &[Block]) -> Vec<Mark> {
+    fn inlines(items: &[Inline], out: &mut Vec<Mark>) {
+        for item in items {
+            match item {
+                Inline::BookmarkStart(v) => {
+                    out.push(Mark::BookmarkStart(v.id.as_str().to_owned()));
+                }
+                Inline::BookmarkEnd(v) => out.push(Mark::BookmarkEnd(v.as_str().to_owned())),
+                Inline::CommentRangeStart(v) => {
+                    out.push(Mark::CommentStart(v.as_str().to_owned()));
+                }
+                Inline::CommentRangeEnd(v) => out.push(Mark::CommentEnd(v.as_str().to_owned())),
+                Inline::Run(r) => {
+                    for c in &r.content {
+                        if let RunContent::FieldChar(v) = c {
+                            out.push(Mark::FieldChar(v.kind));
+                        }
+                    }
+                }
+                Inline::Hyperlink(v) => inlines(&v.inlines, out),
+                Inline::SdtInline(v) => inlines(&v.inlines, out),
+                Inline::Directional(v) => inlines(&v.inlines, out),
+                Inline::Field(v) => {
+                    out.push(Mark::FieldOpen);
+                    inlines(&v.inlines, out);
+                    out.push(Mark::FieldClose);
+                }
+                _ => {}
+            }
+        }
+    }
+    fn walk(blocks: &[Block], out: &mut Vec<Mark>) {
+        for b in blocks {
+            match b {
+                Block::Paragraph(p) => inlines(&p.inlines, out),
+                Block::Table(t) => {
+                    for r in &t.rows {
+                        for c in &r.cells {
+                            walk(&c.blocks, out);
+                        }
+                    }
+                }
+                Block::SdtBlock(s) => walk(&s.blocks, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(blocks, &mut out);
+    out
 }
 fn validate_global_references(document: &Document) -> Result<(), EditError> {
     for style in document.styles.iter() {
