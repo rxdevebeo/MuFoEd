@@ -76,7 +76,9 @@ pub(crate) fn plan(
         return ColumnPlan::Unsupported;
     }
 
-    let (gutter_start, gutter_end) = gutters[0];
+    let Some(&(gutter_start, gutter_end)) = gutters.first() else {
+        return ColumnPlan::Single;
+    };
     let mut left: Vec<usize> = Vec::new();
     let mut right: Vec<usize> = Vec::new();
     let mut spanning: Vec<usize> = Vec::new();
@@ -165,21 +167,20 @@ pub(crate) fn apply(lines: Vec<GlyphLine>, column_plan: &ColumnPlan) -> Vec<Glyp
         } => {
             let baseline = |index: usize| lines.get(index).map_or(f64::INFINITY, |l| l.baseline);
             let mut order = Vec::with_capacity(lines.len());
-            let (mut next_left, mut next_right) = (0, 0);
+            let mut left_rest = left.iter().copied().peekable();
+            let mut right_rest = right.iter().copied().peekable();
             for &cut in spanning {
                 let limit = baseline(cut);
-                while next_left < left.len() && baseline(left[next_left]) < limit {
-                    order.push(left[next_left]);
-                    next_left += 1;
+                while let Some(index) = left_rest.next_if(|&index| baseline(index) < limit) {
+                    order.push(index);
                 }
-                while next_right < right.len() && baseline(right[next_right]) < limit {
-                    order.push(right[next_right]);
-                    next_right += 1;
+                while let Some(index) = right_rest.next_if(|&index| baseline(index) < limit) {
+                    order.push(index);
                 }
                 order.push(cut);
             }
-            order.extend_from_slice(&left[next_left..]);
-            order.extend_from_slice(&right[next_right..]);
+            order.extend(left_rest);
+            order.extend(right_rest);
 
             let mut claimed = vec![false; lines.len()];
             let mut out = Vec::with_capacity(lines.len());
@@ -230,7 +231,7 @@ fn find_gutters(lines: &[GlyphLine], page_width: f64) -> Option<Vec<(f64, f64)>>
     events.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut spans: Vec<(f64, f64, i32)> = Vec::new();
     let mut coverage = 0_i32;
-    let mut at = events[0].0;
+    let mut at = events.first()?.0;
     for (x, delta) in events {
         if x > at {
             spans.push((at, x, coverage));
@@ -284,8 +285,7 @@ fn push_gutter(gutters: &mut Vec<(f64, f64)>, start: f64, end: f64, min_gap: f64
 fn column_width(lines: &[GlyphLine], indices: &[usize]) -> f64 {
     let mut left = f64::INFINITY;
     let mut right = f64::NEG_INFINITY;
-    for &index in indices {
-        let line = &lines[index];
+    for line in indices.iter().filter_map(|&index| lines.get(index)) {
         left = left.min(line.x);
         right = right.max(line.x + line.width);
     }
@@ -307,8 +307,8 @@ fn vertical_overlap_ok(lines: &[GlyphLine], left: &[usize], right: &[usize]) -> 
 fn baseline_span(lines: &[GlyphLine], indices: &[usize]) -> Option<(f64, f64)> {
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
-    for &index in indices {
-        let y = lines[index].baseline;
+    for line in indices.iter().filter_map(|&index| lines.get(index)) {
+        let y = line.baseline;
         min = min.min(y);
         max = max.max(y);
     }
@@ -320,10 +320,10 @@ fn baseline_span(lines: &[GlyphLine], indices: &[usize]) -> Option<(f64, f64)> {
 }
 
 fn sort_by_baseline(lines: &[GlyphLine], indices: &mut [usize]) {
+    let baseline = |index: usize| lines.get(index).map_or(f64::INFINITY, |line| line.baseline);
     indices.sort_by(|a, b| {
-        lines[*a]
-            .baseline
-            .partial_cmp(&lines[*b].baseline)
+        baseline(*a)
+            .partial_cmp(&baseline(*b))
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.cmp(b))
     });

@@ -207,14 +207,7 @@ pub(crate) fn build(
                     report,
                     index + 1,
                 );
-                blocks.push(table_block(
-                    &plan.tables[table],
-                    body,
-                    pitch,
-                    options,
-                    report,
-                    index + 1,
-                ));
+                blocks.push(table_block(table, body, pitch, options, report, index + 1));
                 continue;
             }
             if plan.inside_table(number) {
@@ -493,8 +486,9 @@ fn body_pitch(lines: &[GlyphLine]) -> f64 {
     let mut sorted: Vec<f64> = lines.iter().map(|line| line.baseline).collect();
     sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
     let mut gaps: Vec<f64> = sorted
-        .windows(2)
-        .map(|pair| pair[1] - pair[0])
+        .iter()
+        .zip(sorted.iter().skip(1))
+        .map(|(previous, next)| next - previous)
         .filter(|gap| *gap > 0.1)
         .collect();
     gaps.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));

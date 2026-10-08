@@ -71,10 +71,9 @@ struct Rect {
 }
 
 fn rectangle(vector: &Vector, page_height: f64) -> Option<Rect> {
-    if vector.subpaths.len() != 1 {
+    let [subpath] = vector.subpaths.as_slice() else {
         return None;
-    }
-    let subpath = &vector.subpaths[0];
+    };
     if subpath.points.len() < 4 {
         return None;
     }

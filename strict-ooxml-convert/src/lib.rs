@@ -50,7 +50,8 @@
         clippy::panic,
         clippy::todo,
         clippy::unimplemented,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 #![deny(missing_docs)]
@@ -449,7 +450,9 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
                 return Err(ConvertError::NoSuchPage(start));
             }
             let end = end.min(all.len());
-            all[start - 1..end].to_vec()
+            all.get(start - 1..end)
+                .ok_or(ConvertError::NoSuchPage(start))?
+                .to_vec()
         }
     };
     if pages.is_empty() {

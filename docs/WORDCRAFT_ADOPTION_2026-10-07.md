@@ -152,13 +152,30 @@ Package::open → support_report → render (N страниц) → write_package
 стек тестового потока в debug-сборке (кадр рекурсивной функции резервирует место под
 *все* её локальные переменные). Что сделано и что держим:
 
-- **Явный лимит глубины на каждом рекурсивном пути:** вложенные таблицы, вложенные
-  inline-контейнеры (`max_inline_nesting = 16`), SDT, группы DrawingML, наследование
-  стилей и нумерации. Превышение → `Err`/limit или деградация с report, не рекурсия дальше.
+- **Явный лимит глубины на каждом рекурсивном пути** (инвентаризация 2026-10-08):
+
+  | Путь | Лимит |
+  |---|---|
+  | таблицы, блочные SDT, `customXml`, сноски, колонтитулы | `max_block_nesting = 12` → отказ документа |
+  | надписи (`wps:txbx`) | `max_text_box_nesting = 5` → пропуск с report |
+  | inline-обёртки (`w:ins`, `w:hyperlink`, `w:fldSimple`, inline `w:sdt`, …) | `max_inline_nesting = 16` → пропуск с report |
+  | группы DrawingML (`wpg:wgp`/`grpSp`) | **новое:** `max_group_nesting = 16` → пропуск с report |
+  | `mc:AlternateContent` внутри своей ветки | **новое:** `MAX_MCE_NESTING = 8` → пропуск с report |
+  | OMML | `max_math_depth = 64`, `max_math_nodes = 4096` |
+  | `basedOn`, `numStyleLink`, граф связей OPC | итеративно, `MAX_CHAIN 64`, `MAX_LINK_HOPS 8`, `max_rel_depth 32` |
+  | PDF: form XObject, дерево страниц, вложенность объектов | `max_form_depth 12`, lopdf 256 / 100 |
+  | PDF: `/SMask` | кэш с множеством `in_progress`; **исправлено:** публичный `image::decode_from` больше не рекурсирует по циклу |
+
+  Модель, построенная в коде, проверяется `nesting::check_document` в renderer и writer:
+  **исправлено** — обход заходит в `w:r/w:drawing` и в inline-обёртки, writer проверяет
+  колонтитулы и сноски, а не только тело.
 - **Тонкие кадры:** тяжёлые ветви рекурсивной функции — в `#[inline(never)]`-помощники
   (так кадр `open` для 12 таблиц ужался 1031 → 583 KiB).
-- **Stack-probe как гейт:** тест с порогами `STACK-PROBE stage=open|svg|write|pdf`
-  (testkit, nesting) — регрессия кадра ловится до fuzz.
+- **Гейт по стеку — `strict-ooxml/tests/hostile.rs`:** каждая вложенность на своём пределе
+  проходит весь конвейер на потоке 1 MiB (`testkit::harness`), а за пределом — отказ или
+  пропуск без переполнения. Измерительный probe (`STACK-PROBE stage=open|svg|write|pdf`,
+  бинарный поиск размера стека в дочернем процессе) был временным, коммит `600fd90`;
+  поднимать его при подозрении на регрессию кадра.
 - **Библиотека не требует от вызывающего большого стека.** 64 MiB-поток в CLI — страховка
   для CLI, не контракт; документированный бюджет — стандартные 2 MiB потока Rust на
   документе в пределах лимитов по умолчанию.
@@ -184,9 +201,9 @@ Package::open → support_report → render (N страниц) → write_package
 |---|---|---|
 | 1 | Документ сверен с кодом | сделано |
 | 2 | `deny(unwrap_used, expect_used, panic, todo, unimplemented, unreachable)` во всех библиотечных крейтах, CLI и view; 17 мест исправлено | сделано, ветка `task/never-crash-2026-10-08` |
-| 3 | Явные лимиты глубины на всех рекурсивных путях + stack-probe как гейт (§4.5) | в работе |
-| 4 | `convert_pipeline_never_panics`: `Package::open → render → write → reopen` на CC0 ci-core + proptest-мутации байтов | в работе |
-| 5 | `clippy::indexing_slicing`, затем `arithmetic_side_effects`: `pdf` → `convert` → `write` → остальные | в работе |
+| 3 | Явные лимиты глубины на всех рекурсивных путях (§4.5): группы, `mc:AlternateContent`, обход run content, все части в writer | сделано |
+| 4 | `pipeline_never_panics`: `open → report → svg → pdf → write → reopen` на CC0 ci-core + proptest-мутации тела | сделано |
+| 5 | `clippy::indexing_slicing`: `pdf` сделано; далее `convert` → `write` → остальные, затем `arithmetic_side_effects` | в работе |
 | 6 | Fuzz 24h как release-гейт Stage-7: назначить владельца и дату | открыто |
 | 7 | Display list как явный модуль; тест метрик строки для подстановочных шрифтов | позже |
 
