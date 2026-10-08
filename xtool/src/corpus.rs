@@ -30,8 +30,12 @@ use sha2::{Digest, Sha256};
 const DEFAULT_LOCK: &str = "testdata-lock/cc0.toml";
 const DEFAULT_ROOT: &str = "testdata";
 const TIERS: &[&str] = &["ci-core", "ci-full"];
-/// Attempts per document, the first one included.
-const ATTEMPTS: u32 = 4;
+/// Attempts per document, the first one included (waits 2, 4, ... 32 s).
+const ATTEMPTS: u32 = 6;
+/// The wait before a second pass over the documents the first pass could not
+/// get: archive.org refuses connections under load and some of its storage
+/// nodes answer 500 for a while, so a minute later is often a different answer.
+const SECOND_PASS_DELAY: Duration = Duration::from_secs(60);
 /// archive.org answers `/download/...` with one redirect to a storage node.
 const MAX_REDIRECTS: usize = 8;
 
@@ -63,7 +67,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
 
 /// The `corpus` lines of `xtool --help`.
 pub(crate) const USAGE: &str = "\
-corpus fetch    --tier <ci-core|ci-full> [--root <dir>] [--lock <path>]\n\
+corpus fetch    --tier <ci-core|ci-full> [--root <dir>] [--lock <path>] [--allow-failures <n>]\n\
 corpus verify   --tier <ci-core|ci-full> [--root <dir>] [--lock <path>]\n\
                 (defaults: --root testdata, --lock testdata-lock/cc0.toml)";
 
@@ -100,8 +104,19 @@ fn fetch(args: &[String]) -> ExitCode {
         Ok(loaded) => loaded,
         Err(code) => return code,
     };
+    // How many documents may stay unfetched without failing the run: the
+    // nightly full tier would otherwise fail on one flaky archive.org node.
+    let allowed = super::arg_value(args, "--allow-failures");
+    let allowed = match allowed.map(str::parse::<usize>) {
+        None => 0,
+        Some(Ok(allowed)) => allowed,
+        Some(Err(error)) => {
+            eprintln!("error: --allow-failures: {error}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
     let agent = agent();
-    let (mut fetched, mut present, mut failed) = (0usize, 0usize, 0usize);
+    let (mut fetched, mut present, mut failed) = (0usize, 0usize, Vec::new());
     for doc in &docs {
         let destination = root.join(&doc.path);
         match check_file(&destination, doc) {
@@ -113,7 +128,7 @@ fn fetch(args: &[String]) -> ExitCode {
             Ok(State::Wrong(why)) => eprintln!("{}: {why}; downloading again", doc.id),
             Err(error) => {
                 eprintln!("error: {}: {error}", doc.id);
-                failed += 1;
+                failed.push((doc, error));
                 continue;
             }
         }
@@ -128,16 +143,42 @@ fn fetch(args: &[String]) -> ExitCode {
                 );
             }
             Err(error) => {
-                failed += 1;
                 eprintln!("error: {}: {error}", doc.id);
+                failed.push((doc, error));
             }
         }
     }
+    if !failed.is_empty() {
+        eprintln!(
+            "{} document(s) failed; a second pass in {}s",
+            failed.len(),
+            SECOND_PASS_DELAY.as_secs()
+        );
+        thread::sleep(SECOND_PASS_DELAY);
+        let mut still = Vec::new();
+        for (doc, first) in failed {
+            match fetch_with_retries(&agent, doc, &root.join(&doc.path)) {
+                Ok(()) => {
+                    fetched += 1;
+                    println!("fetched {} on the second pass", doc.id);
+                }
+                Err(error) => {
+                    eprintln!("error: {}: {error} (first pass: {first})", doc.id);
+                    still.push((doc, error));
+                }
+            }
+        }
+        failed = still;
+    }
     println!(
-        "corpus fetch --tier {tier}: {} document(s): {fetched} fetched, {present} already present, {failed} failed",
-        docs.len()
+        "corpus fetch --tier {tier}: {} document(s): {fetched} fetched, {present} already present, {} failed",
+        docs.len(),
+        failed.len()
     );
-    if failed == 0 {
+    for (doc, error) in &failed {
+        println!("  unfetched: {} ({}): {error}", doc.id, doc.url);
+    }
+    if failed.len() <= allowed {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)

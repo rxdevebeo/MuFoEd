@@ -354,6 +354,7 @@ $script:AllowedFields = @{
     'xsd'         = @('id', 'kind', 'sha', 'gate')
     'corpus-scan' = @('id', 'kind', 'sha', 'set')
     'bench'       = @('id', 'kind', 'sha', 'bench')
+    'wps'         = @('id', 'kind', 'sha')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -415,6 +416,7 @@ function Test-JobRecord {
         'xsd' { $required = @('sha', 'gate') }
         'corpus-scan' { $required = @('sha', 'set') }
         'bench' { $required = @('sha', 'bench') }
+        'wps' { $required = @('sha') }
         'commit' { $required = @('branch', 'paths', 'message') }
         'push' { $required = @('branch') }
     }
@@ -979,6 +981,49 @@ function Invoke-Bench {
     return (New-Result $status $reason @($step) $artifacts)
 }
 
+function Invoke-Wps {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, [string]$OutDir, [scriptblock]$AfterCopyHook)
+    $deadline = (Get-Date).AddMinutes(60)
+    $wt = Join-Path $QueueDir 'wt'
+    $target = Join-Path $QueueDir 'target'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+
+    # Clio lives in the gitignored corpus, like the gate's documents.
+    $copied = Copy-Corpora -Repo $Repo -Wt $wt -RelDirs @('strict-ooxml-core/tests/docx') -OutDir $OutDir -AfterCopyHook $AfterCopyHook
+    $steps = @($copied.steps)
+    if (-not $copied.ok) { return (New-Result 'error' $copied.reason $steps @()) }
+
+    # The P1 protocol (docs/audit-remediation-2026-10-06/P01-wps-geometry/tests.md),
+    # once with the WPS Times calibration the gate was accepted under and once
+    # with the renderer's defaults; each render replaces the SVGs the ledger reads.
+    $clio = 'strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx'
+    $svg = 'target/remediation-2026-10-06/clio-svg'
+    $cargoEnv = Get-CargoEnv -Target $target
+    $artifacts = @()
+    foreach ($variant in @('wps-times', 'default')) {
+        $svgDir = Join-Path $wt $svg
+        if (Test-Path -LiteralPath $svgDir) { Remove-Item -LiteralPath $svgDir -Recurse -Force }
+        $render = @($script:Toolchain, 'run', '-p', 'strict-ooxml-cli', '--release', '--', 'render', '--transitional', '--pages', '54-104', '--out', $svg)
+        if ($variant -eq 'wps-times') { $render += '--wps-times' }
+        $render += $clio
+        $steps += Invoke-Logged -Name ('render-' + $variant) -Exe 'cargo' -Arguments $render -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $cargoEnv -OutDir $OutDir
+        $ledger = Join-Path $OutDir ('wps-ledger-' + $variant + '.json')
+        $steps += Invoke-Logged -Name ('ledger-' + $variant) -Exe $script:Python -Arguments @('xtool/wps-gate/wps_ledger.py', '--root', $wt, '--out', $ledger) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        $steps += Invoke-Logged -Name ('p1-selftest-' + $variant) -Exe $script:Python -Arguments @('xtool/wps-gate/wps_p1_gate_selftest.py') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        foreach ($step in @($steps | Select-Object -Last 2)) {
+            $p = Join-Path $OutDir ($step.name + '.txt')
+            Save-StepOutput -Step $step -Path $p
+            $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+        }
+        if (Test-Path -LiteralPath $ledger) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $ledger }
+    }
+    $status = Get-StepsStatus $steps
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('wps: {0} step(s) non-zero' -f @($steps | Where-Object { $_.exit -ne 0 }).Count) }
+    return (New-Result $status $reason $steps $artifacts)
+}
+
 function Invoke-GitInfo {
     param([string]$Repo, $Job, [string]$OutDir)
     $steps = @()
@@ -1150,6 +1195,7 @@ function Invoke-JobFile {
                 'xsd' { $r = Invoke-Xsd -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'corpus-scan' { $r = Invoke-CorpusScan -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'bench' { $r = Invoke-Bench -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
+                'wps' { $r = Invoke-Wps -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'commit' { $r = Invoke-Commit -Repo $Repo -Job $job -OutDir $outDir }
                 'push' { $r = Invoke-Push -Repo $Repo -Job $job -OutDir $outDir }
                 default { $r = New-Result 'rejected' 'unknown kind' @() @() }
