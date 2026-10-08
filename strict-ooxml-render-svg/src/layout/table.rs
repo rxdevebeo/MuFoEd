@@ -1224,10 +1224,7 @@ fn push_borders(
         if !draw {
             continue;
         }
-        let inside = interior
-            .get(usize::from(edge))
-            .copied()
-            .unwrap_or_default();
+        let inside = interior.get(usize::from(edge)).copied().unwrap_or_default();
         if let Some(stroke) = resolve_edge(ctx, table, properties, edge, inside) {
             items.push(Item::Line(LineItem {
                 x1,
