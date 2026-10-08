@@ -1748,7 +1748,40 @@ impl PartParser<'_> {
 
     /// Shared `mc:AlternateContent` walker: ProcessChoice against
     /// [`crate::SUPPORTED_MCE_NAMESPACES`].
+    ///
+    /// A branch may hold another `mc:AlternateContent`, and the block and anchor
+    /// paths recurse into it without any container budget of their own. Past
+    /// [`MAX_MCE_NESTING`](super::MAX_MCE_NESTING) open wrappers the element is
+    /// skipped iteratively and recorded as `Unsupported`: Word writes one level,
+    /// and a chain of hundreds is hostile input that should cost its content,
+    /// not the stack.
     pub(super) fn parse_mce_alternate_content(
+        &mut self,
+        attrs: &[Attr],
+        take_branch: impl FnMut(&mut PartParser<'_>, &[Attr]) -> Result<()>,
+    ) -> Result<()> {
+        if self.mce_depth >= super::MAX_MCE_NESTING {
+            let location = self.location();
+            self.skip_element()?;
+            self.record(
+                "mc:AlternateContent",
+                SupportStatus::Unsupported,
+                Some(format!(
+                    "mc:AlternateContent nested past {} levels; its content was skipped",
+                    super::MAX_MCE_NESTING
+                )),
+                Some(location),
+            );
+            return Ok(());
+        }
+        self.mce_depth = self.mce_depth.saturating_add(1);
+        let out = self.parse_mce_alternate_content_body(attrs, take_branch);
+        self.mce_depth = self.mce_depth.saturating_sub(1);
+        out
+    }
+
+    /// The body of [`parse_mce_alternate_content`](Self::parse_mce_alternate_content).
+    fn parse_mce_alternate_content_body(
         &mut self,
         attrs: &[Attr],
         mut take_branch: impl FnMut(&mut PartParser<'_>, &[Attr]) -> Result<()>,

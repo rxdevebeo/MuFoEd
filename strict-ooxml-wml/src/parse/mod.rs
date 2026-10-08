@@ -662,6 +662,12 @@ fn merge_media(target: &mut MediaIndex, source: &MediaIndex) {
     }
 }
 
+/// How many `mc:AlternateContent` wrappers may be open inside one another.
+///
+/// Word writes one; eight leaves room for producers that wrap a wrapped
+/// object again, and keeps a hostile chain to a few parser frames.
+pub(crate) const MAX_MCE_NESTING: u32 = 8;
+
 /// Internal parser state for one part.
 pub(crate) struct PartParser<'a> {
     pub(crate) reader: XmlReader,
@@ -705,6 +711,12 @@ pub(crate) struct PartParser<'a> {
     /// `max_xml_depth` (256) in the way. See [`nested_inline`](Self::nested_inline).
     pub(crate) inline_depth: u32,
     pub(crate) max_inline_nesting: u32,
+    /// Open DrawingML groups (`wpg:wgp` / `wpg:grpSp`).
+    pub(crate) group_depth: u32,
+    /// Open `mc:AlternateContent` wrappers, against [`MAX_MCE_NESTING`].
+    pub(crate) mce_depth: u32,
+    /// [`ResourceLimits::max_group_nesting`].
+    pub(crate) max_group_nesting: u32,
     /// The per-formula budgets, from `ResourceLimits`.
     ///
     /// Kept on the parser rather than as constants in `parse/math.rs`, because
@@ -759,6 +771,9 @@ impl<'a> PartParser<'a> {
             max_text_box_nesting: limits.max_text_box_nesting,
             inline_depth: 0,
             max_inline_nesting: limits.max_inline_nesting,
+            group_depth: 0,
+            mce_depth: 0,
+            max_group_nesting: limits.max_group_nesting,
             max_math_nodes: limits.max_math_nodes,
             max_math_depth: limits.max_math_depth,
             section_gutter_at_top: false,

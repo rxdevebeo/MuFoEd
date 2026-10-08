@@ -39,6 +39,23 @@ pub fn nested_text_boxes(depth: usize, inner: &str) -> String {
     )
 }
 
+/// An inline `w:drawing` paragraph holding `depth` DrawingML groups, each the
+/// only child of the one around it (`wpg:wgp`, then `wpg:grpSp` inside it), with
+/// one shape in the innermost.
+pub fn nested_groups(depth: usize) -> String {
+    let groups = nested(
+        "<wpg:grpSp><wpg:grpSpPr/>",
+        "</wpg:grpSp>",
+        "<wps:wsp><wps:spPr/><wps:bodyPr/></wps:wsp>",
+        depth.saturating_sub(1),
+    );
+    format!(
+        "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"914400\" cy=\"914400\"/>\
+<wp:docPr id=\"1\" name=\"group\"/><a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\">\
+<wpg:wgp><wpg:grpSpPr/>{groups}</wpg:wgp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+    )
+}
+
 /// `count` copies of `item`, concatenated.
 pub fn repeated(item: &str, count: usize) -> String {
     item.repeat(count)

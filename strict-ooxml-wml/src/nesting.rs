@@ -17,23 +17,38 @@
 //! either overflow the stack or refuse tables twelve deep for the sake of a text
 //! box the same document would never carry.
 //!
-//! The bounds are [`ResourceLimits::max_block_nesting`] and
-//! [`ResourceLimits::max_text_box_nesting`].
+//! Two more, for the walks the first two do not bound: DrawingML group shapes
+//! nest inside a drawing, and inline wrappers (`w:hyperlink`, `w:fldSimple`,
+//! an inline `w:sdt`, `w:dir`/`w:bdo`) inside a paragraph. The reader skips past
+//! either budget; a model built in code is refused here instead, before a
+//! renderer or writer recurses once per level of it.
+//!
+//! The bounds are [`ResourceLimits::max_block_nesting`],
+//! [`ResourceLimits::max_text_box_nesting`],
+//! [`ResourceLimits::max_group_nesting`] and
+//! [`ResourceLimits::max_inline_nesting`].
 
 use strict_ooxml_core::limits::ResourceLimits;
 
 use crate::model::block::Block;
-use crate::model::drawing::{DrawingKind, Graphic};
+use crate::model::drawing::{Drawing, DrawingKind, Graphic};
+use crate::model::inline::{Inline, RunContent};
 use crate::model::Document;
 
 /// Which counter ran out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NestingKind {
     /// `w:tbl`, a block-level `w:sdt`, a `w:customXml` wrapper, a note body, a
     /// `w:hdr`/`w:ftr`.
     Block,
     /// A text box (`wps:txbx` / `w:txbxContent`).
     TextBox,
+    /// A DrawingML group shape (`wpg:wgp` / `wpg:grpSp`).
+    Group,
+    /// An inline wrapper (`w:hyperlink`, `w:fldSimple`, an inline `w:sdt`,
+    /// `w:dir`, `w:bdo`).
+    Inline,
 }
 
 impl NestingKind {
@@ -43,6 +58,8 @@ impl NestingKind {
         match self {
             Self::Block => "block nesting",
             Self::TextBox => "text box nesting",
+            Self::Group => "group nesting",
+            Self::Inline => "inline nesting",
         }
     }
 }
@@ -62,9 +79,12 @@ impl Exceeded {
     /// The `LimitKind` this maps onto in [`StrictError`](strict_ooxml_core::error::StrictError).
     #[must_use]
     pub fn limit_kind(self) -> strict_ooxml_core::error::LimitKind {
+        use strict_ooxml_core::error::LimitKind;
         match self.kind {
-            NestingKind::Block => strict_ooxml_core::error::LimitKind::BlockNesting,
-            NestingKind::TextBox => strict_ooxml_core::error::LimitKind::TextBoxNesting,
+            NestingKind::Block => LimitKind::BlockNesting,
+            NestingKind::TextBox => LimitKind::TextBoxNesting,
+            NestingKind::Group => LimitKind::GroupNesting,
+            NestingKind::Inline => LimitKind::InlineNesting,
         }
     }
 }
@@ -83,13 +103,17 @@ impl std::fmt::Display for Exceeded {
 
 impl std::error::Error for Exceeded {}
 
-/// The two counters, taken apart from a [`ResourceLimits`].
+/// The counters, taken apart from a [`ResourceLimits`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
     /// `w:tbl` and the other block containers.
     pub block: u32,
     /// Text boxes.
     pub text_box: u32,
+    /// Group shapes, counted from each drawing.
+    pub group: u32,
+    /// Inline wrappers, counted from each paragraph.
+    pub inline: u32,
 }
 
 impl Budget {
@@ -99,8 +123,23 @@ impl Budget {
         Self {
             block: limits.max_block_nesting,
             text_box: limits.max_text_box_nesting,
+            group: limits.max_group_nesting,
+            inline: limits.max_inline_nesting,
         }
     }
+}
+
+/// How many containers of each kind are open around the walk.
+///
+/// Groups restart at each drawing and wrappers at each paragraph. The reader's
+/// counters run across them, so a model it produced never comes out deeper
+/// here than it went in there, and only a model built in code can be refused.
+#[derive(Clone, Copy, Debug, Default)]
+struct Open {
+    blocks: u32,
+    boxes: u32,
+    groups: u32,
+    wrappers: u32,
 }
 
 /// Checks `blocks` against `limits`.
@@ -110,7 +149,7 @@ impl Budget {
 /// Returns the [`Exceeded`] nesting of the first container past its budget.
 pub fn check_blocks(blocks: &[Block], limits: &ResourceLimits) -> Result<(), Exceeded> {
     let budget = Budget::of(limits);
-    blocks_at(blocks, 0, 0, budget)
+    blocks_at(blocks, Open::default(), budget)
 }
 
 /// Checks every container of `document`.
@@ -134,51 +173,30 @@ pub fn check_document(document: &Document, limits: &ResourceLimits) -> Result<()
     Ok(())
 }
 
-/// Walks `blocks`; `blocks` and `boxes` are how many of each are already open.
-fn blocks_at(
-    blocks: &[Block],
-    blocks_open: u32,
-    boxes_open: u32,
-    budget: Budget,
-) -> Result<(), Exceeded> {
+/// Walks `blocks` with `open` containers around them.
+fn blocks_at(blocks: &[Block], open: Open, budget: Budget) -> Result<(), Exceeded> {
     for block in blocks {
         match block {
             Block::Table(table) => {
-                let inner = enter(NestingKind::Block, blocks_open, budget.block)?;
+                let inner = Open {
+                    blocks: enter(NestingKind::Block, open.blocks, budget.block)?,
+                    ..open
+                };
                 for row in &table.rows {
                     for cell in &row.cells {
-                        blocks_at(&cell.blocks, inner, boxes_open, budget)?;
+                        blocks_at(&cell.blocks, inner, budget)?;
                     }
                 }
             }
             Block::SdtBlock(sdt) => {
-                let inner = enter(NestingKind::Block, blocks_open, budget.block)?;
-                blocks_at(&sdt.blocks, inner, boxes_open, budget)?;
+                let inner = Open {
+                    blocks: enter(NestingKind::Block, open.blocks, budget.block)?,
+                    ..open
+                };
+                blocks_at(&sdt.blocks, inner, budget)?;
             }
             Block::Paragraph(paragraph) => {
-                for inline in &paragraph.inlines {
-                    if let crate::model::inline::Inline::Drawing(drawing) = inline {
-                        match &drawing.kind {
-                            DrawingKind::Inline(inline) => {
-                                walk_graphic(
-                                    inline.graphic.as_ref(),
-                                    blocks_open,
-                                    boxes_open,
-                                    budget,
-                                )?;
-                            }
-                            DrawingKind::Anchor(anchor) => {
-                                walk_graphic(
-                                    anchor.graphic.as_ref(),
-                                    blocks_open,
-                                    boxes_open,
-                                    budget,
-                                )?;
-                            }
-                            DrawingKind::Opaque(_) => {}
-                        }
-                    }
-                }
+                inlines_at(&paragraph.inlines, Open { wrappers: 0, ..open }, budget)?;
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
@@ -186,23 +204,69 @@ fn blocks_at(
     Ok(())
 }
 
-/// Walks a graphic for text boxes.
-fn walk_graphic(
-    graphic: &Graphic,
-    blocks_open: u32,
-    boxes_open: u32,
-    budget: Budget,
-) -> Result<(), Exceeded> {
+/// Walks a paragraph's inlines for drawings and nested wrappers.
+///
+/// A drawing is a paragraph child (`Inline::Drawing`) or, as Word writes it,
+/// run content (`w:r/w:drawing`); both can carry a text box.
+fn inlines_at(inlines: &[Inline], open: Open, budget: Budget) -> Result<(), Exceeded> {
+    for inline in inlines {
+        let children = match inline {
+            Inline::Drawing(drawing) => {
+                drawing_at(drawing, open, budget)?;
+                continue;
+            }
+            Inline::Run(run) => {
+                for content in &run.content {
+                    if let RunContent::Drawing(drawing) = content {
+                        drawing_at(drawing, open, budget)?;
+                    }
+                }
+                continue;
+            }
+            Inline::Hyperlink(link) => &link.inlines,
+            Inline::Field(field) => &field.inlines,
+            Inline::SdtInline(sdt) => &sdt.inlines,
+            Inline::Directional(directional) => &directional.inlines,
+            _ => continue,
+        };
+        let inner = Open {
+            wrappers: enter(NestingKind::Inline, open.wrappers, budget.inline)?,
+            ..open
+        };
+        inlines_at(children, inner, budget)?;
+    }
+    Ok(())
+}
+
+/// Walks one drawing's graphic, counting groups from zero.
+fn drawing_at(drawing: &Drawing, open: Open, budget: Budget) -> Result<(), Exceeded> {
+    let graphic = match &drawing.kind {
+        DrawingKind::Inline(inline) => inline.graphic.as_ref(),
+        DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
+        DrawingKind::Opaque(_) => return Ok(()),
+    };
+    walk_graphic(graphic, Open { groups: 0, ..open }, budget)
+}
+
+/// Walks a graphic for groups and text boxes.
+fn walk_graphic(graphic: &Graphic, open: Open, budget: Budget) -> Result<(), Exceeded> {
     match graphic {
         Graphic::Shape(shape) => {
             if let Some(text_box) = &shape.text {
-                let inner = enter(NestingKind::TextBox, boxes_open, budget.text_box)?;
-                blocks_at(&text_box.blocks, blocks_open, inner, budget)?;
+                let inner = Open {
+                    boxes: enter(NestingKind::TextBox, open.boxes, budget.text_box)?,
+                    ..open
+                };
+                blocks_at(&text_box.blocks, inner, budget)?;
             }
         }
         Graphic::Group(group) => {
+            let inner = Open {
+                groups: enter(NestingKind::Group, open.groups, budget.group)?,
+                ..open
+            };
             for child in &group.children {
-                walk_graphic(child, blocks_open, boxes_open, budget)?;
+                walk_graphic(child, inner, budget)?;
             }
         }
         Graphic::None
@@ -242,6 +306,10 @@ mod tests {
     use crate::model::{Body, Document, DocumentSource};
     use strict_ooxml_core::error::SourceLocation;
     use strict_ooxml_core::part::PartId;
+
+    use crate::model::drawing::GroupShape;
+    use crate::model::inline::{Field, Inline, Run, RunContent};
+    use crate::model::props::RunProperties;
 
     use super::{check_document, Exceeded, NestingKind};
 
@@ -376,6 +444,113 @@ mod tests {
             })
         );
         assert!(check_document(&tables(3), &limits).is_ok());
+    }
+
+    /// [`drawing`]'s drawing, carrying `graphic` instead of its text box.
+    fn with_graphic(graphic: Graphic) -> Drawing {
+        let Block::Paragraph(mut paragraph) = drawing(Vec::new()) else {
+            unreachable!("drawing() builds a paragraph")
+        };
+        let Some(Inline::Drawing(mut found)) = paragraph.inlines.pop() else {
+            unreachable!("drawing() builds one inline drawing")
+        };
+        if let DrawingKind::Inline(inline) = &mut found.kind {
+            inline.graphic = Box::new(graphic);
+        }
+        found
+    }
+
+    /// A body paragraph holding `inlines`.
+    fn holding(inlines: Vec<Inline>) -> Block {
+        let Block::Paragraph(mut paragraph) = paragraph() else {
+            unreachable!("paragraph() builds a paragraph")
+        };
+        paragraph.inlines = inlines;
+        Block::Paragraph(paragraph)
+    }
+
+    fn groups(depth: usize) -> Graphic {
+        let mut graphic = Graphic::None;
+        for _ in 0..depth {
+            graphic = Graphic::Group(GroupShape {
+                name: None,
+                descr: None,
+                xfrm: None,
+                children: vec![graphic],
+                location: location(),
+            });
+        }
+        graphic
+    }
+
+    #[test]
+    fn group_shapes_have_their_own_budget() {
+        let limits = ResourceLimits::default();
+        let fits = holding(vec![Inline::Drawing(with_graphic(groups(16)))]);
+        assert!(check_document(&shell(vec![fits]), &limits).is_ok());
+        let deep = holding(vec![Inline::Drawing(with_graphic(groups(17)))]);
+        assert_eq!(
+            check_document(&shell(vec![deep]), &limits),
+            Err(Exceeded {
+                kind: NestingKind::Group,
+                limit: 16,
+                actual: 17
+            })
+        );
+    }
+
+    #[test]
+    fn a_text_box_in_run_content_is_counted() {
+        // `w:r/w:drawing` is where Word puts a drawing; the walk used to look
+        // only at `Inline::Drawing` and let these through uncounted.
+        let mut blocks = vec![paragraph()];
+        for _ in 0..6 {
+            let Block::Paragraph(mut outer) = drawing(blocks) else {
+                unreachable!("drawing() builds a paragraph")
+            };
+            let Some(Inline::Drawing(found)) = outer.inlines.pop() else {
+                unreachable!("drawing() builds one inline drawing")
+            };
+            blocks = vec![holding(vec![Inline::Run(Run {
+                props: RunProperties::default(),
+                content: vec![RunContent::Drawing(found)],
+                revision: None,
+                location: location(),
+            })])];
+        }
+        assert_eq!(
+            check_document(&shell(blocks), &ResourceLimits::default()),
+            Err(Exceeded {
+                kind: NestingKind::TextBox,
+                limit: 5,
+                actual: 6
+            })
+        );
+    }
+
+    #[test]
+    fn inline_wrappers_have_their_own_budget() {
+        let wrap = |depth: usize| {
+            let mut inlines = Vec::new();
+            for _ in 0..depth {
+                inlines = vec![Inline::Field(Field {
+                    instruction: None,
+                    inlines,
+                    location: location(),
+                })];
+            }
+            holding(inlines)
+        };
+        let limits = ResourceLimits::default();
+        assert!(check_document(&shell(vec![wrap(16)]), &limits).is_ok());
+        assert_eq!(
+            check_document(&shell(vec![wrap(17)]), &limits),
+            Err(Exceeded {
+                kind: NestingKind::Inline,
+                limit: 16,
+                actual: 17
+            })
+        );
     }
 
     #[test]

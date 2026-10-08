@@ -1,7 +1,7 @@
 //! Parsing of `w:drawing`: inline pictures, anchored drawings, shapes, groups
 //! and text boxes (`STAGE-2 §8`, `STAGE-5B-TASK.md` §5.1–§5.4).
 
-use strict_ooxml_core::error::Result;
+use strict_ooxml_core::error::{Result, SourceLocation};
 use strict_ooxml_core::opc::rels::RelId;
 use strict_ooxml_core::xml::qname::QName;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
@@ -575,7 +575,11 @@ impl PartParser<'_> {
                     Some(self.location()),
                 );
             }
-            return Ok(Some(Graphic::Group(self.parse_group()?)));
+            // A group past `max_group_nesting` was skipped and recorded; it
+            // still occupies its place, as an empty graphic.
+            return Ok(Some(
+                self.parse_group()?.map_or(Graphic::None, Graphic::Group),
+            ));
         }
         if name.local() == "chart" {
             // The attributes of *this* element, not of the `a:graphicData` that
@@ -1738,9 +1742,36 @@ impl PartParser<'_> {
         Ok(body)
     }
 
-    /// Parses a `wpg:wgp` group.
-    fn parse_group(&mut self) -> Result<GroupShape> {
+    /// Parses a `wpg:wgp` group (start consumed) inside one level of
+    /// [`max_group_nesting`](PartParser::max_group_nesting).
+    ///
+    /// Past the bound the group is skipped iteratively, recorded as
+    /// `Unsupported`, and the result is `Ok(None)`: the group costs its content,
+    /// not the document, and the skip spends no stack however deep it goes.
+    fn parse_group(&mut self) -> Result<Option<GroupShape>> {
         let location = self.location();
+        let depth = self.group_depth.saturating_add(1);
+        if depth > self.max_group_nesting {
+            self.skip_element()?;
+            let limit = self.max_group_nesting;
+            self.record(
+                "wpg:wgp",
+                SupportStatus::Unsupported,
+                Some(format!(
+                    "group nested past max_group_nesting ({limit}); its content was skipped"
+                )),
+                Some(location),
+            );
+            return Ok(None);
+        }
+        self.group_depth = depth;
+        let out = self.parse_group_body(location);
+        self.group_depth = self.group_depth.saturating_sub(1);
+        out.map(Some)
+    }
+
+    /// The body of [`parse_group`](Self::parse_group).
+    fn parse_group_body(&mut self, location: SourceLocation) -> Result<GroupShape> {
         self.nested(|parser| {
             let mut group = GroupShape {
                 name: None,
@@ -1756,7 +1787,9 @@ impl PartParser<'_> {
                             // Nested groups must be matched before the generic
                             // `is_group_ns` property skip: `grpSp` is itself a
                             // group-ns element and used to fall into `_ => skip`.
-                            group.children.push(Graphic::Group(parser.parse_group()?));
+                            if let Some(child) = parser.parse_group()? {
+                                group.children.push(Graphic::Group(child));
+                            }
                         } else if name.local() == "wsp" && is_shape_ns(&name) {
                             group.children.push(Graphic::Shape(parser.parse_shape()?));
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "pic" {

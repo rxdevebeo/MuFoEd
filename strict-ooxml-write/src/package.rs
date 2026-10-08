@@ -519,12 +519,35 @@ pub fn write_package(
     // recurse the serializer as deep as the model goes, and the reader that
     // produced it would never have let it exist. A model built in code has had no
     // such reader, so this is the first place that can say no (AUD-05 п.3).
-    crate::body::check_block_nesting(&document.body.blocks, &options.limits).map_err(|error| {
-        StrictError::Write {
-            part: PartId::new(MAIN_DOCUMENT),
-            detail: error.to_string(),
-        }
-    })?;
+    // Every story, not the body alone: a header or a note is serialized by the
+    // same recursive writer.
+    let stories = std::iter::once((PartId::new(MAIN_DOCUMENT), &document.body.blocks))
+        .chain(
+            document
+                .headers_footers
+                .iter()
+                .map(|story| (story.part.clone(), &story.blocks)),
+        )
+        .chain(
+            document
+                .footnotes
+                .iter()
+                .map(|note| (PartId::new(FOOTNOTES_PART), &note.blocks)),
+        )
+        .chain(
+            document
+                .endnotes
+                .iter()
+                .map(|note| (PartId::new(ENDNOTES_PART), &note.blocks)),
+        );
+    for (part, blocks) in stories {
+        crate::body::check_block_nesting(blocks, &options.limits).map_err(|error| {
+            StrictError::Write {
+                part,
+                detail: error.to_string(),
+            }
+        })?;
+    }
     let mut report = crate::WriteReport::new();
     // AUD-42: the parser drops customXml/smartTag wrappers (content kept). The
     // writer cannot restore them — surface the Ignorable loss once per feature.
