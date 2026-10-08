@@ -363,6 +363,16 @@ def _canonical_value(name: str, value: str) -> str | None:
             return "start"
         if lowered in {"right", "end"}:
             return "end"
+    if name == "char":
+        # `w:sym@char` is hex, not a length; the Symbol-font remap writes
+        # `F0A7` as `00A7` (`_same_sym_char`).
+        try:
+            code = int(value, 16)
+        except ValueError:
+            return value
+        if 0xF000 <= code <= 0xF0FF:
+            code -= 0xF000
+        return f"{code:04X}"
     twips = _twips(lowered)
     if twips is not None:
         # `wp:wrap*` and `wp:anchor` distances: the writer spells out the zero.

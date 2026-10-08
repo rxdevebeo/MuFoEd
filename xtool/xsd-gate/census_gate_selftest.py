@@ -724,6 +724,22 @@ def test_p12_header_digest_ignores_the_strict_spellings() -> None:
     ).encode()
     if census_gate._semantic_part_digest(mce) != census_gate._semantic_part_digest(dml):
         raise SystemExit("the chosen mc:Choice branch was a different header")
+    sym_source = (
+        f'<w:hdr xmlns:w="{transitional}"><w:p><w:r><w:sym w:font="Wingdings 2" w:char="F097"/>'
+        f'<w:sym w:font="Wingdings" w:char="f0a7"/></w:r></w:p></w:hdr>'
+    ).encode()
+    sym_written = (
+        f'<w:hdr xmlns:w="{strict}"><w:p><w:r><w:sym w:font="Wingdings 2" w:char="0097"/>'
+        f'<w:sym w:font="Wingdings" w:char="00A7"/></w:r></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(sym_source) != census_gate._semantic_part_digest(
+        sym_written
+    ):
+        raise SystemExit("the remapped Symbol-font char was a different header")
+    if census_gate._semantic_part_digest(sym_source) == census_gate._semantic_part_digest(
+        sym_written.replace(b'"0097"', b'"0098"')
+    ):
+        raise SystemExit("a different sym char matched")
     moved = written.replace(b'w:start="6pt"', b'w:start="7pt"')
     if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(moved):
         raise SystemExit("a different indent matched")

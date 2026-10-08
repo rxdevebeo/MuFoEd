@@ -80,6 +80,12 @@ pub struct ParagraphProperties {
     pub word_wrap: TriState,
     /// Snap to grid (`w:snapToGrid`).
     pub snap_to_grid: TriState,
+    /// Space between East Asian and Latin text (`w:autoSpaceDE`).
+    pub auto_space_de: TriState,
+    /// Space between East Asian text and numbers (`w:autoSpaceDN`).
+    pub auto_space_dn: TriState,
+    /// Right indent follows the document grid (`w:adjustRightInd`).
+    pub adjust_right_ind: TriState,
     /// Text frame (`w:framePr`), AUD-46. Render stays in-flow with a `partial` record.
     pub frame: Option<FrameProperties>,
     /// Source location of `w:pPr`.
@@ -133,6 +139,8 @@ pub struct RunProperties {
     pub small_caps: TriState,
     /// Right-to-left run (`w:rtl`).
     pub rtl: TriState,
+    /// Complex-script run (`w:cs`): the run uses its complex-script font and toggles.
+    pub complex_script: TriState,
     /// Hidden text (`w:vanish`).
     pub vanish: TriState,
     /// Emboss (`w:emboss`).
