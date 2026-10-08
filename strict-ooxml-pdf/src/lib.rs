@@ -48,7 +48,8 @@
         clippy::todo,
         clippy::unimplemented,
         clippy::unreachable,
-        clippy::indexing_slicing
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects
     )
 )]
 #![deny(missing_docs)]

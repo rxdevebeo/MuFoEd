@@ -190,10 +190,12 @@ pub const fn image_limit_kind() -> LimitKind {
 fn payload_bytes(encoded: &Encoded) -> usize {
     match encoded {
         Encoded::Jpeg { data, alpha, .. } => {
-            data.len() + alpha.as_ref().map_or(0, |mask| payload_bytes(mask))
+            let mask = alpha.as_ref().map_or(0, |mask| payload_bytes(mask));
+            data.len().saturating_add(mask)
         }
         Encoded::Raw { samples, alpha, .. } => {
-            samples.len() + alpha.as_ref().map_or(0, |mask| mask.len())
+            let mask = alpha.as_ref().map_or(0, |mask| mask.len());
+            samples.len().saturating_add(mask)
         }
     }
 }
@@ -288,8 +290,9 @@ impl ImageCache {
             Err(_) => 0,
         };
         let mut entries = self.entries.borrow_mut();
-        if self.bytes.get() + bytes <= self.limit {
-            self.bytes.set(self.bytes.get() + bytes);
+        let total = self.bytes.get().saturating_add(bytes);
+        if total <= self.limit {
+            self.bytes.set(total);
             entries.insert(
                 id,
                 CachedImage {
@@ -556,8 +559,9 @@ fn decode_flate_or_raw(
         expand_gray1_to_eight(&samples, width, height, limits)?
     } else {
         let expected = (width as usize)
-            .saturating_mul(height as usize)
-            .saturating_mul(components as usize);
+            .checked_mul(height as usize)
+            .and_then(|pixels| pixels.checked_mul(components as usize))
+            .ok_or(Reject::TooLarge)?;
         if samples.len() < expected {
             return Err(Reject::Broken("samples are truncated"));
         }
@@ -659,22 +663,26 @@ pub(crate) fn expand_gray1_to_eight(
     limits: &PdfLimits,
 ) -> Result<Vec<u8>, Reject> {
     let row_bytes = (width as usize).div_ceil(8);
-    let needed = row_bytes.saturating_mul(height as usize);
+    let needed = row_bytes
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if packed.len() < needed {
         return Err(Reject::Broken("samples are truncated"));
     }
-    let out_len = (width as usize).saturating_mul(height as usize);
+    let out_len = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if out_len > limits.max_image_bytes {
         return Err(Reject::TooLarge);
     }
     let mut out = Vec::with_capacity(out_len);
     for row in 0..height as usize {
-        let row_start = row * row_bytes;
+        let row_start = row.saturating_mul(row_bytes);
         for x in 0..width as usize {
-            let Some(&byte) = packed.get(row_start + x / 8) else {
+            let Some(&byte) = packed.get(row_start.saturating_add(x / 8)) else {
                 return Err(Reject::Broken("samples are truncated"));
             };
-            let bit = (byte >> (7 - (x % 8))) & 1;
+            let bit = byte.wrapping_shl((x % 8) as u32) & 0x80;
             out.push(if bit == 0 { 0 } else { 255 });
         }
     }
@@ -695,7 +703,7 @@ impl hayro_ccitt::Decoder for CcittLuma8 {
     }
 
     fn next_line(&mut self) {
-        self.decoded_rows += 1;
+        self.decoded_rows = self.decoded_rows.saturating_add(1);
     }
 }
 
@@ -714,7 +722,7 @@ impl hayro_jbig2::Decoder for Jbig2Luma8 {
     fn push_pixel_chunk(&mut self, black: bool, chunk_count: u32) {
         let byte = if black { 0x00 } else { 0xFF };
         self.output
-            .extend(std::iter::repeat_n(byte, chunk_count as usize * 8));
+            .extend(std::iter::repeat_n(byte, (chunk_count as usize).saturating_mul(8)));
     }
 
     fn next_line(&mut self) {}
@@ -737,7 +745,9 @@ fn decode_ccitt_bytes(
     resolve: Resolver<'_>,
     limits: &PdfLimits,
 ) -> Result<Encoded, Reject> {
-    let need = (width as usize).saturating_mul(height as usize);
+    let need = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if need > limits.max_image_bytes {
         return Err(Reject::TooLarge);
     }
@@ -803,7 +813,9 @@ fn decode_jbig2_bytes(
     if width == 0 || height == 0 {
         return Err(Reject::Broken("JBIG2 stream has empty dimensions"));
     }
-    let need = (width as usize).saturating_mul(height as usize);
+    let need = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if need > limits.max_image_bytes {
         return Err(Reject::TooLarge);
     }
@@ -875,10 +887,11 @@ pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encode
         return Err(Reject::UnsupportedLayout("JPX colour space"));
     }
     let has_alpha = image.has_alpha();
-    let channels = u64::from(color_components) + u64::from(has_alpha);
+    let channels = u64::from(color_components).saturating_add(u64::from(has_alpha));
     let need = u64::from(width)
-        .saturating_mul(u64::from(height))
-        .saturating_mul(channels);
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(channels))
+        .ok_or(Reject::TooLarge)?;
     if need > limits.max_image_bytes as u64 {
         return Err(Reject::TooLarge);
     }
@@ -888,7 +901,7 @@ pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encode
         .map_err(|_| Reject::Broken("JPEG 2000 stream could not be decoded"))?;
     let bitmap = decoded.data_u8();
     let (samples, alpha) = if has_alpha {
-        let total = usize::from(color_components) + 1;
+        let total = usize::from(color_components).saturating_add(1);
         let pixels = (width as usize).saturating_mul(height as usize);
         let expected = pixels.saturating_mul(total);
         if bitmap.len() < expected {
@@ -933,26 +946,26 @@ fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
     if !bytes.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
-    let mut index = 2;
-    while index + 9 < bytes.len() {
+    let mut index = 2usize;
+    while index.saturating_add(9) < bytes.len() {
         if bytes.get(index) != Some(&0xFF) {
-            index += 1;
+            index = index.saturating_add(1);
             continue;
         }
-        let marker = *bytes.get(index + 1)?;
+        let marker = *bytes.get(index.saturating_add(1))?;
         if (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
-            let height = be_u16(bytes, index + 5)?;
-            let width = be_u16(bytes, index + 7)?;
+            let height = be_u16(bytes, index.saturating_add(5))?;
+            let width = be_u16(bytes, index.saturating_add(7))?;
             if width == 0 || height == 0 {
                 return None;
             }
             return Some((u32::from(width), u32::from(height)));
         }
-        let length = be_u16(bytes, index + 2)?;
+        let length = be_u16(bytes, index.saturating_add(2))?;
         if length < 2 {
             return None;
         }
-        index += 2 + usize::from(length);
+        index = index.saturating_add(2).saturating_add(usize::from(length));
     }
     None
 }

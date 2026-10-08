@@ -57,7 +57,7 @@ impl ReadReport {
             detail: detail.to_owned(),
             count: 0,
         });
-        entry.count += 1;
+        entry.count = entry.count.saturating_add(1);
     }
 
     /// Records an image that could not be carried.
@@ -86,10 +86,12 @@ impl ReadReport {
                     detail: loss.detail.clone(),
                     count: 0,
                 });
-            entry.count += loss.count;
+            entry.count = entry.count.saturating_add(loss.count);
         }
-        self.unmapped_glyphs += other.unmapped_glyphs;
-        self.estimated_widths += other.estimated_widths;
+        self.unmapped_glyphs = self.unmapped_glyphs.saturating_add(other.unmapped_glyphs);
+        self.estimated_widths = self
+            .estimated_widths
+            .saturating_add(other.estimated_widths);
     }
 
     /// The losses, ordered by id then detail.

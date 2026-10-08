@@ -354,7 +354,7 @@ impl PdfDocument {
         let ids: Vec<lopdf::ObjectId> = self.document.page_iter().collect();
         let mut out = Vec::with_capacity(ids.len());
         for (index, id) in ids.into_iter().enumerate() {
-            out.push(self.read_page(id, index + 1)?);
+            out.push(self.read_page(id, index.saturating_add(1))?);
         }
         for page in &out {
             self.report.merge(&page.report);
@@ -449,7 +449,7 @@ impl PdfDocument {
     fn inherited(&self, id: lopdf::ObjectId) -> BTreeMap<Vec<u8>, Object> {
         let mut out: BTreeMap<Vec<u8>, Object> = BTreeMap::new();
         let mut current = id;
-        let mut guard = 0;
+        let mut guard = 0u32;
         while let Ok(dictionary) = self.document.get_dictionary(current) {
             for key in [b"Resources".as_slice(), b"MediaBox", b"CropBox", b"Rotate"] {
                 if let Ok(value) = dictionary.get(key) {
@@ -463,7 +463,7 @@ impl PdfDocument {
                 },
                 Err(_) => break,
             }
-            guard += 1;
+            guard = guard.saturating_add(1);
             if guard > 64 {
                 // A parent cycle in a damaged file: stop rather than loop.
                 break;
@@ -526,9 +526,9 @@ impl PdfPage {
             if !glyph.render_mode.paints() {
                 continue;
             }
-            glyphs += 1;
+            glyphs = glyphs.saturating_add(1);
             if glyph.mapped {
-                mapped += 1;
+                mapped = mapped.saturating_add(1);
             }
         }
         match (glyphs, mapped) {
@@ -663,7 +663,7 @@ fn geometry_of(
 /// `/Rotate` normalised to a right angle, as the specification requires.
 fn rotation_of(object: Option<&Object>) -> i32 {
     let raw = object.and_then(number_of_object).unwrap_or(0.0).round() as i64;
-    (((raw % 360) + 360) % 360) as i32
+    raw.rem_euclid(360) as i32
 }
 
 fn number_of_object(object: &Object) -> Option<f64> {

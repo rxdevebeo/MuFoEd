@@ -70,14 +70,14 @@ pub(crate) fn check_object_streams(bytes: &[u8], limits: &PdfLimits) -> Result<(
     let mut cursor = 0usize;
     let mut last_charged = None;
     while let Some(at) = find(bytes, b"/Type", cursor) {
-        cursor = at + b"/Type".len();
+        cursor = at.saturating_add(b"/Type".len());
         let Some((name, _)) = name_after(bytes, cursor) else {
             continue;
         };
         if name != b"ObjStm" && name != b"XRef" {
             continue;
         }
-        examined += 1;
+        examined = examined.saturating_add(1);
         if examined > MAX_STREAM_DICTIONARIES {
             break;
         }
@@ -207,7 +207,7 @@ fn locate_stream(bytes: &[u8], type_at: usize) -> Option<StreamSpan> {
     for _ in 0..4 {
         let obj = rfind(bytes, b"obj", floor, before)?;
         before = obj;
-        let open = skip_space(bytes, obj + b"obj".len());
+        let open = skip_space(bytes, obj.saturating_add(b"obj".len()));
         if !bytes.get(open..).unwrap_or_default().starts_with(b"<<") {
             continue;
         }
@@ -225,12 +225,12 @@ fn locate_stream(bytes: &[u8], type_at: usize) -> Option<StreamSpan> {
         {
             return None;
         }
-        let mut data_start = keyword + b"stream".len();
+        let mut data_start = keyword.saturating_add(b"stream".len());
         let after_keyword = bytes.get(data_start..).unwrap_or_default();
         if after_keyword.starts_with(b"\r\n") {
-            data_start += 2;
+            data_start = data_start.saturating_add(2);
         } else if after_keyword.starts_with(b"\n") || after_keyword.starts_with(b"\r") {
-            data_start += 1;
+            data_start = data_start.saturating_add(1);
         }
         // `lopdf` trusts `/Length` only when `endstream` follows it; otherwise
         // it searches for `endstream`, and so does the inflater here by reading
@@ -282,13 +282,13 @@ fn parse_dictionary(bytes: &[u8], open: usize) -> Option<Dictionary> {
     let mut flate = false;
     while let Some(&byte) = window.get(index) {
         match byte {
-            b'<' if window.get(index + 1) == Some(&b'<') => {
-                depth += 1;
-                index += 2;
+            b'<' if window.get(index.saturating_add(1)) == Some(&b'<') => {
+                depth = depth.saturating_add(1);
+                index = index.saturating_add(2);
             }
-            b'>' if window.get(index + 1) == Some(&b'>') => {
+            b'>' if window.get(index.saturating_add(1)) == Some(&b'>') => {
                 depth = depth.checked_sub(1)?;
-                index += 2;
+                index = index.saturating_add(2);
                 if depth == 0 {
                     return Some(Dictionary {
                         start: open,
@@ -321,7 +321,7 @@ fn parse_dictionary(bytes: &[u8], open: usize) -> Option<Dictionary> {
                     _ => {}
                 }
             }
-            _ => index += 1,
+            _ => index = index.saturating_add(1),
         }
     }
     None
@@ -340,7 +340,7 @@ fn direct_integer(bytes: &[u8], from: usize) -> (Option<usize>, usize) {
     if digits == 0 {
         return (None, start);
     }
-    let end = start + digits;
+    let end = start.saturating_add(digits);
     let value = bytes
         .get(start..end)
         .and_then(|digits| std::str::from_utf8(digits).ok())
@@ -354,9 +354,9 @@ fn direct_integer(bytes: &[u8], from: usize) -> (Option<usize>, usize) {
         .take_while(|byte| byte.is_ascii_digit())
         .count();
     if generation > 0 {
-        let after = skip_space(bytes, next + generation);
+        let after = skip_space(bytes, next.saturating_add(generation));
         if bytes.get(after) == Some(&b'R') {
-            return (None, after + 1);
+            return (None, after.saturating_add(1));
         }
     }
     (value, end)
@@ -372,7 +372,7 @@ fn filter_is_flate(bytes: &[u8], from: usize) -> Option<(bool, usize)> {
             Some((is_flate_name(name), after))
         }
         Some(b'[') => {
-            let mut index = start + 1;
+            let mut index = start.saturating_add(1);
             let mut names = 0usize;
             let mut all_flate = true;
             loop {
@@ -380,11 +380,14 @@ fn filter_is_flate(bytes: &[u8], from: usize) -> Option<(bool, usize)> {
                 match bytes.get(index) {
                     Some(b'/') => {
                         let (name, after) = read_name(bytes, index)?;
-                        names += 1;
+                        names = names.saturating_add(1);
                         all_flate &= is_flate_name(name);
                         index = after;
                     }
-                    Some(b']') => return Some((names == 1 && all_flate, index + 1)),
+                    Some(b']') => {
+                        let end = index.saturating_add(1);
+                        return Some((names == 1 && all_flate, end));
+                    }
                     // A reference or anything else inside the array: not a
                     // chain the scan reads; `lopdf`'s ceiling applies.
                     Some(_) => return Some((false, index)),
@@ -415,7 +418,7 @@ fn read_name(bytes: &[u8], slash: usize) -> Option<(&[u8], usize)> {
     let start = slash.checked_add(1)?;
     let rest = bytes.get(start..)?;
     let len = rest.iter().take_while(|byte| is_regular(**byte)).count();
-    Some((rest.get(..len)?, start + len))
+    Some((rest.get(..len)?, start.saturating_add(len)))
 }
 
 /// A PDF regular character: neither white space nor a delimiter.
@@ -434,7 +437,7 @@ fn is_space(byte: u8) -> bool {
 fn skip_space(bytes: &[u8], from: usize) -> usize {
     let mut index = from.min(bytes.len());
     while bytes.get(index).is_some_and(|&byte| is_space(byte)) {
-        index += 1;
+        index = index.saturating_add(1);
     }
     index
 }
@@ -445,14 +448,14 @@ fn skip_comment(bytes: &[u8], from: usize) -> usize {
         .get(index)
         .is_some_and(|&byte| byte != b'\n' && byte != b'\r')
     {
-        index += 1;
+        index = index.saturating_add(1);
     }
     index
 }
 
 fn skip_hex_string(bytes: &[u8], from: usize) -> Option<usize> {
     let close = bytes.get(from..)?.iter().position(|byte| *byte == b'>')?;
-    Some(from + close + 1)
+    Some(from.saturating_add(close).saturating_add(1))
 }
 
 fn skip_literal_string(bytes: &[u8], from: usize) -> Option<usize> {
@@ -460,19 +463,19 @@ fn skip_literal_string(bytes: &[u8], from: usize) -> Option<usize> {
     let mut index = from;
     while let Some(&byte) = bytes.get(index) {
         match byte {
-            b'\\' => index += 2,
+            b'\\' => index = index.saturating_add(2),
             b'(' => {
-                depth += 1;
-                index += 1;
+                depth = depth.saturating_add(1);
+                index = index.saturating_add(1);
             }
             b')' => {
                 depth = depth.checked_sub(1)?;
-                index += 1;
+                index = index.saturating_add(1);
                 if depth == 0 {
                     return Some(index);
                 }
             }
-            _ => index += 1,
+            _ => index = index.saturating_add(1),
         }
     }
     None
@@ -484,7 +487,7 @@ fn find(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
         .get(from..)?
         .windows(needle.len())
         .position(|window| window == needle)
-        .map(|offset| from + offset)
+        .map(|offset| from.saturating_add(offset))
 }
 
 /// The last `needle` that starts in `floor..before`.
@@ -493,7 +496,7 @@ fn rfind(haystack: &[u8], needle: &[u8], floor: usize, before: usize) -> Option<
         .get(floor..before.min(haystack.len()))?
         .windows(needle.len())
         .rposition(|window| window == needle)
-        .map(|offset| floor + offset)
+        .map(|offset| floor.saturating_add(offset))
 }
 
 #[cfg(test)]
