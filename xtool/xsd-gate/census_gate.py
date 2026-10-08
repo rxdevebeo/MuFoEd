@@ -57,6 +57,7 @@ Inventory element changes and XSD messages are different measurements:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import collections
 import fnmatch
 import hashlib
@@ -284,7 +285,13 @@ def _strict_namespace_map() -> dict[str, str]:
 _STRICT_NS = _strict_namespace_map()
 
 
-def _semantic_part_digest(payload: bytes) -> str:
+# When set (`--write-reports DIR`), the semantic text of every header and footer
+# is kept under DIR/semantic-parts/, so a relationship row that differs can be
+# explained by diffing the two sides instead of by guessing.
+_SEMANTIC_DUMP: Path | None = None
+
+
+def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
     """Header and footer identity after the Strict rewrite.
 
     Editor marks, `mc:Ignorable`, a default on/off `val`, and the complex-script
@@ -330,7 +337,11 @@ def _semantic_part_digest(payload: bytes) -> str:
 
     chunks: list[str] = []
     walk(root, chunks)
-    return hashlib.sha256("\n".join(chunks).encode("utf-8")).hexdigest()
+    text = "\n".join(chunks)
+    if _SEMANTIC_DUMP is not None and dump_name:
+        _SEMANTIC_DUMP.mkdir(parents=True, exist_ok=True)
+        (_SEMANTIC_DUMP / dump_name).write_text(text, encoding="utf-8")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
@@ -375,8 +386,11 @@ def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
             # A regenerated header or footer is a different zip entry even when
             # the paragraphs are the same. The relationship row is the part
             # identity; attribute losses inside the part stay their own rows.
+            dump_name = (
+                f"{Path(archive.filename or 'package').name}--{resolved.replace('/', '_')}.txt"
+            )
             digest = (
-                _semantic_part_digest(payload)
+                _semantic_part_digest(payload, dump_name)
                 if kind.endswith("/header") or kind.endswith("/footer")
                 else hashlib.sha256(payload).hexdigest()
             )
@@ -1641,6 +1655,7 @@ def loss_report(
 
 
 def main(argv: list[str]) -> int:
+    global _SEMANTIC_DUMP
     parser = argparse.ArgumentParser(
         description="Census the Transitional -> Strict path against the Strict schemas."
     )
@@ -1845,6 +1860,8 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         total_in += label_in
         total_out += label_out
 
+        if args.write_reports:
+            _SEMANTIC_DUMP = Path(args.write_reports) / "semantic-parts"
         rows, failures = loss_report(corpus, cli, args.write_reports, only)
         counts = collections.Counter()
         for row in rows:
