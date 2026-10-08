@@ -715,6 +715,15 @@ def test_p12_header_digest_ignores_the_strict_spellings() -> None:
         dml.replace(b"Logo", b"Other")
     ):
         raise SystemExit("a text box with different text matched")
+    mce = (
+        f'<w:hdr xmlns:w="{transitional}" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        f'<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><w:txbxContent><w:p><w:r>'
+        f"<w:t>Logo</w:t></w:r></w:p></w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict>"
+        f"<w:txbxContent><w:p><w:r><w:t>Logo</w:t></w:r></w:p></w:txbxContent></w:pict></mc:Fallback>"
+        f"</mc:AlternateContent></w:r></w:p></w:hdr>"
+    ).encode()
+    if census_gate._semantic_part_digest(mce) != census_gate._semantic_part_digest(dml):
+        raise SystemExit("the chosen mc:Choice branch was a different header")
     moved = written.replace(b'w:start="6pt"', b'w:start="7pt"')
     if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(moved):
         raise SystemExit("a different indent matched")

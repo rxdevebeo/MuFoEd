@@ -397,6 +397,18 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
         local = qname.localname
         if local in _SEMANTIC_SKIP:
             return
+        # Markup compatibility: the output keeps the branch the reader chose
+        # (the first `mc:Choice`, else `mc:Fallback`) without the wrapper.
+        if local == "AlternateContent" and "markup-compatibility" in (qname.namespace or ""):
+            branches = [child for child in element if isinstance(child.tag, str)]
+            chosen = next(
+                (b for b in branches if etree.QName(b).localname == "Choice"),
+                next((b for b in branches if etree.QName(b).localname == "Fallback"), None),
+            )
+            if chosen is not None:
+                for child in chosen:
+                    walk(child, chunks)
+            return
         # A border edge of `nil`/`none` is no border.
         if local in _BORDER_EDGES and any(
             etree.QName(key).localname == "val" and value in {"nil", "none"}
@@ -434,7 +446,11 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
                 continue
             if qname.localname == "rFonts" and name == "hint" and value.lower() == "cs":
                 continue
-            if pct and name == "w":
+            if name == "prefixMappings":
+                # Namespace URIs inside the mapping string, in their Strict form.
+                for old_uri, strict_uri in _STRICT_NS.items():
+                    value = value.replace(old_uri, strict_uri)
+            elif pct and name == "w":
                 number = _percent_number(value)
                 if number is not None:
                     value = f"{number if value.endswith('%') else number / 50.0:g}pct"
