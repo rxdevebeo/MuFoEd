@@ -500,7 +500,7 @@ impl<'c, 'a> Painter<'c, 'a> {
             text: text.to_owned(),
             run: ComputedRun {
                 family: FAMILY.to_owned(),
-                point_size: finite(point_size),
+                size_pt: finite(point_size),
                 color: Some(TEXT_COLOR.to_owned()),
                 ..ComputedRun::default()
             },

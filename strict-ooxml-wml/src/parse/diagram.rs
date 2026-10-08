@@ -7,7 +7,7 @@
 //! part in every file Word writes), with the type [`DIAGRAM_DRAWING_REL`]; the
 //! data part's own relationships are tried as a fallback.
 //!
-//! [`PartParser::diagram_for`] follows that chain, reads the drawing part
+//! `PartParser::diagram_for` follows that chain, reads the drawing part
 //! through the package (so the package's part-size limits and its normalizer
 //! apply) and parses its `dsp:spTree` with the same shape, fill, outline and
 //! text-body parsers a `wps:wsp` uses. Every failure is a support record, never

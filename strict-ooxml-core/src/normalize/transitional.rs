@@ -819,11 +819,11 @@ impl TransitionalNormalizer {
         // namespace (`w15:commentsEx`, `w16cid:commentsIds`, ...) would otherwise
         // be written with no root element at all, which is not XML. Its
         // children still go through the removal rules.
-        let is_root = context.root.is_none();
+        let is_root = matches!(context.root, RootTag::NotSeen);
         if is_root {
             let name = start.name();
             let raw: &[u8] = name.as_ref();
-            context.root = Some(
+            context.root = RootTag::Seen(
                 raw.iter()
                     .position(|byte| *byte == b':')
                     .map(|colon| raw[..colon].to_vec()),
@@ -1517,6 +1517,12 @@ enum Rewritten {
     Drop,
 }
 
+/// Whether a part's root start tag has been seen, and its prefix if it has one.
+enum RootTag {
+    NotSeen,
+    Seen(Option<Vec<u8>>),
+}
+
 /// Per-part mutable state.
 ///
 /// Visible to the [`vml`] module, which resolves a buffered `w:pict` subtree
@@ -1595,7 +1601,7 @@ pub(crate) struct PartContext {
     /// The part's root start tag, once seen: `Some(prefix)` (`Some(None)` for
     /// an unprefixed root). The root is never dropped, and an extension
     /// namespace that names it keeps its `xmlns:` declaration (`rewrite_start`).
-    root: Option<Option<Vec<u8>>>,
+    root: RootTag,
     /// Next `wp:docPr/@id` this part hands out, for a converted VML picture.
     doc_pr_id: u32,
     /// The markup-compatibility policy this write runs with.
@@ -1650,7 +1656,7 @@ impl PartContext {
             doc_pr_id: 0,
             vml_picture_prefixes: Vec::new(),
             root_written: false,
-            root: None,
+            root: RootTag::NotSeen,
             mce: McePolicy::default(),
             invariants: InvariantMode::default(),
             direction: DirectionPolicy::default(),
@@ -2528,11 +2534,10 @@ fn map_namespace_declaration(
         // The root's own namespace stays declared: the root is kept even when
         // its namespace is an extension (`w15:commentsEx`), and an element
         // whose prefix is undeclared is not XML.
-        let names_the_root = context
-            .root
-            .as_ref()
-            .and_then(Option::as_deref)
-            .is_some_and(|root| root == prefix.as_bytes());
+        let names_the_root = matches!(
+            &context.root,
+            RootTag::Seen(Some(root)) if root.as_slice() == prefix.as_bytes()
+        );
         if names_the_root {
             return Some((format!("xmlns:{prefix}"), value.to_owned()));
         }
