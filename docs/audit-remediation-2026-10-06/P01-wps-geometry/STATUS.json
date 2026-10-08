@@ -1,58 +1,66 @@
 {
-  "package": "P1",
-  "slug": "wps-geometry",
-  "visual_level": "V0",
-  "date_utc": "2026-10-06",
-  "status": "PASS",
-  "rows_before": null,
-  "rows_after": null,
-  "labels": [
-    "WPS absolute glyph origin ≤0.25 px",
-    "Clio pages 54/56/104 mandatory keys"
-  ],
-  "witness_docs": [
-    "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
-  ],
-  "tests_pass": true,
-  "corpus_slice_exit": 0,
-  "full_census_exit": "NOT_RUN",
-  "tolerance_px": 0.25,
-  "p0_measurability": "PASS",
-  "p1_geometry": "PASS",
-  "pages": {
-    "56": "PASS — all mandatory MEASURED points ≤0.25 px",
-    "54": "PASS — primers + HVR-I (caption and body) ≤0.25 px",
-    "104": "PASS — A,C / B,D / all modern neighborhoods ≤0.25 px"
-  },
-  "tightest_margin_px": {
-    "component": "p104.modern.5",
-    "abs_delta_px": 0.248,
-    "margin_to_tolerance_px": 0.002,
-    "note": "Do not raise 0.25; P9 font metrics may widen the margin. Treat as fragility signal."
-  },
-  "code_changes": [
-    "ComputedRun.spacing_pt from w:rPr/w:spacing; measure/paint/PDF apply pitch on non-space scalars",
-    "Exact line ascent: overflow → font ascent; top-bordered / after taller Exact → exact*0.8 grid; first Exact → natural.max(exact*0.8); bold≥9pt → exact*0.8 (Clio style-50 captions)",
-    "w:pBdr top/bottom pads (space + sz/8); consecutive bordered frame siblings collapse the shared edge",
-    "Cascade styles: do not XOR Latin w:b with w:bCs from the same rPr when a CS face is named (Clio style 50); Direct still applies iCs/bCs",
-    "w:characterSpacingControl=compressPunctuation collapses spaces after `,`/`)`; shaped measure/paint honor partial space factors",
-    "Right-aligned tiny captions (≤5 pt, jc=end): plain spaces keep 76% advance so A,C matches spaceless WPS without shifting center B,D",
-    "Post-justify Tinos substitute stretch vs WPS Times: regular 1.008 (distance-blended), bold 0.9833 on justified lines only",
-    "wps_ledger: search all SVG pages; prefer size-compatible neighborhood hits"
-  ],
-  "tests_recorded": [
-    "T-P1-1 wps_ledger.py → p1_geometry PASS",
-    "T-P1-2 captions inside page bounds (wps_p1_gate_selftest)",
-    "T-P1-3 f06_toggles + f16_frames regression",
-    "T-P1-4 +1 px SVG layout offset → geometry FAIL (wps_p1_gate_selftest)",
-    "wps_ledger_selftest (matcher negatives)"
-  ],
-  "open_fails": [],
-  "notes": [
-    "WPS page-54 L16055 is split runs L + style91 16055 (Arial 8pt), not LucidaSansUnicode4pt0pt0.",
-    "Clio has 322 sectPr / ~322 pages in our layout; ledger matches across SVG page numbers.",
-    "WPS reference PDFs embed zero space characters; word gaps are inconsistent.",
-    "No inventory-before/after: P1 is render geometry, not census disposition.",
-    "Do not raise 0.25 px tolerance."
-  ]
+ "package": "P1",
+ "slug": "wps-geometry",
+ "visual_level": "V0",
+ "date_utc": "2026-10-06",
+ "status": "PASS",
+ "rows_before": null,
+ "rows_after": null,
+ "labels": [
+  "WPS absolute glyph origin ≤0.25 px",
+  "Clio pages 54/56/104 mandatory keys"
+ ],
+ "witness_docs": [
+  "strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
+ ],
+ "tests_pass": true,
+ "corpus_slice_exit": 0,
+ "full_census_exit": "NOT_RUN",
+ "tolerance_px": 0.25,
+ "p0_measurability": "PASS",
+ "p1_geometry": "PASS",
+ "pages": {
+  "56": "PASS — all mandatory MEASURED points ≤0.25 px",
+  "54": "PASS — primers + HVR-I (caption and body) ≤0.25 px",
+  "104": "PASS — A,C / B,D / all modern neighborhoods ≤0.25 px"
+ },
+ "tightest_margin_px": {
+  "component": "p104.modern.5",
+  "abs_delta_px": 0.248,
+  "margin_to_tolerance_px": 0.002,
+  "note": "Do not raise 0.25; P9 font metrics may widen the margin. Treat as fragility signal."
+ },
+ "code_changes": [
+  "ComputedRun.spacing_pt from w:rPr/w:spacing; measure/paint/PDF apply pitch on non-space scalars",
+  "Exact line ascent: overflow → font ascent; top-bordered / after taller Exact → exact*0.8 grid; first Exact → natural.max(exact*0.8); bold≥9pt → exact*0.8 (Clio style-50 captions)",
+  "w:pBdr top/bottom pads (space + sz/8); consecutive bordered frame siblings collapse the shared edge",
+  "Cascade styles: do not XOR Latin w:b with w:bCs from the same rPr when a CS face is named (Clio style 50); Direct still applies iCs/bCs",
+  "w:characterSpacingControl=compressPunctuation collapses spaces after `,`/`)`; shaped measure/paint honor partial space factors",
+  "Right-aligned tiny captions (≤5 pt, jc=end): plain spaces keep 76% advance so A,C matches spaceless WPS without shifting center B,D",
+  "Post-justify Tinos substitute stretch vs WPS Times: regular 1.008 (distance-blended), bold 0.9833 on justified lines only",
+  "wps_ledger: search all SVG pages; prefer size-compatible neighborhood hits"
+ ],
+ "tests_recorded": [
+  "T-P1-1 wps_ledger.py → p1_geometry PASS",
+  "T-P1-2 captions inside page bounds (wps_p1_gate_selftest)",
+  "T-P1-3 f06_toggles + f16_frames regression",
+  "T-P1-4 +1 px SVG layout offset → geometry FAIL (wps_p1_gate_selftest)",
+  "wps_ledger_selftest (matcher negatives)"
+ ],
+ "open_fails": [],
+ "notes": [
+  "WPS page-54 L16055 is split runs L + style91 16055 (Arial 8pt), not LucidaSansUnicode4pt0pt0.",
+  "Clio has 322 sectPr / ~322 pages in our layout; ledger matches across SVG page numbers.",
+  "WPS reference PDFs embed zero space characters; word gaps are inconsistent.",
+  "No inventory-before/after: P1 is render geometry, not census disposition.",
+  "Do not raise 0.25 px tolerance."
+ ],
+ "recheck_2026_10_08": {
+  "trigger": "hardening changed the rules P1 passed under: 1f31fac (Tinos stretch opt-in, --wps-times) and 9d9b372 (WPS Exact-line rule inside frames only)",
+  "found": "Clio p56: five bold Arial 4.5 pt position labels (8994, 6371, 11719, 14766, 7028) 0.52-0.67 px off in dy - they sit in a table whose paragraphs share one w:framePr, laid out without ctx.in_frame",
+  "fix": "93b054a: framed tables lay out under the WPS frame rule",
+  "result_wps_times": "p1_geometry PASS, 26/26 MEASURED <= 0.25 px, tightest p104.modern.5 0.248 (margin 0.002)",
+  "result_default": "p1_geometry FAIL (max 3.399 px, p104.modern.3): the Tinos calibration is opt-in by design; P1 is measured with --wps-times",
+  "protocol": "hostq job 'wps' (tools/hostq/README.md); ledger: wps-ledger.json"
+ }
 }
