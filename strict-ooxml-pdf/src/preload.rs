@@ -218,7 +218,11 @@ fn locate_stream(bytes: &[u8], type_at: usize) -> Option<StreamSpan> {
             continue;
         }
         let keyword = skip_space(bytes, dictionary.end);
-        if !bytes.get(keyword..).unwrap_or_default().starts_with(b"stream") {
+        if !bytes
+            .get(keyword..)
+            .unwrap_or_default()
+            .starts_with(b"stream")
+        {
             return None;
         }
         let mut data_start = keyword + b"stream".len();
@@ -437,7 +441,10 @@ fn skip_space(bytes: &[u8], from: usize) -> usize {
 
 fn skip_comment(bytes: &[u8], from: usize) -> usize {
     let mut index = from;
-    while bytes.get(index).is_some_and(|&byte| byte != b'\n' && byte != b'\r') {
+    while bytes
+        .get(index)
+        .is_some_and(|&byte| byte != b'\n' && byte != b'\r')
+    {
         index += 1;
     }
     index

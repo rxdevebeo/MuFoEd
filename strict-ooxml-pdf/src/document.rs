@@ -95,7 +95,15 @@ impl FormCache {
                     .collect::<Option<Vec<f64>>>()
             })
             .and_then(|values| match *values.as_slice() {
-                [a, b, c, d, e, f] => Some(Matrix { a, b, c, d, e, f }),
+                // ISO 32000-1 8.3.3: [sx ky kx sy tx ty].
+                [sx, ky, kx, sy, tx, ty] => Some(Matrix {
+                    a: sx,
+                    b: ky,
+                    c: kx,
+                    d: sy,
+                    e: tx,
+                    f: ty,
+                }),
                 _ => None,
             })
             .unwrap_or(Matrix::IDENTITY);

@@ -39,7 +39,7 @@ pub fn nested_text_boxes(depth: usize, inner: &str) -> String {
     )
 }
 
-/// An inline `w:drawing` paragraph holding `depth` DrawingML groups, each the
+/// An inline `w:drawing` paragraph holding `depth` `DrawingML` groups, each the
 /// only child of the one around it (`wpg:wgp`, then `wpg:grpSp` inside it), with
 /// one shape in the innermost.
 pub fn nested_groups(depth: usize) -> String {

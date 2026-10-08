@@ -719,7 +719,10 @@ fn grid_of(
     config: &TableRules,
     max_table_cells: usize,
 ) -> Result<Grid, Rejected> {
-    let member: Vec<&Rule> = component.iter().filter_map(|&index| rules.get(index)).collect();
+    let member: Vec<&Rule> = component
+        .iter()
+        .filter_map(|&index| rules.get(index))
+        .collect();
     let verticals: Vec<&Rule> = member.iter().copied().filter(|r| !r.horizontal()).collect();
     let horizontals: Vec<&Rule> = member.iter().copied().filter(|r| r.horizontal()).collect();
     if verticals.len() < 2 || horizontals.len() < 2 {

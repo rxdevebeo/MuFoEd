@@ -196,7 +196,11 @@ fn blocks_at(blocks: &[Block], open: Open, budget: Budget) -> Result<(), Exceede
                 blocks_at(&sdt.blocks, inner, budget)?;
             }
             Block::Paragraph(paragraph) => {
-                inlines_at(&paragraph.inlines, Open { wrappers: 0, ..open }, budget)?;
+                let open = Open {
+                    wrappers: 0,
+                    ..open
+                };
+                inlines_at(&paragraph.inlines, open, budget)?;
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
@@ -252,7 +256,10 @@ fn drawing_at(drawing: &Drawing, open: Open, budget: Budget) -> Result<(), Excee
 fn walk_graphic(graphic: &Graphic, open: Open, budget: Budget) -> Result<(), Exceeded> {
     match graphic {
         Graphic::Shape(shape) => {
-            if let Some(text_box) = &shape.text {
+            // A box without blocks recurses into nothing: that is also what the
+            // reader leaves of a box it skipped past the budget, which must not
+            // then refuse the model it produced.
+            if let Some(text_box) = shape.text.as_ref().filter(|text| !text.blocks.is_empty()) {
                 let inner = Open {
                     boxes: enter(NestingKind::TextBox, open.boxes, budget.text_box)?,
                     ..open

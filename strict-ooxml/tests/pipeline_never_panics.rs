@@ -48,8 +48,11 @@ fn pipeline(bytes: Vec<u8>, limits: ResourceLimits) -> Result<(), String> {
     };
     let _ = doc.render_svg(&render);
     let _ = doc.render_pdf(&render);
-    let Ok(written) = write_package(doc.document(), Some(doc.package()), &WriteOptions::default())
-    else {
+    let Ok(written) = write_package(
+        doc.document(),
+        Some(doc.package()),
+        &WriteOptions::default(),
+    ) else {
         return Ok(());
     };
     match StrictDocument::open_reader(Cursor::new(written.bytes), &options) {

@@ -708,7 +708,11 @@ mod drawing_nesting {
         let (status, _) =
             feature(&document, "mc:AlternateContent").expect("mc:AlternateContent is reported");
         assert_eq!(status, FeatureStatus::Unsupported);
-        assert_eq!(document.document().body.blocks.len(), 2, "the deep paragraph is skipped");
+        assert_eq!(
+            document.document().body.blocks.len(),
+            2,
+            "the deep paragraph is skipped"
+        );
         pipeline(document);
     }
 

@@ -110,7 +110,7 @@ pub struct ResourceLimits {
     /// `Unsupported`, and the rest of the document is read - the trade
     /// [`max_text_box_nesting`](Self::max_text_box_nesting) makes.
     pub max_inline_nesting: u32,
-    /// Maximum nesting of DrawingML group shapes (`wpg:wgp` / `wpg:grpSp`).
+    /// Maximum nesting of `DrawingML` group shapes (`wpg:wgp` / `wpg:grpSp`).
     /// Default: 16.
     ///
     /// Before this bound a group was capped only by

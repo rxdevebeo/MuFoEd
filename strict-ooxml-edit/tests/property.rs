@@ -53,9 +53,19 @@ struct Step {
 
 #[derive(Clone, Debug)]
 enum Kind {
-    Text { start: usize, len: usize, text: String },
-    Bold { start: usize, len: usize, on: bool },
-    Split { offset: usize },
+    Text {
+        start: usize,
+        len: usize,
+        text: String,
+    },
+    Bold {
+        start: usize,
+        len: usize,
+        on: bool,
+    },
+    Split {
+        offset: usize,
+    },
     Join,
     Delete,
     Identify,
@@ -87,8 +97,11 @@ fn kind() -> impl Strategy<Value = Kind> {
 }
 
 fn step() -> impl Strategy<Value = Step> {
-    (any::<usize>(), prop::bool::weighted(0.1), kind())
-        .prop_map(|(target, wild, kind)| Step { target, wild, kind })
+    (any::<usize>(), prop::bool::weighted(0.1), kind()).prop_map(|(target, wild, kind)| Step {
+        target,
+        wild,
+        kind,
+    })
 }
 
 fn resolve(editor: &Editor<'_>, step: &Step) -> Edit {
@@ -116,7 +129,10 @@ fn resolve(editor: &Editor<'_>, step: &Step) -> Edit {
                 ..FormatPatch::default()
             },
         },
-        Kind::Split { offset } => Edit::Split { at, offset: *offset },
+        Kind::Split { offset } => Edit::Split {
+            at,
+            offset: *offset,
+        },
         Kind::Join => Edit::Join { at },
         Kind::Delete => Edit::Delete { at },
         Kind::Identify => Edit::Identify { at },

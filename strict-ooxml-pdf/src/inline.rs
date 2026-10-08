@@ -106,7 +106,10 @@ fn take_inline(bytes: &[u8], bi: usize) -> Option<(usize, InlineImage)> {
     let (id_at, dict) = parse_inline_dict(bytes, index)?;
     // Skip "ID" and the single whitespace that follows (ISO 32000-1 §8.9.7).
     let mut data_start = id_at + 2;
-    if bytes.get(data_start).is_some_and(|&byte| is_whitespace(byte)) {
+    if bytes
+        .get(data_start)
+        .is_some_and(|&byte| is_whitespace(byte))
+    {
         data_start += 1;
     }
     let (ei_at, data_end) = find_ei(bytes, data_start, &dict)?;
@@ -158,7 +161,9 @@ fn parse_inline_dict(bytes: &[u8], mut index: usize) -> Option<(usize, InlineDic
         while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
             index += 1;
         }
-        if bytes.get(index..index + 2).is_some_and(|pair| pair == b"ID")
+        if bytes
+            .get(index..index + 2)
+            .is_some_and(|pair| pair == b"ID")
             && is_delim_before(bytes, index)
             && is_delim_after(bytes, index + 2)
         {
