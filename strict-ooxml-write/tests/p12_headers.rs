@@ -39,7 +39,10 @@ fn t_p12_cs_and_auto_space_survive_a_write() {
     .into_owned();
     assert!(xml.contains(r#"<w:autoSpaceDE w:val="false"/>"#), "{xml}");
     assert!(xml.contains(r#"<w:autoSpaceDN w:val="false"/>"#), "{xml}");
-    assert!(xml.contains(r#"<w:adjustRightInd w:val="false"/>"#), "{xml}");
+    assert!(
+        xml.contains(r#"<w:adjustRightInd w:val="false"/>"#),
+        "{xml}"
+    );
     assert!(xml.contains(r#"<w:cs w:val="true"/>"#), "{xml}");
     // `EG_RPrBase` puts `w:cs` before `w:lang`.
     assert!(xml.find("<w:cs ") < xml.find("<w:lang "), "{xml}");
