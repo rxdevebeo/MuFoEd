@@ -102,8 +102,8 @@ pub(crate) struct Branch {
 pub(crate) fn branches(subtree: &[Event<'static>], context: &PartContext) -> Vec<Branch> {
     let mut out: Vec<Branch> = Vec::new();
     let mut index = 1usize; // 0 is the `mc:AlternateContent` itself
-    while index < subtree.len() {
-        let Event::Start(start) = &subtree[index] else {
+    while let Some(event) = subtree.get(index) {
+        let Event::Start(start) = event else {
             index += 1;
             continue;
         };
@@ -123,15 +123,18 @@ pub(crate) fn branches(subtree: &[Event<'static>], context: &PartContext) -> Vec
         let mut inner_events = Vec::new();
         let mut inner = 1usize;
         let mut scan = index + 1;
-        while scan < subtree.len() && inner > 0 {
-            match &subtree[scan] {
+        while inner > 0 {
+            let Some(event) = subtree.get(scan) else {
+                break;
+            };
+            match event {
                 Event::Start(_) => inner += 1,
                 Event::End(_) => inner -= 1,
                 Event::Eof => break,
                 _ => {}
             }
             if inner > 0 {
-                inner_events.push(subtree[scan].clone());
+                inner_events.push(event.clone());
             }
             scan += 1;
         }

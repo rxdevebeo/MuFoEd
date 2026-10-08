@@ -396,14 +396,14 @@ fn is_cff_font(data: &[u8]) -> bool {
     if data.len() < 12 {
         return false;
     }
-    let num_tables = usize::from(u16::from_be_bytes([data[4], data[5]]));
+    let Some(&[high, low]) = data.get(4..6) else {
+        return false;
+    };
+    let num_tables = usize::from(u16::from_be_bytes([high, low]));
     (0..num_tables).any(|index| {
         let offset = 12 + index * 16 + 4;
-        let end = offset + 4;
-        if end > data.len() {
-            return false;
-        }
-        &data[offset..end] == b"CFF "
+        data.get(offset..offset + 4)
+            .is_some_and(|tag| tag == b"CFF ")
     })
 }
 

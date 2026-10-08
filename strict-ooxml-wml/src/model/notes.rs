@@ -77,8 +77,9 @@ impl NoteTable {
 
     /// Inserts a note. A later definition with the same id replaces the former.
     pub fn insert(&mut self, note: Note) {
-        if let Some(&index) = self.by_id.get(&note.id) {
-            self.notes[index] = note;
+        let existing = self.by_id.get(&note.id).copied();
+        if let Some(slot) = existing.and_then(|index| self.notes.get_mut(index)) {
+            *slot = note;
             return;
         }
         let index = self.notes.len();

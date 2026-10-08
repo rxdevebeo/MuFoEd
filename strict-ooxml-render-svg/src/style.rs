@@ -638,9 +638,9 @@ fn parse_hex(value: &str) -> Option<(u8, u8, u8)> {
     if digits.len() != 6 {
         return None;
     }
-    let red = u8::from_str_radix(&digits[0..2], 16).ok()?;
-    let green = u8::from_str_radix(&digits[2..4], 16).ok()?;
-    let blue = u8::from_str_radix(&digits[4..6], 16).ok()?;
+    let red = u8::from_str_radix(digits.get(0..2)?, 16).ok()?;
+    let green = u8::from_str_radix(digits.get(2..4)?, 16).ok()?;
+    let blue = u8::from_str_radix(digits.get(4..6)?, 16).ok()?;
     Some((red, green, blue))
 }
 

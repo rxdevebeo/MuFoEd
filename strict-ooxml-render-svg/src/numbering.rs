@@ -143,8 +143,9 @@ impl<'a> Engine<'a> {
             // A list that starts at `u32::MAX` increments past it; in debug that is
             // a panic and in release it wraps to zero and the numbering restarts
             // in the middle of the document (AUD-09).
-            counters[level_index] =
-                Some(counters[level_index].map_or(start, |value| value.saturating_add(1)));
+            if let Some(slot) = counters.get_mut(level_index) {
+                *slot = Some(slot.map_or(start, |value| value.saturating_add(1)));
+            }
         }
 
         let text = render_text(level, counters, abstract_num, override_)?;
@@ -222,7 +223,7 @@ fn placeholder_value(
         NumberFormat::Decimal,
     );
     let start = level.and_then(|level| level.start).unwrap_or(1);
-    let value = counters[index].unwrap_or(start);
+    let value = counters.get(index).copied().flatten().unwrap_or(start);
     format.format(value)
 }
 

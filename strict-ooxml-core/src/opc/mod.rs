@@ -691,11 +691,15 @@ fn read_prefix(
     let mut chunk = [0u8; 8192];
     while buffer.len() < limit {
         let want = (limit - buffer.len()).min(chunk.len());
-        let read = reader.read(&mut chunk[..want]).map_err(map_read_error)?;
-        if read == 0 {
+        let Some(window) = chunk.get_mut(..want) else {
             break;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
+        };
+        let read = reader.read(window).map_err(map_read_error)?;
+        // A reader reporting more than it was given is broken; stop there.
+        let Some(filled) = chunk.get(..read).filter(|filled| !filled.is_empty()) else {
+            break;
+        };
+        buffer.extend_from_slice(filled);
     }
     Ok(buffer)
 }

@@ -828,7 +828,8 @@ impl TransitionalNormalizer {
             context.root = RootTag::Seen(
                 raw.iter()
                     .position(|byte| *byte == b':')
-                    .map(|colon| raw[..colon].to_vec()),
+                    .and_then(|colon| raw.get(..colon))
+                    .map(<[u8]>::to_vec),
             );
         }
         if !is_root {
@@ -2751,15 +2752,9 @@ pub fn part_needs_normalization(bytes: &[u8]) -> bool {
     if memchr::memmem::find(bytes, LEGACY_PURL_PACKAGE).is_some() {
         return true;
     }
-    let mut from = 0usize;
-    while let Some(found) = memchr::memmem::find(&bytes[from..], NEEDLE) {
-        let at = from + found;
-        if !bytes[at..].starts_with(MCE) {
-            return true;
-        }
-        from = at + NEEDLE.len();
-    }
-    false
+    // Non-overlapping occurrences, as the needle cannot overlap itself.
+    memchr::memmem::find_iter(bytes, NEEDLE)
+        .any(|at| bytes.get(at..).is_none_or(|tail| !tail.starts_with(MCE)))
 }
 
 /// The prefixes a part's bytes actually use, for the MCE bookkeeping cleanup.
@@ -2786,24 +2781,26 @@ fn used_prefixes(bytes: &[u8]) -> std::collections::BTreeSet<Vec<u8>> {
     }
     let mut used = std::collections::BTreeSet::new();
     let mut at = 0usize;
-    while at < bytes.len() {
-        if !is_name_start(bytes[at]) {
+    while let Some(&byte) = bytes.get(at) {
+        if !is_name_start(byte) {
             at += 1;
             continue;
         }
         let start = at;
-        while at < bytes.len() && is_name_char(bytes[at]) {
+        while bytes.get(at).copied().is_some_and(is_name_char) {
             at += 1;
         }
         // `a:b` is a qualified name; `a:b` inside text, `http://x` and `a::b` are
         // not. The last two cases are the ones a bare "identifier then colon"
         // test would get wrong, and both are common in a part's text content.
-        let qualified = at + 1 < bytes.len()
-            && bytes[at] == b':'
-            && !matches!(bytes.get(at + 1), Some(b':' | b'/'))
-            && !bytes[at + 1].is_ascii_whitespace();
+        let qualified = match (bytes.get(at), bytes.get(at + 1)) {
+            (Some(b':'), Some(next)) => !matches!(next, b':' | b'/') && !next.is_ascii_whitespace(),
+            _ => false,
+        };
         if qualified {
-            used.insert(bytes[start..at].to_vec());
+            if let Some(name) = bytes.get(start..at) {
+                used.insert(name.to_vec());
+            }
             at += 1;
         }
     }

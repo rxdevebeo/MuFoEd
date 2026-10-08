@@ -181,7 +181,8 @@ fn lookup(table: &[(char, char)], ch: char) -> Option<char> {
     table
         .binary_search_by_key(&ch, |&(source, _)| source)
         .ok()
-        .map(|index| table[index].1)
+        .and_then(|index| table.get(index))
+        .map(|&(_, target)| target)
 }
 
 #[cfg(test)]

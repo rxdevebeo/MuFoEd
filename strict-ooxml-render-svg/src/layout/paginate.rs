@@ -57,7 +57,9 @@ impl LayoutFingerprint {
         let mut section_pages = vec![0usize; count];
         for page in pages {
             let index = page.section_index.min(section_pages.len() - 1);
-            section_pages[index] += 1;
+            if let Some(count) = section_pages.get_mut(index) {
+                *count += 1;
+            }
         }
         Self {
             pages: pages.len(),
@@ -230,13 +232,9 @@ fn layout_once(
             }
         }
         let width = paginator.geometry.content_width();
-        layout_blocks(
-            ctx,
-            &ctx.document.body.blocks[*start..*end],
-            width,
-            &mut paginator,
-            0,
-        )?;
+        let body_blocks = &ctx.document.body.blocks;
+        let run_blocks = body_blocks.get(*start..*end).unwrap_or_default();
+        layout_blocks(ctx, run_blocks, width, &mut paginator, 0)?;
     }
     if !paginator.selection_exhausted() {
         append_endnotes(ctx, &mut paginator)?;
@@ -356,20 +354,20 @@ fn layout_blocks(
     // follows it onto the next page.
     let mut pending_after = 0.0f64;
     let mut index = 0;
-    while index < blocks.len() {
+    while let Some(block) = blocks.get(index) {
         if paginator.selection_exhausted() {
             return Ok(());
         }
-        if let Block::Paragraph(para) = &blocks[index] {
+        if let Block::Paragraph(para) = block {
             if para.props.frame.is_some() {
                 let end = frame_group_end(blocks, index);
-                place_frame_group(ctx, &blocks[index..end], paginator)?;
+                let group = blocks.get(index..end).unwrap_or_default();
+                place_frame_group(ctx, group, paginator)?;
                 pending_after = 0.0;
                 index = end;
                 continue;
             }
         }
-        let block = &blocks[index];
         match block {
             Block::Paragraph(para) => {
                 pending_after =
@@ -507,7 +505,7 @@ fn place_frame_group(
     blocks: &[Block],
     paginator: &mut Paginator<'_>,
 ) -> Result<()> {
-    let Block::Paragraph(first) = &blocks[0] else {
+    let Some(Block::Paragraph(first)) = blocks.first() else {
         return Ok(());
     };
     let Some(frame) = first.props.frame.as_ref() else {

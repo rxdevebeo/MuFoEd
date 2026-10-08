@@ -270,7 +270,7 @@ impl CentralDirectory {
         let mut entries = Vec::with_capacity(usize::try_from(entries_total.min(4096)).unwrap_or(0));
         let mut pos = cd_start;
         for _ in 0..entries_total {
-            if pos + 4 > data.len() || data[pos..pos + 4] != CENTRAL_SIG {
+            if data.get(pos..pos + 4) != Some(CENTRAL_SIG.as_slice()) {
                 return Err(StrictError::InvalidZip(
                     "bad central directory entry signature".to_owned(),
                 ));
@@ -419,11 +419,13 @@ fn find_eocd(data: &[u8]) -> Result<usize> {
     let first = data.len().saturating_sub(22 + 65_535);
     let mut end = last + 1;
     while end > first {
-        let hay = &data[first..end];
+        let Some(hay) = data.get(first..end) else {
+            break;
+        };
         match memchr::memrchr(b'P', hay) {
             Some(p) => {
                 let abs = first + p;
-                if abs + 4 <= data.len() && data[abs..abs + 4] == EOCD_SIG {
+                if data.get(abs..abs + 4) == Some(EOCD_SIG.as_slice()) {
                     return Ok(abs);
                 }
                 end = abs;
@@ -468,21 +470,23 @@ fn slice_at(data: &[u8], offset: usize, len: usize) -> Result<&[u8]> {
         .ok_or_else(|| StrictError::InvalidZip(format!("truncated at offset {offset}")))
 }
 
+/// The `N` bytes at `offset`, as an array.
+fn array_at<const N: usize>(data: &[u8], offset: usize) -> Result<[u8; N]> {
+    let bytes = slice_at(data, offset, N)?;
+    <[u8; N]>::try_from(bytes)
+        .map_err(|_| StrictError::InvalidZip(format!("truncated at offset {offset}")))
+}
+
 fn u16_at(data: &[u8], offset: usize) -> Result<u16> {
-    let s = slice_at(data, offset, 2)?;
-    Ok(u16::from_le_bytes([s[0], s[1]]))
+    Ok(u16::from_le_bytes(array_at(data, offset)?))
 }
 
 fn u32_at(data: &[u8], offset: usize) -> Result<u32> {
-    let s = slice_at(data, offset, 4)?;
-    Ok(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    Ok(u32::from_le_bytes(array_at(data, offset)?))
 }
 
 fn u64_at(data: &[u8], offset: usize) -> Result<u64> {
-    let s = slice_at(data, offset, 8)?;
-    Ok(u64::from_le_bytes([
-        s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
-    ]))
+    Ok(u64::from_le_bytes(array_at(data, offset)?))
 }
 
 /// Streaming, CRC-checking reader for a single part.
@@ -514,12 +518,15 @@ impl Inner<'_> {
     fn read_into(&mut self, out: &mut [u8]) -> io::Result<usize> {
         match self {
             Inner::Stored { data, pos } => {
-                let remaining = data.len().saturating_sub(*pos);
-                let n = remaining.min(out.len());
+                let remaining = data.get(*pos..).unwrap_or_default();
+                let n = remaining.len().min(out.len());
                 if n == 0 {
                     return Ok(0);
                 }
-                out[..n].copy_from_slice(&data[*pos..*pos + n]);
+                let (Some(target), Some(source)) = (out.get_mut(..n), remaining.get(..n)) else {
+                    return Ok(0);
+                };
+                target.copy_from_slice(source);
                 *pos += n;
                 Ok(n)
             }
@@ -536,7 +543,8 @@ impl Inner<'_> {
                     return Ok(0);
                 }
                 loop {
-                    let result = inflate(state, &input[*in_pos..], out, MZFlush::None);
+                    let pending = input.get(*in_pos..).unwrap_or_default();
+                    let result = inflate(state, pending, out, MZFlush::None);
                     *in_pos += result.bytes_consumed;
                     match result.status {
                         Ok(MZStatus::StreamEnd) => *done = true,
@@ -578,14 +586,15 @@ impl Read for PartReader<'_> {
         let want = buf
             .len()
             .min(usize::try_from(remaining).unwrap_or(usize::MAX));
-        let n = self.inner.read_into(&mut buf[..want])?;
+        let window = buf.get_mut(..want).unwrap_or_default();
+        let n = self.inner.read_into(window)?;
         if n == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "part shorter than declared size",
             ));
         }
-        self.crc = crc32_update(self.crc, &buf[..n]);
+        self.crc = crc32_update(self.crc, window.get(..n).unwrap_or_default());
         self.produced += n as u64;
         if self.produced > self.max_len {
             return Err(io::Error::new(
@@ -624,7 +633,9 @@ fn crc32_update(crc: u32, data: &[u8]) -> u32 {
     let mut crc = !crc;
     for &byte in data {
         let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
-        crc = (crc >> 8) ^ CRC_TABLE[index];
+        // `index <= 0xFF < CRC_TABLE.len()`, so the fallback is dead (and elided).
+        let entry = CRC_TABLE.get(index).copied().unwrap_or_default();
+        crc = (crc >> 8) ^ entry;
     }
     !crc
 }
@@ -633,6 +644,10 @@ fn crc32_update(crc: u32, data: &[u8]) -> u32 {
 static CRC_TABLE: [u32; 256] = build_crc_table();
 
 #[allow(clippy::cast_possible_truncation)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "`index < 256 == table.len()` by the loop condition; `get_mut` is not const"
+)]
 const fn build_crc_table() -> [u32; 256] {
     let mut table = [0u32; 256];
     let mut index = 0;

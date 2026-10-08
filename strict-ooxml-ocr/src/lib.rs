@@ -28,7 +28,8 @@
         clippy::panic,
         clippy::todo,
         clippy::unimplemented,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 #![deny(missing_docs)]
