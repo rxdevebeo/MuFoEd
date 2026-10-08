@@ -2,6 +2,8 @@
 //! carry: markup characters, tabs inside runs, leading and trailing spaces,
 //! every script and astral-plane characters.
 
+use std::fmt::Write as _;
+
 use proptest::prelude::*;
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_testkit::DocxBuilder;
@@ -63,15 +65,14 @@ proptest! {
 
     #[test]
     fn paragraph_text_survives_a_write(texts in prop::collection::vec(text(), 1..6)) {
-        let body: String = texts
-            .iter()
-            .map(|text| {
-                format!(
-                    "<w:p><w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>",
-                    escape(text)
-                )
-            })
-            .collect();
+        let mut body = String::new();
+        for text in &texts {
+            let _ = write!(
+                body,
+                "<w:p><w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>",
+                escape(text)
+            );
+        }
         let bytes = DocxBuilder::strict().body(&body).build();
         let package = Package::open_reader(bytes.as_slice(), &OpenOptions::default())
             .expect("open source");
