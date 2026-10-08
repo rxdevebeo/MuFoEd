@@ -1,5 +1,5 @@
 //! Read-only query planning and compound operations over public editing commands.
-use crate::{Address, ChangeSet, EditError, Editor, Story};
+use crate::{Address, ChangeSet, EditError, Editor, Story, Unsupported};
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_wml::model::{ParaId, StyleId};
@@ -747,7 +747,7 @@ fn read_inline<'a>(items: &'a [Inline], path: &[usize]) -> Result<&'a Inline, Op
         Inline::Hyperlink(v) => &v.inlines,
         Inline::SdtInline(v) => &v.inlines,
         Inline::Directional(v) => &v.inlines,
-        _ => return Err(EditError::UnsupportedContent.into()),
+        _ => return Err(EditError::UnsupportedContent(Unsupported::Target).into()),
     };
     read_inline(children, rest)
 }
@@ -755,7 +755,9 @@ fn graphic(d: &Drawing) -> Result<&Graphic, OperationError> {
     match &d.kind {
         DrawingKind::Inline(v) => Ok(&v.graphic),
         DrawingKind::Anchor(v) => Ok(&v.graphic),
-        DrawingKind::Opaque(_) => Err(EditError::UnsupportedContent.into()),
+        DrawingKind::Opaque(_) => {
+            Err(EditError::UnsupportedContent(Unsupported::OpaqueDrawing).into())
+        }
     }
 }
 fn block_ids(blocks: &[Block]) -> Vec<Option<ParaId>> {

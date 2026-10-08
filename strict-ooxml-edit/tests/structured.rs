@@ -1,6 +1,8 @@
 //! Structural editing regressions use independently generated documents.
 use strict_ooxml_core::opc::{OpenOptions, Package};
-use strict_ooxml_edit::{Address, Container, Edit, EditError, EditLimits, Editor, Story};
+use strict_ooxml_edit::{
+    Address, Container, Edit, EditError, EditLimits, Editor, Invariant, Story, Unsupported,
+};
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::{
     model::{Block, Document},
@@ -78,7 +80,7 @@ fn nested_cell_split_and_delete_keeps_final_paragraph() {
     e.transact(1, &[Edit::Delete { at: at.clone() }]).unwrap();
     assert_eq!(
         e.transact(2, &[Edit::Delete { at }]),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::TableTopology))
     );
 }
 #[test]
@@ -172,7 +174,7 @@ fn section_boundary_moves_right_on_split_and_join_cannot_cross_it() {
                 at: Address::body(1)
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::SectionBoundary))
     );
     e.transact(
         1,
@@ -331,7 +333,7 @@ fn dangling_boundaries_and_unknown_nested_style_are_atomic() {
                 inline: Box::new(Inline::BookmarkStart(Bookmark::new("1", "x")))
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::Bookmark))
     );
     assert_eq!(e.document().body, original);
     assert_eq!(
@@ -346,7 +348,7 @@ fn dangling_boundaries_and_unknown_nested_style_are_atomic() {
                 })
             }]
         ),
-        Err(EditError::UnknownStyle)
+        Err(EditError::UnknownStyle(StyleId::new("missing")))
     );
     e.transact(
         0,
@@ -374,7 +376,7 @@ fn dangling_boundaries_and_unknown_nested_style_are_atomic() {
                 index: 0
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::Bookmark))
     );
 }
 #[test]
@@ -435,7 +437,7 @@ fn table_properties_grid_rows_and_merge_topology_validate_atomically() {
                 })
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::TableTopology))
     );
     e.transact(
         1,
@@ -469,7 +471,7 @@ fn table_properties_grid_rows_and_merge_topology_validate_atomically() {
                 index: 0
             }]
         ),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::TableTopology))
     );
     e.undo(2).unwrap();
     e.undo(3).unwrap();
@@ -633,7 +635,7 @@ fn cached_field_text_and_paragraph_total_limit_are_protected() {
                 text: "2".into()
             }]
         ),
-        Err(EditError::UnsupportedContent)
+        Err(EditError::UnsupportedContent(Unsupported::FieldResult))
     );
     let mut d = doc("<w:p><w:r><w:t>ab</w:t><w:tab/><w:t>cd</w:t></w:r></w:p>");
     let mut e = Editor::new(

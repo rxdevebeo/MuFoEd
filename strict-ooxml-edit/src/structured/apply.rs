@@ -1,5 +1,5 @@
 //! Applying one command to a candidate document.
-use crate::{EditError, EditLimits};
+use crate::{EditError, EditLimits, Invariant, Unsupported};
 use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
@@ -106,7 +106,7 @@ pub(super) fn apply(
             Edit::Delete { .. } => {
                 let b = blocks.get(at.block).ok_or(EditError::InvalidParagraph)?;
                 if contains_boundary(b) {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
                 }
                 blocks.remove(at.block);
                 if blocks.is_empty() && at.containers.is_empty() && matches!(at.story, Story::Body)
@@ -134,7 +134,7 @@ pub(super) fn apply(
                 let mut left = paragraph_mut(blocks, at.block)?.clone();
                 let right = paragraph_mut(blocks, at.block + 1)?.clone();
                 if left.props.section.is_some() {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
                 }
                 let a = crate::plain_runs(&left, limits.paragraph_scalars)?;
                 let b = crate::plain_runs(&right, limits.paragraph_scalars)?;
@@ -169,13 +169,13 @@ pub(super) fn apply(
                     }
                     Edit::Format { patch, .. } => crate::format_text(p, &runs, range, patch),
                     // The outer arm admits only the variants matched above.
-                    _ => return Err(EditError::UnsupportedContent),
+                    _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
                 }
             }
             Edit::ParagraphProperties { properties, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if properties.section != p.props.section {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
                 }
                 p.props = *properties.clone();
             }
@@ -188,7 +188,7 @@ pub(super) fn apply(
             } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 run_mut(&mut p.inlines, inline)?.props = *properties.clone();
             }
@@ -202,10 +202,10 @@ pub(super) fn apply(
                 valid_text(text)?;
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 if complex_fields(&p.inlines) {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::FieldResult));
                 }
                 let paragraph_count = text_count(&p.inlines);
                 let run = run_mut(&mut p.inlines, inline)?;
@@ -215,7 +215,7 @@ pub(super) fn apply(
                     .iter()
                     .any(|c| matches!(c, RunContent::InstrText(_) | RunContent::FieldChar(_)))
                 {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::FieldResult));
                 }
                 let Some(RunContent::Text(node)) = run.content.get_mut(*content) else {
                     return Err(EditError::InvalidParagraph);
@@ -241,7 +241,7 @@ pub(super) fn apply(
             Edit::InsertInline { index, inline, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 if *index > p.inlines.len() {
                     return Err(EditError::InvalidRange);
@@ -254,7 +254,7 @@ pub(super) fn apply(
             Edit::DeleteInline { index, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 if p.revision.is_some() {
-                    return Err(EditError::UnsupportedContent);
+                    return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
                 if *index >= p.inlines.len() {
                     return Err(EditError::InvalidRange);
@@ -307,7 +307,7 @@ pub(super) fn apply(
                         t.rows.remove(*index);
                     }
                     // The outer arm admits only the variants matched above.
-                    _ => return Err(EditError::UnsupportedContent),
+                    _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
                 }
             }
         }

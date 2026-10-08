@@ -114,7 +114,7 @@ fn moved_row_changes_order_and_undo() {
     e.undo(1).unwrap();
     assert_eq!(e.document().body, original);
 }
-use strict_ooxml_edit::{Container, Edit, EditError, OperationError};
+use strict_ooxml_edit::{Container, Edit, EditError, Invariant, OperationError};
 #[test]
 fn lowercase_expansion_never_splits_an_original_scalar() {
     let mut d = doc("<w:p><w:r><w:t>İ i X🙂</w:t></w:r></w:p>");
@@ -428,7 +428,7 @@ fn illegal_moves_are_atomic_and_preserve_redo() {
     );
     assert!(matches!(
         result,
-        Err(OperationError::Edit(EditError::InvalidModel))
+        Err(OperationError::Edit(EditError::InvalidModel(Invariant::SectionBoundary)))
     ));
     assert_eq!(e.document().body, original);
     let dest = Address {
@@ -516,7 +516,7 @@ fn cell_move_respects_final_paragraph_and_row_merge_rolls_back() {
     let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
     assert!(matches!(
         Operations::new(&mut e, OperationLimits::default()).move_row(0, &Address::body(0), 0, 2),
-        Err(OperationError::Edit(EditError::InvalidModel))
+        Err(OperationError::Edit(EditError::InvalidModel(Invariant::TableTopology)))
     ));
     assert_eq!(e.document().body, original);
     assert_eq!(e.revision(), 0);

@@ -1,5 +1,5 @@
 //! Stories, container paths and block addresses, and the walks that resolve them.
-use crate::EditError;
+use crate::{EditError, Unsupported};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::{
     Block, Document, Drawing, DrawingKind, Graphic, Inline, Paragraph, RunContent,
@@ -158,7 +158,9 @@ pub(super) fn descend_mut<'a>(
             let graphic = match &mut drawing.kind {
                 DrawingKind::Inline(v) => v.graphic.as_mut(),
                 DrawingKind::Anchor(v) => v.graphic.as_mut(),
-                DrawingKind::Opaque(_) => return Err(EditError::UnsupportedContent),
+                DrawingKind::Opaque(_) => {
+                    return Err(EditError::UnsupportedContent(Unsupported::OpaqueDrawing));
+                }
             };
             &mut shape_mut(graphic, graphics)?
                 .text
@@ -209,7 +211,7 @@ fn inline_mut<'a>(inlines: &'a mut [Inline], path: &[usize]) -> Result<&'a mut I
         Inline::Hyperlink(v) => &mut v.inlines,
         Inline::SdtInline(v) => &mut v.inlines,
         Inline::Directional(v) => &mut v.inlines,
-        _ => return Err(EditError::UnsupportedContent),
+        _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
     };
     inline_mut(child, rest)
 }
@@ -219,7 +221,8 @@ pub(super) fn run_mut<'a>(
 ) -> Result<&'a mut strict_ooxml_wml::model::Run, EditError> {
     match inline_mut(inlines, path)? {
         Inline::Run(r) if r.revision.is_none() => Ok(r),
-        _ => Err(EditError::UnsupportedContent),
+        Inline::Run(_) => Err(EditError::UnsupportedContent(Unsupported::TrackedChange)),
+        _ => Err(EditError::UnsupportedContent(Unsupported::Target)),
     }
 }
 pub(super) fn drawing_mut<'a>(
@@ -271,7 +274,9 @@ pub(crate) fn read_paragraph<'a>(
                 let graphic = match &drawing.kind {
                     DrawingKind::Inline(v) => v.graphic.as_ref(),
                     DrawingKind::Anchor(v) => v.graphic.as_ref(),
-                    DrawingKind::Opaque(_) => return Err(EditError::UnsupportedContent),
+                    DrawingKind::Opaque(_) => {
+                        return Err(EditError::UnsupportedContent(Unsupported::OpaqueDrawing));
+                    }
                 };
                 &shape_ref(graphic, graphics)?
                     .text
@@ -296,7 +301,7 @@ fn inline_ref<'a>(items: &'a [Inline], path: &[usize]) -> Result<&'a Inline, Edi
         Inline::Hyperlink(v) => &v.inlines,
         Inline::SdtInline(v) => &v.inlines,
         Inline::Directional(v) => &v.inlines,
-        _ => return Err(EditError::UnsupportedContent),
+        _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
     };
     inline_ref(children, rest)
 }
