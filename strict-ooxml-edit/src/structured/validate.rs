@@ -1,12 +1,13 @@
 //! The model invariants an accepted transaction must keep.
 use crate::EditError;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_wml::model::{
     Block, Document, Drawing, DrawingKind, FieldCharType, Graphic, Inline, Paragraph, RunContent,
 };
 
 use super::address::{addresses, read_paragraph, story_blocks, visit_boxes, visit_drawings, Story};
+use super::ids::IdIndex;
 
 pub(super) fn contains_boundary(b: &Block) -> bool {
     match b {
@@ -96,6 +97,7 @@ fn negative_frame(p: &Paragraph) -> bool {
 pub(super) fn validate_patch(
     document: &Document,
     limits: &ResourceLimits,
+    ids: &IdIndex,
     story: &Story,
     before: &[Block],
     after: &[Block],
@@ -111,7 +113,7 @@ pub(super) fn validate_patch(
     if frames {
         return Err(EditError::InvalidModel);
     }
-    if identities(before) != identities(after) {
+    if !identities_kept(ids, before, after)? {
         validate_story_ids(document, story)?;
     }
     if boundary_marks(before) != boundary_marks(after) {
@@ -161,6 +163,44 @@ fn identities(blocks: &[Block]) -> Vec<(Option<String>, Option<String>)> {
         ));
     });
     out
+}
+/// Whether the identities under `after` keep the story's identities unique
+/// without a walk of the story, or `Ok(false)` if only the walk can tell.
+///
+/// A paragraph id that occurs more often under `after` than under `before`
+/// is new to this range; it is unique in the story if `ids` (already updated
+/// for the patch) counts it once in the whole document. A text id needs a
+/// paragraph id, and new text ids - which no command mints - need the walk.
+fn identities_kept(ids: &IdIndex, before: &[Block], after: &[Block]) -> Result<bool, EditError> {
+    let old = identities(before);
+    let new = identities(after);
+    if old == new {
+        return Ok(true);
+    }
+    if new.iter().any(|(para, text)| para.is_none() && text.is_some()) {
+        return Err(EditError::InvalidModel);
+    }
+    let paragraphs = grown(&old, &new, |(para, _)| para.as_deref());
+    let texts = grown(&old, &new, |(_, text)| text.as_deref());
+    Ok(texts.is_empty() && paragraphs.iter().all(|id| ids.count(id) == 1))
+}
+/// The ids `pick` reads that occur more often in `new` than in `old`.
+fn grown<'a>(
+    old: &'a [(Option<String>, Option<String>)],
+    new: &'a [(Option<String>, Option<String>)],
+    pick: fn(&'a (Option<String>, Option<String>)) -> Option<&'a str>,
+) -> Vec<&'a str> {
+    let mut counts: HashMap<&str, isize> = HashMap::new();
+    for id in new.iter().filter_map(pick) {
+        *counts.entry(id).or_insert(0) += 1;
+    }
+    for id in old.iter().filter_map(pick) {
+        *counts.entry(id).or_insert(0) -= 1;
+    }
+    counts
+        .into_iter()
+        .filter_map(|(id, count)| (count > 0).then_some(id))
+        .collect()
 }
 /// One input of [`validate_boundaries`].
 #[derive(PartialEq, Eq)]
