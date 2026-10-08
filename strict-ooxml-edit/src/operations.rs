@@ -603,9 +603,10 @@ fn text_matches(
             }
         }
         if matches {
-            if let (Some(&Some(start)), Some(&Some(end))) =
-                (boundaries.get(cursor), boundaries.get(cursor + needle.len()))
-            {
+            if let (Some(&Some(start)), Some(&Some(end))) = (
+                boundaries.get(cursor),
+                boundaries.get(cursor + needle.len()),
+            ) {
                 let before = start.checked_sub(1).and_then(|i| p.chars.get(i));
                 if !q.whole_word
                     || before.is_none_or(|&c| !word(c))

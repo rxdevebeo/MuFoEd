@@ -232,7 +232,10 @@ fn typing_keeps_only_the_touched_paragraph_in_history() {
     // document in the undo history.
     let mut body = String::new();
     for index in 0..1_000 {
-        let _ = write!(body, "<w:p><w:r><w:t>Paragraph {index} of body text.</w:t></w:r></w:p>");
+        let _ = write!(
+            body,
+            "<w:p><w:r><w:t>Paragraph {index} of body text.</w:t></w:r></w:p>"
+        );
     }
     let xml = format!(
         "<w:document xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\">\

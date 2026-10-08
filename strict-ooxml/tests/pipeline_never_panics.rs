@@ -128,7 +128,7 @@ mod mutated {
         r#"<w:pgSz w:w="0" w:h="0"/>"#,
         r#"<w:cols w:num="0"/>"#,
         r#"<w:numPr><w:ilvl w:val="9"/><w:numId w:val="4294967295"/></w:numPr>"#,
-        r#"<w:t>&#x10FFFF;</w:t>"#,
+        "<w:t>&#x10FFFF;</w:t>",
         r#" w:val="NaN""#,
         "<w:br/>",
     ];
