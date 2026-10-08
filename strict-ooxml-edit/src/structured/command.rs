@@ -216,6 +216,22 @@ pub enum Edit {
         /// Target paragraph.
         at: Address,
     },
+    /// Replace plain paragraph text as a tracked change, the way Word does with
+    /// Track Changes on: the replaced text stays, marked deleted, and the new
+    /// text follows it, marked inserted. Inside an insertion - or right at its
+    /// end - the edit extends or trims that insertion instead.
+    TrackedText {
+        /// Target paragraph.
+        at: Address,
+        /// Half-open Unicode scalar range; tracked text counts.
+        range: Range<usize>,
+        /// Replacement text.
+        text: String,
+        /// Author recorded on the change (`w:author`).
+        author: String,
+        /// Date recorded on the change (`w:date`, ISO 8601), if any.
+        date: Option<String>,
+    },
     /// Reject the paragraph's tracked changes: deleted and moved-out runs
     /// stay, inserted and moved-in runs go, and an inserted paragraph mark
     /// joins the paragraph with the next one.
@@ -247,6 +263,7 @@ impl Edit {
             | Self::DeleteRow { at, .. }
             | Self::Drawing { at, .. }
             | Self::Identify { at }
+            | Self::TrackedText { at, .. }
             | Self::AcceptRevisions { at }
             | Self::RejectRevisions { at } => at,
         }

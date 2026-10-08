@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_wml::model::{
-    Block, Document, Inline, Paragraph, ParagraphProperties, RunContent,
+    Block, Document, Inline, Paragraph, ParagraphProperties, Revision, RevisionKind, RunContent,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -261,6 +261,43 @@ pub(super) fn apply(
                 *drawing_mut(&mut p.inlines, inline, *content)? = *drawing.clone();
             }
             Edit::Identify { .. } => assign_id(paragraph_mut(blocks, at.block)?, ids, false)?,
+            Edit::TrackedText {
+                range,
+                text,
+                author,
+                date,
+                ..
+            } => {
+                let p = paragraph_mut(blocks, at.block)?;
+                let runs = crate::plain_runs(p, limits.paragraph_scalars)?;
+                let total: usize = runs.iter().map(|(_, t)| t.chars().count()).sum();
+                check_range(total, range)?;
+                check_graphemes(limits, &runs, range)?;
+                valid_text(text)?;
+                // The replaced text stays on the page, so only growth counts.
+                if total.saturating_add(text.chars().count()) > limits.paragraph_scalars {
+                    return Err(EditError::LimitExceeded);
+                }
+                let marks = if let Some(insertion) = crate::inside_insertion(&runs, range) {
+                    crate::Marks {
+                        deleted: None,
+                        inserted: Some(insertion),
+                    }
+                } else {
+                    crate::check_tracked(&runs, range)?;
+                    let mut stamp = |kind| Revision {
+                        kind,
+                        id: ids.next_revision(),
+                        author: Some(author.as_str().into()),
+                        date: date.as_deref().map(Into::into),
+                    };
+                    crate::Marks {
+                        deleted: (!range.is_empty()).then(|| stamp(RevisionKind::Delete)),
+                        inserted: (!text.is_empty()).then(|| stamp(RevisionKind::Insert)),
+                    }
+                };
+                crate::replace_text_with(p, &runs, range, text, &marks);
+            }
             Edit::AcceptRevisions { .. } => resolve(blocks, at.block, true)?,
             Edit::RejectRevisions { .. } => resolve(blocks, at.block, false)?,
             _ => {

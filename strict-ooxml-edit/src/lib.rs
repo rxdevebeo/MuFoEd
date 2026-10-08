@@ -17,8 +17,9 @@ use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_wml::model::{
-    Block, Color, Document, Fonts, HalfPoints, Highlight, Inline, Paragraph, Run, RunContent,
-    RunProperties, Space, StyleId, StyleType, TextNode, TriState, Underline, VertAlign,
+    Block, Color, Document, Fonts, HalfPoints, Highlight, Inline, Paragraph, Revision,
+    RevisionKind, Run, RunContent, RunProperties, Space, StyleId, StyleType, TextNode, TriState,
+    Underline, VertAlign,
 };
 
 mod structured;
@@ -485,6 +486,45 @@ fn replace_text(
     range: &Range<usize>,
     replacement: &str,
 ) {
+    replace_text_with(paragraph, runs, range, replacement, &Marks::default());
+}
+/// How [`replace_text_with`] marks what it does.
+#[derive(Default)]
+struct Marks {
+    /// The replaced text stays, carrying this revision, instead of going.
+    deleted: Option<Revision>,
+    /// The revision of the new text; `None` for untracked text.
+    inserted: Option<Revision>,
+}
+/// Whether `range` lies inside one tracked insertion: an insertion point
+/// inside it or at its end, or a range within it. Typing there extends the
+/// insertion, and deleting there takes back what it inserted.
+fn inside_insertion(runs: &[(Run, String)], range: &Range<usize>) -> Option<Revision> {
+    let mut offset = 0;
+    for (run, text) in runs {
+        let end = offset + text.chars().count();
+        if let Some(revision) = &run.revision {
+            let within = if range.is_empty() {
+                offset < range.start && range.start <= end
+            } else {
+                offset <= range.start && range.end <= end
+            };
+            if within && matches!(revision.kind, RevisionKind::Insert) {
+                return Some(revision.clone());
+            }
+        }
+        offset = end;
+    }
+    None
+}
+/// Replaces `range` with `replacement`, marking both as `marks` says.
+fn replace_text_with(
+    paragraph: &mut Paragraph,
+    runs: &[(Run, String)],
+    range: &Range<usize>,
+    replacement: &str,
+    marks: &Marks,
+) {
     let old: String = runs.iter().map(|(_, text)| text.as_str()).collect();
     if slice(&old, range.start, range.end) == replacement {
         return;
@@ -502,6 +542,7 @@ fn replace_text(
         found
     });
     let mut prefix = Vec::new();
+    let mut deleted = Vec::new();
     let mut suffix = Vec::new();
     offset = 0;
     for (run, text) in runs {
@@ -520,6 +561,16 @@ fn replace_text(
         } else if offset < range.start {
             prefix.push(text_run(Some(run), slice(text, 0, range.start - offset)));
         }
+        if let Some(revision) = &marks.deleted {
+            let (from, to) = (range.start.max(offset), range.end.min(end));
+            if from < to {
+                let mut piece = text_run(Some(run), slice(text, from - offset, to - offset));
+                if let Inline::Run(piece) = &mut piece {
+                    piece.revision = Some(revision.clone());
+                }
+                deleted.push(piece);
+            }
+        }
         if offset >= range.end {
             suffix.push(Inline::Run(run.clone()));
         } else if end > range.end {
@@ -527,11 +578,15 @@ fn replace_text(
         }
         offset = end;
     }
+    for piece in deleted {
+        push_merged(&mut prefix, piece);
+    }
     if !replacement.is_empty() {
         let mut inserted = text_run(template, replacement.to_owned());
-        // Typed next to a tracked run, the text is not part of that change.
+        // Typed next to a tracked run, the text is not part of that change
+        // unless the marks say so.
         if let Inline::Run(run) = &mut inserted {
-            run.revision = None;
+            run.revision.clone_from(&marks.inserted);
         }
         push_merged(&mut prefix, inserted);
     }

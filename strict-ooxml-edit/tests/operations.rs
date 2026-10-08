@@ -699,3 +699,77 @@ fn accepting_one_paragraph_leaves_the_others_tracked() {
     let second = e.document().body.blocks[1].as_paragraph().unwrap();
     assert!(second.revision.is_some(), "only the addressed paragraph changes");
 }
+
+fn tracked(at: usize, range: std::ops::Range<usize>, text: &str) -> strict_ooxml_edit::Edit {
+    strict_ooxml_edit::Edit::TrackedText {
+        at: Address::body(at),
+        range,
+        text: text.into(),
+        author: "Reviewer".into(),
+        date: Some("2026-10-08T12:00:00Z".into()),
+    }
+}
+
+/// Every run's text with its tracked kind: `+` inserted, `-` deleted.
+fn marked(d: &Document) -> Vec<String> {
+    let p = d.body.blocks[0].as_paragraph().unwrap();
+    p.inlines
+        .iter()
+        .filter_map(|i| match i {
+            strict_ooxml_wml::model::Inline::Run(r) => Some(r),
+            _ => None,
+        })
+        .map(|r| {
+            let text: String = r
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    strict_ooxml_wml::model::RunContent::Text(t) => Some(t.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let mark = match r.revision.as_ref().map(|v| v.kind) {
+                Some(strict_ooxml_wml::model::RevisionKind::Insert) => "+",
+                Some(strict_ooxml_wml::model::RevisionKind::Delete) => "-",
+                _ => "",
+            };
+            format!("{mark}{text}")
+        })
+        .collect()
+}
+
+#[test]
+fn tracked_text_keeps_the_old_text_deleted_and_extends_its_own_insertion() {
+    let mut d = doc("<w:p><w:r><w:t>hello world</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    e.transact(0, &[tracked(0, 6..11, "there")]).unwrap();
+    assert_eq!(marked(e.document()), ["hello ", "-world", "+there"]);
+    // Typing at the end of the insertion extends it; deleting inside it takes
+    // the inserted text back instead of marking it deleted.
+    e.transact(1, &[tracked(0, 16..16, "!")]).unwrap();
+    e.transact(2, &[tracked(0, 11..12, "")]).unwrap();
+    assert_eq!(marked(e.document()), ["hello ", "-world", "+here!"]);
+    let p = e.document().body.blocks[0].as_paragraph().unwrap();
+    let ids: Vec<u32> = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            strict_ooxml_wml::model::Inline::Run(r) => r.revision.as_ref(),
+            _ => None,
+        })
+        .map(|v| {
+            assert_eq!(v.author.as_deref(), Some("Reviewer"));
+            v.id
+        })
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1], "the deletion and the insertion are two changes");
+
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.accept_all(3).unwrap();
+    assert_eq!(text(e.document()), ["hello here!"]);
+    e.undo(4).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.reject_all(5).unwrap();
+    assert_eq!(text(e.document()), ["hello world"]);
+}
