@@ -565,7 +565,7 @@ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
     // `a:spcPct` alone.
     if matches!(
         (element, attribute),
-        ("spcPct", "val") | ("buSzPct", "val") | ("miter", "lim")
+        ("spcPct" | "buSzPct", "val") | ("miter", "lim")
     ) {
         return true;
     }
@@ -632,8 +632,7 @@ pub fn is_ignorable_extension(uri: &str) -> bool {
 mod tests {
     use super::{
         drawingml_thousandths_percent, is_chart_whole_percent_attr, is_drawingml_percentage_attr,
-        map_value, removal_for, rename_attribute, rename_element, whole_percent, REMOVALS,
-        RENAMES,
+        map_value, removal_for, rename_attribute, rename_element, whole_percent, REMOVALS, RENAMES,
     };
     use crate::normalize::report::Severity;
 
@@ -806,9 +805,18 @@ mod tests {
         assert!(is_drawingml_percentage_attr("buSzPct", "val"));
         assert!(is_drawingml_percentage_attr("miter", "lim"));
         assert!(!is_drawingml_percentage_attr("spcPts", "val"));
-        assert_eq!(drawingml_thousandths_percent("20000").as_deref(), Some("20%"));
-        assert_eq!(drawingml_thousandths_percent("95000").as_deref(), Some("95%"));
-        assert_eq!(drawingml_thousandths_percent("800000").as_deref(), Some("800%"));
+        assert_eq!(
+            drawingml_thousandths_percent("20000").as_deref(),
+            Some("20%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("95000").as_deref(),
+            Some("95%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("800000").as_deref(),
+            Some("800%")
+        );
     }
 
     #[test]
