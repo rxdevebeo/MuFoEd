@@ -814,3 +814,33 @@ fn grapheme_boundaries_refuse_a_cut_inside_a_cluster_when_asked() {
     let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
     assert!(e.transact(0, &[cut(1)]).is_ok());
 }
+
+#[test]
+fn typing_and_deleting_inside_a_run_keep_it_one_run() {
+    let mut d = doc("<w:p><w:r><w:t>abcdef</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    for (revision, offset) in [(0, 3), (1, 4), (2, 0), (3, 9)] {
+        e.transact(
+            revision,
+            &[Edit::Text {
+                at: Address::body(0),
+                range: offset..offset,
+                text: "x".into(),
+            }],
+        )
+        .unwrap();
+    }
+    e.transact(
+        4,
+        &[Edit::Text {
+            at: Address::body(0),
+            range: 2..5,
+            text: String::new(),
+        }],
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    assert_eq!(p.inlines.len(), 1, "{:?}", p.inlines);
+}
