@@ -66,6 +66,53 @@ impl Address {
         }
     }
 }
+/// A rejected transaction: which command failed, where, and why.
+///
+/// The document and its history are unchanged, as for any [`EditError`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditFailure {
+    /// Index of the failing command in the batch; `None` when the batch as a
+    /// whole was refused (a stale revision, the model check after the last
+    /// command, the history budget).
+    pub command: Option<usize>,
+    /// The failing command's target, when one command failed.
+    pub address: Option<Address>,
+    /// What went wrong.
+    pub error: EditError,
+}
+impl EditFailure {
+    /// A failure of the batch as a whole.
+    fn batch(error: EditError) -> Self {
+        Self {
+            command: None,
+            address: None,
+            error,
+        }
+    }
+}
+impl std::fmt::Display for EditFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.command, &self.address) {
+            (Some(index), Some(at)) => write!(
+                f,
+                "command {index} (story {:?}, block {}): {}",
+                at.story, at.block, self.error
+            ),
+            (Some(index), None) => write!(f, "command {index}: {}", self.error),
+            _ => write!(f, "transaction: {}", self.error),
+        }
+    }
+}
+impl std::error::Error for EditFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+impl From<EditFailure> for EditError {
+    fn from(failure: EditFailure) -> Self {
+        failure.error
+    }
+}
 /// One command in a structural transaction.
 #[derive(Clone, Debug)]
 pub enum Edit {
@@ -221,7 +268,34 @@ pub enum Edit {
         at: Address,
     },
 }
-/// Structural editor using the same live WML document as `EditSession`.
+impl Edit {
+    /// The block the command targets.
+    pub fn address(&self) -> &Address {
+        match self {
+            Self::Split { at, .. }
+            | Self::Join { at }
+            | Self::Insert { at, .. }
+            | Self::Delete { at }
+            | Self::Text { at, .. }
+            | Self::Format { at, .. }
+            | Self::ParagraphProperties { at, .. }
+            | Self::Frame { at, .. }
+            | Self::RunProperties { at, .. }
+            | Self::TextNode { at, .. }
+            | Self::InsertInline { at, .. }
+            | Self::DeleteInline { at, .. }
+            | Self::TableProperties { at, .. }
+            | Self::CellProperties { at, .. }
+            | Self::Grid { at, .. }
+            | Self::InsertRow { at, .. }
+            | Self::DeleteRow { at, .. }
+            | Self::Drawing { at, .. }
+            | Self::Identify { at } => at,
+        }
+    }
+}
+/// Structural editor over the live WML document; `EditSession` is a body-only
+/// view of it.
 pub struct Editor<'a> {
     pub(crate) document: &'a mut Document,
     revision: u64,
@@ -306,25 +380,41 @@ impl<'a> Editor<'a> {
             .ok_or(EditError::InvalidParagraph)
     }
     /// Executes an atomic command batch.
+    ///
+    /// [`transact_detailed`](Self::transact_detailed) says which command failed.
     pub fn transact(&mut self, revision: u64, commands: &[Edit]) -> Result<ChangeSet, EditError> {
-        self.check(revision)?;
+        self.transact_detailed(revision, commands)
+            .map_err(|failure| failure.error)
+    }
+    /// Executes an atomic command batch; a failure names the command and its
+    /// target.
+    pub fn transact_detailed(
+        &mut self,
+        revision: u64,
+        commands: &[Edit],
+    ) -> Result<ChangeSet, EditFailure> {
+        self.check(revision).map_err(EditFailure::batch)?;
         let mut candidate = self.document.clone();
-        for command in commands {
-            apply(&mut candidate, command, self.limits)?;
+        for (index, command) in commands.iter().enumerate() {
+            apply(&mut candidate, command, self.limits).map_err(|error| EditFailure {
+                command: Some(index),
+                address: Some(command.address().clone()),
+                error,
+            })?;
         }
-        split_shared_notes(&mut candidate)?;
-        validate(&candidate)?;
+        split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
+        validate(&candidate).map_err(EditFailure::batch)?;
         if same_content(self.document, &candidate) {
             return Ok(self.changes(false));
         }
         let next = self
             .revision
             .checked_add(1)
-            .ok_or(EditError::LimitExceeded)?;
+            .ok_or_else(|| EditFailure::batch(EditError::LimitExceeded))?;
         if self.limits.history_transactions > 0 {
             let bytes = snapshot_size(self.document).saturating_add(snapshot_size(&candidate));
             if bytes > self.history_byte_limit {
-                return Err(EditError::LimitExceeded);
+                return Err(EditFailure::batch(EditError::LimitExceeded));
             }
             self.undo.push_back(Snapshot {
                 before: self.document.clone(),

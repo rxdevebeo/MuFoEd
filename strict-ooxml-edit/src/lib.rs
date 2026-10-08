@@ -12,7 +12,7 @@
         clippy::unreachable
     )
 )]
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_wml::model::{
     Block, Document, Inline, Paragraph, Run, RunContent, RunProperties, Space, StyleId, StyleType,
@@ -20,7 +20,7 @@ use strict_ooxml_wml::model::{
 };
 
 mod structured;
-pub use structured::{Address, Container, Edit, Editor, Story};
+pub use structured::{Address, Container, Edit, EditFailure, Editor, Story};
 mod operations;
 pub use operations::{
     IdentityChange, MoveReport, OperationError, OperationLimits, Operations, ReplacePolicy,
@@ -50,6 +50,8 @@ pub struct FormatPatch {
     /// Character style reference, or explicitly clear it.
     pub character_style: Option<Option<StyleId>>,
 }
+/// A command of the deprecated [`EditSession`]; [`Editor`] takes [`Edit`].
+///
 /// Ranges use Unicode scalar offsets, and commands in a batch execute in order.
 #[derive(Clone, Debug)]
 pub enum Command {
@@ -73,7 +75,10 @@ pub enum Command {
     },
 }
 /// A rejected operation never changes the document or history.
+///
+/// [`Editor::transact_detailed`] adds which command failed and where.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EditError {
     /// The caller used an obsolete revision.
     StaleRevision,
@@ -96,7 +101,19 @@ pub enum EditError {
 }
 impl std::fmt::Display for EditError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::StaleRevision => "the revision is stale; re-read the document and retry",
+            Self::InvalidParagraph => "the address does not name an editable paragraph",
+            Self::UnsupportedContent => {
+                "the paragraph holds structured or tracked content this edit cannot change"
+            }
+            Self::InvalidRange => "the range is reversed or past the end of the text",
+            Self::InvalidText => "the text holds a character XML or a paragraph cannot carry",
+            Self::UnknownStyle => "the style does not exist or is of the wrong type",
+            Self::InvalidModel => "the document model breaks an identity or section invariant",
+            Self::LimitExceeded => "an edit, history or nesting limit was exceeded",
+            Self::EmptyHistory => "there is nothing to undo or redo",
+        })
     }
 }
 impl std::error::Error for EditError {}
@@ -129,43 +146,37 @@ pub struct ChangeSet {
     pub invalidate_support: bool,
 }
 /// Exclusive borrow prevents untracked changes while history is active.
+///
+/// The body-paragraph subset of [`Editor`], kept for its callers: every command
+/// is forwarded as an [`Edit::Text`] or [`Edit::Format`] on [`Address::body`],
+/// so the two APIs cannot drift apart. The difference is the [`ChangeSet`],
+/// which names exactly the body blocks that changed.
+#[deprecated(
+    since = "0.1.0",
+    note = "use `Editor` with `Edit::Text` / `Edit::Format` on `Address::body`"
+)]
 pub struct EditSession<'a> {
-    document: &'a mut Document,
-    revision: u64,
-    limits: EditLimits,
-    undo: VecDeque<Vec<ParagraphChange>>,
-    redo: Vec<Vec<ParagraphChange>>,
-    support_stale: bool,
+    editor: Editor<'a>,
 }
-struct ParagraphChange {
-    index: usize,
-    before: Paragraph,
-    after: Paragraph,
-}
+#[allow(deprecated)]
 impl<'a> EditSession<'a> {
     /// Starts a session with exclusive access to the existing document.
     pub fn new(document: &'a mut Document, limits: EditLimits) -> Result<Self, EditError> {
-        validate_body(document)?;
         Ok(Self {
-            document,
-            revision: 0,
-            limits,
-            undo: VecDeque::new(),
-            redo: Vec::new(),
-            support_stale: false,
+            editor: Editor::new(document, limits)?,
         })
     }
     /// Reads the live document without bypassing the command protocol.
     pub fn document(&self) -> &Document {
-        self.document
+        self.editor.document()
     }
     /// Monotonic revision used for optimistic command validation.
     pub fn revision(&self) -> u64 {
-        self.revision
+        self.editor.revision()
     }
     /// Whether parser support metadata needs recomputation.
     pub fn support_is_stale(&self) -> bool {
-        self.support_stale
+        self.editor.support_is_stale()
     }
     /// Atomically executes a batch; offsets follow preceding commands.
     pub fn transact(
@@ -173,151 +184,75 @@ impl<'a> EditSession<'a> {
         expected: u64,
         commands: &[Command],
     ) -> Result<ChangeSet, EditError> {
-        self.check_revision(expected)?;
-        let mut candidates = BTreeMap::<usize, Paragraph>::new();
+        let mut edits = Vec::with_capacity(commands.len());
         for command in commands {
-            let (index, range) = match command {
+            edits.push(match command {
                 Command::ReplaceText {
-                    paragraph, range, ..
-                }
-                | Command::Format {
-                    paragraph, range, ..
-                } => (*paragraph, range),
-            };
-            if let std::collections::btree_map::Entry::Vacant(entry) = candidates.entry(index) {
-                entry.insert(paragraph(self.document, index)?.clone());
-            }
-            let candidate = candidates
-                .get_mut(&index)
-                .ok_or(EditError::InvalidParagraph)?;
-            let runs = plain_runs(candidate, self.limits.paragraph_scalars)?;
-            let total: usize = runs.iter().map(|(_, text)| text.chars().count()).sum();
-            if range.start > range.end || range.end > total {
-                return Err(EditError::InvalidRange);
-            }
-            match command {
-                Command::ReplaceText { text, .. } => {
-                    if text.chars().any(|ch| {
-                        !strict_ooxml_core::xml::escape::is_xml_char(ch)
-                            || matches!(ch, '\n' | '\r' | '\t')
-                    }) {
-                        return Err(EditError::InvalidText);
-                    }
-                    let length = total
-                        .checked_sub(range.end - range.start)
-                        .and_then(|n| n.checked_add(text.chars().count()))
-                        .ok_or(EditError::LimitExceeded)?;
-                    if length > self.limits.paragraph_scalars {
-                        return Err(EditError::LimitExceeded);
-                    }
-                    replace_text(candidate, &runs, range, text);
-                }
-                Command::Format { patch, .. } => {
+                    paragraph,
+                    range,
+                    text,
+                } => Edit::Text {
+                    at: Address::body(*paragraph),
+                    range: range.clone(),
+                    text: text.clone(),
+                },
+                Command::Format {
+                    paragraph,
+                    range,
+                    patch,
+                } => {
+                    // A character style must exist *as* a character style; the
+                    // editor's model validation only asks that it exists.
                     if let Some(Some(id)) = &patch.character_style {
                         if !self
-                            .document
+                            .document()
                             .styles
                             .get(id)
-                            .is_some_and(|s| s.style_type == StyleType::Character)
+                            .is_some_and(|style| style.style_type == StyleType::Character)
                         {
                             return Err(EditError::UnknownStyle);
                         }
                     }
-                    format_text(candidate, &runs, range, patch);
+                    Edit::Format {
+                        at: Address::body(*paragraph),
+                        range: range.clone(),
+                        patch: patch.clone(),
+                    }
                 }
-            }
+            });
         }
-        let mut changes = Vec::new();
-        for (index, after) in candidates {
-            let before = paragraph(self.document, index)?;
-            if before != &after {
-                changes.push(ParagraphChange {
-                    index,
-                    before: before.clone(),
-                    after,
-                });
-            }
-        }
-        if changes.is_empty() {
-            return Ok(self.change_set(Vec::new()));
-        }
-        let next_revision = self.next_revision()?;
-        let indices = changes.iter().map(|c| c.index).collect();
-        for change in &changes {
-            self.document.body.blocks[change.index] = Block::Paragraph(change.after.clone());
-        }
-        self.revision = next_revision;
-        self.support_stale = true;
-        self.redo.clear();
-        if self.limits.history_transactions > 0 {
-            self.undo.push_back(changes);
-            if self.undo.len() > self.limits.history_transactions {
-                self.undo.pop_front();
-            }
-        }
-        Ok(self.change_set(indices))
+        self.tracked(|editor| editor.transact(expected, &edits))
     }
     /// Restores the exact paragraphs before the latest transaction.
     pub fn undo(&mut self, expected: u64) -> Result<ChangeSet, EditError> {
-        self.check_revision(expected)?;
-        if self.undo.is_empty() {
-            return Err(EditError::EmptyHistory);
-        }
-        let next_revision = self.next_revision()?;
-        let changes = self.undo.pop_back().ok_or(EditError::EmptyHistory)?;
-        let indices = changes.iter().map(|c| c.index).collect();
-        for change in &changes {
-            self.document.body.blocks[change.index] = Block::Paragraph(change.before.clone());
-        }
-        self.redo.push(changes);
-        self.revision = next_revision;
-        self.support_stale = true;
-        Ok(self.change_set(indices))
+        self.tracked(|editor| editor.undo(expected))
     }
     /// Reapplies the exact paragraphs from the latest undone transaction.
     pub fn redo(&mut self, expected: u64) -> Result<ChangeSet, EditError> {
-        self.check_revision(expected)?;
-        if self.redo.is_empty() {
-            return Err(EditError::EmptyHistory);
-        }
-        let next_revision = self.next_revision()?;
-        let changes = self.redo.pop().ok_or(EditError::EmptyHistory)?;
-        let indices = changes.iter().map(|c| c.index).collect();
-        for change in &changes {
-            self.document.body.blocks[change.index] = Block::Paragraph(change.after.clone());
-        }
-        self.undo.push_back(changes);
-        self.revision = next_revision;
-        self.support_stale = true;
-        Ok(self.change_set(indices))
+        self.tracked(|editor| editor.redo(expected))
     }
-    fn check_revision(&self, expected: u64) -> Result<(), EditError> {
-        if expected == self.revision {
-            Ok(())
+    /// Runs `step` and narrows its change set to the body blocks that differ.
+    fn tracked(
+        &mut self,
+        step: impl FnOnce(&mut Editor<'a>) -> Result<ChangeSet, EditError>,
+    ) -> Result<ChangeSet, EditError> {
+        let before = self.editor.document().body.blocks.clone();
+        let mut change = step(&mut self.editor)?;
+        let after = &self.editor.document().body.blocks;
+        change.paragraphs = if before.len() == after.len() {
+            before
+                .iter()
+                .zip(after)
+                .enumerate()
+                .filter_map(|(index, (old, new))| (old != new).then_some(index))
+                .collect()
         } else {
-            Err(EditError::StaleRevision)
-        }
-    }
-    fn next_revision(&self) -> Result<u64, EditError> {
-        self.revision.checked_add(1).ok_or(EditError::LimitExceeded)
-    }
-    fn change_set(&self, paragraphs: Vec<usize>) -> ChangeSet {
-        let changed = !paragraphs.is_empty();
-        ChangeSet {
-            revision: self.revision,
-            paragraphs,
-            invalidate_layout: changed,
-            invalidate_support: changed,
-        }
+            (0..after.len()).collect()
+        };
+        Ok(change)
     }
 }
 
-fn paragraph(document: &Document, index: usize) -> Result<&Paragraph, EditError> {
-    match document.body.blocks.get(index) {
-        Some(Block::Paragraph(p)) => Ok(p),
-        _ => Err(EditError::InvalidParagraph),
-    }
-}
 fn plain_runs(paragraph: &Paragraph, max: usize) -> Result<Vec<(Run, String)>, EditError> {
     if paragraph.revision.is_some() {
         return Err(EditError::UnsupportedContent);

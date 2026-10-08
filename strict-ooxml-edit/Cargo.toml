@@ -23,6 +23,7 @@ unicode-segmentation = { version = "1.12", optional = true }
 
 [dev-dependencies]
 png.workspace = true
+proptest.workspace = true
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 strict-ooxml-write = { path = "../strict-ooxml-write", version = "0.1.0" }
 

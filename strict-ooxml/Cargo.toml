@@ -51,6 +51,7 @@ strict-ooxml-edit = { version = "0.1.0", path = "../strict-ooxml-edit", optional
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 # The independent XML oracle for what the serializers produce.
 roxmltree = "0.20"
+proptest.workspace = true
 
 [[example]]
 name = "support_report"
@@ -74,3 +75,7 @@ workspace = true
 [[test]]
 name = "editing"
 required-features = ["edit"]
+
+[[test]]
+name = "pipeline_never_panics"
+required-features = ["write", "pdf"]
