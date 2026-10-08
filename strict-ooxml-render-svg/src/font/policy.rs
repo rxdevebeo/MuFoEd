@@ -352,9 +352,11 @@ fn inspect_text_glyphs(
         }
     } else if let Some(shaped) = shape_resource(&shown, face) {
         for cluster in &shaped.clusters {
-            if shaped.glyphs[cluster.glyph_start..cluster.glyph_start + cluster.glyph_count]
-                .iter()
-                .any(|glyph| glyph.glyph_id == 0)
+            let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
+            if shaped
+                .glyphs
+                .get(cluster.glyph_start..end)
+                .is_some_and(|glyphs| glyphs.iter().any(|glyph| glyph.glyph_id == 0))
             {
                 let label = shown
                     .get(cluster.byte_start..cluster.byte_end)

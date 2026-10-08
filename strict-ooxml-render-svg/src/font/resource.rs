@@ -99,7 +99,10 @@ impl FontResource {
         let font =
             FontRef::from_index(&bytes, face_index).map_err(|_| FontResourceError::InvalidFace)?;
         variations.sort_by_key(|coordinate| coordinate.tag);
-        if variations.windows(2).any(|pair| pair[0].tag == pair[1].tag) {
+        if variations.windows(2).any(|pair| {
+            let mut tags = pair.iter().map(|coordinate| coordinate.tag);
+            tags.next() == tags.next()
+        }) {
             return Err(FontResourceError::DuplicateAxis);
         }
         for coordinate in &variations {

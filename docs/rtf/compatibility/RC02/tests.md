@@ -116,3 +116,26 @@ extraction witness does not close Indic visual/placement acceptance. Next: revie
 script/font support profiles, broaden independent complex-script geometry/visual
 witnesses, configure CLI assets through the bounded registry, and pass visual corpus.
 RC02 remains InProgress.
+
+
+## RC02 bounded CLI font assets (2026-10-08)
+
+`render` and `to-pdf` take `--fonts <manifest.json>` (schema
+`strictlib.font-assets.v1`). Each entry pins one exact family/style binding by
+`sha256` and names a `path`; optional `face_index`/`variations` and
+provenance/license metadata are carried through, and `embedding` must be
+`embed-and-subset`. Only the named files are read (no system discovery), bounded by
+`FontRegistryLimits::default()` before parsing. Admission reuses
+`FontAssetRegistry`; `write` rejects the flag. `strict-ooxml` re-exports the asset
+types under `svg`, and the registry flows through `RenderOptions::font_assets`, so
+SVG and PDF embed the exact program bytes of the API path.
+
+Four loader unit tests cover admission plus hash/permission/malformed-sha/schema
+rejection and check the hardcoded witness hashes against
+`fonts/witnesses/manifest.json`. One process-level test imports an RTF East Asian
+slot, embeds the pinned CJK witness (a `StrictAsset-` family in the SVG) and
+refuses a wrong hash with exit 2. `cargo +1.92.0 clippy --workspace
+--all-targets --all-features -- -D warnings` passes; the merge also fixed
+RTF-added `indexing_slicing`/`if_same_then_else`/`items_after_statements` spots
+that the newly merged crate-level denies exposed. Corpus/visual/pixel gates were
+not rerun; this slice adds configuration, not a new positive-corpus measurement.

@@ -286,6 +286,7 @@ impl FaceCollector {
         )
     }
 
+    #[allow(clippy::too_many_lines)] // Subset, widths and CID maps are one deterministic pass.
     fn build_program(
         &self,
         key: &FaceKey,

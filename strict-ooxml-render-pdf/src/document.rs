@@ -337,11 +337,11 @@ fn collect_owned_text(
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
                 .unwrap_or("");
-            for (index, glyph) in shaped.glyphs
-                [cluster.glyph_start..cluster.glyph_start + cluster.glyph_count]
-                .iter()
-                .enumerate()
-            {
+            let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
+            let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
+                continue;
+            };
+            for (index, glyph) in glyphs.iter().enumerate() {
                 collector.add_cluster_resource(
                     face,
                     glyph.glyph_id,

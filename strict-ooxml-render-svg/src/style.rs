@@ -518,8 +518,8 @@ pub fn registered_face(run: &ComputedRun, text: &str) -> Option<crate::font::Res
 /// Safe standalone SVG family id of one exact registered program/instance.
 #[must_use]
 pub fn resource_family(face: &crate::font::ResolvedFaceHandle) -> String {
-    let key = face.resource.key();
     use std::fmt::Write as _;
+    let key = face.resource.key();
     let mut hash = String::with_capacity(64);
     for byte in key.resource_hash {
         let _ = write!(hash, "{byte:02x}");

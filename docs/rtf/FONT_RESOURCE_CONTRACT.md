@@ -123,12 +123,35 @@ Receipts: `RC02-render-assets-corpus-current/results.json` and
 Pagination/pixel evidence is recorded separately in the RC02 status ledger; matching
 page counts do not establish visual acceptance.
 
+## Bounded CLI font-asset configuration (2026-10-08)
+
+`render` and `to-pdf` accept `--fonts <manifest.json>` (schema
+`strictlib.font-assets.v1`). Each entry names an exact family/style binding with a
+required pinned `sha256`, a `path`, optional `face_index` and `variations`,
+provenance/license metadata, and an `embedding` value that must be
+`embed-and-subset`. Paths resolve relative to the manifest; only those files are
+read — there is no system font discovery. Reads are bounded by
+`FontRegistryLimits::default()` (64 bindings, 32 MiB per asset, 128 MiB total)
+before any program is hashed or parsed. A hash mismatch, missing attestation,
+malformed metadata, unreadable path or budget breach is a hard error (exit 2);
+no output is written. Admission reuses `FontAssetRegistry`, so OS/2 embedding
+restrictions and duplicate bindings are enforced exactly as in the library API.
+`write` rejects `--fonts` because it does not render. The registry is passed
+through `RenderOptions::font_assets`, so SVG and PDF embed the same exact program
+bytes as the API path; `strict-ooxml` re-exports the asset types under `svg`.
+
+Validation: four loader unit tests (admission, hash/permission rejection,
+malformed sha/schema, witness hash pins match `fonts/witnesses/manifest.json`) and
+one process-level test that imports an RTF East Asian slot, embeds the pinned CJK
+witness (a `StrictAsset-` family in the SVG) and refuses a wrong hash with exit 2.
+The corpus CLI still exercises default bundled resources; this slice adds the
+explicit-configuration path, not a new positive-corpus measurement.
+
 ## Next implementation
 
 1. Close Indic continuation-CID extraction and full-script geometry/visual acceptance.
 2. Review script/font support profiles beyond finite test coverage.
-3. Full-corpus visual acceptance; CLI asset
-   configuration must use the same bounded registry rather than system discovery.
+3. Full-corpus visual acceptance.
 RC02 closes only after those requirements pass.
 
 

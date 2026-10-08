@@ -1,9 +1,9 @@
 {
   "card": "RC02",
   "status": "InProgress",
-  "updated": "2026-10-07",
-  "scope": "multi-glyph cluster ActualText and independent Unicode extraction",
-  "base_commit": "371dcb8",
+  "updated": "2026-10-08",
+  "scope": "cluster ActualText, independent Unicode extraction and bounded CLI font assets",
+  "base_commit": "fe7da50",
   "implemented": [
     "shared bytes lifetime",
     "font program/face index/variation identity",
@@ -36,13 +36,13 @@
     "renamed pinned OFL CJK SC and Devanagari test subsets",
     "independent native HarfBuzz geometry oracle",
     "strict positive CJK SVG/PDF/RTF witness",
-    "logical UTF-16 ActualText for complete multi-glyph clusters"
+    "logical UTF-16 ActualText for complete multi-glyph clusters",
+    "bounded CLI font asset configuration (--fonts manifest)"
   ],
   "remaining": [
     "reader compatibility beyond ActualText-aware extraction; lopdf ignores ActualText",
     "full complex-script placement and visual acceptance",
     "reviewed font/script support profile",
-    "bounded CLI font asset configuration",
     "full corpus visual acceptance"
   ],
   "checks": {
@@ -159,6 +159,16 @@
     "actualtext_clippy": {
       "status": "PassWithBaselineSuppressionsAndWarnings",
       "log": "target/rtf-import/RC02-actualtext-clippy.log"
+    },
+    "cli_font_assets": {
+      "status": "Pass",
+      "base_commit": "fe7da50",
+      "manifest_schema": "strictlib.font-assets.v1",
+      "invocation": "render|to-pdf --fonts <manifest.json>",
+      "unit_tests": 4,
+      "process_tests": 1,
+      "bounds": "FontRegistryLimits::default, no system discovery, pinned sha256",
+      "clippy_msrv": "cargo +1.92.0 clippy --workspace --all-targets --all-features -- -D warnings: Pass"
     }
   }
 }

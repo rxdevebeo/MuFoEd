@@ -140,6 +140,11 @@ pub use strict_ooxml_render_pdf::{
     PdfOutput, PdfReport,
 };
 #[cfg(feature = "svg")]
+pub use strict_ooxml_render_svg::font::{
+    FaceInstanceKey, FaceVariation, FontAsset, FontAssetManifest, FontAssetRegistry,
+    FontEmbeddingPermission, FontFailurePolicy, FontRegistryError, FontRegistryLimits,
+};
+#[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{

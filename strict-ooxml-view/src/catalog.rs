@@ -217,6 +217,7 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
 }
 
 /// Imports and renders RTF under explicit caller-selected compatibility policies.
+#[allow(clippy::too_many_lines)] // Import ledger, writer losses and render in one view.
 pub fn render_rtf(
     entry: &Entry,
     options: &strict_ooxml::RtfOptions,
@@ -262,13 +263,13 @@ pub fn render_rtf(
         );
         issues.push(ViewIssue {
             stage: "write".to_owned(),
-            id: issue.feature_id.to_owned(),
+            id: issue.feature_id.clone(),
             severity: format!("{:?}", issue.severity),
             part: None,
             page: None,
             location: None,
             count: 1,
-            detail: issue.reason.to_owned(),
+            detail: issue.reason.clone(),
         });
     }
     let support = opened.document.support_report();

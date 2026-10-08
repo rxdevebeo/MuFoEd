@@ -547,3 +547,29 @@ maps_regular_postscript_names_to_the_same_bundled_faces` — Pass без пад�
 `strict-ooxml-write` — Pass. Corpus/visual/pixel/XSD/OPC gates в этом срезе не
 перезапускались; статусы RC02+ и development-цифры не менялись. Это
 интеграционная сверка, а не новый baseline совместимости.
+
+### RC02: bounded CLI font assets — 2026-10-08
+
+Закрыт пункт «CLI asset configuration» из FONT_RESOURCE_CONTRACT: `render` и
+`to-pdf` принимают `--fonts <manifest.json>` (schema
+`strictlib.font-assets.v1`). Manifest задаёт точные family/style bindings с
+обязательным pinned `sha256`, путём, опциональными `face_index`/`variations`,
+provenance/license и `embedding = embed-and-subset`. Читаются только указанные
+файлы (без system discovery), чтение ограничено `FontRegistryLimits::default()`
+до парсинга; hash mismatch, отсутствие attestation, malformed metadata или
+превышение бюджета — твёрдая ошибка (exit 2) без записи вывода. Admission
+делегируется общему `FontAssetRegistry`, поэтому OS/2-ограничения и дубликаты
+binding проверяются идентично API. `write` отвергает `--fonts`. Registry
+передаётся через `RenderOptions::font_assets`, так что SVG и PDF встраивают те
+же байты программы, что и библиотечный путь; типы asset'ов реэкспортированы из
+`strict-ooxml` под `svg`.
+
+Проверки: 4 unit-теста loader'а (admission; hash/permission rejection; malformed
+sha/schema; сверка witness-хешей с `fonts/witnesses/manifest.json`) и 1
+process-тест, который импортирует RTF East Asian slot, встраивает pinned CJK
+witness (`StrictAsset-` в SVG) и отвергает неверный hash с exit 2.
+`cargo +1.92.0 clippy --workspace --all-targets --all-features -- -D warnings` —
+Pass; при merge также исправлены RTF-участки `indexing_slicing`,
+`if_same_then_else`, `items_after_statements`, ставшие ошибками из-за новых
+crate-level deny из master. Corpus/visual/pixel gates не перезапускались: срез
+добавляет конфигурацию, а не новое измерение корпуса. RC02 остаётся InProgress.

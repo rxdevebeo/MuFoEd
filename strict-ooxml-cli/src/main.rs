@@ -12,10 +12,11 @@
 //! - `report <file> [--json|--text] [--out <path>]` — emits the full Stage-3
 //!   Feature Report.
 //! - `render <file> [--out <dir|file.svg>] [--pages <range>] [--scale <n>]
-//!   [--no-floating] [--no-math] [--wps-times]` — renders Stage-4/5B/5C SVG pages (floating
+//!   [--fonts <manifest.json>] [--no-floating] [--no-math] [--wps-times]` — renders Stage-4/5B/5C SVG pages (floating
 //!   heavy objects and OMML formulas can be disabled with `--no-floating` and
 //!   `--no-math`; `--wps-times` applies the Clio WPS Times calibration, see
-//!   `RenderOptions::wps_times_calibration`).
+//!   `RenderOptions::wps_times_calibration`; `--fonts` admits explicit,
+//!   hash-pinned font assets from a manifest, see `fonts`).
 //! - `write <file.docx> --out <file.docx>` — serializes the parsed model back
 //!   to a Strict package (Stage 8A) and prints what the writer could not
 //!   express.
@@ -76,6 +77,7 @@ use strict_ooxml_core::ns::Conformance;
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_core::pipeline::{PipelineIssue, PipelineOutcome, PipelineStage, PipelineSummary};
+mod fonts;
 mod rtf;
 
 /// Exit code: no critical problem.
@@ -147,10 +149,13 @@ fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|write|normalize> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
-         [--no-floating] [--no-math] [--wps-times] [--transitional]"
+         [--fonts <manifest.json>] [--no-floating] [--no-math] [--wps-times] [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
+    eprintln!(
+        "  --fonts         explicit, hash-pinned font assets for render/to-pdf (no discovery)"
+    );
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] [--report-out <json>] (--out is required)");
@@ -433,6 +438,7 @@ struct RenderArgs {
     floating: bool,
     math: bool,
     wps_times: bool,
+    fonts: Option<String>,
 }
 
 impl RenderArgs {
@@ -444,6 +450,7 @@ impl RenderArgs {
         let mut floating = true;
         let mut math = true;
         let mut wps_times = false;
+        let mut fonts = None;
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
@@ -456,6 +463,14 @@ impl RenderArgs {
                 "--out" => {
                     index += 1;
                     out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
+                }
+                "--fonts" => {
+                    index += 1;
+                    fonts = Some(
+                        args.get(index)
+                            .ok_or("'--fonts' requires a manifest path")?
+                            .clone(),
+                    );
                 }
                 "--pages" => {
                     index += 1;
@@ -494,6 +509,7 @@ impl RenderArgs {
             floating,
             math,
             wps_times,
+            fonts,
         })
     }
 }
@@ -536,55 +552,69 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
     };
     let (options, normalizer) = open_options(parsed.transitional);
     let code = match StrictDocument::open_path(&parsed.file, &options) {
-        Ok(document) => match document.render_pdf(&RenderOptions::default()) {
-            Ok(output) => {
-                if !output.report.is_clean() {
-                    eprintln!("warning: the render is not lossless");
-                    eprint!("{}", output.report);
-                }
-                let input = match std::fs::read(&parsed.file) {
-                    Ok(bytes) => bytes,
+        Ok(document) => {
+            let mut render_options = RenderOptions::default();
+            if let Some(path) = &parsed.fonts {
+                match fonts::load(path) {
+                    Ok(registry) => render_options = render_options.font_assets(registry),
                     Err(error) => {
-                        eprintln!("error: cannot read {}: {error}", parsed.file);
+                        eprintln!("error: {error}");
                         return ExitCode::from(EXIT_ERROR);
                     }
-                };
-                let mut summary = normalization_summary(normalizer.as_deref());
-                summary.extend_issues(output.report.losses().iter().map(|loss| PipelineIssue {
-                    stage: PipelineStage::Render,
-                    id: loss.id.to_owned(),
-                    severity: loss.severity.to_string(),
-                    part: None,
-                    page: None,
-                    location: None,
-                    count: 1,
-                    detail: loss.detail.clone(),
-                }));
-                match commit_result(
-                    &parsed.out,
-                    parsed.report_out.as_deref(),
-                    &input,
-                    &output.bytes,
-                    &summary,
-                ) {
-                    Ok(code) => {
-                        println!(
-                            "wrote {} ({} page(s), {} bytes, {} embedded face(s))",
-                            parsed.out,
-                            output.page_count,
-                            output.bytes.len(),
-                            output.embedded_faces.len()
-                        );
-                        code
-                    }
-                    Err(()) => ExitCode::from(EXIT_ERROR),
                 }
             }
-            Err(error) => {
-                eprintln!("error: {error}");
-                ExitCode::from(EXIT_ERROR)
+            match document.render_pdf(&render_options) {
+                Ok(output) => {
+                    if !output.report.is_clean() {
+                        eprintln!("warning: the render is not lossless");
+                        eprint!("{}", output.report);
+                    }
+                    let input = match std::fs::read(&parsed.file) {
+                        Ok(bytes) => bytes,
+                        Err(error) => {
+                            eprintln!("error: cannot read {}: {error}", parsed.file);
+                            return ExitCode::from(EXIT_ERROR);
+                        }
+                    };
+                    let mut summary = normalization_summary(normalizer.as_deref());
+                    summary.extend_issues(output.report.losses().iter().map(|loss| {
+                        PipelineIssue {
+                            stage: PipelineStage::Render,
+                            id: loss.id.to_owned(),
+                            severity: loss.severity.to_string(),
+                            part: None,
+                            page: None,
+                            location: None,
+                            count: 1,
+                            detail: loss.detail.clone(),
+                        }
+                    }));
+                    match commit_result(
+                        &parsed.out,
+                        parsed.report_out.as_deref(),
+                        &input,
+                        &output.bytes,
+                        &summary,
+                    ) {
+                        Ok(code) => {
+                            println!(
+                                "wrote {} ({} page(s), {} bytes, {} embedded face(s))",
+                                parsed.out,
+                                output.page_count,
+                                output.bytes.len(),
+                                output.embedded_faces.len()
+                            );
+                            code
+                        }
+                        Err(()) => ExitCode::from(EXIT_ERROR),
+                    }
+                }
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    ExitCode::from(EXIT_ERROR)
+                }
             }
-        },
+        }
         Err(error @ StrictError::TransitionalNotSupported { .. }) => {
             eprintln!("error: {error}");
             eprintln!("hint: pass --transitional to normalize it to Strict on the way in");
@@ -604,6 +634,7 @@ struct WriteArgs {
     out: String,
     transitional: bool,
     report_out: Option<String>,
+    fonts: Option<String>,
 }
 
 impl WriteArgs {
@@ -612,6 +643,7 @@ impl WriteArgs {
         let mut out: Option<String> = None;
         let mut transitional = false;
         let mut report_out = None;
+        let mut fonts = None;
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
@@ -619,6 +651,14 @@ impl WriteArgs {
                 "--out" => {
                     index += 1;
                     out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
+                }
+                "--fonts" => {
+                    index += 1;
+                    fonts = Some(
+                        args.get(index)
+                            .ok_or("'--fonts' requires a manifest path")?
+                            .clone(),
+                    );
                 }
                 "--report-out" => {
                     index += 1;
@@ -645,6 +685,7 @@ impl WriteArgs {
             out: out.ok_or("'write' requires --out <path>")?,
             transitional,
             report_out,
+            fonts,
         })
     }
 }
@@ -802,6 +843,10 @@ fn run_write(args: &[String]) -> ExitCode {
         }
     };
     let (options, normalizer) = open_options(parsed.transitional);
+    if parsed.fonts.is_some() {
+        eprintln!("error: '--fonts' applies to render/to-pdf, not write");
+        return ExitCode::from(EXIT_ERROR);
+    }
     let package = match Package::open_path(&parsed.file, &options) {
         Ok(package) => package,
         Err(error) => {
@@ -894,6 +939,15 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     render_options = render_options.floating(parsed.floating);
     render_options = render_options.math(parsed.math);
     render_options = render_options.wps_times_calibration(parsed.wps_times);
+    if let Some(path) = &parsed.fonts {
+        match fonts::load(path) {
+            Ok(registry) => render_options = render_options.font_assets(registry),
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(EXIT_ERROR);
+            }
+        }
+    }
     let rendered = match document.render_svg(&render_options) {
         Ok(rendered) => rendered,
         Err(error) => {
