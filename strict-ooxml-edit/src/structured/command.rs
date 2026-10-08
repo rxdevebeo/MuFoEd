@@ -209,6 +209,20 @@ pub enum Edit {
         /// Target paragraph.
         at: Address,
     },
+    /// Accept the paragraph's tracked changes: inserted and moved-in runs
+    /// stay, deleted and moved-out runs go, and a deleted paragraph mark joins
+    /// the paragraph with the next one.
+    AcceptRevisions {
+        /// Target paragraph.
+        at: Address,
+    },
+    /// Reject the paragraph's tracked changes: deleted and moved-out runs
+    /// stay, inserted and moved-in runs go, and an inserted paragraph mark
+    /// joins the paragraph with the next one.
+    RejectRevisions {
+        /// Target paragraph.
+        at: Address,
+    },
 }
 impl Edit {
     /// The block the command targets.
@@ -232,7 +246,9 @@ impl Edit {
             | Self::InsertRow { at, .. }
             | Self::DeleteRow { at, .. }
             | Self::Drawing { at, .. }
-            | Self::Identify { at } => at,
+            | Self::Identify { at }
+            | Self::AcceptRevisions { at }
+            | Self::RejectRevisions { at } => at,
         }
     }
 }

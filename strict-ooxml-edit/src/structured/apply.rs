@@ -11,6 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use super::address::{descend_mut, drawing_mut, mutate_story, paragraph_mut, run_mut, Story};
 use super::command::Edit;
 use super::ids::{assign_id, fresh_ids, IdIndex};
+use super::revisions::resolve;
 use super::validate::contains_boundary;
 
 fn empty_paragraph() -> Paragraph {
@@ -71,27 +72,7 @@ pub(super) fn apply(
     limits: EditLimits,
     ids: &mut IdIndex,
 ) -> Result<(), EditError> {
-    let at = match edit {
-        Edit::Split { at, .. }
-        | Edit::Join { at }
-        | Edit::Insert { at, .. }
-        | Edit::Delete { at }
-        | Edit::Text { at, .. }
-        | Edit::Format { at, .. }
-        | Edit::ParagraphProperties { at, .. }
-        | Edit::Frame { at, .. }
-        | Edit::RunProperties { at, .. }
-        | Edit::TextNode { at, .. }
-        | Edit::InsertInline { at, .. }
-        | Edit::DeleteInline { at, .. }
-        | Edit::TableProperties { at, .. }
-        | Edit::CellProperties { at, .. }
-        | Edit::Grid { at, .. }
-        | Edit::InsertRow { at, .. }
-        | Edit::DeleteRow { at, .. }
-        | Edit::Drawing { at, .. }
-        | Edit::Identify { at } => at,
-    };
+    let at = edit.address();
     mutate_story(document, &at.story, |root| {
         let blocks = descend_mut(root, &at.containers)?;
         match edit {
@@ -271,6 +252,8 @@ pub(super) fn apply(
                 *drawing_mut(&mut p.inlines, inline, *content)? = *drawing.clone();
             }
             Edit::Identify { .. } => assign_id(paragraph_mut(blocks, at.block)?, ids, false)?,
+            Edit::AcceptRevisions { .. } => resolve(blocks, at.block, true)?,
+            Edit::RejectRevisions { .. } => resolve(blocks, at.block, false)?,
             _ => {
                 let Some(Block::Table(t)) = blocks.get_mut(at.block) else {
                     return Err(EditError::InvalidParagraph);

@@ -629,3 +629,69 @@ fn shape_textbox_search_replace_and_move_stay_in_scope() {
     e.undo(4).unwrap();
     assert_eq!(e.document().body, original);
 }
+
+/// A paragraph with an insertion and a deletion, then a paragraph whose mark
+/// was deleted, then the centred paragraph its text would join.
+const TRACKED: &str = concat!(
+    "<w:p><w:r><w:t xml:space=\"preserve\">keep </w:t></w:r>",
+    "<w:ins w:id=\"1\" w:author=\"A\"><w:r><w:t>new</w:t></w:r></w:ins>",
+    "<w:del w:id=\"2\" w:author=\"A\"><w:r><w:delText>old</w:delText></w:r></w:del></w:p>",
+    "<w:p><w:pPr><w:rPr><w:del w:id=\"3\" w:author=\"A\"/></w:rPr></w:pPr>",
+    "<w:r><w:t>joined</w:t></w:r></w:p>",
+    "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>",
+    "<w:r><w:t xml:space=\"preserve\"> next</w:t></w:r></w:p>",
+);
+
+fn no_revisions(d: &Document) -> bool {
+    d.body.blocks.iter().filter_map(|b| b.as_paragraph()).all(|p| {
+        p.revision.is_none()
+            && p.inlines.iter().all(|i| match i {
+                strict_ooxml_wml::model::Inline::Run(r) => r.revision.is_none(),
+                _ => true,
+            })
+    })
+}
+
+#[test]
+fn accepting_every_change_keeps_insertions_and_joins_a_deleted_mark() {
+    let mut d = doc(TRACKED);
+    let before = d.body.clone();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.accept_all(0).unwrap();
+    assert_eq!(text(e.document()), ["keep new", "joined next"]);
+    assert!(no_revisions(e.document()));
+    let joined = e.document().body.blocks[1].as_paragraph().unwrap();
+    assert!(
+        joined.props.alignment.is_some(),
+        "the surviving mark is the next paragraph's"
+    );
+    e.undo(1).unwrap();
+    assert_eq!(e.document().body, before);
+}
+
+#[test]
+fn rejecting_every_change_keeps_deletions_and_the_marks() {
+    let mut d = doc(TRACKED);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.reject_all(0).unwrap();
+    assert_eq!(text(e.document()), ["keep old", "joined", " next"]);
+    assert!(no_revisions(e.document()));
+}
+
+#[test]
+fn accepting_one_paragraph_leaves_the_others_tracked() {
+    let mut d = doc(TRACKED);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    e.transact(
+        0,
+        &[strict_ooxml_edit::Edit::AcceptRevisions {
+            at: Address::body(0),
+        }],
+    )
+    .unwrap();
+    assert_eq!(text(e.document()), ["keep new", "joined", " next"]);
+    let second = e.document().body.blocks[1].as_paragraph().unwrap();
+    assert!(second.revision.is_some(), "only the addressed paragraph changes");
+}
