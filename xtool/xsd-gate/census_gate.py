@@ -1697,6 +1697,8 @@ def main(argv: list[str]) -> int:
     # process still performs the writes and keeps the bytes for receipts.
     parser.add_argument("--written", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.write_reports:
+        os.environ[_SEMANTIC_DUMP_ENV] = str(Path(args.write_reports) / "semantic-parts")
     if args.written:
         raise SystemExit(
             "error: census_gate.py measures the write's own loss report, so it cannot judge "
@@ -1861,8 +1863,6 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         total_in += label_in
         total_out += label_out
 
-        if args.write_reports:
-            os.environ[_SEMANTIC_DUMP_ENV] = str(Path(args.write_reports) / "semantic-parts")
         rows, failures = loss_report(corpus, cli, args.write_reports, only)
         counts = collections.Counter()
         for row in rows:
