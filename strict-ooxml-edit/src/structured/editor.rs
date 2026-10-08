@@ -16,7 +16,7 @@ pub struct Editor<'a> {
     revision: u64,
     limits: EditLimits,
     undo: VecDeque<Snapshot>,
-    redo: Vec<Snapshot>,
+    redo: VecDeque<Snapshot>,
     history_byte_limit: usize,
     pub(crate) support_stale: bool,
     pub(crate) input_pipeline: strict_ooxml_core::pipeline::PipelineSummary,
@@ -58,7 +58,7 @@ impl<'a> Editor<'a> {
             revision: 0,
             limits,
             undo: VecDeque::new(),
-            redo: vec![],
+            redo: VecDeque::new(),
             history_byte_limit: 64 * 1024 * 1024,
             support_stale: false,
             input_pipeline: strict_ooxml_core::pipeline::PipelineSummary::new(),
@@ -264,7 +264,7 @@ impl<'a> Editor<'a> {
                 whole_story_changes(after, self.document)
             }
         };
-        self.redo.push(snapshot);
+        self.redo.push_back(snapshot);
         self.revision = next;
         self.support_stale = true;
         Ok(self.changes(blocks))
@@ -279,7 +279,7 @@ impl<'a> Editor<'a> {
             .revision
             .checked_add(1)
             .ok_or(EditError::LimitExceeded)?;
-        let snapshot = self.redo.pop().ok_or(EditError::EmptyHistory)?;
+        let snapshot = self.redo.pop_back().ok_or(EditError::EmptyHistory)?;
         let blocks = match &snapshot.change {
             Change::Blocks(patches) => {
                 reapply(self.document, patches);
@@ -304,13 +304,14 @@ impl<'a> Editor<'a> {
         }
     }
     fn trim_history(&mut self) {
-        while self.history_bytes() > self.history_byte_limit {
-            if self.undo.pop_front().is_none() {
-                if self.redo.is_empty() {
-                    break;
-                }
-                self.redo.remove(0);
-            }
+        let mut total = self.history_bytes();
+        while total > self.history_byte_limit {
+            // The oldest undo state goes first, then the redo state furthest
+            // from the present.
+            let Some(dropped) = self.undo.pop_front().or_else(|| self.redo.pop_front()) else {
+                break;
+            };
+            total = total.saturating_sub(dropped.bytes);
         }
     }
     fn changes(&self, blocks: Vec<BlockChange>) -> ChangeSet {
