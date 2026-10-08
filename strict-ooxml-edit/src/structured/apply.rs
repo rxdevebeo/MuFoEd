@@ -138,7 +138,7 @@ pub(super) fn apply(
                 }
                 left.inlines.extend(right.inlines);
                 left.props.section = right.props.section;
-                blocks[at.block] = Block::Paragraph(left);
+                *paragraph_mut(blocks, at.block)? = left;
                 blocks.remove(at.block + 1);
             }
             Edit::Text { range, .. } | Edit::Format { range, .. } => {

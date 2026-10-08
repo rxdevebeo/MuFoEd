@@ -9,7 +9,8 @@
         clippy::panic,
         clippy::todo,
         clippy::unimplemented,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 use std::collections::HashSet;
