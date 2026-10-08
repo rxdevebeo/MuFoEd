@@ -681,6 +681,24 @@ def test_p12_header_digest_ignores_the_strict_spellings() -> None:
     ).encode()
     if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
         raise SystemExit("the Strict spelling of a header was a different part")
+    table_source = (
+        f'<w:hdr xmlns:w="{transitional}"><w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
+        f'<w:tblLook w:val="04A0"/></w:tblPr></w:tbl><w:p><w:proofErr w:type="gramStart"/>'
+        f'<w:pPr><w:pBdr><w:between w:val="nil"/><w:left w:val="single"/></w:pBdr></w:pPr></w:p></w:hdr>'
+    ).encode()
+    table_written = (
+        f'<w:hdr xmlns:w="{strict}"><w:tbl><w:tblPr><w:tblW w:w="100%" w:type="pct"/>'
+        f'<w:tblLook w:firstRow="true" w:lastRow="false" w:firstColumn="1" w:lastColumn="0" '
+        f'w:noHBand="0" w:noVBand="1"/></w:tblPr></w:tbl><w:p>'
+        f'<w:pPr><w:pBdr><w:start w:val="single"/></w:pBdr></w:pPr></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(table_source) != census_gate._semantic_part_digest(
+        table_written
+    ):
+        raise SystemExit("tblLook/pct width/nil border/proofErr spellings were a different part")
+    banded = table_written.replace(b'w:noHBand="0"', b'w:noHBand="1"')
+    if census_gate._semantic_part_digest(table_source) == census_gate._semantic_part_digest(banded):
+        raise SystemExit("a different table look matched")
     moved = written.replace(b'w:start="6pt"', b'w:start="7pt"')
     if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(moved):
         raise SystemExit("a different indent matched")

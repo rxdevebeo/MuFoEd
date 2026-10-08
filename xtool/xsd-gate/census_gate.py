@@ -293,6 +293,33 @@ _SEMANTIC_DUMP_ENV = "CENSUS_SEMANTIC_DUMP"
 
 
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
+# Editor state, not content: proofing marks.
+_SEMANTIC_SKIP = {"proofErr"}
+_BORDER_EDGES = {
+    "top", "left", "bottom", "right", "start", "end", "between", "bar", "insideH", "insideV",
+}
+# `w:tblLook` bits (ISO/IEC 29500-1 17.4.56 / -4 14.10.5): the Strict attributes.
+_TBL_LOOK = (
+    ("firstRow", 0x0020), ("lastRow", 0x0040), ("firstColumn", 0x0080),
+    ("lastColumn", 0x0100), ("noHBand", 0x0200), ("noVBand", 0x0400),
+)
+
+
+def _table_look(element: etree._Element) -> list[str]:
+    """`w:tblLook` as its six flags, whether written as a hex `val` or as attributes."""
+    flags: dict[str, bool] = {}
+    for key, value in element.attrib.items():
+        name = etree.QName(key).localname
+        if name == "val":
+            try:
+                bits = int(value, 16)
+            except ValueError:
+                continue
+            for flag, bit in _TBL_LOOK:
+                flags.setdefault(flag, bool(bits & bit))
+        elif name in dict(_TBL_LOOK):
+            flags[name] = value.lower() in {"1", "true", "on"}
+    return [f"{flag}={int(flags.get(flag, False))}" for flag, _bit in _TBL_LOOK]
 # T3 renames these attributes; the values stay.
 _DIRECTION_ATTRS = {
     "left": "start", "right": "end", "leftChars": "startChars", "rightChars": "endChars",
@@ -307,19 +334,27 @@ def _canonical_value(name: str, value: str) -> str | None:
     `6pt`. Both sides go through this, so a different value stays different.
     """
     lowered = value.lower()
+    # On/off is a number here, so `1`, `true` and `on` are one token whatever
+    # the attribute, and `0` stays equal to `0pt`.
+    if lowered in {"true", "on"}:
+        lowered = "1"
+    elif lowered in {"false", "off"}:
+        lowered = "0"
     if name == "val":
-        if lowered in {"true", "on", "1"}:
+        if lowered == "1":
             return None
-        if lowered in {"false", "off", "0"}:
-            return "false"
         if lowered in {"left", "start"}:
             return "start"
         if lowered in {"right", "end"}:
             return "end"
-    twips = _twips(value)
+    twips = _twips(lowered)
     if twips is not None:
+        # `wp:wrap*` and `wp:anchor` distances: the writer spells out the zero.
+        if name.startswith("dist") and twips == 0:
+            return None
         return f"{round(twips, 2):g}tw"
-    return value
+    # A namespace URI as a value (`a:graphicData@uri`) in its Strict form.
+    return _STRICT_NS.get(value, value)
 
 
 def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
@@ -343,6 +378,26 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
             return
         qname = etree.QName(element)
         namespace = _STRICT_NS.get(qname.namespace or "", qname.namespace or "")
+        local = qname.localname
+        if local in _SEMANTIC_SKIP:
+            return
+        # A border edge of `nil`/`none` is no border.
+        if local in _BORDER_EDGES and any(
+            etree.QName(key).localname == "val" and value in {"nil", "none"}
+            for key, value in element.attrib.items()
+        ):
+            return
+        # T3 renames the left/right edges and margins to start/end.
+        local = {"left": "start", "right": "end"}.get(local, local)
+        if local == "tblLook":
+            chunks.append(f"<{namespace} tblLook")
+            chunks.append(" ".join(_table_look(element)))
+            return
+        # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
+        pct = any(
+            etree.QName(key).localname == "type" and value == "pct"
+            for key, value in element.attrib.items()
+        )
         attributes: list[str] = []
         for key, value in element.attrib.items():
             attr = etree.QName(key)
@@ -354,7 +409,12 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
                 continue
             if qname.localname == "rFonts" and name == "hint" and value.lower() == "cs":
                 continue
-            value = _canonical_value(name, value)
+            if pct and name == "w":
+                number = _percent_number(value)
+                if number is not None:
+                    value = f"{number if value.endswith('%') else number / 50.0:g}pct"
+            else:
+                value = _canonical_value(name, value)
             if value is None:
                 continue
             attr_ns = _STRICT_NS.get(attr.namespace or "", attr.namespace or "")
@@ -364,7 +424,7 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
         # An empty property bag says nothing; the writer leaves it out.
         if qname.localname in property_bags and not attributes and not children:
             return
-        chunks.append(f"<{namespace} {qname.localname}")
+        chunks.append(f"<{namespace} {local}")
         if attributes:
             chunks.append(" ".join(sorted(attributes)))
         text = (element.text or "").strip()
