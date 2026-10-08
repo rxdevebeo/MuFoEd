@@ -15,7 +15,6 @@
         clippy::unreachable
     )
 )]
-
 #![deny(missing_docs)]
 
 mod catalog;

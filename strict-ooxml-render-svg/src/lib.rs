@@ -39,7 +39,6 @@
         clippy::unreachable
     )
 )]
-
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]

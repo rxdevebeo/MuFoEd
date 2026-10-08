@@ -13,9 +13,8 @@ use crate::model::SupportReport;
 /// as a JSON object instead of a panic.
 #[must_use]
 pub fn to_json(report: &SupportReport) -> String {
-    let mut out = serde_json::to_string_pretty(report).unwrap_or_else(|error| {
-        serde_json::json!({ "error": error.to_string() }).to_string()
-    });
+    let mut out = serde_json::to_string_pretty(report)
+        .unwrap_or_else(|error| serde_json::json!({ "error": error.to_string() }).to_string());
     out.push('\n');
     out
 }
