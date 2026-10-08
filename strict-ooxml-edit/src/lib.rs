@@ -17,8 +17,8 @@ use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_wml::model::{
-    Block, Document, Inline, Paragraph, Run, RunContent, RunProperties, Space, StyleId, StyleType,
-    TextNode, TriState, Underline,
+    Block, Color, Document, Fonts, HalfPoints, Highlight, Inline, Paragraph, Run, RunContent,
+    RunProperties, Space, StyleId, StyleType, TextNode, TriState, Underline, VertAlign,
 };
 
 mod structured;
@@ -51,6 +51,26 @@ pub struct FormatPatch {
     pub underline: Option<Option<Underline>>,
     /// Character style reference, or explicitly clear it.
     pub character_style: Option<Option<StyleId>>,
+    /// Direct strikethrough (`w:strike`).
+    pub strike: Option<TriState>,
+    /// Direct double strikethrough (`w:dstrike`).
+    pub double_strike: Option<TriState>,
+    /// Direct all caps (`w:caps`).
+    pub caps: Option<TriState>,
+    /// Direct small caps (`w:smallCaps`).
+    pub small_caps: Option<TriState>,
+    /// Font size for every script (`w:sz` and `w:szCs`, as Word sets them),
+    /// or clear both.
+    pub size: Option<Option<HalfPoints>>,
+    /// Text colour (`w:color`), or clear it. Either drops a theme colour, which
+    /// would otherwise win over the value set here.
+    pub color: Option<Option<Color>>,
+    /// Highlight (`w:highlight`), or clear it.
+    pub highlight: Option<Option<Highlight>>,
+    /// Run fonts (`w:rFonts`), or clear them.
+    pub fonts: Option<Option<Fonts>>,
+    /// Superscript or subscript (`w:vertAlign`), or clear it.
+    pub vert_align: Option<Option<VertAlign>>,
 }
 /// A command of the deprecated [`EditSession`]; [`Editor`] takes [`Edit`].
 ///
@@ -392,6 +412,33 @@ fn patch_properties(props: &mut RunProperties, patch: &FormatPatch) {
     }
     if let Some(v) = &patch.character_style {
         props.style.clone_from(v);
+    }
+    for (slot, value) in [
+        (&mut props.strike, patch.strike),
+        (&mut props.double_strike, patch.double_strike),
+        (&mut props.caps, patch.caps),
+        (&mut props.small_caps, patch.small_caps),
+    ] {
+        if let Some(value) = value {
+            *slot = value;
+        }
+    }
+    if let Some(v) = &patch.size {
+        props.size.clone_from(v);
+        props.size_cs.clone_from(v);
+    }
+    if let Some(v) = &patch.color {
+        props.color.clone_from(v);
+        props.color_theme = None;
+    }
+    if let Some(v) = &patch.highlight {
+        props.highlight.clone_from(v);
+    }
+    if let Some(v) = &patch.fonts {
+        props.fonts.clone_from(v);
+    }
+    if let Some(v) = &patch.vert_align {
+        props.vert_align.clone_from(v);
     }
 }
 fn format_text(
