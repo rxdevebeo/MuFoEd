@@ -558,8 +558,50 @@ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
     {
         return true;
     }
+    // `CT_TextSpacingPercent/@val` (`a:spcPct` in line and paragraph spacing),
+    // `CT_TextBulletSizePercent/@val` (`a:buSzPct`) and
+    // `CT_LineJoinMiterProperties/@lim` (`a:miter`): thousandths in
+    // Transitional as well - 1161 of the census's schema violations were
+    // `a:spcPct` alone.
+    if matches!(
+        (element, attribute),
+        ("spcPct", "val") | ("buSzPct", "val") | ("miter", "lim")
+    ) {
+        return true;
+    }
     // `CT_TextCharacterProperties/@baseline` is `ST_Percentage`.
     matches!(element, "defRPr" | "rPr" | "endParaRPr") && attribute == "baseline"
+}
+
+/// Whether a chart attribute holds a whole percent - `150`, not thousandths -
+/// that Strict spells as a percent string (`150%`): the gap, overlap, label
+/// offset, hole, pie, bubble and 3-D depth/height amounts of `c:` charts.
+#[must_use]
+pub fn is_chart_whole_percent_attr(element: &str, attribute: &str) -> bool {
+    attribute == "val"
+        && matches!(
+            element,
+            "gapWidth"
+                | "gapDepth"
+                | "overlap"
+                | "lblOffset"
+                | "holeSize"
+                | "secondPieSize"
+                | "bubbleScale"
+                | "depthPercent"
+                | "hPercent"
+        )
+}
+
+/// `150` as `150%`; `None` for a value that already has the sign or is no
+/// integer.
+#[must_use]
+pub fn whole_percent(value: &str) -> Option<String> {
+    if value.ends_with('%') {
+        return None;
+    }
+    let number: i64 = value.trim().parse().ok()?;
+    Some(format!("{number}%"))
 }
 
 /// Whether an element/parent pair carries a bare `ST_MeasurementOrPercent`.
@@ -589,8 +631,9 @@ pub fn is_ignorable_extension(uri: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        drawingml_thousandths_percent, is_drawingml_percentage_attr, map_value, removal_for,
-        rename_attribute, rename_element, REMOVALS, RENAMES,
+        drawingml_thousandths_percent, is_chart_whole_percent_attr, is_drawingml_percentage_attr,
+        map_value, removal_for, rename_attribute, rename_element, whole_percent, REMOVALS,
+        RENAMES,
     };
     use crate::normalize::report::Severity;
 
@@ -755,6 +798,29 @@ mod tests {
                 entry.local
             );
         }
+    }
+
+    #[test]
+    fn the_census_carriers_are_drawingml_percentages() {
+        assert!(is_drawingml_percentage_attr("spcPct", "val"));
+        assert!(is_drawingml_percentage_attr("buSzPct", "val"));
+        assert!(is_drawingml_percentage_attr("miter", "lim"));
+        assert!(!is_drawingml_percentage_attr("spcPts", "val"));
+        assert_eq!(drawingml_thousandths_percent("20000").as_deref(), Some("20%"));
+        assert_eq!(drawingml_thousandths_percent("95000").as_deref(), Some("95%"));
+        assert_eq!(drawingml_thousandths_percent("800000").as_deref(), Some("800%"));
+    }
+
+    #[test]
+    fn chart_amounts_are_whole_percents() {
+        assert!(is_chart_whole_percent_attr("gapWidth", "val"));
+        assert!(is_chart_whole_percent_attr("overlap", "val"));
+        assert!(is_chart_whole_percent_attr("lblOffset", "val"));
+        assert!(!is_chart_whole_percent_attr("gapWidth", "lim"));
+        assert_eq!(whole_percent("150").as_deref(), Some("150%"));
+        assert_eq!(whole_percent("-100").as_deref(), Some("-100%"));
+        assert_eq!(whole_percent("100%"), None);
+        assert_eq!(whole_percent("wide"), None);
     }
 
     #[test]

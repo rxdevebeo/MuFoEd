@@ -2442,6 +2442,15 @@ fn mapped_value(
             return Some(mapped);
         }
     }
+    // ---- T4: chart amounts stored as whole percents ---------------------
+    // `c:gapWidth`/`c:overlap`/`c:lblOffset`... are `150`, `-100`, `100` in
+    // Transitional and `150%`, `-100%`, `100%` in Strict - not thousandths.
+    if tables::is_chart_whole_percent_attr(element, local) {
+        if let Some(mapped) = tables::whole_percent(value) {
+            report.record_mapping("T4.chart-percent", value, &mapped);
+            return Some(mapped);
+        }
+    }
     // ---- T4: math `ST_OnOff` rejects the Transitional `on`/`off` tokens ----
     // Only on/off carriers. `m:lMargin`/`m:rMargin` also use `@m:val` but hold
     // twips — mapping `"0"` to `"false"` corrupted every mathPr block.
