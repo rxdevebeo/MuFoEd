@@ -1,7 +1,8 @@
 # План оставшейся совместимости RTF
 
 Дата: 7 октября 2026. Историческая база RTF: `a7b3c9f`, ветка `codex/rtf-import`.
-Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `1c14d0b0`; подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
+Текущий интеграционный baseline: ветка `codex/rtf-import-integrated`, HEAD `5cccef4`
+(merge `master` `956948f` от 8 октября; см. «RC00: повторная интеграция master»); подробности и ограничения — в [RC00_INTEGRATION.md](RC00_INTEGRATION.md).
 Карточки остаются планом; RC00/RC01 частично закрыты, RC02 начат. Таблица ниже — исторический снимок 5 октября и не описывает новый прогон.
 ## Цель и исходное состояние
 
@@ -514,3 +515,35 @@ Geometry and degraded complex-script status are retained. Corpus gates were not
 rerun in this focused slice. Next: broader script/font profiles and complex-script
 visual/placement acceptance, bounded CLI configuration, full visual corpus.
 RC02 InProgress. Details: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).
+
+### RC00: повторная интеграция master — 2026-10-08
+
+Ветка `codex/rtf-import-integrated` повторно сведена с основной линией: `master`
+`956948f` влит merge-коммитом `5cccef4` (родители `bf676d1` и `956948f`), база
+прежняя — `ac51b687`. За время расхождения master получил never-crash линты,
+editing/IdIndex, P07–P15 audit, table styles, charts/SmartArt и CC0-корпус;
+RTF-очередь сохранила свою историю отдельной ветвью и не содержит `master`-путей.
+
+Конфликты (8): `.github/workflows/ci.yml` (объединены RTF-шаг и fetch CC0),
+`render-pdf/src/document.rs`, `render-pdf/src/font.rs`,
+`render-svg/src/{layout/mod,paint/text,style,lib}.rs`, `write/src/parts.rs`.
+В `paint/text.rs` и `layout/mod.rs` сохранён owned-aware `advance` (RTF), в
+`document.rs` — `owned_origin_adjustments` вместе с overflow-safe счётчиком
+master, в `parts.rs` принята master-версия `w:tentative` с `tentative_off`.
+
+RTF parser/builder приведены к расширенной WML-модели: `Style` заполняет
+`custom_style`, `auto_redefine`, `row`, `cell`, `conditions`; `Table` —
+`grid_change: None`; autospacing стал `Option<bool>`; `Picture` — `nv_id`/`bw_mode`;
+`BlipRef` — `cstate`. Значения выбраны совместимыми с прежним выводом
+(`nv_id: None` сохраняет recorded `pic:cNvPr@id` loss, не меняя DOCX hashes).
+
+Проверки после merge (Rust 1.98): `cargo +1.98.0 check --locked --workspace
+--all-targets` и то же с `--all-features` — Pass; `cargo fmt --all -- --check` —
+Pass. Тесты: `strict-ooxml-rtf` 30 Pass + 1 doc-test; `strict-ooxml-render-pdf`
+и `strict-ooxml --features rtf,pdf` — Pass (включая `pdf.rs`, east-asia, licensed
+CJK/Indic, ActualText); полный `strict-ooxml-render-svg` и `strict-ooxml-cli` с
+единственным документированным `--skip
+maps_regular_postscript_names_to_the_same_bundled_faces` — Pass без падений;
+`strict-ooxml-write` — Pass. Corpus/visual/pixel/XSD/OPC gates в этом срезе не
+перезапускались; статусы RC02+ и development-цифры не менялись. Это
+интеграционная сверка, а не новый baseline совместимости.

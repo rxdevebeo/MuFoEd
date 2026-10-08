@@ -189,3 +189,22 @@ Geometry and degraded complex-script status are retained. Corpus gates were not
 rerun in this focused slice. Next: broader script/font profiles and complex-script
 visual/placement acceptance, bounded CLI configuration, full visual corpus.
 RC02 InProgress. Details: [FONT_RESOURCE_CONTRACT.md](FONT_RESOURCE_CONTRACT.md).
+
+## RC00: повторная интеграция master — 2026-10-08
+
+`master` `956948f` влит в `codex/rtf-import-integrated` merge-коммитом `5cccef4`
+(родители `bf676d1` и `956948f`), база по-прежнему `ac51b687`. Перечень восьми
+конфликтов и решения по ним — в
+[REMAINING_COMPATIBILITY_PLAN.md](REMAINING_COMPATIBILITY_PLAN.md); здесь только
+результат сборки. RTF `parser.rs` и `picture.rs` адаптированы к полям WML,
+добавленным master (`Style` row/cell/conditions/custom_style/auto_redefine,
+`Table.grid_change`, `Option<bool>` autospacing, `Picture.nv_id/bw_mode`,
+`BlipRef.cstate`); выбранные значения сохраняют прежний вывод.
+
+Проверки на Rust 1.98: `cargo +1.98.0 check --locked --workspace --all-targets` и
+то же с `--all-features` — Pass; `cargo fmt --all -- --check` — Pass. Тесты:
+`strict-ooxml-rtf` (30 + 1 doc), `strict-ooxml-render-pdf` и
+`strict-ooxml --features rtf,pdf`, полный `strict-ooxml-render-svg` и
+`strict-ooxml-cli` с единственным документированным `--skip
+maps_regular_postscript_names_to_the_same_bundled_faces`, `strict-ooxml-write` —
+Pass. Corpus/visual/pixel/XSD/OPC gates в этом срезе не перезапускались.
