@@ -170,40 +170,37 @@ fn jpeg(bytes: &[u8]) -> Option<Encoded> {
     let mut components = 0u8;
     let mut adobe_transform: Option<u8> = None;
     let mut saw_sof = false;
-    while index + 3 < bytes.len() {
-        if bytes[index] != 0xFF {
+    // Each marker is `FF xx` followed by a big-endian segment length.
+    while let Some(&[lead, marker, high, low]) = bytes.get(index..index + 4) {
+        if lead != 0xFF {
             index += 1;
             continue;
         }
-        let marker = bytes[index + 1];
         if marker == 0xD9 || marker == 0xDA {
             // EOI / SOS — the frame header is behind us.
             break;
         }
-        if index + 4 > bytes.len() {
-            return None;
-        }
-        let length = u16::from_be_bytes([bytes[index + 2], bytes[index + 3]]);
+        let length = u16::from_be_bytes([high, low]);
         if length < 2 {
             return None;
         }
         let segment_end = index.checked_add(2)?.checked_add(usize::from(length))?;
-        if segment_end > bytes.len() {
-            return None;
-        }
-        let data = &bytes[index + 4..segment_end];
+        // `length >= 2` keeps the start at or before the end, so this is `None`
+        // only for a segment that runs past the data.
+        let data = bytes.get(index + 4..segment_end)?;
         // Adobe APP14: "Adobe\0" + version + flags + ColorTransform.
-        if marker == 0xEE && data.starts_with(b"Adobe\0") && data.len() >= 12 {
-            adobe_transform = Some(data[11]);
+        if marker == 0xEE && data.starts_with(b"Adobe\0") {
+            if let Some(&transform) = data.get(11) {
+                adobe_transform = Some(transform);
+            }
         }
         // SOF0..SOF15, excluding the DHT/JPG/DAC markers that share the range.
         if (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
-            if data.len() < 6 {
-                return None;
-            }
-            height = u32::from(u16::from_be_bytes([data[1], data[2]]));
-            width = u32::from(u16::from_be_bytes([data[3], data[4]]));
-            components = data[5];
+            let &[_, height_high, height_low, width_high, width_low, count] =
+                data.first_chunk::<6>()?;
+            height = u32::from(u16::from_be_bytes([height_high, height_low]));
+            width = u32::from(u16::from_be_bytes([width_high, width_low]));
+            components = count;
             saw_sof = true;
         }
         index = segment_end;
@@ -237,19 +234,17 @@ fn jpeg(bytes: &[u8]) -> Option<Encoded> {
 /// (palette → RGB/A, 16-bit → 8-bit), because that is what we store.
 fn png_ihdr_budget(bytes: &[u8]) -> Option<(u32, u32, u64)> {
     // signature (8) + length (4) + type (4) + IHDR data (13)
-    if bytes.len() < 8 + 4 + 4 + 13 {
+    let header: &[u8; 8 + 4 + 4 + 13] = bytes.first_chunk()?;
+    if !header.starts_with(b"\x89PNG\r\n\x1a\n") {
         return None;
     }
-    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+    let length = u32::from_be_bytes([header[8], header[9], header[10], header[11]]);
+    if length != 13 || [header[12], header[13], header[14], header[15]] != *b"IHDR" {
         return None;
     }
-    let length = u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
-    if length != 13 || &bytes[12..16] != b"IHDR" {
-        return None;
-    }
-    let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
-    let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
-    let color_type = bytes[25];
+    let width = u32::from_be_bytes([header[16], header[17], header[18], header[19]]);
+    let height = u32::from_be_bytes([header[20], header[21], header[22], header[23]]);
+    let color_type = header[25];
     // After `normalize_to_color8` every sample is one byte; palette may grow to
     // RGBA when a tRNS chunk is present, so budget 4 channels for type 3.
     let channels: u64 = match color_type {
@@ -295,7 +290,9 @@ fn png(bytes: &[u8], max_uncompressed: u64) -> Result<Encoded, RejectKind> {
     let info = reader
         .next_frame(&mut buffer)
         .map_err(|_| RejectKind::Damaged)?;
-    let samples = &buffer[..info.buffer_size()];
+    let Some(samples) = buffer.get(..info.buffer_size()) else {
+        return Err(RejectKind::Damaged);
+    };
     // A PDF image XObject carries colour samples and, separately, a soft mask.
     // The decoded PNG interleaves alpha with the colour channels, so an RGBA
     // image has to be *split* here: leaving the fourth channel in would write

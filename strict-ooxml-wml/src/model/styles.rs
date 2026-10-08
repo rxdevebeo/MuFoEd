@@ -137,8 +137,9 @@ impl StyleTable {
 
     /// Inserts a style. A later definition with the same id replaces the former.
     pub fn insert(&mut self, style: Style) {
-        if let Some(&index) = self.by_id.get(&style.id) {
-            self.styles[index] = style;
+        let existing = self.by_id.get(&style.id).copied();
+        if let Some(slot) = existing.and_then(|index| self.styles.get_mut(index)) {
+            *slot = style;
             return;
         }
         let index = self.styles.len();

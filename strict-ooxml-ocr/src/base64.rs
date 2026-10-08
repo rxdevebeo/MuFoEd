@@ -8,27 +8,31 @@
 /// Encodes bytes as standard base64 with padding.
 #[must_use]
 pub fn encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
-        let b0 = chunk[0];
+        let b0 = chunk.first().copied().unwrap_or(0);
         let b1 = chunk.get(1).copied().unwrap_or(0);
         let b2 = chunk.get(2).copied().unwrap_or(0);
         let triple = (u32::from(b0) << 16) | (u32::from(b1) << 8) | u32::from(b2);
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        out.push(digit(triple >> 18));
+        out.push(digit(triple >> 12));
         out.push(if chunk.len() > 1 {
-            ALPHABET[((triple >> 6) & 0x3F) as usize] as char
+            digit(triple >> 6)
         } else {
             '='
         });
-        out.push(if chunk.len() > 2 {
-            ALPHABET[(triple & 0x3F) as usize] as char
-        } else {
-            '='
-        });
+        out.push(if chunk.len() > 2 { digit(triple) } else { '=' });
     }
     out
+}
+
+/// The base64 digit for the low six bits of `value`.
+fn digit(value: u32) -> char {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    // Six bits always land in the 64-entry alphabet; the fallback is never taken.
+    ALPHABET
+        .get((value & 0x3F) as usize)
+        .map_or('=', |&byte| char::from(byte))
 }
 
 #[cfg(test)]

@@ -1435,6 +1435,8 @@ impl Grid {
         let mut top = 0.0f64;
         let mut widest: f64 = 0.0;
         for (row_index, row) in self.rows.iter().enumerate() {
+            let row_height = self.row_heights.get(row_index).copied().unwrap_or(0.0);
+            let row_depth = self.row_depths.get(row_index).copied().unwrap_or(0.0);
             let mut x = 0.0f64;
             for (column_index, cell) in row.iter().enumerate() {
                 let column = self.column_widths.get(column_index).copied().unwrap_or(0.0);
@@ -1447,16 +1449,14 @@ impl Grid {
                 // baseline of a cell sits `cell.height` below the row's top, and
                 // the row's top is `top` below the block's baseline (which is
                 // the first row's baseline).
-                let dy = top + cell.size.height - self.row_heights[row_index];
+                let dy = top + cell.size.height - row_height;
                 out.place(cell.clone(), x + align, dy);
                 x += column + self.column_gap;
             }
             widest = widest.max(x - self.column_gap);
             // Rows advance by a whole line of the math font, or by their own
             // extent when a cell is taller than one line.
-            top += self.row_heights[row_index]
-                .max(self.row_pitch)
-                .max(self.row_heights[row_index] + self.row_depths[row_index]);
+            top += row_height.max(self.row_pitch).max(row_height + row_depth);
         }
         let total = top.max(0.0);
         let first_baseline = self.row_heights.first().copied().unwrap_or(0.0);

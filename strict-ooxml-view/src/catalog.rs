@@ -331,13 +331,17 @@ fn attach_sidecar(path: &Path, summary: &mut PipelineSummary) -> &'static str {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut text = String::with_capacity(64);
     for byte in Sha256::digest(bytes) {
-        text.push(char::from(HEX[usize::from(byte >> 4)]));
-        text.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        text.push(hex_digit(byte >> 4));
+        text.push(hex_digit(byte & 0x0f));
     }
     text
+}
+
+/// A lowercase hex digit for a nibble; the fallback is never taken.
+fn hex_digit(nibble: u8) -> char {
+    char::from_digit(u32::from(nibble), 16).unwrap_or('0')
 }
 
 fn quoted_field(text: &str, key: &str) -> Option<String> {
@@ -365,10 +369,15 @@ fn sidecar_issues(text: &str) -> Vec<PipelineIssue> {
     let mut issues = Vec::new();
     let mut rest = text;
     while let Some(start) = rest.find("\"stage\"") {
-        let slice = &rest[start..];
+        // `find` returns char boundaries, so neither split can fail.
+        let Some(slice) = rest.get(start..) else {
+            break;
+        };
         let end = slice.find('}').map_or(slice.len(), |index| index);
-        let object = &slice[..end];
-        rest = &slice[end..];
+        let Some((object, tail)) = slice.split_at_checked(end) else {
+            break;
+        };
+        rest = tail;
         let Some(stage) = quoted_field(object, "stage")
             .as_deref()
             .and_then(stage_named)

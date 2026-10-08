@@ -1069,9 +1069,10 @@ fn reserve(
             *x = normal_x;
             continue;
         }
-        let Some(index) = spans
+        let Some((index, &(start, end))) = spans
             .iter()
-            .position(|(start, end)| *x < *end - 1e-6 && *end - start.max(*x) + 1e-9 >= 0.0)
+            .enumerate()
+            .find(|(_, (start, end))| *x < *end - 1e-6 && *end - start.max(*x) + 1e-9 >= 0.0)
         else {
             if advance_past_blocked(sink, current, x, normal_x) {
                 continue;
@@ -1083,7 +1084,6 @@ fn reserve(
             *x = normal_x;
             continue;
         };
-        let (start, end) = spans[index];
         if *x < start {
             *x = start;
         }
@@ -1421,7 +1421,9 @@ fn apply_substitute_width_reflow(
         return;
     }
     // When every run shares one scale, stretch uniformly (including justify gaps).
-    let first = scales[0];
+    let Some(&first) = scales.first() else {
+        return;
+    };
     if scales.iter().all(|s| (*s - first).abs() <= 1e-9) {
         for (item, scale) in items.iter_mut().zip(scales.iter().copied()) {
             let rel = item.x - origin;
@@ -1433,22 +1435,27 @@ fn apply_substitute_width_reflow(
     }
     // Mixed bold/regular: keep justify gaps, scale each run's width, and scale
     // gaps by the following run's factor so later origins stay consistent.
-    let snapshot: Vec<(f64, f64)> = items.iter().map(|item| (item.x, item.width)).collect();
-    let mut order: Vec<usize> = (0..items.len()).collect();
+    // Snapshot `(index, x, width, scale)` so the walk reads pre-scaling geometry.
+    let mut order: Vec<(usize, f64, f64, f64)> = items
+        .iter()
+        .zip(scales.iter().copied())
+        .enumerate()
+        .map(|(idx, (item, scale))| (idx, item.x, item.width, scale))
+        .collect();
     // `total_cmp`: a NaN origin from hostile metrics must not abort the sort.
-    order.sort_by(|a, b| snapshot[*a].0.total_cmp(&snapshot[*b].0));
+    order.sort_by(|a, b| a.1.total_cmp(&b.1));
     let mut cursor = origin;
     let mut prev_right = origin;
-    for &idx in &order {
-        let (ox, ow) = snapshot[idx];
-        let scale = scales[idx];
+    for (idx, ox, ow, scale) in order {
         let gap = (ox - prev_right).max(0.0);
         let gap_factor = distance_blend_scale((ox - origin).max(0.0), scale);
         cursor += gap * gap_factor;
-        items[idx].x = cursor;
         let width_factor = distance_blend_scale((ox - origin).max(0.0), scale);
-        items[idx].width = ow * width_factor;
-        cursor += items[idx].width;
+        if let Some(item) = items.get_mut(idx) {
+            item.x = cursor;
+            item.width = ow * width_factor;
+            cursor += item.width;
+        }
         prev_right = ox + ow;
     }
 }
@@ -1874,8 +1881,8 @@ fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
     for segment in pending {
         match segment {
             Seg::Text(text, run) => {
-                if let Some(index) = text.find(['.', ',']) {
-                    width += ctx.measure(&text[..index], run);
+                if let Some(head) = text.find(['.', ',']).and_then(|index| text.get(..index)) {
+                    width += ctx.measure(head, run);
                     return width;
                 }
                 width += ctx.measure(text, run);

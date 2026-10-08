@@ -109,16 +109,16 @@ pub(crate) fn percent_decode(input: &str) -> Option<String> {
     let bytes = input.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
+    while let Some(&byte) = bytes.get(index) {
+        if byte == b'%' {
             let hex = input.get(index + 1..index + 3)?;
             out.push(u8::from_str_radix(hex, 16).ok()?);
             index += 3;
-        } else if bytes[index] == b'+' {
+        } else if byte == b'+' {
             out.push(b' ');
             index += 1;
         } else {
-            out.push(bytes[index]);
+            out.push(byte);
             index += 1;
         }
     }

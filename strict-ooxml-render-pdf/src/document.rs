@@ -188,12 +188,13 @@ pub fn render_with_source(
     for ((font, _), ids) in fonts.iter().zip(font_ids.iter()) {
         write_font(&mut pdf, *ids, font);
     }
-    for (index, page) in pages.iter().enumerate() {
-        let objects = &page_objects[index];
+    // Pass one pushed one stream per page and the loop above one set of ids per
+    // stream, so the three line up.
+    for ((page, objects), (content, _)) in pages.iter().zip(&page_objects).zip(&streams) {
         let width_pt = px_to_pt(page.width_px, scale) as f32;
         let height_pt = px_to_pt(page.height_px, scale) as f32;
         {
-            let (data, compressed) = flate(&streams[index].0);
+            let (data, compressed) = flate(content);
             let mut stream = pdf.stream(objects.content, &data);
             if compressed {
                 stream.filter(Filter::FlateDecode);

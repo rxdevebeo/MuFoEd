@@ -22,7 +22,8 @@
         clippy::panic,
         clippy::todo,
         clippy::unimplemented,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 
@@ -445,8 +446,8 @@ impl Config {
             scale: 96.0,
         };
         let mut index = 0;
-        while index < args.len() {
-            match args[index].as_str() {
+        while let Some(arg) = args.get(index) {
+            match arg.as_str() {
                 "--port" => {
                     index += 1;
                     let Some(value) = args.get(index) else {

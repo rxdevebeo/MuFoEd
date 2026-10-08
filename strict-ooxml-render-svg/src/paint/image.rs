@@ -205,30 +205,42 @@ pub(crate) fn image_svg(out: &mut String, item: &ImageItem) {
 /// Encodes bytes as standard Base64 with padding (deterministic).
 #[must_use]
 pub(crate) fn base64_encode(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let b0 = u32::from(chunk[0]);
+        let Some(&first) = chunk.first() else {
+            continue;
+        };
+        let b0 = u32::from(first);
         let b1 = chunk.get(1).copied().map_or(0, u32::from);
         let b2 = chunk.get(2).copied().map_or(0, u32::from);
         let triple = (b0 << 16) | (b1 << 8) | b2;
-        // `& 0x3F` is six bits, so every index below is 0..=63 into a 64-character
-        // alphabet: the `usize` is the index type, not a conversion of a number
-        // this crate computed from input arithmetic (AUD-09's G-2 audit).
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        out.push(base64_digit(triple, 18));
+        out.push(base64_digit(triple, 12));
         if chunk.len() > 1 {
-            out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
+            out.push(base64_digit(triple, 6));
         } else {
             out.push('=');
         }
         if chunk.len() > 2 {
-            out.push(ALPHABET[(triple & 0x3F) as usize] as char);
+            out.push(base64_digit(triple, 0));
         } else {
             out.push('=');
         }
     }
     out
+}
+
+/// The Base64 digit for the six bits of `triple` starting at bit `shift`.
+fn base64_digit(triple: u32, shift: u32) -> char {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    // `& 0x3F` is six bits, so the index is 0..=63 into a 64-character
+    // alphabet and `get` never misses: the `usize` is the index type, not a
+    // conversion of a number this crate computed from input arithmetic
+    // (AUD-09's G-2 audit).
+    ALPHABET
+        .get(((triple >> shift) & 0x3F) as usize)
+        .copied()
+        .map_or('=', char::from)
 }
 
 #[cfg(test)]

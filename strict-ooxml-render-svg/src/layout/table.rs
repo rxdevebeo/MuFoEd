@@ -231,7 +231,12 @@ fn layout_row(
     escape_frames: bool,
     skip_cell_h_margins: bool,
 ) -> LaidOutRow {
-    let row = &table.rows[row_index];
+    let Some(row) = table.rows.get(row_index) else {
+        return LaidOutRow {
+            cells: Vec::new(),
+            height: 0.0,
+        };
+    };
     let row_columns: usize = row
         .cells
         .iter()
@@ -387,7 +392,8 @@ fn restart_cell<'a>(rows: &'a [RawRow], row: usize, cell: &RawCell) -> Option<&'
     let mut index = row;
     while index > 0 {
         index -= 1;
-        let candidate = rows[index]
+        let candidate = rows
+            .get(index)?
             .cells
             .iter()
             .find(|candidate| candidate.col == cell.col && candidate.span == cell.span)?;
@@ -702,18 +708,19 @@ pub(crate) fn layout_blocks_inline(
     }
     ctx.set_block_depth(depth);
     let mut index = 0;
-    while index < blocks.len() {
+    while let Some(block) = blocks.get(index) {
         if escape_frames {
-            if let Block::Paragraph(para) = &blocks[index] {
+            if let Block::Paragraph(para) = block {
                 if para.props.frame.is_some() {
                     let end = frame_group_end(blocks, index);
-                    page_frames.extend(cell_frame_items(ctx, &blocks[index..end]));
+                    let group = blocks.get(index..end).unwrap_or_default();
+                    page_frames.extend(cell_frame_items(ctx, group));
                     index = end;
                     continue;
                 }
             }
         }
-        match &blocks[index] {
+        match block {
             Block::Paragraph(para) => {
                 place_cell_paragraph(ctx, para, left, width, y, items, note_marker, page_frames);
             }
@@ -833,15 +840,15 @@ fn append_table_flows(
 
 /// End of a run of paragraphs that share one frame signature.
 pub(crate) fn frame_group_end(blocks: &[Block], start: usize) -> usize {
-    let Block::Paragraph(first) = &blocks[start] else {
+    let Some(Block::Paragraph(first)) = blocks.get(start) else {
         return start;
     };
     let Some(signature) = first.props.frame.clone() else {
         return start;
     };
     let mut end = start + 1;
-    while end < blocks.len() {
-        let Block::Paragraph(para) = &blocks[end] else {
+    while let Some(block) = blocks.get(end) {
+        let Block::Paragraph(para) = block else {
             break;
         };
         if para.props.page_break_before.is_on() || para.props.frame.as_ref() != Some(&signature) {
@@ -1133,7 +1140,7 @@ pub(crate) fn layout_frame_contents(
 
 /// Page-absolute items for a frame group found inside a cell.
 fn cell_frame_items(ctx: &LayoutContext<'_>, blocks: &[Block]) -> Vec<Item> {
-    let Block::Paragraph(first) = &blocks[0] else {
+    let Some(Block::Paragraph(first)) = blocks.first() else {
         return Vec::new();
     };
     let Some(frame) = first.props.frame.as_ref() else {
@@ -1217,7 +1224,10 @@ fn push_borders(
         if !draw {
             continue;
         }
-        let inside = interior[usize::from(edge)];
+        let inside = interior
+            .get(usize::from(edge))
+            .copied()
+            .unwrap_or_default();
         if let Some(stroke) = resolve_edge(ctx, table, properties, edge, inside) {
             items.push(Item::Line(LineItem {
                 x1,

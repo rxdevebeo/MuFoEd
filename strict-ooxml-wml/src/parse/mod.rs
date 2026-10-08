@@ -1333,8 +1333,9 @@ fn parse_measure_twips(value: &str) -> Option<f64> {
     let (number, unit) = match trimmed
         .char_indices()
         .find(|(_, ch)| ch.is_ascii_alphabetic())
+        .and_then(|(index, _)| trimmed.split_at_checked(index))
     {
-        Some((index, _)) => (&trimmed[..index], Some(trimmed[index..].trim())),
+        Some((number, unit)) => (number, Some(unit.trim())),
         None => (trimmed, None),
     };
     let number = parse_decimal(number)?;
