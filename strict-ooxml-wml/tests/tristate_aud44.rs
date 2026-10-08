@@ -105,3 +105,40 @@ fn bold_xor_across_paragraph_and_character_styles() {
     );
     let _ = SupportStatus::Supported;
 }
+
+/// Style flags are `CT_OnOff`: `w:val` decides and a bare element means on.
+/// They used to be set by the element's presence alone, so `w:val="0"` read
+/// (and was written back) as on.
+#[test]
+fn style_flags_honour_their_value() {
+    let styles = format!(
+        "<w:styles xmlns:w=\"{W_NS}\">\
+<w:style w:type=\"paragraph\" w:styleId=\"S\">\
+<w:qFormat w:val=\"0\"/><w:hidden w:val=\"false\"/><w:semiHidden w:val=\"off\"/>\
+<w:locked/><w:autoRedefine w:val=\"1\"/><w:unhideWhenUsed w:val=\"maybe\"/>\
+</w:style></w:styles>"
+    );
+    let rels = rels(&[("rIdStyles", STYLES, "styles.xml")]);
+    let parts = document_parts(
+        "<w:p/>",
+        &[
+            ("word/styles.xml", styles.into_bytes()),
+            ("word/_rels/document.xml.rels", rels),
+        ],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    let style = document
+        .styles
+        .get(&strict_ooxml_wml::model::StyleId::new("S"))
+        .expect("style");
+    assert!(!style.q_format, "w:val=\"0\"");
+    assert!(!style.hidden, "w:val=\"false\"");
+    assert!(!style.semi_hidden, "w:val=\"off\"");
+    assert!(style.locked, "bare element");
+    assert!(style.auto_redefine, "w:val=\"1\"");
+    assert!(!style.unhide_when_used, "an invalid value reads as off");
+    assert!(
+        document.support.get("w:unhideWhenUsed").is_some(),
+        "and is recorded"
+    );
+}

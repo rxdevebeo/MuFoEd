@@ -1,0 +1,35 @@
+{
+  "package": "P14",
+  "slug": "sdt-docpart",
+  "visual_level": "V4",
+  "date_utc": "2026-10-07",
+  "acceptance": "ACCEPT",
+  "rows_before": 280,
+  "rows_after": 0,
+  "labels": [
+    "w:docPartGallery",
+    "w:docPartObj",
+    "w:docPartUnique",
+    "w:sdtEndPr"
+  ],
+  "witness_docs": [
+    "1. First-Steps-in-Programming.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P14-1": true,
+    "T-P14-2": true
+  },
+  "corpus_slice_exit": 1,
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 784,
+  "notes": [
+    "docPart gallery/unique and empty sdtEndPr are written. w:alias was already preserved and is not a waiver.",
+    "w:dataBinding (12) and w:text under sdtPr (9) stay unclassified. TZ-32 requires named=1 and these rows are named=0.",
+    "unmatched_schema stays 1198. D05 is not PASS. M4 is not closed."
+  ]
+}

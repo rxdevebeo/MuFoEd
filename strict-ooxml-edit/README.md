@@ -34,7 +34,7 @@ Features (both enabled by default):
   are explicit. Rebuild maps after revision/render-option changes.
 
 Without default features the core has no writer/renderer runtime dependency.
-The original EditSession/Command API remains available for plain body text.
+The original `EditSession`/`Command` API is deprecated: it is now a thin wrapper that forwards to `Editor` with `Edit::Text`/`Edit::Format` on `Address::body`. `Editor::transact_detailed` reports which command of a batch failed and at which address.
 `Operations` composes the public kernel commands for literal/metadata search,
 atomic replace-all and block/row moves within a container. Search works across
 runs and inline wrappers; protected hits are rejected or explicitly skipped.

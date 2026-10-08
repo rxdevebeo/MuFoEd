@@ -91,7 +91,7 @@ impl FeatureUse {
     }
 }
 
-/// Feature id that absorbs records past [`SupportModel::max_features`] (AUD-51).
+/// Feature id that absorbs records past `SupportModel::max_features` (AUD-51).
 pub const SUPPORT_OVERFLOW_ID: &str = "support.overflow";
 
 /// Aggregated support information for a document.

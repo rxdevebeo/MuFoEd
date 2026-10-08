@@ -13,12 +13,15 @@
 //! * [`harness`] — runs a closure on a small stack under a timeout, so a test can
 //!   tell a returned error from a panic and from a hang;
 //! * [`audit`] — one generated DOCX or PDF per confirmed audit mechanism;
+//! * [`corpus`] — the CC0 corpus by its committed lock file, with the
+//!   [`corpus_doc!`] macro;
 //! * [`inspect`] — a ZIP/XML and PDF-structure check that does not use the
 //!   production parsers.
 //!
 //! The crate depends on no other crate of the workspace and is never published.
 
 pub mod audit;
+pub mod corpus;
 pub mod docx;
 pub mod harness;
 pub mod inspect;

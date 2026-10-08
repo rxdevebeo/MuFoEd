@@ -58,10 +58,9 @@ fn writable(
     location: &strict_ooxml_core::error::SourceLocation,
 ) -> bool {
     let (feature_id, reason) = match graphic {
-        Graphic::Picture(_)
-        | Graphic::Shape(_)
-        | Graphic::Group(_)
-        | Graphic::LockedCanvas(_) => return true,
+        Graphic::Picture(_) | Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_) => {
+            return true
+        }
         Graphic::Chart(refs) => match foreign(ctx, refs) {
             Ok(()) => return true,
             Err(reason) => ("c:chart", reason),
@@ -478,14 +477,23 @@ fn document_properties(
     xml: &mut XmlWriter,
     doc_pr: &Option<DocPr>,
     fallback_name: &str,
-    _location: &strict_ooxml_core::error::SourceLocation,
+    location: &strict_ooxml_core::error::SourceLocation,
 ) {
     // `wp:docPr/@id` must be unique within the part. The parsed id is kept
     // when it is still free; only a missing or repeated id is freshly allocated.
-    let id = match doc_pr.as_ref().and_then(|pr| pr.id) {
+    let (id, remapped) = match doc_pr.as_ref().and_then(|pr| pr.id) {
         Some(id) => ctx.reserve_doc_pr_id(id),
-        None => ctx.next_doc_pr_id(),
+        None => (ctx.next_doc_pr_id(), false),
     };
+    if remapped {
+        // Cite so census TZ-48 can waive uniqueness remaps; an uncited foreign
+        // id rewrite (no expansion / no collision) must stay unclassified.
+        ctx.report_info(
+            "wp:docPr",
+            "docPr/@id remapped to keep uniqueness within the part",
+            location,
+        );
+    }
     xml.start("wp:docPr");
     xml.attr("id", id);
     xml.attr(
@@ -537,7 +545,7 @@ fn graphic(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, graphic_uri: Option<&str>, pa
         }
         Graphic::LockedCanvas(canvas) => {
             xml.attr("uri", strict_graphic_uri(graphic_uri, URI_LOCKED_CANVAS));
-            locked_canvas_element(xml, canvas);
+            locked_canvas_element(ctx, xml, canvas);
         }
         // A chart and a SmartArt diagram are references into parts the model does
         // not carry. `writable` has already refused the ones whose parts are not
@@ -577,14 +585,18 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.start("pic:pic");
     xml.start("pic:nvPicPr");
     xml.start("pic:cNvPr");
-    // The model does not store `pic:cNvPr/@id`. Writing 0 is a named replacement,
-    // not a silent one.
-    ctx.report_partial(
-        "pic:cNvPr@id",
-        "picture non-visual id is not stored and is written as 0",
-        &strict_ooxml_core::error::SourceLocation::unknown(),
-    );
-    xml.attr("id", "0");
+    match picture.nv_id {
+        Some(id) => xml.attr("id", id),
+        None => {
+            // A picture built in code has no producer id. Writing 0 is cited.
+            ctx.report_partial(
+                "pic:cNvPr@id",
+                "picture non-visual id is not stored and is written as 0",
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+            xml.attr("id", "0");
+        }
+    }
     xml.attr("name", picture.name.as_deref().unwrap_or("Picture"));
     xml.attr_opt("descr", picture.descr.as_deref());
     xml.end();
@@ -606,6 +618,9 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
             &strict_ooxml_core::error::SourceLocation::unknown(),
         ),
     }
+    if let Some(blip) = picture.blip.as_ref() {
+        xml.attr_opt("cstate", blip.cstate.as_deref());
+    }
     // AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`, not a
     // child. The parser skips unknown children of `a:blip`, so a nested crop was
     // written once and lost on the next read — fixed-point failed.
@@ -619,6 +634,7 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.end();
 
     xml.start("pic:spPr");
+    xml.attr_opt("bwMode", picture.bw_mode.as_deref());
     transform(xml, &picture.xfrm, picture.extent.as_ref());
     geometry_element(xml, &ShapeGeometry::None);
     xml.end();
@@ -652,7 +668,17 @@ fn thousandths_percent(value: i32) -> String {
 fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.start("wps:wsp");
     xml.start("wps:cNvPr");
-    xml.attr("id", "0");
+    match shape.nv_id {
+        Some(id) => xml.attr("id", id),
+        None => {
+            ctx.report_partial(
+                "wps:cNvPr@id",
+                "shape non-visual id is not stored and is written as 0",
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+            xml.attr("id", "0");
+        }
+    }
     xml.attr("name", shape.name.as_deref().unwrap_or("Shape"));
     xml.attr_opt("descr", shape.descr.as_deref());
     xml.end();
@@ -663,6 +689,7 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.empty("a:spLocks");
     xml.end();
     xml.start("wps:spPr");
+    xml.attr_opt("bwMode", shape.bw_mode.as_deref());
     let mut xfrm = shape.xfrm;
     if let Some(xfrm) = xfrm.as_mut() {
         if xfrm.offset.is_none() {
@@ -679,7 +706,7 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     transform(xml, &xfrm, shape.extent.as_ref());
     geometry_element(xml, &shape.geometry);
     if let Some(fill) = &shape.fill {
-        fill_element(xml, fill);
+        fill_element(ctx, xml, fill);
     }
     if let Some(stroke) = &shape.stroke {
         stroke_element(xml, stroke);
@@ -687,24 +714,38 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.end();
     if let Some(style) = &shape.style {
         xml.start("wps:style");
-        for (name, index, color) in [
-            ("a:lnRef", style.line_ref, style.line_ref.map(|_| "phClr")),
-            ("a:fillRef", style.fill_ref, style.fill_ref.map(|_| "phClr")),
+        for (name, index, color, fallback) in [
+            (
+                "a:lnRef",
+                style.line_ref.as_deref(),
+                style.line_ref_color.as_deref(),
+                "phClr",
+            ),
+            (
+                "a:fillRef",
+                style.fill_ref.as_deref(),
+                style.fill_ref_color.as_deref(),
+                "phClr",
+            ),
             (
                 "a:effectRef",
-                style.effect_ref,
-                style.effect_ref.map(|_| "phClr"),
+                style.effect_ref.as_deref(),
+                style.effect_ref_color.as_deref(),
+                "phClr",
             ),
-            ("a:fontRef", style.font_ref, style.font_ref.map(|_| "tx1")),
+            (
+                "a:fontRef",
+                style.font_ref.as_deref(),
+                style.font_ref_color.as_deref(),
+                "tx1",
+            ),
         ] {
             if let Some(index) = index {
                 xml.start(name);
                 xml.attr("idx", index);
-                if let Some(color) = color {
-                    xml.start("a:schemeClr");
-                    xml.attr("val", color);
-                    xml.end();
-                }
+                xml.start("a:schemeClr");
+                xml.attr("val", color.unwrap_or(fallback));
+                xml.end();
                 xml.end();
             }
         }
@@ -833,7 +874,7 @@ fn point(xml: &mut XmlWriter, name: &'static str, x: i64, y: i64) {
     xml.end();
 }
 
-fn fill_element(xml: &mut XmlWriter, fill: &ShapeFill) {
+fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
     match fill {
         ShapeFill::None => xml.empty("a:noFill"),
         ShapeFill::Solid { color } => {
@@ -878,6 +919,30 @@ fn fill_element(xml: &mut XmlWriter, fill: &ShapeFill) {
                 shape_color(xml, background);
                 xml.end();
             }
+            xml.end();
+        }
+        ShapeFill::Blip { blip, fill_rect } => {
+            xml.start("a:blipFill");
+            xml.start("a:blip");
+            match ctx.media_rel(blip.resolved.as_ref()) {
+                Some(embed) => xml.attr("r:embed", embed),
+                None => ctx.report_unsupported(
+                    "a:blipFill/@r:embed",
+                    "shape fill has no embedded image relationship",
+                    &strict_ooxml_core::error::SourceLocation::unknown(),
+                ),
+            }
+            xml.attr_opt("cstate", blip.cstate.as_deref());
+            xml.end();
+            xml.start("a:stretch");
+            xml.start("a:fillRect");
+            for (name, value) in ["l", "t", "r", "b"].into_iter().zip(fill_rect) {
+                if let Some(value) = value {
+                    xml.attr(name, value.as_ref());
+                }
+            }
+            xml.end();
+            xml.end();
             xml.end();
         }
     }
@@ -1029,8 +1094,37 @@ fn body_properties(xml: &mut XmlWriter, body: &TextBoxBody) {
 }
 
 /// Writes a preserved `lc:lockedCanvas` subtree.
-fn locked_canvas_element(xml: &mut XmlWriter, canvas: &LockedCanvas) {
-    xml.raw_markup(canvas.markup.as_ref(), &["lc", "a", "r", "pic"]);
+///
+/// Image ids inside the markup are the source ids. They are rewritten to the
+/// ids this package allocated for the same bytes, so a later relationship
+/// (`rId8` as a header, for example) cannot steal the picture.
+fn locked_canvas_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, canvas: &LockedCanvas) {
+    let mut markup = canvas.markup.to_string();
+    // Two passes so a new id that equals some other source id is not rewritten
+    // again (`rId8` → `rId15`, then `rId15` → something else).
+    let mut planned = Vec::new();
+    for (old_id, part) in &canvas.images {
+        if let Some(new_id) = ctx.media_rel(Some(part)) {
+            if new_id != *old_id {
+                planned.push((old_id.clone(), new_id));
+            }
+        }
+    }
+    for (index, (old_id, _)) in planned.iter().enumerate() {
+        for attr in ["r:embed", "r:link", "r:id"] {
+            let from = format!("{attr}=\"{old_id}\"");
+            let token = format!("{attr}=\"@@rel{index}@@\"");
+            markup = markup.replace(&from, &token);
+        }
+    }
+    for (index, (_, new_id)) in planned.iter().enumerate() {
+        for attr in ["r:embed", "r:link", "r:id"] {
+            let token = format!("{attr}=\"@@rel{index}@@\"");
+            let to = format!("{attr}=\"{new_id}\"");
+            markup = markup.replace(&token, &to);
+        }
+    }
+    xml.raw_markup(&markup, &["lc", "a", "r", "pic"]);
 }
 
 /// Writes `wpg:wgp` (graphicData root) or a nested `wpg:grpSp`.
@@ -1038,12 +1132,7 @@ fn group_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape) {
     group_element_as(ctx, xml, group, "wpg:wgp");
 }
 
-fn group_element_as(
-    ctx: &mut Ctx<'_>,
-    xml: &mut XmlWriter,
-    group: &GroupShape,
-    tag: &'static str,
-) {
+fn group_element_as(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape, tag: &'static str) {
     xml.start(tag);
     xml.start("wpg:cNvGrpSpPr");
     xml.end();
@@ -1164,10 +1253,13 @@ mod tests {
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: Some("Logo".into()),
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     blip: Some(BlipRef {
                         embed: Some(RelId::new("rId7")),
                         link: None,
                         resolved: Some(PartId::new("/word/media/image1.png")),
+                        cstate: None,
                         location: SourceLocation::unknown(),
                     }),
                     extent: Some(Extent {
@@ -1241,10 +1333,13 @@ mod tests {
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: None,
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     blip: Some(BlipRef {
                         embed: Some(RelId::new("rId1")),
                         link: None,
                         resolved: Some(PartId::new("/word/media/image1.png")),
+                        cstate: None,
                         location: SourceLocation::unknown(),
                     }),
                     extent: None,
@@ -1317,6 +1412,8 @@ mod tests {
                 graphic: Box::new(Graphic::Shape(Shape {
                     name: Some("box".into()),
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     tx_box: Some(true),
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
@@ -1360,6 +1457,130 @@ mod tests {
     }
 
     #[test]
+    fn dropping_non_default_body_pr_wrap_is_visible() {
+        // T-P4-3: wrap other than the omitted default must not compare equal
+        // to a silent drop, and the writer must emit the explicit value.
+        use strict_ooxml_wml::model::drawing::{Shape, ShapeGeometry, TextBox, TextBoxBody};
+
+        let keep = TextBoxBody {
+            wrap: Some("none".into()),
+            ..TextBoxBody::default()
+        };
+        let dropped = TextBoxBody {
+            wrap: None,
+            ..TextBoxBody::default()
+        };
+        assert_ne!(keep, dropped);
+
+        let drawing = Drawing {
+            kind: DrawingKind::Inline(InlineDrawing {
+                extent: Some(Extent {
+                    cx: Emu(100),
+                    cy: Emu(100),
+                }),
+                effect_extent: None,
+                doc_pr: None,
+                dist_top: None,
+                dist_bottom: None,
+                dist_left: None,
+                dist_right: None,
+                graphic_uri: None,
+                graphic: Box::new(Graphic::Shape(Shape {
+                    name: None,
+                    descr: None,
+                    nv_id: None,
+                    bw_mode: None,
+                    tx_box: Some(true),
+                    geometry: ShapeGeometry::Preset("rect".into()),
+                    xfrm: None,
+                    offset: Some((Emu(0), Emu(0))),
+                    extent: Some(Extent {
+                        cx: Emu(100),
+                        cy: Emu(100),
+                    }),
+                    fill: None,
+                    stroke: None,
+                    text: Some(TextBox {
+                        body: Some(keep),
+                        blocks: Vec::new(),
+                        location: SourceLocation::unknown(),
+                    }),
+                    style: None,
+                    location: SourceLocation::unknown(),
+                })),
+                location: SourceLocation::unknown(),
+            }),
+            location: SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        drawing_element(&mut ctx, &mut xml, &drawing);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("wrap=\"none\""), "{text}");
+        assert!(!text.contains("wrap=\"square\""), "{text}");
+    }
+
+    #[test]
+    fn doc_pr_id_is_preserved_until_collision_forces_remap() {
+        use strict_ooxml_wml::model::drawing::DocPr;
+
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let loc = SourceLocation::unknown();
+        let mut xml = XmlWriter::new();
+
+        let first = Some(DocPr {
+            id: Some(7),
+            name: Some("a".into()),
+            descr: None,
+            title: None,
+        });
+        let second = Some(DocPr {
+            id: Some(7),
+            name: Some("b".into()),
+            descr: None,
+            title: None,
+        });
+        let third = Some(DocPr {
+            id: Some(9),
+            name: Some("c".into()),
+            descr: None,
+            title: None,
+        });
+        super::document_properties(&mut ctx, &mut xml, &first, "Picture", &loc);
+        super::document_properties(&mut ctx, &mut xml, &second, "Picture", &loc);
+        super::document_properties(&mut ctx, &mut xml, &third, "Picture", &loc);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains("id=\"7\""), "{text}");
+        assert!(text.contains("id=\"9\""), "{text}");
+        // Collision on the second drawing forces a fresh id and cites wp:docPr.
+        assert!(
+            report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "wp:docPr"),
+            "{report}"
+        );
+        // Free id 9 must not be rewritten: a foreign remap without collision
+        // would rewrite it; the preserve path is the negative control.
+        let ids: Vec<_> = text
+            .split("wp:docPr")
+            .skip(1)
+            .filter_map(|chunk| {
+                let start = chunk.find("id=\"")?;
+                let rest = &chunk[start + 4..];
+                let end = rest.find('"')?;
+                rest.get(..end)?.parse::<u32>().ok()
+            })
+            .collect();
+        assert_eq!(ids.len(), 3, "{text}");
+        assert_eq!(ids[0], 7);
+        assert_ne!(ids[1], 7);
+        assert_eq!(ids[2], 9);
+    }
+
+    #[test]
     fn locked_canvas_markup_is_emitted_with_placement() {
         use strict_ooxml_wml::model::drawing::LockedCanvas;
 
@@ -1367,7 +1588,7 @@ mod tests {
             r#"<lc:lockedCanvas xmlns:lc="http://purl.oclc.org/ooxml/drawingml/lockedCanvas" xmlns:a="http://purl.oclc.org/ooxml/drawingml/main">"#,
             r#"<a:grpSpPr><a:xfrm><a:off x="10" y="20"/><a:ext cx="100" cy="200"/>"#,
             r#"<a:chOff x="1" y="2"/><a:chExt cx="100" cy="200"/></a:xfrm></a:grpSpPr>"#,
-            r#"</lc:lockedCanvas>"#,
+            "</lc:lockedCanvas>",
         );
         let drawing = Drawing {
             kind: DrawingKind::Inline(InlineDrawing {
@@ -1384,6 +1605,7 @@ mod tests {
                 graphic_uri: None,
                 graphic: Box::new(Graphic::LockedCanvas(LockedCanvas {
                     markup: markup.into(),
+                    images: Vec::new(),
                     location: SourceLocation::unknown(),
                 })),
                 location: SourceLocation::unknown(),
@@ -1412,6 +1634,8 @@ mod tests {
             Graphic::Shape(Shape {
                 name: None,
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 tx_box: None,
                 geometry: ShapeGeometry::None,
                 xfrm: Some(Xfrm {

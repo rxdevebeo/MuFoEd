@@ -484,6 +484,11 @@ pub(crate) struct LayoutContext<'a> {
     /// of the frame so same-size Exact follow-ups (Clio H16142 after L16055)
     /// stay on that pitch.
     pub(crate) frame_force_exact_grid: std::cell::Cell<bool>,
+    /// Whether a frame's contents are being laid out (`layout_frame_contents`).
+    ///
+    /// The WPS first-Exact-line rule (`natural.max(exact*0.8)`) is a frame
+    /// behaviour (Clio SNP labels); body Exact lines stay on the 80% grid.
+    pub(crate) in_frame: std::cell::Cell<bool>,
 }
 
 impl LayoutContext<'_> {
@@ -653,14 +658,12 @@ impl LayoutContext<'_> {
                     if (factor - 1.0).abs() > f64::EPSILON {
                         width -= advance(ch) * size_px * (1.0 - factor);
                     }
-                    if !ch.is_whitespace() {
-                        prev = Some(ch);
-                    } else if factor > 0.0 {
+                    if !ch.is_whitespace() || factor > 0.0 {
                         prev = Some(ch);
                     }
                 }
             }
-            return width;
+            return width * run.char_scale;
         }
         let mut total = 0.0;
         let mut prev = None;
@@ -675,7 +678,7 @@ impl LayoutContext<'_> {
                 prev = Some(ch);
             }
         }
-        total * size_px + extra
+        (total * size_px + extra) * run.char_scale
     }
 
     /// Advance kind [`Self::measure`] currently produces for `text`.

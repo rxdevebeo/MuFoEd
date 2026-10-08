@@ -7,7 +7,7 @@
 //!
 //! The order itself is not written out in each function. It lives in
 //! [`crate::order`], transcribed from `strict/wml.xsd`, and every container here
-//! emits through [`schema_child`], which asks that table where a child goes
+//! emits through `schema_child`, which asks that table where a child goes
 //! instead of relying on the order the statements below happen to appear in.
 //! `STAGE-10G-TASK.md` G21 asks for exactly this: the order comes from the
 //! schema, in one place, rather than being repaired one misordered element at a
@@ -280,16 +280,18 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
 fn spacing_element(xml: &mut XmlWriter, spacing: &Spacing) {
     xml.start("w:spacing");
     xml.attr_w_opt("before", spacing.before.map(|v| v.0));
+    xml.attr_w_opt("beforeLines", spacing.before_lines);
     xml.attr_w_opt("after", spacing.after.map(|v| v.0));
+    xml.attr_w_opt("afterLines", spacing.after_lines);
     xml.attr_w_opt("line", spacing.line.map(|v| v.0));
     if let Some(rule) = &spacing.line_rule {
         xml.attr_w("lineRule", rule.as_str());
     }
-    if spacing.before_autospacing {
-        xml.attr_w("beforeAutospacing", "true");
+    if let Some(value) = spacing.before_autospacing {
+        xml.attr_w("beforeAutospacing", if value { "true" } else { "false" });
     }
-    if spacing.after_autospacing {
-        xml.attr_w("afterAutospacing", "true");
+    if let Some(value) = spacing.after_autospacing {
+        xml.attr_w("afterAutospacing", if value { "true" } else { "false" });
     }
     xml.end();
 }
@@ -363,10 +365,15 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     toggle(xml, "w:snapToGrid", props.snap_to_grid);
     toggle(xml, "w:vanish", props.vanish);
     toggle(xml, "w:rtl", props.rtl);
-    if let Some(color) = &props.color {
-        color_element(xml, "w:color", color, props.color_theme.as_ref());
+    if props.color.is_some() || props.color_theme.is_some() {
+        color_element(
+            xml,
+            "w:color",
+            props.color.as_ref(),
+            props.color_theme.as_ref(),
+        );
     }
-    if let Some(spacing) = props.spacing.filter(|v| v.0 != 0) {
+    if let Some(spacing) = props.spacing {
         xml.empty_attr_w("w:spacing", "val", spacing.0);
     }
     if let Some(width) = props.scale {
@@ -396,12 +403,21 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(highlight) = &props.highlight {
         xml.empty_attr_w("w:highlight", "val", highlight.as_str());
     }
-    if let Some(underline) = &props.underline {
+    // `w:u` may carry only `w:color` / `w:themeColor` with no `w:val` (Word
+    // emits that for themed underlines). Dropping the element lost theme ink
+    // on styles that never named a line style (P7 residual `w:u@themeColor`).
+    if props.underline.is_some()
+        || props.underline_color.is_some()
+        || props.underline_theme.is_some()
+    {
         xml.start("w:u");
-        xml.attr_w("val", underline.as_str());
+        if let Some(underline) = &props.underline {
+            xml.attr_w("val", underline.as_str());
+        }
         if let Some(color) = &props.underline_color {
             xml.attr_w("color", color.as_str());
         }
+        write_theme_color_attrs(xml, props.underline_theme.as_deref(), ThemeAttrNames::Color);
         xml.end();
     }
     if !borders_empty(&props.borders) {
@@ -441,6 +457,7 @@ fn is_empty_run(props: &RunProperties) -> bool {
         && props.double_strike == TriState::Absent
         && props.color.is_none()
         && props.color_theme.is_none()
+        && props.underline_theme.is_none()
         && props.highlight.is_none()
         && props.size.is_none()
         && props.size_cs.is_none()
@@ -502,14 +519,17 @@ fn strict_font_hint(hint: Option<&str>) -> Option<&str> {
     hint.filter(|value| !value.eq_ignore_ascii_case("cs"))
 }
 
-fn color_element(xml: &mut XmlWriter, name: &str, color: &Color, theme: Option<&ThemeColorRef>) {
+fn color_element(
+    xml: &mut XmlWriter,
+    name: &str,
+    color: Option<&Color>,
+    theme: Option<&ThemeColorRef>,
+) {
     xml.start(name);
-    xml.attr_w("val", color.as_str());
-    if let Some(theme) = theme {
-        xml.attr_w("themeColor", theme.color.as_str());
-        xml.attr_w_opt("themeTint", theme.tint.as_deref());
-        xml.attr_w_opt("themeShade", theme.shade.as_deref());
+    if let Some(color) = color {
+        xml.attr_w("val", color.as_str());
     }
+    write_theme_color_attrs(xml, theme, ThemeAttrNames::Color);
     xml.end();
 }
 
@@ -517,8 +537,34 @@ fn shading_element(xml: &mut XmlWriter, shading: &Shading) {
     xml.start("w:shd");
     xml.attr_w("val", shading.pattern.as_deref().unwrap_or("clear"));
     xml.attr_w_opt("color", shading.color.as_ref().map(Color::as_str));
+    write_theme_color_attrs(xml, shading.theme_color.as_deref(), ThemeAttrNames::Color);
     xml.attr_w_opt("fill", shading.fill.as_ref().map(Color::as_str));
+    write_theme_color_attrs(xml, shading.theme_fill.as_deref(), ThemeAttrNames::Fill);
     xml.end();
+}
+
+/// Attribute name set for a theme-colour triple on `CT_Color` / `CT_Shd` / `CT_Border`.
+#[derive(Clone, Copy)]
+enum ThemeAttrNames {
+    Color,
+    Fill,
+}
+
+fn write_theme_color_attrs(
+    xml: &mut XmlWriter,
+    theme: Option<&ThemeColorRef>,
+    names: ThemeAttrNames,
+) {
+    let Some(theme) = theme else {
+        return;
+    };
+    let (slot, tint, shade) = match names {
+        ThemeAttrNames::Color => ("themeColor", "themeTint", "themeShade"),
+        ThemeAttrNames::Fill => ("themeFill", "themeFillTint", "themeFillShade"),
+    };
+    xml.attr_w(slot, theme.color.as_str());
+    xml.attr_w_opt(tint, theme.tint.as_deref());
+    xml.attr_w_opt(shade, theme.shade.as_deref());
 }
 
 fn borders_empty(borders: &Borders) -> bool {
@@ -613,6 +659,7 @@ fn write_border_attributes(xml: &mut XmlWriter, border: &Border) {
     xml.attr_w_opt("sz", border.size.map(|v| v.0));
     xml.attr_w_opt("space", border.space);
     xml.attr_w_opt("color", border.color.as_ref().map(Color::as_str));
+    write_theme_color_attrs(xml, border.theme_color.as_deref(), ThemeAttrNames::Color);
     if border.shadow {
         xml.attr_w("shadow", "true");
     }
@@ -730,6 +777,8 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         && !props.bidi_visual
         && props.positioning.is_none()
         && props.cell_spacing.is_none()
+        && props.style_row_band_size.is_none()
+        && props.style_col_band_size.is_none()
         && borders_empty(&props.borders)
         && props.cell_margins.top.is_none()
         && props.cell_margins.start.is_none()
@@ -751,6 +800,16 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
         "tblStyle" => {
             if let Some(style) = &props.style {
                 xml.empty_attr_w("w:tblStyle", "val", style.as_str());
+            }
+        }
+        "tblStyleRowBandSize" => {
+            if let Some(size) = props.style_row_band_size {
+                xml.empty_attr_w("w:tblStyleRowBandSize", "val", size);
+            }
+        }
+        "tblStyleColBandSize" => {
+            if let Some(size) = props.style_col_band_size {
+                xml.empty_attr_w("w:tblStyleColBandSize", "val", size);
             }
         }
         "tblpPr" => {
@@ -816,6 +875,21 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
         }
         _ => {}
     }
+}
+
+/// Writes `w:tblPrEx` when the row carries exception borders.
+pub fn row_exception(xml: &mut XmlWriter, props: &RowProperties) {
+    if borders_empty(&props.exception_borders) {
+        return;
+    }
+    xml.start("w:tblPrEx");
+    borders_element(
+        xml,
+        "w:tblBorders",
+        &props.exception_borders,
+        EdgeNames::Table,
+    );
+    xml.end();
 }
 
 /// Writes `w:trPr`.
@@ -1268,15 +1342,7 @@ fn page_border_edge(xml: &mut XmlWriter, local: &str, border: &PageBorder) {
     // next open: a page border that silently lost its ink. The tint and shade
     // that go with `w:themeColor` are attributes for the same reason.
     xml.attr_w_opt("color", border.color.as_ref().map(Color::as_str));
-    if let Some(theme) = &border.theme_color {
-        xml.attr_w("themeColor", theme.color.as_str());
-        if let Some(tint) = &theme.tint {
-            xml.attr_w("themeTint", tint.as_ref());
-        }
-        if let Some(shade) = &theme.shade {
-            xml.attr_w("themeShade", shade.as_ref());
-        }
-    }
+    write_theme_color_attrs(xml, border.theme_color.as_deref(), ThemeAttrNames::Color);
     if border.shadow {
         xml.attr_w("shadow", "true");
     }
@@ -1369,11 +1435,24 @@ mod tests {
     };
 
     use super::{
-        borders_element, fonts_element, paragraph_properties, section_properties, strict_font_hint,
-        tbl_width_value, EdgeNames,
+        borders_element, fonts_element, note_properties, paragraph_properties, section_properties,
+        strict_font_hint, tbl_width_value, EdgeNames,
     };
     use crate::ctx::Ctx;
     use crate::xml::XmlWriter;
+
+    #[test]
+    fn footnote_separator_keeps_negative_and_foreign_ids() {
+        let props = strict_ooxml_wml::model::notes::NoteProperties {
+            separator_ids: vec![-1, 7],
+            ..strict_ooxml_wml::model::notes::NoteProperties::default()
+        };
+        let mut xml = XmlWriter::new();
+        note_properties(&mut xml, "w:footnotePr", &props);
+        let text = xml.finish().expect("balanced");
+        assert!(text.contains(r#"w:id="-1""#), "{text}");
+        assert!(text.contains(r#"w:id="7""#), "{text}");
+    }
 
     #[test]
     fn an_empty_ppr_is_not_emitted() {
@@ -1452,6 +1531,7 @@ mod tests {
             style: Some(BorderStyle::Single),
             size: Some(EighthsPoint(4)),
             color: Some(Color::new("#000000")),
+            theme_color: None,
             space: None,
             shadow: false,
             frame: false,

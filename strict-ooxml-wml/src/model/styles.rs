@@ -6,8 +6,31 @@ use std::sync::Arc;
 use strict_ooxml_core::error::SourceLocation;
 
 use super::ids::StyleId;
-use super::props::{ParagraphProperties, RunProperties, TableProperties};
+use super::props::{
+    CellProperties, ParagraphProperties, RowProperties, RunProperties, TableProperties,
+};
 use super::values::StyleType;
+
+/// One `w:tblStylePr` conditional format inside a table style.
+///
+/// `CT_TblStylePr` is `pPr`, `rPr`, `tblPr`, `trPr`, `tcPr` in that order. The
+/// theme colours that Contoso-like corpora store on banded cells live in
+/// `tcPr`/`tblPr` here; dropping them is a silent fill/border change (P7).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TableStyleCondition {
+    /// `w:type` (`firstRow`, `band1Horz`, ...).
+    pub kind: Arc<str>,
+    /// Paragraph properties of the condition.
+    pub paragraph: ParagraphProperties,
+    /// Run properties of the condition.
+    pub run: RunProperties,
+    /// Table properties of the condition (`w:tblPr`).
+    pub table: TableProperties,
+    /// Row properties of the condition (`w:trPr`).
+    pub row: RowProperties,
+    /// Cell properties of the condition (`w:tcPr`).
+    pub cell: CellProperties,
+}
 
 /// A single style definition (`w:style`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +49,10 @@ pub struct Style {
     pub link: Option<StyleId>,
     /// Whether this is a default style (`w:default`).
     pub is_default: bool,
+    /// User style (`w:customStyle`). Strict `CT_Style` allows the attribute.
+    pub custom_style: bool,
+    /// Redefine automatically (`w:autoRedefine`).
+    pub auto_redefine: bool,
     /// Semi-hidden in the UI (`w:semiHidden`), AUD-46.
     pub semi_hidden: bool,
     /// Fully hidden (`w:hidden`), AUD-46.
@@ -38,12 +65,18 @@ pub struct Style {
     pub unhide_when_used: bool,
     /// UI priority (`w:uiPriority`).
     pub ui_priority: Option<i32>,
-    /// Table style conditional formatting (reserved).
+    /// Table properties of the style (`w:tblPr`).
     pub table: TableProperties,
+    /// Row properties of the style (`w:trPr`).
+    pub row: RowProperties,
+    /// Cell properties of the style (`w:tcPr`).
+    pub cell: CellProperties,
     /// Paragraph properties of the style.
     pub paragraph: ParagraphProperties,
     /// Run properties of the style.
     pub run: RunProperties,
+    /// `w:tblStylePr` conditions, in document order.
+    pub conditions: Vec<TableStyleCondition>,
     /// Resolved `basedOn` chain, nearest ancestor first (excluding self).
     pub based_on_chain: Vec<StyleId>,
     /// Source location.
@@ -68,6 +101,8 @@ pub struct StyleTable {
     styles: Vec<Style>,
     by_id: HashMap<StyleId, usize>,
     defaults: DocDefaults,
+    /// The source part contained `w:docDefaults`, including an empty one.
+    defaults_declared: bool,
 }
 
 impl StyleTable {
@@ -80,6 +115,13 @@ impl StyleTable {
     /// Sets the document-wide default properties (`w:docDefaults`).
     pub fn set_defaults(&mut self, defaults: DocDefaults) {
         self.defaults = defaults;
+        self.defaults_declared = true;
+    }
+
+    /// Returns `w:docDefaults` when the source declared it, even if it is empty.
+    #[must_use]
+    pub fn declared_defaults(&self) -> Option<&DocDefaults> {
+        self.defaults_declared.then_some(&self.defaults)
     }
 
     /// Returns the document-wide default properties, if any were declared.
@@ -95,8 +137,9 @@ impl StyleTable {
 
     /// Inserts a style. A later definition with the same id replaces the former.
     pub fn insert(&mut self, style: Style) {
-        if let Some(&index) = self.by_id.get(&style.id) {
-            self.styles[index] = style;
+        let existing = self.by_id.get(&style.id).copied();
+        if let Some(slot) = existing.and_then(|index| self.styles.get_mut(index)) {
+            *slot = style;
             return;
         }
         let index = self.styles.len();

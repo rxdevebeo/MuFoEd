@@ -44,7 +44,7 @@ fn main() {
     for i in 0..600 {
         many_attrs.push_str(&format!(r#" w:a{i}="{i}""#));
     }
-    many_attrs.push_str(r#"><w:r><w:t>many-attrs</w:t></w:r></w:p></w:body></w:document>"#);
+    many_attrs.push_str("><w:r><w:t>many-attrs</w:t></w:r></w:p></w:body></w:document>");
     write(
         "dep-quickxml-many-attrs.docx",
         &DocxBuilder::strict()

@@ -12,22 +12,28 @@ readme = "README.md"
 [features]
 default = ["save", "visual"]
 save = ["dep:strict-ooxml-write"]
-visual = ["dep:strict-ooxml-render-svg", "dep:unicode-segmentation"]
+visual = ["dep:strict-ooxml-render-svg"]
 
 [dependencies]
 strict-ooxml-wml = { path = "../strict-ooxml-wml", version = "0.1.0" }
 strict-ooxml-core = { path = "../strict-ooxml-core", version = "0.1.0" }
 strict-ooxml-write = { path = "../strict-ooxml-write", version = "0.1.0", optional = true }
 strict-ooxml-render-svg = { path = "../strict-ooxml-render-svg", version = "0.1.0", optional = true }
-unicode-segmentation = { version = "1.12", optional = true }
+unicode-segmentation = "1.12"
 
 [dev-dependencies]
+criterion = "0.5"
 png.workspace = true
+proptest.workspace = true
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 strict-ooxml-write = { path = "../strict-ooxml-write", version = "0.1.0" }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "editing"
+harness = false
 
 [[test]]
 name = "save"

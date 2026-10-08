@@ -9,7 +9,8 @@ const NS_R: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::settings::{
-    ColorSchemeMapping, CompatFlags, DocumentZoom, MathProperties, RevisionSaveIds, Settings, Zoom,
+    ColorSchemeMapping, CompatFlags, DocumentZoom, MathProperties, RevisionSaveIds, Settings,
+    ThemeFontLang, Zoom,
 };
 use crate::model::values::Twips;
 
@@ -111,9 +112,11 @@ impl PartParser<'_> {
                 settings.default_tab_stop = val_attr(attrs).and_then(parse_i32).map(Twips);
             }
             "zoom" => settings.zoom = Some(Self::parse_zoom(attrs)),
-            "evenAndOddHeaders" => {
-                settings.even_and_odd_headers = parse_on_off(attrs).unwrap_or(false);
-            }
+            "evenAndOddHeaders" => match parse_on_off(attrs) {
+                Some(false) => settings.even_and_odd_headers_off = true,
+                Some(true) => settings.even_and_odd_headers = true,
+                None => {}
+            },
             "displayBackgroundShape" => {
                 settings.display_background_shape = parse_on_off(attrs).unwrap_or(false);
             }
@@ -266,7 +269,14 @@ impl PartParser<'_> {
                 settings.list_separator = val_attr(attrs).map(|value| self.intern(value));
             }
             "themeFontLang" => {
-                settings.theme_font_lang = wml_attr(attrs, "val").map(|value| self.intern(value));
+                let language = ThemeFontLang {
+                    val: wml_attr(attrs, "val").map(|value| self.intern(value)),
+                    east_asia: wml_attr(attrs, "eastAsia").map(|value| self.intern(value)),
+                    bidi: wml_attr(attrs, "bidi").map(|value| self.intern(value)),
+                };
+                if !language.is_empty() {
+                    settings.theme_font_lang = Some(language);
+                }
             }
             "mirrorMargins" => {
                 settings.mirror_margins = parse_on_off(attrs).unwrap_or(false);

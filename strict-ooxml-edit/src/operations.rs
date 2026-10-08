@@ -362,7 +362,9 @@ impl<'session, 'document> Operations<'session, 'document> {
                 ],
             )?
         };
-        let block = &blocks_at(self.editor.document(), &destination)?[index];
+        let block = blocks_at(self.editor.document(), &destination)?
+            .get(index)
+            .ok_or(EditError::InvalidParagraph)?;
         let new = block_ids(std::slice::from_ref(block));
         Ok(MoveReport {
             destination,
@@ -421,10 +423,11 @@ impl<'session, 'document> Operations<'session, 'document> {
         else {
             return Err(EditError::InvalidParagraph.into());
         };
+        let row = t.rows.get(index).ok_or(EditError::InvalidParagraph)?;
         Ok(MoveReport {
             destination: table.clone(),
             row: Some(index),
-            identities: identity_changes(old, row_ids(&t.rows[index])),
+            identities: identity_changes(old, row_ids(row)),
             change,
         })
     }
@@ -568,9 +571,9 @@ fn fold(chars: &[char], sensitive: bool) -> (Vec<char>, Vec<Option<usize>>) {
                 keys.push(lower);
                 boundaries.push(None);
             }
-            *boundaries
-                .last_mut()
-                .expect("each lowercase emits a character") = Some(index + 1);
+            if let Some(last) = boundaries.last_mut() {
+                *last = Some(index + 1);
+            }
         }
     }
     (keys, boundaries)
@@ -589,10 +592,10 @@ fn text_matches(
     let (needle, _) = fold(&q.text.chars().collect::<Vec<_>>(), q.case_sensitive);
     let (keys, boundaries) = fold(&p.chars, q.case_sensitive);
     let mut cursor = 0;
-    while cursor + needle.len() <= keys.len() {
+    while let Some(window) = keys.get(cursor..cursor + needle.len()) {
         budget.spend(1)?;
         let mut matches = true;
-        for (a, b) in keys[cursor..cursor + needle.len()].iter().zip(&needle) {
+        for (a, b) in window.iter().zip(&needle) {
             budget.spend(1)?;
             if a != b {
                 matches = false;
@@ -600,16 +603,19 @@ fn text_matches(
             }
         }
         if matches {
-            if let (Some(start), Some(end)) =
-                (boundaries[cursor], boundaries[cursor + needle.len()])
-            {
+            if let (Some(&Some(start)), Some(&Some(end))) = (
+                boundaries.get(cursor),
+                boundaries.get(cursor + needle.len()),
+            ) {
+                let before = start.checked_sub(1).and_then(|i| p.chars.get(i));
                 if !q.whole_word
-                    || (start == 0 || !word(p.chars[start - 1]))
-                        && (end == p.chars.len() || !word(p.chars[end]))
+                    || before.is_none_or(|&c| !word(c))
+                        && p.chars.get(end).is_none_or(|&c| !word(c))
                 {
                     let mut slices = vec![];
                     let mut covered = 0;
                     let mut editable = true;
+                    let text = p.chars.get(start..end).unwrap_or_default();
                     for s in &p.segments {
                         budget.spend(1)?;
                         let left = start.max(s.range.start);
@@ -629,7 +635,7 @@ fn text_matches(
                         SearchHit {
                             paragraph: at.clone(),
                             range: Some(start..end),
-                            text: p.chars[start..end].iter().collect(),
+                            text: text.iter().collect(),
                             slices,
                             editable: editable && covered == end - start,
                         },

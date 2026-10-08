@@ -11,7 +11,7 @@ use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
     Border, BorderStyle, Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule,
-    Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
+    Shading, Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
 };
 use strict_ooxml_wml::model::Document;
 
@@ -46,6 +46,8 @@ pub struct ComputedRun {
     pub complex_family: Option<String>,
     /// East-Asian face (`w:rFonts/@w:eastAsia`) for CJK text.
     pub east_asia_family: Option<String>,
+    /// Character width scale (`w:w`). `1.0` is 100% of the normal advance.
+    pub char_scale: f64,
     /// Explicit immutable assets retained by placed text for backend delivery.
     pub font_assets: Option<std::sync::Arc<crate::font::FontAssetRegistry>>,
 }
@@ -67,6 +69,7 @@ impl Default for ComputedRun {
             vanish: false,
             complex_family: None,
             east_asia_family: None,
+            char_scale: 1.0,
             font_assets: None,
         }
     }
@@ -170,6 +173,10 @@ pub fn compute_paragraph(
         apply_run_props(&mut computed.default_run, &defaults.run, theme);
     }
 
+    // A cell paragraph takes its table style (and the `w:tblStylePr`
+    // conditions of its cell) before the paragraph style (§17.7.2).
+    apply_table_style(document, &mut computed, theme);
+
     let style_id = para.props.style.as_ref().or_else(|| {
         document
             .styles
@@ -203,6 +210,28 @@ pub fn compute_run(
     }
     apply_direct_run_props(&mut computed, &run.props, theme);
     computed
+}
+
+/// Applies the table style of the cell being laid out, if any.
+///
+/// Base `pPr`/`rPr` of the style chain toggle like any style; a condition's
+/// `rPr` assigns, so a style-wide bold and a `firstRow` bold stay bold.
+#[inline(never)]
+fn apply_table_style(document: &Document, computed: &mut ComputedParagraph, theme: Option<&Theme>) {
+    let Some((style_id, mask)) = crate::table_style::current_cell() else {
+        return;
+    };
+    let Some(style) = document.styles.get(&style_id) else {
+        return;
+    };
+    for layer in crate::table_style::chain(document, style) {
+        apply_paragraph_props(computed, &layer.paragraph, theme);
+        apply_run_props(&mut computed.default_run, &layer.run, theme);
+    }
+    for condition in crate::table_style::conditions(document, style, mask) {
+        apply_paragraph_props(computed, &condition.paragraph, theme);
+        apply_direct_run_props(&mut computed.default_run, &condition.run, theme);
+    }
 }
 
 /// Applies a paragraph style's `basedOn` chain and its own properties.
@@ -263,8 +292,7 @@ fn apply_paragraph_props_mode(
     if let Some(fill) = props
         .shading
         .as_ref()
-        .and_then(|shading| shading.fill.as_ref())
-        .and_then(parse_color)
+        .and_then(|shading| shading_fill_color(shading, theme))
     {
         computed.shading = Some(fill);
     }
@@ -309,7 +337,7 @@ fn border_pad_pt(border: Option<&Border>) -> f64 {
         return 0.0;
     };
     match border.style {
-        None | Some(BorderStyle::Nil) | Some(BorderStyle::None) => return 0.0,
+        None | Some(BorderStyle::Nil | BorderStyle::None) => return 0.0,
         Some(_) => {}
     }
     let space = f64::from(border.space.unwrap_or(0));
@@ -344,7 +372,7 @@ enum ToggleMode {
 
 /// Merges run properties from a style or from document defaults.
 ///
-/// Toggle properties XOR. Direct formatting goes through [`apply_direct_run_props`].
+/// Toggle properties XOR. Direct formatting goes through `apply_direct_run_props`.
 pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme: Option<&Theme>) {
     apply_run_props_mode(computed, props, theme, ToggleMode::Cascade);
 }
@@ -391,6 +419,10 @@ fn apply_run_props_mode(
     }
     if let Some(spacing) = props.spacing {
         computed.spacing_pt = f64::from(spacing.value()) / 20.0;
+    }
+    if let Some(scale) = props.scale {
+        // `w:w` is a percentage of the normal advance (`100` and `100%`).
+        computed.char_scale = f64::from(scale) / 100.0;
     }
     // Complex-script toggles (`w:bCs`/`w:iCs`/`w:szCs`) are a parallel channel.
     // Direct run props: when RTL or a CS face is named, CS toggles assign (so
@@ -565,7 +597,7 @@ pub fn spacing_px(run: &ComputedRun, size_px: f64) -> f64 {
 pub fn compress_punctuation(control: Option<&str>) -> bool {
     matches!(
         control,
-        Some("compressPunctuation") | Some("compressPunctuationAndJapaneseKana")
+        Some("compressPunctuation" | "compressPunctuationAndJapaneseKana")
     )
 }
 
@@ -691,9 +723,9 @@ fn parse_hex(value: &str) -> Option<(u8, u8, u8)> {
     if digits.len() != 6 {
         return None;
     }
-    let red = u8::from_str_radix(&digits[0..2], 16).ok()?;
-    let green = u8::from_str_radix(&digits[2..4], 16).ok()?;
-    let blue = u8::from_str_radix(&digits[4..6], 16).ok()?;
+    let red = u8::from_str_radix(digits.get(0..2)?, 16).ok()?;
+    let green = u8::from_str_radix(digits.get(2..4)?, 16).ok()?;
+    let blue = u8::from_str_radix(digits.get(4..6)?, 16).ok()?;
     Some((red, green, blue))
 }
 
@@ -714,6 +746,16 @@ fn apply_toggle(computed: &mut bool, state: TriState, mode: ToggleMode) {
         (TriState::On, ToggleMode::Cascade) => *computed = !*computed,
         (TriState::On, ToggleMode::Direct) => *computed = true,
     }
+}
+
+/// The fill of a `w:shd` as `#rrggbb`: `w:themeFill` (with tint/shade) when the
+/// theme resolves it, else `w:fill`. `None` for `auto` or nothing usable.
+pub(crate) fn shading_fill_color(shading: &Shading, theme: Option<&Theme>) -> Option<String> {
+    shading
+        .theme_fill
+        .as_ref()
+        .and_then(|reference| resolve_theme_color(reference, theme))
+        .or_else(|| shading.fill.as_ref().and_then(parse_color))
 }
 
 /// Parses a `w:color` value into `#rrggbb` (or `None` for `auto`/invalid).
@@ -853,18 +895,23 @@ mod tests {
             next: None,
             link: None,
             is_default: false,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: false,
             hidden: false,
             q_format: false,
             locked: false,
             unhide_when_used: false,
             ui_priority: None,
-            table: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: ParagraphProperties::default(),
             run: RunProperties {
                 bold: TriState::On,
                 ..RunProperties::default()
             },
+            conditions: Vec::new(),
             based_on_chain: Vec::new(),
             location: location(),
         };

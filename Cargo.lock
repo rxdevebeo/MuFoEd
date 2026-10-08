@@ -2201,6 +2201,7 @@ dependencies = [
 name = "strict-ooxml"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "roxmltree 0.20.0",
  "strict-ooxml-convert",
  "strict-ooxml-core",
@@ -2253,6 +2254,7 @@ dependencies = [
  "proptest",
  "quick-xml",
  "rayon",
+ "strict-ooxml-testkit",
  "thiserror",
  "zip",
 ]
@@ -2261,7 +2263,9 @@ dependencies = [
 name = "strict-ooxml-edit"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "png",
+ "proptest",
  "strict-ooxml-core",
  "strict-ooxml-render-svg",
  "strict-ooxml-testkit",
@@ -2339,8 +2343,10 @@ dependencies = [
  "skrifa 0.44.0",
  "strict-ooxml-core",
  "strict-ooxml-fidelity",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "toml",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2371,6 +2377,8 @@ name = "strict-ooxml-testkit"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide 0.8.9",
+ "sha2",
+ "toml",
 ]
 
 [[package]]
@@ -2392,6 +2400,7 @@ dependencies = [
  "rayon",
  "roxmltree 0.20.0",
  "strict-ooxml-core",
+ "strict-ooxml-testkit",
  "toml",
  "zip",
 ]
@@ -2400,7 +2409,9 @@ dependencies = [
 name = "strict-ooxml-write"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "roxmltree 0.20.0",
+ "sha2",
  "strict-ooxml-core",
  "strict-ooxml-render-svg",
  "strict-ooxml-testkit",
@@ -3122,8 +3133,10 @@ name = "xtool"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide 0.8.9",
+ "sha2",
  "strict-ooxml-core",
  "toml",
+ "ureq",
 ]
 
 [[package]]

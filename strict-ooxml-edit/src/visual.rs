@@ -108,7 +108,9 @@ impl VisualMap {
         };
         let mut out = vec![];
         for index in first..=last {
-            let (position, boundaries) = &self.nodes[index];
+            let Some((position, boundaries)) = self.nodes.get(index) else {
+                continue;
+            };
             if position.paragraph.story != anchor.paragraph.story {
                 continue;
             }
@@ -233,10 +235,13 @@ impl VisualMap {
         for s in &self.spans {
             if same_node(&s.position, position) {
                 for pair in s.stops.windows(2) {
-                    if pair[0].0 >= position.offset && pair[1].0 <= end {
+                    let &[(from, x0), (to, x1)] = pair else {
+                        continue;
+                    };
+                    if from >= position.offset && to <= end {
                         out.push(VisualRect {
-                            x: pair[0].1,
-                            width: (pair[1].1 - pair[0].1).max(0.0),
+                            x: x0,
+                            width: (x1 - x0).max(0.0),
                             ..s.rect
                         });
                     }
@@ -408,8 +413,9 @@ fn text_span(
     if node.cursor >= rendered.len() {
         node.cursor = 0;
     }
-    let start = rendered[node.cursor..]
-        .find(&text.text)
+    let start = rendered
+        .get(node.cursor..)
+        .and_then(|tail| tail.find(&text.text))
         .map(|i| i + node.cursor)
         .ok_or(VisualError::Attribution)?;
     let end = start + text.text.len();
@@ -419,7 +425,7 @@ fn text_span(
     let mut bytes = 0;
     for grapheme in node.text.graphemes(true) {
         if bytes >= start && bytes <= end {
-            let prefix = &rendered[start..bytes];
+            let prefix = rendered.get(start..bytes).ok_or(VisualError::Attribution)?;
             let width = measure(prefix, text, provider);
             stops.push((scalar, text.x + width));
         }
@@ -427,10 +433,8 @@ fn text_span(
         bytes += apply_caps(grapheme, &text.run).len();
     }
     if bytes >= start && bytes <= end {
-        stops.push((
-            scalar,
-            text.x + measure(&rendered[start..bytes], text, provider),
-        ));
+        let prefix = rendered.get(start..bytes).ok_or(VisualError::Attribution)?;
+        stops.push((scalar, text.x + measure(prefix, text, provider)));
     }
     Ok(Span {
         position: node.position.clone(),
@@ -614,7 +618,7 @@ fn stamp_empty(
     // are checked before its coordinate can be exposed as a caret.
     paragraph.inlines.push(Inline::Run(Run {
         props: RunProperties {
-            color: Some(Color::new(&key[1..])),
+            color: Some(Color::new(hex_digits(&key))),
             ..RunProperties::default()
         },
         content: vec![RunContent::Text(TextNode {
@@ -639,6 +643,10 @@ fn stamp_empty(
         },
     );
     Ok(())
+}
+/// The hex digits of an attribution key; `next_color` always prefixes `#`.
+fn hex_digits(key: &str) -> &str {
+    key.get(1..).unwrap_or_default()
 }
 fn next_color(
     used: &mut HashSet<String>,
@@ -678,7 +686,7 @@ fn stamp_inlines(
                     run.content = vec![c.clone()];
                     if let RunContent::Text(t) = c {
                         let key = next_color(used, nodes)?;
-                        run.props.color = Some(Color::new(key[1..].to_owned()));
+                        run.props.color = Some(Color::new(hex_digits(&key).to_owned()));
                         run.props.color_theme = None;
                         nodes.insert(
                             key,
@@ -695,7 +703,7 @@ fn stamp_inlines(
                             },
                         );
                     }
-                    if let RunContent::Drawing(d) = &mut run.content[0] {
+                    if let Some(RunContent::Drawing(d)) = run.content.first_mut() {
                         stamp_drawing(d, address, &path, Some(content), used, nodes)?;
                     }
                     inlines.push(Inline::Run(run));
@@ -737,7 +745,7 @@ fn stamp_drawing(
             Graphic::Shape(s) => {
                 s.fill = Some(strict_ooxml_wml::model::ShapeFill::Solid {
                     color: strict_ooxml_wml::model::ShapeColor {
-                        value: Some(Color::new(key[1..].to_owned())),
+                        value: Some(Color::new(hex_digits(key).to_owned())),
                         theme: None,
                     },
                 });

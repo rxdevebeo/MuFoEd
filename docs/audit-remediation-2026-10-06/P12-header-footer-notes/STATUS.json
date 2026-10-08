@@ -1,0 +1,53 @@
+{
+  "package": "P12",
+  "slug": "header-footer-notes",
+  "visual_level": "V4",
+  "date_utc": "2026-10-07",
+  "acceptance": "OPEN",
+  "rows_before": 587,
+  "rows_after": 139,
+  "labels": [
+    "w:headerReference@id",
+    "w:footerReference@id",
+    "w:footnote@id",
+    "w:endnote@id",
+    "w:footnote",
+    "w:endnote"
+  ],
+  "label_counts": {
+    "w:headerReference@id": [138, 78],
+    "w:footerReference@id": [107, 61],
+    "w:footnote@id": [88, 0],
+    "w:endnote@id": [83, 0],
+    "w:footnote": [88, 0],
+    "w:endnote": [83, 0]
+  },
+  "witness_docs": [
+    "003_HTyn_dyn_Hq_wr_lmy_y_jdyd_shrkh_w_bd_t_khy_khlf_kh.docx",
+    "Programming-Basics-CSharp-Book-and-Video-Lessons-Nakov-v2019.docx"
+  ],
+  "tests_pass": true,
+  "tests": {
+    "T-P12-1": true,
+    "T-P12-2": true,
+    "T-P12-3": true
+  },
+  "corpus_slice_exit": 1,
+  "full_census_exit": 1,
+  "full_corpus_documents": 221,
+  "missing": 0,
+  "unmatched_schema": 1198,
+  "ours": 0,
+  "full_unclassified_element_changes": 784,
+  "visual": {
+    "artifact": "visual/003-header-text.txt",
+    "header1_equal": true,
+    "header10_equal": true
+  },
+  "notes": [
+    "Header and footer relationship identity uses a semantic digest, not a raw SHA of regenerated XML. Editor marks, mc:Ignorable, default on/off val and rFonts hint=cs do not make a different part. A dropped paragraph still does.",
+    "The 78 header and 61 footer rows that remain are parts whose content still differs. They are not waived.",
+    "Footnote and endnote separator ids, including -1, are written. A foreign id is not a registry match.",
+    "unmatched_schema stays 1198. D05 is not PASS. M4 is not closed."
+  ]
+}

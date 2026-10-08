@@ -338,3 +338,34 @@ fn a_matrix_scale_factor_survives_a_rotation() {
         rotated.scale_factor()
     );
 }
+
+/// `d` sets a dash pattern that the stroked path carries (in points), and is no
+/// longer reported as a construct the reader drops: a dashed table border in a
+/// PDF this project wrote must read back as dashed.
+#[test]
+fn a_dash_pattern_is_carried_on_the_stroked_path() {
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\n[3 1] 0 d 10 10 m 100 10 l S [] 0 d 10 20 m 100 20 l S\nendstream",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let dashes: Vec<Vec<f64>> = page
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            strict_ooxml_pdf::Item::Vector(vector) => Some(vector.dash.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(dashes, [vec![3.0, 1.0], Vec::new()], "{dashes:?}");
+    let ids: Vec<&str> = pdf
+        .report()
+        .losses()
+        .iter()
+        .map(|loss| loss.id.as_str())
+        .collect();
+    assert!(!ids.contains(&"pdf.dash"), "{ids:?}");
+}

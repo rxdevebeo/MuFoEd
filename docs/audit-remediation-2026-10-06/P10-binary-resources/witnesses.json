@@ -1,0 +1,103 @@
+{
+  "package": "P10",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx",
+      "role": "witness",
+      "source_sha256": "d0bbb44d604b2c18b744cfa9085da3d2a2a2428ad81cfea19d1de0e11c884583",
+      "written_sha256": "d7364556eebe17fea3198afbd3c1a18bb9c9c76e1ea9a636a41b3ad73c43a52d",
+      "written_path": "target/census-written-p10-final/cc0/018_SINGING_AND_ENCHANTING_MUSICALITY_IN_LITERACY_A_PE.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/070_Innovations_and_New_Technologies.docx",
+      "role": "witness",
+      "source_sha256": "a756ba9071ec694020871d65237debe24211bb1ec1f7b6808e569b9e470c07b6",
+      "written_sha256": "3165ed80c97b291fbec807818a4b52b804aeeed63723d5085ad457ffc09c6fd8",
+      "written_path": "target/census-written-p10-final/cc0/070_Innovations_and_New_Technologies.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "witness",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "9979beb12fa8cde09530704da315f74f9e79357fb49517ce9e72d10913dc62a7",
+      "written_path": "target/census-written-p10-final/docx/1. First-Steps-in-Programming.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/2. Simple-Calculation.docx",
+      "role": "witness",
+      "source_sha256": "a1eac8b9cba0231187e1ee67ebade3717fd5c61cfd0ed94b2d5e3de330c3c2bf",
+      "written_sha256": "149dd27a3a0bf07833e0703d2dde4f9baa8ba102bfcfca7c6c333e46046a67b5",
+      "written_path": "target/census-written-p10-final/docx/2. Simple-Calculation.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/3. Simple-Conditions.docx",
+      "role": "witness",
+      "source_sha256": "d5e2b824cf9a1d42d5c2ee366e1cdc70e3e9d48ec99306df0222bb17f19c8329",
+      "written_sha256": "bdc8487f07349733282cef6770046772f6e1d7e6b82115e91f9c2a776b10b635",
+      "written_path": "target/census-written-p10-final/docx/3. Simple-Conditions.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/4. Complex-Conditions.docx",
+      "role": "witness",
+      "source_sha256": "3bc59ab7746a0dc24253c1ea59683ecad6a925d5f0ad85f9326307c0f771d1a6",
+      "written_sha256": "1c60c866f5cb86a3b39de7afe32433b8ec2b6bd762256a0c637129e76c61b45f",
+      "written_path": "target/census-written-p10-final/docx/4. Complex-Conditions.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/5. Loops.docx",
+      "role": "witness",
+      "source_sha256": "d57989e414fdd38fd816a5799c047b8e7516a21ec28f76ef492e1f375f469ff0",
+      "written_sha256": "4a4974f3840894c5363a419b4d25d6c98bbd7fa0a1dd38a4f032d19e6d3494a9",
+      "written_path": "target/census-written-p10-final/docx/5. Loops.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/6. Nested-Loops.docx",
+      "role": "witness",
+      "source_sha256": "a6a4fd73cf9a374b8a3e5daa279657e335b0da1ae8d1a63dd246d38ffcd08e6b",
+      "written_sha256": "a552011e82014e47ced40e6126b5843bd3a6bfb35cea48dbd614ab64f37057ab",
+      "written_path": "target/census-written-p10-final/docx/6. Nested-Loops.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/7. More-Complex-Loops.docx",
+      "role": "witness",
+      "source_sha256": "0abdf0a845af4b58691224f8c9f94febf426c1e991412fcff7e75a1218507d11",
+      "written_sha256": "b1ea50dc8acdd21e4d1a0b3447ae31ba0cf2dc8b9a18edf353a027f0c1f02a32",
+      "written_path": "target/census-written-p10-final/docx/7. More-Complex-Loops.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/8. Become-a-Software-Engineer.docx",
+      "role": "witness",
+      "source_sha256": "9dcc666b75f63a1c93c8189e7d79525cfc2460866bfdc149e09253b29093367a",
+      "written_sha256": "44471da26a9d56f9183b223cd59fca2286273dde14b3549ede63a0bef3f52e1a",
+      "written_path": "target/census-written-p10-final/docx/8. Become-a-Software-Engineer.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+      "role": "gone-png",
+      "source_sha256": "68a0a6470178ab6158d22ecddf9f1c26ff0bc0809c550d8d9bb62c1a9ccfd964",
+      "written_sha256": "72cc951f352ee64da047f11f1d477a828314838d2fe223479cdedd52f8cb4b49",
+      "written_path": "target/census-written-p10-final/cc0/009_stratigrafi_regional_daerah_kulon_progo_diy.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/014_BG_Slokas_With_Transliteration_1_18.docx",
+      "role": "gone-jpeg",
+      "source_sha256": "c0c7e8cbf38d26ccfea6c8103f6877955203be1238d6569cbba44206502ceebf",
+      "written_sha256": "7641782c70926c3337235d1fd86ef82627b67701d9481d91473fb77d692cfd9b",
+      "written_path": "target/census-written-p10-final/cc0/014_BG_Slokas_With_Transliteration_1_18.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/090_Gritos_Chutes_E_Pontapes.docx",
+      "role": "gone-jpeg",
+      "source_sha256": "353eed9a972753b42ce9123db33c0e2f58b083dc19d4b978948105f46f79bde9",
+      "written_sha256": "533c611e71cefa5d216f0ec18f3ab8cae35954a07d8e0d2dab35eb3df74fb2ca",
+      "written_path": "target/census-written-p10-final/cc0/090_Gritos_Chutes_E_Pontapes.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/068_Madhurya_Kadambini_Roman_Sanskrit.docx",
+      "role": "empty-odttf",
+      "source_sha256": "7631da9ac0dd358a9092f491f29fc29b8e137a85d12617a7609b2f3f25b53f07",
+      "written_sha256": "3f4c26f4cab0fd8eda1cab1a2166ad0fdc00486edfddb8337219efc7fe7508b8",
+      "written_path": "target/census-written-p10-final/cc0/068_Madhurya_Kadambini_Roman_Sanskrit.docx"
+    }
+  ]
+}

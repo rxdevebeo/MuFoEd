@@ -128,6 +128,10 @@ pub struct Hyperlink {
     pub anchor: Option<Arc<str>>,
     /// Tooltip (`w:tooltip`).
     pub tooltip: Option<Arc<str>>,
+    /// Visited-link mark (`w:history`).
+    pub history: bool,
+    /// Target frame (`w:tgtFrame`).
+    pub tgt_frame: Option<Arc<str>>,
     /// Child inlines.
     pub inlines: Vec<Inline>,
     /// Source location.

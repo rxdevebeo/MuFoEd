@@ -77,8 +77,9 @@ impl NoteTable {
 
     /// Inserts a note. A later definition with the same id replaces the former.
     pub fn insert(&mut self, note: Note) {
-        if let Some(&index) = self.by_id.get(&note.id) {
-            self.notes[index] = note;
+        let existing = self.by_id.get(&note.id).copied();
+        if let Some(slot) = existing.and_then(|index| self.notes.get_mut(index)) {
+            *slot = note;
             return;
         }
         let index = self.notes.len();
@@ -150,11 +151,10 @@ pub struct NoteProperties {
     ///
     /// Not the notes themselves: ids, naming the separator (`-1`) and the
     /// continuation separator (`0`). Those two are what draws the rule above a
-    /// footnote block, so they are page content. The writer emitted
-    /// `w:footnotePr` whenever there was a position or a format and nothing at
-    /// all when there was not, so a document whose only settings are the two
-    /// separator ids lost both.
-    pub separator_ids: Vec<u32>,
+    /// footnote block, so they are page content. The separator id is `-1`.
+    /// `ST_DecimalNumber` is an integer, so the negative id is stored and
+    /// written; a different id is not dropped in its place.
+    pub separator_ids: Vec<i32>,
 }
 
 impl NoteProperties {

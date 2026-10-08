@@ -20,12 +20,17 @@
 //!   no-panic corpus runs; the stage flags select the echelon fixture.
 //! - `gen-jpeg [--out <dir>]` — writes the minimal JPEG fixtures used by
 //!   AUD-81 (`strict-ooxml-render-pdf/tests/fixtures`).
+//! - `corpus fetch|verify --tier <ci-core|ci-full> [--root <dir>] [--lock <path>]`
+//!   — downloads / checks the CC0 corpus named by `testdata-lock/cc0.toml`
+//!   (`docs/CC0_CORPUS_MIGRATION_PLAN.md` §4.2).
 
 #![allow(clippy::cast_possible_truncation, clippy::doc_markdown)]
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::process::ExitCode;
+
+mod corpus;
 
 /// Elements that MUST be parsed (STAGE-2 §7.1); excluded from the ratio.
 const MANDATORY: &[&str] = &[
@@ -354,6 +359,7 @@ fn main() -> ExitCode {
         Some("lint-eof") => lint_eof(&args[1..]),
         Some("gen-docx") => gen_docx(&args[1..]),
         Some("gen-jpeg") => gen_jpeg(&args[1..]),
+        Some("corpus") => corpus::run(&args[1..]),
         Some("--help" | "-h") | None => {
             print_usage();
             ExitCode::SUCCESS
@@ -368,14 +374,16 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: xtool <xsd-inventory|coverage|corpus-elements|lint-eof|gen-docx|gen-jpeg> [options]\n\
+        "usage: xtool <xsd-inventory|coverage|corpus-elements|lint-eof|gen-docx|gen-jpeg|corpus> [options]\n\
          \n\
          xsd-inventory   [--xsd <file>]... [--out <path>]\n\
          coverage        [--file <path>] [--min <percent>]\n\
          corpus-elements [--corpus <dir>]\n\
          lint-eof        [<root>...]  (default: strict-ooxml-wml/src)\n\
          gen-docx        --out <path> [--paragraphs <n>] [--stage5] [--stage5b] [--stage5c]\n\
-         gen-jpeg        [--out <dir>]  (default: strict-ooxml-render-pdf/tests/fixtures)"
+         gen-jpeg        [--out <dir>]  (default: strict-ooxml-render-pdf/tests/fixtures)\n\
+         {}",
+        corpus::USAGE
     );
 }
 

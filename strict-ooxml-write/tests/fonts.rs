@@ -541,6 +541,50 @@ fn font_hints_round_trip_without_unsupported() {
     assert_eq!(again.hints.sig, calibri.hints.sig);
 }
 
+/// T-P9-3: clearing charset must not come back in the written font table.
+#[test]
+fn dropping_charset_is_visible_in_the_written_table() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../strict-ooxml-core/tests/strict/05-strict-math-simple.docx");
+    let package = Package::open_reader(
+        std::fs::read(&path).expect("stage5c fixture").as_slice(),
+        &OpenOptions::default(),
+    )
+    .expect("open");
+    let mut document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let entry = document
+        .font_table
+        .as_mut()
+        .expect("font table")
+        .fonts
+        .iter_mut()
+        .find(|entry| entry.name.as_ref() == "Calibri")
+        .expect("Calibri");
+    assert_eq!(entry.hints.charset.as_deref(), Some("00"));
+    entry.hints.charset = None;
+    let written = write(&document, &package);
+    let table_xml = String::from_utf8_lossy(
+        &Package::open_reader(&written.bytes[..], &OpenOptions::default())
+            .unwrap()
+            .read_part(&PartId::new("/word/fontTable.xml"))
+            .expect("written"),
+    )
+    .into_owned();
+    let calibri = table_xml
+        .split("<w:font ")
+        .find(|chunk| chunk.contains(r#"w:name="Calibri""#))
+        .expect("written Calibri");
+    let calibri = calibri.split("</w:font>").next().expect("Calibri close");
+    assert!(
+        !calibri.contains("w:charset"),
+        "negative control: cleared Calibri charset must not be written: {calibri}"
+    );
+    assert!(
+        table_xml.contains(r#"w:characterSet="00""#),
+        "clearing Calibri must not drop charset on the other faces: {table_xml}"
+    );
+}
+
 /// Negative control: dropping a preserved hint is a real model change.
 #[test]
 fn dropping_a_font_hint_is_visible_in_the_model() {

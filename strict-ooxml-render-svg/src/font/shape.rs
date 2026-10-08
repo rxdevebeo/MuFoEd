@@ -220,7 +220,7 @@ pub fn unicode_x_positions_px<F>(
     let mut xs = Vec::new();
     let mut byte = 0;
     while byte < text.len() {
-        let Some(ch) = text[byte..].chars().next() else {
+        let Some(ch) = text.get(byte..).and_then(|rest| rest.chars().next()) else {
             break;
         };
         if let Some(cluster) = shaped
@@ -231,7 +231,9 @@ pub fn unicode_x_positions_px<F>(
             let origin = origin_x + cluster.x_em * size_px;
             let slice = text.get(cluster.byte_start..cluster.byte_end).unwrap_or("");
             let chars: Vec<char> = slice.chars().collect();
-            let index = slice[..byte - cluster.byte_start].chars().count();
+            let index = slice
+                .get(..byte - cluster.byte_start)
+                .map_or(0, |prefix| prefix.chars().count());
             let share_origin =
                 chars.len() > 1 && chars.iter().skip(1).any(|ch| !is_combining_mark(*ch));
             if share_origin {
@@ -331,7 +333,7 @@ fn with_parsed_face<R>(resolved: &ResolvedFace, body: impl FnOnce(&CachedFace) -
                 instance,
             });
         }
-        Some(body(faces.get(&key).expect("parsed face just stored")))
+        faces.get(&key).map(body)
     })
 }
 
@@ -468,6 +470,9 @@ fn assemble_shaped<F>(resolved: F, text: &str, pieces: Vec<RawGlyph>) -> ShapedT
     let mut visual: Vec<(usize, f64, f64, usize)> = Vec::new();
     let mut pen = 0.0;
     for group in &groups {
+        let Some(first_piece) = group.first() else {
+            continue;
+        };
         let origin = pen;
         let start = glyphs.len();
         let mut advance = 0.0;
@@ -483,7 +488,7 @@ fn assemble_shaped<F>(resolved: F, text: &str, pieces: Vec<RawGlyph>) -> ShapedT
             pen += piece.advance_em;
             advance += piece.advance_em;
         }
-        let byte_start = group[0].byte_start;
+        let byte_start = first_piece.byte_start;
         visual.push((byte_start, advance, origin, start));
     }
 
@@ -500,18 +505,19 @@ fn assemble_shaped<F>(resolved: F, text: &str, pieces: Vec<RawGlyph>) -> ShapedT
         if byte_end <= byte_start || !text.is_char_boundary(byte_end) {
             continue;
         }
-        let glyph_count = glyphs[glyph_start..]
+        let glyph_ids: Vec<u16> = glyphs
+            .get(glyph_start..)
+            .unwrap_or_default()
             .iter()
             .take_while(|glyph| glyph.byte_start == byte_start)
-            .count();
+            .map(|glyph| glyph.glyph_id)
+            .collect();
+        let glyph_count = glyph_ids.len();
         clusters.push(ShapedCluster {
             byte_start,
             byte_end,
             advance_em: advance,
-            glyph_ids: glyphs[glyph_start..glyph_start + glyph_count]
-                .iter()
-                .map(|glyph| glyph.glyph_id)
-                .collect(),
+            glyph_ids,
             glyph_start,
             glyph_count,
             x_em: origin,
@@ -522,8 +528,8 @@ fn assemble_shaped<F>(resolved: F, text: &str, pieces: Vec<RawGlyph>) -> ShapedT
         let limit = clusters
             .get(index + 1)
             .map_or(text.len(), |next| next.byte_start);
-        if clusters[index].byte_end > limit {
-            clusters[index].byte_end = limit;
+        if let Some(cluster) = clusters.get_mut(index) {
+            cluster.byte_end = cluster.byte_end.min(limit);
         }
     }
     clusters.retain(|cluster| {

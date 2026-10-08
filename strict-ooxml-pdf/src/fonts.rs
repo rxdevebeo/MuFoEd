@@ -321,7 +321,7 @@ impl PdfFont {
             // `as_chunks` rather than `chunks_exact(2)`: same semantics (a
             // trailing odd byte is ignored) and it says the chunk size once.
             for pair in bytes.as_chunks::<2>().0 {
-                out.push(u32::from(u16::from_be_bytes([pair[0], pair[1]])));
+                out.push(u32::from(u16::from_be_bytes(*pair)));
             }
         } else {
             out.extend(bytes.iter().map(|byte| u32::from(*byte)));
@@ -505,7 +505,7 @@ fn read_cid_widths(
     let items = array_items(w, resolve);
     let mut index = 0;
     while index < items.len() {
-        let Some(first) = number_of(&items[index], resolve) else {
+        let Some(first) = items.get(index).and_then(|item| number_of(item, resolve)) else {
             break;
         };
         let Some(second) = items
@@ -591,11 +591,12 @@ fn read_to_unicode(
     // destinations as text rather than hex has thousands of them, and the report
     // is for a caller to read.
     let mut reported_invalid = false;
-    while let Some(found) = text[cursor..].find("begin") {
+    while let Some(found) = text.get(cursor..).and_then(|rest| rest.find("begin")) {
         let tag_start = cursor + found + "begin".len();
-        let (tag, section_start) = if text[tag_start..].starts_with("bfchar") {
+        let after_begin = text.get(tag_start..).unwrap_or_default();
+        let (tag, section_start) = if after_begin.starts_with("bfchar") {
             ("bfchar", tag_start + "bfchar".len())
-        } else if text[tag_start..].starts_with("bfrange") {
+        } else if after_begin.starts_with("bfrange") {
             ("bfrange", tag_start + "bfrange".len())
         } else {
             cursor = tag_start;
@@ -603,10 +604,12 @@ fn read_to_unicode(
         };
         // The section ends at its own `end…`, which is the first "end" after
         // its start: nothing inside a section body contains the word.
-        let Some(offset) = text[section_start..].find("end") else {
+        let Some(offset) = text.get(section_start..).and_then(|rest| rest.find("end")) else {
             break;
         };
-        let body = &text[section_start..section_start + offset];
+        let Some(body) = text.get(section_start..section_start + offset) else {
+            break;
+        };
         if tag == "bfchar" {
             for (code, ch) in hex_pairs(body) {
                 let (Some(code), Some(ch)) = (code, ch) else {
@@ -649,7 +652,8 @@ fn read_bfrange(
         // The array form is `<lo> <hi> [<d1> <d2> …]`, so the bracket is *after*
         // the two bounds: looking for a leading `[` misses every real one.
         let bracket = trimmed.find('[');
-        let bounds = hex_tokens(&trimmed[..bracket.unwrap_or(trimmed.len())]);
+        let head = bracket.and_then(|at| trimmed.get(..at)).unwrap_or(trimmed);
+        let bounds = hex_tokens(head);
         let (Some(low), Some(high)) = (
             bounds.first().and_then(|token| parse_hex(token)),
             bounds.get(1).and_then(|token| parse_hex(token)),
@@ -658,10 +662,13 @@ fn read_bfrange(
         };
 
         if let Some(bracket) = bracket {
-            let Some(close) = trimmed[bracket..].find(']') else {
+            let Some(close) = trimmed.get(bracket..).and_then(|rest| rest.find(']')) else {
                 continue;
             };
-            for (offset, ch) in utf16_values(&trimmed[bracket + 1..bracket + 1 + close]) {
+            let Some(values) = trimmed.get(bracket + 1..bracket + 1 + close) else {
+                continue;
+            };
+            for (offset, ch) in utf16_values(values) {
                 if out.len() >= limits.max_font_glyphs {
                     return Err(limits.exceeded(LimitKind::FontGlyphs, out.len() as u64 + 1));
                 }
@@ -726,12 +733,12 @@ fn read_bfrange(
 fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<String>)> {
     let tokens = hex_tokens(body);
     let mut out = Vec::with_capacity(tokens.len() / 2);
-    for pair in tokens.as_chunks::<2>().0 {
+    for [code, character] in tokens.as_chunks::<2>().0 {
         // No fallback to `char::from_u32(parse_hex(..))`: a token that is
         // neither UTF-16 nor hex names no character, and substituting U+0000
         // for it turns a producer's mistake into a glyph this reader claims to
         // have read. `None` is the answer, and the caller reports it (AUD-12).
-        out.push((parse_hex(&pair[0]), utf16_string(&pair[1])));
+        out.push((parse_hex(code), utf16_string(character)));
     }
     out
 }
@@ -745,13 +752,12 @@ fn hex_pairs(body: &str) -> Vec<(Option<u32>, Option<String>)> {
 fn hex_tokens(body: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = body;
-    while let Some(open) = rest.find('<') {
-        let after = &rest[open + 1..];
-        let Some(close) = after.find('>') else {
+    while let Some((_, after)) = rest.split_once('<') {
+        let Some((token, tail)) = after.split_once('>') else {
             break;
         };
-        out.push(after[..close].to_owned());
-        rest = &after[close + 1..];
+        out.push(token.to_owned());
+        rest = tail;
     }
     out
 }
@@ -1041,7 +1047,7 @@ pub fn decode_text_string(bytes: &[u8], format: lopdf::StringFormat) -> String {
         .as_chunks::<2>()
         .0
         .iter()
-        .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+        .map(|pair| u16::from_be_bytes(*pair))
         .collect();
     let le: Vec<u8> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
     let (text, _, _) = UTF_16LE.decode(&le);

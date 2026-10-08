@@ -5,6 +5,7 @@
 //! constructs are preserved as opaque nodes (ADR-0004, STAGE-2 §6).
 
 pub mod block;
+pub mod chart;
 pub mod document;
 pub mod drawing;
 pub mod fonts;
@@ -25,13 +26,14 @@ pub use block::{
     AltChunkInfo, Block, GridCol, OpaqueBlock, Paragraph, SdtContainer, SdtProperties, Table,
     TableCell, TableRow,
 };
+pub use chart::{BarGrouping, ChartData, ChartKind, ChartSeries, LegendPosition};
 pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{
-    AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
-    ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing,
-    LockedCanvas, MediaIndex, MediaItem, MediaKind, PathCommand, Picture, Position, Shape,
-    ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox,
-    TextBoxBody, Wrap, WrapKind, Xfrm,
+    AnchorDrawing, BlipRef, CustomGeometry, DiagramDrawing, DocPr, Drawing, DrawingKind,
+    EffectExtent, Extent, ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape,
+    GroupTransform, InlineDrawing, LockedCanvas, MediaIndex, MediaItem, MediaKind, PathCommand,
+    Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle,
+    SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap, WrapKind, Xfrm,
 };
 pub use fonts::{EmbedKind, EmbeddedFont, FontEntry, FontHints, FontSig, FontTable};
 pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};
@@ -55,15 +57,15 @@ pub use props::{
     Section, SectionProperties, TablePositioning, TableProperties,
 };
 pub use revision::{Revision, RevisionKind};
-pub use settings::{DocumentZoom, Settings, Zoom};
+pub use settings::{DocumentZoom, Settings, ThemeFontLang, Zoom};
 pub use styles::{Style, StyleTable};
 pub use support::{FeatureUse, SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};
-pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts};
+pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts, ThemeRunFonts, ThemeTypeface};
 pub use values::{
     Border, BorderStyle, Borders, BreakKind, CellMargins, Color, DocGridType, EighthsPoint, Emu,
     FieldCharType, Fonts, HalfPoints, HeightRule, Highlight, HighlightOrColor, Indentation,
     Justification, LineNumberRestart, LineSpacingRule, PageOrientation, RowHeight, Rsids,
     SectionType, Shading, Space, Spacing, StyleType, TabAlignment, TabLeader, TabStop, TableLayout,
-    TableLook, TextDirection, ThemeColor, TriState, Twips, Underline, UnderlineSpec, VertAlign,
-    VerticalJc, VerticalMerge, Width, WidthKind,
+    TableLook, TextDirection, ThemeColor, ThemeColorRef, TriState, Twips, Underline, UnderlineSpec,
+    VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };

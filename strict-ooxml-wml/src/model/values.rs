@@ -616,6 +616,10 @@ pub struct Shading {
     pub color: Option<Color>,
     /// Background fill (`w:fill`).
     pub fill: Option<Color>,
+    /// Theme reference for the pattern colour (`w:themeColor` + tint/shade).
+    pub theme_color: Option<Box<ThemeColorRef>>,
+    /// Theme reference for the fill (`w:themeFill` + themeFillTint/Shade).
+    pub theme_fill: Option<Box<ThemeColorRef>>,
 }
 
 /// A single border edge (`w:top`, `w:left`, ...).
@@ -627,6 +631,8 @@ pub struct Border {
     pub size: Option<EighthsPoint>,
     /// Border colour (`w:color`).
     pub color: Option<Color>,
+    /// Theme colour reference (`w:themeColor` + tint/shade).
+    pub theme_color: Option<Box<ThemeColorRef>>,
     /// Space between border and text, in points (`w:space`).
     pub space: Option<u16>,
     /// Whether the border is in the shadow (`w:shadow`).
@@ -675,6 +681,31 @@ pub struct Fonts {
     pub cs_theme: Option<Arc<str>>,
 }
 
+impl Fonts {
+    /// Applies a later `w:rFonts` in the same `w:rPr`.
+    ///
+    /// `CT_RPr` allows one `w:rFonts`. Some producers emit a second element that
+    /// names only the complex-script face. The schema-legal reading is one
+    /// element: each attribute the later element sets replaces that slot, and
+    /// every slot it does not mention stays.
+    pub fn overlay(&mut self, later: Self) {
+        fn take(slot: &mut Option<Arc<str>>, next: Option<Arc<str>>) {
+            if next.is_some() {
+                *slot = next;
+            }
+        }
+        take(&mut self.ascii, later.ascii);
+        take(&mut self.h_ansi, later.h_ansi);
+        take(&mut self.east_asia, later.east_asia);
+        take(&mut self.complex_script, later.complex_script);
+        take(&mut self.hint, later.hint);
+        take(&mut self.ascii_theme, later.ascii_theme);
+        take(&mut self.h_ansi_theme, later.h_ansi_theme);
+        take(&mut self.east_asia_theme, later.east_asia_theme);
+        take(&mut self.cs_theme, later.cs_theme);
+    }
+}
+
 /// Paragraph spacing (`w:spacing`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Spacing {
@@ -686,10 +717,14 @@ pub struct Spacing {
     pub line: Option<Twips>,
     /// Line-spacing rule.
     pub line_rule: Option<LineSpacingRule>,
-    /// Space after the last line of a paragraph matching the next paragraph.
-    pub after_autospacing: bool,
-    /// Space before the first line of a paragraph matching the previous.
-    pub before_autospacing: bool,
+    /// Space before, in hundredths of a line (`w:beforeLines`).
+    pub before_lines: Option<i32>,
+    /// Space after, in hundredths of a line (`w:afterLines`).
+    pub after_lines: Option<i32>,
+    /// `w:afterAutospacing`. `None` means the attribute was absent.
+    pub after_autospacing: Option<bool>,
+    /// `w:beforeAutospacing`. `None` means the attribute was absent.
+    pub before_autospacing: Option<bool>,
 }
 
 /// Paragraph indentation (`w:ind`), direction-neutral.

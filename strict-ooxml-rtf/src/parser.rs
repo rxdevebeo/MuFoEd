@@ -685,6 +685,8 @@ impl Parser<'_> {
             based_on: draft.parent,
             next: draft.next,
             link: draft.link,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: draft.semi_hidden,
             hidden: draft.hidden,
             q_format: draft.quick,
@@ -692,8 +694,11 @@ impl Parser<'_> {
             unhide_when_used: false,
             ui_priority: draft.priority,
             table: TableProperties::default(),
+            row: RowProperties::default(),
+            cell: CellProperties::default(),
             paragraph: self.state.paragraph.clone(),
             run: self.state.run.clone(),
+            conditions: vec![],
             based_on_chain: vec![],
             location: SourceLocation::unknown(),
         });
@@ -839,6 +844,7 @@ impl Parser<'_> {
                     ..Default::default()
                 },
                 grid,
+                grid_change: None,
                 rows: vec![],
                 location: SourceLocation::unknown(),
             });
@@ -2607,9 +2613,9 @@ impl Parser<'_> {
                     .spacing
                     .get_or_insert_with(Default::default);
                 if name == "sbauto" {
-                    props.before_autospacing = n != Some(0);
+                    props.before_autospacing = Some(n != Some(0));
                 } else {
-                    props.after_autospacing = n != Some(0);
+                    props.after_autospacing = Some(n != Some(0));
                 }
             }
             "sb" | "sa" => {

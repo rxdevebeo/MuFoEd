@@ -283,3 +283,47 @@ fn a_refusal_is_held_even_when_no_picture_fits() {
     assert_eq!(document.distinct_images(), 1, "a refusal is worth no bytes");
     assert_eq!(document.cached_image_bytes(), 0, "and it holds no bytes");
 }
+
+/// A form that draws the picture, drawn twice by one page.
+fn form_page() -> Vec<u8> {
+    let form_body = b"q 20 0 0 20 0 0 cm /Im0 Do Q";
+    let mut form = format!(
+        "<< /Type /XObject /Subtype /Form /BBox [0 0 100 100] /Resources << /XObject << /Im0 \
+         6 0 R >> >> /Length {} >>\nstream\n",
+        form_body.len()
+    )
+    .into_bytes();
+    form.extend_from_slice(form_body);
+    form.extend_from_slice(b"\nendstream");
+    pdf(&[
+        text("<< /Type /Catalog /Pages 2 0 R >>"),
+        text("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        text(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /XObject << /Fm0 \
+             5 0 R >> >> /Contents 4 0 R >>",
+        ),
+        stream_of(b"q 1 0 0 1 10 10 cm /Fm0 Do Q q 1 0 0 1 60 10 cm /Fm0 Do Q"),
+        form,
+        image(),
+    ])
+}
+
+/// Forms are cached like pictures, under their own ceiling: the document keeps
+/// a decoded form between draws, and a ceiling of zero keeps nothing while the
+/// page comes out the same.
+#[test]
+fn the_form_cache_is_bounded_and_a_full_cache_changes_nothing_but_the_time() {
+    let mut cached = PdfDocument::open(&form_page(), PdfLimits::default()).expect("open");
+    let page = cached.page(1).expect("page");
+    assert_eq!(pictures(&page).len(), 2, "the form is drawn twice");
+    assert!(cached.cached_form_bytes() > 0, "a drawn form is held");
+
+    let limits = PdfLimits {
+        max_cached_form_bytes: 0,
+        ..PdfLimits::default()
+    };
+    let mut uncached = PdfDocument::open(&form_page(), limits).expect("open");
+    let page = uncached.page(1).expect("page");
+    assert_eq!(pictures(&page).len(), 2, "an uncached form still draws");
+    assert_eq!(uncached.cached_form_bytes(), 0, "and nothing is held");
+}

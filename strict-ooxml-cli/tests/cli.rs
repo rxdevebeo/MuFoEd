@@ -624,3 +624,46 @@ fn picture_without_media() -> Vec<u8> {
         .body(body)
         .build()
 }
+
+/// Relationship ids and external targets come from the document; a raw ESC or
+/// BEL in them would reach the terminal as an escape sequence.
+#[test]
+fn inspect_escapes_control_characters_from_the_document() {
+    let rels = format!(
+        "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
+<Relationship Id=\"rId1\" Type=\"{STRICT_DOC_REL}\" Target=\"word/document.xml\"/>\
+<Relationship Id=\"r\u{1b}[31mX\" Type=\"http://example.invalid/x\" Target=\"http://e/\u{1b}]0;pwn\u{7}\" TargetMode=\"External\"/>\
+</Relationships>"
+    );
+    let doc = document(STRICT_W_NS);
+    let bytes = build_stored_zip(&[
+        ("[Content_Types].xml", CONTENT_TYPES.as_bytes()),
+        ("_rels/.rels", rels.as_bytes()),
+        ("word/document.xml", doc.as_bytes()),
+    ]);
+    let path = write_temp("control-chars.docx", &bytes);
+    let (code, stdout, stderr) = run(&["inspect", path.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(code, 0, "stdout: {stdout}\nstderr: {stderr}");
+    assert!(
+        !stdout.contains('\u{1b}') && !stdout.contains('\u{7}'),
+        "raw control characters reached stdout: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("\\u{1b}"),
+        "escaped form expected: {stdout}"
+    );
+}
+
+#[test]
+fn version_and_help_exit_zero() {
+    let (code, stdout, _) = run(&["--version"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.starts_with("strict-ooxml ") && stdout.trim().len() > "strict-ooxml ".len(),
+        "{stdout}"
+    );
+    let (code, _, stderr) = run(&["help"]);
+    assert_eq!(code, 0);
+    assert!(stderr.contains("usage:"), "{stderr}");
+}

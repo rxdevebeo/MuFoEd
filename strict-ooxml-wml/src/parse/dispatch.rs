@@ -110,6 +110,27 @@ pub(crate) enum InlineKind {
     Opaque,
 }
 
+impl InlineKind {
+    /// Whether this paragraph child holds further paragraph children, and so
+    /// recurses through the inline parser and counts against
+    /// `max_inline_nesting`.
+    pub(crate) const fn is_wrapper(self) -> bool {
+        matches!(
+            self,
+            Self::Hyperlink
+                | Self::Field
+                | Self::Sdt
+                | Self::Inserted
+                | Self::Deleted
+                | Self::MovedTo
+                | Self::MovedFrom
+                | Self::Transparent
+                | Self::Dir
+                | Self::Bdo
+        )
+    }
+}
+
 const INLINE_TABLE: &[(&str, InlineKind)] = &[
     ("r", InlineKind::Run),
     ("hyperlink", InlineKind::Hyperlink),

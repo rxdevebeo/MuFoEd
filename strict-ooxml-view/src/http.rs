@@ -109,16 +109,16 @@ pub(crate) fn percent_decode(input: &str) -> Option<String> {
     let bytes = input.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
+    while let Some(&byte) = bytes.get(index) {
+        if byte == b'%' {
             let hex = input.get(index + 1..index + 3)?;
             out.push(u8::from_str_radix(hex, 16).ok()?);
             index += 3;
-        } else if bytes[index] == b'+' {
+        } else if byte == b'+' {
             out.push(b' ');
             index += 1;
         } else {
-            out.push(bytes[index]);
+            out.push(byte);
             index += 1;
         }
     }
@@ -282,7 +282,7 @@ fn read_line(reader: &mut impl BufRead) -> std::io::Result<LineRead> {
     let mut out = Vec::new();
     // One extra byte past the ceiling so a line that fills the take without a
     // newline is distinguishable from a legal line that ends exactly at 8 KiB.
-    let mut limited = reader.take(u64::try_from(MAX_LINE_BYTES + 1).expect("line cap fits u64"));
+    let mut limited = reader.take(u64::try_from(MAX_LINE_BYTES + 1).unwrap_or(u64::MAX));
     let read = limited.read_until(b'\n', &mut out)?;
     if read == 0 {
         return Ok(LineRead::Eof);

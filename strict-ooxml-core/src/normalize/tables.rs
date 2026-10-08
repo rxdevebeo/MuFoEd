@@ -399,7 +399,7 @@ pub const TBL_LOOK_BITS: &[(u32, &str)] = &[
 /// debt on purpose rather than dropping the content — so an `mc:Choice
 /// Requires="wps"` names something we handle, and MCE says to take it.
 ///
-/// Every namespace here is declared in [`VENDOR_NAMESPACES`]'s sense: it is not
+/// Every namespace here is declared in `VENDOR_NAMESPACES`'s sense: it is not
 /// ECMA-376, and it is not Transitional either, so a package that carries one is
 /// neither Strict nor Transitional until MCE has run. That is exactly the
 /// situation `mc:AlternateContent` exists for.

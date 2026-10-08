@@ -32,7 +32,9 @@ pub(crate) enum ColumnPlan {
         left: Vec<usize>,
         /// Index into the original `lines` slice for the right column, top→bottom.
         right: Vec<usize>,
-        /// Lines that cross the gutter (titles): kept before the columns, by y.
+        /// Lines that cross the gutter (titles, full-width headings, a centred
+        /// page number), top→bottom. Each one closes a band: the columns above
+        /// it are read before it, the columns below it after it.
         spanning: Vec<usize>,
         /// Left edge of the measured gutter, page points.
         #[allow(dead_code)]
@@ -74,7 +76,9 @@ pub(crate) fn plan(
         return ColumnPlan::Unsupported;
     }
 
-    let (gutter_start, gutter_end) = gutters[0];
+    let Some(&(gutter_start, gutter_end)) = gutters.first() else {
+        return ColumnPlan::Single;
+    };
     let mut left: Vec<usize> = Vec::new();
     let mut right: Vec<usize> = Vec::new();
     let mut spanning: Vec<usize> = Vec::new();
@@ -146,6 +150,11 @@ pub(crate) fn plan(
 }
 
 /// Reorders lines into reading order, or returns them unchanged.
+///
+/// Spanning lines cut the page into horizontal bands; within a band the left
+/// column is read before the right one. A title therefore stays on top, a
+/// full-width heading between two column blocks stays between them, and a page
+/// number under the columns stays last.
 #[must_use]
 pub(crate) fn apply(lines: Vec<GlyphLine>, column_plan: &ColumnPlan) -> Vec<GlyphLine> {
     match column_plan {
@@ -156,16 +165,31 @@ pub(crate) fn apply(lines: Vec<GlyphLine>, column_plan: &ColumnPlan) -> Vec<Glyp
             spanning,
             ..
         } => {
-            let mut claimed = vec![false; lines.len()];
-            for &index in spanning.iter().chain(left.iter()).chain(right.iter()) {
-                if let Some(slot) = claimed.get_mut(index) {
-                    *slot = true;
+            let baseline = |index: usize| lines.get(index).map_or(f64::INFINITY, |l| l.baseline);
+            let mut order = Vec::with_capacity(lines.len());
+            let mut left_rest = left.iter().copied().peekable();
+            let mut right_rest = right.iter().copied().peekable();
+            for &cut in spanning {
+                let limit = baseline(cut);
+                while let Some(index) = left_rest.next_if(|&index| baseline(index) < limit) {
+                    order.push(index);
                 }
+                while let Some(index) = right_rest.next_if(|&index| baseline(index) < limit) {
+                    order.push(index);
+                }
+                order.push(cut);
             }
+            order.extend(left_rest);
+            order.extend(right_rest);
+
+            let mut claimed = vec![false; lines.len()];
             let mut out = Vec::with_capacity(lines.len());
-            for &index in spanning.iter().chain(left.iter()).chain(right.iter()) {
-                if let Some(line) = lines.get(index) {
-                    out.push(line.clone());
+            for index in order {
+                if let (Some(line), Some(slot)) = (lines.get(index), claimed.get_mut(index)) {
+                    if !*slot {
+                        *slot = true;
+                        out.push(line.clone());
+                    }
                 }
             }
             for (index, line) in lines.into_iter().enumerate() {
@@ -179,42 +203,59 @@ pub(crate) fn apply(lines: Vec<GlyphLine>, column_plan: &ColumnPlan) -> Vec<Glyp
 }
 
 /// Finds clear horizontal gutters between text clusters.
+///
+/// A gutter is a band at least `min_gap` wide that almost no line crosses.
+/// "Almost": a title, a full-width heading or a centred page number crosses
+/// the gutter of a two-column page, and merging every line's extent (the
+/// previous rule) let any one of them close the gutter, so such pages were
+/// never reordered. Up to [`crossing_allowance`] lines may cross; they become
+/// the plan's `spanning` lines.
 fn find_gutters(lines: &[GlyphLine], page_width: f64) -> Option<Vec<(f64, f64)>> {
     let min_gap = MIN_GUTTER_PT.max(page_width * MIN_GUTTER_RATIO);
-    let mut intervals: Vec<(f64, f64)> = lines
+    let intervals: Vec<(f64, f64)> = lines
         .iter()
-        .filter(|line| line.width > 0.0)
+        .filter(|line| line.width > 0.0 && line.x.is_finite() && line.width.is_finite())
         .map(|line| (line.x, line.x + line.width))
         .collect();
-    if intervals.is_empty() {
+    if intervals.len() < 2 {
         return None;
     }
-    intervals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-    let mut merged: Vec<(f64, f64)> = Vec::new();
-    for (start, end) in intervals {
-        match merged.last_mut() {
-            Some((_, last_end)) if start <= *last_end + 1.0 => {
-                *last_end = (*last_end).max(end);
-            }
-            _ => merged.push((start, end)),
+    let allowance = crossing_allowance(intervals.len());
+
+    // Coverage as a step function: (from, to, lines covering that span).
+    let mut events: Vec<(f64, i32)> = Vec::with_capacity(intervals.len() * 2);
+    for &(start, end) in &intervals {
+        events.push((start, 1));
+        events.push((end, -1));
+    }
+    events.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut spans: Vec<(f64, f64, i32)> = Vec::new();
+    let mut coverage = 0_i32;
+    let mut at = events.first()?.0;
+    for (x, delta) in events {
+        if x > at {
+            spans.push((at, x, coverage));
+            at = x;
         }
+        coverage += delta;
     }
-    if merged.len() < 2 {
-        return None;
-    }
+
+    // A gutter is a run of low-coverage spans with text on both sides; the
+    // low runs before the first and after the last text are page margins.
     let mut gutters = Vec::new();
-    for window in merged.windows(2) {
-        let gap_start = window[0].1;
-        let gap_end = window[1].0;
-        let gap = gap_end - gap_start;
-        if gap < min_gap {
-            continue;
+    let mut run_start: Option<f64> = None;
+    let mut seen_text = false;
+    for (from, _to, count) in spans {
+        if count > allowance {
+            if let Some(start) = run_start.take() {
+                if seen_text {
+                    push_gutter(&mut gutters, start, from, min_gap, page_width);
+                }
+            }
+            seen_text = true;
+        } else if run_start.is_none() {
+            run_start = Some(from);
         }
-        // Gutters hugging the page edge are margins, not column splits.
-        if gap_start < page_width * 0.12 || gap_end > page_width * 0.88 {
-            continue;
-        }
-        gutters.push((gap_start, gap_end));
     }
     if gutters.is_empty() {
         None
@@ -223,11 +264,28 @@ fn find_gutters(lines: &[GlyphLine], page_width: f64) -> Option<Vec<(f64, f64)>>
     }
 }
 
+/// How many lines may cross a gutter: about one in eight. A short page (under
+/// eight lines) allows none, which is the strict rule it always had; a full
+/// two-column page of 40 lines tolerates a title, a heading and a page number.
+fn crossing_allowance(line_count: usize) -> i32 {
+    i32::try_from(line_count / 8).unwrap_or(i32::MAX)
+}
+
+fn push_gutter(gutters: &mut Vec<(f64, f64)>, start: f64, end: f64, min_gap: f64, page_width: f64) {
+    if end - start < min_gap {
+        return;
+    }
+    // Gutters hugging the page edge are margins, not column splits.
+    if start < page_width * 0.12 || end > page_width * 0.88 {
+        return;
+    }
+    gutters.push((start, end));
+}
+
 fn column_width(lines: &[GlyphLine], indices: &[usize]) -> f64 {
     let mut left = f64::INFINITY;
     let mut right = f64::NEG_INFINITY;
-    for &index in indices {
-        let line = &lines[index];
+    for line in indices.iter().filter_map(|&index| lines.get(index)) {
         left = left.min(line.x);
         right = right.max(line.x + line.width);
     }
@@ -249,8 +307,8 @@ fn vertical_overlap_ok(lines: &[GlyphLine], left: &[usize], right: &[usize]) -> 
 fn baseline_span(lines: &[GlyphLine], indices: &[usize]) -> Option<(f64, f64)> {
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
-    for &index in indices {
-        let y = lines[index].baseline;
+    for line in indices.iter().filter_map(|&index| lines.get(index)) {
+        let y = line.baseline;
         min = min.min(y);
         max = max.max(y);
     }
@@ -262,10 +320,10 @@ fn baseline_span(lines: &[GlyphLine], indices: &[usize]) -> Option<(f64, f64)> {
 }
 
 fn sort_by_baseline(lines: &[GlyphLine], indices: &mut [usize]) {
+    let baseline = |index: usize| lines.get(index).map_or(f64::INFINITY, |line| line.baseline);
     indices.sort_by(|a, b| {
-        lines[*a]
-            .baseline
-            .partial_cmp(&lines[*b].baseline)
+        baseline(*a)
+            .partial_cmp(&baseline(*b))
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.cmp(b))
     });
@@ -327,6 +385,73 @@ mod tests {
             line(72.0, 400.0, 142.0),
         ];
         assert!(find_gutters(&lines, 612.0).is_none());
+    }
+
+    fn two_column_page_with(extra: &[GlyphLine]) -> Vec<GlyphLine> {
+        let mut lines = Vec::new();
+        for row in 0..8 {
+            let baseline = 150.0 + f64::from(row) * 20.0;
+            lines.push(line(50.0, 200.0, baseline));
+            lines.push(line(350.0, 200.0, baseline));
+        }
+        lines.extend_from_slice(extra);
+        lines
+    }
+
+    /// AUD-85 review: a full-width title used to merge both columns into one
+    /// interval, so the "spanning" branch could never run.
+    #[test]
+    fn a_title_and_a_page_number_do_not_close_the_gutter() {
+        let lines = two_column_page_with(&[
+            line(50.0, 500.0, 100.0), // title across both columns
+            line(290.0, 20.0, 780.0), // centred page number in the gutter
+        ]);
+        let gutters = find_gutters(&lines, 600.0).expect("gutter despite spanning lines");
+        assert_eq!(gutters.len(), 1, "{gutters:?}");
+        let (start, end) = gutters[0];
+        assert!(start >= 250.0 - 1e-9 && end <= 350.0 + 1e-9, "{gutters:?}");
+    }
+
+    #[test]
+    fn spanning_lines_cut_the_page_into_bands() {
+        // Title, two rows of columns, a full-width heading, two more rows,
+        // then a page number.
+        let lines = vec![
+            line(50.0, 500.0, 100.0),  // 0 title
+            line(50.0, 200.0, 120.0),  // 1 L
+            line(350.0, 200.0, 120.0), // 2 R
+            line(50.0, 200.0, 140.0),  // 3 L
+            line(350.0, 200.0, 140.0), // 4 R
+            line(50.0, 500.0, 170.0),  // 5 heading
+            line(50.0, 200.0, 190.0),  // 6 L
+            line(350.0, 200.0, 190.0), // 7 R
+            line(290.0, 20.0, 780.0),  // 8 page number
+        ];
+        let column_plan = ColumnPlan::Two {
+            left: vec![1, 3, 6],
+            right: vec![2, 4, 7],
+            spanning: vec![0, 5, 8],
+            gutter_start: 250.0,
+            gutter_end: 350.0,
+        };
+        let order: Vec<(f64, f64)> = apply(lines, &column_plan)
+            .iter()
+            .map(|l| (l.x, l.baseline))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                (50.0, 100.0),
+                (50.0, 120.0),
+                (50.0, 140.0),
+                (350.0, 120.0),
+                (350.0, 140.0),
+                (50.0, 170.0),
+                (50.0, 190.0),
+                (350.0, 190.0),
+                (290.0, 780.0),
+            ]
+        );
     }
 
     #[test]

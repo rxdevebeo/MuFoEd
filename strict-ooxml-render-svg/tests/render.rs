@@ -14,7 +14,7 @@ use common::{
     build_docx, content_types, document, open_body, open_bytes, render_body, root_rels,
     without_font_faces, W,
 };
-use strict_ooxml_render_svg::{render, PageSelection, RenderOptions};
+use strict_ooxml_render_svg::{place_pages, render, PageSelection, RenderOptions};
 
 #[test]
 fn simple_paragraph_renders_text_and_formatting() {
@@ -106,6 +106,27 @@ fn page_selection_filters_output() {
     .expect("render");
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].index, 0);
+}
+
+#[test]
+fn place_pages_stops_at_range_end() {
+    // Explicit breaks would otherwise produce many pages; Range must stop layout.
+    let body: String = (0..40)
+        .map(|index| {
+            format!(
+                "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\
+                 <w:p><w:r><w:t>page-marker-{index}</w:t></w:r></w:p>"
+            )
+        })
+        .collect();
+    let (_package, document) = open_body(&body);
+    let pages = place_pages(
+        &document,
+        &RenderOptions::default().pages(PageSelection::Range { start: 1, end: 2 }),
+        None,
+    )
+    .expect("place");
+    assert_eq!(pages.len(), 2, "layout must stop after Range.end");
 }
 
 #[test]

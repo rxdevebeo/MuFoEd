@@ -5,7 +5,9 @@
 //! media parts are named by index, and the ZIP keeps insertion order with a
 //! fixed timestamp (SC-1). Nothing depends on a hash map's iteration order.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+use sha2::{Digest, Sha256};
 
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
@@ -157,7 +159,7 @@ pub trait Source {
     ///
     /// # Errors
     ///
-    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when the
+    /// Returns a [`strict_ooxml_core::error::StrictError`] when the
     /// part cannot be read.
     fn read_part(&self, part: &PartId) -> Result<Vec<u8>>;
 
@@ -203,7 +205,7 @@ pub trait Source {
     ///
     /// # Errors
     ///
-    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a
+    /// Returns a [`strict_ooxml_core::error::StrictError`] when a
     /// bound is exceeded.
     fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
         use std::collections::{HashSet, VecDeque};
@@ -504,7 +506,7 @@ fn part_xml<'a>(
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a part
+/// Returns a [`strict_ooxml_core::error::StrictError`] when a part
 /// exceeds a resource limit, when a media part cannot be read, or when the
 /// writer's own depth budget is exceeded.
 pub fn write_package(
@@ -517,12 +519,35 @@ pub fn write_package(
     // recurse the serializer as deep as the model goes, and the reader that
     // produced it would never have let it exist. A model built in code has had no
     // such reader, so this is the first place that can say no (AUD-05 п.3).
-    crate::body::check_block_nesting(&document.body.blocks, &options.limits).map_err(|error| {
-        StrictError::Write {
-            part: PartId::new(MAIN_DOCUMENT),
-            detail: error.to_string(),
-        }
-    })?;
+    // Every story, not the body alone: a header or a note is serialized by the
+    // same recursive writer.
+    let stories = std::iter::once((PartId::new(MAIN_DOCUMENT), &document.body.blocks))
+        .chain(
+            document
+                .headers_footers
+                .iter()
+                .map(|story| (story.part.clone(), &story.blocks)),
+        )
+        .chain(
+            document
+                .footnotes
+                .iter()
+                .map(|note| (PartId::new(FOOTNOTES_PART), &note.blocks)),
+        )
+        .chain(
+            document
+                .endnotes
+                .iter()
+                .map(|note| (PartId::new(ENDNOTES_PART), &note.blocks)),
+        );
+    for (part, blocks) in stories {
+        crate::body::check_block_nesting(blocks, &options.limits).map_err(|error| {
+            StrictError::Write {
+                part,
+                detail: error.to_string(),
+            }
+        })?;
+    }
     let mut report = crate::WriteReport::new();
     // AUD-42: the parser drops customXml/smartTag wrappers (content kept). The
     // writer cannot restore them — surface the Ignorable loss once per feature.
@@ -596,14 +621,9 @@ pub fn write_package(
         } else {
             "footer"
         };
-        let source_base = header_footer
-            .part
-            .as_str()
-            .rsplit('/')
-            .next()
-            .unwrap_or("");
+        let source_base = header_footer.part.as_str().rsplit('/').next().unwrap_or("");
         let name = if source_base.starts_with(role)
-            && source_base.ends_with(".xml")
+            && ends_with_ignore_case(source_base, ".xml")
             && used_hf_names.insert(source_base.to_owned())
         {
             source_base.to_owned()
@@ -702,6 +722,7 @@ pub fn write_package(
     let mut media_map: BTreeMap<String, String> = BTreeMap::new();
     let mut media_targets: BTreeMap<String, String> = BTreeMap::new();
     let mut media_parts: Vec<(String, PartId)> = Vec::new();
+    let mut carried_digests: HashSet<[u8; 32]> = HashSet::new();
     for item in document.media.iter() {
         let source_key = item.part.as_str().to_owned();
         if media_targets.contains_key(&source_key) {
@@ -743,14 +764,10 @@ pub fn write_package(
     // The parts themselves. Each is written only when the model carries the
     // content for it, so a document does not acquire parts it did not have.
     let mut zip = ZipWriter::with_limits(options.limits);
-    add_part(
-        &mut zip,
-        MAIN_DOCUMENT,
-        {
-            ctx.begin_doc_pr_scope();
-            part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes()
-        },
-    )?;
+    add_part(&mut zip, MAIN_DOCUMENT, {
+        ctx.begin_doc_pr_scope();
+        part_xml(&mut ctx, MAIN_DOCUMENT, |ctx| document_part(ctx, document))?.into_bytes()
+    })?;
     if content_types.content_type_for(&PartId::new(STYLES_PART)) == Some(CONTENT_TYPE_STYLES) {
         add_part(
             &mut zip,
@@ -876,6 +893,7 @@ pub fn write_package(
                     let id = font_rels.add(&RelType::Font, name.clone(), false);
                     font_map.insert(source_part.as_str().to_owned(), id);
                     content_types.insert_default(extension, font_content_type(extension));
+                    carried_digests.insert(digest_of(&bytes));
                     font_parts.push((format!("/word/{name}"), source_part.clone(), bytes));
                 }
                 Err(error) => ctx.report_unsupported(
@@ -935,7 +953,9 @@ pub fn write_package(
         }
     }
     for (part, source_part) in &media_parts {
-        add_part(&mut zip, part, source.read_part(source_part)?)?;
+        let bytes = source.read_part(source_part)?;
+        carried_digests.insert(digest_of(&bytes));
+        add_part(&mut zip, part, bytes)?;
     }
     // W7: the copied parts, each next to its own `.rels`, in name order.
     for part in &part_extra_copies {
@@ -948,6 +968,7 @@ pub fn write_package(
         if !written_pass.insert(part.name.clone()) {
             continue;
         }
+        carried_digests.insert(digest_of(&part.bytes));
         add_part(&mut zip, part.name.as_str(), part.bytes.clone())?;
     }
 
@@ -980,6 +1001,30 @@ pub fn write_package(
         )
         .into_bytes(),
     )?;
+    // A hash the model never indexed (a numbering bullet, a theme texture, a
+    // VML pattern tile, an empty embedded font) is still the source's bytes.
+    // Copy each missing digest once, under its own name when that name is free.
+    // A second copy of a digest the package already has is the same resource.
+    let mut taken: BTreeSet<String> = zip.part_names().into_iter().collect();
+    for source_part in source.parts() {
+        let name = source_part.as_str();
+        if !is_binary_resource(name) {
+            continue;
+        }
+        let Ok(bytes) = source.read_part(&source_part) else {
+            continue;
+        };
+        if !carried_digests.insert(digest_of(&bytes)) {
+            continue;
+        }
+        let dest = unused_part_name(&mut taken, name);
+        let content_type = source
+            .content_type(&source_part)
+            .unwrap_or_else(|| binary_content_type(&dest).to_owned());
+        content_types.insert_override(PartId::new(dest.as_str()), &content_type);
+        add_part(&mut zip, &dest, bytes)?;
+    }
+
     add_part(
         &mut zip,
         "/[Content_Types].xml",
@@ -1074,8 +1119,9 @@ fn bind_part_foreign(
         else {
             continue;
         };
+        let reached = source.reachable_parts(&target);
         let mut seeds = vec![target];
-        if let Ok(reached) = source.reachable_parts(&seeds[0]) {
+        if let Ok(reached) = reached {
             seeds.extend(reached);
         }
         for seed in seeds {
@@ -1111,15 +1157,13 @@ fn bind_part_foreign(
 }
 
 fn note_foreign_ids(table: &strict_ooxml_wml::model::notes::NoteTable) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut out = UniqueIds::default();
     for note in table.iter() {
         for id in passthrough::referenced_ids(&note.blocks) {
-            if !out.contains(&id) {
-                out.push(id);
-            }
+            out.insert(id);
         }
     }
-    out
+    out.into_vec()
 }
 
 /// AUD-61 invariant: every `r:*` attribute resolves through its part's `.rels`.
@@ -1194,37 +1238,136 @@ fn verify_no_dangling_relationships(
 /// Collects relationship-bearing `r:*` attribute values from a Strict part.
 fn office_relationship_ids(xml: &str) -> Vec<String> {
     const NAMES: &[&str] = &["embed", "id", "link", "dm", "lo", "qs", "cs"];
-    let mut out = Vec::new();
+    let mut out = UniqueIds::default();
     for attr in NAMES {
         let needle = format!(" r:{attr}=\"");
         let mut rest = xml;
         while let Some(at) = rest.find(&needle) {
-            let value_start = &rest[at + needle.len()..];
-            let Some(end) = value_start.find('"') else {
+            let Some(value_start) = rest.get(at + needle.len()..) else {
                 break;
             };
-            let value = value_start[..end].to_owned();
-            if !value.is_empty() && !out.contains(&value) {
-                out.push(value);
+            let Some((value, after)) = value_start.split_once('"') else {
+                break;
+            };
+            if !value.is_empty() {
+                out.insert(value.to_owned());
             }
-            rest = &value_start[end + 1..];
+            rest = after;
         }
     }
-    out
+    out.into_vec()
 }
 
 fn add_part(zip: &mut ZipWriter, part: &str, bytes: Vec<u8>) -> Result<()> {
     zip.add_part(&PartId::new(part), bytes)
 }
 
-/// Collects the relationship ids of every hyperlink in the body, in order.
-fn collect_hyperlink_ids(blocks: &[Block]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    collect_hyperlink_ids_in(blocks, &mut out);
+/// SHA-256 of part bytes. Identity for the resource census is this digest.
+fn digest_of(bytes: &[u8]) -> [u8; 32] {
+    let digest = Sha256::digest(bytes);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(digest.as_slice());
     out
 }
 
-fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
+/// Whether `name` ends with `suffix`, ignoring ASCII case.
+///
+/// OPC part names compare case-insensitively (ISO/IEC 29500-2 §9.1.1.1). Not
+/// `Path::extension`: `/_rels/.rels` has no extension to it.
+fn ends_with_ignore_case(name: &str, suffix: &str) -> bool {
+    name.len()
+        .checked_sub(suffix.len())
+        .and_then(|start| name.as_bytes().get(start..))
+        .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix.as_bytes()))
+}
+
+/// A package part whose bytes the census compares as a resource.
+///
+/// XML, relationships and VML are compared as markup. A trailing slash is a
+/// zip directory entry, not a payload.
+fn is_binary_resource(name: &str) -> bool {
+    let name = name.trim_start_matches('/');
+    if name.is_empty() || name.ends_with('/') {
+        return false;
+    }
+    ![".xml", ".rels", ".vml"]
+        .iter()
+        .any(|suffix| ends_with_ignore_case(name, suffix))
+}
+
+/// `original` when it is free, otherwise `/word/media/preservedN.ext`.
+fn unused_part_name(taken: &mut BTreeSet<String>, original: &str) -> String {
+    let canonical = if original.starts_with('/') {
+        original.to_owned()
+    } else {
+        format!("/{original}")
+    };
+    if !taken.contains(&canonical) {
+        taken.insert(canonical.clone());
+        return canonical;
+    }
+    let extension = canonical.rsplit('.').next().unwrap_or("bin");
+    let mut n = 1u32;
+    loop {
+        let candidate = format!("/word/media/preserved{n}.{extension}");
+        if !taken.contains(&candidate) {
+            taken.insert(candidate.clone());
+            return candidate;
+        }
+        n = n.saturating_add(1);
+    }
+}
+
+/// Content type used when the source package does not declare one.
+fn binary_content_type(name: &str) -> &'static str {
+    let extension = name.rsplit('.').next().unwrap_or("");
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpeg" | "jpg" => "image/jpeg",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        "emf" => "image/x-emf",
+        "wmf" => "image/x-wmf",
+        "svg" => "image/svg+xml",
+        "odttf" | "otf" => "application/vnd.openxmlformats-officedocument.obfuscatedFont",
+        "ttf" => "application/x-font-ttf",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Collects the relationship ids of every hyperlink in the body, in order.
+fn collect_hyperlink_ids(blocks: &[Block]) -> Vec<String> {
+    let mut out = UniqueIds::default();
+    collect_hyperlink_ids_in(blocks, &mut out);
+    out.into_vec()
+}
+
+/// Strings in first-seen order without repeats, in O(1) per insert.
+///
+/// The collectors deduplicated with `Vec::contains`, which is quadratic: a
+/// document with 50 000 distinct hyperlinks cost about 1.25e9 string
+/// comparisons on save.
+#[derive(Default)]
+struct UniqueIds {
+    order: Vec<String>,
+    seen: HashSet<String>,
+}
+
+impl UniqueIds {
+    fn insert(&mut self, id: String) {
+        if !self.seen.contains(&id) {
+            self.seen.insert(id.clone());
+            self.order.push(id);
+        }
+    }
+
+    fn into_vec(self) -> Vec<String> {
+        self.order
+    }
+}
+
+fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut UniqueIds) {
     for block in blocks {
         match block {
             Block::Paragraph(paragraph) => collect_hyperlink_ids_inline(&paragraph.inlines, out),
@@ -1244,15 +1387,13 @@ fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
     }
 }
 
-fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
+fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
     for inline in inlines {
         match inline {
             Inline::Hyperlink(link) => {
                 if let Some(id) = &link.rel_id {
                     let id = id.as_str().to_owned();
-                    if !out.contains(&id) {
-                        out.push(id);
-                    }
+                    out.insert(id);
                 }
                 collect_hyperlink_ids_inline(&link.inlines, out);
             }
@@ -1275,7 +1416,7 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
     }
 }
 
-fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
+fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut UniqueIds) {
     let graphic = match &drawing.kind {
         DrawingKind::Inline(inline) => inline.graphic.as_ref(),
         DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
@@ -1284,7 +1425,7 @@ fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
     collect_hyperlink_ids_graphic(graphic, out);
 }
 
-fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut Vec<String>) {
+fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut UniqueIds) {
     match graphic {
         Graphic::Shape(shape) => {
             if let Some(text) = &shape.text {

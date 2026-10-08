@@ -15,7 +15,8 @@ const DEFAULT_IMAGE_PX: f64 = 96.0;
 /// Builds an [`ImageItem`] for an inline drawing.
 ///
 /// A supported inline raster picture resolves to its media part. Any other
-/// *picture-shaped* inline drawing with a declared extent — a chart, a diagram,
+/// *picture-shaped* inline drawing with a declared extent — a chart without
+/// readable cached data, a diagram,
 /// EMF/WMF, a missing blip — is reserved as a placeholder of that size: Stage 4
 /// cannot rasterize it, but reserving the extent keeps pagination aligned with
 /// the producer (S4F.6). An inline *shape or group* is not an image at all: it
@@ -36,6 +37,10 @@ pub(crate) fn layout_inline_image(
         Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_) | Graphic::Other => {
             return None
         }
+        // A chart whose cached data was read is drawn, not reserved.
+        Graphic::Chart(refs) if refs.chart.is_some() => return None,
+        // So is a diagram whose cached drawing was read.
+        Graphic::Diagram(refs) if refs.diagram.is_some() => return None,
         Graphic::None | Graphic::Picture(_) | Graphic::Chart(_) | Graphic::Diagram(_) => {}
     }
     let picture = inline.picture();
@@ -200,30 +205,42 @@ pub(crate) fn image_svg(out: &mut String, item: &ImageItem) {
 /// Encodes bytes as standard Base64 with padding (deterministic).
 #[must_use]
 pub(crate) fn base64_encode(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let b0 = u32::from(chunk[0]);
+        let Some(&first) = chunk.first() else {
+            continue;
+        };
+        let b0 = u32::from(first);
         let b1 = chunk.get(1).copied().map_or(0, u32::from);
         let b2 = chunk.get(2).copied().map_or(0, u32::from);
         let triple = (b0 << 16) | (b1 << 8) | b2;
-        // `& 0x3F` is six bits, so every index below is 0..=63 into a 64-character
-        // alphabet: the `usize` is the index type, not a conversion of a number
-        // this crate computed from input arithmetic (AUD-09's G-2 audit).
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        out.push(base64_digit(triple, 18));
+        out.push(base64_digit(triple, 12));
         if chunk.len() > 1 {
-            out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
+            out.push(base64_digit(triple, 6));
         } else {
             out.push('=');
         }
         if chunk.len() > 2 {
-            out.push(ALPHABET[(triple & 0x3F) as usize] as char);
+            out.push(base64_digit(triple, 0));
         } else {
             out.push('=');
         }
     }
     out
+}
+
+/// The Base64 digit for the six bits of `triple` starting at bit `shift`.
+fn base64_digit(triple: u32, shift: u32) -> char {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    // `& 0x3F` is six bits, so the index is 0..=63 into a 64-character
+    // alphabet and `get` never misses: the `usize` is the index type, not a
+    // conversion of a number this crate computed from input arithmetic
+    // (AUD-09's G-2 audit).
+    ALPHABET
+        .get(((triple >> shift) & 0x3F) as usize)
+        .copied()
+        .map_or('=', char::from)
 }
 
 #[cfg(test)]

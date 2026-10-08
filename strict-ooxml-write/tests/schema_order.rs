@@ -40,6 +40,7 @@ const CONTAINERS: &[(&str, &[&str])] = &[
     ("tcPr", order::TCPR),
     ("trPr", order::TRPR),
     ("style", order::STYLE),
+    ("tblStylePr", order::TBLSTYLEPR),
     ("lvl", order::LVL),
 ];
 

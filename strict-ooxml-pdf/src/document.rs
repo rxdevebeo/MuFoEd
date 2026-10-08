@@ -52,14 +52,22 @@ struct DecodedForm {
 }
 
 /// Forms already decoded, by object id.
+///
+/// Bounded by [`PdfLimits::max_cached_form_bytes`]: a form decoded once the
+/// cache is full is returned to the caller but not kept.
 struct FormCache {
     entries: RefCell<HashMap<lopdf::ObjectId, Rc<DecodedForm>>>,
+    /// Decompressed content bytes of the forms in `entries`.
+    held_bytes: std::cell::Cell<usize>,
+    ceiling: usize,
 }
 
 impl FormCache {
-    fn new() -> Self {
+    fn new(ceiling: usize) -> Self {
         Self {
             entries: RefCell::new(HashMap::new()),
+            held_bytes: std::cell::Cell::new(0),
+            ceiling,
         }
     }
 
@@ -86,15 +94,19 @@ impl FormCache {
                     .map(number_of_object)
                     .collect::<Option<Vec<f64>>>()
             })
-            .filter(|values| values.len() == 6)
-            .map_or(Matrix::IDENTITY, |values| Matrix {
-                a: values[0],
-                b: values[1],
-                c: values[2],
-                d: values[3],
-                e: values[4],
-                f: values[5],
-            });
+            .and_then(|values| match *values.as_slice() {
+                // ISO 32000-1 8.3.3: [sx ky kx sy tx ty].
+                [sx, ky, kx, sy, tx, ty] => Some(Matrix {
+                    a: sx,
+                    b: ky,
+                    c: kx,
+                    d: sy,
+                    e: tx,
+                    f: ty,
+                }),
+                _ => None,
+            })
+            .unwrap_or(Matrix::IDENTITY);
         let resources = stream.dict.get(b"Resources").ok().cloned();
         let decoded = Rc::new(DecodedForm {
             operations: Rc::new(operations),
@@ -102,7 +114,11 @@ impl FormCache {
             matrix,
             resources,
         });
-        self.entries.borrow_mut().insert(id, Rc::clone(&decoded));
+        let held = self.held_bytes.get().saturating_add(bytes.len());
+        if held <= self.ceiling {
+            self.held_bytes.set(held);
+            self.entries.borrow_mut().insert(id, Rc::clone(&decoded));
+        }
         Some(decoded)
     }
 }
@@ -210,14 +226,25 @@ impl PdfDocument {
     ///
     /// Returns [`PdfError::Malformed`] for a file that is not a PDF,
     /// [`PdfError::Encrypted`] for one that is, and
-    /// [`PdfError::LimitExceeded`](crate::error::PdfError::LimitExceeded) when
-    /// the input size or the page count is over budget.
+    /// [`crate::error::PdfError::LimitExceeded`] when
+    /// the input size, the inflated size of its object streams
+    /// ([`LimitKind::ObjectStreamBytes`](crate::error::LimitKind::ObjectStreamBytes))
+    /// or the page count is over budget.
     pub fn open(bytes: &[u8], limits: PdfLimits) -> Result<Self> {
         if bytes.len() > limits.max_input_bytes {
             return Err(limits.exceeded(crate::error::LimitKind::InputBytes, bytes.len() as u64));
         }
-        let document =
-            lopdf::Document::load_mem(bytes).map_err(|error| PdfError::from_lopdf(&error))?;
+        // `lopdf` inflates every object and cross-reference stream while it
+        // loads, so their budget is checked on the raw bytes first, and handed to
+        // the loader as its per-stream ceiling for whatever the scan could not
+        // read (waiver `PDF-OBJSTM-BOMB`, closed).
+        crate::preload::check_object_streams(bytes, &limits)?;
+        let options = lopdf::LoadOptions {
+            max_decompressed_size: Some(crate::preload::object_stream_budget(&limits)),
+            ..lopdf::LoadOptions::default()
+        };
+        let document = lopdf::Document::load_mem_with_options(bytes, options)
+            .map_err(|error| PdfError::from_lopdf(&error))?;
         if document.is_encrypted() {
             return Err(PdfError::Encrypted);
         }
@@ -230,7 +257,7 @@ impl PdfDocument {
             source: bytes.to_vec(),
             limits,
             images: ImageCache::new(limits.max_cached_image_bytes),
-            forms: FormCache::new(),
+            forms: FormCache::new(limits.max_cached_form_bytes),
             fonts: FontCache::new(),
             report: crate::report::ReadReport::new(),
         })
@@ -277,6 +304,13 @@ impl PdfDocument {
     #[must_use]
     pub fn cached_image_bytes(&self) -> usize {
         self.images.bytes()
+    }
+
+    /// Decompressed content bytes of the form XObjects this document holds, at
+    /// most [`PdfLimits::max_cached_form_bytes`].
+    #[must_use]
+    pub fn cached_form_bytes(&self) -> usize {
+        self.forms.held_bytes.get()
     }
 
     /// How many distinct pictures this document has decoded, refusals included.

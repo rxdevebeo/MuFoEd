@@ -28,6 +28,9 @@ toml = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # Independent XML parser used only as an oracle by `tests/stage5_fixture_oracle.rs`.
 roxmltree = "0.20"
+# The CC0 corpus by its lock file (`tests/docx_corpus.rs`, `tests/corpus.rs`).
+# Path only: see the testkit note in deny.toml.
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 
 [[bench]]
 name = "wml_parse"

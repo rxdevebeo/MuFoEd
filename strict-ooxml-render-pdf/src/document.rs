@@ -8,7 +8,7 @@
 //! Object numbering is explicit rather than implicit. `pdf-writer` does not
 //! allocate ids, and the order in which they are handed out is what makes the
 //! output byte-identical between runs (SC-1), so the allocation order is part of
-//! the contract and is written down in [`PdfBuilder::allocate`].
+//! the contract and is written down in `PdfBuilder::allocate`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -58,6 +58,17 @@ struct PageWriter<'a> {
     images: BTreeMap<PartId, String>,
     report: &'a mut PdfReport,
     font_diagnostics: bool,
+}
+
+/// The bundled faces' metrics, parsed once per process.
+///
+/// `show_metric` built a fresh provider for every metric text item, which parses
+/// all 22 bundled faces each time: a page of justified text paid that cost per
+/// word.
+fn builtin_provider() -> &'static strict_ooxml_render_svg::font::BuiltinFontProvider {
+    static PROVIDER: std::sync::OnceLock<strict_ooxml_render_svg::font::BuiltinFontProvider> =
+        std::sync::OnceLock::new();
+    PROVIDER.get_or_init(strict_ooxml_render_svg::font::BuiltinFontProvider::new)
 }
 
 /// Renders placed pages to PDF without resolving media bytes.
@@ -187,12 +198,13 @@ pub fn render_with_source(
     for ((font, _), ids) in fonts.iter().zip(font_ids.iter()) {
         write_font(&mut pdf, *ids, font);
     }
-    for (index, page) in pages.iter().enumerate() {
-        let objects = &page_objects[index];
+    // Pass one pushed one stream per page and the loop above one set of ids per
+    // stream, so the three line up.
+    for ((page, objects), (content, _)) in pages.iter().zip(&page_objects).zip(&streams) {
         let width_pt = px_to_pt(page.width_px, scale) as f32;
         let height_pt = px_to_pt(page.height_px, scale) as f32;
         {
-            let (data, compressed) = flate(&streams[index].0);
+            let (data, compressed) = flate(content);
             let mut stream = pdf.stream(objects.content, &data);
             if compressed {
                 stream.filter(Filter::FlateDecode);
@@ -212,9 +224,11 @@ pub fn render_with_source(
             {
                 let mut xobjects = resources.x_objects();
                 for (part, (id, _)) in &objects.images {
-                    let name = image_names.get(part).unwrap_or_else(|| {
-                        panic!("{} was named before it was drawn", part.as_str())
-                    });
+                    // Every drawn image was named first; an unnamed one is
+                    // never referenced from a content stream, so skip it.
+                    let Some(name) = image_names.get(part) else {
+                        continue;
+                    };
                     xobjects.pair(Name(name.as_bytes()), *id);
                 }
             }
@@ -678,11 +692,12 @@ impl PageWriter<'_> {
             self.report.record_placeholder(&image.alt);
             return;
         }
-        let name = self
-            .names
-            .get(part)
-            .unwrap_or_else(|| panic!("{} was named before it was drawn", part.as_str()))
-            .clone();
+        // Images are named before drawing; one that was not degrades to a
+        // placeholder instead of a dangling resource reference.
+        let Some(name) = self.names.get(part).cloned() else {
+            self.report.record_placeholder(&image.alt);
+            return;
+        };
         self.images.insert(part.clone(), name.clone());
         self.content.save_state();
         self.content.transform([
@@ -806,7 +821,7 @@ impl PageWriter<'_> {
         if shown.is_empty() {
             return false;
         }
-        let provider = strict_ooxml_render_svg::font::BuiltinFontProvider::new();
+        let provider = builtin_provider();
         let family = strict_ooxml_render_svg::style::chosen_family(&text.run, shown);
         let owned = strict_ooxml_render_svg::style::registered_face(&text.run, &text.text);
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
@@ -883,7 +898,7 @@ impl PageWriter<'_> {
         self.content.set_font(Name(name.as_bytes()), size);
         let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
         let adjustments = owned_origin_adjustments(text, shown);
-        let mut non_space_before = 0usize;
+        let mut non_space_before = 0_u32;
         for cluster in &shaped.clusters {
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
@@ -892,8 +907,10 @@ impl PageWriter<'_> {
                 .as_ref()
                 .and_then(|positions| positions.get(&cluster.byte_start))
                 .copied()
-                .unwrap_or(extra * non_space_before as f64);
-            non_space_before += unicode.chars().filter(|ch| !ch.is_whitespace()).count();
+                .unwrap_or(extra * f64::from(non_space_before));
+            let visible = unicode.chars().filter(|ch| !ch.is_whitespace()).count();
+            non_space_before =
+                non_space_before.saturating_add(u32::try_from(visible).unwrap_or(u32::MAX));
             let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;

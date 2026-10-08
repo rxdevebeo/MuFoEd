@@ -64,8 +64,9 @@ pub fn resolve_target(base: &PartId, target: &str, external: bool) -> Result<Opt
         let mut path = String::with_capacity(base.as_str().len() + target.len());
         // Directory of the base part: everything up to and including the last
         // `/`. For `/word/document.xml` this is `/word/`.
-        if let Some(slash) = base.as_str().rfind('/') {
-            path.push_str(&base.as_str()[..=slash]);
+        if let Some((directory, _)) = base.as_str().rsplit_once('/') {
+            path.push_str(directory);
+            path.push('/');
         }
         path.push_str(target);
         path
@@ -98,11 +99,12 @@ pub fn percent_decode(input: &str) -> Result<String> {
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' {
+    while let Some(&byte) = bytes.get(i) {
+        if byte == b'%' {
             let hex = bytes
                 .get(i + 1..i + 3)
-                .and_then(|pair| hex_byte(pair[0], pair[1]));
+                .and_then(|pair| <[u8; 2]>::try_from(pair).ok())
+                .and_then(|[high, low]| hex_byte(high, low));
             let Some(decoded) = hex else {
                 return Err(StrictError::InvalidPartName(format!(
                     "invalid percent-encoding in {input}"
@@ -111,7 +113,7 @@ pub fn percent_decode(input: &str) -> Result<String> {
             out.push(decoded);
             i += 3;
         } else {
-            out.push(bytes[i]);
+            out.push(byte);
             i += 1;
         }
     }

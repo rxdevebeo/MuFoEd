@@ -80,6 +80,11 @@ fn attr_on(attrs: &[Attr], local: &str) -> bool {
     wml_attr(attrs, local).is_some_and(|value| matches!(value, "true" | "on" | "1"))
 }
 
+/// `Some` when the attribute is present. `false` is explicit, not absent.
+fn attr_bool(attrs: &[Attr], local: &str) -> Option<bool> {
+    wml_attr(attrs, local).map(|value| matches!(value, "true" | "on" | "1"))
+}
+
 impl PartParser<'_> {
     /// Parses the children of a `w:pPr`.
     #[allow(clippy::too_many_lines)]
@@ -288,7 +293,14 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "rStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
-                            "rFonts" => props.fonts = Some(parser.parse_fonts(&attrs)),
+                            "rFonts" => {
+                                let next = parser.parse_fonts(&attrs);
+                                if let Some(existing) = props.fonts.as_mut() {
+                                    existing.overlay(next);
+                                } else {
+                                    props.fonts = Some(next);
+                                }
+                            }
                             "b" => props.bold = parse_on_off_tristate(parser, &attrs, "w:b"),
                             "bCs" => {
                                 props.bold_cs = parse_on_off_tristate(parser, &attrs, "w:bCs");
@@ -301,6 +313,14 @@ impl PartParser<'_> {
                                 props.underline =
                                     parser.val_enum(&attrs, "w:u", Underline::from_strict);
                                 props.underline_color = wml_attr(&attrs, "color").map(Color::new);
+                                props.underline_theme = theme_color_ref(
+                                    parser,
+                                    &attrs,
+                                    "themeColor",
+                                    "themeTint",
+                                    "themeShade",
+                                )
+                                .map(Box::new);
                             }
                             "strike" => {
                                 props.strike = parse_on_off_tristate(parser, &attrs, "w:strike");
@@ -311,15 +331,13 @@ impl PartParser<'_> {
                             }
                             "color" => {
                                 props.color = parser.val_string(&attrs).map(Color::new);
-                                if let Some(theme) = wml_attr(&attrs, "themeColor") {
-                                    props.color_theme = Some(ThemeColorRef {
-                                        color: ThemeColor::new(parser.intern(theme)),
-                                        tint: wml_attr(&attrs, "themeTint")
-                                            .map(|value| parser.intern(value)),
-                                        shade: wml_attr(&attrs, "themeShade")
-                                            .map(|value| parser.intern(value)),
-                                    });
-                                }
+                                props.color_theme = theme_color_ref(
+                                    parser,
+                                    &attrs,
+                                    "themeColor",
+                                    "themeTint",
+                                    "themeShade",
+                                );
                             }
                             "highlight" => {
                                 props.highlight =
@@ -459,7 +477,23 @@ impl PartParser<'_> {
             h_ansi: wml_attr(attrs, "hAnsi").map(|value| self.intern(value)),
             east_asia: wml_attr(attrs, "eastAsia").map(|value| self.intern(value)),
             complex_script: wml_attr(attrs, "cs").map(|value| self.intern(value)),
-            hint: wml_attr(attrs, "hint").map(|value| self.intern(value)),
+            hint: {
+                let hint = wml_attr(attrs, "hint");
+                if hint.is_some_and(|value| value.eq_ignore_ascii_case("cs")) {
+                    // Strict `ST_Hint` is `default` | `eastAsia`. The face stays
+                    // on `w:cs`; the hint token itself cannot be written.
+                    self.record(
+                        "w:rFonts@hint",
+                        SupportStatus::Partial,
+                        Some(
+                            "Strict ST_Hint has no cs; the complex-script face stays on w:cs"
+                                .to_owned(),
+                        ),
+                        Some(self.location()),
+                    );
+                }
+                hint.map(|value| self.intern(value))
+            },
             ascii_theme: wml_attr(attrs, "asciiTheme").map(|value| self.intern(value)),
             h_ansi_theme: wml_attr(attrs, "hAnsiTheme").map(|value| self.intern(value)),
             east_asia_theme: wml_attr(attrs, "eastAsiaTheme").map(|value| self.intern(value)),
@@ -506,6 +540,8 @@ impl PartParser<'_> {
             style: self.val_enum_owned(attrs, "w:border", BorderStyle::from_strict),
             size: self.measure_u16(attrs, "sz", "w:border").map(EighthsPoint),
             color: wml_attr(attrs, "color").map(Color::new),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
+                .map(Box::new),
             space: self.measure_u16(attrs, "space", "w:border"),
             shadow: attr_on(attrs, "shadow"),
             frame: attr_on(attrs, "frame"),
@@ -518,6 +554,16 @@ impl PartParser<'_> {
             pattern: wml_attr(attrs, "val").map(|value| self.intern(value)),
             color: wml_attr(attrs, "color").map(Color::new),
             fill: wml_attr(attrs, "fill").map(Color::new),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
+                .map(Box::new),
+            theme_fill: theme_color_ref(
+                self,
+                attrs,
+                "themeFill",
+                "themeFillTint",
+                "themeFillShade",
+            )
+            .map(Box::new),
         }
     }
 
@@ -528,8 +574,10 @@ impl PartParser<'_> {
             after: self.measure_twips(attrs, "after", "w:spacing"),
             line: self.measure_twips(attrs, "line", "w:spacing"),
             line_rule: wml_attr(attrs, "lineRule").and_then(LineSpacingRule::from_strict),
-            after_autospacing: attr_on(attrs, "afterAutospacing"),
-            before_autospacing: attr_on(attrs, "beforeAutospacing"),
+            before_lines: self.measure_i32(attrs, "beforeLines", "w:spacing"),
+            after_lines: self.measure_i32(attrs, "afterLines", "w:spacing"),
+            after_autospacing: attr_bool(attrs, "afterAutospacing"),
+            before_autospacing: attr_bool(attrs, "beforeAutospacing"),
         }
     }
 
@@ -550,8 +598,12 @@ impl PartParser<'_> {
             end,
             first_line: self.measure_twips(attrs, "firstLine", "w:ind"),
             hanging: self.measure_twips(attrs, "hanging", "w:ind"),
-            start_chars: self.measure_i32(attrs, "startChars", "w:ind"),
-            end_chars: self.measure_i32(attrs, "endChars", "w:ind"),
+            start_chars: self
+                .measure_i32(attrs, "startChars", "w:ind")
+                .or_else(|| self.measure_i32(attrs, "leftChars", "w:ind")),
+            end_chars: self
+                .measure_i32(attrs, "endChars", "w:ind")
+                .or_else(|| self.measure_i32(attrs, "rightChars", "w:ind")),
             first_line_chars: self.measure_i32(attrs, "firstLineChars", "w:ind"),
             hanging_chars: self.measure_i32(attrs, "hangingChars", "w:ind"),
         }
@@ -613,6 +665,12 @@ impl PartParser<'_> {
                         }
                         match name.local() {
                             "tblStyle" => props.style = parser.val_string(&attrs).map(StyleId::new),
+                            "tblStyleRowBandSize" => {
+                                props.style_row_band_size = val_attr(&attrs).and_then(parse_i32);
+                            }
+                            "tblStyleColBandSize" => {
+                                props.style_col_band_size = val_attr(&attrs).and_then(parse_i32);
+                            }
                             "tblW" => props.width = Some(parser.parse_width(&attrs, "w:tblW")),
                             "jc" => {
                                 props.alignment =
@@ -1144,11 +1202,8 @@ impl PartParser<'_> {
                 .map(EighthsPoint),
             space: wml_attr(attrs, "space").and_then(|value| value.trim().parse::<u16>().ok()),
             color: wml_attr(attrs, "color").map(Color::new),
-            theme_color: wml_attr(attrs, "themeColor").map(|slot| ThemeColorRef {
-                color: ThemeColor::new(slot),
-                tint: wml_attr(attrs, "themeTint").map(|value| self.intern(value)),
-                shade: wml_attr(attrs, "themeShade").map(|value| self.intern(value)),
-            }),
+            theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
+                .map(Box::new),
             shadow: attr_on(attrs, "shadow"),
         }
     }
@@ -1435,4 +1490,20 @@ impl PartParser<'_> {
         };
         Some(parsed)
     }
+}
+
+/// Reads a theme-colour slot plus optional tint/shade attributes into a ref.
+fn theme_color_ref(
+    parser: &mut PartParser<'_>,
+    attrs: &[Attr],
+    color: &str,
+    tint: &str,
+    shade: &str,
+) -> Option<ThemeColorRef> {
+    let slot = wml_attr(attrs, color)?;
+    Some(ThemeColorRef {
+        color: ThemeColor::new(parser.intern(slot)),
+        tint: wml_attr(attrs, tint).map(|value| parser.intern(value)),
+        shade: wml_attr(attrs, shade).map(|value| parser.intern(value)),
+    })
 }

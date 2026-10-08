@@ -124,7 +124,7 @@ pub struct NormalizerOptions {
     /// from the start and read nowhere, which made `with_mce` a constructor for a
     /// setting with no behaviour behind it — the same category of defect as the
     /// XSD harness version that caught `XMLSchemaParseError` and passed. See
-    /// [`mce`](crate::normalize::mce) for what each policy does and
+    /// [`crate::normalize::mce`] for what each policy does and
     /// [`McePolicy`] for what "understood" means here.
     pub mce: McePolicy,
     /// What to do about a broken Strict invariant (`TZ` §10.9).
@@ -194,7 +194,7 @@ impl NormalizerOptions {
 
 /// Normalizes Transitional OOXML parts to Strict at the raw-bytes seam.
 ///
-/// Implements [`RawNormalizer`]. Each part writes a local
+/// Implements [`RawNormalizer`](crate::normalize::RawNormalizer). Each part writes a local
 /// [`NormalizationReport`]; on completion that report **replaces** the entry
 /// for the part in a `BTreeMap` (ADR-0017 / AUD-30). The mutex is held only
 /// for the insert, so concurrent `normalize_part` calls under `parallel` do
@@ -462,24 +462,15 @@ impl TransitionalNormalizer {
 
         // AUD-34: Report/Drop skip conversion and remove the subtree.
         if context.vml != VmlFallback::Convert {
-            let class = vml::classify(subtree, context)
-                .map_or("unknown", |(shape, _)| vml_shape_class(&shape));
-            let reason = match context.vml {
-                VmlFallback::Report => format!(
-                    "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
-                ),
-                VmlFallback::Drop => format!("VML {class} dropped by policy"),
-                VmlFallback::Convert => unreachable!("checked above"),
-            };
-            report.record_loss(LossRecord {
-                transform_id: "T7.vml",
-                feature_id: format!("{element}/{class}"),
-                reason,
-                severity: Severity::Lossy,
-                locations: vec![location],
-            });
-            report.count_reported_removal(1);
+            Self::report_vml_policy_drop(subtree, element, context, report, location);
             return Ok(());
+        }
+
+        let grouped = vml::grouped_text_boxes(subtree, context);
+        if !grouped.is_empty() {
+            return Self::rewrite_vml_group(
+                writer, subtree, grouped, element, context, report, location,
+            );
         }
 
         let Some((shape, wrap)) = vml::classify(subtree, context) else {
@@ -533,26 +524,14 @@ impl TransitionalNormalizer {
         } else {
             vml::shape_events(&shape, wrap, doc_pr_id, report, &location)
         };
-        for event in head {
-            writer
-                .write_event(event)
-                .map_err(|error| xml_error(&context.part, error.to_string()))?;
-        }
+        Self::write_raw_events(writer, head, context)?;
         if text_box {
             for content in Self::drain_textbox_content(subtree) {
                 Self::rewrite_event(writer, content, context, report)?;
             }
-            for event in vml::text_box_close() {
-                writer
-                    .write_event(event)
-                    .map_err(|error| xml_error(&context.part, error.to_string()))?;
-            }
+            Self::write_raw_events(writer, vml::text_box_close(), context)?;
         }
-        for event in tail {
-            writer
-                .write_event(event)
-                .map_err(|error| xml_error(&context.part, error.to_string()))?;
-        }
+        Self::write_raw_events(writer, tail, context)?;
         report.record("T7.vml-shape", 1);
 
         if element == "w:object" {
@@ -561,18 +540,7 @@ impl TransitionalNormalizer {
             // the report can tell "the picture is here" from "the thing the
             // picture stood for is gone" - they are different and only one of them
             // is recoverable.
-            report.record_loss(LossRecord {
-                transform_id: "T7.ole",
-                feature_id: "w:object".to_owned(),
-                reason: "an OLE object is an executable object Strict has no substitute for; \
-                         its preview raster was kept as a picture and the object itself is gone"
-                    .to_owned(),
-                severity: Severity::Lossy,
-                locations: vec![location.clone()],
-            });
-            // One node removed: the `w:object` the preview replaced. Its VML
-            // children went with it and are inside that node.
-            report.count_reported_removal(1);
+            record_ole_loss(report, location);
         }
         // A converted shape is a **mapping**, not a loss: the image relationship is
         // the same one, the part behind it is carried by the pass-through, and
@@ -580,6 +548,118 @@ impl TransitionalNormalizer {
         // called for the `w:pict` case. Booking it as one would put the two
         // counters `verify_no_silent_loss` compares out of step.
         Ok(())
+    }
+
+    /// Writes already-final events straight to `writer`, mapping a write
+    /// failure to an error that names the part.
+    fn write_raw_events(
+        writer: &mut Writer<Vec<u8>>,
+        events: impl IntoIterator<Item = Event<'static>>,
+        context: &PartContext,
+    ) -> Result<()> {
+        for event in events {
+            writer
+                .write_event(event)
+                .map_err(|error| xml_error(&context.part, error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// AUD-34: names the `w:pict`/`w:object` subtree that `VmlFallback::Report`
+    /// or `VmlFallback::Drop` removes instead of converting.
+    fn report_vml_policy_drop(
+        subtree: &[Event<'static>],
+        element: &str,
+        context: &PartContext,
+        report: &mut NormalizationReport,
+        location: SourceLocation,
+    ) {
+        let class =
+            vml::classify(subtree, context).map_or("unknown", |(shape, _)| vml_shape_class(&shape));
+        let reason = match context.vml {
+            VmlFallback::Report => format!(
+                "VML {class} reported and dropped by VmlFallback::Report; not converted to DrawingML"
+            ),
+            VmlFallback::Drop => format!("VML {class} dropped by policy"),
+            // Callers reach here only off the Convert policy; should one not,
+            // the drop is still reported rather than aborting the open.
+            VmlFallback::Convert => format!("VML {class} dropped: not converted to DrawingML"),
+        };
+        report.record_loss(LossRecord {
+            transform_id: "T7.vml",
+            feature_id: format!("{element}/{class}"),
+            reason,
+            severity: Severity::Lossy,
+            locations: vec![location],
+        });
+        report.count_reported_removal(1);
+    }
+
+    /// Rewrites a subtree that holds a `v:group` with text boxes: the group's
+    /// picture (when the first shape is one), then each label on its own.
+    fn rewrite_vml_group(
+        writer: &mut Writer<Vec<u8>>,
+        subtree: &[Event<'static>],
+        grouped: Vec<vml::GroupedTextBox>,
+        element: &str,
+        context: &mut PartContext,
+        report: &mut NormalizationReport,
+        location: SourceLocation,
+    ) -> Result<()> {
+        if let Some((shape, wrap)) = vml::classify(subtree, context) {
+            if matches!(shape, vml::Shape::Picture(_)) {
+                let doc_pr_id = context.next_doc_pr_id();
+                let (head, tail) = vml::shape_events(&shape, wrap, doc_pr_id, report, &location);
+                Self::write_raw_events(writer, head.into_iter().chain(tail), context)?;
+                report.record("T7.vml-shape", 1);
+            }
+        }
+        let count = Self::write_grouped_text_boxes(writer, grouped, context, report)?;
+        report.record("T7.vml-shape", count);
+        report.record_loss(LossRecord {
+            transform_id: "T7.vml-group",
+            feature_id: "v:group".to_owned(),
+            reason: "a VML group has no DrawingML group here; each of its text boxes is \
+                     converted on its own, and the lines and non-text geometry are dropped"
+                .to_owned(),
+            severity: Severity::Lossy,
+            locations: vec![location.clone()],
+        });
+        if element == "w:object" {
+            record_ole_loss(report, location);
+        }
+        Ok(())
+    }
+
+    /// Writes every text box of a `v:group` as its own `DrawingML` shape.
+    ///
+    /// The caller has already decided this subtree is a group with labels. A
+    /// picture in the same group is written separately; these are only the labels.
+    fn write_grouped_text_boxes(
+        writer: &mut Writer<Vec<u8>>,
+        grouped: Vec<vml::GroupedTextBox>,
+        context: &mut PartContext,
+        report: &mut NormalizationReport,
+    ) -> Result<u32> {
+        let count = u32::try_from(grouped.len()).unwrap_or(u32::MAX);
+        let location = context.location();
+        for grouped_box in grouped {
+            let doc_pr_id = context.next_doc_pr_id();
+            let (head, tail) = vml::text_box_shape_events(
+                &grouped_box.shape,
+                grouped_box.wrap,
+                doc_pr_id,
+                report,
+                &location,
+            );
+            Self::write_raw_events(writer, head, context)?;
+            for content in grouped_box.content {
+                Self::rewrite_event(writer, content, context, report)?;
+            }
+            Self::write_raw_events(writer, vml::text_box_close(), context)?;
+            Self::write_raw_events(writer, tail, context)?;
+        }
+        Ok(count)
     }
 
     /// The events of a `w:txbxContent`'s **children**, and nothing else.
@@ -737,10 +817,27 @@ impl TransitionalNormalizer {
         let location = context.location();
         let (local, uri) = resolve(start, context);
         let qualified = qualify(&uri, &local);
-        if let Some(dropped) =
-            drop_unsupported_start(empty, &local, &uri, &qualified, &location, report)
-        {
-            return dropped;
+        // The root is never dropped: a part whose root is in an extension
+        // namespace (`w15:commentsEx`, `w16cid:commentsIds`, ...) would otherwise
+        // be written with no root element at all, which is not XML. Its
+        // children still go through the removal rules.
+        let is_root = matches!(context.root, RootTag::NotSeen);
+        if is_root {
+            let name = start.name();
+            let raw: &[u8] = name.as_ref();
+            context.root = RootTag::Seen(
+                raw.iter()
+                    .position(|byte| *byte == b':')
+                    .and_then(|colon| raw.get(..colon))
+                    .map(<[u8]>::to_vec),
+            );
+        }
+        if !is_root {
+            if let Some(dropped) =
+                drop_unsupported_start(empty, &local, &uri, &qualified, &location, report)
+            {
+                return dropped;
+            }
         }
 
         // ---- T3: element name -----------------------------------------
@@ -1033,16 +1130,42 @@ fn copy_attributes(
             key.rsplit(':').next().unwrap_or(&key).to_owned()
         })
         .collect();
+    // A declaration this tag rewrites to its Strict URI binds that URI to the
+    // producer's prefix before any attribute is rewritten. Otherwise an
+    // attribute written before its own declaration (`<ax:ocx r:id=".."
+    // xmlns:r="..2006/relationships">`, CC0/099) asks for the Strict URI while
+    // the table still holds the Transitional one, and gets a minted `n2`
+    // prefix that nothing declares.
+    for attribute in start.attributes().flatten() {
+        let key = attribute.key.as_ref();
+        let Some(prefix) = key.strip_prefix(b"xmlns:") else {
+            continue;
+        };
+        let Ok(value) = attribute.normalized_value(context.xml_version) else {
+            continue;
+        };
+        let target =
+            map_uri(&value).or_else(|| repair_legacy_package_uri(&value).map(str::to_owned));
+        if let Some(strict) = target {
+            context.remember_prefix(prefix.to_vec(), strict);
+        }
+    }
     for attribute in start.attributes().flatten() {
         if drop_w_val && attribute.key.as_ref().ends_with(b":val") {
             continue;
         }
         match rewrite_attribute(&attribute, context, report, &present_locals) {
             RewrittenAttribute::Keep(key, value) => {
-                // `value` is already in its final escaped form: a stage that
-                // rewrote it escaped it, and a stage that did not left the
-                // producer's own bytes alone.
-                buffer.push_attribute((key.as_str(), value.as_str()));
+                // Two source attributes can rewrite to one Strict name
+                // (`w:tentative` and `w15:tentative`). The second copy is not
+                // a second attribute; emitting both makes the part unreadable.
+                let duplicate = buffer
+                    .attributes()
+                    .flatten()
+                    .any(|existing| existing.key.as_ref() == key.as_bytes());
+                if !duplicate {
+                    buffer.push_attribute((key.as_str(), value.as_str()));
+                }
             }
             // A declaration that must not be emitted: the namespace is going away
             // with its nodes, and leaving it would only advertise a namespace
@@ -1309,6 +1432,23 @@ fn is_legacy_graphics(event: &Event<'_>, context: &PartContext) -> bool {
     legacy_graphics_local(&raw, context).is_some()
 }
 
+/// Names the OLE object behind a kept `w:object` preview as lost.
+///
+/// One node removed: the `w:object` the preview replaced. Its VML children went
+/// with it and are inside that node.
+fn record_ole_loss(report: &mut NormalizationReport, location: SourceLocation) {
+    report.record_loss(LossRecord {
+        transform_id: "T7.ole",
+        feature_id: "w:object".to_owned(),
+        reason: "an OLE object is an executable object Strict has no substitute for; \
+                 its preview raster was kept as a picture and the object itself is gone"
+            .to_owned(),
+        severity: Severity::Lossy,
+        locations: vec![location],
+    });
+    report.count_reported_removal(1);
+}
+
 /// The qualified name a buffered subtree is reported under.
 fn legacy_graphics_element(subtree: &[Event<'static>]) -> &'static str {
     let raw = match subtree.first() {
@@ -1400,6 +1540,12 @@ enum Rewritten {
     Drop,
 }
 
+/// Whether a part's root start tag has been seen, and its prefix if it has one.
+enum RootTag {
+    NotSeen,
+    Seen(Option<Vec<u8>>),
+}
+
 /// Per-part mutable state.
 ///
 /// Visible to the [`vml`] module, which resolves a buffered `w:pict` subtree
@@ -1475,6 +1621,10 @@ pub(crate) struct PartContext {
     vml_picture_prefixes: Vec<(&'static str, &'static str)>,
     /// Whether the part's root element has been written yet.
     root_written: bool,
+    /// The part's root start tag, once seen: `Some(prefix)` (`Some(None)` for
+    /// an unprefixed root). The root is never dropped, and an extension
+    /// namespace that names it keeps its `xmlns:` declaration (`rewrite_start`).
+    root: RootTag,
     /// Next `wp:docPr/@id` this part hands out, for a converted VML picture.
     doc_pr_id: u32,
     /// The markup-compatibility policy this write runs with.
@@ -1529,6 +1679,7 @@ impl PartContext {
             doc_pr_id: 0,
             vml_picture_prefixes: Vec::new(),
             root_written: false,
+            root: RootTag::NotSeen,
             mce: McePolicy::default(),
             invariants: InvariantMode::default(),
             direction: DirectionPolicy::default(),
@@ -1799,6 +1950,31 @@ fn rewrite_attribute(
     // Counted in the stage total rather than as a removal record: an attribute
     // is not a node, and `verify_no_silent_loss` counts nodes against reported
     // removals - booking it as one would put the two counters out of step.
+    // Word 2012 stores `w:lvl/@tentative` in an ignorable namespace. Strict
+    // `CT_Lvl` has the same attribute in the main namespace. Rewriting it
+    // keeps the value; every other attribute in that namespace still drops.
+    if !is_reserved
+        && local == "tentative"
+        && context.pending_element == "lvl"
+        && (uri == "http://schemas.microsoft.com/office/word/2012/wordml" || uri.is_empty())
+    {
+        // `present_locals` contains this attribute's own local name. Treating
+        // that as "already present" drops `w15:tentative` before it is rewritten.
+        let Some(decoded) = attribute
+            .normalized_value(version)
+            .ok()
+            .map(Cow::into_owned)
+        else {
+            return RewrittenAttribute::Drop;
+        };
+        report.record_mapping(
+            "T1.namespace",
+            &uri,
+            "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        );
+        return RewrittenAttribute::Keep(PartContext::qualified_name("w", "tentative"), decoded);
+    }
+
     if !is_reserved && is_ignorable_extension(&uri) {
         report.record("T5.extension-attribute", 1);
         // The stage id alone does not name the attribute. Census named-loss
@@ -2378,6 +2554,16 @@ fn map_namespace_declaration(
     }
     if VML_NAMESPACES.contains(&value) || tables::is_ignorable_extension(value) {
         context.remember_prefix(prefix.as_bytes().to_vec(), value.to_owned());
+        // The root's own namespace stays declared: the root is kept even when
+        // its namespace is an extension (`w15:commentsEx`), and an element
+        // whose prefix is undeclared is not XML.
+        let names_the_root = matches!(
+            &context.root,
+            RootTag::Seen(Some(root)) if root.as_slice() == prefix.as_bytes()
+        );
+        if names_the_root {
+            return Some((format!("xmlns:{prefix}"), value.to_owned()));
+        }
         context.forget_declaration(prefix.as_bytes());
         return None;
     }
@@ -2566,15 +2752,9 @@ pub fn part_needs_normalization(bytes: &[u8]) -> bool {
     if memchr::memmem::find(bytes, LEGACY_PURL_PACKAGE).is_some() {
         return true;
     }
-    let mut from = 0usize;
-    while let Some(found) = memchr::memmem::find(&bytes[from..], NEEDLE) {
-        let at = from + found;
-        if !bytes[at..].starts_with(MCE) {
-            return true;
-        }
-        from = at + NEEDLE.len();
-    }
-    false
+    // Non-overlapping occurrences, as the needle cannot overlap itself.
+    memchr::memmem::find_iter(bytes, NEEDLE)
+        .any(|at| bytes.get(at..).is_none_or(|tail| !tail.starts_with(MCE)))
 }
 
 /// The prefixes a part's bytes actually use, for the MCE bookkeeping cleanup.
@@ -2601,24 +2781,26 @@ fn used_prefixes(bytes: &[u8]) -> std::collections::BTreeSet<Vec<u8>> {
     }
     let mut used = std::collections::BTreeSet::new();
     let mut at = 0usize;
-    while at < bytes.len() {
-        if !is_name_start(bytes[at]) {
+    while let Some(&byte) = bytes.get(at) {
+        if !is_name_start(byte) {
             at += 1;
             continue;
         }
         let start = at;
-        while at < bytes.len() && is_name_char(bytes[at]) {
+        while bytes.get(at).copied().is_some_and(is_name_char) {
             at += 1;
         }
         // `a:b` is a qualified name; `a:b` inside text, `http://x` and `a::b` are
         // not. The last two cases are the ones a bare "identifier then colon"
         // test would get wrong, and both are common in a part's text content.
-        let qualified = at + 1 < bytes.len()
-            && bytes[at] == b':'
-            && !matches!(bytes.get(at + 1), Some(b':' | b'/'))
-            && !bytes[at + 1].is_ascii_whitespace();
+        let qualified = match (bytes.get(at), bytes.get(at + 1)) {
+            (Some(b':'), Some(next)) => !matches!(next, b':' | b'/') && !next.is_ascii_whitespace(),
+            _ => false,
+        };
         if qualified {
-            used.insert(bytes[start..at].to_vec());
+            if let Some(name) = bytes.get(start..at) {
+                used.insert(name.to_vec());
+            }
             at += 1;
         }
     }
@@ -2645,6 +2827,47 @@ mod tests {
     const TRANSITIONAL: &str = r#"<?xml version="1.0"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>"#;
+
+    /// An attribute written before its own namespace declaration keeps the
+    /// producer's prefix (`CC0/099`'s `word/activeX/activeX1.xml` came out
+    /// with an undeclared minted `n2:id`).
+    #[test]
+    fn an_attribute_before_its_declaration_keeps_its_prefix() {
+        let input = br#"<ax:ocx ax:classid="{D27CDB6E}" r:id="rId1" xmlns:ax="http://schemas.microsoft.com/office/2006/activeX" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let output = normalizer
+            .normalize(&PartId::new("/word/activeX/activeX1.xml"), input)
+            .expect("normalize");
+        let xml = String::from_utf8(output.to_vec()).expect("utf8");
+        assert!(xml.contains(r#"r:id="rId1""#), "{xml}");
+        assert!(
+            xml.contains(r#"xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships""#),
+            "{xml}"
+        );
+        assert!(!xml.contains("n2:"), "no undeclared minted prefix: {xml}");
+    }
+
+    /// A part whose root is in an extension namespace keeps its root, so the
+    /// normalized part is still a well-formed document (`CC0_DOCX_1/065`'s
+    /// `word/commentsExtended.xml` came out empty).
+    #[test]
+    fn an_extension_namespace_root_is_kept() {
+        let input = br#"<w15:commentsEx xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" mc:Ignorable="w15"><w15:commentEx w15:paraId="0A1B2C3D" w15:done="0"/></w15:commentsEx>"#;
+        let normalizer = TransitionalNormalizer::new();
+        let output = normalizer
+            .normalize(&PartId::new("/word/commentsExtended.xml"), input)
+            .expect("normalize");
+        let xml = String::from_utf8(output.to_vec()).expect("utf8");
+        assert!(xml.contains("<w15:commentsEx"), "the root survives: {xml}");
+        assert!(
+            xml.contains("xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\""),
+            "and its prefix stays declared: {xml}"
+        );
+        assert!(
+            xml.trim_end().ends_with("</w15:commentsEx>") || xml.trim_end().ends_with("/>"),
+            "and is closed: {xml}"
+        );
+    }
 
     #[test]
     fn drawingml_hue_stays_an_angle_and_lum_mod_becomes_a_percent() {
@@ -2691,6 +2914,27 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("schemas.openxmlformats.org"), "{text}");
+    }
+
+    #[test]
+    fn word2012_lvl_tentative_becomes_the_strict_attribute() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<?xml version="1.0"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w15">
+<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0" w15:tentative="1"><w:start w:val="1"/></w:lvl></w:abstractNum>
+</w:numbering>"#;
+        let output = normalizer
+            .normalize(&PartId::new("/word/numbering.xml"), source.as_bytes())
+            .expect("normalize");
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(
+            text.contains(r#"w:tentative="1""#),
+            "the Word 2012 attribute must be rewritten onto w:lvl: {text}"
+        );
+        assert!(
+            !text.contains("w15:"),
+            "the ignorable prefix must not survive: {text}"
+        );
     }
 
     #[test]
@@ -3004,6 +3248,48 @@ mod tests {
         );
         let report = normalizer.report();
         assert_eq!(report.lossy_count(), 0, "nothing was lost: {report}");
+    }
+
+    /// A `v:group` keeps every label, not only the first shape.
+    ///
+    /// Child coordinates are group units. 25/100 of a 200 pt frame is 50 pt,
+    /// which is 635000 EMU. The second label's half-points must still be there:
+    /// a conversion that keeps one shape drops them.
+    #[test]
+    fn a_vml_group_keeps_every_text_box_size() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word">
+<w:body><w:p><w:r><w:pict>
+<v:group coordsize="100,50" coordorigin="0,0" style="width:200pt;height:100pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line">
+<v:shape style="position:absolute;left:0;top:0;width:100;height:50"/>
+<v:shape id="one" style="position:absolute;left:25;top:10;width:50;height:25">
+<v:textbox><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>one</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:shape>
+<v:rect id="two" style="position:absolute;left:0;top:0;width:10;height:10">
+<v:textbox><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="21"/><w:szCs w:val="32"/></w:rPr><w:t>two</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:rect>
+<v:group coordsize="10,10" coordorigin="0,0" style="width:20pt;height:20pt">
+<v:shape id="inner" style="position:absolute;left:0;top:0;width:10;height:10">
+<v:textbox><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="12"/></w:rPr><w:t>inner</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:shape>
+</v:group>
+<w10:wrap type="square"/>
+</v:group>
+</w:pict></w:r></w:p></w:body></w:document>"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(!text.contains("v:group"), "{text}");
+        assert_eq!(text.matches("<wps:txbx>").count(), 3, "{text}");
+        assert!(text.contains(r#"<w:sz w:val="18"/>"#), "{text}");
+        assert!(text.contains(r#"<w:sz w:val="21"/>"#), "{text}");
+        assert!(text.contains(r#"<w:sz w:val="12"/>"#), "{text}");
+        assert!(text.contains(r#"<w:szCs w:val="32"/>"#), "{text}");
+        assert!(!text.contains(r#"w:val="99""#), "{text}");
+        assert!(text.contains(">635000<"), "50 pt offset: {text}");
+        assert!(text.contains(">254000<"), "20 pt offset: {text}");
+        assert!(text.contains("one"), "{text}");
+        assert!(text.contains("two"), "{text}");
     }
 
     /// Dropping an empty child must not steal the parent's stack slot: after
@@ -3771,7 +4057,7 @@ mod tests {
             r#"<Relationship Id="rId1" "#,
             r#"Type="http://purl.oclc.org/ooxml/package/relationships/metadata/core-properties" "#,
             r#"Target="docProps/core.xml"/>"#,
-            r#"</Relationships>"#,
+            "</Relationships>",
         );
         let output = normalizer
             .normalize(&PartId::new("/_rels/.rels"), source.as_bytes())
@@ -3999,7 +4285,7 @@ mod tests {
         );
     }
 
-    /// AUD-100: LibreOffice writes both spellings; renaming `val` must not
+    /// AUD-100: `LibreOffice` writes both spellings; renaming `val` must not
     /// duplicate `characterSet`.
     #[allow(clippy::doc_markdown)]
     #[test]

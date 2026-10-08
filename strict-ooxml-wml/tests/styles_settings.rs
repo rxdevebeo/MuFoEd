@@ -162,7 +162,8 @@ fn parses_all_settings_elements() {
 <w:evenAndOddHeaders/><w:displayBackgroundShape/><w:hideSpellingErrors/><w:hideGrammaticalErrors/>\
 <w:proofState w:spelling=\"clean\"/><w:trackRevisions/><w:doNotHyphenateCaps/><w:autoHyphenation/>\
 <w:hyphenationZone w:val=\"360\"/><w:documentProtection w:edit=\"readOnly\"/>\
-<w:decimalSymbol w:val=\".\"/><w:listSeparator w:val=\",\"/><w:themeFontLang w:val=\"en-US\"/>\
+<w:decimalSymbol w:val=\".\"/><w:listSeparator w:val=\",\"/>\
+<w:themeFontLang w:val=\"en-US\" w:eastAsia=\"zh-CN\" w:bidi=\"ar-SA\"/>\
 <w:mirrorMargins/>\
 <w:compat><w:compatSetting w:name=\"compatibilityMode\" w:val=\"15\"/><w:compatSetting w:name=\"x\"/></w:compat>\
 <w:mysterySetting/>\
@@ -181,7 +182,10 @@ fn parses_all_settings_elements() {
     assert_eq!(settings.document_protection.as_deref(), Some("readOnly"));
     assert_eq!(settings.decimal_symbol.as_deref(), Some("."));
     assert_eq!(settings.list_separator.as_deref(), Some(","));
-    assert_eq!(settings.theme_font_lang.as_deref(), Some("en-US"));
+    let theme_font_lang = settings.theme_font_lang.as_ref().expect("themeFontLang");
+    assert_eq!(theme_font_lang.val.as_deref(), Some("en-US"));
+    assert_eq!(theme_font_lang.east_asia.as_deref(), Some("zh-CN"));
+    assert_eq!(theme_font_lang.bidi.as_deref(), Some("ar-SA"));
     assert!(settings.mirror_margins);
     assert_eq!(settings.compatibility.len(), 1);
     assert!(document.support.get("w:mysterySetting").is_some());

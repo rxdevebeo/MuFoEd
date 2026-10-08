@@ -81,8 +81,7 @@ pub fn parse(data: &str) -> Vec<Segment> {
     let mut out: Vec<Segment> = Vec::new();
     let mut command = ' ';
 
-    while index < bytes.len() {
-        let ch = bytes[index];
+    while let Some(&ch) = bytes.get(index) {
         if ch.is_ascii_whitespace() || ch == ',' {
             index += 1;
             continue;
@@ -184,37 +183,46 @@ pub fn parse(data: &str) -> Vec<Segment> {
 
 /// Reads one number, tolerating the forms SVG allows (`-1.5`, `.5`, `1e-3`).
 fn number(bytes: &[char], index: &mut usize) -> Option<f64> {
-    while *index < bytes.len() && (bytes[*index].is_ascii_whitespace() || bytes[*index] == ',') {
-        *index += 1;
-    }
+    skip_separators(bytes, index);
     let start = *index;
-    if *index < bytes.len() && (bytes[*index] == '-' || bytes[*index] == '+') {
+    if bytes.get(*index).is_some_and(|&ch| ch == '-' || ch == '+') {
         *index += 1;
     }
-    while *index < bytes.len() && (bytes[*index].is_ascii_digit() || bytes[*index] == '.') {
+    while bytes
+        .get(*index)
+        .is_some_and(|&ch| ch.is_ascii_digit() || ch == '.')
+    {
         *index += 1;
     }
-    if *index < bytes.len() && (bytes[*index] == 'e' || bytes[*index] == 'E') {
+    if bytes.get(*index).is_some_and(|&ch| ch == 'e' || ch == 'E') {
         *index += 1;
-        if *index < bytes.len() && (bytes[*index] == '-' || bytes[*index] == '+') {
+        if bytes.get(*index).is_some_and(|&ch| ch == '-' || ch == '+') {
             *index += 1;
         }
-        while *index < bytes.len() && bytes[*index].is_ascii_digit() {
+        while bytes.get(*index).is_some_and(char::is_ascii_digit) {
             *index += 1;
         }
     }
     if start == *index {
         return None;
     }
-    let text: String = bytes[start..*index].iter().collect();
+    let text: String = bytes.get(start..*index)?.iter().collect();
     text.parse::<f64>().ok().filter(|value| value.is_finite())
+}
+
+/// Skips whitespace and commas, which SVG treats alike between numbers.
+fn skip_separators(bytes: &[char], index: &mut usize) {
+    while bytes
+        .get(*index)
+        .is_some_and(|&ch| ch.is_ascii_whitespace() || ch == ',')
+    {
+        *index += 1;
+    }
 }
 
 /// Reads an arc flag: one character, `0` or `1`.
 fn flag(bytes: &[char], index: &mut usize) -> Option<bool> {
-    while *index < bytes.len() && (bytes[*index].is_ascii_whitespace() || bytes[*index] == ',') {
-        *index += 1;
-    }
+    skip_separators(bytes, index);
     let ch = *bytes.get(*index)?;
     if ch != '0' && ch != '1' {
         return None;

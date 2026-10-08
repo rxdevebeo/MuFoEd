@@ -92,6 +92,38 @@ pub struct ResourceLimits {
     /// past one level. The renderer and the writer return
     /// `LimitKind::TextBoxNesting` for a model built by hand that goes past it.
     pub max_text_box_nesting: u32,
+    /// Maximum nesting of inline wrappers inside one paragraph. Default: 16.
+    ///
+    /// An *inline wrapper* is a paragraph child whose children are themselves
+    /// paragraph children: `w:ins`, `w:del`, `w:moveTo`, `w:moveFrom`,
+    /// `w:hyperlink`, `w:fldSimple`, an inline `w:sdt`, `w:dir`, `w:bdo`,
+    /// `w:customXml`, `w:smartTag` and an inline `mc:AlternateContent`.
+    ///
+    /// Without it the only bound was [`max_xml_depth`](Self::max_xml_depth),
+    /// and 120-180 nested `w:ins` overflowed a 1 MiB stack in a release build
+    /// (debug frames are larger). Word nests a handful of these at most - a
+    /// content control around a hyperlink around a revision - so 16 refuses no
+    /// real document and keeps the inline chain well inside the stack.
+    ///
+    /// The parser does not refuse a document over it: the wrapper past the
+    /// bound loses its content, `limit.inline_nesting` is recorded as
+    /// `Unsupported`, and the rest of the document is read - the trade
+    /// [`max_text_box_nesting`](Self::max_text_box_nesting) makes.
+    pub max_inline_nesting: u32,
+    /// Maximum nesting of `DrawingML` group shapes (`wpg:wgp` / `wpg:grpSp`).
+    /// Default: 16.
+    ///
+    /// Before this bound a group was capped only by
+    /// [`max_xml_depth`](Self::max_xml_depth) - one XML level per group, so
+    /// about 250 groups deep - and every later walk (render, write, edit, the
+    /// recursive drop of the model) recursed once per level. Word's UI nests
+    /// groups a handful of levels; sixteen leaves room for generated drawings.
+    ///
+    /// As with text boxes, the parser does not refuse a document over it: the
+    /// group past the bound loses its content and `wpg:wgp` is recorded as
+    /// `Unsupported`. The renderer and the writer return
+    /// `LimitKind::GroupNesting` for a model built by hand that goes past it.
+    pub max_group_nesting: u32,
     /// Maximum number of nodes in one `m:oMath`. Default: 4096.
     ///
     /// Per formula, not per package: a document may carry a thousand formulas,
@@ -131,6 +163,8 @@ impl Default for ResourceLimits {
             max_parts: 4096,
             max_block_nesting: 12,
             max_text_box_nesting: 5,
+            max_inline_nesting: 16,
+            max_group_nesting: 16,
             max_math_nodes: 4096,
             max_math_depth: 64,
             max_support_features: 10_000,
@@ -159,6 +193,8 @@ mod tests {
         assert_eq!(limits.max_parts, 4096);
         assert_eq!(limits.max_block_nesting, 12);
         assert_eq!(limits.max_text_box_nesting, 5);
+        assert_eq!(limits.max_inline_nesting, 16);
+        assert_eq!(limits.max_group_nesting, 16);
         assert_eq!(limits.max_math_nodes, 4096);
         assert_eq!(limits.max_math_depth, 64);
         assert_eq!(limits.max_support_features, 10_000);

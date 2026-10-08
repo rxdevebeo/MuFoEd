@@ -148,10 +148,13 @@ impl PictureBuilder {
                 graphic: Box::new(Graphic::Picture(Picture {
                     name: Some(name),
                     descr: None,
+                    nv_id: None,
+                    bw_mode: None,
                     blip: Some(BlipRef {
                         embed: None,
                         link: None,
                         resolved: Some(part.clone()),
+                        cstate: None,
                         location: location.clone(),
                     }),
                     extent: Some(extent),

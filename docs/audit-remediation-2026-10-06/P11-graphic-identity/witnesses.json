@@ -1,0 +1,26 @@
+{
+  "package": "P11",
+  "documents": [
+    {
+      "path": "testdata/CC0_DOCX/031_toki_soweli_tan_jan_Beatrix_Potter.docx",
+      "role": "witness",
+      "source_sha256": "7297fa8bf6c75462d3108226b18f5b25562414e3e96c800dc4b48633597b0f77",
+      "written_sha256": "ca6fb4873e3a59e77d5ca1a469d677a4bd6de8735403c099a3f33ee0324510da",
+      "written_path": "target/census-written-p11p15b/cc0/031_toki_soweli_tan_jan_Beatrix_Potter.docx"
+    },
+    {
+      "path": "testdata/CC0_DOCX/009_stratigrafi_regional_daerah_kulon_progo_diy.docx",
+      "role": "witness",
+      "source_sha256": "68a0a6470178ab6158d22ecddf9f1c26ff0bc0809c550d8d9bb62c1a9ccfd964",
+      "written_sha256": "2819d0ebfd2a7c893fe4fed7d1fd3f638109a479e12ca968281aab7aad12552b",
+      "written_path": "target/census-written-p11p15b/cc0/009_stratigrafi_regional_daerah_kulon_progo_diy.docx"
+    },
+    {
+      "path": "strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx",
+      "role": "witness",
+      "source_sha256": "1518f0ac941aea34b7d700d947f9cb7122c4f67bd62d3b6e5a559e8a9122babc",
+      "written_sha256": "0cc77b817eb6b214da0a11187d080549228fc2210084ea2f532fdfed6a490ebb",
+      "written_path": "target/census-written-p11p15b/docx/1. First-Steps-in-Programming.docx"
+    }
+  ]
+}

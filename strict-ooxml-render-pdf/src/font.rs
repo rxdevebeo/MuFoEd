@@ -497,14 +497,14 @@ fn is_cff_font(data: &[u8]) -> bool {
     if data.len() < 12 {
         return false;
     }
-    let num_tables = usize::from(u16::from_be_bytes([data[4], data[5]]));
+    let Some(&[high, low]) = data.get(4..6) else {
+        return false;
+    };
+    let num_tables = usize::from(u16::from_be_bytes([high, low]));
     (0..num_tables).any(|index| {
         let offset = 12 + index * 16 + 4;
-        let end = offset + 4;
-        if end > data.len() {
-            return false;
-        }
-        &data[offset..end] == b"CFF "
+        data.get(offset..offset + 4)
+            .is_some_and(|tag| tag == b"CFF ")
     })
 }
 
@@ -533,6 +533,9 @@ pub fn to_unicode_cmap(font: &EmbeddedFont) -> Vec<u8> {
         entries.push((*cid, text.clone()));
     }
     entries.sort_by_key(|(cid, _)| *cid);
+    // The number before `beginbfchar` is the entry count of that section
+    // (PDF 32000-1 §9.10.3, Adobe TN 5099); readers that trust it read exactly
+    // that many pairs.
     for chunk in entries.chunks(100) {
         let _ = writeln!(out, "{} beginbfchar", chunk.len());
         for (gid, text) in chunk {
@@ -718,6 +721,42 @@ mod tests {
         font.to_unicode.insert(1, '\u{1F600}');
         let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
         assert!(cmap.contains("<0001> <D83DDE00>"), "{cmap}");
+    }
+
+    /// Every `bfchar` section announces its own entry count, including the
+    /// short last one and documents with more than one section.
+    #[test]
+    fn bfchar_sections_announce_their_entry_count() {
+        let source = face_source("Calibri", false, false).expect("bundled");
+        let mut collector = FaceCollector::new();
+        for ch in (' '..='~').chain('\u{C0}'..='\u{FF}') {
+            collector.add(&source, false, false, ch);
+        }
+        collector.add_notdef();
+        let key = FaceKey {
+            family: source.family.to_owned(),
+            instance: None,
+            bold: false,
+            italic: false,
+        };
+        let font = collector.build(&key, &source).expect("subset");
+        let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
+        let mut sections = 0;
+        let mut lines = cmap.lines();
+        while let Some(line) = lines.next() {
+            let Some(count) = line.strip_suffix(" beginbfchar") else {
+                continue;
+            };
+            let declared: usize = count.parse().expect("numeric count");
+            let actual = lines.by_ref().take_while(|l| *l != "endbfchar").count();
+            assert_eq!(declared, actual, "section {sections}:\n{cmap}");
+            assert!((1..=100).contains(&declared), "{declared}");
+            sections += 1;
+        }
+        assert!(
+            sections >= 2,
+            "the test needs more than 100 mappings:\n{cmap}"
+        );
     }
 
     /// AUD-82: two characters that share a source glyph get distinct CIDs.

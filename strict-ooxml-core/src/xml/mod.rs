@@ -477,7 +477,7 @@ impl XmlReader {
         let from = self.scanned;
         let mut line = self.line;
         let mut column = self.column;
-        for &byte in &self.data()[from..target] {
+        for &byte in self.data().get(from..target).unwrap_or_default() {
             if byte == b'\n' {
                 line = line.saturating_add(1);
                 column = 1;
@@ -518,7 +518,8 @@ fn normalize_encoding(mut bytes: Vec<u8>, part: &PartId) -> Result<Vec<u8>> {
     }
     if bytes.starts_with(b"<?xml") {
         let head_len = bytes.len().min(256);
-        if let Some(label) = sniff_declared_encoding(&bytes[..head_len]) {
+        let head = bytes.get(..head_len).unwrap_or_default();
+        if let Some(label) = sniff_declared_encoding(head) {
             let lowered = label.to_ascii_lowercase();
             if lowered != "utf-8" && lowered != "utf8" {
                 let encoding =
@@ -539,18 +540,15 @@ fn normalize_encoding(mut bytes: Vec<u8>, part: &PartId) -> Result<Vec<u8>> {
 /// Extracts the value of an `encoding="..."` pseudo-attribute from a decl.
 fn sniff_declared_encoding(head: &[u8]) -> Option<String> {
     let text = std::str::from_utf8(head).ok()?;
-    let decl_end = text.find("?>")?;
-    let decl = &text[..decl_end];
-    let at = decl.find("encoding")?;
-    let after = &decl[at + "encoding".len()..];
+    let (decl, _) = text.split_once("?>")?;
+    let (_, after) = decl.split_once("encoding")?;
     let after = after.trim_start().strip_prefix('=')?.trim_start();
     let quote = after.chars().next()?;
     if quote != '"' && quote != '\'' {
         return None;
     }
-    let rest = &after[1..];
-    let end = rest.find(quote)?;
-    Some(rest[..end].to_owned())
+    let (value, _) = after.strip_prefix(quote)?.split_once(quote)?;
+    Some(value.to_owned())
 }
 
 #[cfg(test)]

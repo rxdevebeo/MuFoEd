@@ -82,8 +82,8 @@ fn parses_rich_paragraph_properties() {
     assert_eq!(props.tabs[1].alignment, TabAlignment::Clear);
     let spacing = props.spacing.unwrap();
     assert_eq!(spacing.line_rule, Some(LineSpacingRule::Exact));
-    assert!(spacing.before_autospacing);
-    assert!(spacing.after_autospacing);
+    assert_eq!(spacing.before_autospacing, Some(true));
+    assert_eq!(spacing.after_autospacing, Some(true));
     let indentation = props.indentation.unwrap();
     assert_eq!(indentation.start.unwrap().value(), 720);
     assert_eq!(indentation.end.unwrap().value(), 360);

@@ -26,6 +26,18 @@ const RULE_THICKNESS: f64 = 2.0;
 
 /// Page-anchored shapes for the vectors this page did not turn into table rules.
 pub(crate) fn blocks_for(page: &PdfPage, report: &mut ConversionReport) -> Vec<Block> {
+    placed_blocks_for(page, report)
+        .into_iter()
+        .map(|(_, block)| block)
+        .collect()
+}
+
+/// [`blocks_for`], each block with the top of its shape in points from the
+/// page's top (for placing it in the reading order).
+pub(crate) fn placed_blocks_for(
+    page: &PdfPage,
+    report: &mut ConversionReport,
+) -> Vec<(f64, Block)> {
     let mut blocks = Vec::new();
     for (index, item) in page.items().iter().enumerate() {
         let Item::Vector(vector) = item else {
@@ -36,7 +48,7 @@ pub(crate) fn blocks_for(page: &PdfPage, report: &mut ConversionReport) -> Vec<B
             // That canvas is the page, not a drawing, so it is not a second
             // shape and it is not a loss.
             Some(rect) if is_page_canvas(&rect, page.geometry.width, page.geometry.height) => {}
-            Some(rect) => blocks.push(shape_paragraph(index, &rect)),
+            Some(rect) => blocks.push((rect.y, shape_paragraph(index, &rect))),
             None if is_rule(vector) => {}
             None => report.record(
                 "vector.unsupported",
@@ -59,10 +71,9 @@ struct Rect {
 }
 
 fn rectangle(vector: &Vector, page_height: f64) -> Option<Rect> {
-    if vector.subpaths.len() != 1 {
+    let [subpath] = vector.subpaths.as_slice() else {
         return None;
-    }
-    let subpath = &vector.subpaths[0];
+    };
     if subpath.points.len() < 4 {
         return None;
     }
@@ -162,6 +173,8 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
     let shape = Shape {
         name: Some(Arc::clone(&name)),
         descr: None,
+        nv_id: None,
+        bw_mode: None,
         tx_box: None,
         geometry: ShapeGeometry::Preset(Arc::from("rect")),
         xfrm: None,

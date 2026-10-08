@@ -78,6 +78,7 @@ fn border() -> Border {
         style: Some(BorderStyle::Single),
         size: Some(EighthsPoint(4)),
         color: Some(Color::new("000000")),
+        theme_color: None,
         space: None,
         shadow: false,
         frame: false,
@@ -160,6 +161,7 @@ fn fixture() -> Document {
                 width: Some(Twips(*width)),
             })
             .collect(),
+        grid_change: None,
         rows: vec![
             row(vec![merged_across("Merged header", 3)]),
             row(vec![

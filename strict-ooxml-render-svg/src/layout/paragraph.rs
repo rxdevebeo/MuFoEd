@@ -137,7 +137,7 @@ pub(crate) fn layout_paragraph(
     };
     // Numbering supplies the fields the paragraph did not set. An explicit 0
     // stays 0; a missing hanging/firstLine still comes from the level (A16).
-    if let Some(marker) = ctx.numbering.get(&para.location) {
+    if let Some(marker) = ctx.numbering.get(para) {
         let direct = para.props.indentation.as_ref();
         if direct.and_then(|indent| indent.start).is_none() {
             if let Some(start) = marker.indent_start_pt {
@@ -608,7 +608,7 @@ fn build_lines(
         None => DEFAULT_TAB_TWIPS,
     };
 
-    let marker = ctx.numbering.get(&para.location).map(|marker| {
+    let marker = ctx.numbering.get(para).map(|marker| {
         (
             marker.text.clone(),
             marker.run.clone(),
@@ -1069,9 +1069,10 @@ fn reserve(
             *x = normal_x;
             continue;
         }
-        let Some(index) = spans
+        let Some((index, &(start, end))) = spans
             .iter()
-            .position(|(start, end)| *x < *end - 1e-6 && *end - start.max(*x) + 1e-9 >= 0.0)
+            .enumerate()
+            .find(|(_, (start, end))| *x < *end - 1e-6 && *end - start.max(*x) + 1e-9 >= 0.0)
         else {
             if advance_past_blocked(sink, current, x, normal_x) {
                 continue;
@@ -1083,7 +1084,6 @@ fn reserve(
             *x = normal_x;
             continue;
         };
-        let (start, end) = spans[index];
         if *x < start {
             *x = start;
         }
@@ -1254,34 +1254,104 @@ fn place_long_token(
             .character_spacing_control
             .as_deref(),
     );
-    for ch in token.chars() {
-        let width = sink.ctx.measure(&ch.to_string(), run);
-        if sink.exclusions.is_empty() {
-            if *x + width > line_end + 1e-9 && !current.is_empty() {
-                sink.emit(std::mem::replace(current, LineBuilder::new()), false);
-                *x = normal_x;
-            }
+    let plain_space_factor = crate::style::plain_space_factor(sink.computed.alignment, run.size_pt);
+    // One item per line-sized piece, not per character: a 1 MB unbroken token
+    // used to become a million items, each with its own copy of the run. The
+    // token is cut only at grapheme-cluster boundaries.
+    let mut piece = String::new();
+    let mut piece_x = *x;
+    let mut piece_width = 0.0;
+    for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(token, true) {
+        let width = sink.ctx.measure(cluster, run);
+        let overflows = if sink.exclusions.is_empty() {
+            *x + width > line_end + 1e-9 && !(current.is_empty() && piece.is_empty())
         } else {
+            false
+        };
+        if overflows {
+            if !piece.is_empty() {
+                push_piece(
+                    sink,
+                    current,
+                    &piece,
+                    piece_x,
+                    piece_width,
+                    run,
+                    size_px,
+                    compress,
+                    plain_space_factor,
+                );
+                piece.clear();
+            }
+            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+            *x = normal_x;
+            piece_x = *x;
+            piece_width = 0.0;
+        } else if !sink.exclusions.is_empty() {
+            // Exclusions may move the pen; flush so the piece starts where
+            // `reserve` puts it.
+            if !piece.is_empty() {
+                push_piece(
+                    sink,
+                    current,
+                    &piece,
+                    piece_x,
+                    piece_width,
+                    run,
+                    size_px,
+                    compress,
+                    plain_space_factor,
+                );
+                piece.clear();
+                piece_width = 0.0;
+            }
             let _ = reserve(sink, current, x, normal_x, width);
+            piece_x = *x;
         }
-        current.items.push(TextItem {
-            x: *x,
-            baseline: 0.0,
-            width,
-            text: ch.to_string(),
-            run: run.clone(),
-            size_px,
-            advance: sink.ctx.advance_kind_for(&ch.to_string(), run),
-            field: None,
-            compress_punctuation: compress,
-            following_non_space: None,
-            plain_space_factor: crate::style::plain_space_factor(
-                sink.computed.alignment,
-                run.size_pt,
-            ),
-        });
+        piece.push_str(cluster);
+        piece_width += width;
         *x += width;
     }
+    if !piece.is_empty() {
+        push_piece(
+            sink,
+            current,
+            &piece,
+            piece_x,
+            piece_width,
+            run,
+            size_px,
+            compress,
+            plain_space_factor,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_piece(
+    sink: &LineSink<'_, '_>,
+    current: &mut LineBuilder,
+    text: &str,
+    x: f64,
+    width: f64,
+    run: &ComputedRun,
+    size_px: f64,
+    compress_punctuation: bool,
+    plain_space_factor: f64,
+) {
+    current.items.push(TextItem {
+        x,
+        baseline: 0.0,
+        width,
+        text: text.to_owned(),
+        run: run.clone(),
+        size_px,
+        advance: sink.ctx.advance_kind_for(text, run),
+        field: None,
+        compress_punctuation,
+        following_non_space: None,
+        plain_space_factor,
+    });
 }
 
 /// Blend from identity at the line origin to `scale` by ~160 px of run-in.
@@ -1351,7 +1421,9 @@ fn apply_substitute_width_reflow(
         return;
     }
     // When every run shares one scale, stretch uniformly (including justify gaps).
-    let first = scales[0];
+    let Some(&first) = scales.first() else {
+        return;
+    };
     if scales.iter().all(|s| (*s - first).abs() <= 1e-9) {
         for (item, scale) in items.iter_mut().zip(scales.iter().copied()) {
             let rel = item.x - origin;
@@ -1363,21 +1435,27 @@ fn apply_substitute_width_reflow(
     }
     // Mixed bold/regular: keep justify gaps, scale each run's width, and scale
     // gaps by the following run's factor so later origins stay consistent.
-    let snapshot: Vec<(f64, f64)> = items.iter().map(|item| (item.x, item.width)).collect();
-    let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by(|a, b| snapshot[*a].0.partial_cmp(&snapshot[*b].0).unwrap());
+    // Snapshot `(index, x, width, scale)` so the walk reads pre-scaling geometry.
+    let mut order: Vec<(usize, f64, f64, f64)> = items
+        .iter()
+        .zip(scales.iter().copied())
+        .enumerate()
+        .map(|(idx, (item, scale))| (idx, item.x, item.width, scale))
+        .collect();
+    // `total_cmp`: a NaN origin from hostile metrics must not abort the sort.
+    order.sort_by(|a, b| a.1.total_cmp(&b.1));
     let mut cursor = origin;
     let mut prev_right = origin;
-    for &idx in &order {
-        let (ox, ow) = snapshot[idx];
-        let scale = scales[idx];
+    for (idx, ox, ow, scale) in order {
         let gap = (ox - prev_right).max(0.0);
         let gap_factor = distance_blend_scale((ox - origin).max(0.0), scale);
         cursor += gap * gap_factor;
-        items[idx].x = cursor;
         let width_factor = distance_blend_scale((ox - origin).max(0.0), scale);
-        items[idx].width = ow * width_factor;
-        cursor += items[idx].width;
+        if let Some(item) = items.get_mut(idx) {
+            item.x = cursor;
+            item.width = ow * width_factor;
+            cursor += item.width;
+        }
         prev_right = ox + ow;
     }
 }
@@ -1448,7 +1526,9 @@ fn finish_line(
     }
 
     // After wrap + justify + alignment: stretch Tinos to WPS Times metrics.
-    apply_substitute_width_reflow(&mut line.items, computed.alignment);
+    if ctx.options.wps_times_calibration {
+        apply_substitute_width_reflow(&mut line.items, computed.alignment);
+    }
 
     if line
         .items
@@ -1698,7 +1778,11 @@ fn resolve_line_metrics(
                 // Clio bold Figure captions (style 50, ≈10.5pt) sit on the 80%
                 // Exact grid in WPS. Small bold SNP labels (4.5pt) and regular
                 // body Exact lines keep natural ascent.
-                let use_grid = ctx.frame_force_exact_grid.get()
+                // Outside a frame every Exact line is on the grid (9fec5cb and
+                // the f18 PDF baseline witness); the natural-ascent rule below
+                // is the WPS frame behaviour only.
+                let use_grid = !ctx.in_frame.get()
+                    || ctx.frame_force_exact_grid.get()
                     || after_taller
                     || (run.bold && run.size_pt >= 9.0);
                 if use_grid {
@@ -1808,8 +1892,8 @@ fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
     for segment in pending {
         match segment {
             Seg::Text(text, run) => {
-                if let Some(index) = text.find(['.', ',']) {
-                    width += ctx.measure(&text[..index], run);
+                if let Some(head) = text.find(['.', ',']).and_then(|index| text.get(..index)) {
+                    width += ctx.measure(head, run);
                     return width;
                 }
                 width += ctx.measure(text, run);

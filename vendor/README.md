@@ -15,3 +15,29 @@ Remove the vendored copy once upstream releases the fix.
 | hayro-syntax | 0.7.2 | Apache-2.0 OR MIT | page-tree cycle guard; JBIG2 pixel budget (hayro#1259); `MAX_OBJECT_NESTING` on Dict/Array skip/read (AUD-96) | `hostile::raster::{page_tree_kids_cycle_is_handled, absurd_jbig2_*, deep_literal_dict_nesting_is_refused}` |
 
 Wired via `[patch.crates-io]` in the workspace `Cargo.toml`.
+
+### Behavioural patches (not security)
+
+These come with the PrintCraft copy and change rendering, not limits. A rebase
+onto a new upstream must carry them over too; each site is marked
+`PrintCraft patch:` in the source.
+
+| Crate | File | Patch |
+|---|---|---|
+| hayro-interpret | `src/soft_mask.rs` | a soft-mask group without `/CS` falls back to DeviceRGB instead of dropping the whole mask (ISO 32000-2 §11.6.5.2) |
+| hayro-interpret | `src/interpret/mod.rs` | `NoView` annotation flag honoured; `hide_comments` keeps `/Widget` and `/Link`; `/AP /N` as a dictionary of appearance states selected by `/AS` |
+| hayro-interpret | `src/ocg.rs`, `src/context.rs` | viewer overrides for optional-content groups (`ocg_overrides`) |
+| hayro-interpret | `src/context.rs`, `src/pattern.rs`, `src/font/type3.rs` | `MAX_PAINT_NESTING` definition and its tiling/Type 3 call sites (listed above) |
+| hayro-syntax | `src/byte_reader.rs` | `MAX_OBJECT_NESTING` counter used by `object/dict.rs` and `object/array.rs` (listed above) |
+
+To list every patch site: `grep -rn "PrintCraft" vendor --include=*.rs`.
+
+### Publishing
+
+`[patch.crates-io]` applies only inside this workspace. A crate published to
+crates.io that depends on `hayro` resolves the **unpatched** upstream release,
+without the limits above. To fail closed, the vendored `hayro` exports a
+`PATCHED_LIMITS` marker and `strict-ooxml-pdf/src/raster.rs` references it: a
+`raster` build against upstream `hayro` does not compile. Default-feature builds
+(no `raster`) do not depend on `hayro` and are unaffected. Remove the marker
+reference together with the vendored copy once upstream ships the fixes.

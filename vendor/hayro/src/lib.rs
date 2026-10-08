@@ -53,6 +53,16 @@ pub use hayro_interpret;
 pub use hayro_interpret::hayro_syntax;
 pub use vello_cpu;
 
+/// PrintCraft / StrictLib patch marker: present only in the vendored copy that
+/// carries the resource limits listed in `vendor/README.md`.
+///
+/// `strict-ooxml-pdf` references it under the `raster` feature, so a build that
+/// resolves the unpatched crates.io release (any build outside this workspace,
+/// where `[patch.crates-io]` does not apply) fails to compile instead of silently
+/// rasterizing hostile PDFs without those limits.
+#[doc(hidden)]
+pub const PATCHED_LIMITS: u32 = 1;
+
 use vello_cpu::color::AlphaColor;
 use vello_cpu::color::Srgb;
 use vello_cpu::color::palette::css::TRANSPARENT;

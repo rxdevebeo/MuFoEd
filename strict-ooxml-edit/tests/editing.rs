@@ -1,4 +1,8 @@
 //! Independent behavioral regressions for the E01 editing contract.
+//!
+//! `EditSession` is deprecated in favour of `Editor`; it is a wrapper now, and
+//! these tests hold the wrapper to the contract it always had.
+#![allow(deprecated)]
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_edit::{Command, EditError, EditLimits, EditSession, FormatPatch};
 use strict_ooxml_testkit::DocxBuilder;
@@ -158,6 +162,7 @@ fn enforces_history_and_text_limits() {
         EditLimits {
             history_transactions: 1,
             paragraph_scalars: 5,
+            ..EditLimits::default()
         },
     )
     .unwrap();

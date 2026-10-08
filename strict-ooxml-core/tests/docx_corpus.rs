@@ -34,3 +34,27 @@ fn local_docx_corpus_opens_without_panicking() {
         "corpus directory present but contains no .docx"
     );
 }
+
+/// The CC0 `ci-core` tier (`docs/CC0_CORPUS_MIGRATION_PLAN.md`): every document
+/// opens. Skipped when the tier has not been fetched, required in CI
+/// (`STRICT_OOXML_CORPUS=require`).
+#[test]
+fn cc0_core_corpus_opens() {
+    use strict_ooxml_core::normalize::transitional::TransitionalNormalizer;
+    use strict_ooxml_core::opc::ConformancePolicy;
+    use strict_ooxml_testkit::corpus::{tier, Tier};
+
+    let docs = tier(Tier::CiCore);
+    if docs.is_empty() {
+        eprintln!("SKIP cc0 ci-core corpus not fetched");
+        return;
+    }
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(std::sync::Arc::new(TransitionalNormalizer::new()));
+    for doc in docs {
+        if let Err(error) = Package::open_path(&doc.path, &options) {
+            panic!("{} ({}): {error}", doc.id, doc.path.display());
+        }
+    }
+}

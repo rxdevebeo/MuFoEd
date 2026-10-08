@@ -56,6 +56,8 @@ pub struct BlipRef {
     pub link: Option<RelId>,
     /// Resolved media part for `embed`.
     pub resolved: Option<PartId>,
+    /// `a:blip/@cstate` (`print`, `screen`, `none`, …).
+    pub cstate: Option<Arc<str>>,
     /// Source location.
     pub location: SourceLocation,
 }
@@ -93,6 +95,10 @@ pub struct Picture {
     pub name: Option<Arc<str>>,
     /// Picture description (`pic:cNvPr/@descr`).
     pub descr: Option<Arc<str>>,
+    /// Non-visual id (`pic:cNvPr/@id`). Absent only for a picture built in code.
+    pub nv_id: Option<u32>,
+    /// `pic:spPr/@bwMode`, including the explicit value `auto`.
+    pub bw_mode: Option<Arc<str>>,
     /// The image reference.
     pub blip: Option<BlipRef>,
     /// Picture geometry extent.
@@ -146,6 +152,17 @@ pub enum ShapeFill {
         foreground: Option<ShapeColor>,
         /// Background colour.
         background: Option<ShapeColor>,
+    },
+    /// Image fill (`a:blipFill`).
+    ///
+    /// The bytes stay the source part. `fill_rect` is `a:fillRect` in the
+    /// source spelling (`l`, `t`, `r`, `b`), so a transitional thousandths
+    /// value is not rewritten into a percent string.
+    Blip {
+        /// The image.
+        blip: BlipRef,
+        /// `a:fillRect` attributes, source lexical form.
+        fill_rect: [Option<Arc<str>>; 4],
     },
 }
 
@@ -235,17 +252,25 @@ pub enum ShapeGeometry {
     Custom(CustomGeometry),
 }
 
-/// A `wps:style` reference block, carrying theme style indices.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// A `wps:style` reference block, carrying theme style indices and scheme colours.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ShapeStyle {
-    /// Line reference index (`a:lnRef/@idx`).
-    pub line_ref: Option<i32>,
-    /// Fill reference index (`a:fillRef/@idx`).
-    pub fill_ref: Option<i32>,
-    /// Effect reference index (`a:effectRef/@idx`).
-    pub effect_ref: Option<i32>,
-    /// Font reference index (`a:fontRef/@idx`).
-    pub font_ref: Option<i32>,
+    /// Line reference index (`a:lnRef/@idx`), an integer as text.
+    pub line_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:lnRef` (`a:schemeClr/@val`).
+    pub line_ref_color: Option<std::sync::Arc<str>>,
+    /// Fill reference index (`a:fillRef/@idx`), an integer as text.
+    pub fill_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:fillRef` (`a:schemeClr/@val`).
+    pub fill_ref_color: Option<std::sync::Arc<str>>,
+    /// Effect reference index (`a:effectRef/@idx`), an integer as text.
+    pub effect_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:effectRef` (`a:schemeClr/@val`).
+    pub effect_ref_color: Option<std::sync::Arc<str>>,
+    /// Font collection index (`a:fontRef/@idx`: `major` / `minor` / `none`).
+    pub font_ref: Option<std::sync::Arc<str>>,
+    /// Scheme colour under `a:fontRef` (`a:schemeClr/@val`).
+    pub font_ref_color: Option<std::sync::Arc<str>>,
 }
 
 /// Vertical anchoring of text within a text box (`w:bodyPr/@anchor`).
@@ -324,6 +349,10 @@ pub struct Shape {
     pub name: Option<Arc<str>>,
     /// Shape description (`wps:cNvPr/@descr`).
     pub descr: Option<Arc<str>>,
+    /// Non-visual id (`wps:cNvPr/@id`).
+    pub nv_id: Option<u32>,
+    /// `wps:spPr/@bwMode`, including the explicit value `auto`.
+    pub bw_mode: Option<Arc<str>>,
     /// Whether this shape is a text box (`wps:cNvSpPr/@txBox`).
     pub tx_box: Option<bool>,
     /// Geometry.
@@ -384,9 +413,10 @@ pub struct GroupShape {
 /// order.
 ///
 /// The parts behind those ids — the chart, the four SmartArt parts, whatever an
-/// embedded workbook hangs off — are **not** in the model: they are a producer's
-/// own XML, and modelling them would be modelling DrawingML charts. What the
-/// model owes a consumer is the reference itself, because a `c:chart` element
+/// embedded workbook hangs off — are **not** in the model as markup: they are a
+/// producer's own XML. A chart's cached values are read into
+/// [`chart`](Self::chart) so it can be drawn, but what the model owes a writer is
+/// the reference itself, because a `c:chart` element
 /// whose `r:id` points at nothing is unreadable content, and one that was
 /// silently rewritten into a picture is a lie.
 ///
@@ -398,6 +428,20 @@ pub struct ForeignRefs {
     /// The ids, in the order the element carries them: one for `c:chart`
     /// (`r:id`), four for `dgm:relIds` (`r:dm`, `r:lo`, `r:qs`, `r:cs`).
     pub rels: Vec<Arc<str>>,
+    /// Cached data of the chart part a `c:chart` points at, when it could be
+    /// read (see [`crate::model::chart`]). Always `None` for a diagram, for an
+    /// id that resolves to nothing and for a chart part that failed to parse.
+    ///
+    /// Shared behind an [`Arc`] so the drawing stays small and a chart part
+    /// referenced twice is parsed once.
+    pub chart: Option<Arc<crate::model::chart::ChartData>>,
+    /// The drawing Word cached beside a SmartArt diagram, when it could be read
+    /// (see [`DiagramDrawing`]). Always `None` for a chart, for a diagram whose
+    /// data part names no drawing part and for a drawing part that failed to
+    /// parse.
+    ///
+    /// Shared behind an [`Arc`] for the same reasons as [`chart`](Self::chart).
+    pub diagram: Option<Arc<DiagramDrawing>>,
     /// Source location of the element that carried them.
     pub location: SourceLocation,
 }
@@ -419,6 +463,35 @@ impl ForeignRefs {
     }
 }
 
+/// Most shapes (`dsp:sp` and `dsp:grpSp`, counted together) kept from one
+/// diagram drawing part; the rest are dropped and reported.
+pub const MAX_DIAGRAM_SHAPES: usize = 2000;
+
+/// The pre-rendered drawing of a `SmartArt` diagram (`dsp:drawing`).
+///
+/// A `dgm:relIds` names the diagram's data, layout, style and colour parts;
+/// laying the diagram out from those is a layout engine of its own. Word also
+/// stores the result of its own layout in a separate drawing part (named from
+/// the data part's `dsp:dataModelExt/@relId`), and that drawing is what is kept
+/// here: plain DrawingML shapes in the diagram's own coordinate space, where
+/// `(0, 0)` is the top-left corner of the graphic frame and one unit is one EMU.
+///
+/// Shapes reuse the text-box model: a shape's `dsp:txBody` paragraphs become
+/// [`Block::Paragraph`]s of its [`TextBox`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiagramDrawing {
+    /// The drawing part the shapes were read from.
+    pub part: PartId,
+    /// The shape tree's own transform (`dsp:spTree/dsp:grpSpPr/a:xfrm`), when
+    /// the producer wrote one. Word writes an empty `dsp:grpSpPr`.
+    pub xfrm: Option<GroupTransform>,
+    /// The shapes, in document (paint) order: [`Graphic::Shape`] for a
+    /// `dsp:sp`, [`Graphic::Group`] for a `dsp:grpSp`.
+    pub shapes: Vec<Graphic>,
+    /// Whether shapes past [`MAX_DIAGRAM_SHAPES`] were dropped.
+    pub truncated: bool,
+}
+
 /// A DrawingML locked canvas (`lc:lockedCanvas`) preserved as Strict markup.
 ///
 /// Nested `a:grpSp` / `a:sp` / `a:cxnSp` trees carry the document's `a:off` /
@@ -430,6 +503,11 @@ impl ForeignRefs {
 pub struct LockedCanvas {
     /// Strict-form XML of the `lc:lockedCanvas` element, including children.
     pub markup: Arc<str>,
+    /// Image relationships the markup still names, as `(source rId, part)`.
+    ///
+    /// The markup keeps the source ids. The writer allocates new ones, so these
+    /// pairs are what retargets `r:embed` at the copied bytes.
+    pub images: Vec<(String, PartId)>,
     /// Source location of the canvas root.
     pub location: SourceLocation,
 }

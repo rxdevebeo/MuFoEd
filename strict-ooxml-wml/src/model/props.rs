@@ -105,6 +105,8 @@ pub struct RunProperties {
     pub underline: Option<Underline>,
     /// Underline colour (`w:u/@w:color`).
     pub underline_color: Option<Color>,
+    /// Theme colour on the underline (`w:u/@w:themeColor` + tint/shade).
+    pub underline_theme: Option<Box<ThemeColorRef>>,
     /// Strikethrough (`w:strike`).
     pub strike: TriState,
     /// Double strikethrough (`w:dstrike`).
@@ -188,6 +190,10 @@ pub struct TableProperties {
     pub positioning: Option<TablePositioning>,
     /// Spacing between cells (`w:tblCellSpacing`), AUD-46.
     pub cell_spacing: Option<Width>,
+    /// Rows in one style band (`w:tblStyleRowBandSize`).
+    pub style_row_band_size: Option<i32>,
+    /// Columns in one style band (`w:tblStyleColBandSize`).
+    pub style_col_band_size: Option<i32>,
     /// Source location of `w:tblPr`.
     pub location: Option<SourceLocation>,
 }
@@ -215,6 +221,8 @@ pub struct RowProperties {
     pub alignment: Option<Justification>,
     /// Spacing between cells (`w:tblCellSpacing` / `w:tblPrEx`), AUD-46.
     pub cell_spacing: Option<Width>,
+    /// Borders from `w:tblPrEx/w:tblBorders`. Row exceptions are not `w:trPr`.
+    pub exception_borders: Borders,
     /// Revision id (`w:rsid`).
     pub rsid: Option<Arc<str>>,
     /// Source location of `w:trPr`.
@@ -541,7 +549,7 @@ pub struct PageBorder {
     /// Border colour (`w:color`).
     pub color: Option<Color>,
     /// Theme colour reference (`w:themeColor` and tint/shade).
-    pub theme_color: Option<ThemeColorRef>,
+    pub theme_color: Option<Box<ThemeColorRef>>,
     /// Shadow (`w:shadow`).
     pub shadow: bool,
 }

@@ -3,10 +3,11 @@
   "slug": "wp-position",
   "visual_level": "V1",
   "date_utc": "2026-10-06",
+  "acceptance": "ACCEPT",
   "rows_before": 461,
   "rows_before_witness_slice_baseline": 172,
-  "rows_after": 5,
-  "rows_after_package_labels_on_measured_slice": 11,
+  "rows_after": 0,
+  "rows_after_package_labels_on_measured_slice": 6,
   "labels": [
     "wp:docPr",
     "wp:docPr@descr",
@@ -44,20 +45,31 @@
     "T-P3-4": true
   },
   "corpus_slice_exit": 1,
+  "corpus_slice_exit_reason": "slice unmatched_schema=1182 (inherited producer/schema messages with no registry item); also unclassified_element_changes=1875. Not caused by A/B/C package-label residuals.",
+  "slice_unclassified_element_changes": 1875,
   "full_census_exit": "NOT_RUN",
   "missing": 0,
-  "unmatched_schema": 0,
+  "unmatched_schema": 1182,
+  "unmatched_schema_note": "Package-field unmatched_schema is the census slice total (1182), not 'schema-clean for A/B/C'. corpus_slice_exit=1 is driven by this inherited slice debt (and/or unclassified inventory), not by P2–P4 label residuals.",
   "ours": 0,
   "visual": {
     "T-P3-4": true,
-    "artifact": "visual/bbox.json"
+    "artifact": "visual/bbox.json",
+    "tol_px": 0.75,
+    "observed_max_delta_px": 0.0
   },
+  "visual_tol_px": 0.75,
+  "visual_svg_trees": "untracked local artifacts; JSON bbox/placement proof is committed",
+  "tz_items": [
+    "TZ-48"
+  ],
   "notes": [
     "InlineDrawing stores/emits distT/B/L/R; DocPr.title parse/write.",
     "wrapPolygon/@edited preserved; header/footer part basenames preserved.",
     "wp14:pctPos* preserved via MCE ProcessChoice (queue prepend fix keeps positionV inside wp:anchor).",
-    "docPr/@id uniqueness is per part; 070 remaps five colliding ids when the written drawing count exceeds the source (expanded grpSp/lockedCanvas trees) — identity-only, visual bbox still matches.",
-    "Witness-slice B_wp residual rows after fix: 5."
+    "docPr/@id uniqueness is per part; 070 remaps colliding ids when the written drawing count exceeds the source (expanded grpSp/lockedCanvas trees) — identity-only, visual bbox still matches; TZ-48 + wp:docPr cite.",
+    "Witness-slice B_wp residual rows after fix: 0 (labels=[]).",
+    "Visual structural tol=0.75 px; observed SoftUni wrap pairs were 0.0."
   ],
   "declared_transforms": [
     {
@@ -66,7 +78,8 @@
         "070_Innovations_and_New_Technologies.docx"
       ],
       "kind": "uniqueness_remap",
-      "proof": "T-P2-4/T-P3-4 visual bbox pass; ids remain unique within the part"
+      "tz": "TZ-48",
+      "proof": "T-P2-4/T-P3-4 visual bbox pass; writer cites wp:docPr on collision; free ids preserved (negative: uncited foreign remap stays unclassified)"
     }
   ]
 }

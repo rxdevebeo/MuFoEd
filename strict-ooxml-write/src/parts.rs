@@ -16,12 +16,15 @@ use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
 use strict_ooxml_wml::model::numbering::{AbstractNum, Level, NumberingTable};
 use strict_ooxml_wml::model::settings::{MathProperties, Settings};
 use strict_ooxml_wml::model::styles::{DocDefaults, Style, StyleTable};
-use strict_ooxml_wml::model::theme::Theme;
+use strict_ooxml_wml::model::theme::{Theme, ThemeRunFonts, ThemeTypeface};
 use strict_ooxml_wml::model::values::StyleType;
 
 use crate::body::blocks;
 use crate::ctx::{Ctx, NoteRole};
-use crate::props::{note_properties, paragraph_properties, run_properties, table_properties};
+use crate::props::{
+    cell_properties, note_properties, paragraph_properties, row_properties, run_properties,
+    table_properties,
+};
 use crate::xml::{WriteError, XmlWriter, NS_A, NS_M, NS_PIC, NS_R, NS_W, NS_WP};
 use strict_ooxml_wml::model::fonts::{EmbedKind, FontEntry, FontTable};
 use strict_ooxml_wml::parse::LOST_FONT_PART;
@@ -94,7 +97,7 @@ pub fn styles_part(
 ) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
     xml.start_root("w:styles", &WML_NAMESPACES);
-    if let Some(defaults) = table.defaults() {
+    if let Some(defaults) = table.declared_defaults() {
         doc_defaults(ctx, &mut xml, defaults);
     }
     for style in table.iter() {
@@ -135,6 +138,9 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
     if style.is_default {
         xml.attr_w("default", "true");
     }
+    if style.custom_style {
+        xml.attr_w("customStyle", "1");
+    }
     // `CT_Style` is an xsd:sequence too, and it is one of the two places where
     // the writer's order was simply not the schema's: `w:rPr` comes BEFORE
     // `w:tblPr`, and the paragraph properties were emitted between them, so a
@@ -163,6 +169,7 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
                     xml.empty_attr_w("w:link", "val", link.as_str());
                 }
             }
+            "autoRedefine" if style.auto_redefine => xml.empty("w:autoRedefine"),
             "uiPriority" => {
                 if let Some(priority) = style.ui_priority {
                     xml.empty_attr_w("w:uiPriority", "val", priority);
@@ -182,6 +189,29 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
             "rPr" => run_properties(xml, &style.run),
             "tblPr" if style.style_type == StyleType::Table => {
                 table_properties(xml, &style.table);
+            }
+            "trPr" if style.style_type == StyleType::Table => {
+                row_properties(xml, &style.row);
+            }
+            "tcPr" if style.style_type == StyleType::Table => {
+                cell_properties(xml, &style.cell);
+            }
+            "tblStylePr" => {
+                for condition in &style.conditions {
+                    xml.start("w:tblStylePr");
+                    xml.attr_w("type", condition.kind.as_ref());
+                    for child in crate::order::TBLSTYLEPR {
+                        match *child {
+                            "pPr" => paragraph_properties(ctx, xml, &condition.paragraph, None),
+                            "rPr" => run_properties(xml, &condition.run),
+                            "tblPr" => table_properties(xml, &condition.table),
+                            "trPr" => row_properties(xml, &condition.row),
+                            "tcPr" => cell_properties(xml, &condition.cell),
+                            _ => {}
+                        }
+                    }
+                    xml.end();
+                }
             }
             _ => {}
         }
@@ -267,8 +297,11 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     // pStyle, isLgl, suff, lvlText, lvlPicBulletId, lvlJc, pPr, rPr.
     xml.start("w:lvl");
     ilvl_attr(ctx, xml, &level.ilvl, "w:lvl");
+    // Strict `CT_Lvl` carries `tentative` as an attribute, not a child.
     if level.tentative {
-        xml.attr_w("tentative", "true");
+        xml.attr_w("tentative", "1");
+    } else if level.tentative_off {
+        xml.attr_w("tentative", "0");
     }
     if let Some(start) = level.start {
         xml.empty_attr_w("w:start", "val", start);
@@ -302,9 +335,6 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     }
     if let Some(justification) = &level.justification {
         xml.empty_attr_w("w:lvlJc", "val", justification.as_str());
-    }
-    if level.tentative {
-        xml.empty("w:tentative");
     }
     paragraph_properties(ctx, xml, &level.paragraph, None);
     run_properties(xml, &level.run);
@@ -706,7 +736,9 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
                 xml.empty_attr_w("w:defaultTabStop", "val", stop.0);
             }
         }
-        "autoHyphenation" if settings.auto_hyphenation => xml.empty("w:autoHyphenation"),
+        "autoHyphenation" if settings.auto_hyphenation => {
+            xml.empty_attr_w("w:autoHyphenation", "val", "true");
+        }
         "hyphenationZone" => {
             if let Some(zone) = settings.hyphenation_zone {
                 xml.empty_attr_w("w:hyphenationZone", "val", zone.0);
@@ -717,6 +749,9 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         }
         "evenAndOddHeaders" if settings.even_and_odd_headers => {
             xml.empty("w:evenAndOddHeaders");
+        }
+        "evenAndOddHeaders" if settings.even_and_odd_headers_off => {
+            xml.empty_attr_w("w:evenAndOddHeaders", "val", "false");
         }
         "mirrorMargins" if settings.mirror_margins => xml.empty("w:mirrorMargins"),
         // The Strict home of the flag Transitional writes inside `w:sectPr`,
@@ -858,7 +893,13 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         }
         "themeFontLang" => {
             if let Some(language) = &settings.theme_font_lang {
-                xml.empty_attr_w("w:themeFontLang", "val", language.as_ref());
+                if !language.is_empty() {
+                    xml.start("w:themeFontLang");
+                    xml.attr_w_opt("val", language.val.as_deref());
+                    xml.attr_w_opt("eastAsia", language.east_asia.as_deref());
+                    xml.attr_w_opt("bidi", language.bidi.as_deref());
+                    xml.end();
+                }
             }
         }
         "decimalSymbol" => {
@@ -1089,14 +1130,41 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
         // that carries only the typeface the model happened to hold is invalid
         // (`XS-03`), and an empty typeface is a legal `xsd:string` that means
         // "no face for this script" - which is what the model actually knows.
-        font_collection(&mut xml, "a:latin", set.latin.as_deref());
-        font_collection(&mut xml, "a:ea", set.east_asia.as_deref());
-        font_collection(&mut xml, "a:cs", set.cs.as_deref());
+        font_collection(&mut xml, "a:latin", &set.latin);
+        font_collection(&mut xml, "a:ea", &set.east_asia);
+        font_collection(&mut xml, "a:cs", &set.cs);
         xml.end();
     }
     xml.end();
     format_scheme(&mut xml);
     xml.end();
+    if let Some(markup) = &theme.object_defaults_xml {
+        // The parsed element, including `a:lnDef`, list styles and `a:sym`.
+        // Rewriting only the `defRPr` faces would drop the rest of the subtree.
+        xml.raw_markup(markup, &["a"]);
+    } else {
+        let shape = theme
+            .shape_defaults
+            .as_ref()
+            .filter(|fonts| !fonts.is_empty());
+        let text = theme
+            .text_defaults
+            .as_ref()
+            .filter(|fonts| !fonts.is_empty());
+        if shape.is_some() || text.is_some() {
+            // `CT_DefaultShapeDefinition` requires `spPr`, `bodyPr` and `lstStyle`.
+            // A hand-built theme has no source element to copy, so the empty
+            // properties are the smallest schema-valid shell around the faces.
+            xml.start("a:objectDefaults");
+            if let Some(fonts) = shape {
+                write_object_default(&mut xml, "a:spDef", fonts);
+            }
+            if let Some(fonts) = text {
+                write_object_default(&mut xml, "a:txDef", fonts);
+            }
+            xml.end();
+        }
+    }
     xml.end();
     ctx.finish_xml(xml)
 }
@@ -1173,9 +1241,41 @@ fn format_scheme(xml: &mut XmlWriter) {
     xml.end();
 }
 
-fn font_collection(xml: &mut XmlWriter, name: &str, typeface: Option<&str>) {
+fn font_collection(xml: &mut XmlWriter, name: &str, face: &ThemeTypeface) {
     xml.start(name);
-    xml.attr("typeface", typeface.unwrap_or(""));
+    write_text_font_attrs(xml, face);
+    xml.end();
+}
+
+fn write_text_font_attrs(xml: &mut XmlWriter, face: &ThemeTypeface) {
+    xml.attr("typeface", face.name.as_deref().unwrap_or(""));
+    xml.attr_opt("panose", face.panose.as_deref());
+    xml.attr_opt("pitchFamily", face.pitch_family.as_deref());
+    xml.attr_opt("charset", face.charset.as_deref());
+}
+
+fn write_object_default(xml: &mut XmlWriter, name: &str, fonts: &ThemeRunFonts) {
+    xml.start(name);
+    xml.empty("a:spPr");
+    xml.empty("a:bodyPr");
+    xml.start("a:lstStyle");
+    xml.start("a:defPPr");
+    xml.start("a:defRPr");
+    for (element, face) in [
+        ("a:latin", &fonts.latin),
+        ("a:ea", &fonts.east_asia),
+        ("a:cs", &fonts.cs),
+    ] {
+        if face.is_empty() {
+            continue;
+        }
+        xml.start(element);
+        write_text_font_attrs(xml, face);
+        xml.end();
+    }
+    xml.end();
+    xml.end();
+    xml.end();
     xml.end();
 }
 
@@ -1426,19 +1526,24 @@ mod tests {
             next: None,
             link: None,
             is_default: false,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: false,
             hidden: false,
             q_format: false,
             locked: false,
             unhide_when_used: false,
             ui_priority: Some(9),
-            table: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: Default::default(),
             run: RunProperties {
                 bold: TriState::On,
                 size: Some(strict_ooxml_wml::model::values::HalfPoints(32)),
                 ..RunProperties::default()
             },
+            conditions: Vec::new(),
             based_on_chain: Vec::new(),
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         });
@@ -1466,13 +1571,17 @@ mod tests {
                 next: None,
                 link: None,
                 is_default: false,
+                custom_style: false,
+                auto_redefine: false,
                 semi_hidden: false,
                 hidden: false,
                 q_format: false,
                 locked: false,
                 unhide_when_used: false,
                 ui_priority: None,
-                table: Default::default(),
+                table: strict_ooxml_wml::model::props::TableProperties::default(),
+                row: strict_ooxml_wml::model::props::RowProperties::default(),
+                cell: strict_ooxml_wml::model::props::CellProperties::default(),
                 paragraph: Default::default(),
                 run: RunProperties {
                     fonts: Some(strict_ooxml_wml::model::values::Fonts {
@@ -1481,6 +1590,7 @@ mod tests {
                     }),
                     ..RunProperties::default()
                 },
+                conditions: Vec::new(),
                 based_on_chain: Vec::new(),
                 location: strict_ooxml_core::error::SourceLocation::unknown(),
             });
@@ -1499,13 +1609,17 @@ mod tests {
             next: None,
             link: None,
             is_default: true,
+            custom_style: false,
+            auto_redefine: false,
             semi_hidden: false,
             hidden: false,
             q_format: false,
             locked: false,
             unhide_when_used: false,
             ui_priority: None,
-            table: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: Default::default(),
             run: RunProperties {
                 fonts: Some(strict_ooxml_wml::model::values::Fonts {
@@ -1516,6 +1630,7 @@ mod tests {
                 }),
                 ..RunProperties::default()
             },
+            conditions: Vec::new(),
             based_on_chain: Vec::new(),
             location: strict_ooxml_core::error::SourceLocation::unknown(),
         });
@@ -1634,6 +1749,83 @@ mod tests {
                     && loss.severity == Severity::Lossy
             }),
             "{report:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_false_headers_and_auto_hyphenation_keep_their_values() {
+        let settings = Settings {
+            even_and_odd_headers_off: true,
+            auto_hyphenation: true,
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings_part balances");
+        assert!(
+            xml.contains(r#"<w:evenAndOddHeaders w:val="false"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<w:autoHyphenation w:val="true"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_empty_doc_defaults_element_is_written() {
+        let mut table = StyleTable::new();
+        table.set_defaults(Default::default());
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = styles_part(&mut ctx, &table).expect("styles_part balances");
+        assert!(xml.contains("<w:docDefaults>"), "{xml}");
+        assert!(xml.contains("<w:rPrDefault"), "{xml}");
+        assert!(xml.contains("<w:pPrDefault"), "{xml}");
+    }
+
+    #[test]
+    fn table_style_band_sizes_are_written() {
+        let mut table = StyleTable::new();
+        table.insert(Style {
+            id: StyleId::new("TableGrid"),
+            style_type: StyleType::Table,
+            name: None,
+            based_on: None,
+            next: None,
+            link: None,
+            is_default: false,
+            custom_style: false,
+            auto_redefine: false,
+            semi_hidden: false,
+            hidden: false,
+            q_format: false,
+            locked: false,
+            unhide_when_used: false,
+            ui_priority: None,
+            table: strict_ooxml_wml::model::props::TableProperties {
+                style_row_band_size: Some(3),
+                style_col_band_size: Some(2),
+                ..Default::default()
+            },
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
+            paragraph: Default::default(),
+            run: Default::default(),
+            conditions: Vec::new(),
+            based_on_chain: Vec::new(),
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        });
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = styles_part(&mut ctx, &table).expect("styles_part balances");
+        assert!(
+            xml.contains(r#"<w:tblStyleRowBandSize w:val="3"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<w:tblStyleColBandSize w:val="2"/>"#),
+            "{xml}"
         );
     }
 }

@@ -127,6 +127,10 @@ impl GatePolicy {
     /// thresholds nobody reviewed, which is the exact failure GATE-STRATEGY §6
     /// exists to prevent.
     #[must_use]
+    #[allow(
+        clippy::panic,
+        reason = "a test gate without its reviewed policy must stop, not guess"
+    )]
     pub fn shared() -> &'static GatePolicy {
         static POLICY: OnceLock<GatePolicy> = OnceLock::new();
         POLICY.get_or_init(|| {

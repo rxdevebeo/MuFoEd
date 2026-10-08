@@ -8,7 +8,7 @@
 //! Nothing in this module panics on malformed input: every failure is a
 //! [`StrictError`].
 //!
-//! The counterpart [`write`] module serializes a package back to bytes
+//! The counterpart [`write`](mod@write) module serializes a package back to bytes
 //! deterministically (`STAGE-8-TASK.md` §3, W5).
 
 pub mod write;
@@ -270,7 +270,7 @@ impl CentralDirectory {
         let mut entries = Vec::with_capacity(usize::try_from(entries_total.min(4096)).unwrap_or(0));
         let mut pos = cd_start;
         for _ in 0..entries_total {
-            if pos + 4 > data.len() || data[pos..pos + 4] != CENTRAL_SIG {
+            if data.get(pos..pos + 4) != Some(CENTRAL_SIG.as_slice()) {
                 return Err(StrictError::InvalidZip(
                     "bad central directory entry signature".to_owned(),
                 ));
@@ -311,7 +311,14 @@ impl CentralDirectory {
                 .to_owned();
 
             let extra = data.get(name_end..extra_end).unwrap_or(&[]);
-            let zip64 = Zip64Extra::parse(extra)?;
+            let zip64 = Zip64Extra::parse(
+                extra,
+                Zip64Fields {
+                    uncompressed_size: uncompressed_size == u64::from(u32::MAX),
+                    compressed_size: compressed_size == u64::from(u32::MAX),
+                    local_header_offset: local_header_offset == u64::from(u32::MAX),
+                },
+            )?;
             if let Some(v) = zip64.uncompressed_size {
                 uncompressed_size = v;
             }
@@ -354,9 +361,23 @@ struct Zip64Extra {
     local_header_offset: Option<u64>,
 }
 
+/// Which 32-bit central-directory fields hold the `0xFFFFFFFF` sentinel.
+#[derive(Clone, Copy)]
+struct Zip64Fields {
+    uncompressed_size: bool,
+    compressed_size: bool,
+    local_header_offset: bool,
+}
+
 impl Zip64Extra {
-    /// Parses the `0x0001` extra field; field order is fixed by the spec.
-    fn parse(extra: &[u8]) -> Result<Self> {
+    /// Parses the `0x0001` extra field.
+    ///
+    /// The field carries **only** the values whose 32-bit header field is the
+    /// `0xFFFFFFFF` sentinel, in the fixed order uncompressed size, compressed
+    /// size, local header offset (APPNOTE 4.5.3). A writer that moves only the
+    /// offset to ZIP64 writes an 8-byte body holding the offset, so reading the
+    /// slots positionally would put it into the uncompressed size.
+    fn parse(extra: &[u8], wanted: Zip64Fields) -> Result<Self> {
         let mut out = Self::default();
         let mut pos = 0;
         while pos + 4 <= extra.len() {
@@ -371,17 +392,17 @@ impl Zip64Extra {
                 .ok_or_else(|| StrictError::InvalidZip("zip64 extra out of bounds".to_owned()))?;
             if id == 0x0001 {
                 let mut p = 0;
-                if body.len() >= p + 8 {
-                    out.uncompressed_size = Some(u64_at(body, p)?);
+                let mut take = |wanted: bool| -> Result<Option<u64>> {
+                    if !wanted || body.len() < p + 8 {
+                        return Ok(None);
+                    }
+                    let value = u64_at(body, p)?;
                     p += 8;
-                }
-                if body.len() >= p + 8 {
-                    out.compressed_size = Some(u64_at(body, p)?);
-                    p += 8;
-                }
-                if body.len() >= p + 8 {
-                    out.local_header_offset = Some(u64_at(body, p)?);
-                }
+                    Ok(Some(value))
+                };
+                out.uncompressed_size = take(wanted.uncompressed_size)?;
+                out.compressed_size = take(wanted.compressed_size)?;
+                out.local_header_offset = take(wanted.local_header_offset)?;
             }
             pos = body_end;
         }
@@ -398,11 +419,13 @@ fn find_eocd(data: &[u8]) -> Result<usize> {
     let first = data.len().saturating_sub(22 + 65_535);
     let mut end = last + 1;
     while end > first {
-        let hay = &data[first..end];
+        let Some(hay) = data.get(first..end) else {
+            break;
+        };
         match memchr::memrchr(b'P', hay) {
             Some(p) => {
                 let abs = first + p;
-                if abs + 4 <= data.len() && data[abs..abs + 4] == EOCD_SIG {
+                if data.get(abs..abs + 4) == Some(EOCD_SIG.as_slice()) {
                     return Ok(abs);
                 }
                 end = abs;
@@ -447,21 +470,23 @@ fn slice_at(data: &[u8], offset: usize, len: usize) -> Result<&[u8]> {
         .ok_or_else(|| StrictError::InvalidZip(format!("truncated at offset {offset}")))
 }
 
+/// The `N` bytes at `offset`, as an array.
+fn array_at<const N: usize>(data: &[u8], offset: usize) -> Result<[u8; N]> {
+    let bytes = slice_at(data, offset, N)?;
+    <[u8; N]>::try_from(bytes)
+        .map_err(|_| StrictError::InvalidZip(format!("truncated at offset {offset}")))
+}
+
 fn u16_at(data: &[u8], offset: usize) -> Result<u16> {
-    let s = slice_at(data, offset, 2)?;
-    Ok(u16::from_le_bytes([s[0], s[1]]))
+    Ok(u16::from_le_bytes(array_at(data, offset)?))
 }
 
 fn u32_at(data: &[u8], offset: usize) -> Result<u32> {
-    let s = slice_at(data, offset, 4)?;
-    Ok(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    Ok(u32::from_le_bytes(array_at(data, offset)?))
 }
 
 fn u64_at(data: &[u8], offset: usize) -> Result<u64> {
-    let s = slice_at(data, offset, 8)?;
-    Ok(u64::from_le_bytes([
-        s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
-    ]))
+    Ok(u64::from_le_bytes(array_at(data, offset)?))
 }
 
 /// Streaming, CRC-checking reader for a single part.
@@ -493,12 +518,15 @@ impl Inner<'_> {
     fn read_into(&mut self, out: &mut [u8]) -> io::Result<usize> {
         match self {
             Inner::Stored { data, pos } => {
-                let remaining = data.len().saturating_sub(*pos);
-                let n = remaining.min(out.len());
+                let remaining = data.get(*pos..).unwrap_or_default();
+                let n = remaining.len().min(out.len());
                 if n == 0 {
                     return Ok(0);
                 }
-                out[..n].copy_from_slice(&data[*pos..*pos + n]);
+                let (Some(target), Some(source)) = (out.get_mut(..n), remaining.get(..n)) else {
+                    return Ok(0);
+                };
+                target.copy_from_slice(source);
                 *pos += n;
                 Ok(n)
             }
@@ -515,7 +543,8 @@ impl Inner<'_> {
                     return Ok(0);
                 }
                 loop {
-                    let result = inflate(state, &input[*in_pos..], out, MZFlush::None);
+                    let pending = input.get(*in_pos..).unwrap_or_default();
+                    let result = inflate(state, pending, out, MZFlush::None);
                     *in_pos += result.bytes_consumed;
                     match result.status {
                         Ok(MZStatus::StreamEnd) => *done = true,
@@ -557,14 +586,15 @@ impl Read for PartReader<'_> {
         let want = buf
             .len()
             .min(usize::try_from(remaining).unwrap_or(usize::MAX));
-        let n = self.inner.read_into(&mut buf[..want])?;
+        let window = buf.get_mut(..want).unwrap_or_default();
+        let n = self.inner.read_into(window)?;
         if n == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "part shorter than declared size",
             ));
         }
-        self.crc = crc32_update(self.crc, &buf[..n]);
+        self.crc = crc32_update(self.crc, window.get(..n).unwrap_or_default());
         self.produced += n as u64;
         if self.produced > self.max_len {
             return Err(io::Error::new(
@@ -603,7 +633,9 @@ fn crc32_update(crc: u32, data: &[u8]) -> u32 {
     let mut crc = !crc;
     for &byte in data {
         let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
-        crc = (crc >> 8) ^ CRC_TABLE[index];
+        // `index <= 0xFF < CRC_TABLE.len()`, so the fallback is dead (and elided).
+        let entry = CRC_TABLE.get(index).copied().unwrap_or_default();
+        crc = (crc >> 8) ^ entry;
     }
     !crc
 }
@@ -612,6 +644,10 @@ fn crc32_update(crc: u32, data: &[u8]) -> u32 {
 static CRC_TABLE: [u32; 256] = build_crc_table();
 
 #[allow(clippy::cast_possible_truncation)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "`index < 256 == table.len()` by the loop condition; `get_mut` is not const"
+)]
 const fn build_crc_table() -> [u32; 256] {
     let mut table = [0u32; 256];
     let mut index = 0;
@@ -1061,5 +1097,61 @@ mod tests {
             } => assert_eq!(actual, 227),
             other => panic!("expected CompressionRatio, got {other:?}"),
         }
+    }
+
+    fn zip64_extra(values: &[u64]) -> Vec<u8> {
+        let mut extra = Vec::new();
+        extra.extend_from_slice(&0x0001u16.to_le_bytes());
+        extra.extend_from_slice(&((values.len() * 8) as u16).to_le_bytes());
+        for value in values {
+            extra.extend_from_slice(&value.to_le_bytes());
+        }
+        extra
+    }
+
+    /// APPNOTE 4.5.3: the ZIP64 extra holds only the sentinel fields, in order.
+    #[test]
+    fn zip64_extra_reads_only_the_fields_whose_header_value_is_the_sentinel() {
+        use super::{Zip64Extra, Zip64Fields};
+        let only_offset = Zip64Fields {
+            uncompressed_size: false,
+            compressed_size: false,
+            local_header_offset: true,
+        };
+        let parsed = Zip64Extra::parse(&zip64_extra(&[0x1_0000_0000]), only_offset).expect("parse");
+        assert_eq!(parsed.local_header_offset, Some(0x1_0000_0000));
+        assert_eq!(parsed.uncompressed_size, None);
+        assert_eq!(parsed.compressed_size, None);
+
+        let only_compressed = Zip64Fields {
+            uncompressed_size: false,
+            compressed_size: true,
+            local_header_offset: false,
+        };
+        let parsed = Zip64Extra::parse(&zip64_extra(&[7]), only_compressed).expect("parse");
+        assert_eq!(parsed.compressed_size, Some(7));
+        assert_eq!(parsed.uncompressed_size, None);
+
+        let all = Zip64Fields {
+            uncompressed_size: true,
+            compressed_size: true,
+            local_header_offset: true,
+        };
+        let parsed = Zip64Extra::parse(&zip64_extra(&[1, 2, 3]), all).expect("parse");
+        assert_eq!(
+            (
+                parsed.uncompressed_size,
+                parsed.compressed_size,
+                parsed.local_header_offset
+            ),
+            (Some(1), Some(2), Some(3))
+        );
+
+        // A sentinel without its value in the extra stays unresolved rather than
+        // borrowing a neighbour's slot.
+        let parsed = Zip64Extra::parse(&zip64_extra(&[9]), all).expect("parse");
+        assert_eq!(parsed.uncompressed_size, Some(9));
+        assert_eq!(parsed.compressed_size, None);
+        assert_eq!(parsed.local_header_offset, None);
     }
 }

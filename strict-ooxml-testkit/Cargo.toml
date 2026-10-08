@@ -15,6 +15,10 @@ publish = false
 # an oracle that is independent of the ZIP reader it is used to test.
 [dependencies]
 miniz_oxide.workspace = true
+# `corpus` (docs/CC0_CORPUS_MIGRATION_PLAN.md §4.3): the embedded lock file is
+# TOML, and every document is checked against its SHA-256 before a test sees it.
+sha2.workspace = true
+toml = "0.8"
 
 [lints]
 workspace = true

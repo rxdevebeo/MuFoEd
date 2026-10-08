@@ -57,3 +57,51 @@ fn rereading_every_part_does_not_change_the_merged_report() {
         "Manual.docx has eight T2.reltype mappings (was x16 when double-counted)"
     );
 }
+
+/// The same property on a package built here, so it runs everywhere: a
+/// Transitional document with the package `officeDocument` relationship and
+/// four document relationships (styles, settings, fontTable, webSettings), all
+/// under the Transitional base, maps exactly five relationship types - and a
+/// second full walk does not double them.
+#[test]
+fn rereading_a_synthetic_package_counts_each_relationship_once() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    let mut builder = DocxBuilder::transitional();
+    for (id, kind, target, root) in [
+        ("rIdStyles", "styles", "styles.xml", "w:styles"),
+        ("rIdSettings", "settings", "settings.xml", "w:settings"),
+        ("rIdFonts", "fontTable", "fontTable.xml", "w:fonts"),
+        ("rIdWeb", "webSettings", "webSettings.xml", "w:webSettings"),
+    ] {
+        builder = builder
+            .part_xml(&format!("word/{target}"), root, "")
+            .rel(id, kind, target);
+    }
+    let bytes = builder.build();
+
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer.clone());
+    let package = Package::open_reader(bytes.as_slice(), &options).expect("open");
+
+    read_every_part(&package);
+    let first = normalizer.report();
+    read_every_part(&package);
+    assert_eq!(
+        normalizer.report(),
+        first,
+        "a second walk replaces, not sums"
+    );
+
+    let reltype = first
+        .applied()
+        .into_iter()
+        .find(|record| record.id == "T2.reltype")
+        .expect("relationship types are mapped");
+    assert_eq!(
+        reltype.count, 5,
+        "one officeDocument + four document relationships"
+    );
+}

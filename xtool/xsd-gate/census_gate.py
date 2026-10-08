@@ -61,6 +61,7 @@ import collections
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import posixpath
 import re
@@ -110,6 +111,8 @@ NS_PREFIX = {
     "http://purl.oclc.org/ooxml/officeDocument/extendedProperties": "ep",
     "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes": "vt",
     "http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes": "vt",
+    "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties": "cust",
+    "http://purl.oclc.org/ooxml/officeDocument/customProperties": "cust",
     "http://schemas.openxmlformats.org/drawingml/2006/chart": "c",
     "http://purl.oclc.org/ooxml/drawingml/chart": "c",
     "http://schemas.openxmlformats.org/officeDocument/2006/math": "m",
@@ -151,7 +154,17 @@ CORPORA = {
     "docx": os.path.join(REPO, "strict-ooxml-core", "tests", "docx"),
     "samples": os.path.join(REPO, "strict-ooxml-core", "tests", "samples"),
     "cc0": os.path.join(REPO, "testdata", "CC0_DOCX"),
+    # The other two CC0 sets of testdata-lock/cc0.toml (fetched by
+    # `xtool corpus fetch --tier ci-full`); off unless --corpora names them.
+    "cc0-a": os.path.join(REPO, "testdata", "CC0"),
+    "cc0-1": os.path.join(REPO, "testdata", "CC0_DOCX_1"),
 }
+DEFAULT_CORPORA = ("docx", "samples", "cc0")
+
+# The counters a baseline holds. A ratchet fails when any of them grows; the
+# census is not yet at zero (D05), so "no worse than recorded" is the gate CI
+# can enforce today.
+BASELINE_KEYS = ("missing", "unmatched_schema", "unclassified_element_changes", "ours")
 
 
 def load_census() -> list[dict]:
@@ -194,6 +207,17 @@ def vanished_elements(
                 new = etree.fromstring(after.read(part))
             except etree.XMLSyntaxError:
                 continue
+            _drop_duplicate_singletons(old)
+            _drop_duplicate_singletons(new)
+            # `CT_RPr` allows one `w:rFonts`. A second sibling overrides only the
+            # attributes it sets; the comparison uses that same overlay so a
+            # repeated value is not a second fact and a slot the writer dropped
+            # is still a change.
+            _collapse_duplicate_rfonts(old)
+            _collapse_duplicate_rfonts(new)
+            if part == "word/styles.xml":
+                _keep_last_duplicate_style(old)
+                _keep_last_duplicate_style(new)
             old_rows = [
                 (local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(old)
@@ -235,6 +259,80 @@ def vanished_elements(
     return found
 
 
+# Marks a writer is allowed to drop without the header becoming a different part.
+# A paragraph, its text, and every other attribute stay in the digest.
+_EDITOR_ATTRS = {
+    "rsidR", "rsidRPr", "rsidDel", "rsidP", "rsidRDefault", "rsidTr",
+    "rsidSect", "rsidTbl", "paraId", "textId", "anchorId", "editId",
+}
+
+
+def _strict_namespace_map() -> dict[str, str]:
+    groups: dict[str, list[str]] = {}
+    for uri, prefix in NS_PREFIX.items():
+        groups.setdefault(prefix, []).append(uri)
+    mapping: dict[str, str] = {}
+    for uris in groups.values():
+        strict = [uri for uri in uris if "purl.oclc.org/ooxml/" in uri]
+        if len(strict) != 1:
+            continue
+        for uri in uris:
+            mapping[uri] = strict[0]
+    return mapping
+
+
+_STRICT_NS = _strict_namespace_map()
+
+
+def _semantic_part_digest(payload: bytes) -> str:
+    """Header and footer identity after the Strict rewrite.
+
+    Editor marks, `mc:Ignorable`, a default on/off `val`, and the complex-script
+    font hint Strict rejects do not make a different part. Dropping a paragraph
+    or changing its text does.
+    """
+    try:
+        root = etree.fromstring(payload)
+    except etree.XMLSyntaxError:
+        return hashlib.sha256(payload).hexdigest()
+    # Property bags are rewritten in schema order. Sorting them keeps a
+    # reordered `w:rPr` from looking like a different header, and leaves
+    # paragraph order alone so a dropped paragraph still changes the digest.
+    property_bags = {"rPr", "pPr", "tcPr", "trPr", "tblPr", "sectPr", "pBdr", "rBdr"}
+
+    def walk(element: etree._Element, chunks: list[str]) -> None:
+        if not isinstance(element.tag, str):
+            return
+        qname = etree.QName(element)
+        namespace = _STRICT_NS.get(qname.namespace or "", qname.namespace or "")
+        chunks.append(f"<{namespace} {qname.localname}")
+        attributes: list[str] = []
+        for key, value in element.attrib.items():
+            attr = etree.QName(key)
+            if attr.localname in _EDITOR_ATTRS or attr.localname == "Ignorable":
+                continue
+            if qname.localname == "rFonts" and attr.localname == "hint" and value.lower() == "cs":
+                continue
+            if attr.localname == "val" and value.lower() in {"true", "on"}:
+                continue
+            attr_ns = _STRICT_NS.get(attr.namespace or "", attr.namespace or "")
+            attributes.append(f"{attr_ns} {attr.localname}={value}")
+        if attributes:
+            chunks.append(" ".join(sorted(attributes)))
+        text = (element.text or "").strip()
+        if text:
+            chunks.append(text)
+        children = [child for child in element if isinstance(child.tag, str)]
+        if qname.localname in property_bags:
+            children.sort(key=lambda child: etree.QName(child).localname)
+        for child in children:
+            walk(child, chunks)
+
+    chunks: list[str] = []
+    walk(root, chunks)
+    return hashlib.sha256("\n".join(chunks).encode("utf-8")).hexdigest()
+
+
 def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
     """Relationship identity survives id/part renaming, but not changed bytes.
 
@@ -270,10 +368,18 @@ def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
                 else posixpath.join(directory, path)
             )
             try:
-                digest = hashlib.sha256(archive.read(resolved)).hexdigest()
+                payload = archive.read(resolved)
             except KeyError:
                 # An unresolved target is not evidence for equivalence.
                 continue
+            # A regenerated header or footer is a different zip entry even when
+            # the paragraphs are the same. The relationship row is the part
+            # identity; attribute losses inside the part stay their own rows.
+            digest = (
+                _semantic_part_digest(payload)
+                if kind.endswith("/header") or kind.endswith("/footer")
+                else hashlib.sha256(payload).hexdigest()
+            )
             found[rid] = (kind, mode, digest, fragment if separator else "")
     return found
 
@@ -300,8 +406,12 @@ def _changed_attributes(
     # Normalize before subtracting multisets: an old rId1 may have become
     # rId2 while the writer reused rId1 for a different resource. Cancelling
     # raw ids first loses both the equivalence and the target change.
-    old_bag, namespace_of = _attribute_bag(old, old_rels)
-    new_bag, _new_ns = _attribute_bag(new, new_rels)
+    old_bag, namespace_of, old_stripped = _attribute_bag(old, old_rels)
+    new_bag, _new_ns, new_stripped = _attribute_bag(new, new_rels)
+    pane_left = _written_style_pane_sets(new_stripped)
+    # `w:type="pct"` stores fiftieths (`5000`) in Transitional and `100%` in
+    # Strict. Pair by element and type so a dxa `5000` cannot cancel a percent.
+    _cancel_percent_widths(old_stripped, new_stripped, old_bag, new_bag)
     appeared = collections.Counter(
         {
             key: count
@@ -324,7 +434,12 @@ def _changed_attributes(
         # transform. A different length stays a change. Strict CT_Charset also
         # renames @val to @characterSet while keeping the same code-page value.
         candidates = [attr_local]
-        renamed = {"left": "start", "right": "end"}.get(attr_local)
+        renamed = {
+            "left": "start",
+            "right": "end",
+            "leftChars": "startChars",
+            "rightChars": "endChars",
+        }.get(attr_local)
         if renamed is not None:
             candidates.append(renamed)
         if elem_local == "charset" and attr_local == "val":
@@ -334,7 +449,18 @@ def _changed_attributes(
                 break
             for other_key, spare in list(appeared.items()):
                 other_elem, other_parent, other_attr, other_value, other_ns, other_parent_ns, other_attr_ns = other_key
-                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate or (other_ns, other_parent_ns, other_attr_ns) != (elem_ns, parent_ns, attr_ns):
+                same_namespace = (other_ns, other_parent_ns, other_attr_ns) == (elem_ns, parent_ns, attr_ns)
+                # Word 2012 puts `tentative` in its own namespace. The Strict
+                # attribute is `w:tentative`. A different value stays a change.
+                if (
+                    not same_namespace
+                    and elem_local == "lvl"
+                    and candidate == "tentative"
+                    and _tentative_namespace(attr_ns)
+                    and _tentative_namespace(other_attr_ns)
+                ):
+                    same_namespace = True
+                if spare <= 0 or other_elem != elem_local or other_parent != parent or other_attr != candidate or not same_namespace:
                     continue
                 same_value = _same_attr_value(
                     candidate, value, other_value, elem_local,
@@ -344,6 +470,16 @@ def _changed_attributes(
                     continue
                 take = min(removed, spare)
                 appeared[other_key] -= take
+                removed -= take
+        if (
+            removed > 0
+            and elem_local == "stylePaneFormatFilter"
+            and attr_local == "val"
+        ):
+            expected = _style_pane_true_set(value)
+            if expected is not None and pane_left[expected] > 0:
+                take = min(removed, pane_left[expected])
+                pane_left[expected] -= take
                 removed -= take
         if removed <= 0:
             continue
@@ -360,10 +496,34 @@ def _changed_attributes(
     return rows
 
 
+def _collapse_duplicate_rfonts(root: etree._Element) -> None:
+    """Overlay repeated `w:rFonts` children of one `w:rPr` onto the first.
+
+    The later element's attributes replace the same attributes on the first.
+    Attributes the later element does not carry stay. Extra `rFonts` elements
+    are removed. A single `rFonts` is left untouched.
+    """
+    for parent in list(root.iter()):
+        if not isinstance(parent.tag, str) or etree.QName(parent).localname != "rPr":
+            continue
+        fonts = [
+            child
+            for child in list(parent)
+            if isinstance(child.tag, str) and etree.QName(child).localname == "rFonts"
+        ]
+        if len(fonts) < 2:
+            continue
+        first = fonts[0]
+        for extra in fonts[1:]:
+            for key, value in extra.attrib.items():
+                first.set(key, value)
+            parent.remove(extra)
+
+
 def _attribute_bag(
     root: etree._Element,
     relationships: dict[str, tuple] | None = None,
-) -> tuple[collections.Counter, dict[tuple[str, str | None, str, str], str | None]]:
+) -> tuple[collections.Counter, dict[tuple[str, str | None, str, str], str | None], etree._Element]:
     """Multiset of attributes with canonical element/parent/attribute namespaces."""
     bag: collections.Counter = collections.Counter()
     namespace_of = {}
@@ -393,22 +553,26 @@ def _attribute_bag(
             ):
                 value = "relationship:" + json.dumps(relationships[value], ensure_ascii=True)
             bag[(qname.localname, parent_local, attr, value, elem_key[2], elem_key[3], _prefix_or_uri(namespace))] += 1
-    return bag, namespace_of
+    return bag, namespace_of, copy
 
 
 def _changed_resources(
     before: zipfile.ZipFile, after: zipfile.ZipFile, named: set[str]
 ) -> list[tuple[str, str, str]]:
-    """Non-XML parts present on both sides whose bytes are not the same.
+    """Non-XML parts whose bytes the written package no longer has.
 
-    A missing part is the `dropped` signal. A part that is still there but no
-    longer the same resource is an inventory change a schema cannot see.
+    A missing part name is the `dropped` signal. A hash that is still present
+    under any name is the same resource: a rename, and a second copy of
+    identical bytes, are not a loss. A zip directory entry (a name ending in
+    `/`) is not a payload. A hash whose count falls to zero — recompressed
+    bytes, or a part that was removed — is an inventory change a schema
+    cannot see.
     """
     def hashes(archive: zipfile.ZipFile) -> tuple[collections.Counter, dict[str, str]]:
         bag: collections.Counter = collections.Counter()
         names: dict[str, str] = {}
         for name in archive.namelist():
-            if name.endswith((".xml", ".rels", ".vml")):
+            if name.endswith("/") or name.endswith((".xml", ".rels", ".vml")):
                 continue
             digest = hashlib.sha256(archive.read(name)).hexdigest()
             bag[digest] += 1
@@ -419,16 +583,15 @@ def _changed_resources(
     new_bag, _new_names = hashes(after)
     rows: list[tuple[str, str, str]] = []
     for digest, old_count in sorted(old_bag.items()):
-        removed = old_count - new_bag[digest]
-        if removed <= 0:
+        new_count = new_bag[digest]
+        if new_count > 0:
             continue
-        # Same bytes under a new part name are a rename, not a new resource.
         # A hash that is gone is a resource the written package no longer has.
         name = old_names[digest]
         label = f"resource:{normalize_part(name)}"
         file_name = name.rsplit("/", 1)[-1]
         named_flag = 1 if name in named or file_name in named or label in named else 0
-        detail = f"parent=|namespace=|sha256={digest}|named={named_flag}|removed={removed}"
+        detail = f"parent=|namespace=|sha256={digest}|named={named_flag}|removed={old_count}"
         rows.append((name, label, detail))
     return rows
 
@@ -639,16 +802,186 @@ def _twips(text: str) -> float | None:
             return float(text[:-2]) * 20.0
         except ValueError:
             return None
-    if re.fullmatch(r"-?\d+", text):
-        return float(text)
+    # Producers emit `1872.0000000000002` and `-180.0`. The model keeps whole
+    # twips; a residual under half a hundredth of a twip is the same length.
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+        try:
+            return float(text)
+        except ValueError:
+            return None
     return None
+
+
+_WIDTH_ELEMENTS = frozenset({
+    "tblW", "tcW", "gridCol", "tblInd", "tblCellSpacing", "wBefore", "wAfter",
+})
+
+
+def _fiftieths_percent(text: str) -> float | None:
+    """`5000` fiftieths and `100%` are one Strict percentage width."""
+    if text.endswith("%"):
+        return _percent_number(text)
+    if not re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+        return None
+    number = float(text)
+    if abs(number - round(number)) > 1e-6:
+        return None
+    return round(number) / 50.0
+
+
+def _same_fiftieths(left: str, right: str) -> bool:
+    a, b = _fiftieths_percent(left), _fiftieths_percent(right)
+    return a is not None and b is not None and abs(a - b) < 1e-6
+
+
+def _cancel_percent_widths(
+    old: etree._Element,
+    new: etree._Element,
+    old_bag: collections.Counter,
+    new_bag: collections.Counter,
+) -> None:
+    """Drop pct-width spellings that are the same fiftieths-of-a-percent value.
+
+    The general attribute loop does not see `w:type`. Matching `5000` to `100%`
+    without the type would also hide a dxa width of 5000 twips.
+    """
+
+    def rows(root: etree._Element) -> list[tuple]:
+        found = []
+        for element in root.iter():
+            if not isinstance(element.tag, str):
+                continue
+            qname = etree.QName(element)
+            if qname.localname not in _WIDTH_ELEMENTS:
+                continue
+            parent = element.getparent()
+            if parent is None or not isinstance(parent.tag, str):
+                parent_local, parent_ns = None, ""
+            else:
+                parent_q = etree.QName(parent)
+                parent_local = parent_q.localname
+                parent_ns = _prefix_or_uri(parent_q.namespace)
+            elem_ns = _prefix_or_uri(qname.namespace)
+            width = None
+            width_ns = ""
+            kind = ""
+            for key, value in element.attrib.items():
+                if key.startswith("{"):
+                    attr_q = etree.QName(key)
+                    local, namespace = attr_q.localname, _prefix_or_uri(attr_q.namespace)
+                else:
+                    local, namespace = key, ""
+                if local == "w" and width is None:
+                    width, width_ns = value, namespace or elem_ns
+                elif local == "type" and not kind:
+                    kind = value
+            if width is None:
+                continue
+            identity = (qname.localname, parent_local, elem_ns, parent_ns, kind)
+            found.append((identity, width, width_ns))
+        return found
+
+    pools: dict[tuple, list] = {}
+    for identity, width, width_ns in rows(new):
+        pools.setdefault(identity, []).append([width, width_ns])
+    for identity, width, width_ns in rows(old):
+        if identity[4] != "pct":
+            continue
+        pool = pools.get(identity)
+        if not pool:
+            continue
+        for slot in pool:
+            other, other_ns = slot
+            if other is None or _same_measure(width, other) or not _same_fiftieths(width, other):
+                continue
+            slot[0] = None
+            _bag_drop(old_bag, identity, width, width_ns)
+            _bag_drop(new_bag, identity, other, other_ns)
+            break
+
+
+def _bag_drop(bag: collections.Counter, identity: tuple, value: str, attr_ns: str) -> None:
+    local, parent, elem_ns, parent_ns, _kind = identity
+    key = (local, parent, "w", value, elem_ns, parent_ns, attr_ns)
+    if bag[key] > 0:
+        bag[key] -= 1
+
+
+# Children a parent stores once. A second identical copy is producer noise;
+# two grid columns of the same width are not in this set and both stay.
+_SINGLETON_CHILDREN = {
+    "rPr": {
+        "sz", "szCs", "spacing", "w", "color", "kern", "position", "u",
+        "rFonts", "b", "i", "bCs", "iCs", "highlight", "em", "vertAlign",
+        "lang", "shd", "rStyle",
+    },
+    "pPr": {"spacing", "ind", "jc", "pStyle", "rPr", "pBdr", "shd", "tabs"},
+}
+
+
+def _drop_duplicate_singletons(root: etree._Element) -> None:
+    for parent in root.iter():
+        if not isinstance(parent.tag, str):
+            continue
+        allowed = _SINGLETON_CHILDREN.get(etree.QName(parent).localname)
+        if not allowed:
+            continue
+        seen: set[tuple] = set()
+        for child in list(parent):
+            if not isinstance(child.tag, str):
+                continue
+            local = etree.QName(child).localname
+            if local not in allowed or len(child):
+                continue
+            key = (local, tuple(sorted(child.attrib.items())))
+            if key in seen:
+                parent.remove(child)
+            else:
+                seen.add(key)
+
+
+def _keep_last_duplicate_style(root: etree._Element) -> None:
+    """A repeated `w:styleId` keeps the later definition. The model is a map."""
+    if not isinstance(root.tag, str) or etree.QName(root).localname != "styles":
+        return
+    seen: dict[str, etree._Element] = {}
+    for child in list(root):
+        if not isinstance(child.tag, str) or etree.QName(child).localname != "style":
+            continue
+        style_id = next(
+            (value for key, value in child.attrib.items() if etree.QName(key).localname == "styleId"),
+            None,
+        )
+        if style_id is None:
+            continue
+        previous = seen.get(style_id)
+        if previous is not None:
+            root.remove(previous)
+        seen[style_id] = child
+
+
+def _round_half_away(number: float) -> int:
+    """`f64::round`: halves go away from zero, matching the reader's twip store."""
+    if number >= 0:
+        return math.floor(number + 0.5)
+    return math.ceil(number - 0.5)
 
 
 def _same_measure(left: str, right: str) -> bool:
     if left == right:
         return True
     a, b = _twips(left), _twips(right)
-    return a is not None and b is not None and abs(a - b) < 0.051
+    if a is None or b is None:
+        return False
+    if abs(a - b) < 0.051:
+        return True
+    # A fractional twip and the whole twip the reader stores are one length.
+    # 3124 and 3125 differ by a whole twip and stay different.
+    return (
+        abs(a - b) < 1.0
+        and (a == _round_half_away(a) or b == _round_half_away(b))
+        and _round_half_away(a) == _round_half_away(b)
+    )
 
 
 def _same_hex(left: str, right: str) -> bool:
@@ -672,11 +1005,108 @@ def _percent_number(text: str) -> float | None:
         return None
 
 
+# Transitional `a:graphicData/@uri` values and the Strict URI the writer emits.
+# A different vocabulary is not in this map and stays a loss.
+_GRAPHIC_URI = {
+    "http://schemas.openxmlformats.org/drawingml/2006/picture": "http://purl.oclc.org/ooxml/drawingml/picture",
+    "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas": "http://purl.oclc.org/ooxml/drawingml/lockedCanvas",
+    "http://schemas.openxmlformats.org/drawingml/2006/chart": "http://purl.oclc.org/ooxml/drawingml/chart",
+    "http://schemas.openxmlformats.org/drawingml/2006/diagram": "http://purl.oclc.org/ooxml/drawingml/diagram",
+}
+
+
+# Transitional `w:stylePaneFormatFilter/@w:val` bits, in the writer's order.
+# `0x0010` is reserved. A value that sets it is not this expansion.
+_STYLE_PANE_BITS = (
+    (0x0001, "allStyles"),
+    (0x0002, "customStyles"),
+    (0x0004, "latentStyles"),
+    (0x0008, "stylesInUse"),
+    (0x0020, "headingStyles"),
+    (0x0040, "numberingStyles"),
+    (0x0080, "tableStyles"),
+    (0x0100, "directFormattingOnRuns"),
+    (0x0200, "directFormattingOnParagraphs"),
+    (0x0400, "directFormattingOnNumbering"),
+    (0x0800, "directFormattingOnTables"),
+    (0x1000, "clearFormatting"),
+    (0x2000, "top3HeadingStyles"),
+    (0x4000, "visibleStyles"),
+    (0x8000, "alternateStyleNames"),
+)
+
+
+def _style_pane_true_set(value: str) -> frozenset[str] | None:
+    """Boolean attributes the Strict writer emits for a legacy bitmask."""
+    try:
+        bits = int(value.strip(), 16)
+    except ValueError:
+        return None
+    if bits & 0x0010:
+        return None
+    return frozenset(name for mask, name in _STYLE_PANE_BITS if bits & mask)
+
+
+def _written_style_pane_sets(root: etree._Element) -> collections.Counter:
+    bag: collections.Counter = collections.Counter()
+    for element in root.iter():
+        if not isinstance(element.tag, str):
+            continue
+        if etree.QName(element).localname != "stylePaneFormatFilter":
+            continue
+        names = set()
+        for key, raw in element.attrib.items():
+            local = etree.QName(key).localname if str(key).startswith("{") else key
+            if raw.lower() in {"1", "true", "on"}:
+                names.add(local)
+        bag[frozenset(names)] += 1
+    return bag
+
+
+def _same_sym_char(left: str, right: str) -> bool:
+    def code(value: str) -> int | None:
+        try:
+            return int(value, 16)
+        except ValueError:
+            return None
+
+    def norm(value: int) -> int:
+        if 0xF000 <= value <= 0xF0FF:
+            return value - 0xF000
+        return value
+
+    old, new = code(left), code(right)
+    if old is None or new is None:
+        return False
+    return norm(old) == norm(new)
+
+
+def _same_graphic_uri(left: str, right: str) -> bool:
+    def canon(value: str) -> str:
+        return _GRAPHIC_URI.get(value, value)
+    return canon(left) == canon(right)
+
+
+def _tentative_namespace(namespace: str) -> bool:
+    return namespace in {
+        "w",
+        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        "http://schemas.microsoft.com/office/word/2012/wordml",
+    }
+
+
 def _same_attr_value(
     attr: str, left: str, right: str,
     element: str | None = None, namespace: str | None = None,
 ) -> bool:
     """Lengths, T3/T4 direction words, and on/off spellings."""
+    if element == "graphicData" and attr == "uri" and _same_graphic_uri(left, right):
+        return True
+    # AUD-45 remaps a Symbol-font private-use code F0xx onto the low byte.
+    # A different character is not that remap.
+    if element == "sym" and attr == "char" and _same_sym_char(left, right):
+        return True
     if _same_measure(left, right):
         return True
     if _same_hex(left, right):
@@ -694,6 +1124,8 @@ def _same_attr_value(
         or (element == "gs" and attr == "pos")
         or (element in {"fillToRect", "fillRect", "srcRect", "tileRect"} and attr in {"l", "t", "r", "b"})
         or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
+        or (element in {"spcPct", "buSzPct"} and attr == "val")
+        or (element == "miter" and attr == "lim")
     )
     if drawing_percent:
         a, b = _percent_number(left), _percent_number(right)
@@ -701,6 +1133,12 @@ def _same_attr_value(
             a = a if left.endswith("%") else a / 1000.0
             b = b if right.endswith("%") else b / 1000.0
             return abs(a - b) < 1e-9
+    # `w:w/@w:val` is ST_TextScale: Strict writes `90%`, Transitional writes `90`.
+    # The number is a percentage of the normal character width, not a length.
+    if namespace == "w" and element == "w" and attr == "val":
+        a, b = _percent_number(left), _percent_number(right)
+        if a is not None and b is not None:
+            return abs(a - b) < 1e-6
     if attr == "percent":
         a, b = _percent_number(left), _percent_number(right)
         if a is not None and b is not None and abs(a - b) < 0.051:
@@ -778,6 +1216,16 @@ def element_item_matches(item: dict, where: str, label: str, detail: str) -> boo
                 break
         cited_names = set(cited.split(",")) if cited else set()
         if not any(token in cited_names for token in required):
+            return False
+
+    was_values = item.get("was") or []
+    if was_values:
+        was = ""
+        for piece in detail.split("|"):
+            if piece.startswith("was="):
+                was = piece[len("was=") :]
+                break
+        if was not in was_values:
             return False
 
     parents = item.get("parents") or []
@@ -1015,7 +1463,7 @@ def _names_in(report: str) -> set[str]:
     if not report:
         return set()
     found: set[str] = set()
-    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:-]*", report):
+    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_.:@-]*", report):
         found.add(token)
         # `w:doNotWrapTextWithPunct` names the element both ways: the signal
         # compares LOCAL names, because the input and the output are in different
@@ -1195,6 +1643,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--quiet-messages", action="store_true")
     parser.add_argument("--inventory-out", help="save exact unclassified inventory rows as JSON")
     parser.add_argument(
+        "--corpora",
+        help="comma-separated corpus labels to measure (default: docx,samples,cc0; "
+        "also cc0-a, cc0-1)",
+    )
+    parser.add_argument(
+        "--baseline",
+        help="ratchet: pass when no counter exceeds this JSON's (see --baseline-out)",
+    )
+    parser.add_argument("--baseline-out", help="write the measured counters as a baseline JSON")
+    parser.add_argument(
         "--keep-written",
         help="write the Transitional corpus into this directory and keep it",
     )
@@ -1220,6 +1678,17 @@ def main(argv: list[str]) -> int:
             "       Use --keep-written DIR to retain packages this run produces, "
             "or xsd_gate.py --written for the Strict-input gate."
         )
+
+    if args.corpora:
+        wanted = [label.strip() for label in args.corpora.split(",") if label.strip()]
+        unknown = [label for label in wanted if label not in CORPORA]
+        if unknown:
+            raise SystemExit(f"error: unknown corpus label(s): {', '.join(unknown)}")
+    else:
+        wanted = list(DEFAULT_CORPORA)
+    for label in list(CORPORA):
+        if label not in wanted:
+            del CORPORA[label]
 
     config = xsd_gate.load_config()
     print("=" * 78)
@@ -1514,6 +1983,20 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         unclassified_element_changes=unclassified_n,
         our_total=our_total,
     )
+    measured = {
+        "corpora": sorted(CORPORA),
+        "documents": documents,
+        "missing": missing,
+        "unmatched_schema": unmatched_schema_n,
+        "unclassified_element_changes": unclassified_n,
+        "ours": our_total,
+    }
+    if args.baseline_out:
+        with open(args.baseline_out, "w", encoding="utf-8") as output:
+            json.dump(measured, output, indent=2, sort_keys=True)
+            output.write("\n")
+    if args.baseline:
+        code, summary = ratchet(code, measured, args.baseline)
     print(f"\n{summary}")
     if open_items:
         print(
@@ -1526,6 +2009,38 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         "an un-named one would be)"
     )
     return code
+
+
+def ratchet(code: int, measured: dict, baseline_path: str) -> tuple[int, str]:
+    """The census against a recorded baseline: no counter may grow.
+
+    An unmeasurable run stays unmeasurable. A baseline for other corpora is not
+    a baseline for this run, so it is refused rather than compared.
+    """
+    if code == EXIT_UNMEASURABLE:
+        return code, "ratchet: the census was not measurable"
+    with open(baseline_path, encoding="utf-8") as handle:
+        baseline = json.load(handle)
+    if baseline.get("corpora") != measured["corpora"]:
+        return EXIT_UNMEASURABLE, (
+            f"ratchet: baseline corpora {baseline.get('corpora')} "
+            f"!= measured {measured['corpora']}"
+        )
+    worse = [
+        f"{key} {measured[key]} > {baseline.get(key, 0)}"
+        for key in BASELINE_KEYS
+        if measured[key] > baseline.get(key, 0)
+    ]
+    if worse:
+        return EXIT_OPEN, "ratchet: FAILED - " + "; ".join(worse)
+    better = [
+        f"{key} {measured[key]} < {baseline.get(key, 0)}"
+        for key in BASELINE_KEYS
+        if measured[key] < baseline.get(key, 0)
+    ]
+    if better:
+        return EXIT_OK, "ratchet: OK, improved (" + "; ".join(better) + ") - lower the baseline"
+    return EXIT_OK, "ratchet: OK, no counter grew"
 
 
 if __name__ == "__main__":

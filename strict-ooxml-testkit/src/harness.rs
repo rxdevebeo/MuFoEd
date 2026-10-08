@@ -50,8 +50,15 @@ where
     F: FnOnce() -> T + Send + 'static,
 {
     let (sender, receiver) = mpsc::channel();
+    // A stack overflow aborts the process and the runtime's only message names
+    // the thread; libtest names a test's thread after the test, so carrying
+    // that name over is what tells a CI log which test overflowed.
+    let name = match thread::current().name() {
+        Some(test) => format!("testkit-bounded:{test}"),
+        None => "testkit-bounded".to_owned(),
+    };
     thread::Builder::new()
-        .name("testkit-bounded".to_owned())
+        .name(name)
         .stack_size(stack)
         .spawn(move || {
             let result = panic::catch_unwind(AssertUnwindSafe(f));

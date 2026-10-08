@@ -3,7 +3,7 @@
 //! with `STAGE-5C-REWORK-1` (`05`/`06`/`07`/`09`/`10`).
 //!
 //! The real packages are the independent evidence for the vertical-metric work
-//! (C1) and for the DrawingML/chart findings (D1/D3/D4): they are *not*
+//! (C1) and for the `DrawingML`/chart findings (D1/D3/D4): they are *not*
 //! self-consistent fixtures like `strict-stage5c`, so a defect cannot hide by
 //! agreeing with itself.
 

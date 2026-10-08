@@ -66,15 +66,20 @@ pub(crate) fn decorate_pages(
     let mut section_page_counts = vec![0usize; sections.len().max(1)];
     for page in pages.iter() {
         let index = page.section_index.min(section_page_counts.len() - 1);
-        section_page_counts[index] += 1;
+        if let Some(count) = section_page_counts.get_mut(index) {
+            *count += 1;
+        }
     }
     let mut section_page_seen = vec![0usize; sections.len().max(1)];
 
     for (index, page) in pages.iter_mut().enumerate() {
         let section_index = page.section_index.min(sections.len().saturating_sub(1));
         let seen_slot = page.section_index.min(section_page_seen.len() - 1);
-        section_page_seen[seen_slot] += 1;
-        let section_page_ordinal = section_page_seen[seen_slot];
+        let mut section_page_ordinal = 0;
+        if let Some(seen) = section_page_seen.get_mut(seen_slot) {
+            *seen += 1;
+            section_page_ordinal = *seen;
+        }
         let Some(section) = inherited_section(sections, section_index) else {
             continue;
         };
@@ -225,7 +230,7 @@ fn inherited_section(sections: &[Section], index: usize) -> Option<SectionProper
 }
 
 fn prior_refs(sections: &[Section], index: usize, headers: bool) -> Option<Vec<HeaderFooterRef>> {
-    for prior in sections[..index].iter().rev() {
+    for prior in sections.iter().take(index).rev() {
         let refs = if headers {
             &prior.properties.headers
         } else {

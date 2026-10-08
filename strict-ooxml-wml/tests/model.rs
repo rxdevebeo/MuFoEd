@@ -276,6 +276,7 @@ fn value_newtypes_and_defaults() {
         style: Some(BorderStyle::Single),
         size: Some(EighthsPoint(4)),
         color: Some(Color::new("auto")),
+        theme_color: None,
         space: Some(0),
         shadow: true,
         frame: false,
@@ -360,6 +361,8 @@ fn style_table_behaviour() {
         next: None,
         link: None,
         is_default: true,
+        custom_style: false,
+        auto_redefine: false,
         semi_hidden: false,
         hidden: false,
         q_format: false,
@@ -367,8 +370,11 @@ fn style_table_behaviour() {
         unhide_when_used: false,
         ui_priority: Some(1),
         table: strict_ooxml_wml::model::props::TableProperties::default(),
+        row: strict_ooxml_wml::model::props::RowProperties::default(),
+        cell: strict_ooxml_wml::model::props::CellProperties::default(),
         paragraph: ParagraphProperties::default(),
         run: strict_ooxml_wml::model::props::RunProperties::default(),
+        conditions: Vec::new(),
         based_on_chain: Vec::new(),
         location: location(),
     };
@@ -578,11 +584,14 @@ fn drawing_and_run_constructors() {
         embed: None,
         link: None,
         resolved: None,
+        cstate: None,
         location: location(),
     };
     let picture = Picture {
         name: Some(Arc::from("p")),
         descr: Some(Arc::from("d")),
+        nv_id: Some(1),
+        bw_mode: None,
         blip: Some(blip),
         extent: Some(Extent {
             cx: Emu(1),
@@ -644,6 +653,7 @@ fn parse_options_default_builds() {
     let _: Table = Table {
         props: strict_ooxml_wml::model::props::TableProperties::default(),
         grid: Vec::new(),
+        grid_change: None,
         rows: Vec::new(),
         location: location(),
     };

@@ -1,10 +1,9 @@
-//! SoftUni `positionV` wrapped in `mc:AlternateContent` (wp14 pct vs EMU).
+//! `SoftUni` `positionV` wrapped in `mc:AlternateContent` (`wp14` pct vs EMU).
 
 use std::sync::Arc;
 
 use strict_ooxml_core::normalize::transitional::TransitionalNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
-use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::Block;
 use strict_ooxml_wml::model::drawing::DrawingKind;
 use strict_ooxml_wml::model::inline::Inline;
@@ -16,51 +15,23 @@ fn softuni_preserves_page_percent_position() {
         env!("CARGO_MANIFEST_DIR"),
         "/../strict-ooxml-core/tests/docx/4. Complex-Conditions.docx"
     );
+    // The corpus document is gitignored (local only); a checkout without it
+    // has nothing to check here.
+    if !std::path::Path::new(path).is_file() {
+        eprintln!("SKIP softuni_preserves_page_percent_position: {path} is absent");
+        return;
+    }
     let normalizer = Arc::new(TransitionalNormalizer::new());
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)
         .shared_normalization(normalizer);
     let package = Package::open_path(path, &options).expect("open");
-    let raw = package
-        .read_part(&PartId::new("/word/document.xml"))
-        .expect("read");
-    let text = String::from_utf8_lossy(&raw);
-    eprintln!(
-        "normalized has pctPosVOffset={} page={}",
-        text.contains("pctPosVOffset"),
-        text.matches("relativeFrom=\"page\"").count()
-    );
-    if let Some(idx) = text.find("pctPosVOffset") {
-        let start = idx.saturating_sub(180);
-        let end = (idx + 180).min(text.len());
-        eprintln!("XML snippet:\n{}", &text[start..end]);
-    } else if let Some(i) = text.find("positionV") {
-        let end = (i + 280).min(text.len());
-        eprintln!("positionV snippet:\n{}", &text[i..end]);
-    }
-
     let doc = parse_document(&package, &ParseOptions::default()).expect("parse");
-    eprintln!("body blocks={}", doc.body.blocks.len());
     let mut out = Vec::new();
     let mut opaque = 0usize;
     let mut drawings = 0usize;
     for block in &doc.body.blocks {
         walk_count(block, &mut out, &mut opaque, &mut drawings);
-    }
-    eprintln!("anchors found={} drawings={drawings} opaque_inlines={opaque}", out.len());
-    for line in &out {
-        eprintln!("{line}");
-    }
-    // Also show every pctPos occurrence neighborhood in normalized XML.
-    let mut search_from = 0usize;
-    let mut n = 0usize;
-    while let Some(rel) = text[search_from..].find("pctPosVOffset") {
-        let idx = search_from + rel;
-        n += 1;
-        let start = idx.saturating_sub(120);
-        let end = (idx + 80).min(text.len());
-        eprintln!("pct#{n} @{idx}: ...{}...", &text[start..end].replace('\n', " "));
-        search_from = idx + 12;
     }
     assert!(
         out.iter().any(|line| {
@@ -71,18 +42,7 @@ fn softuni_preserves_page_percent_position() {
     );
 }
 
-fn walk(block: &Block, out: &mut Vec<String>) {
-    let mut opaque = 0;
-    let mut drawings = 0;
-    walk_count(block, out, &mut opaque, &mut drawings);
-}
-
-fn walk_count(
-    block: &Block,
-    out: &mut Vec<String>,
-    opaque: &mut usize,
-    drawings: &mut usize,
-) {
+fn walk_count(block: &Block, out: &mut Vec<String>, opaque: &mut usize, drawings: &mut usize) {
     match block {
         Block::Paragraph(paragraph) => {
             for inline in &paragraph.inlines {
@@ -106,8 +66,7 @@ fn walk_count(
                 walk_inline_count(inline, out, opaque, drawings);
             }
         }
-        Block::Opaque(_) => {}
-        _ => {}
+        Block::Opaque(_) | Block::AltChunk(_) => {}
     }
 }
 
@@ -189,8 +148,32 @@ fn walk_inline_count(
     }
 }
 
-fn walk_inline(inline: &Inline, out: &mut Vec<String>) {
-    let mut opaque = 0;
-    let mut drawings = 0;
-    walk_inline_count(inline, out, &mut opaque, &mut drawings);
+/// The same construct on a CC0 document (`docs/CC0_CORPUS_MIGRATION_PLAN.md`
+/// §6), so it runs in CI: `CC0_DOCX_1/076` anchors text box `docPr id=32` with
+/// `<wp:positionV relativeFrom="page">` whose `mc:Choice` is
+/// `<wp14:pctPosVOffset>88000` and whose `mc:Fallback` is
+/// `<wp:posOffset>8851265` (read from `word/document.xml` of that file).
+#[test]
+fn cc0_preserves_page_percent_position() {
+    let doc = strict_ooxml_testkit::corpus_doc!("cc0-docx-1/076");
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer);
+    let package = Package::open_path(&doc.path, &options).expect("open");
+    let parsed = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let mut out = Vec::new();
+    let mut opaque = 0usize;
+    let mut drawings = 0usize;
+    for block in &parsed.body.blocks {
+        walk_count(block, &mut out, &mut opaque, &mut drawings);
+    }
+    assert!(
+        out.iter().any(|line| {
+            line.contains("id=Some(32)")
+                && line.contains("rel=Some(\"page\")")
+                && (line.contains("pct=Some(88000)") || line.contains("off=Some(8851265)"))
+        }),
+        "text box 32 lost its page position: {out:?}"
+    );
 }

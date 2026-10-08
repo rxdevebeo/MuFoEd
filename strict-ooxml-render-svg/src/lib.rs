@@ -26,7 +26,20 @@
 //! println!("{} page(s)", pages.len());
 //! # Ok::<(), strict_ooxml_core::error::StrictError>(())
 //! ```
-
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::indexing_slicing
+    )
+)]
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]
@@ -51,6 +64,7 @@ mod math;
 mod notes;
 mod numbering;
 mod paint;
+mod table_style;
 
 pub use layout::{
     ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,
@@ -95,6 +109,10 @@ pub enum MediaMode {
 }
 
 /// Which pages to render.
+///
+/// [`PageSelection::Range`] also caps layout: the paginator stops after
+/// producing `end` pages (1-based, inclusive). Page-number fields such as
+/// `NUMPAGES` then reflect that truncated count, not the full document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PageSelection {
     /// All pages.
@@ -116,6 +134,15 @@ impl PageSelection {
         match self {
             Self::All => true,
             Self::Range { start, end } => page >= start && page <= end,
+        }
+    }
+
+    /// Inclusive layout stop page for [`Self::Range`], or `None` for [`Self::All`].
+    #[must_use]
+    pub fn layout_end(self) -> Option<usize> {
+        match self {
+            Self::All => None,
+            Self::Range { end, .. } => Some(end),
         }
     }
 }
@@ -169,6 +196,17 @@ pub struct RenderOptions {
     /// all, is held to the same number instead of to whatever constant the layout
     /// happened to carry.
     pub limits: strict_ooxml_core::limits::ResourceLimits,
+    /// Stretch Tinos advances to the WPS-embedded Times of the Clio audit
+    /// (`font::substitute_width_scale`). Default `false`.
+    ///
+    /// Tinos is metric-compatible with Times New Roman, so the default layout
+    /// already measures Times the way Word does. The calibration was fitted to
+    /// one document's WPS export (P1, pages 54/104) and applied after
+    /// justification, so on every other document it moved glyphs off the
+    /// measured layout — a justified line ended 4–5 px past the right margin and
+    /// the `strict-text` pixel gate failed. It is kept for reproducing that
+    /// audit, behind this switch.
+    pub wps_times_calibration: bool,
 }
 
 impl Default for RenderOptions {
@@ -187,6 +225,7 @@ impl Default for RenderOptions {
             math: true,
             revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
+            wps_times_calibration: false,
         }
     }
 }
@@ -254,6 +293,13 @@ impl RenderOptions {
         self.math = math;
         self
     }
+
+    /// Sets [`Self::wps_times_calibration`].
+    #[must_use]
+    pub fn wps_times_calibration(mut self, enabled: bool) -> Self {
+        self.wps_times_calibration = enabled;
+        self
+    }
 }
 
 /// One rendered page.
@@ -274,7 +320,7 @@ pub struct Page {
     pub warnings: Vec<String>,
 }
 
-/// Places every page of a document without painting it.
+/// Places pages of a document without painting them.
 ///
 /// This is the entry point for a second backend (Stage 8B, PDF): the SVG
 /// renderer is one *consumer* of the placement, not its owner. Sharing the
@@ -282,12 +328,16 @@ pub struct Page {
 /// the SVG about where a line went, because there is only one answer computed
 /// once.
 ///
+/// [`RenderOptions::pages`] is honored during layout ([`PageSelection::Range`]
+/// stops the paginator after `end`) and again when returning pages: only
+/// indices selected by [`PageSelection::contains`] are included.
+///
 /// Embedded images resolve to placeholders without a `media` source, exactly as
 /// [`render`] does; use [`render_with_media`] for the SVG that inlines them.
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`]-backed error if a layout limit is exceeded.
+/// Returns a [`StrictError`](strict_ooxml_core::error::StrictError)-backed error if a layout limit is exceeded.
 pub fn place_pages(
     document: &Document,
     options: &RenderOptions,
@@ -310,6 +360,7 @@ pub fn place_pages(
         frame_cursors: std::cell::RefCell::new(Vec::new()),
         frame_prior_exact: std::cell::Cell::new(None),
         frame_force_exact_grid: std::cell::Cell::new(false),
+        in_frame: std::cell::Cell::new(false),
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
@@ -326,7 +377,12 @@ pub fn place_pages(
             )?;
         }
     }
-    Ok(pages)
+    Ok(pages
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| options.pages.contains(index + 1))
+        .map(|(_, page)| page)
+        .collect())
 }
 
 /// Renders a document without a media source.
@@ -368,6 +424,7 @@ pub fn render_with_media(
         frame_cursors: std::cell::RefCell::new(Vec::new()),
         frame_prior_exact: std::cell::Cell::new(None),
         frame_force_exact_grid: std::cell::Cell::new(false),
+        in_frame: std::cell::Cell::new(false),
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
@@ -424,11 +481,13 @@ mod tests {
     fn page_selection_contains() {
         assert!(PageSelection::All.contains(1));
         assert!(PageSelection::All.contains(999));
+        assert_eq!(PageSelection::All.layout_end(), None);
         let range = PageSelection::Range { start: 2, end: 3 };
         assert!(!range.contains(1));
         assert!(range.contains(2));
         assert!(range.contains(3));
         assert!(!range.contains(4));
+        assert_eq!(range.layout_end(), Some(3));
     }
 
     #[test]
@@ -477,6 +536,7 @@ mod tests {
             blocks = vec![Block::Table(Table {
                 props: TableProperties::default(),
                 grid: Vec::new(),
+                grid_change: None,
                 rows: vec![TableRow {
                     props: RowProperties::default(),
                     cells: vec![TableCell {

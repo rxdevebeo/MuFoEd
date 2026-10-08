@@ -40,7 +40,20 @@
 //! println!("{} block(s)", converted.document.body.blocks.len());
 //! # Ok::<(), strict_ooxml_convert::ConvertError>(())
 //! ```
-
+// Never-crash (docs/WORDCRAFT_ADOPTION_2026-10-07.md §4.2): library paths
+// return errors or degrade with a report; tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::indexing_slicing
+    )
+)]
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]
@@ -437,7 +450,9 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
                 return Err(ConvertError::NoSuchPage(start));
             }
             let end = end.min(all.len());
-            all[start - 1..end].to_vec()
+            all.get(start - 1..end)
+                .ok_or(ConvertError::NoSuchPage(start))?
+                .to_vec()
         }
     };
     if pages.is_empty() {

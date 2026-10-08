@@ -6,11 +6,13 @@
 mod common;
 
 use common::{build_docx, content_types, document, open_bytes, root_rels, W};
+use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_render_svg::{render, RenderOptions};
+use strict_ooxml_wml::model::{Block, Document};
 
 const NUMBERING_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/numbering";
 
-fn render_list(body: &str) -> String {
+fn list_document(body: &str) -> Document {
     let numbering = format!(
         "<?xml version=\"1.0\"?><w:numbering xmlns:w=\"{W}\">\
 <w:abstractNum w:abstractNumId=\"0\">\
@@ -32,8 +34,16 @@ fn render_list(body: &str) -> String {
         ("word/numbering.xml", numbering.into_bytes()),
     ]);
     let (_package, doc) = open_bytes(bytes);
-    let pages = render(&doc, &RenderOptions::default()).expect("render");
+    doc
+}
+
+fn render_svg(doc: &Document) -> String {
+    let pages = render(doc, &RenderOptions::default()).expect("render");
     pages.into_iter().map(|page| page.svg).collect()
+}
+
+fn render_list(body: &str) -> String {
+    render_svg(&list_document(body))
 }
 
 fn parse_coord_list(value: &str) -> Result<Vec<f64>, String> {
@@ -133,4 +143,26 @@ fn f10_bullet_and_nothing_suffix_matrix() {
         svg.contains(">1.<") || svg.contains(">1<"),
         "decimal marker is painted: {svg}"
     );
+}
+
+/// A document built (or edited) in code has no source positions: every
+/// paragraph carries `SourceLocation::unknown()`. The markers used to be keyed
+/// by location, so all items of such a list rendered the same number.
+#[test]
+fn list_markers_do_not_depend_on_source_locations() {
+    let body = (1..=3)
+        .map(|index| item(&format!("Item {index}")))
+        .collect::<String>();
+    let mut doc = list_document(&body);
+    for block in &mut doc.body.blocks {
+        if let Block::Paragraph(paragraph) = block {
+            paragraph.location = SourceLocation::unknown();
+        }
+    }
+    let markers: Vec<String> = texts(&render_svg(&doc))
+        .into_iter()
+        .map(|(text, _)| text)
+        .filter(|text| text.ends_with('.'))
+        .collect();
+    assert_eq!(markers, ["1.", "2.", "3."], "{markers:?}");
 }
