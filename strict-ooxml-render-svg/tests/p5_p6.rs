@@ -13,9 +13,7 @@ use std::sync::Arc;
 use common::{build_docx, content_types, document, open_bytes, root_rels};
 use strict_ooxml_core::normalize::TransitionalNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
-use strict_ooxml_render_svg::{
-    place_pages, render, Item, MediaMode, PageSelection, RenderOptions,
-};
+use strict_ooxml_render_svg::{place_pages, render, Item, MediaMode, PageSelection, RenderOptions};
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
 fn placed(body: &str) -> Vec<Item> {
@@ -141,18 +139,25 @@ fn t_p6_2_table_column_boxes() {
     );
 }
 
-fn witness(prefix: &str) -> std::path::PathBuf {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
-    std::fs::read_dir(&dir)
-        .expect("docx corpus")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .find(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with(prefix))
-        })
-        .unwrap_or_else(|| panic!("missing witness {prefix}"))
+/// The local corpus document whose name starts with `prefix`, or `None` (with a
+/// SKIP line) when the gitignored corpus or the document is absent.
+fn witness(prefix: &str) -> Option<std::path::PathBuf> {
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strict-ooxml-core/tests/docx");
+    let found = std::fs::read_dir(&dir).ok().and_then(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with(prefix))
+            })
+    });
+    if found.is_none() {
+        eprintln!("SKIP: witness {prefix} is absent from {}", dir.display());
+    }
+    found
 }
 
 fn open_transitional(path: &std::path::Path) -> strict_ooxml_wml::model::Document {
@@ -193,7 +198,10 @@ fn texts<'a>(items: &'a [Item], needle: &str) -> Vec<&'a strict_ooxml_render_svg
 /// same words is a smaller run, so the heading is also wider in proportion.
 #[test]
 fn t_p5_4_rm0090_heading_metrics() {
-    let doc = open_transitional(&witness("RM0090 16-23"));
+    let Some(path) = witness("RM0090 16-23") else {
+        return;
+    };
+    let doc = open_transitional(&path);
     let pages = place_pages(&doc, &limited_pages(2), None).expect("place");
     let items: Vec<_> = pages.into_iter().flat_map(|page| page.items).collect();
     let matches = texts(&items, "LCD-TFT");
@@ -218,7 +226,8 @@ fn t_p5_4_rm0090_heading_metrics() {
     assert!(
         (heading.size_px - 32.0).abs() <= 0.25,
         "sz 48 must be 32 px, got {} ({})",
-        heading.size_px, heading.text
+        heading.size_px,
+        heading.text
     );
     // Builtin-font advance of this exact 24 pt run. The TOC fragment is a
     // different string, so the width is locked against the heading itself.
@@ -258,7 +267,10 @@ fn t_p5_4_rm0090_heading_metrics() {
 /// cell margin.
 #[test]
 fn t_p6_2_rm0090_table_columns() {
-    let doc = open_transitional(&witness("RM0090 16-23"));
+    let Some(path) = witness("RM0090 16-23") else {
+        return;
+    };
+    let doc = open_transitional(&path);
     let pages = place_pages(&doc, &limited_pages(2), None).expect("place");
     let owned: Vec<_> = pages.into_iter().flat_map(|page| page.items).collect();
     let left = texts(&owned, "Регистры")
@@ -292,9 +304,9 @@ fn t_p6_2_rm0090_table_columns() {
     let center = (left.x + title_end.x + title_end.width) / 2.0;
     let column2 = center + col1 / 2.0;
     // The next row is left-aligned. HCLK starts one default cell margin in.
-    let hclk = texts(&owned, "HCLK").into_iter().find(|text| {
-        text.baseline > left.baseline && (text.x - (column2 + pad)).abs() <= 0.25
-    });
+    let hclk = texts(&owned, "HCLK")
+        .into_iter()
+        .find(|text| text.baseline > left.baseline && (text.x - (column2 + pad)).abs() <= 0.25);
     assert!(
         hclk.is_some(),
         "HCLK should start at {:.2}, one margin into the 1917 twip column",
@@ -320,7 +332,7 @@ fn t_p6_2_rm0090_table_columns() {
         }
         end = next;
     }
-    let center2 = (right.x + end) / 2.0;
+    let center2 = f64::midpoint(right.x, end);
     assert!(
         (center2 - (column2 + col2 / 2.0)).abs() <= 0.25,
         "second column center {center2}, expected {:.2} from gridCol 2579",

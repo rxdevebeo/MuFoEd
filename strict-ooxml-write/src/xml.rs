@@ -70,6 +70,12 @@ pub struct XmlWriter {
     used_prefixes: std::collections::BTreeSet<String>,
     /// Characters XML cannot carry, removed from text and attribute values.
     invalid_chars: usize,
+    /// The first attribute written after its element's start tag was closed.
+    ///
+    /// Appending it would put `name="value"` into character data or after a
+    /// child element: a part that no longer parses, or parses to something
+    /// else. It is dropped and [`finish`](Self::finish) fails instead.
+    misplaced_attribute: Option<String>,
 }
 
 impl Default for XmlWriter {
@@ -105,6 +111,7 @@ impl XmlWriter {
             root_declarations: Vec::new(),
             used_prefixes: std::collections::BTreeSet::new(),
             invalid_chars: 0,
+            misplaced_attribute: None,
         }
     }
 
@@ -173,6 +180,12 @@ impl XmlWriter {
 
     /// Writes an attribute. `name` carries its prefix when it has one.
     pub fn attr(&mut self, name: &str, value: impl Display) {
+        if !self.pending_tag {
+            if self.misplaced_attribute.is_none() {
+                self.misplaced_attribute = Some(name.to_owned());
+            }
+            return;
+        }
         self.used_prefixes.insert(prefix_of(name));
         self.out.push(' ');
         self.out.push_str(name);
@@ -341,6 +354,9 @@ impl XmlWriter {
         if !self.open.is_empty() {
             return Err(WriteError::Unbalanced(self.open.len()));
         }
+        if let Some(name) = self.misplaced_attribute.take() {
+            return Err(WriteError::MisplacedAttribute(name));
+        }
         self.close_tag();
         self.write_root_declarations();
         let mut out = self.out;
@@ -403,12 +419,15 @@ pub enum WriteError {
     DepthExceeded(usize),
     /// An element was left open when the part was finished.
     Unbalanced(usize),
+    /// An attribute was written after its element's start tag was closed (a
+    /// writer bug: the serializer emitted content before an attribute).
+    MisplacedAttribute(String),
     /// The model nested a container deeper than its budget.
     ///
     /// Not `DepthExceeded`: that one counts XML elements the serializer opened,
     /// this one counts `w:tbl`, block-level `w:sdt` and text boxes in the model -
-    /// the same containers [`ResourceLimits::max_block_nesting`] and
-    /// [`ResourceLimits::max_text_box_nesting`] bound on the way in, checked here
+    /// the same containers [`ResourceLimits::max_block_nesting`](strict_ooxml_core::limits::ResourceLimits::max_block_nesting) and
+    /// [`ResourceLimits::max_text_box_nesting`](strict_ooxml_core::limits::ResourceLimits::max_text_box_nesting) bound on the way in, checked here
     /// because a model built in code never met the reader.
     Nesting {
         /// Which budget was spent.
@@ -435,6 +454,9 @@ impl Display for WriteError {
                 write!(f, "XML nesting deeper than the writer budget of {limit}")
             }
             Self::Unbalanced(open) => write!(f, "{open} XML element(s) left open"),
+            Self::MisplacedAttribute(name) => {
+                write!(f, "attribute {name} written after its element's content")
+            }
             Self::Nesting {
                 kind,
                 limit,
@@ -456,6 +478,31 @@ impl std::error::Error for WriteError {}
 #[cfg(test)]
 mod tests {
     use super::{WriteError, XmlWriter};
+
+    #[test]
+    fn an_attribute_after_content_fails_the_part_instead_of_corrupting_it() {
+        let mut xml = XmlWriter::new();
+        xml.start("w:p");
+        xml.attr("w:a", "1");
+        xml.text("x");
+        xml.attr("w:b", "2");
+        xml.end();
+        assert_eq!(
+            xml.finish(),
+            Err(WriteError::MisplacedAttribute("w:b".to_owned()))
+        );
+
+        let mut xml = XmlWriter::new();
+        xml.start("w:p");
+        xml.start("w:r");
+        xml.end();
+        xml.attr("w:late", "1");
+        xml.end();
+        assert!(matches!(
+            xml.finish(),
+            Err(WriteError::MisplacedAttribute(name)) if name == "w:late"
+        ));
+    }
 
     #[test]
     fn writes_nested_elements() {

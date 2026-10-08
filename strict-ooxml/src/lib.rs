@@ -14,6 +14,64 @@
 //! println!("{}", doc.support_debug());
 //! # Ok::<(), strict_ooxml_core::error::StrictError>(())
 //! ```
+//!
+//! # Transitional input
+//!
+//! Almost every `.docx` in the wild is Transitional. It is read through the
+//! normalizer, which rewrites it to Strict and records everything that cost
+//! something in a [`NormalizationReport`]:
+//!
+//! ```no_run
+//! use strict_ooxml::{ConformancePolicy, OpenOptions, StrictDocument, TransitionalNormalizer};
+//!
+//! let options = OpenOptions::default()
+//!     .conformance(ConformancePolicy::Normalize)
+//!     .normalization(TransitionalNormalizer::new());
+//! let doc = StrictDocument::open_path("from-word.docx", &options)?;
+//! println!("paragraphs and tables: {}", doc.document().body.blocks.len());
+//! # Ok::<(), strict_ooxml_core::error::StrictError>(())
+//! ```
+//!
+//! # Rendering, PDF and writing
+//!
+//! Each output is a crate feature: `svg` (default), `pdf`, `write`, `edit`,
+//! `convert` (PDF to DOCX) and `report` (default, the Feature Report).
+//!
+//! ```no_run
+//! # #[cfg(all(feature = "svg", feature = "pdf", feature = "write"))]
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use strict_ooxml::{
+//!     write_package, OpenOptions, PageSelection, RenderOptions, StrictDocument, WriteOptions,
+//! };
+//!
+//! let doc = StrictDocument::open_path("document.docx", &OpenOptions::default())?;
+//!
+//! // Deterministic SVG, one string per page; here only the first two pages.
+//! let options = RenderOptions::default().pages(PageSelection::Range { start: 1, end: 2 });
+//! for (index, page) in doc.render_svg(&options)?.iter().enumerate() {
+//!     std::fs::write(format!("page-{}.svg", index + 1), &page.svg)?;
+//! }
+//!
+//! // PDF over the same layout, with the used faces subsetted and embedded.
+//! let pdf = doc.render_pdf(&RenderOptions::default())?;
+//! std::fs::write("document.pdf", &pdf.bytes)?;
+//!
+//! // Back to a Strict package; the report names everything that was lost.
+//! let written = write_package(doc.document(), Some(doc.package()), &WriteOptions::default())?;
+//! std::fs::write("document.strict.docx", &written.bytes)?;
+//! # Ok(())
+//! # }
+//! # #[cfg(not(all(feature = "svg", feature = "pdf", feature = "write")))]
+//! # fn main() {}
+//! ```
+//!
+//! # Hostile input
+//!
+//! Every reader in the stack runs under a budget ([`ResourceLimits`] for DOCX,
+//! `PdfLimits` for PDF): ZIP sizes and ratios, XML depth, block, inline,
+//! text-box and formula nesting, and per-page PDF content. A document past a
+//! budget is an error or a recorded skip, never a panic or an unbounded
+//! allocation; the `hostile` test suites and the fuzz targets hold that line.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]

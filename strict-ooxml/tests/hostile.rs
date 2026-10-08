@@ -622,6 +622,206 @@ mod nesting {
     }
 }
 
+mod inline_nesting {
+    //! Inline wrappers against `max_inline_nesting`.
+    //!
+    //! `w:ins`, `w:hyperlink`, `w:fldSimple`, an inline `w:sdt` and the other
+    //! paragraph-level wrappers recurse through the inline parser and are not
+    //! block containers, so `max_block_nesting` never counted them: 120-180
+    //! nested `w:ins` aborted the process on a 1 MiB stack in a release build.
+
+    use super::*;
+    use strict_ooxml::model::{Block, Inline};
+    use strict_ooxml_core::error::{LimitKind, StrictError};
+    use strict_ooxml_report::FeatureStatus;
+    use strict_ooxml_testkit::harness::{bounded, Outcome};
+    use strict_ooxml_testkit::xml::nested;
+
+    /// The support-report feature id of a wrapper skipped past the budget.
+    const FEATURE: &str = "limit.inline_nesting";
+
+    /// `(open, close)` for every wrapper kind the budget counts.
+    const WRAPPERS: &[(&str, &str)] = &[
+        (
+            "<w:ins w:id=\"1\" w:author=\"a\" w:date=\"2026-01-01T00:00:00Z\">",
+            "</w:ins>",
+        ),
+        ("<w:hyperlink w:anchor=\"target\">", "</w:hyperlink>"),
+        ("<w:fldSimple w:instr=\"PAGE\">", "</w:fldSimple>"),
+        ("<w:sdt><w:sdtContent>", "</w:sdtContent></w:sdt>"),
+        ("<w:smartTag w:uri=\"u\" w:element=\"e\">", "</w:smartTag>"),
+        ("<w:dir w:val=\"rtl\">", "</w:dir>"),
+    ];
+
+    /// A paragraph with `depth` copies of one wrapper around a run, between two
+    /// ordinary paragraphs.
+    fn wrapped(open: &str, close: &str, depth: usize) -> DocxBuilder {
+        DocxBuilder::strict().body(&format!(
+            "<w:p><w:r><w:t>before</w:t></w:r></w:p>\
+             <w:p>{}</w:p>\
+             <w:p><w:r><w:t>after</w:t></w:r></w:p>",
+            nested(open, close, "<w:r><w:t>x</w:t></w:r>", depth)
+        ))
+    }
+
+    /// The budget's support entry: status and message.
+    fn budget_entry(document: &StrictDocument) -> Option<(FeatureStatus, Option<String>)> {
+        document
+            .support_report()
+            .features
+            .iter()
+            .find(|feature| feature.feature_id == FEATURE)
+            .map(|feature| (feature.status, feature.message.clone()))
+    }
+
+    fn open_with(bytes: Vec<u8>, options: OpenOptions) -> StrictDocument {
+        assert_survives("open", move || {
+            StrictDocument::open_reader(Cursor::new(bytes), &options).expect("open")
+        })
+    }
+
+    /// Top-level paragraphs: the skip must not swallow the ones after it.
+    fn paragraph_count(document: &StrictDocument) -> usize {
+        document
+            .document()
+            .body
+            .blocks
+            .iter()
+            .filter(|block| matches!(block, Block::Paragraph(_)))
+            .count()
+    }
+
+    #[test]
+    fn deep_wrappers_cost_their_content_not_the_process() {
+        // Two hundred levels is past the release-build overflow (120-180) and
+        // inside `max_xml_depth` (256), so before the budget this aborted with
+        // STATUS_STACK_OVERFLOW on the 1 MiB thread `assert_survives` uses. A
+        // content control is two XML levels, so it gets half as many.
+        for (open, close) in WRAPPERS {
+            let depth = if open.starts_with("<w:sdt>") {
+                120
+            } else {
+                200
+            };
+            let document = open_with(wrapped(open, close, depth).build(), OpenOptions::default());
+            let (status, message) =
+                budget_entry(&document).unwrap_or_else(|| panic!("{open}: the budget is reported"));
+            assert_eq!(status, FeatureStatus::Unsupported, "{open}");
+            assert!(
+                message
+                    .as_deref()
+                    .is_some_and(|text| text.contains("max_inline_nesting (16)")),
+                "{open}: {message:?}"
+            );
+            assert_eq!(
+                paragraph_count(&document),
+                3,
+                "{open}: the paragraphs around it"
+            );
+            assert_survives("pipeline after a skipped wrapper", move || {
+                let svg = document.render_svg(&strict_ooxml::RenderOptions::default());
+                assert!(svg.is_ok(), "render_svg: {svg:?}");
+                let written = strict_ooxml::write_package(
+                    document.document(),
+                    Some(document.package()),
+                    &strict_ooxml::WriteOptions::default(),
+                );
+                assert!(written.is_ok(), "write_package");
+            });
+        }
+    }
+
+    #[test]
+    fn ten_thousand_wrappers_are_refused_rather_than_overflowing_the_stack() {
+        // Past `max_xml_depth` the reader refuses the part first; what this pins
+        // is that it is a typed error on a 1 MiB stack and not an abort.
+        for (open, close) in WRAPPERS {
+            let bytes = wrapped(open, close, 10_000).build();
+            let outcome = bounded(move || {
+                StrictDocument::open_reader(Cursor::new(bytes), &OpenOptions::default()).map(|_| ())
+            });
+            match outcome {
+                Outcome::Returned(Err(StrictError::LimitExceeded {
+                    kind: LimitKind::XmlDepth,
+                    ..
+                })) => {}
+                Outcome::Returned(other) => panic!("{open}: expected XmlDepth, got {other:?}"),
+                Outcome::Panicked(message) => panic!("{open}: panicked: {message}"),
+                Outcome::TimedOut => panic!("{open}: did not return in time"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_whole_budget_is_read_and_one_past_it_is_reported() {
+        for (open, close) in WRAPPERS {
+            let inside = open_with(wrapped(open, close, 16).build(), OpenOptions::default());
+            assert_eq!(
+                budget_entry(&inside),
+                None,
+                "{open}: 16 levels are read whole"
+            );
+            let past = open_with(wrapped(open, close, 17).build(), OpenOptions::default());
+            assert!(
+                budget_entry(&past).is_some(),
+                "{open}: the 17th level is reported"
+            );
+        }
+    }
+
+    #[test]
+    fn the_counter_is_one_for_every_wrapper_kind() {
+        // Every kind in rotation: counting each against its own budget would let
+        // six times as many through.
+        let mixed = |depth: usize| {
+            let chain: Vec<&(&str, &str)> = WRAPPERS.iter().cycle().take(depth).collect();
+            let open: String = chain.iter().map(|(o, _)| *o).collect();
+            let close: String = chain.iter().rev().map(|(_, c)| *c).collect();
+            wrapped(&open, &close, 1).build()
+        };
+        let inside = open_with(mixed(16), OpenOptions::default());
+        assert_eq!(budget_entry(&inside), None, "sixteen mixed levels fit");
+        let past = open_with(mixed(17), OpenOptions::default());
+        assert!(
+            budget_entry(&past).is_some(),
+            "the seventeenth mixed level is reported"
+        );
+    }
+
+    #[test]
+    fn the_inline_budget_is_the_callers() {
+        let tight = || {
+            OpenOptions::default().limits(strict_ooxml_core::limits::ResourceLimits {
+                max_inline_nesting: 2,
+                ..strict_ooxml_core::limits::ResourceLimits::default()
+            })
+        };
+        let (open, close) = WRAPPERS[1];
+        let two = open_with(wrapped(open, close, 2).build(), tight());
+        assert_eq!(budget_entry(&two), None);
+        let three = open_with(wrapped(open, close, 3).build(), tight());
+        let (_, message) = budget_entry(&three).expect("the third hyperlink is reported");
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| text.contains("max_inline_nesting (2)")),
+            "{message:?}"
+        );
+        // The two hyperlinks inside the budget are still in the model.
+        let Some(Block::Paragraph(paragraph)) = three.document().body.blocks.get(1) else {
+            panic!("the wrapped paragraph");
+        };
+        let Some(Inline::Hyperlink(outer)) = paragraph.inlines.first() else {
+            panic!("the outer hyperlink: {:?}", paragraph.inlines);
+        };
+        assert!(
+            matches!(outer.inlines.first(), Some(Inline::Hyperlink(inner)) if inner.inlines.is_empty()),
+            "{:?}",
+            outer.inlines
+        );
+    }
+}
+
 mod math {
     //! AUD-06: formulas over `max_math_nodes` / `max_math_depth`.
 

@@ -159,7 +159,7 @@ pub trait Source {
     ///
     /// # Errors
     ///
-    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when the
+    /// Returns a [`strict_ooxml_core::error::StrictError`] when the
     /// part cannot be read.
     fn read_part(&self, part: &PartId) -> Result<Vec<u8>>;
 
@@ -205,7 +205,7 @@ pub trait Source {
     ///
     /// # Errors
     ///
-    /// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a
+    /// Returns a [`strict_ooxml_core::error::StrictError`] when a
     /// bound is exceeded.
     fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
         use std::collections::{HashSet, VecDeque};
@@ -506,7 +506,7 @@ fn part_xml<'a>(
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`](strict_ooxml_core::error::StrictError) when a part
+/// Returns a [`strict_ooxml_core::error::StrictError`] when a part
 /// exceeds a resource limit, when a media part cannot be read, or when the
 /// writer's own depth budget is exceeded.
 pub fn write_package(
@@ -597,7 +597,7 @@ pub fn write_package(
         };
         let source_base = header_footer.part.as_str().rsplit('/').next().unwrap_or("");
         let name = if source_base.starts_with(role)
-            && source_base.ends_with(".xml")
+            && ends_with_ignore_case(source_base, ".xml")
             && used_hf_names.insert(source_base.to_owned())
         {
             source_base.to_owned()
@@ -1130,15 +1130,13 @@ fn bind_part_foreign(
 }
 
 fn note_foreign_ids(table: &strict_ooxml_wml::model::notes::NoteTable) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut out = UniqueIds::default();
     for note in table.iter() {
         for id in passthrough::referenced_ids(&note.blocks) {
-            if !out.contains(&id) {
-                out.push(id);
-            }
+            out.insert(id);
         }
     }
-    out
+    out.into_vec()
 }
 
 /// AUD-61 invariant: every `r:*` attribute resolves through its part's `.rels`.
@@ -1213,7 +1211,7 @@ fn verify_no_dangling_relationships(
 /// Collects relationship-bearing `r:*` attribute values from a Strict part.
 fn office_relationship_ids(xml: &str) -> Vec<String> {
     const NAMES: &[&str] = &["embed", "id", "link", "dm", "lo", "qs", "cs"];
-    let mut out = Vec::new();
+    let mut out = UniqueIds::default();
     for attr in NAMES {
         let needle = format!(" r:{attr}=\"");
         let mut rest = xml;
@@ -1223,13 +1221,13 @@ fn office_relationship_ids(xml: &str) -> Vec<String> {
                 break;
             };
             let value = value_start[..end].to_owned();
-            if !value.is_empty() && !out.contains(&value) {
-                out.push(value);
+            if !value.is_empty() {
+                out.insert(value);
             }
             rest = &value_start[end + 1..];
         }
     }
-    out
+    out.into_vec()
 }
 
 fn add_part(zip: &mut ZipWriter, part: &str, bytes: Vec<u8>) -> Result<()> {
@@ -1244,6 +1242,15 @@ fn digest_of(bytes: &[u8]) -> [u8; 32] {
     out
 }
 
+/// Whether `name` ends with `suffix`, ignoring ASCII case.
+///
+/// OPC part names compare case-insensitively (ISO/IEC 29500-2 §9.1.1.1). Not
+/// `Path::extension`: `/_rels/.rels` has no extension to it.
+fn ends_with_ignore_case(name: &str, suffix: &str) -> bool {
+    name.len() >= suffix.len()
+        && name.as_bytes()[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix.as_bytes())
+}
+
 /// A package part whose bytes the census compares as a resource.
 ///
 /// XML, relationships and VML are compared as markup. A trailing slash is a
@@ -1253,8 +1260,9 @@ fn is_binary_resource(name: &str) -> bool {
     if name.is_empty() || name.ends_with('/') {
         return false;
     }
-    let lower = name.to_ascii_lowercase();
-    !lower.ends_with(".xml") && !lower.ends_with(".rels") && !lower.ends_with(".vml")
+    ![".xml", ".rels", ".vml"]
+        .iter()
+        .any(|suffix| ends_with_ignore_case(name, suffix))
 }
 
 /// `original` when it is free, otherwise `/word/media/preservedN.ext`.
@@ -1300,12 +1308,36 @@ fn binary_content_type(name: &str) -> &'static str {
 
 /// Collects the relationship ids of every hyperlink in the body, in order.
 fn collect_hyperlink_ids(blocks: &[Block]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+    let mut out = UniqueIds::default();
     collect_hyperlink_ids_in(blocks, &mut out);
-    out
+    out.into_vec()
 }
 
-fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
+/// Strings in first-seen order without repeats, in O(1) per insert.
+///
+/// The collectors deduplicated with `Vec::contains`, which is quadratic: a
+/// document with 50 000 distinct hyperlinks cost about 1.25e9 string
+/// comparisons on save.
+#[derive(Default)]
+struct UniqueIds {
+    order: Vec<String>,
+    seen: HashSet<String>,
+}
+
+impl UniqueIds {
+    fn insert(&mut self, id: String) {
+        if !self.seen.contains(&id) {
+            self.seen.insert(id.clone());
+            self.order.push(id);
+        }
+    }
+
+    fn into_vec(self) -> Vec<String> {
+        self.order
+    }
+}
+
+fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut UniqueIds) {
     for block in blocks {
         match block {
             Block::Paragraph(paragraph) => collect_hyperlink_ids_inline(&paragraph.inlines, out),
@@ -1325,15 +1357,13 @@ fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut Vec<String>) {
     }
 }
 
-fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
+fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
     for inline in inlines {
         match inline {
             Inline::Hyperlink(link) => {
                 if let Some(id) = &link.rel_id {
                     let id = id.as_str().to_owned();
-                    if !out.contains(&id) {
-                        out.push(id);
-                    }
+                    out.insert(id);
                 }
                 collect_hyperlink_ids_inline(&link.inlines, out);
             }
@@ -1356,7 +1386,7 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut Vec<String>) {
     }
 }
 
-fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
+fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut UniqueIds) {
     let graphic = match &drawing.kind {
         DrawingKind::Inline(inline) => inline.graphic.as_ref(),
         DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
@@ -1365,7 +1395,7 @@ fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut Vec<String>) {
     collect_hyperlink_ids_graphic(graphic, out);
 }
 
-fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut Vec<String>) {
+fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut UniqueIds) {
     match graphic {
         Graphic::Shape(shape) => {
             if let Some(text) = &shape.text {

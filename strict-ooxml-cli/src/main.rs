@@ -12,9 +12,10 @@
 //! - `report <file> [--json|--text] [--out <path>]` — emits the full Stage-3
 //!   Feature Report.
 //! - `render <file> [--out <dir|file.svg>] [--pages <range>] [--scale <n>]
-//!   [--no-floating] [--no-math]` — renders Stage-4/5B/5C SVG pages (floating
+//!   [--no-floating] [--no-math] [--wps-times]` — renders Stage-4/5B/5C SVG pages (floating
 //!   heavy objects and OMML formulas can be disabled with `--no-floating` and
-//!   `--no-math`).
+//!   `--no-math`; `--wps-times` applies the Clio WPS Times calibration, see
+//!   `RenderOptions::wps_times_calibration`).
 //! - `write <file.docx> --out <file.docx>` — serializes the parsed model back
 //!   to a Strict package (Stage 8A) and prints what the writer could not
 //!   express.
@@ -32,6 +33,20 @@
 //!
 //! `render` returns `0` on success, `1` when the document was rendered but the
 //! Feature Report has `unsupported`/`error` blockers, and `2` on failure.
+
+// Every line this tool prints goes through `terminal_safe`: part names,
+// relationship ids and targets, content types, loss details and error messages
+// all come from the document, and a raw ESC or BEL in them is a terminal
+// escape sequence (title rewrite, colour, cursor movement), not text. These
+// shadow the std macros for this file, so no call site can forget.
+macro_rules! println {
+    () => { std::println!() };
+    ($($arg:tt)*) => { std::println!("{}", crate::terminal_safe(&format!($($arg)*))) };
+}
+macro_rules! eprintln {
+    () => { std::eprintln!() };
+    ($($arg:tt)*) => { std::eprintln!("{}", crate::terminal_safe(&format!($($arg)*))) };
+}
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -56,7 +71,37 @@ const EXIT_PROBLEM: u8 = 1;
 /// Exit code: damaged input or internal error.
 const EXIT_ERROR: u8 = 2;
 
+/// Stack of the thread every command runs on.
+///
+/// The library's budgets (`max_block_nesting`, `max_text_box_nesting`,
+/// `max_inline_nesting`, the math budgets) are sized so parsing fits the 1 MiB
+/// main-thread stack Windows gives a process. This is defence in depth on top of
+/// them: a recursion path a budget has not caught yet meets 64 MiB, not 1 MiB.
+const WORKER_STACK: usize = 64 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    let worker = std::thread::Builder::new()
+        .name("strict-ooxml".to_owned())
+        .stack_size(WORKER_STACK)
+        .spawn(run_command);
+    match worker {
+        Ok(handle) => handle.join().unwrap_or_else(|_| {
+            eprintln!("error: internal error (the command panicked)");
+            ExitCode::from(EXIT_ERROR)
+        }),
+        Err(error) => {
+            // A host that refuses a 64 MiB reservation still gets the command,
+            // on the stack it already has.
+            eprintln!(
+                "warning: could not reserve a {WORKER_STACK}-byte stack ({error}); continuing"
+            );
+            run_command()
+        }
+    }
+}
+
+/// Dispatches the command line; runs on the [`WORKER_STACK`] thread.
+fn run_command() -> ExitCode {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("inspect") => run_inspect(&args.collect::<Vec<_>>()),
@@ -67,8 +112,12 @@ fn main() -> ExitCode {
         Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
-        Some("--help" | "-h") | None => {
+        Some("--help" | "-h" | "help") | None => {
             print_usage();
+            ExitCode::from(EXIT_OK)
+        }
+        Some("--version" | "-V") => {
+            println!("strict-ooxml {}", env!("CARGO_PKG_VERSION"));
             ExitCode::from(EXIT_OK)
         }
         Some(other) => {
@@ -83,7 +132,7 @@ fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|write|normalize> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
-         [--no-floating] [--no-math] [--transitional]"
+         [--no-floating] [--no-math] [--wps-times] [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
@@ -367,6 +416,7 @@ struct RenderArgs {
     scale: Option<f64>,
     floating: bool,
     math: bool,
+    wps_times: bool,
 }
 
 impl RenderArgs {
@@ -377,11 +427,13 @@ impl RenderArgs {
         let mut scale: Option<f64> = None;
         let mut floating = true;
         let mut math = true;
+        let mut wps_times = false;
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
                 "--no-floating" => floating = false,
                 "--no-math" => math = false,
+                "--wps-times" => wps_times = true,
                 // Accepting the flag here rather than filtering it out of
                 // `args` keeps one source of truth for what the flag means.
                 "--transitional" => {}
@@ -425,6 +477,7 @@ impl RenderArgs {
             scale,
             floating,
             math,
+            wps_times,
         })
     }
 }
@@ -824,6 +877,7 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     }
     render_options = render_options.floating(parsed.floating);
     render_options = render_options.math(parsed.math);
+    render_options = render_options.wps_times_calibration(parsed.wps_times);
     let rendered = match document.render_svg(&render_options) {
         Ok(rendered) => rendered,
         Err(error) => {
@@ -1037,4 +1091,28 @@ fn push_json_string(body: &mut String, name: &str, value: &str, comma: bool) {
         body.push(',');
     }
     body.push('\n');
+}
+
+/// Replaces C0/C1 control characters other than newline and tab with a visible
+/// `\u{..}` escape, so text taken from a document cannot drive the terminal.
+///
+/// JSON output passes through unchanged: the serializer already escapes control
+/// characters inside strings, and nothing else in it is a control character.
+fn terminal_safe(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(is_unsafe_control) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + 8);
+    for ch in text.chars() {
+        if is_unsafe_control(ch) {
+            let _ = write!(out, "\\u{{{:x}}}", u32::from(ch));
+        } else {
+            out.push(ch);
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+fn is_unsafe_control(ch: char) -> bool {
+    ch.is_control() && ch != '\n' && ch != '\t'
 }

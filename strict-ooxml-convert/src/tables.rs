@@ -1146,6 +1146,7 @@ mod tests {
             miter_limit: 10.0,
             even_odd: false,
             ctm: Matrix::IDENTITY,
+            dash: Vec::new(),
         })
     }
 
@@ -1169,6 +1170,7 @@ mod tests {
             miter_limit: 10.0,
             even_odd: false,
             ctm: Matrix::IDENTITY,
+            dash: Vec::new(),
         })
     }
 

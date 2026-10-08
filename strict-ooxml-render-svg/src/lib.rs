@@ -51,6 +51,7 @@ mod math;
 mod notes;
 mod numbering;
 mod paint;
+mod table_style;
 
 pub use layout::{
     ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,
@@ -174,6 +175,17 @@ pub struct RenderOptions {
     /// all, is held to the same number instead of to whatever constant the layout
     /// happened to carry.
     pub limits: strict_ooxml_core::limits::ResourceLimits,
+    /// Stretch Tinos advances to the WPS-embedded Times of the Clio audit
+    /// (`font::substitute_width_scale`). Default `false`.
+    ///
+    /// Tinos is metric-compatible with Times New Roman, so the default layout
+    /// already measures Times the way Word does. The calibration was fitted to
+    /// one document's WPS export (P1, pages 54/104) and applied after
+    /// justification, so on every other document it moved glyphs off the
+    /// measured layout — a justified line ended 4–5 px past the right margin and
+    /// the `strict-text` pixel gate failed. It is kept for reproducing that
+    /// audit, behind this switch.
+    pub wps_times_calibration: bool,
 }
 
 impl Default for RenderOptions {
@@ -188,6 +200,7 @@ impl Default for RenderOptions {
             math: true,
             revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
+            wps_times_calibration: false,
         }
     }
 }
@@ -229,6 +242,13 @@ impl RenderOptions {
         self.math = math;
         self
     }
+
+    /// Sets [`Self::wps_times_calibration`].
+    #[must_use]
+    pub fn wps_times_calibration(mut self, enabled: bool) -> Self {
+        self.wps_times_calibration = enabled;
+        self
+    }
 }
 
 /// One rendered page.
@@ -264,7 +284,7 @@ pub struct Page {
 ///
 /// # Errors
 ///
-/// Returns a [`StrictError`]-backed error if a layout limit is exceeded.
+/// Returns a [`StrictError`](strict_ooxml_core::error::StrictError)-backed error if a layout limit is exceeded.
 pub fn place_pages(
     document: &Document,
     options: &RenderOptions,
@@ -287,6 +307,7 @@ pub fn place_pages(
         frame_cursors: std::cell::RefCell::new(Vec::new()),
         frame_prior_exact: std::cell::Cell::new(None),
         frame_force_exact_grid: std::cell::Cell::new(false),
+        in_frame: std::cell::Cell::new(false),
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
@@ -338,6 +359,7 @@ pub fn render_with_media(
         frame_cursors: std::cell::RefCell::new(Vec::new()),
         frame_prior_exact: std::cell::Cell::new(None),
         frame_force_exact_grid: std::cell::Cell::new(false),
+        in_frame: std::cell::Cell::new(false),
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };

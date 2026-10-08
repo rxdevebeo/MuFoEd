@@ -91,11 +91,11 @@ pub(crate) fn layout_table(
     let skip_cell_h_margins = table_uniform_frame(table).is_some();
 
     let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
-    for row in &table.rows {
+    for (row_index, row) in table.rows.iter().enumerate() {
         let raw = layout_row(
             ctx,
             table,
-            row,
+            row_index,
             &widths,
             table_x,
             depth,
@@ -120,27 +120,44 @@ pub(crate) fn layout_table(
         });
     }
 
+    row_flows(ctx, table, &rows)
+}
+
+/// Paints the laid-out rows (shading, cell content, borders) into row flows.
+///
+/// Kept out of [`layout_table`], which recurses once per nested table: in a
+/// debug build every local of a function occupies its frame, and the
+/// temporaries built here (rect and row-flow values) used to be paid at every
+/// nesting level of a 1 MiB stack (`hostile` `twelve_nested_tables_*`).
+#[inline(never)]
+fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flow> {
     let mut flows = Vec::with_capacity(rows.len());
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
         let mut page_frames = Vec::new();
+        let row_end = row
+            .cells
+            .iter()
+            .map(|cell| cell.col + cell.span)
+            .max()
+            .unwrap_or(0);
         for cell in &row.cells {
             let (source, paint_text, top_edge, bottom_edge) = match cell.vmerge {
                 VState::Continue => {
-                    let Some(source) = restart_cell(&rows, row_index, cell) else {
+                    let Some(source) = restart_cell(rows, row_index, cell) else {
                         continue;
                     };
                     (
                         source,
                         false,
                         false,
-                        !merge_continues(&rows, row_index, cell),
+                        !merge_continues(rows, row_index, cell),
                     )
                 }
-                VState::Restart => (cell, true, true, !merge_continues(&rows, row_index, cell)),
+                VState::Restart => (cell, true, true, !merge_continues(rows, row_index, cell)),
                 VState::None => (cell, true, true, true),
             };
-            if let Some(fill) = shading_fill(&source.properties) {
+            if let Some(fill) = shading_fill(ctx, &source.properties) {
                 items.push(Item::Rect(RectItem {
                     x: cell.x,
                     y: 0.0,
@@ -157,14 +174,23 @@ pub(crate) fn layout_table(
                 }
                 page_frames.extend(cell.page_frames.iter().cloned());
             }
+            // Edges shared with another cell take the table's insideH/insideV
+            // when the cell does not set its own (TableGrid draws its grid
+            // this way).
+            let interior = [
+                row_index > 0,
+                row_index + 1 < rows.len(),
+                cell.col > 0,
+                cell.col + cell.span < row_end,
+            ];
             push_borders(
                 ctx,
                 table,
                 cell,
                 &source.properties,
                 row.height,
-                top_edge,
-                bottom_edge,
+                (top_edge, bottom_edge),
+                interior,
                 &mut items,
             );
         }
@@ -198,13 +224,14 @@ struct LaidOutRow {
 fn layout_row(
     ctx: &LayoutContext<'_>,
     table: &Table,
-    row: &strict_ooxml_wml::model::TableRow,
+    row_index: usize,
     widths: &[f64],
     table_x: f64,
     depth: u32,
     escape_frames: bool,
     skip_cell_h_margins: bool,
 ) -> LaidOutRow {
+    let row = &table.rows[row_index];
     let row_columns: usize = row
         .cells
         .iter()
@@ -226,7 +253,17 @@ fn layout_row(
     for cell in &row.cells {
         let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
         let span = span.min(widths.len().saturating_sub(column).max(1));
-        let mut margins = effective_margins(ctx, table, row, cell);
+        // `w:tblStylePr` conditions of this cell, as a mask: the resolved
+        // properties are built in helpers, not in this recursive frame.
+        let conditions = crate::table_style::cell_conditions(
+            ctx.document,
+            table,
+            row_index,
+            column,
+            span,
+            widths.len(),
+        );
+        let mut margins = effective_margins(ctx, table, row, cell, conditions);
         if skip_cell_h_margins {
             margins.0 = 0.0;
             margins.1 = 0.0;
@@ -245,6 +282,7 @@ fn layout_row(
         let end = column.saturating_add(span).min(widths.len());
         let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
         let cell_content_width = (width - margins.0 - margins.1).max(1.0);
+        let cell_style = crate::table_style::enter_cell(table, conditions);
         let (items, content_height, page_frames) = layout_cell_content(
             ctx,
             &cell.blocks,
@@ -253,25 +291,74 @@ fn layout_row(
             depth + 1,
             escape_frames,
         );
+        drop(cell_style);
         let height = content_height + margins.2 + margins.3;
         max_content = max_content.max(height);
-        cells.push(RawCell {
-            col: column,
-            span,
-            x,
-            width,
-            properties: cell.props.clone(),
+        push_raw_cell(
+            ctx,
+            table,
+            &mut cells,
+            cell,
+            CellPlacement {
+                col: column,
+                span,
+                x,
+                width,
+                margin_top: margins.2,
+                conditions,
+            },
             items,
             page_frames,
-            margin_top: margins.2,
-            vmerge: VState::from_merge(cell.props.vertical_merge),
-        });
+        );
         column += span;
     }
     LaidOutRow {
         cells,
         height: max_content,
     }
+}
+
+/// Where a laid-out cell sits in its row.
+#[derive(Clone, Copy)]
+struct CellPlacement {
+    col: usize,
+    span: usize,
+    x: f64,
+    width: f64,
+    margin_top: f64,
+    /// `w:tblStylePr` conditions that apply (see `table_style::cell_conditions`).
+    conditions: u16,
+}
+
+/// Builds a [`RawCell`] in its own frame: the cell's properties are resolved
+/// against the table style here, not in [`layout_row`], which recurses once per
+/// nesting level (see [`row_flows`]).
+#[inline(never)]
+fn push_raw_cell(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    cells: &mut Vec<RawCell>,
+    cell: &strict_ooxml_wml::model::TableCell,
+    placement: CellPlacement,
+    items: Vec<Item>,
+    page_frames: Vec<Item>,
+) {
+    cells.push(RawCell {
+        col: placement.col,
+        span: placement.span,
+        x: placement.x,
+        width: placement.width,
+        properties: crate::table_style::resolve_cell_properties(
+            ctx.document,
+            table,
+            placement.conditions,
+            &cell.props,
+        ),
+        items,
+        page_frames,
+        margin_top: placement.margin_top,
+        vmerge: VState::from_merge(cell.props.vertical_merge),
+    });
 }
 
 /// Scales `widths` down so their sum is at most `ceiling`.
@@ -524,19 +611,27 @@ fn cell_spacing_px(
 }
 
 /// Effective cell margins `(left, right, top, bottom)` in px.
+///
+/// The first source that sets any side wins: the cell, the row, the table, then
+/// the table style (`tcMar` of the style and its `conditions` over the style's
+/// `tblCellMar`).
+#[inline(never)]
 fn effective_margins(
     ctx: &LayoutContext<'_>,
     table: &Table,
     row: &strict_ooxml_wml::model::TableRow,
     cell: &strict_ooxml_wml::model::TableCell,
+    conditions: u16,
 ) -> (f64, f64, f64, f64) {
     let scale = ctx.options.scale;
     let source = if cell.props.margins != CellMargins::default() {
         cell.props.margins
     } else if row.props.cell_margins != CellMargins::default() {
         row.props.cell_margins
-    } else {
+    } else if table.props.cell_margins != CellMargins::default() {
         table.props.cell_margins
+    } else {
+        crate::table_style::style_cell_margins(ctx.document, table, conditions)
     };
     let value = |margin: Option<Twips>, default: i32| {
         twips_to_px(margin.map_or(default, Twips::value), scale)
@@ -620,70 +715,15 @@ pub(crate) fn layout_blocks_inline(
         }
         match &blocks[index] {
             Block::Paragraph(para) => {
-                let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
-                *y += flow.space_before + flow.border_before;
-                for item in flow.flows {
-                    match item {
-                        Flow::Line(line) => {
-                            for mut text in line.items {
-                                text.baseline += *y;
-                                items.push(Item::Text(text));
-                            }
-                            *y += line.height;
-                        }
-                        Flow::Image(image) => {
-                            let mut image = image;
-                            image.y += *y;
-                            *y += image.h;
-                            items.push(Item::Image(image));
-                        }
-                        Flow::Block {
-                            items: block_items,
-                            height,
-                        } => {
-                            for item in block_items {
-                                items.push(offset_item(&item, 0.0, *y));
-                            }
-                            *y += height;
-                        }
-                        Flow::TableRow(row) => {
-                            for item in &row.items {
-                                items.push(offset_item(item, 0.0, *y));
-                            }
-                            page_frames.extend(row.page_frames);
-                            *y += row.height;
-                        }
-                        Flow::PageBreak => {}
-                    }
-                }
-                *y += flow.space_after + flow.border_after;
+                place_cell_paragraph(ctx, para, left, width, y, items, note_marker, page_frames);
             }
             Block::Table(table) => {
                 if push_uniform_framed_table(ctx, table, depth, escape_frames, page_frames) {
                     index += 1;
                     continue;
                 }
-                for flow in layout_table(ctx, table, left, width, depth, escape_frames) {
-                    match flow {
-                        Flow::Block {
-                            items: block_items,
-                            height,
-                        } => {
-                            for item in block_items {
-                                items.push(offset_item(&item, 0.0, *y));
-                            }
-                            *y += height;
-                        }
-                        Flow::TableRow(row) => {
-                            for item in &row.items {
-                                items.push(offset_item(item, 0.0, *y));
-                            }
-                            page_frames.extend(row.page_frames);
-                            *y += row.height;
-                        }
-                        Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
-                    }
-                }
+                let flows = layout_table(ctx, table, left, width, depth, escape_frames);
+                append_table_flows(flows, y, items, page_frames);
             }
             Block::SdtBlock(sdt) => {
                 layout_blocks_inline(
@@ -702,6 +742,92 @@ pub(crate) fn layout_blocks_inline(
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
         index += 1;
+    }
+}
+
+/// Lays out one paragraph of a cell and appends its items at `*y`.
+///
+/// Its own frame, so the paragraph flow and its line items are not part of
+/// [`layout_blocks_inline`], which recurses once per nested table.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn place_cell_paragraph(
+    ctx: &LayoutContext<'_>,
+    para: &strict_ooxml_wml::model::Paragraph,
+    left: f64,
+    width: f64,
+    y: &mut f64,
+    items: &mut Vec<Item>,
+    note_marker: Option<&str>,
+    page_frames: &mut Vec<Item>,
+) {
+    let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
+    *y += flow.space_before + flow.border_before;
+    for item in flow.flows {
+        match item {
+            Flow::Line(line) => {
+                for mut text in line.items {
+                    text.baseline += *y;
+                    items.push(Item::Text(text));
+                }
+                *y += line.height;
+            }
+            Flow::Image(image) => {
+                let mut image = image;
+                image.y += *y;
+                *y += image.h;
+                items.push(Item::Image(image));
+            }
+            Flow::Block {
+                items: block_items,
+                height,
+            } => {
+                for item in block_items {
+                    items.push(offset_item(&item, 0.0, *y));
+                }
+                *y += height;
+            }
+            Flow::TableRow(row) => {
+                for item in &row.items {
+                    items.push(offset_item(item, 0.0, *y));
+                }
+                page_frames.extend(row.page_frames);
+                *y += row.height;
+            }
+            Flow::PageBreak => {}
+        }
+    }
+    *y += flow.space_after + flow.border_after;
+}
+
+/// Appends a nested table's row flows at `*y` (see [`place_cell_paragraph`]).
+#[inline(never)]
+fn append_table_flows(
+    flows: Vec<Flow>,
+    y: &mut f64,
+    items: &mut Vec<Item>,
+    page_frames: &mut Vec<Item>,
+) {
+    for flow in flows {
+        match flow {
+            Flow::Block {
+                items: block_items,
+                height,
+            } => {
+                for item in block_items {
+                    items.push(offset_item(&item, 0.0, *y));
+                }
+                *y += height;
+            }
+            Flow::TableRow(row) => {
+                for item in &row.items {
+                    items.push(offset_item(item, 0.0, *y));
+                }
+                page_frames.extend(row.page_frames);
+                *y += row.height;
+            }
+            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
+        }
     }
 }
 
@@ -926,6 +1052,7 @@ pub(crate) fn layout_frame_contents(
     let mut pending_bordered = false;
     ctx.frame_prior_exact.set(None);
     ctx.frame_force_exact_grid.set(false);
+    let was_in_frame = ctx.in_frame.replace(true);
     for block in blocks {
         let Block::Paragraph(para) = block else {
             continue;
@@ -999,6 +1126,7 @@ pub(crate) fn layout_frame_contents(
     }
     ctx.frame_prior_exact.set(None);
     ctx.frame_force_exact_grid.set(false);
+    ctx.in_frame.set(was_in_frame);
     local_y += pending_border_after;
     (items, anchors, local_y)
 }
@@ -1071,8 +1199,8 @@ fn push_borders(
     cell: &RawCell,
     properties: &CellProperties,
     height: f64,
-    top_edge: bool,
-    bottom_edge: bool,
+    (top_edge, bottom_edge): (bool, bool),
+    interior: [bool; 4],
     items: &mut Vec<Item>,
 ) {
     let x = cell.x;
@@ -1089,7 +1217,8 @@ fn push_borders(
         if !draw {
             continue;
         }
-        if let Some(stroke) = resolve_edge(ctx, table, properties, edge) {
+        let inside = interior[usize::from(edge)];
+        if let Some(stroke) = resolve_edge(ctx, table, properties, edge, inside) {
             items.push(Item::Line(LineItem {
                 x1,
                 y1,
@@ -1111,6 +1240,7 @@ fn resolve_edge(
     table: &Table,
     properties: &CellProperties,
     edge: u8,
+    inside: bool,
 ) -> Option<Stroke> {
     let cell_border = match edge {
         0 => properties.borders.top.as_ref(),
@@ -1118,12 +1248,14 @@ fn resolve_edge(
         2 => properties.borders.start.as_ref(),
         _ => properties.borders.end.as_ref(),
     };
-    let table_border = match edge {
-        0 => table.props.borders.top.as_ref(),
-        1 => table.props.borders.bottom.as_ref(),
-        2 => table.props.borders.start.as_ref(),
-        _ => table.props.borders.end.as_ref(),
+    // Direct `w:tblBorders`, else the table style chain's; an edge shared with
+    // another cell reads `insideH` (top/bottom) or `insideV` (start/end).
+    let table_edge = match (inside, edge) {
+        (false, _) => edge,
+        (true, 0 | 1) => 4,
+        (true, _) => 5,
     };
+    let table_border = crate::table_style::table_border(ctx.document, table, table_edge);
     cell_border
         .or(table_border)
         .and_then(|border| stroke(ctx, border))
@@ -1161,12 +1293,12 @@ fn stroke(ctx: &LayoutContext<'_>, border: &Border) -> Option<Stroke> {
     Some((color, width, dashed))
 }
 
-/// Returns the cell/row/table shading fill colour, if any.
-fn shading_fill(cell: &CellProperties) -> Option<String> {
+/// Returns the cell shading fill colour, if any (`w:themeFill` resolved through
+/// the document theme, as paragraph shading is).
+fn shading_fill(ctx: &LayoutContext<'_>, cell: &CellProperties) -> Option<String> {
     cell.shading
         .as_ref()
-        .and_then(|shading| shading.fill.as_ref())
-        .and_then(parse_color)
+        .and_then(|shading| crate::style::shading_fill_color(shading, ctx.document.theme.as_ref()))
 }
 
 #[cfg(test)]

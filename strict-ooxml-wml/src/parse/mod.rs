@@ -8,6 +8,8 @@
 
 mod depth;
 
+pub mod chart;
+pub mod diagram;
 pub mod dispatch;
 pub mod document;
 pub mod drawing;
@@ -60,6 +62,11 @@ pub(crate) const MCE_NS: &str = "http://schemas.openxmlformats.org/markup-compat
 /// The reserved `xml:` namespace URI.
 pub(crate) const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
+/// Support-report feature id for an inline wrapper skipped past
+/// [`ResourceLimits::max_inline_nesting`]; dotted like `support.overflow`
+/// because it names a budget, not an element.
+pub const INLINE_NESTING_FEATURE: &str = "limit.inline_nesting";
+
 /// Options controlling document parsing.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ParseOptions {
@@ -72,11 +79,11 @@ pub struct ParseOptions {
 ///
 /// Runs both phases (parse + resolve). The conformance policy is no longer
 /// this function's concern (AUD-23 / ADR-0016): `Package::open_*` is the only
-/// place a [`ConformancePolicy`] is weighed, through
+/// place a [`ConformancePolicy`](strict_ooxml_core::opc::ConformancePolicy) is weighed, through
 /// `opc::policy::decide`, so a `Package` that opened at all has already
 /// cleared that gate. What this function still enforces is that every part it
 /// reads actually arrives in the WordprocessingML Strict namespace — see
-/// [`PartParser::expect_root_ns`].
+/// `PartParser::expect_root_ns`.
 ///
 /// # Errors
 ///
@@ -689,6 +696,15 @@ pub(crate) struct PartParser<'a> {
     /// or refuse twelve-deep tables over a text box the document never had.
     pub(crate) text_box_depth: u32,
     pub(crate) max_text_box_nesting: u32,
+    /// Deepest inline-wrapper nesting, and the bound it is held to.
+    ///
+    /// `w:ins`, `w:hyperlink`, `w:fldSimple`, an inline `w:sdt` and the other
+    /// wrappers recurse through the inline parser, and none of them is a block
+    /// container, so [`max_block_nesting`](Self::max_block_nesting) never saw
+    /// them: 120-180 nested `w:ins` overflowed a 1 MiB stack with only
+    /// `max_xml_depth` (256) in the way. See [`nested_inline`](Self::nested_inline).
+    pub(crate) inline_depth: u32,
+    pub(crate) max_inline_nesting: u32,
     /// The per-formula budgets, from `ResourceLimits`.
     ///
     /// Kept on the parser rather than as constants in `parse/math.rs`, because
@@ -714,6 +730,10 @@ pub(crate) struct PartParser<'a> {
     pub(crate) capture_body_section: bool,
     /// Body-level `w:sectPr` captured while `capture_body_section` is set.
     pub(crate) body_section: Option<Section>,
+    /// Chart parts already read for this part's `c:chart` references.
+    pub(crate) charts: chart::ChartCache,
+    /// Diagram drawing parts already read for this part's `dgm:relIds`.
+    pub(crate) diagrams: diagram::DiagramCache,
 }
 
 impl<'a> PartParser<'a> {
@@ -737,11 +757,15 @@ impl<'a> PartParser<'a> {
             max_block_nesting: limits.max_block_nesting,
             text_box_depth: 0,
             max_text_box_nesting: limits.max_text_box_nesting,
+            inline_depth: 0,
+            max_inline_nesting: limits.max_inline_nesting,
             max_math_nodes: limits.max_math_nodes,
             max_math_depth: limits.max_math_depth,
             section_gutter_at_top: false,
             capture_body_section: false,
             body_section: None,
+            charts: chart::ChartCache::new(limits),
+            diagrams: diagram::DiagramCache::new(limits),
         })
     }
 
@@ -974,6 +998,46 @@ impl<'a> PartParser<'a> {
         let out = f(self);
         self.text_box_depth = self.text_box_depth.saturating_sub(1);
         out.map(Some)
+    }
+
+    /// Runs `f` inside one level of inline-wrapper nesting.
+    ///
+    /// The inline counterpart of [`nested_text_box`](Self::nested_text_box): past
+    /// [`max_inline_nesting`](crate::parse::PartParser::max_inline_nesting) the
+    /// wrapper (start already consumed) is skipped iteratively and the result is
+    /// `Ok(None)`, so the wrapper costs its content and not the document, and the
+    /// skip spends no stack however deep the rest goes. The caller records the
+    /// loss with [`record_inline_nesting`](Self::record_inline_nesting).
+    pub(crate) fn nested_inline<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<Option<T>> {
+        let depth = self.inline_depth.saturating_add(1);
+        if depth > self.max_inline_nesting {
+            self.skip_element()?;
+            return Ok(None);
+        }
+        self.inline_depth = depth;
+        let out = f(self);
+        self.inline_depth = self.inline_depth.saturating_sub(1);
+        out.map(Some)
+    }
+
+    /// Records an inline wrapper skipped by [`nested_inline`](Self::nested_inline).
+    ///
+    /// One feature id for every wrapper kind, so the message is the budget's and
+    /// not whatever the first in-budget `w:customXml` said about itself.
+    /// `element` is the skipped wrapper's feature id, for example `w:ins`.
+    pub(crate) fn record_inline_nesting(&mut self, element: &str, location: SourceLocation) {
+        let limit = self.max_inline_nesting;
+        self.record(
+            INLINE_NESTING_FEATURE,
+            SupportStatus::Unsupported,
+            Some(format!(
+                "{element} nested past max_inline_nesting ({limit}); its content was skipped"
+            )),
+            Some(location),
+        );
     }
 
     /// Whether `name` opens a container whose children are themselves blocks.

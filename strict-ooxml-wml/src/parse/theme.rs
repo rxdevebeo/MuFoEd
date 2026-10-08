@@ -363,7 +363,7 @@ fn write_markup_start(out: &mut String, name: &QName, attrs: &[Attr]) {
 fn strict_theme_percentage(element: &str, attr: &str, value: &str) -> Option<String> {
     let applies = matches!(
         (element, attr),
-        ("spcPct", "val") | ("buSzPct", "val") | ("miter", "lim")
+        ("spcPct" | "buSzPct", "val") | ("miter", "lim")
     );
     if !applies || value.ends_with('%') {
         return None;

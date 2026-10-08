@@ -12,8 +12,19 @@ use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
 
-fn corpus(relative: &str) -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
+/// A document from the gitignored local corpus, or `None` (with a loud skip
+/// line) when this checkout does not carry it.
+fn corpus(relative: &str) -> Option<std::path::PathBuf> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}",
+            path.display()
+        );
+        None
+    }
 }
 
 fn open_transitional(path: &Path) -> Package {
@@ -40,8 +51,10 @@ fn part_digests(bytes: &[u8]) -> Vec<[u8; 32]> {
     package
         .parts()
         .filter(|part| {
-            let name = part.id.as_str();
-            !name.ends_with(".xml") && !name.ends_with(".rels") && !name.ends_with(".vml")
+            let name = part.id.as_str().to_ascii_lowercase();
+            ![".xml", ".rels", ".vml"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
         })
         .map(|part| digest(&package.read_part(&part.id).expect("part")))
         .collect()
@@ -60,7 +73,10 @@ fn write_back(package: &Package) -> Vec<u8> {
 
 #[test]
 fn t_p10_shape_fill_png_bytes_are_identical() {
-    let path = corpus("../strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx");
+    let Some(path) = corpus("../strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx")
+    else {
+        return;
+    };
     let package = open_transitional(&path);
     let expected = source_digest(&package, "/word/media/image1.png");
     let written = write_back(&package);
@@ -82,7 +98,8 @@ fn t_p10_shape_fill_png_bytes_are_identical() {
 
 #[test]
 fn t_p10_locked_canvas_jpeg_stays_the_same_bytes() {
-    let path = corpus("../testdata/CC0_DOCX/014_BG_Slokas_With_Transliteration_1_18.docx");
+    // CC0 ci-core: runs in CI after `xtool corpus fetch`.
+    let path = strict_ooxml_testkit::corpus_doc!("cc0-docx/014").path;
     let package = open_transitional(&path);
     let expected = source_digest(&package, "/word/media/image1.jpeg");
     let written = write_back(&package);
@@ -94,7 +111,8 @@ fn t_p10_locked_canvas_jpeg_stays_the_same_bytes() {
 
 #[test]
 fn t_p10_empty_embedded_font_bytes_are_kept() {
-    let path = corpus("../testdata/CC0_DOCX/068_Madhurya_Kadambini_Roman_Sanskrit.docx");
+    // CC0 ci-core: runs in CI after `xtool corpus fetch`.
+    let path = strict_ooxml_testkit::corpus_doc!("cc0-docx/068").path;
     let package = open_transitional(&path);
     let expected = source_digest(&package, "/word/fonts/font6.odttf");
     assert_eq!(expected, digest(b""));

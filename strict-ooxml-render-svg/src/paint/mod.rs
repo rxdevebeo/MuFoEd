@@ -4,6 +4,7 @@
 //! in a fixed order; text/attribute values are XML-escaped. The output is a
 //! single `<svg>` document per page, terminated by `\n`.
 
+pub(crate) mod chart;
 pub(crate) mod graphics;
 pub(crate) mod image;
 pub(crate) mod shapes;

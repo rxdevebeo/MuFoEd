@@ -567,7 +567,7 @@ w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"8635\" w:y=\"1229\"/>";
         .expect("page")
         .svg;
     assert!(
-        svg.contains("L3") || svg.contains("3"),
+        svg.contains("L3") || svg.contains('3'),
         "expected haplogroup glyphs: {svg}"
     );
     let (_, l3_y) = text_at(&svg, "3");

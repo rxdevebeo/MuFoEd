@@ -11,7 +11,7 @@ use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
     Border, BorderStyle, Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule,
-    Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
+    Shading, Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
 };
 use strict_ooxml_wml::model::Document;
 
@@ -167,6 +167,10 @@ pub fn compute_paragraph(
         apply_run_props(&mut computed.default_run, &defaults.run, theme);
     }
 
+    // A cell paragraph takes its table style (and the `w:tblStylePr`
+    // conditions of its cell) before the paragraph style (§17.7.2).
+    apply_table_style(document, &mut computed, theme);
+
     let style_id = para.props.style.as_ref().or_else(|| {
         document
             .styles
@@ -200,6 +204,28 @@ pub fn compute_run(
     }
     apply_direct_run_props(&mut computed, &run.props, theme);
     computed
+}
+
+/// Applies the table style of the cell being laid out, if any.
+///
+/// Base `pPr`/`rPr` of the style chain toggle like any style; a condition's
+/// `rPr` assigns, so a style-wide bold and a `firstRow` bold stay bold.
+#[inline(never)]
+fn apply_table_style(document: &Document, computed: &mut ComputedParagraph, theme: Option<&Theme>) {
+    let Some((style_id, mask)) = crate::table_style::current_cell() else {
+        return;
+    };
+    let Some(style) = document.styles.get(&style_id) else {
+        return;
+    };
+    for layer in crate::table_style::chain(document, style) {
+        apply_paragraph_props(computed, &layer.paragraph, theme);
+        apply_run_props(&mut computed.default_run, &layer.run, theme);
+    }
+    for condition in crate::table_style::conditions(document, style, mask) {
+        apply_paragraph_props(computed, &condition.paragraph, theme);
+        apply_direct_run_props(&mut computed.default_run, &condition.run, theme);
+    }
 }
 
 /// Applies a paragraph style's `basedOn` chain and its own properties.
@@ -257,16 +283,12 @@ fn apply_paragraph_props_mode(
     if props.borders.bottom.is_some() {
         computed.border_after_pt = border_pad_pt(props.borders.bottom.as_ref());
     }
-    if let Some(shading) = &props.shading {
-        if let Some(fill) = shading
-            .theme_fill
-            .as_ref()
-            .and_then(|reference| resolve_theme_color(reference, theme))
-        {
-            computed.shading = Some(fill);
-        } else if let Some(fill) = shading.fill.as_ref().and_then(parse_color) {
-            computed.shading = Some(fill);
-        }
+    if let Some(fill) = props
+        .shading
+        .as_ref()
+        .and_then(|shading| shading_fill_color(shading, theme))
+    {
+        computed.shading = Some(fill);
     }
     if !props.tabs.is_empty() {
         computed.tabs.clone_from(&props.tabs);
@@ -309,7 +331,7 @@ fn border_pad_pt(border: Option<&Border>) -> f64 {
         return 0.0;
     };
     match border.style {
-        None | Some(BorderStyle::Nil) | Some(BorderStyle::None) => return 0.0,
+        None | Some(BorderStyle::Nil | BorderStyle::None) => return 0.0,
         Some(_) => {}
     }
     let space = f64::from(border.space.unwrap_or(0));
@@ -344,7 +366,7 @@ enum ToggleMode {
 
 /// Merges run properties from a style or from document defaults.
 ///
-/// Toggle properties XOR. Direct formatting goes through [`apply_direct_run_props`].
+/// Toggle properties XOR. Direct formatting goes through `apply_direct_run_props`.
 pub fn apply_run_props(computed: &mut ComputedRun, props: &RunProperties, theme: Option<&Theme>) {
     apply_run_props_mode(computed, props, theme, ToggleMode::Cascade);
 }
@@ -490,7 +512,7 @@ pub fn spacing_px(run: &ComputedRun, size_px: f64) -> f64 {
 pub fn compress_punctuation(control: Option<&str>) -> bool {
     matches!(
         control,
-        Some("compressPunctuation") | Some("compressPunctuationAndJapaneseKana")
+        Some("compressPunctuation" | "compressPunctuationAndJapaneseKana")
     )
 }
 
@@ -641,6 +663,16 @@ fn apply_toggle(computed: &mut bool, state: TriState, mode: ToggleMode) {
     }
 }
 
+/// The fill of a `w:shd` as `#rrggbb`: `w:themeFill` (with tint/shade) when the
+/// theme resolves it, else `w:fill`. `None` for `auto` or nothing usable.
+pub(crate) fn shading_fill_color(shading: &Shading, theme: Option<&Theme>) -> Option<String> {
+    shading
+        .theme_fill
+        .as_ref()
+        .and_then(|reference| resolve_theme_color(reference, theme))
+        .or_else(|| shading.fill.as_ref().and_then(parse_color))
+}
+
 /// Parses a `w:color` value into `#rrggbb` (or `None` for `auto`/invalid).
 #[must_use]
 pub fn parse_color(color: &Color) -> Option<String> {
@@ -786,16 +818,16 @@ mod tests {
             locked: false,
             unhide_when_used: false,
             ui_priority: None,
-            table: Default::default(),
-            row: Default::default(),
-            cell: Default::default(),
+            table: strict_ooxml_wml::model::props::TableProperties::default(),
+            row: strict_ooxml_wml::model::props::RowProperties::default(),
+            cell: strict_ooxml_wml::model::props::CellProperties::default(),
             paragraph: ParagraphProperties::default(),
             run: RunProperties {
                 bold: TriState::On,
                 ..RunProperties::default()
             },
             conditions: Vec::new(),
-        based_on_chain: Vec::new(),
+            based_on_chain: Vec::new(),
             location: location(),
         };
         base.run.size = Some(strict_ooxml_wml::model::values::HalfPoints(28));

@@ -11,7 +11,8 @@ use crate::model::styles::{DocDefaults, Style, StyleTable, TableStyleCondition};
 use crate::model::support::SupportStatus;
 use crate::model::values::StyleType;
 
-use super::{feature_id_for, is_wml, val_attr, wml_attr, PartParser};
+use super::{feature_id_for, is_wml, parse_on_off_tristate, val_attr, wml_attr, PartParser};
+use crate::model::values::TriState;
 
 impl PartParser<'_> {
     /// Parses a `styles.xml` part.
@@ -174,10 +175,8 @@ impl PartParser<'_> {
         self.nested(|parser| {
             let style_id = wml_attr(attrs, "styleId").map(StyleId::new);
             let style_type = wml_attr(attrs, "type").and_then(StyleType::from_strict);
-            let is_default =
-                wml_attr(attrs, "default").is_some_and(|v| matches!(v, "true" | "on" | "1"));
-            let custom_style =
-                wml_attr(attrs, "customStyle").is_some_and(|v| matches!(v, "true" | "on" | "1"));
+            let is_default = wml_attr(attrs, "default").is_some_and(is_on);
+            let custom_style = wml_attr(attrs, "customStyle").is_some_and(is_on);
             let mut name = None;
             let mut based_on = None;
             let mut next = None;
@@ -230,27 +229,27 @@ impl PartParser<'_> {
                                 parser.skip_element()?;
                             }
                             "semiHidden" => {
-                                semi_hidden = true;
+                                semi_hidden = style_flag(parser, &attrs, "w:semiHidden");
                                 parser.skip_element()?;
                             }
                             "hidden" => {
-                                hidden = true;
+                                hidden = style_flag(parser, &attrs, "w:hidden");
                                 parser.skip_element()?;
                             }
                             "qFormat" => {
-                                q_format = true;
+                                q_format = style_flag(parser, &attrs, "w:qFormat");
                                 parser.skip_element()?;
                             }
                             "locked" => {
-                                locked = true;
+                                locked = style_flag(parser, &attrs, "w:locked");
                                 parser.skip_element()?;
                             }
                             "unhideWhenUsed" => {
-                                unhide_when_used = true;
+                                unhide_when_used = style_flag(parser, &attrs, "w:unhideWhenUsed");
                                 parser.skip_element()?;
                             }
                             "autoRedefine" => {
-                                auto_redefine = true;
+                                auto_redefine = style_flag(parser, &attrs, "w:autoRedefine");
                                 parser.skip_element()?;
                             }
                             "pPr" => paragraph = parser.parse_paragraph_properties()?.0,
@@ -321,9 +320,17 @@ impl PartParser<'_> {
         &mut self,
         attrs: &[strict_ooxml_core::xml::Attr],
     ) -> Result<TableStyleCondition> {
-        let kind = wml_attr(attrs, "type")
-            .map(std::sync::Arc::from)
-            .unwrap_or_else(|| std::sync::Arc::from(""));
+        let kind =
+            wml_attr(attrs, "type").map_or_else(|| std::sync::Arc::from(""), std::sync::Arc::from);
+        // The condition is kept for the writer, but style resolution and
+        // layout do not apply it. That gap belongs in the support report.
+        let location = self.location();
+        self.record(
+            "w:tblStylePr",
+            SupportStatus::Partial,
+            Some("table style condition applied to cells, paragraphs and runs; its tblPr and trPr are not".to_owned()),
+            Some(location),
+        );
         self.nested(|parser| {
             let mut paragraph = ParagraphProperties::default();
             let mut run = RunProperties::default();
@@ -340,7 +347,19 @@ impl PartParser<'_> {
                                 "tblPr" => table = parser.parse_table_properties()?,
                                 "trPr" => row = parser.parse_row_properties()?,
                                 "tcPr" => cell = parser.parse_cell_properties()?,
-                                _ => parser.skip_element()?,
+                                _ => {
+                                    let location = parser.location();
+                                    parser.skip_element()?;
+                                    parser.record(
+                                        "w:tblStylePr",
+                                        SupportStatus::Partial,
+                                        Some(format!(
+                                            "table style condition child `{}` not modelled",
+                                            name.local()
+                                        )),
+                                        Some(location),
+                                    );
+                                }
                             }
                         } else {
                             parser.skip_element()?;
@@ -363,4 +382,21 @@ impl PartParser<'_> {
             })
         })
     }
+}
+
+/// A `CT_OnOff` style flag (`w:qFormat`, `w:hidden`, …): `w:val` decides, a
+/// bare element means on. These were set from the element's presence alone, so
+/// `<w:qFormat w:val="0"/>` read and round-tripped as on. An invalid value is
+/// recorded and read as off.
+fn style_flag(
+    parser: &mut PartParser<'_>,
+    attrs: &[strict_ooxml_core::xml::Attr],
+    feature: &str,
+) -> bool {
+    parse_on_off_tristate(parser, attrs, feature) == TriState::On
+}
+
+/// `ST_OnOff` for an attribute (`w:default`, `w:customStyle`).
+fn is_on(value: &str) -> bool {
+    matches!(value, "true" | "on" | "1")
 }

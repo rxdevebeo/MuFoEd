@@ -257,7 +257,7 @@ fn picture_fixture() -> (
                 id: Some(1),
                 name: Some("red pixel".into()),
                 descr: None,
-            title: None,
+                title: None,
             }),
             graphic_uri: Some("http://purl.oclc.org/ooxml/drawingml/picture".into()),
             graphic: Box::new(Graphic::Picture(Picture {

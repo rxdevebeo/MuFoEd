@@ -187,7 +187,24 @@ fn a_damaged_docx_still_fails_to_open() {
 fn corpus() -> Vec<Case> {
     let mut out = strict_corpus();
     out.extend(transitional_corpus());
+    out.extend(cc0_corpus());
     out
+}
+
+/// The CC0 `ci-core` tier (`testdata-lock/cc0.toml`): Transitional documents
+/// with known provenance that CI fetches, so the invariants here run on real
+/// Word output in CI and not only on the local corpus.
+fn cc0_corpus() -> Vec<Case> {
+    use strict_ooxml_testkit::corpus::{tier, Tier};
+    tier(Tier::CiCore)
+        .into_iter()
+        .map(|doc| Case {
+            name: doc.id.clone(),
+            bytes: std::fs::read(&doc.path)
+                .unwrap_or_else(|error| panic!("{}: {error}", doc.path.display())),
+            transitional: true,
+        })
+        .collect()
 }
 
 /// Opens `bytes` with a normalizer installed, and hands back the handle so the

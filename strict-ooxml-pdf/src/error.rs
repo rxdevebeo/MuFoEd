@@ -101,7 +101,27 @@ pub enum LimitKind {
     RasterPixels,
     /// `PdfLimits::max_input_bytes`, the size of the file before it is loaded.
     InputBytes,
+    /// Decompressed bytes of all object and cross-reference streams in one file,
+    /// checked on the raw bytes before the loader inflates them.
+    ///
+    /// The budget is [`OBJECT_STREAM_BUDGET_FACTOR`] times
+    /// `PdfLimits::max_content_bytes` (128 MiB with the defaults); the loader is
+    /// also given it as its per-stream ceiling. This is what closed waiver
+    /// `PDF-OBJSTM-BOMB`: a small file whose object stream inflates to gigabytes
+    /// is refused before anything is allocated for it.
+    ObjectStreamBytes,
 }
+
+/// How many times `PdfLimits::max_content_bytes` the object and cross-reference
+/// streams of one file may inflate to, all of them together
+/// ([`LimitKind::ObjectStreamBytes`]).
+///
+/// Four page-content budgets: 128 MiB with the default limits. A real document's
+/// object streams hold dictionaries and numbers — a few hundred bytes per object
+/// — so even a file of a million objects stays below it, while a bomb is refused
+/// after the pre-load scan has inflated at most this much into a scratch buffer
+/// it throws away.
+pub const OBJECT_STREAM_BUDGET_FACTOR: usize = 4;
 
 impl LimitKind {
     /// A stable machine-readable name.
@@ -119,6 +139,7 @@ impl LimitKind {
             Self::FormDepth => "form_depth",
             Self::RasterPixels => "raster_pixels",
             Self::InputBytes => "input_bytes",
+            Self::ObjectStreamBytes => "object_stream_bytes",
         }
     }
 }
@@ -135,6 +156,10 @@ pub struct PdfLimits {
     /// Pages in one document. Default: 2048.
     pub max_pages: usize,
     /// Decompressed content-stream bytes per page. Default: 32 MiB.
+    ///
+    /// Also the unit of the object-stream budget checked before the file is
+    /// loaded: [`OBJECT_STREAM_BUDGET_FACTOR`] times this, for all object and
+    /// cross-reference streams together ([`LimitKind::ObjectStreamBytes`]).
     pub max_content_bytes: usize,
     /// Operators in one page. Default: 2 000 000.
     pub max_operations: usize,
@@ -155,8 +180,9 @@ pub struct PdfLimits {
     pub max_fonts: usize,
     /// Bytes of the PDF file itself, checked before `lopdf` loads it. Default: 256 MiB.
     ///
-    /// Object-stream inflation inside the loader is not bounded by this crate
-    /// (waiver `PDF-OBJSTM-BOMB`); this ceiling is the outer fence on the input.
+    /// Object-stream inflation inside the loader is bounded separately, by
+    /// [`LimitKind::ObjectStreamBytes`]; this ceiling is the outer fence on the
+    /// compressed input.
     pub max_input_bytes: usize,
     /// How deep form XObjects may nest. Default: 12.
     ///
@@ -175,6 +201,16 @@ pub struct PdfLimits {
     /// is evicted, because a policy that guessed wrong would cost more than it
     /// saves.
     pub max_cached_image_bytes: usize,
+    /// Decompressed content bytes of form XObjects the document holds on to
+    /// between draws. Default: 64 MiB.
+    ///
+    /// The same contract as [`Self::max_cached_image_bytes`]: a form drawn on
+    /// every page is decoded once, but the cache outlives the page, so without a
+    /// ceiling a small file whose pages draw many distinct large forms keeps all
+    /// of them (each up to [`Self::max_content_bytes`], plus its operator list)
+    /// until the document is dropped. Past the ceiling a form is decoded per draw
+    /// and released with it.
+    pub max_cached_form_bytes: usize,
     /// Pixels in one rasterized page or region. Default: 16 777 216 (4096²).
     ///
     /// A Letter page at scale 4 is 2448 × 3168 pixels — 7.7 M — so the default
@@ -198,6 +234,7 @@ impl Default for PdfLimits {
             max_input_bytes: 256 * 1024 * 1024,
             max_form_depth: 12,
             max_cached_image_bytes: 64 * 1024 * 1024,
+            max_cached_form_bytes: 64 * 1024 * 1024,
             max_raster_pixels: 4096 * 4096,
         }
     }
@@ -223,6 +260,7 @@ impl PdfLimits {
             LimitKind::FormDepth => self.max_form_depth as u64,
             LimitKind::RasterPixels => self.max_raster_pixels,
             LimitKind::InputBytes => self.max_input_bytes as u64,
+            LimitKind::ObjectStreamBytes => crate::preload::object_stream_budget(self) as u64,
         };
         PdfError::LimitExceeded {
             kind,

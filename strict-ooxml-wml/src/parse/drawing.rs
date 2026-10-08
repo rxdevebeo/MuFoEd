@@ -243,7 +243,7 @@ impl PartParser<'_> {
                     } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
                         let (uri, graphic) = self.parse_graphic()?;
                         anchor.graphic_uri = uri;
-                        anchor.graphic = Box::new(graphic);
+                        *anchor.graphic = graphic;
                     } else if is_ns(&name, MS_WORD_PROCESSING_DRAWING_NS) {
                         match name.local() {
                             "sizeRelH" => {
@@ -580,15 +580,25 @@ impl PartParser<'_> {
         if name.local() == "chart" {
             // The attributes of *this* element, not of the `a:graphicData` that
             // carries it: `r:id` is where the chart part is named.
-            let graphic = Graphic::Chart(self.foreign_refs(attrs, &[R_ID]));
+            let mut refs = self.foreign_refs(attrs, &[R_ID]);
+            if let Some(rel_id) = refs.rels.first().cloned() {
+                let location = refs.location.clone();
+                refs.chart = self.chart_for(&rel_id, &location);
+            }
+            let graphic = Graphic::Chart(refs);
             self.skip_element()?;
             return Ok(Some(graphic));
         }
         if name.local() == "relIds" {
             // `dgm:relIds` carries four ids in a fixed order, and the order is
             // the only thing that says which is which.
-            let graphic =
-                Graphic::Diagram(self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]));
+            let mut refs = self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]);
+            // Word's cached drawing is found through the data part (`r:dm`).
+            if let Some(data_rel) = attr_in_ns(attrs, RELS_STRICT_NS, REL_DM).map(str::to_owned) {
+                let location = refs.location.clone();
+                refs.diagram = self.diagram_for(&data_rel, &location);
+            }
+            let graphic = Graphic::Diagram(refs);
             self.skip_element()?;
             return Ok(Some(graphic));
         }
@@ -668,6 +678,8 @@ impl PartParser<'_> {
         }
         ForeignRefs {
             rels,
+            chart: None,
+            diagram: None,
             location: self.location(),
         }
     }
@@ -767,7 +779,8 @@ impl PartParser<'_> {
                             if let Some(part) = &resolved {
                                 parser.index_resolved_media(part);
                             }
-                            let cstate = plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
+                            let cstate =
+                                plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
                             blip = Some(BlipRef {
                                 embed,
                                 link,
@@ -866,7 +879,8 @@ impl PartParser<'_> {
                             if let Some(part) = &resolved {
                                 parser.index_resolved_media(part);
                             }
-                            let cstate = plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
+                            let cstate =
+                                plain_attr(&attrs, "cstate").map(|value| parser.intern(value));
                             blip = Some(BlipRef {
                                 embed,
                                 link,
@@ -878,13 +892,39 @@ impl PartParser<'_> {
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "stretch" {
                             fill_rect = parser.parse_stretch_fill_rect()?;
                         } else {
+                            // `a:srcRect` and `a:tile` are not modelled: the fill
+                            // is painted stretched and uncropped.
+                            let location = parser.location();
                             parser.skip_element()?;
+                            parser.record(
+                                "a:fill",
+                                SupportStatus::Partial,
+                                Some(format!(
+                                    "blip fill child `{}` is not modelled; image is stretched",
+                                    name.local()
+                                )),
+                                Some(location),
+                            );
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of blip fill")),
                 }
+            }
+            // A fill with no embedded image part paints nothing. The model keeps
+            // the reference, but the loss must reach the support report.
+            let unresolved = blip.as_ref().is_none_or(|blip| blip.resolved.is_none());
+            if unresolved {
+                let location = blip
+                    .as_ref()
+                    .map_or_else(|| parser.location(), |blip| blip.location.clone());
+                parser.record(
+                    "a:fill",
+                    SupportStatus::Partial,
+                    Some("blip fill has no embedded image; painted as no fill".to_owned()),
+                    Some(location),
+                );
             }
             Ok(match blip {
                 Some(blip) => ShapeFill::Blip { blip, fill_rect },
@@ -982,8 +1022,8 @@ impl PartParser<'_> {
                         if is_shape_ns(&name) {
                             match name.local() {
                                 "cNvPr" => {
-                                    shape.nv_id =
-                                        plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
+                                    shape.nv_id = plain_attr(&attrs, "id")
+                                        .and_then(|value| value.parse().ok());
                                     shape.name =
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     shape.descr =
@@ -1035,7 +1075,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wps:spPr` into `shape`.
-    fn parse_shape_sp_pr(&mut self, shape: &mut Shape) -> Result<()> {
+    pub(super) fn parse_shape_sp_pr(&mut self, shape: &mut Shape) -> Result<()> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
@@ -1331,7 +1371,7 @@ impl PartParser<'_> {
     }
 
     /// Parses the first colour child of `a:solidFill`-like containers.
-    fn parse_fill_color(&mut self) -> Result<Option<ShapeColor>> {
+    pub(super) fn parse_fill_color(&mut self) -> Result<Option<ShapeColor>> {
         self.nested(|parser| {
             let mut color = None;
             loop {
@@ -1539,7 +1579,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wps:style`, including each reference's `a:schemeClr/@val`.
-    fn parse_shape_style(&mut self) -> Result<ShapeStyle> {
+    pub(super) fn parse_shape_style(&mut self) -> Result<ShapeStyle> {
         self.nested(|parser| {
             let mut style = ShapeStyle::default();
             loop {
@@ -1666,7 +1706,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wps:bodyPr`.
-    fn parse_text_box_body(&mut self, attrs: &[Attr]) -> Result<TextBoxBody> {
+    pub(super) fn parse_text_box_body(&mut self, attrs: &[Attr]) -> Result<TextBoxBody> {
         let anchor = match plain_attr(attrs, "anchor") {
             Some("t") => Some(TextAnchor::Top),
             Some("ctr") => Some(TextAnchor::Center),
@@ -1757,7 +1797,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wpg:grpSpPr` (start consumed), reading its `a:xfrm` child.
-    fn parse_group_transform(&mut self, _attrs: &[Attr]) -> Result<GroupTransform> {
+    pub(super) fn parse_group_transform(&mut self, _attrs: &[Attr]) -> Result<GroupTransform> {
         self.nested(|parser| {
             let mut parts = XfrmParts::default();
             loop {
@@ -1789,7 +1829,7 @@ impl PartParser<'_> {
     }
 
     /// Reads the text content of the current element (start consumed).
-    fn read_element_text(&mut self) -> Result<String> {
+    pub(super) fn read_element_text(&mut self) -> Result<String> {
         self.nested(|parser| {
             let mut out = String::new();
             loop {
@@ -1839,7 +1879,11 @@ fn is_locked_canvas_ns(name: &QName) -> bool {
 
 /// Writes a start tag with Strict namespace prefixes for locked-canvas capture.
 fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
-    let prefix = markup_prefix(name.ns.as_ref().map(|ns| ns.as_str()));
+    let prefix = markup_prefix(
+        name.ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+    );
     out.push('<');
     if let Some(prefix) = prefix {
         out.push_str(prefix);
@@ -1860,7 +1904,12 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
         out.push('"');
     }
     for attr in attrs {
-        let attr_prefix = markup_prefix(attr.name.ns.as_ref().map(|ns| ns.as_str()));
+        let attr_prefix = markup_prefix(
+            attr.name
+                .ns
+                .as_ref()
+                .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+        );
         out.push(' ');
         if let Some(prefix) = attr_prefix {
             // Unprefixed attributes stay unprefixed (XML Namespaces).
@@ -1884,7 +1933,11 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
 
 /// Writes an end tag with the same prefix policy as [`write_start_markup`].
 fn write_end_markup(out: &mut String, name: &QName) {
-    let prefix = markup_prefix(name.ns.as_ref().map(|ns| ns.as_str()));
+    let prefix = markup_prefix(
+        name.ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
+    );
     out.push_str("</");
     if let Some(prefix) = prefix {
         out.push_str(prefix);
@@ -1901,13 +1954,16 @@ fn escape_text_into_markup(out: &mut String, text: &str) {
 /// Stable prefix for a namespace URI when serialising locked-canvas markup.
 fn markup_prefix(ns: Option<&str>) -> Option<&'static str> {
     match ns {
-        Some(LOCKED_CANVAS_STRICT_NS) | Some(LOCKED_CANVAS_TRANSITIONAL_NS) => Some("lc"),
-        Some(DRAWINGML_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/drawingml/2006/main") => Some("a"),
-        Some(RELS_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/officeDocument/2006/relationships") => Some("r"),
-        Some(PICTURE_STRICT_NS)
-        | Some("http://schemas.openxmlformats.org/drawingml/2006/picture") => Some("pic"),
+        Some(LOCKED_CANVAS_STRICT_NS | LOCKED_CANVAS_TRANSITIONAL_NS) => Some("lc"),
+        Some(DRAWINGML_STRICT_NS | "http://schemas.openxmlformats.org/drawingml/2006/main") => {
+            Some("a")
+        }
+        Some(
+            RELS_STRICT_NS | "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        ) => Some("r"),
+        Some(PICTURE_STRICT_NS | "http://schemas.openxmlformats.org/drawingml/2006/picture") => {
+            Some("pic")
+        }
         Some("http://www.w3.org/XML/1998/namespace") => Some("xml"),
         _ => None,
     }

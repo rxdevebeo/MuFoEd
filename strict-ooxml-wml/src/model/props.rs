@@ -106,7 +106,7 @@ pub struct RunProperties {
     /// Underline colour (`w:u/@w:color`).
     pub underline_color: Option<Color>,
     /// Theme colour on the underline (`w:u/@w:themeColor` + tint/shade).
-    pub underline_theme: Option<ThemeColorRef>,
+    pub underline_theme: Option<Box<ThemeColorRef>>,
     /// Strikethrough (`w:strike`).
     pub strike: TriState,
     /// Double strikethrough (`w:dstrike`).
@@ -549,7 +549,7 @@ pub struct PageBorder {
     /// Border colour (`w:color`).
     pub color: Option<Color>,
     /// Theme colour reference (`w:themeColor` and tint/shade).
-    pub theme_color: Option<ThemeColorRef>,
+    pub theme_color: Option<Box<ThemeColorRef>>,
     /// Shadow (`w:shadow`).
     pub shadow: bool,
 }

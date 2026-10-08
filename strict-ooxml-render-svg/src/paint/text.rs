@@ -122,13 +122,10 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
                         *x += extra * non_space_index as f64 + compress_shift;
                     }
                     if (factor - 1.0).abs() > f64::EPSILON {
-                        compress_shift -= provider.advance_em(
-                            family,
-                            ch,
-                            item.run.bold,
-                            item.run.italic,
-                        ) * item.size_px
-                            * (1.0 - factor);
+                        compress_shift -=
+                            provider.advance_em(family, ch, item.run.bold, item.run.italic)
+                                * item.size_px
+                                * (1.0 - factor);
                     }
                     if !ch.is_whitespace() {
                         non_space_index += 1;

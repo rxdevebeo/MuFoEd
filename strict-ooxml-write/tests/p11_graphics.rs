@@ -2,12 +2,27 @@
 //!
 //! T-P11-3: `bwMode="auto"` is written back. It is not treated as an absent default.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
+
+/// A document from the gitignored local corpus, or `None` (with a loud skip
+/// line) when this checkout does not carry it.
+fn local_corpus(relative: &str) -> Option<PathBuf> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}",
+            path.display()
+        );
+        None
+    }
+}
 
 fn open_transitional(path: &Path) -> Package {
     Package::open_reader(
@@ -23,19 +38,55 @@ fn open_transitional(path: &Path) -> Package {
 
 #[test]
 fn picture_id_bw_mode_and_cstate_round_trip() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx");
+    let Some(path) =
+        local_corpus("../strict-ooxml-core/tests/docx/1. First-Steps-in-Programming.docx")
+    else {
+        return;
+    };
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let written = write_package(&document, Some(&package), &WriteOptions::default())
         .expect("write")
         .bytes;
-    let reopened = Package::open_reader(written.as_slice(), &OpenOptions::default()).expect("reopen");
+    let reopened =
+        Package::open_reader(written.as_slice(), &OpenOptions::default()).expect("reopen");
     let document = reopened
         .read_part(&PartId::new("/word/document.xml"))
         .expect("document");
     let text = String::from_utf8_lossy(&document);
-    assert!(text.contains(r#"id="150""#), "shape non-visual id was rewritten");
+    assert!(
+        text.contains(r#"id="150""#),
+        "shape non-visual id was rewritten"
+    );
+    assert!(
+        text.contains(r#"bwMode="auto""#),
+        "explicit bwMode=auto was dropped"
+    );
+    assert!(
+        text.contains(r#"cstate="print""#),
+        "blip compression state was dropped"
+    );
+}
+
+/// The same attributes on a CC0 document, so CI runs it: `CC0_DOCX/100` has
+/// one picture with `bwMode="auto"` on its shape properties and
+/// `cstate="print"` on its blip, inside `<wp:docPr id="2">` (read from its
+/// `word/document.xml`).
+#[test]
+fn cc0_picture_bw_mode_and_cstate_round_trip() {
+    let path = strict_ooxml_testkit::corpus_doc!("cc0-docx/100").path;
+    let package = open_transitional(&path);
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written = write_package(&document, Some(&package), &WriteOptions::default())
+        .expect("write")
+        .bytes;
+    let reopened =
+        Package::open_reader(written.as_slice(), &OpenOptions::default()).expect("reopen");
+    let document = reopened
+        .read_part(&PartId::new("/word/document.xml"))
+        .expect("document");
+    let text = String::from_utf8_lossy(&document);
+    assert!(text.contains(r#"docPr id="2""#), "drawing id was rewritten");
     assert!(
         text.contains(r#"bwMode="auto""#),
         "explicit bwMode=auto was dropped"

@@ -416,10 +416,7 @@ fn t_p6_row_exception_border_round_trips() {
 </w:tblBorders></w:tblPrEx><w:tc><w:p/></w:tc></w:tr></w:tbl>";
     let (before, after, xml) = round_trip(body);
     let size = |document: &Document| {
-        document.body.blocks[0]
-            .as_table()
-            .expect("table")
-            .rows[0]
+        document.body.blocks[0].as_table().expect("table").rows[0]
             .props
             .exception_borders
             .top
@@ -465,8 +462,7 @@ fn t_p5_sdt_end_marker_size_round_trips() {
         panic!("expected a structured document tag");
     };
     sdt.end_run_props.as_mut().expect("end props").size = Some(HalfPoints(19));
-    let written =
-        write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
+    let written = write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
     let reopened = open(&written.bytes).expect("reopen");
     let negative = document_xml(&reopened);
     assert!(negative.contains(r#"<w:sz w:val="19"/>"#), "{negative}");
@@ -517,8 +513,7 @@ fn t_p5_subscript_control_size_keeps_its_parent() {
     };
     assert_eq!(before_size, Some(HalfPoints(22)));
     script.control.as_mut().expect("control").size = Some(HalfPoints(21));
-    let written =
-        write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
+    let written = write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
     let reopened = open(&written.bytes).expect("reopen");
     let negative = document_xml(&reopened);
     assert!(negative.contains("<m:sSubPr>"), "{negative}");

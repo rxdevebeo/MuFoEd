@@ -658,3 +658,54 @@ fn cached_field_text_and_paragraph_total_limit_are_protected() {
         Err(EditError::LimitExceeded)
     );
 }
+/// Copying a paragraph that references a footnote copies the footnote: two
+/// references to one note would show the first note's text twice.
+#[test]
+fn a_copied_note_reference_gets_its_own_note() {
+    use strict_ooxml_core::error::SourceLocation;
+    use strict_ooxml_wml::model::{Inline, Note, NoteKind, RunContent};
+    let mut d =
+        doc("<w:p><w:r><w:t>see</w:t></w:r><w:r><w:footnoteReference w:id=\"1\"/></w:r></w:p>");
+    let note_body = doc(paragraph()).body.blocks;
+    d.footnotes.insert(Note {
+        id: 1,
+        kind: NoteKind::Normal,
+        blocks: note_body.clone(),
+        location: SourceLocation::unknown(),
+    });
+    let copy = d.body.blocks[0].clone();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    e.transact(
+        0,
+        &[Edit::Insert {
+            at: Address::body(1),
+            block: Box::new(copy),
+        }],
+    )
+    .unwrap();
+    let refs: Vec<u32> = e
+        .document()
+        .body
+        .blocks
+        .iter()
+        .filter_map(Block::as_paragraph)
+        .flat_map(|p| p.inlines.iter())
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => run.content.iter().find_map(|c| match c {
+                RunContent::FootnoteRef(id) => Some(*id),
+                _ => None,
+            }),
+            Inline::FootnoteRef(id) => Some(*id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(refs, [1, 2], "the copy refers to a new note");
+    let notes = &e.document().footnotes;
+    assert_eq!(notes.get(2).expect("copied note").blocks, note_body);
+    assert_eq!(notes.get(1).expect("original note").blocks, note_body);
+    e.undo(1).unwrap();
+    assert!(
+        e.document().footnotes.get(2).is_none(),
+        "undo removes the copy"
+    );
+}

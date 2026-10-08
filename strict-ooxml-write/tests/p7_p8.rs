@@ -1,11 +1,9 @@
 //! P7–P8: theme colours and explicit colours survive a Strict rewrite.
 //!
 //! Positive controls keep `themeColor`/`themeTint`/`themeShade`, `themeFill*`,
-//! hex `w:color/@val`, and DrawingML `a:schemeClr/@val`. Negative controls
+//! hex `w:color/@val`, and `DrawingML` `a:schemeClr/@val`. Negative controls
 //! change one slot or one hex digit and require the written package to show
 //! that change. Lexical theme drop at the same hex is not equivalence (plan §8).
-
-use std::path::PathBuf;
 
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::normalize::TransitionalNormalizer;
@@ -63,7 +61,11 @@ fn round_trip_body(body: &str) -> (Document, Document, String) {
         write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
     let reopened = open(&written.bytes).expect("reopen");
     let reparsed = parse(&reopened).expect("reparse");
-    (document, reparsed, part_xml(&reopened, "/word/document.xml"))
+    (
+        document,
+        reparsed,
+        part_xml(&reopened, "/word/document.xml"),
+    )
 }
 
 /// T-P7-1: themeColor + tint/shade round-trip on run colour and table borders.
@@ -113,11 +115,7 @@ fn t_p7_1_theme_color_tint_shade_round_trip() {
     );
     let condition = &style.conditions[0];
     assert_eq!(
-        condition
-            .run
-            .color_theme
-            .as_ref()
-            .map(|t| t.color.as_str()),
+        condition.run.color_theme.as_ref().map(|t| t.color.as_str()),
         Some("accent1")
     );
     assert!(
@@ -177,7 +175,10 @@ fn t_p7_2_lexical_theme_drop_is_not_equivalent() {
     let written =
         write_package(&stripped, Some(&package), &WriteOptions::default()).expect("write");
     let xml = part_xml(&open(&written.bytes).expect("reopen"), "/word/document.xml");
-    assert!(xml.contains(r#"w:val="4472C4""#) || xml.contains(r#"w:val="4472c4""#), "{xml}");
+    assert!(
+        xml.contains(r#"w:val="4472C4""#) || xml.contains(r#"w:val="4472c4""#),
+        "{xml}"
+    );
     assert!(
         !xml.contains("themeColor"),
         "dropping themeColor must be visible in XML: {xml}"
@@ -209,32 +210,33 @@ fn t_p7_3_accent_slot_change_is_visible() {
             .build(),
     )
     .expect("open");
-    let written =
-        write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
+    let written = write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
     let xml = part_xml(&open(&written.bytes).expect("reopen"), "/word/document.xml");
     assert!(xml.contains(r#"w:themeColor="accent2""#), "{xml}");
     assert!(!xml.contains(r#"w:themeColor="accent1""#), "{xml}");
 }
 
-/// Contoso styles: themeColor / themeFill token counts survive a Strict rewrite.
+/// Contoso-template styles (CC0/023): themeColor / themeFill token counts survive a Strict rewrite.
 ///
 /// Counts are substring occurrences in `word/styles.xml` (themeFill includes
-/// themeFillTint/Shade), matching the P7 receipt note (1277 / 784).
+/// `themeFillTint`/`themeFillShade`), matching the P7 receipt note (1277 / 784).
 #[test]
 fn t_p7_contoso_styles_theme_token_counts_match_source() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx");
+    // CC0/023 is built on the same style template as the local Contoso guide
+    // (1277 themeColor, 784 themeFill in styles.xml, themeFontLang eastAsia
+    // ja-JP; counted in its XML), and it runs in CI (ci-core).
+    let path = strict_ooxml_testkit::corpus_doc!("cc0/023").path;
     let options = OpenOptions::default()
         .conformance(ConformancePolicy::Normalize)
         .normalization(TransitionalNormalizer::new());
-    let package = Package::open_path(&path, &options).expect("open Contoso");
+    let package = Package::open_path(&path, &options).expect("open CC0/023");
     let source_styles = part_xml(&package, "/word/styles.xml");
     let source_theme_color = source_styles.matches("themeColor").count();
     let source_theme_fill = source_styles.matches("themeFill").count();
-    assert_eq!(source_theme_color, 1277, "Contoso source themeColor count");
-    assert_eq!(source_theme_fill, 784, "Contoso source themeFill count");
+    assert_eq!(source_theme_color, 1277, "CC0/023 source themeColor count");
+    assert_eq!(source_theme_fill, 784, "CC0/023 source themeFill count");
 
-    let document = parse(&package).expect("parse Contoso");
+    let document = parse(&package).expect("parse CC0/023");
     let written =
         write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
     let written_styles = part_xml(&open(&written.bytes).expect("reopen"), "/word/styles.xml");
@@ -310,8 +312,7 @@ fn t_p8_1_hex_case_and_real_value_change() {
             .build(),
     )
     .expect("open");
-    let written =
-        write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
+    let written = write_package(&changed, Some(&package), &WriteOptions::default()).expect("write");
     let xml = part_xml(&open(&written.bytes).expect("reopen"), "/word/document.xml");
     assert!(xml.contains(r#"w:val="AbCdEe""#), "{xml}");
     assert!(!xml.contains(r#"w:val="AbCdEf""#), "{xml}");

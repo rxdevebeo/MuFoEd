@@ -25,8 +25,14 @@ skrifa.workspace = true
 harfrust.workspace = true
 # Hash of the exact face bytes delivered to SVG `@font-face` and PDF embedding.
 sha2.workspace = true
+# Grapheme clusters: an unbreakable token is split between lines only at a
+# cluster boundary, so a combining mark or a ZWJ sequence stays whole.
+unicode-segmentation = "1.13"
 
 [dev-dependencies]
+# The CC0 corpus by its lock file (`tests/corpus.rs`). Path only: see the testkit
+# note in deny.toml.
+strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
 # Independent XML/SVG parser used only as an oracle by the tests (ADR-0006).
 roxmltree = "0.20"
 # AUD-71: property test that `fmt_num` never emits NaN/inf.

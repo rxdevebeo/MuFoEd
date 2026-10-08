@@ -61,6 +61,7 @@ pub mod error;
 pub mod fonts;
 pub mod image;
 pub mod inline;
+mod preload;
 #[cfg(feature = "raster")]
 pub mod raster;
 pub mod report;
@@ -71,7 +72,7 @@ pub use crate::content::{
     RenderMode, Rgb, SubPath, Vector,
 };
 pub use crate::document::{PdfDocument, PdfPage, TextLayer};
-pub use crate::error::{LimitKind, PdfError, PdfLimits};
+pub use crate::error::{LimitKind, PdfError, PdfLimits, OBJECT_STREAM_BUDGET_FACTOR};
 pub use crate::fonts::{BaseEncoding, PdfFont, Width};
 pub use crate::image::{Encoded, Reject};
 pub use crate::report::{Loss, ReadReport};

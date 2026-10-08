@@ -18,6 +18,12 @@ path = "src/main.rs"
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 miniz_oxide.workspace = true
 toml = "0.8"
+# `xtool corpus fetch|verify` (docs/CC0_CORPUS_MIGRATION_PLAN.md §4.2): the
+# document hash, and the HTTPS client. `ureq` 3 with its default features
+# (rustls + webpki-roots) is the client `strict-ooxml-ocr` already locks, so
+# no new crate enters Cargo.lock; xtool is `publish = false`.
+sha2.workspace = true
+ureq = "3"
 
 [lints]
 workspace = true

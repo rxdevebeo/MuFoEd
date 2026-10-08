@@ -5,7 +5,7 @@
 //! it is visible. `hint="cs"` is the one value Strict `ST_Hint` cannot carry;
 //! the complex-script face stays, and the report cites `w:rFonts@hint`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
@@ -15,6 +15,21 @@ use strict_ooxml_wml::model::support::SupportStatus;
 use strict_ooxml_wml::model::values::Fonts;
 use strict_ooxml_wml::{parse_document, ParseOptions};
 use strict_ooxml_write::{write_package, WriteOptions};
+
+/// A document from the gitignored local corpus, or `None` (with a loud skip
+/// line) when this checkout does not carry it.
+fn local_corpus(relative: &str) -> Option<PathBuf> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "SKIP: local corpus document not present: {}",
+            path.display()
+        );
+        None
+    }
+}
 
 fn open_transitional(path: &Path) -> Package {
     Package::open_reader(
@@ -53,6 +68,7 @@ fn t_p9_overlay_keeps_slots_the_later_rfonts_does_not_set() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn t_p9_round_trip_preserves_fonts_and_names_hint_cs() {
     let theme = "\
 <a:themeElements>\
@@ -185,8 +201,9 @@ fn t_p9_round_trip_preserves_fonts_and_names_hint_cs() {
 
 #[test]
 fn t_p9_numbering_symbol_face_survives_the_opensymbol_overlay() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/docx-jinja2-demo.docx");
+    let Some(path) = local_corpus("../strict-ooxml-core/tests/docx/docx-jinja2-demo.docx") else {
+        return;
+    };
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let written =
@@ -203,22 +220,24 @@ fn t_p9_numbering_symbol_face_survives_the_opensymbol_overlay() {
 
 #[test]
 fn t_p9_contoso_theme_font_languages_round_trip() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../strict-ooxml-core/tests/docx/Contoso_Guest_WiFi_Connection_Guide.docx");
+    // CC0/023 is built on the same style template as the local Contoso guide
+    // (1277 themeColor, 784 themeFill in styles.xml, themeFontLang eastAsia
+    // ja-JP; counted in its XML), and it runs in CI (ci-core).
+    let path = strict_ooxml_testkit::corpus_doc!("cc0/023").path;
     let package = open_transitional(&path);
     let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let language = document
         .settings
         .theme_font_lang
         .as_ref()
-        .expect("Contoso themeFontLang");
+        .expect("CC0/023 themeFontLang");
     assert_eq!(language.east_asia.as_deref(), Some("ja-JP"));
     let written =
         write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
     let settings = part_text(&written.bytes, "/word/settings.xml");
     assert!(
         settings.contains(r#"w:eastAsia="ja-JP""#) && !settings.contains("w:bidi="),
-        "Contoso keeps eastAsia and does not invent bidi: {settings}"
+        "CC0/023 keeps eastAsia and does not invent bidi: {settings}"
     );
 }
 
@@ -258,5 +277,51 @@ fn t_p9_object_defaults_keep_the_def_rpr_faces_and_the_rest_of_the_element() {
             && !theme_xml.contains("100000")
             && !theme_xml.contains("400000"),
         "objectDefaults must be copied, with Strict percentages: {theme_xml}"
+    );
+}
+
+/// The jinja2-demo construct, built here so it runs everywhere: a numbering
+/// level whose `w:rPr` carries two `w:rFonts`, the second adding only
+/// `w:cs="OpenSymbol"` (`LibreOffice` writes bullets this way). The bullet's
+/// Symbol faces and the second element's complex-script face must all survive.
+#[test]
+fn t_p9_numbering_second_rfonts_keeps_both_faces_synthetic() {
+    let numbering = "<w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"bullet\"/>\
+<w:lvlText w:val=\"\u{f0b7}\"/><w:rPr>\
+<w:rFonts w:ascii=\"Symbol\" w:hAnsi=\"Symbol\" w:hint=\"default\"/>\
+<w:rFonts w:cs=\"OpenSymbol\"/></w:rPr></w:lvl></w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>";
+    let bytes = DocxBuilder::new(Family::Transitional)
+        .body(
+            "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>\
+<w:r><w:t>item</w:t></w:r></w:p>",
+        )
+        .part_xml("word/numbering.xml", "w:numbering", numbering)
+        .rel("rIdNumbering", "numbering", "numbering.xml")
+        .content_type(
+            "/word/numbering.xml",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+        )
+        .build();
+    let package = Package::open_reader(
+        bytes.as_slice(),
+        &OpenOptions::default()
+            .conformance(ConformancePolicy::Normalize)
+            .shared_normalization(Arc::new(
+                strict_ooxml_core::normalize::transitional::TransitionalNormalizer::new(),
+            )),
+    )
+    .expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written =
+        write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
+    let numbering = part_text(&written.bytes, "/word/numbering.xml");
+    assert!(
+        numbering.contains(r#"w:ascii="Symbol""#)
+            && numbering.contains(r#"w:hAnsi="Symbol""#)
+            && numbering.contains(r#"w:hint="default""#)
+            && numbering.contains(r#"w:cs="OpenSymbol""#),
+        "numbering bullet faces must survive the second rFonts: {numbering}"
     );
 }

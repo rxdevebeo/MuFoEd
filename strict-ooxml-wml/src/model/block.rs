@@ -112,17 +112,237 @@ pub struct SdtProperties {
     /// Whether the control shows an empty placeholder.
     pub showing_placeholder: bool,
     /// Placeholder run properties (`w:sdtPr/w:rPr`), including `w:sz`.
-    pub run_props: Option<RunProperties>,
+    pub run_props: Option<Box<RunProperties>>,
     /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
-    pub end_run_props: Option<RunProperties>,
+    pub end_run_props: Option<Box<RunProperties>>,
     /// The source had `w:sdtEndPr`, including when it carried no `w:rPr`.
     pub has_end_pr: bool,
     /// Building-block gallery (`w:docPartObj/w:docPartGallery/@w:val`).
     pub doc_part_gallery: Option<Arc<str>>,
     /// Gallery entry is unique (`w:docPartUnique`).
     pub doc_part_unique: bool,
+    /// Building-block category (`w:docPartObj/w:docPartCategory/@w:val`).
+    pub doc_part_category: Option<Arc<str>>,
+    /// Editing lock (`w:lock/@w:val`).
+    pub lock: Option<SdtLock>,
+    /// The control is removed once its content is edited (`w:temporary`).
+    pub temporary: bool,
+    /// Custom XML data binding (`w:dataBinding`).
+    pub data_binding: Option<SdtDataBinding>,
+    /// Display label (`w:label/@w:val`).
+    pub label: Option<i64>,
+    /// Keyboard tab order (`w:tabIndex/@w:val`).
+    pub tab_index: Option<u64>,
+    /// Control type: the `CT_SdtPr` type choice other than `w:docPartObj`,
+    /// which keeps its own fields above. `None` means no type element was
+    /// present (Word treats that as rich text).
+    pub control: Option<SdtControl>,
+    /// Support-report feature ids of `w:sdtPr` children the model does not
+    /// keep. The parser records each one; the writer reports each as a loss.
+    pub unmodelled: Vec<Arc<str>>,
     /// Source location of the `w:sdt` element.
     pub location: SourceLocation,
+}
+
+/// Editing lock of a content control (`ST_Lock`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SdtLock {
+    /// `sdtLocked`: the control cannot be deleted.
+    SdtLocked,
+    /// `contentLocked`: the contents cannot be edited.
+    ContentLocked,
+    /// `unlocked`: no locking.
+    Unlocked,
+    /// `sdtContentLocked`: neither the control nor its contents can change.
+    SdtContentLocked,
+}
+
+impl SdtLock {
+    /// Parses an `ST_Lock` lexical value.
+    #[must_use]
+    pub fn from_xml(value: &str) -> Option<Self> {
+        match value {
+            "sdtLocked" => Some(Self::SdtLocked),
+            "contentLocked" => Some(Self::ContentLocked),
+            "unlocked" => Some(Self::Unlocked),
+            "sdtContentLocked" => Some(Self::SdtContentLocked),
+            _ => None,
+        }
+    }
+
+    /// Returns the `ST_Lock` lexical value.
+    #[must_use]
+    pub fn as_xml(self) -> &'static str {
+        match self {
+            Self::SdtLocked => "sdtLocked",
+            Self::ContentLocked => "contentLocked",
+            Self::Unlocked => "unlocked",
+            Self::SdtContentLocked => "sdtContentLocked",
+        }
+    }
+}
+
+/// Custom XML data binding of a content control (`CT_DataBinding`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdtDataBinding {
+    /// Namespace prefix mappings for `xpath` (`w:prefixMappings`).
+    pub prefix_mappings: Option<Arc<str>>,
+    /// Path expression into the custom XML part (`w:xpath`).
+    pub xpath: Arc<str>,
+    /// Custom XML part identity (`w:storeItemID`).
+    pub store_item_id: Arc<str>,
+}
+
+/// One entry of a combo box or drop-down list (`CT_SdtListItem`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdtListItem {
+    /// Displayed text (`w:displayText`).
+    pub display_text: Option<Arc<str>>,
+    /// Stored value (`w:value`).
+    pub value: Option<Arc<str>>,
+}
+
+/// How a date control stores its value in bound XML (`ST_SdtDateMappingType`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SdtDateMapping {
+    /// `text`.
+    Text,
+    /// `date`.
+    Date,
+    /// `dateTime`.
+    DateTime,
+}
+
+impl SdtDateMapping {
+    /// Parses an `ST_SdtDateMappingType` lexical value.
+    #[must_use]
+    pub fn from_xml(value: &str) -> Option<Self> {
+        match value {
+            "text" => Some(Self::Text),
+            "date" => Some(Self::Date),
+            "dateTime" => Some(Self::DateTime),
+            _ => None,
+        }
+    }
+
+    /// Returns the `ST_SdtDateMappingType` lexical value.
+    #[must_use]
+    pub fn as_xml(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Date => "date",
+            Self::DateTime => "dateTime",
+        }
+    }
+}
+
+/// Date picker settings (`CT_SdtDate`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdtDate {
+    /// Full date-time value (`w:fullDate`, `ST_DateTime`).
+    pub full_date: Option<Arc<str>>,
+    /// Display format (`w:dateFormat/@w:val`).
+    pub format: Option<Arc<str>>,
+    /// Language of the display format (`w:lid/@w:val`).
+    pub lid: Option<Arc<str>>,
+    /// Storage mapping (`w:storeMappedDataAs/@w:val`).
+    pub store_mapped_as: Option<SdtDateMapping>,
+    /// Calendar (`w:calendar/@w:val`, `ST_CalendarType` lexical value).
+    pub calendar: Option<Arc<str>>,
+}
+
+/// Building-block gallery filter (`CT_SdtDocPart`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdtDocPart {
+    /// Gallery (`w:docPartGallery/@w:val`).
+    pub gallery: Option<Arc<str>>,
+    /// Category (`w:docPartCategory/@w:val`).
+    pub category: Option<Arc<str>>,
+    /// Entries are unique (`w:docPartUnique`).
+    pub unique: bool,
+}
+
+/// One state of a check box control (`w14:checkedState`/`w14:uncheckedState`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SdtCheckboxState {
+    /// Character code in hexadecimal (`w14:val`).
+    pub value: Option<Arc<str>>,
+    /// Font of the character (`w14:font`).
+    pub font: Option<Arc<str>>,
+}
+
+/// Control type of a content control: the type choice of `CT_SdtPr`.
+///
+/// `w:docPartObj` is kept by [`SdtProperties::doc_part_gallery`] and its
+/// siblings rather than here, for compatibility with earlier models.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SdtControl {
+    /// `w:richText`.
+    RichText,
+    /// `w:text`, plain text.
+    Text {
+        /// `w:multiLine`: soft line breaks are allowed.
+        multi_line: bool,
+    },
+    /// `w:comboBox`.
+    ComboBox {
+        /// List entries in source order.
+        items: Vec<SdtListItem>,
+        /// Last selected value (`w:lastValue`).
+        last_value: Option<Arc<str>>,
+    },
+    /// `w:dropDownList`.
+    DropDownList {
+        /// List entries in source order.
+        items: Vec<SdtListItem>,
+        /// Last selected value (`w:lastValue`).
+        last_value: Option<Arc<str>>,
+    },
+    /// `w:date`.
+    Date(SdtDate),
+    /// `w:picture`.
+    Picture,
+    /// `w:docPartList`.
+    DocPartList(SdtDocPart),
+    /// `w:citation`.
+    Citation,
+    /// `w:bibliography`.
+    Bibliography,
+    /// `w:equation`.
+    Equation,
+    /// `w:group`.
+    Group,
+    /// `w14:checkbox`, a Microsoft extension with no ISO/IEC 29500 Strict form.
+    Checkbox {
+        /// `w14:checked`.
+        checked: bool,
+        /// `w14:checkedState`.
+        checked_state: Option<SdtCheckboxState>,
+        /// `w14:uncheckedState`.
+        unchecked_state: Option<SdtCheckboxState>,
+    },
+}
+
+impl SdtControl {
+    /// Returns the qualified element name of this control type.
+    #[must_use]
+    pub fn element_name(&self) -> &'static str {
+        match self {
+            Self::RichText => "w:richText",
+            Self::Text { .. } => "w:text",
+            Self::ComboBox { .. } => "w:comboBox",
+            Self::DropDownList { .. } => "w:dropDownList",
+            Self::Date(_) => "w:date",
+            Self::Picture => "w:picture",
+            Self::DocPartList(_) => "w:docPartList",
+            Self::Citation => "w:citation",
+            Self::Bibliography => "w:bibliography",
+            Self::Equation => "w:equation",
+            Self::Group => "w:group",
+            Self::Checkbox { .. } => "w14:checkbox",
+        }
+    }
 }
 
 /// A structured document tag (`w:sdt`).
@@ -139,15 +359,34 @@ pub struct SdtContainer {
     /// Whether the control shows an empty placeholder.
     pub showing_placeholder: bool,
     /// Placeholder run properties (`w:sdtPr/w:rPr`), including `w:sz`.
-    pub run_props: Option<RunProperties>,
+    pub run_props: Option<Box<RunProperties>>,
     /// Run properties of the control's end marker (`w:sdtEndPr/w:rPr`).
-    pub end_run_props: Option<RunProperties>,
+    pub end_run_props: Option<Box<RunProperties>>,
     /// The source had `w:sdtEndPr`, including when it carried no `w:rPr`.
     pub has_end_pr: bool,
     /// Building-block gallery (`w:docPartObj/w:docPartGallery/@w:val`).
     pub doc_part_gallery: Option<Arc<str>>,
     /// Gallery entry is unique (`w:docPartUnique`).
     pub doc_part_unique: bool,
+    /// Building-block category (`w:docPartObj/w:docPartCategory/@w:val`).
+    pub doc_part_category: Option<Arc<str>>,
+    /// Editing lock (`w:lock/@w:val`).
+    pub lock: Option<SdtLock>,
+    /// The control is removed once its content is edited (`w:temporary`).
+    pub temporary: bool,
+    /// Custom XML data binding (`w:dataBinding`).
+    pub data_binding: Option<SdtDataBinding>,
+    /// Display label (`w:label/@w:val`).
+    pub label: Option<i64>,
+    /// Keyboard tab order (`w:tabIndex/@w:val`).
+    pub tab_index: Option<u64>,
+    /// Control type: the `CT_SdtPr` type choice other than `w:docPartObj`,
+    /// which keeps its own fields above. `None` means no type element was
+    /// present (Word treats that as rich text).
+    pub control: Option<SdtControl>,
+    /// Support-report feature ids of `w:sdtPr` children the model does not
+    /// keep. The parser records each one; the writer reports each as a loss.
+    pub unmodelled: Vec<Arc<str>>,
     /// Block content when the tag is block-level.
     pub blocks: Vec<Block>,
     /// Inline content when the tag is inline-level.
@@ -171,6 +410,14 @@ impl SdtContainer {
             has_end_pr: self.has_end_pr || self.end_run_props.is_some(),
             doc_part_gallery: self.doc_part_gallery.clone(),
             doc_part_unique: self.doc_part_unique,
+            doc_part_category: self.doc_part_category.clone(),
+            lock: self.lock,
+            temporary: self.temporary,
+            data_binding: self.data_binding.clone(),
+            label: self.label,
+            tab_index: self.tab_index,
+            control: self.control.clone(),
+            unmodelled: self.unmodelled.clone(),
             location: self.location.clone(),
         }
     }

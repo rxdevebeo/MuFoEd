@@ -8,7 +8,7 @@
 //! Object numbering is explicit rather than implicit. `pdf-writer` does not
 //! allocate ids, and the order in which they are handed out is what makes the
 //! output byte-identical between runs (SC-1), so the allocation order is part of
-//! the contract and is written down in [`PdfBuilder::allocate`].
+//! the contract and is written down in `PdfBuilder::allocate`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -57,6 +57,17 @@ struct PageWriter<'a> {
     names: &'a BTreeMap<PartId, String>,
     images: BTreeMap<PartId, String>,
     report: &'a mut PdfReport,
+}
+
+/// The bundled faces' metrics, parsed once per process.
+///
+/// `show_metric` built a fresh provider for every metric text item, which parses
+/// all 22 bundled faces each time: a page of justified text paid that cost per
+/// word.
+fn builtin_provider() -> &'static strict_ooxml_render_svg::font::BuiltinFontProvider {
+    static PROVIDER: std::sync::OnceLock<strict_ooxml_render_svg::font::BuiltinFontProvider> =
+        std::sync::OnceLock::new();
+    PROVIDER.get_or_init(strict_ooxml_render_svg::font::BuiltinFontProvider::new)
 }
 
 /// Renders placed pages to PDF without resolving media bytes.
@@ -661,7 +672,7 @@ impl PageWriter<'_> {
         if shown.is_empty() {
             return false;
         }
-        let provider = strict_ooxml_render_svg::font::BuiltinFontProvider::new();
+        let provider = builtin_provider();
         let family = strict_ooxml_render_svg::style::chosen_family(&text.run, shown);
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
         let size = px_to_pt(text.size_px, self.scale) as f32;
@@ -717,13 +728,15 @@ impl PageWriter<'_> {
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
         let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
-        let mut non_space_before = 0usize;
+        let mut non_space_before = 0_u32;
         for cluster in &shaped.clusters {
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
                 .unwrap_or("");
-            let cluster_extra = extra * non_space_before as f64;
-            non_space_before += unicode.chars().filter(|ch| !ch.is_whitespace()).count();
+            let cluster_extra = extra * f64::from(non_space_before);
+            let visible = unicode.chars().filter(|ch| !ch.is_whitespace()).count();
+            non_space_before =
+                non_space_before.saturating_add(u32::try_from(visible).unwrap_or(u32::MAX));
             let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;

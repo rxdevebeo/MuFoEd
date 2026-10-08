@@ -44,6 +44,12 @@
 //! # }
 //! ```
 
+// The hostile-input limits this module relies on (`tests/hostile.rs` `mod raster`)
+// live in the vendored `hayro` (`vendor/README.md`), wired by `[patch.crates-io]`,
+// which cargo ignores for dependents of a published crate. Referencing the patch
+// marker makes such a build fail here, loudly, instead of running unguarded.
+const _: u32 = hayro::PATCHED_LIMITS;
+
 use hayro::hayro_interpret::InterpreterSettings;
 use hayro::hayro_syntax::Pdf;
 use hayro::vello_cpu::color::palette::css::WHITE;

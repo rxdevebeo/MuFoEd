@@ -200,13 +200,20 @@ id = "CHARTS"
 subject = "charts and diagrams"
 binds = "page-count-only:09-strict-math-drawing-chart"
 summary = """
-DrawingML chart parts are not rasterized. `09-strict-math-drawing-chart` and
-`strict-profile` are compared by page count only.
+DrawingML charts are drawn from the chart part's cached values (bar/column
+clustered, stacked and 100 %, line, area, pie, doughnut and scatter, with
+title, legend and a value axis); 3-D, surface, radar, stock, combination
+charts, data labels, trendlines, axis options and theme-driven chart styles
+are not, and a chart part that cannot be read is still a placeholder.
+SmartArt diagrams are still placeholders. The drawing is an approximation of
+Office's own chart layout, never measured against a reference, so
+`09-strict-math-drawing-chart` and `strict-profile` are still compared by page
+count only.
 """
 risk = """
 For those two documents the gate says nothing about appearance at all — not
-that it is close, but that it is not nothing. A chart rendered as a reserved
-placeholder passes.
+that it is close, but that it is not nothing. A chart drawn wrongly from its
+cache, or one still drawn as a reserved placeholder, passes.
 """
 exit = """
 Stage 6. The page-count invariant is what is meaningful until then and is
@@ -218,7 +225,7 @@ opened = "2026-09-29"
 id = "CHARTS-2"
 subject = "charts and diagrams"
 binds = "page-count-only:strict-profile"
-summary = "As CHARTS: a real Word-produced Strict file dominated by a chart and a diagram."
+summary = "As CHARTS: a real Word-produced Strict file dominated by a chart (now drawn from its cache) and a SmartArt diagram (now drawn from the drawing part Word caches beside it, dsp:drawing; layout, quick-style and colour parts are not interpreted, and text is laid out in each shape's box rather than dsp:txXfrm)."
 risk = "As CHARTS."
 exit = "As CHARTS."
 opened = "2026-09-29"
@@ -694,6 +701,21 @@ then close this waiver.
 """
 opened = "2026-10-03"
 review = "2027-01-03"
+closed = "2026-10-08"
+closed_by = """
+The render cascade applies table styles (`strict-ooxml-render-svg/src/table_style.rs`):
+the base `w:tblPr` borders and cell margins, `w:tcPr` shading/borders/margins and
+`w:pPr`/`w:rPr` of the `w:tblStyle` chain, then each `w:tblStylePr` that the cell's
+position, `w:tblLook` and `w:tblStyleRowBandSize`/`w:tblStyleColBandSize` select, in
+Word's order (wholeTable, vertical bands, horizontal bands, first/last column,
+first/last row, corner cells); `basedOn` ancestors first, so a child's condition
+overrides its parent's. Direct `w:tcPr` and paragraph/run formatting still win
+(table style < paragraph style < direct, §17.7.2); `w:themeFill` resolves through
+the theme as paragraph shading does. Tests:
+`strict-ooxml-render-svg/tests/table_style_conditions.rs`. Follow-up outside the
+renderer: the parser's support note for `w:tblStylePr` ("not applied in layout") and
+the `coverage/wml-elements.toml` reason that cites this waiver are now stale.
+"""
 
 [[waivers]]
 id = "VERTJC"
@@ -843,3 +865,13 @@ this waiver.
 """
 opened = "2026-10-03"
 review = "2027-01-03"
+closed = "2026-10-08"
+closed_by = """
+`PdfDocument::open` scans the raw bytes for object and cross-reference stream
+dictionaries and inflates each `/FlateDecode` one into a discarded scratch
+buffer, holding their sum to `LimitKind::ObjectStreamBytes`
+(`OBJECT_STREAM_BUDGET_FACTOR` x `max_content_bytes`, 128 MiB by default)
+before `lopdf` is called (`strict-ooxml-pdf/src/preload.rs`); the same budget is
+handed to `lopdf::LoadOptions::max_decompressed_size` as the per-stream ceiling
+for anything the scan cannot read. Tests: `hostile::object_streams`.
+"""

@@ -484,6 +484,11 @@ pub(crate) struct LayoutContext<'a> {
     /// of the frame so same-size Exact follow-ups (Clio H16142 after L16055)
     /// stay on that pitch.
     pub(crate) frame_force_exact_grid: std::cell::Cell<bool>,
+    /// Whether a frame's contents are being laid out (`layout_frame_contents`).
+    ///
+    /// The WPS first-Exact-line rule (`natural.max(exact*0.8)`) is a frame
+    /// behaviour (Clio SNP labels); body Exact lines stay on the 80% grid.
+    pub(crate) in_frame: std::cell::Cell<bool>,
 }
 
 impl LayoutContext<'_> {
@@ -603,10 +608,7 @@ impl LayoutContext<'_> {
         let non_space = shown.chars().filter(|ch| !ch.is_whitespace()).count() as f64;
         let extra = crate::style::spacing_px(run, size_px) * non_space;
         let compress = crate::style::compress_punctuation(
-            self.document
-                .settings
-                .character_spacing_control
-                .as_deref(),
+            self.document.settings.character_spacing_control.as_deref(),
         );
         let chars: Vec<char> = shown.chars().collect();
         if complex || !self.metric_advances.get() {
@@ -631,9 +633,7 @@ impl LayoutContext<'_> {
                             * size_px
                             * (1.0 - factor);
                     }
-                    if !ch.is_whitespace() {
-                        prev = Some(ch);
-                    } else if factor > 0.0 {
+                    if !ch.is_whitespace() || factor > 0.0 {
                         prev = Some(ch);
                     }
                 }
@@ -644,17 +644,10 @@ impl LayoutContext<'_> {
         let mut prev = None;
         for (i, &ch) in chars.iter().enumerate() {
             let next = chars.get(i + 1).copied().or(following);
-            let factor = crate::style::compressed_char_factor(
-                prev,
-                ch,
-                next,
-                compress,
-                plain_space_factor,
-            );
+            let factor =
+                crate::style::compressed_char_factor(prev, ch, next, compress, plain_space_factor);
             total += self.font.advance_em(&family, ch, run.bold, run.italic) * factor;
-            if !ch.is_whitespace() {
-                prev = Some(ch);
-            } else if factor > 0.0 {
+            if !ch.is_whitespace() || factor > 0.0 {
                 prev = Some(ch);
             }
         }

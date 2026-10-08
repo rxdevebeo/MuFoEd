@@ -261,9 +261,8 @@ fn f06_character_style_size_overrides_based_on() {
 <w:t>L16055</w:t></w:r></w:p>",
         styles,
     );
-    let para = match &doc.body.blocks[0] {
-        Block::Paragraph(para) => para,
-        _ => panic!("paragraph"),
+    let Block::Paragraph(para) = &doc.body.blocks[0] else {
+        panic!("paragraph");
     };
     let computed_para = compute_paragraph(&doc, para);
     let Inline::Run(run) = &para.inlines[0] else {
@@ -290,17 +289,6 @@ fn f06_clio_l16055_is_four_point() {
     use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};
     use strict_ooxml_wml::{parse_document, ParseOptions};
 
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../strict-ooxml-core/tests/docx/",
-        "Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
-    );
-    let normalizer = Arc::new(TransitionalNormalizer::new());
-    let options = OpenOptions::default()
-        .conformance(ConformancePolicy::Normalize)
-        .shared_normalization(normalizer);
-    let package = Package::open_path(path, &options).expect("open");
-    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     fn visit_para(document: &Document, para: &strict_ooxml_wml::model::Paragraph) -> Option<f64> {
         for inline in &para.inlines {
             let Inline::Run(run) = inline else {
@@ -318,16 +306,6 @@ fn f06_clio_l16055_is_four_point() {
                 continue;
             }
             let computed = compute_run(document, &compute_paragraph(document, para), run);
-            eprintln!(
-                "L16055 rStyle={:?} size={} family={} spacing={}",
-                run.props.style, computed.size_pt, computed.family, computed.spacing_pt
-            );
-            if let Some(style_id) = &run.props.style {
-                eprintln!("style present={}", document.styles.get(style_id).is_some());
-                if let Some(style) = document.styles.get(style_id) {
-                    eprintln!("style.size={:?} based_on={:?}", style.run.size, style.based_on);
-                }
-            }
             return Some(computed.size_pt);
         }
         None
@@ -350,6 +328,23 @@ fn f06_clio_l16055_is_four_point() {
             _ => None,
         }
     }
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../strict-ooxml-core/tests/docx/",
+        "Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx"
+    );
+    // The Clio witness is gitignored (local only); skip without it.
+    if !std::path::Path::new(path).is_file() {
+        eprintln!("SKIP f06_clio_l16055_is_four_point: {path} is absent");
+        return;
+    }
+    let normalizer = Arc::new(TransitionalNormalizer::new());
+    let options = OpenOptions::default()
+        .conformance(ConformancePolicy::Normalize)
+        .shared_normalization(normalizer);
+    let package = Package::open_path(path, &options).expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
     let mut size = None;
     for block in &document.body.blocks {
         if let Some(found) = visit_block(&document, block) {

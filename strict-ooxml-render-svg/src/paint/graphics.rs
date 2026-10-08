@@ -4,8 +4,8 @@
 use std::fmt::Write as _;
 
 use strict_ooxml_wml::model::drawing::{
-    AnchorDrawing, CustomGeometry, Graphic, GroupShape, PathCommand, Picture, Shape, ShapeFill,
-    ShapeStroke, TextAnchor, TextBox,
+    AnchorDrawing, CustomGeometry, DiagramDrawing, Graphic, GroupShape, PathCommand, Picture,
+    Shape, ShapeFill, ShapeStroke, TextAnchor, TextBox,
 };
 use strict_ooxml_wml::model::Drawing;
 
@@ -81,11 +81,19 @@ pub(crate) fn graphic_items(
         Graphic::Picture(picture) => picture_items(ctx, picture, None, x, y, w, h),
         Graphic::Shape(shape) => shape_items(ctx, shape, x, y, w, h),
         Graphic::Group(group) => group_items(ctx, group, x, y, w, h),
-        Graphic::None
-        | Graphic::Chart(_)
-        | Graphic::Diagram(_)
-        | Graphic::LockedCanvas(_)
-        | Graphic::Other => {
+        // A chart is drawn from the cache the parser read out of its part; one
+        // whose part could not be read keeps the placeholder.
+        Graphic::Chart(refs) => match refs.chart.as_deref() {
+            Some(chart) => crate::paint::chart::chart_items(ctx, chart, x, y, w, h),
+            None => vec![placeholder(x, y, w, h)],
+        },
+        // A diagram is drawn from the drawing Word cached beside it; one
+        // without a readable drawing keeps the placeholder.
+        Graphic::Diagram(refs) => match refs.diagram.as_deref() {
+            Some(diagram) => diagram_items(ctx, diagram, x, y, w, h),
+            None => vec![placeholder(x, y, w, h)],
+        },
+        Graphic::None | Graphic::LockedCanvas(_) | Graphic::Other => {
             vec![placeholder(x, y, w, h)]
         }
     }
@@ -251,8 +259,36 @@ fn group_items(
     });
     let base_x = x + off_x - ch_off_x * scale_x;
     let base_y = y + off_y - ch_off_y * scale_y;
+    let placement = ChildPlacement {
+        base: (base_x, base_y),
+        scale: (scale_x, scale_y),
+        fallback: (w, h),
+    };
+    place_children(ctx, &group.children, &placement)
+}
+
+/// Where a list of child graphics lands: child coordinates (px at the
+/// document scale) map to `base + child * scale`.
+struct ChildPlacement {
+    /// Page position of the child-space origin.
+    base: (f64, f64),
+    /// Child-space to page scale, per axis.
+    scale: (f64, f64),
+    /// Size used for a child that carries no extent of its own.
+    fallback: (f64, f64),
+}
+
+/// Builds the items of child graphics placed in their parent's space.
+fn place_children(
+    ctx: &LayoutContext<'_>,
+    children: &[Graphic],
+    placement: &ChildPlacement,
+) -> Vec<Item> {
+    let scale = ctx.options.scale;
+    let (base_x, base_y) = placement.base;
+    let (scale_x, scale_y) = placement.scale;
     let mut items = Vec::new();
-    for child in &group.children {
+    for child in children {
         let (child_off, child_ext) = child_box(child, scale);
         let cx = base_x + child_off.0 * scale_x;
         let cy = base_y + child_off.1 * scale_y;
@@ -261,11 +297,73 @@ fn group_items(
         let (cw, ch) = if cw > 0.0 && ch > 0.0 {
             (cw, ch)
         } else {
-            graphic_size(ctx, child, w, h)
+            graphic_size(ctx, child, placement.fallback.0, placement.fallback.1)
         };
         items.extend(graphic_items(ctx, child, cx, cy, cw, ch));
     }
     items
+}
+
+/// Builds the items of a diagram from Word's cached drawing.
+///
+/// The drawing's space has its origin at the graphic frame's top-left corner
+/// and is measured in EMU, so a drawing that fits its frame is placed one to
+/// one. The space drawn is the frame grown to cover every shape (or the shape
+/// tree's own `chOff`/`chExt`, when it has one), scaled into the box, so a
+/// shape the producer placed outside the frame is pulled in rather than
+/// painted over the text around it.
+fn diagram_items(
+    ctx: &LayoutContext<'_>,
+    diagram: &DiagramDrawing,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> Vec<Item> {
+    let scale = ctx.options.scale;
+    let tree_space = diagram.xfrm.and_then(|xfrm| {
+        let extent = xfrm.child_extent?;
+        let (off_x, off_y) = xfrm.child_offset.map_or((0.0, 0.0), |(cx, cy)| {
+            (emu_to_px(cx.value(), scale), emu_to_px(cy.value(), scale))
+        });
+        Some((
+            (off_x, off_y),
+            (
+                off_x + emu_to_px(extent.cx.value(), scale),
+                off_y + emu_to_px(extent.cy.value(), scale),
+            ),
+        ))
+    });
+    let ((min_x, min_y), (max_x, max_y)) = tree_space.unwrap_or_else(|| {
+        diagram.shapes.iter().fold(
+            ((0.0_f64, 0.0_f64), (w, h)),
+            |((min_x, min_y), (max_x, max_y)), child| {
+                let ((off_x, off_y), (ext_w, ext_h)) = child_box(child, scale);
+                (
+                    (min_x.min(off_x), min_y.min(off_y)),
+                    (max_x.max(off_x + ext_w), max_y.max(off_y + ext_h)),
+                )
+            },
+        )
+    });
+    let span_w = max_x - min_x;
+    let span_h = max_y - min_y;
+    let scale_x = clamp_group_scale(if span_w > f64::EPSILON {
+        w / span_w
+    } else {
+        1.0
+    });
+    let scale_y = clamp_group_scale(if span_h > f64::EPSILON {
+        h / span_h
+    } else {
+        1.0
+    });
+    let placement = ChildPlacement {
+        base: (x - min_x * scale_x, y - min_y * scale_y),
+        scale: (scale_x, scale_y),
+        fallback: (w, h),
+    };
+    place_children(ctx, &diagram.shapes, &placement)
 }
 
 /// Returns a child's offset/extent in px (0 when absent).
@@ -417,7 +515,8 @@ fn shape_paths(shape: &Shape, w: f64, h: f64) -> Vec<String> {
 fn fill_color(ctx: &LayoutContext<'_>, fill: &ShapeFill) -> Option<String> {
     let theme = ctx.document.theme.as_ref();
     match fill {
-        ShapeFill::None => None,
+        // A picture fill paints the picture, not a colour.
+        ShapeFill::None | ShapeFill::Blip { .. } => None,
         ShapeFill::Solid { color } => resolve_shape_color(theme, color),
         ShapeFill::Gradient { stops, .. } => stops
             .first()
@@ -425,7 +524,6 @@ fn fill_color(ctx: &LayoutContext<'_>, fill: &ShapeFill) -> Option<String> {
         ShapeFill::Pattern { foreground, .. } => foreground
             .as_ref()
             .and_then(|color| resolve_shape_color(theme, color)),
-        ShapeFill::Blip { .. } => None,
     }
 }
 

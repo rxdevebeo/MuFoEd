@@ -1593,7 +1593,7 @@ mod tests {
             r#"<lc:lockedCanvas xmlns:lc="http://purl.oclc.org/ooxml/drawingml/lockedCanvas" xmlns:a="http://purl.oclc.org/ooxml/drawingml/main">"#,
             r#"<a:grpSpPr><a:xfrm><a:off x="10" y="20"/><a:ext cx="100" cy="200"/>"#,
             r#"<a:chOff x="1" y="2"/><a:chExt cx="100" cy="200"/></a:xfrm></a:grpSpPr>"#,
-            r#"</lc:lockedCanvas>"#,
+            "</lc:lockedCanvas>",
         );
         let drawing = Drawing {
             kind: DrawingKind::Inline(InlineDrawing {

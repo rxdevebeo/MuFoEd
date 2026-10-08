@@ -4,6 +4,8 @@
 fuzz/target
 fuzz/corpus
 fuzz/artifacts
+# local fuzz session logs (`cargo fuzz run ... 2>&1 | tee fuzz-N.log`)
+/fuzz-*.log
 # coverage reports/artifacts (the tracked inventories are un-ignored below)
 /coverage/*
 !/coverage/wml-elements.toml
@@ -53,3 +55,6 @@ __pycache__/
 # Nothing here is an input to anything, and `git status` listing 300 of them
 # buries the files that are.
 /render_out/
+
+# hostq queue (tools/hostq): jobs, reports, its worktree and its target dir
+/StrictLib-hostq/

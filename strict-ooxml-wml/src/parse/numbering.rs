@@ -137,10 +137,11 @@ impl PartParser<'_> {
     /// Parses a `w:lvl` element.
     fn parse_level(&mut self, attrs: &[Attr]) -> Result<Level> {
         let ilvl = self.clamped_ilvl(wml_attr(attrs, "ilvl").and_then(parse_u32));
-        let tentative_attr = wml_attr(attrs, "tentative")
-            .or_else(|| attr_in_ns(attrs, WORDML_2012_NS, "tentative"));
+        let tentative_attr =
+            wml_attr(attrs, "tentative").or_else(|| attr_in_ns(attrs, WORDML_2012_NS, "tentative"));
         let tentative = tentative_attr.is_some_and(|value| matches!(value, "1" | "true" | "on"));
-        let tentative_off = tentative_attr.is_some_and(|value| matches!(value, "0" | "false" | "off"));
+        let tentative_off =
+            tentative_attr.is_some_and(|value| matches!(value, "0" | "false" | "off"));
         if wml_attr(attrs, "tplc").is_some() {
             self.record(
                 "w:lvl@tplc",

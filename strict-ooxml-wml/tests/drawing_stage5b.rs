@@ -326,7 +326,9 @@ xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">\
         parsed.markup
     );
     assert!(
-        parsed.markup.contains("http://purl.oclc.org/ooxml/drawingml/lockedCanvas"),
+        parsed
+            .markup
+            .contains("http://purl.oclc.org/ooxml/drawingml/lockedCanvas"),
         "transitional lockedCanvas URI must be rewritten to Strict: {}",
         parsed.markup
     );
@@ -377,7 +379,10 @@ fn nested_grp_sp_inside_wgp_is_parsed_not_skipped() {
     };
     assert_eq!(parsed.children.len(), 2, "nested grpSp + one sibling shape");
     let Graphic::Group(inner) = &parsed.children[0] else {
-        panic!("first child must be the nested grpSp, got {:?}", parsed.children[0]);
+        panic!(
+            "first child must be the nested grpSp, got {:?}",
+            parsed.children[0]
+        );
     };
     assert_eq!(inner.name.as_deref(), Some("inner"));
     assert_eq!(inner.children.len(), 3);
