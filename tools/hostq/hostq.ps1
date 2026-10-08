@@ -53,6 +53,14 @@ $script:CensusCorpusDirs = @(
 $script:GateStepOrder = @('fmt', 'clippy', 'test', 'deny', 'doc')
 $script:ScanSets = @('CC0', 'CC0_DOCX', 'CC0_DOCX_1')
 $script:XsdGates = @('xsd', 'opc', 'census')
+# Criterion benches a `bench` job may run, and the package each belongs to.
+$script:Benches = [ordered]@{
+    'editing'   = 'strict-ooxml-edit'
+    'opc'       = 'strict-ooxml-core'
+    'render'    = 'strict-ooxml-render-svg'
+    'wml_parse' = 'strict-ooxml-wml'
+    'xml_scan'  = 'strict-ooxml-core'
+}
 
 # ---------------------------------------------------------------------------
 # Small utilities (UTF-8 without BOM; never the PS 5.1 default encoding).
@@ -345,6 +353,7 @@ $script:AllowedFields = @{
     'pixels'      = @('id', 'kind', 'sha')
     'xsd'         = @('id', 'kind', 'sha', 'gate')
     'corpus-scan' = @('id', 'kind', 'sha', 'set')
+    'bench'       = @('id', 'kind', 'sha', 'bench')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -405,6 +414,7 @@ function Test-JobRecord {
         'pixels' { $required = @('sha') }
         'xsd' { $required = @('sha', 'gate') }
         'corpus-scan' { $required = @('sha', 'set') }
+        'bench' { $required = @('sha', 'bench') }
         'commit' { $required = @('branch', 'paths', 'message') }
         'push' { $required = @('branch') }
     }
@@ -461,6 +471,11 @@ function Test-JobRecord {
         'xsd' {
             if ($Job.gate -isnot [string] -or $script:XsdGates -cnotcontains [string]$Job.gate) {
                 return (& $reject ("gate '{0}' is not xsd|opc|census" -f $Job.gate))
+            }
+        }
+        'bench' {
+            if ($Job.bench -isnot [string] -or -not $script:Benches.Contains([string]$Job.bench)) {
+                return (& $reject ("bench '{0}' is not {1}" -f $Job.bench, ($script:Benches.Keys -join '|')))
             }
         }
         'corpus-scan' {
@@ -938,6 +953,32 @@ function Invoke-CorpusScan {
     return (New-Result $status $reason $steps $artifacts)
 }
 
+function Invoke-Bench {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, $Job, [string]$OutDir)
+    $deadline = (Get-Date).AddMinutes(90)
+    $bench = [string]$Job.bench
+    $package = [string]$script:Benches[$bench]
+    $wt = Join-Path $QueueDir 'wt'
+    $target = Join-Path $QueueDir 'target'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+
+    # Release by construction (`cargo bench`); `--noplot` keeps criterion from
+    # rendering HTML into the shared target directory.
+    $benchArgs = @($script:Toolchain, 'bench', '-p', $package, '--bench', $bench, '--', '--noplot')
+    $step = Invoke-Logged -Name 'bench' -Exe 'cargo' -Arguments $benchArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env (Get-CargoEnv -Target $target) -OutDir $OutDir
+
+    # Criterion prints its estimates to stdout; that is the report.
+    $report = Join-Path $OutDir ('bench-' + $bench + '.txt')
+    Write-Utf8NoBom -Path $report -Text ([string]$step.stdout)
+    $artifacts = @(New-Artifact -QueueDir $QueueDir -Path $report)
+
+    $status = Get-StepsStatus @($step)
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('bench exited {0}' -f $step.exit) }
+    return (New-Result $status $reason @($step) $artifacts)
+}
+
 function Invoke-GitInfo {
     param([string]$Repo, $Job, [string]$OutDir)
     $steps = @()
@@ -1108,6 +1149,7 @@ function Invoke-JobFile {
                 'pixels' { $r = Invoke-Pixels -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir }
                 'xsd' { $r = Invoke-Xsd -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'corpus-scan' { $r = Invoke-CorpusScan -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir -AfterCopyHook $AfterCopyHook }
+                'bench' { $r = Invoke-Bench -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'commit' { $r = Invoke-Commit -Repo $Repo -Job $job -OutDir $outDir }
                 'push' { $r = Invoke-Push -Repo $Repo -Job $job -OutDir $outDir }
                 default { $r = New-Result 'rejected' 'unknown kind' @() @() }
@@ -1435,6 +1477,7 @@ function Invoke-SelfTest {
         & $expectReject '(rej) duplicate steps' '20260101-0007-dupstep' ([ordered]@{ id = '20260101-0007-dupstep'; kind = 'gate'; sha = $short; steps = @('fmt', 'fmt') })
         & $expectReject '(rej) steps not an array' '20260101-0008-strstep' ([ordered]@{ id = '20260101-0008-strstep'; kind = 'gate'; sha = $short; steps = 'fmt' })
         & $expectReject '(rej) bad set' '20260101-0009-badset' ([ordered]@{ id = '20260101-0009-badset'; kind = 'corpus-scan'; sha = $short; set = '../CC0' })
+        & $expectReject '(rej) unknown bench' '20260101-0040-badbench' ([ordered]@{ id = '20260101-0040-badbench'; kind = 'bench'; sha = $short; bench = 'editing --all' })
         & $expectReject '(rej) bad xsd gate' '20260101-0010-badgate' ([ordered]@{ id = '20260101-0010-badgate'; kind = 'xsd'; sha = $short; gate = 'lint' })
         & $expectReject '(rej) pixels extra field' '20260101-0011-pixextra' ([ordered]@{ id = '20260101-0011-pixextra'; kind = 'pixels'; sha = $short; steps = @('fmt') })
         & $expectReject '(rej) push without -AllowPush' '20260101-0012-pushmaster' ([ordered]@{ id = '20260101-0012-pushmaster'; kind = 'push'; branch = 'master' })

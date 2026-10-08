@@ -2261,6 +2261,7 @@ dependencies = [
 name = "strict-ooxml-edit"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "png",
  "proptest",
  "strict-ooxml-core",
