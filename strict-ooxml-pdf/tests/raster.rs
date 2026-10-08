@@ -152,8 +152,8 @@ fn the_picture_has_the_document_on_it() {
 
 /// `strict-profile` page 1 carries a chart and a SmartArt diagram. They used
 /// to be reserved space only (ADR-0006), and this test pinned the resulting
-/// white page; charts are now drawn from their cached data, so the page has ink
-/// of its own (the diagram is still reserved space).
+/// white page; charts are now drawn from their cached data and the diagram from
+/// the drawing Word caches beside it, so the page has ink of its own.
 #[test]
 fn the_chart_page_is_drawn() {
     let pdf = source_pdf("strict-profile.docx");

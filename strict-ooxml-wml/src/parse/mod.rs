@@ -9,6 +9,7 @@
 mod depth;
 
 pub mod chart;
+pub mod diagram;
 pub mod dispatch;
 pub mod document;
 pub mod drawing;
@@ -731,6 +732,8 @@ pub(crate) struct PartParser<'a> {
     pub(crate) body_section: Option<Section>,
     /// Chart parts already read for this part's `c:chart` references.
     pub(crate) charts: chart::ChartCache,
+    /// Diagram drawing parts already read for this part's `dgm:relIds`.
+    pub(crate) diagrams: diagram::DiagramCache,
 }
 
 impl<'a> PartParser<'a> {
@@ -762,6 +765,7 @@ impl<'a> PartParser<'a> {
             capture_body_section: false,
             body_section: None,
             charts: chart::ChartCache::new(limits),
+            diagrams: diagram::DiagramCache::new(limits),
         })
     }
 

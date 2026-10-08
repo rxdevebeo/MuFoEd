@@ -39,6 +39,8 @@ pub(crate) fn layout_inline_image(
         }
         // A chart whose cached data was read is drawn, not reserved.
         Graphic::Chart(refs) if refs.chart.is_some() => return None,
+        // So is a diagram whose cached drawing was read.
+        Graphic::Diagram(refs) if refs.diagram.is_some() => return None,
         Graphic::None | Graphic::Picture(_) | Graphic::Chart(_) | Graphic::Diagram(_) => {}
     }
     let picture = inline.picture();

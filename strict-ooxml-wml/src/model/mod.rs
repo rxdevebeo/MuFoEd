@@ -29,11 +29,11 @@ pub use block::{
 pub use chart::{BarGrouping, ChartData, ChartKind, ChartSeries, LegendPosition};
 pub use document::{Body, Document, DocumentSource, HeaderFooter};
 pub use drawing::{
-    AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
-    ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape, GroupTransform, InlineDrawing,
-    LockedCanvas, MediaIndex, MediaItem, MediaKind, PathCommand, Picture, Position, Shape,
-    ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle, SrcRect, TextAnchor, TextBox,
-    TextBoxBody, Wrap, WrapKind, Xfrm,
+    AnchorDrawing, BlipRef, CustomGeometry, DiagramDrawing, DocPr, Drawing, DrawingKind,
+    EffectExtent, Extent, ForeignRefs, GeometryPath, GradientStop, Graphic, GroupShape,
+    GroupTransform, InlineDrawing, LockedCanvas, MediaIndex, MediaItem, MediaKind, PathCommand,
+    Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, ShapeStyle,
+    SrcRect, TextAnchor, TextBox, TextBoxBody, Wrap, WrapKind, Xfrm,
 };
 pub use fonts::{EmbedKind, EmbeddedFont, FontEntry, FontHints, FontSig, FontTable};
 pub use ids::{AbstractNumId, Ilvl, NumId, ParaId, StyleId, TextId};

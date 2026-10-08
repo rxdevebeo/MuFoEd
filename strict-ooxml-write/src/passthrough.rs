@@ -1178,6 +1178,7 @@ mod tests {
                     graphic: Box::new(Graphic::Chart(ForeignRefs {
                         rels: ids.iter().map(|id| std::sync::Arc::from(*id)).collect(),
                         chart: None,
+                        diagram: None,
                         location: Default::default(),
                     })),
                     location: Default::default(),

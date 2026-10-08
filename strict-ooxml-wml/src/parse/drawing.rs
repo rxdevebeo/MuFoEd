@@ -592,8 +592,13 @@ impl PartParser<'_> {
         if name.local() == "relIds" {
             // `dgm:relIds` carries four ids in a fixed order, and the order is
             // the only thing that says which is which.
-            let graphic =
-                Graphic::Diagram(self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]));
+            let mut refs = self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]);
+            // Word's cached drawing is found through the data part (`r:dm`).
+            if let Some(data_rel) = attr_in_ns(attrs, RELS_STRICT_NS, REL_DM).map(str::to_owned) {
+                let location = refs.location.clone();
+                refs.diagram = self.diagram_for(&data_rel, &location);
+            }
+            let graphic = Graphic::Diagram(refs);
             self.skip_element()?;
             return Ok(Some(graphic));
         }
@@ -674,6 +679,7 @@ impl PartParser<'_> {
         ForeignRefs {
             rels,
             chart: None,
+            diagram: None,
             location: self.location(),
         }
     }
@@ -1069,7 +1075,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wps:spPr` into `shape`.
-    fn parse_shape_sp_pr(&mut self, shape: &mut Shape) -> Result<()> {
+    pub(super) fn parse_shape_sp_pr(&mut self, shape: &mut Shape) -> Result<()> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
@@ -1365,7 +1371,7 @@ impl PartParser<'_> {
     }
 
     /// Parses the first colour child of `a:solidFill`-like containers.
-    fn parse_fill_color(&mut self) -> Result<Option<ShapeColor>> {
+    pub(super) fn parse_fill_color(&mut self) -> Result<Option<ShapeColor>> {
         self.nested(|parser| {
             let mut color = None;
             loop {
@@ -1573,7 +1579,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wps:style`, including each reference's `a:schemeClr/@val`.
-    fn parse_shape_style(&mut self) -> Result<ShapeStyle> {
+    pub(super) fn parse_shape_style(&mut self) -> Result<ShapeStyle> {
         self.nested(|parser| {
             let mut style = ShapeStyle::default();
             loop {
@@ -1700,7 +1706,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wps:bodyPr`.
-    fn parse_text_box_body(&mut self, attrs: &[Attr]) -> Result<TextBoxBody> {
+    pub(super) fn parse_text_box_body(&mut self, attrs: &[Attr]) -> Result<TextBoxBody> {
         let anchor = match plain_attr(attrs, "anchor") {
             Some("t") => Some(TextAnchor::Top),
             Some("ctr") => Some(TextAnchor::Center),
@@ -1791,7 +1797,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `wpg:grpSpPr` (start consumed), reading its `a:xfrm` child.
-    fn parse_group_transform(&mut self, _attrs: &[Attr]) -> Result<GroupTransform> {
+    pub(super) fn parse_group_transform(&mut self, _attrs: &[Attr]) -> Result<GroupTransform> {
         self.nested(|parser| {
             let mut parts = XfrmParts::default();
             loop {
@@ -1823,7 +1829,7 @@ impl PartParser<'_> {
     }
 
     /// Reads the text content of the current element (start consumed).
-    fn read_element_text(&mut self) -> Result<String> {
+    pub(super) fn read_element_text(&mut self) -> Result<String> {
         self.nested(|parser| {
             let mut out = String::new();
             loop {

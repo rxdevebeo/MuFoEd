@@ -435,6 +435,13 @@ pub struct ForeignRefs {
     /// Shared behind an [`Arc`] so the drawing stays small and a chart part
     /// referenced twice is parsed once.
     pub chart: Option<Arc<crate::model::chart::ChartData>>,
+    /// The drawing Word cached beside a SmartArt diagram, when it could be read
+    /// (see [`DiagramDrawing`]). Always `None` for a chart, for a diagram whose
+    /// data part names no drawing part and for a drawing part that failed to
+    /// parse.
+    ///
+    /// Shared behind an [`Arc`] for the same reasons as [`chart`](Self::chart).
+    pub diagram: Option<Arc<DiagramDrawing>>,
     /// Source location of the element that carried them.
     pub location: SourceLocation,
 }
@@ -454,6 +461,35 @@ impl ForeignRefs {
     pub fn is_empty(&self) -> bool {
         self.rels.is_empty()
     }
+}
+
+/// Most shapes (`dsp:sp` and `dsp:grpSp`, counted together) kept from one
+/// diagram drawing part; the rest are dropped and reported.
+pub const MAX_DIAGRAM_SHAPES: usize = 2000;
+
+/// The pre-rendered drawing of a `SmartArt` diagram (`dsp:drawing`).
+///
+/// A `dgm:relIds` names the diagram's data, layout, style and colour parts;
+/// laying the diagram out from those is a layout engine of its own. Word also
+/// stores the result of its own layout in a separate drawing part (named from
+/// the data part's `dsp:dataModelExt/@relId`), and that drawing is what is kept
+/// here: plain DrawingML shapes in the diagram's own coordinate space, where
+/// `(0, 0)` is the top-left corner of the graphic frame and one unit is one EMU.
+///
+/// Shapes reuse the text-box model: a shape's `dsp:txBody` paragraphs become
+/// [`Block::Paragraph`]s of its [`TextBox`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiagramDrawing {
+    /// The drawing part the shapes were read from.
+    pub part: PartId,
+    /// The shape tree's own transform (`dsp:spTree/dsp:grpSpPr/a:xfrm`), when
+    /// the producer wrote one. Word writes an empty `dsp:grpSpPr`.
+    pub xfrm: Option<GroupTransform>,
+    /// The shapes, in document (paint) order: [`Graphic::Shape`] for a
+    /// `dsp:sp`, [`Graphic::Group`] for a `dsp:grpSp`.
+    pub shapes: Vec<Graphic>,
+    /// Whether shapes past [`MAX_DIAGRAM_SHAPES`] were dropped.
+    pub truncated: bool,
 }
 
 /// A DrawingML locked canvas (`lc:lockedCanvas`) preserved as Strict markup.
