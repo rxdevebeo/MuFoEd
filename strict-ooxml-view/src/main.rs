@@ -35,7 +35,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use http::Response;
 use strict_ooxml_view::{discover, failed, render, Cache, DocumentView, Entry};
@@ -44,6 +46,24 @@ use strict_ooxml_view::{discover, failed, render, Cache, DocumentView, Entry};
 const EXIT_OK: u8 = 0;
 /// Exit code: the viewer could not start.
 const EXIT_ERROR: u8 = 2;
+
+/// How long one document may take to render before its request is answered
+/// with a failed view.
+///
+/// The server is single-threaded, so a render that does not finish is a viewer
+/// that does not answer — not for that document, for anything. Past this the
+/// request gets a view whose note says so, and the document is cached as that
+/// failure: asking again does not start a second render of a document that
+/// already showed it will not finish.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Stack for the render thread.
+///
+/// The renderer is budgeted for a 1 MiB stack (the Windows main thread), and a
+/// spawned thread gets 2 MiB by default; the Linux main thread the render used
+/// to run on has 8. The same 8 here, so moving the render off the main thread
+/// costs no document its render.
+const RENDER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 /// One directory the viewer offers in the corpus menu.
 struct KnownCorpus {
@@ -149,7 +169,11 @@ struct Corpus {
     id: String,
     /// Label shown in the menu.
     label: String,
-    /// Directory, as printed at startup and returned by the API.
+    /// Directory, as printed at startup.
+    ///
+    /// Not returned by the API: the page never used it, and an absolute path
+    /// is the user's home directory and account name handed to any script
+    /// that can reach the port.
     path: String,
     /// Documents in menu order.
     entries: Vec<Entry>,
@@ -185,12 +209,7 @@ impl State {
             return Some(cached);
         }
         let entry = corpus.entries.iter().find(|entry| entry.name == name)?;
-        // A document that will not open is still a menu entry that has to say
-        // so; showing nothing would look like a viewer bug.
-        let view = match render(entry, corpus.transitional, self.scale) {
-            Ok(view) => view,
-            Err(error) => failed(entry, &error.to_string()),
-        };
+        let view = render_bounded(entry, corpus.transitional, self.scale, RENDER_TIMEOUT);
         self.caches
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -198,6 +217,72 @@ impl State {
             .or_default()
             .insert(view.clone());
         Some(view)
+    }
+}
+
+/// Why [`run_bounded`] came back without a value.
+#[derive(Debug, PartialEq, Eq)]
+enum Unfinished {
+    /// The job is still running; it was left to finish on its own.
+    TimedOut,
+    /// The job ended without an answer (it panicked), or never started.
+    Lost(String),
+}
+
+/// Runs `job` on its own thread and waits for it at most `timeout`.
+///
+/// A job that does not finish is not stopped — a thread cannot be — but the
+/// caller stops waiting for it, and its answer, if it ever comes, goes nowhere.
+fn run_bounded<T, F>(timeout: Duration, job: F) -> Result<T, Unfinished>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("render".to_owned())
+        .stack_size(RENDER_STACK_BYTES)
+        .spawn(move || {
+            // The receiver is gone when the caller has stopped waiting.
+            let _ = sender.send(job());
+        });
+    if let Err(error) = spawned {
+        return Err(Unfinished::Lost(format!("could not start a thread: {error}")));
+    }
+    match receiver.recv_timeout(timeout) {
+        Ok(value) => Ok(value),
+        Err(RecvTimeoutError::Timeout) => Err(Unfinished::TimedOut),
+        Err(RecvTimeoutError::Disconnected) => Err(Unfinished::Lost(
+            "the renderer stopped without an answer".to_owned(),
+        )),
+    }
+}
+
+/// Renders `entry` off the server thread, giving up after `timeout`.
+///
+/// Always a view: a document that will not open, will not finish, or takes the
+/// renderer down with it is still a menu entry that has to say so; showing
+/// nothing would look like a viewer bug.
+fn render_bounded(
+    entry: &Entry,
+    transitional: bool,
+    scale: f64,
+    timeout: Duration,
+) -> DocumentView {
+    let job = entry.clone();
+    let outcome = run_bounded(timeout, move || {
+        render(&job, transitional, scale).map_err(|error| error.to_string())
+    });
+    match outcome {
+        Ok(Ok(view)) => view,
+        Ok(Err(reason)) | Err(Unfinished::Lost(reason)) => failed(entry, &reason),
+        Err(Unfinished::TimedOut) => failed(
+            entry,
+            &format!(
+                "rendering did not finish within {} s and was abandoned",
+                timeout.as_secs()
+            ),
+        ),
     }
 }
 
@@ -264,10 +349,9 @@ fn selected_corpus<'a>(state: &'a State, query: &str) -> Option<&'a Corpus> {
 /// One corpus as JSON.
 fn corpus_json(corpus: &Corpus) -> String {
     format!(
-        "{{\"id\":{},\"label\":{},\"path\":{},\"count\":{},\"transitional\":{}}}",
+        "{{\"id\":{},\"label\":{},\"count\":{},\"transitional\":{}}}",
         json_string(&corpus.id),
         json_string(&corpus.label),
-        json_string(&corpus.path),
         corpus.entries.len(),
         corpus.transitional
     )
@@ -601,11 +685,12 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::{
-        corpus_json, json_number, json_string, known_for, query_value, slug, unique_id, Config,
-        Corpus, Entry, EXIT_OK, KNOWN_CORPORA,
+        corpus_json, json_number, json_string, known_for, query_value, render_bounded,
+        run_bounded, slug, unique_id, Config, Corpus, Entry, Unfinished, EXIT_OK, KNOWN_CORPORA,
     };
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
+    use std::time::Duration;
     use strict_ooxml_view::{DocumentView, PipelineView};
 
     fn empty_pipeline() -> PipelineView {
@@ -716,6 +801,61 @@ mod tests {
         assert!(json.contains("\"id\":\"cc0-docx\""));
         assert!(json.contains("\"count\":1"));
         assert!(json.contains("\"transitional\":true"));
+    }
+
+    #[test]
+    fn a_corpus_listing_does_not_leak_its_directory() {
+        let corpus = Corpus {
+            id: "private".to_owned(),
+            label: "private".to_owned(),
+            path: "/home/someone/secret/private".to_owned(),
+            entries: Vec::new(),
+            transitional: false,
+        };
+        let json = corpus_json(&corpus);
+        assert!(!json.contains("\"path\""), "{json}");
+        assert!(!json.contains("/home/someone"), "{json}");
+    }
+
+    #[test]
+    fn a_job_that_finishes_in_time_returns_its_value() {
+        assert_eq!(run_bounded(Duration::from_secs(10), || 7), Ok(7));
+    }
+
+    #[test]
+    fn a_job_that_does_not_finish_is_abandoned_at_the_timeout() {
+        let started = std::time::Instant::now();
+        let outcome = run_bounded(Duration::from_millis(50), || {
+            std::thread::sleep(Duration::from_secs(5));
+        });
+        assert_eq!(outcome, Err(Unfinished::TimedOut));
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "the caller must not wait for the job: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_job_that_panics_is_lost_not_fatal() {
+        let outcome = run_bounded(Duration::from_secs(10), || -> u8 {
+            panic!("renderer bug");
+        });
+        assert!(matches!(outcome, Err(Unfinished::Lost(_))), "{outcome:?}");
+    }
+
+    #[test]
+    fn a_document_that_will_not_open_is_a_failed_view() {
+        let entry = Entry {
+            name: "missing.docx".to_owned(),
+            path: PathBuf::from("does/not/exist/missing.docx"),
+            size: 0,
+        };
+        let view = render_bounded(&entry, false, 96.0, Duration::from_secs(30));
+        assert_eq!(view.name, "missing.docx");
+        assert!(view.pages.is_empty());
+        assert!(view.note.is_some());
+        assert_eq!(view.pipeline.outcome, "failed");
     }
 
     #[test]

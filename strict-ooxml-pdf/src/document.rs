@@ -206,6 +206,10 @@ pub struct PdfDocument {
     /// Fonts already decoded, shared by every page (AUD-13).
     fonts: FontCache,
     report: crate::report::ReadReport,
+    /// Decompressed page-content bytes read so far, charged against
+    /// [`PdfLimits::max_total_content_bytes`]. A `Cell`, because reading a page
+    /// takes `&self` and the budget is the document's, not the page's.
+    content_spent: std::cell::Cell<u64>,
 }
 
 impl PdfDocument {
@@ -230,6 +234,11 @@ impl PdfDocument {
     /// the input size, the inflated size of its object streams
     /// ([`LimitKind::ObjectStreamBytes`](crate::error::LimitKind::ObjectStreamBytes))
     /// or the page count is over budget.
+    ///
+    /// Active content — an opening action, document JavaScript, embedded
+    /// files, annotations that launch or submit — is not run and not refused:
+    /// it is recorded in [`PdfDocument::report`] under `pdf.active.*`, so a
+    /// caller that hands the file on knows what it carries.
     pub fn open(bytes: &[u8], limits: PdfLimits) -> Result<Self> {
         if bytes.len() > limits.max_input_bytes {
             return Err(limits.exceeded(crate::error::LimitKind::InputBytes, bytes.len() as u64));
@@ -252,6 +261,10 @@ impl PdfDocument {
         if pages > limits.max_pages {
             return Err(limits.exceeded(crate::error::LimitKind::Pages, pages as u64));
         }
+        let mut report = crate::report::ReadReport::new();
+        for (id, detail) in active_content(&document) {
+            report.record_ignored(id, detail);
+        }
         Ok(Self {
             document,
             source: bytes.to_vec(),
@@ -259,8 +272,18 @@ impl PdfDocument {
             images: ImageCache::new(limits.max_cached_image_bytes),
             forms: FormCache::new(limits.max_cached_form_bytes),
             fonts: FontCache::new(),
-            report: crate::report::ReadReport::new(),
+            report,
+            content_spent: std::cell::Cell::new(0),
         })
+    }
+
+    /// Decompressed page-content bytes read so far, every page read counted.
+    ///
+    /// What [`PdfLimits::max_total_content_bytes`] is checked against: a page
+    /// read twice is inflated twice, and is charged twice.
+    #[must_use]
+    pub fn content_bytes_read(&self) -> u64 {
+        self.content_spent.get()
     }
 
     /// The bytes the document was opened from.
@@ -389,6 +412,19 @@ impl PdfDocument {
             .document
             .get_page_content_with_limit(id, self.limits.max_content_bytes)
             .map_err(|error| PdfError::from_lopdf(&error))?;
+        // The page budget bounds one page; this bounds the document. The bytes
+        // are charged even when they put the total over, so every later read
+        // fails too instead of a smaller page slipping under the ceiling.
+        let spent = self
+            .content_spent
+            .get()
+            .saturating_add(u64::try_from(content_bytes.len()).unwrap_or(u64::MAX));
+        self.content_spent.set(spent);
+        if spent > self.limits.max_total_content_bytes {
+            return Err(self
+                .limits
+                .exceeded(crate::error::LimitKind::TotalContentBytes, spent));
+        }
         let (cleaned, inlines) = crate::inline::extract(&content_bytes);
         let operations = lopdf::content::Content::decode(&cleaned)
             .map_err(|error| PdfError::from_lopdf(&error))?
@@ -470,6 +506,144 @@ impl PdfDocument {
             }
         }
         out
+    }
+}
+
+/// How many annotations [`active_content`] looks at, across every page.
+///
+/// The scan is a report, not a defence, and a file of a million annotations is
+/// not allowed to make opening it a million dictionary lookups. Past the cap
+/// the report says the scan stopped.
+const MAX_ANNOTATIONS_SCANNED: usize = 10_000;
+
+/// Action types (ISO 32000-1 §12.6.4) that reach outside the page: run code,
+/// start a program, open another file, or send or fetch data.
+const RISKY_ACTIONS: [&str; 5] = ["JavaScript", "Launch", "GoToR", "ImportData", "SubmitForm"];
+
+/// What the document would *do* if a viewer let it, as `(report id, detail)`.
+///
+/// Information only: this reader runs no action and opens no attachment, so
+/// nothing here changes what a page reads as. But a converter that hands the
+/// original file on, or a person deciding whether to open it, should learn that
+/// it carries an opening action, document-level JavaScript, embedded files or
+/// annotations that launch, submit or fetch — and the report is where every
+/// other fact about the file goes.
+///
+/// Bounded: references are followed through `lopdf`'s own dereference limit,
+/// and at most [`MAX_ANNOTATIONS_SCANNED`] annotations are inspected.
+fn active_content(document: &lopdf::Document) -> Vec<(&'static str, &'static str)> {
+    let mut out = Vec::new();
+    if let Ok(catalog) = document.catalog() {
+        // An `/OpenAction` that is a destination, or a `/GoTo`, only scrolls;
+        // the ones worth a line are the ones that leave the page.
+        if let Some(kind) = catalog
+            .get(b"OpenAction")
+            .ok()
+            .and_then(|value| dict_of(document, value))
+            .and_then(risky_action)
+        {
+            out.push(("pdf.active.open-action", open_action_detail(kind)));
+        }
+        if catalog.get(b"AA").is_ok() {
+            out.push((
+                "pdf.active.additional-actions",
+                "the document catalog carries additional actions (/AA); they were not run",
+            ));
+        }
+        if let Some(names) = catalog
+            .get(b"Names")
+            .ok()
+            .and_then(|value| dict_of(document, value))
+        {
+            if names.get(b"JavaScript").is_ok() {
+                out.push((
+                    "pdf.active.javascript",
+                    "the document carries document-level JavaScript; it was not run",
+                ));
+            }
+            if names.get(b"EmbeddedFiles").is_ok() {
+                out.push((
+                    "pdf.active.embedded-files",
+                    "the document carries embedded files; they were not read",
+                ));
+            }
+        }
+    }
+
+    let mut scanned = 0usize;
+    'pages: for page in document.page_iter() {
+        let Some(annotations) = document
+            .get_dictionary(page)
+            .ok()
+            .and_then(|dictionary| dictionary.get(b"Annots").ok())
+            .and_then(|value| deref(document, value))
+            .and_then(|value| value.as_array().ok())
+        else {
+            continue;
+        };
+        for annotation in annotations {
+            if scanned >= MAX_ANNOTATIONS_SCANNED {
+                out.push((
+                    "pdf.active.scan-capped",
+                    "annotations past the first 10 000 were not checked for actions",
+                ));
+                break 'pages;
+            }
+            scanned = scanned.saturating_add(1);
+            let Some(kind) = dict_of(document, annotation)
+                .and_then(|dictionary| dictionary.get(b"A").ok())
+                .and_then(|value| dict_of(document, value))
+                .and_then(risky_action)
+            else {
+                continue;
+            };
+            out.push(("pdf.active.annotation", annotation_detail(kind)));
+        }
+    }
+    out
+}
+
+/// `object`, with references followed through `lopdf`'s bounded dereference.
+fn deref<'a>(document: &'a lopdf::Document, object: &'a Object) -> Option<&'a Object> {
+    document.dereference(object).ok().map(|(_, value)| value)
+}
+
+/// `object` as a dictionary, references followed.
+fn dict_of<'a>(
+    document: &'a lopdf::Document,
+    object: &'a Object,
+) -> Option<&'a lopdf::Dictionary> {
+    deref(document, object).and_then(|value| value.as_dict().ok())
+}
+
+/// The action's `/S`, when it is one of [`RISKY_ACTIONS`].
+fn risky_action(action: &lopdf::Dictionary) -> Option<&'static str> {
+    let kind = action.get(b"S").ok()?.as_name().ok()?;
+    RISKY_ACTIONS
+        .iter()
+        .find(|risky| risky.as_bytes() == kind)
+        .copied()
+}
+
+/// The report line for a risky `/OpenAction`, by its type.
+fn open_action_detail(kind: &str) -> &'static str {
+    match kind {
+        "JavaScript" => "the document runs JavaScript when opened (/OpenAction); it was not run",
+        "Launch" => "the document launches a program when opened (/OpenAction); it was not run",
+        "GoToR" => "the document opens another file when opened (/OpenAction); it was not run",
+        "ImportData" => "the document imports data when opened (/OpenAction); it was not run",
+        _ => "the document submits a form when opened (/OpenAction); it was not run",
+    }
+}
+
+/// The report line for an annotation's risky `/A`, by its type.
+fn annotation_detail(kind: &str) -> &'static str {
+    match kind {
+        "JavaScript" => "an annotation runs JavaScript (/S /JavaScript); it was not run",
+        "Launch" => "an annotation launches a program (/S /Launch); it was not run",
+        "GoToR" => "an annotation opens another file (/S /GoToR); it was not run",
+        "ImportData" => "an annotation imports data (/S /ImportData); it was not run",
+        _ => "an annotation submits a form (/S /SubmitForm); it was not run",
     }
 }
 
@@ -936,8 +1110,214 @@ impl ResourceProvider for PageResources<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::rotation_of;
-    use lopdf::Object;
+    use super::{active_content, rotation_of, PdfDocument, MAX_ANNOTATIONS_SCANNED};
+    use crate::error::{LimitKind, PdfError, PdfLimits};
+    use lopdf::{dictionary, Document, Object, Stream};
+
+    /// A document of `pages` pages drawing `content`, each page carrying
+    /// `annotation` when one is given, with `catalog_entries` added to the
+    /// catalog.
+    fn document_with(
+        pages: usize,
+        content: &[u8],
+        annotation: Option<&lopdf::Dictionary>,
+        catalog_entries: Vec<(&'static str, Object)>,
+    ) -> Document {
+        let mut document = Document::with_version("1.7");
+        let pages_id = document.new_object_id();
+        let mut kids = Vec::new();
+        for _ in 0..pages {
+            let content_id = document.add_object(Stream::new(dictionary! {}, content.to_vec()));
+            let mut page = dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+                "Contents" => content_id,
+            };
+            if let Some(annotation) = annotation {
+                let annotation_id = document.add_object(annotation.clone());
+                page.set("Annots", vec![Object::Reference(annotation_id)]);
+            }
+            kids.push(Object::Reference(document.add_object(page)));
+        }
+        let count = i64::try_from(kids.len()).expect("page count");
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => kids,
+                "Count" => count,
+            }),
+        );
+        let mut catalog = dictionary! { "Type" => "Catalog", "Pages" => pages_id };
+        for (key, value) in catalog_entries {
+            catalog.set(key, value);
+        }
+        let catalog_id = document.add_object(catalog);
+        document.trailer.set("Root", catalog_id);
+        document
+    }
+
+    fn bytes_of(mut document: Document) -> Vec<u8> {
+        let mut out = Vec::new();
+        document.save_to(&mut out).expect("save");
+        out
+    }
+
+    fn action(kind: &str) -> lopdf::Dictionary {
+        dictionary! {
+            "Type" => "Action",
+            "S" => kind,
+            "JS" => Object::string_literal("app.alert(1)"),
+        }
+    }
+
+    fn ids(found: &[(&'static str, &'static str)]) -> Vec<&'static str> {
+        found.iter().map(|(id, _)| *id).collect()
+    }
+
+    #[test]
+    fn a_plain_document_reports_no_active_content() {
+        let document = document_with(2, b"0 0 m 10 10 l S", None, Vec::new());
+        assert!(active_content(&document).is_empty());
+    }
+
+    #[test]
+    fn catalog_actions_scripts_and_attachments_are_reported() {
+        let names = dictionary! {
+            "JavaScript" => dictionary! { "Names" => Vec::<Object>::new() },
+            "EmbeddedFiles" => dictionary! { "Names" => Vec::<Object>::new() },
+        };
+        let document = document_with(
+            1,
+            b"",
+            None,
+            vec![
+                ("OpenAction", Object::Dictionary(action("JavaScript"))),
+                ("AA", Object::Dictionary(dictionary! {})),
+                ("Names", Object::Dictionary(names)),
+            ],
+        );
+        let found = ids(&active_content(&document));
+        for id in [
+            "pdf.active.open-action",
+            "pdf.active.additional-actions",
+            "pdf.active.javascript",
+            "pdf.active.embedded-files",
+        ] {
+            assert!(found.contains(&id), "{id} missing from {found:?}");
+        }
+    }
+
+    #[test]
+    fn an_open_action_that_only_scrolls_is_not_reported() {
+        let document = document_with(
+            1,
+            b"",
+            None,
+            vec![("OpenAction", Object::Dictionary(action("GoTo")))],
+        );
+        assert!(active_content(&document).is_empty());
+    }
+
+    #[test]
+    fn annotations_that_leave_the_page_are_reported_and_links_are_not() {
+        for kind in ["JavaScript", "Launch", "GoToR", "ImportData", "SubmitForm"] {
+            let annotation = dictionary! {
+                "Type" => "Annot",
+                "Subtype" => "Link",
+                "A" => action(kind),
+            };
+            let document = document_with(1, b"", Some(&annotation), Vec::new());
+            let found = active_content(&document);
+            assert_eq!(ids(&found), ["pdf.active.annotation"], "{kind}");
+            assert!(found[0].1.contains(kind), "{kind}: {}", found[0].1);
+        }
+        let link = dictionary! { "Type" => "Annot", "Subtype" => "Link", "A" => action("URI") };
+        let document = document_with(1, b"", Some(&link), Vec::new());
+        assert!(active_content(&document).is_empty());
+    }
+
+    #[test]
+    fn the_annotation_scan_is_capped() {
+        let annotation = dictionary! { "Type" => "Annot", "Subtype" => "Text" };
+        let mut document = document_with(1, b"", None, Vec::new());
+        let annotation_id = document.add_object(annotation);
+        let many = vec![Object::Reference(annotation_id); MAX_ANNOTATIONS_SCANNED + 5];
+        let page = document.page_iter().next().expect("one page");
+        document
+            .get_dictionary_mut(page)
+            .expect("page dictionary")
+            .set("Annots", many);
+        let found = ids(&active_content(&document));
+        assert_eq!(found, ["pdf.active.scan-capped"]);
+    }
+
+    #[test]
+    fn open_records_active_content_without_refusing_the_file() {
+        let annotation = dictionary! {
+            "Type" => "Annot",
+            "Subtype" => "Link",
+            "A" => action("Launch"),
+        };
+        let bytes = bytes_of(document_with(
+            2,
+            b"0 0 m 10 10 l S",
+            Some(&annotation),
+            vec![("OpenAction", Object::Dictionary(action("JavaScript")))],
+        ));
+        let mut pdf = PdfDocument::open(&bytes, PdfLimits::default()).expect("open");
+        let count_of = |id: &str| {
+            pdf.report()
+                .losses()
+                .iter()
+                .find(|loss| loss.id == id)
+                .map_or(0, |loss| loss.count)
+        };
+        assert_eq!(count_of("pdf.active.open-action"), 1);
+        assert_eq!(count_of("pdf.active.annotation"), 2);
+        // Information only: the pages still read.
+        assert_eq!(pdf.pages().expect("pages").len(), 2);
+    }
+
+    #[test]
+    fn the_document_content_budget_spans_pages() {
+        // Three pages of 15 bytes, which lopdf hands back with a newline after
+        // each stream: 16 per page, so a 40-byte document budget lets two
+        // through.
+        let content = b"0 0 m 10 10 l S";
+        let bytes = bytes_of(document_with(3, content, None, Vec::new()));
+        let limits = PdfLimits {
+            max_total_content_bytes: 40,
+            ..PdfLimits::default()
+        };
+        let mut pdf = PdfDocument::open(&bytes, limits).expect("open");
+        pdf.page(1).expect("first page");
+        pdf.page(2).expect("second page");
+        assert_eq!(pdf.content_bytes_read(), 32);
+        let error = pdf.page(3).expect_err("third page is over the document budget");
+        assert!(
+            matches!(
+                error,
+                PdfError::LimitExceeded {
+                    kind: LimitKind::TotalContentBytes,
+                    limit: 40,
+                    actual: 48,
+                }
+            ),
+            "{error}"
+        );
+        // Charged even on refusal: a smaller read does not slip back under.
+        pdf.page(1).expect_err("the budget stays spent");
+    }
+
+    #[test]
+    fn the_default_document_budget_reads_an_ordinary_document() {
+        let bytes = bytes_of(document_with(4, b"0 0 m 10 10 l S", None, Vec::new()));
+        let mut pdf = PdfDocument::open(&bytes, PdfLimits::default()).expect("open");
+        assert_eq!(pdf.pages().expect("pages").len(), 4);
+        assert_eq!(pdf.content_bytes_read(), 64);
+    }
 
     #[test]
     fn rotation_is_normalised_to_a_right_angle() {
