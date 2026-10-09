@@ -62,11 +62,11 @@ print(json.dumps({"file": "a.djvu", "pages": [
 ZONES_ORACLE = """
 import sys
 print("(page 0 0 100 100")
-print('(word 10 85 20 5 "hi")')
+print('(word 10 85 30 90 "hi")')
 print(")")
 """
 
-ZONES_BAD = ZONES_ORACLE.replace("10 85 20 5", "15 85 20 5")
+ZONES_BAD = ZONES_ORACLE.replace("10 85 30 90", "15 85 35 90")
 
 PNG_HELPER = """
 import struct, zlib
@@ -96,6 +96,10 @@ RENDER_BAD = RENDER_ORACLE.replace("10,20,30", "10,20,31")
 
 ANT_ORACLE = """
 import sys
+args = sys.argv[1:]
+if "n" in args:
+    print("1")
+    raise SystemExit(0)
 print('(maparea "" (rect 0 0 10 10) (url "https://example.invalid/a"))')
 print('(maparea "" (rect 0 20 10 10) (url "https://example.invalid/b"))')
 """

@@ -108,6 +108,27 @@ image codecs перечислены в [руководстве](../DJVU_IMPORT.m
 повёрнутые страницы (SC-D14); ant — инвентарь, пока отображение аннотаций не
 реализовано (SC-D9).
 
+## Первая проверка против DjVuLibre (2026-10-09)
+
+DjVuLibre `3.5.28-2ubuntu0.24.04.2` (та же версия, что пинит CI) в изолированном
+WSL; драйверы прогнаны на реальных файлах корпуса:
+
+| Драйвер | Результат |
+| --- | --- |
+| dump (SC-D3) | **100/100** файлов: нормализованное дерево чанков совпало с `djvudump` |
+| dump indirect (SC-D13) | 3/3: индекс совпал; наш ридер развернул 72/121/2 страницы из `INCL` |
+| zone (SC-D5) | 3 файла, **63 682 слова**: прямоугольники и текст совпали (0 px) |
+| render (SC-D7) | точное совпадение (`max=0`) на битональных страницах `keraleeya` 5/7/10 и `PlaysHistories` 1; IW44-страницы расходятся (наша nearest-интерполяция против ddjvu) |
+| text (SC-D4) | 3/3 совпали |
+| ant (SC-D9) | инвентарь; в корпусе **нет** `ANTa`/`ANTz`, oracle total = 0 |
+
+Проверка уточнила форматы и исправила драйверы: `djvutxt --detail=word` печатает
+`xmin ymin xmax ymax` (начало внизу-слева), а не `x y w h`; `djvmcvt -i` требует
+`<doc_in> <dir_out> <idx_fname>`; `djvused print-ant` требует `select` по
+странице. Битональные страницы гейта SC-D7 вынесены в
+[render-bitonal.json](render-bitonal.json); IW44-допущения ещё не измерены.
+SC-D9 на этом корпусе проверить нельзя — нужен синтетический annotated fixture.
+
 ## Decoder extension after baseline commit 93cc8ff
 
 [decoder-oracle.json](decoder-oracle.json) records exact RGB pixel equality for

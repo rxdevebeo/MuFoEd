@@ -32,7 +32,7 @@ CHUNK = re.compile(
 )
 
 
-def normalize(text: str) -> list[tuple]:
+def normalize(text: str, first_root: bool = False) -> list[tuple]:
     raw: list[tuple[int, str, str, int]] = []
     for line in text.splitlines():
         match = CHUNK.match(line)
@@ -41,7 +41,21 @@ def normalize(text: str) -> list[tuple]:
         indent = len(match.group("indent").replace("\t", "    "))
         raw.append((indent, match.group("id"), match.group("form") or "", int(match.group("len"))))
     ranks = {indent: rank for rank, indent in enumerate(sorted({r[0] for r in raw}))}
-    return [(ranks[indent], chunk_id, form, length) for indent, chunk_id, form, length in raw]
+    entries = [(ranks[indent], chunk_id, form, length) for indent, chunk_id, form, length in raw]
+    if first_root:
+        # An indirect index resolves its components; `djvudump` prints the index
+        # only, so keep just the first root subtree (FORM:DJVM + DIRM) and stop
+        # at the next top-level node our reader appended.
+        kept: list[tuple] = []
+        roots = 0
+        for entry in entries:
+            if entry[0] == 0:
+                roots += 1
+                if roots == 2:
+                    break
+            kept.append(entry)
+        entries = kept
+    return entries
 
 
 def first_divergence(ours: list[tuple], oracle: list[tuple]) -> str | None:
@@ -55,14 +69,17 @@ def first_divergence(ours: list[tuple], oracle: list[tuple]) -> str | None:
     return None
 
 
-def compare_one(producer: list[str], oracle: list[str], work: Path, raw_dir: Path | None) -> dict:
+def compare_one(
+    producer: list[str], oracle: list[str], work: Path, raw_dir: Path | None, first_root: bool = False
+) -> dict:
     ours = common.run(producer)
     reference = common.run(oracle)
     if ours.returncode != 0:
         return {"ok": False, "detail": f"producer exit {ours.returncode}: {ours.stderr.decode(errors='replace')[:200]}"}
     if reference.returncode != 0:
         return {"ok": False, "detail": f"oracle exit {reference.returncode}: {reference.stderr.decode(errors='replace')[:200]}"}
-    ours_tree = normalize(ours.stdout.decode("utf-8", errors="replace"))
+    ours_text = ours.stdout.decode("utf-8", errors="replace")
+    ours_tree = normalize(ours_text, first_root)
     oracle_tree = normalize(reference.stdout.decode("utf-8", errors="replace"))
     divergence = first_divergence(ours_tree, oracle_tree)
     row = {
@@ -71,6 +88,9 @@ def compare_one(producer: list[str], oracle: list[str], work: Path, raw_dir: Pat
         "oracle_chunks": len(oracle_tree),
         "detail": "chunk trees match" if divergence is None else divergence,
     }
+    if first_root:
+        full = normalize(ours_text)
+        row["resolved_pages"] = sum(1 for entry in full if entry[0] == 0) - 1
     if divergence is not None and raw_dir is not None:
         raw_dir.mkdir(parents=True, exist_ok=True)
         (raw_dir / f"{work.name}.ours.txt").write_bytes(ours.stdout)
@@ -105,7 +125,11 @@ def main() -> int:
         row.update(compare_one(ours, [str(args.oracle), str(source)], source, args.raw_dir))
         if args.indirect_dir is not None:
             target = args.indirect_dir / source.name
-            made = common.run([str(args.djvmcvt), "-i", str(source), str(target)])
+            # djvmcvt -i <doc_in> <dir_out> <idx_fname>: component files land in
+            # <dir_out> and the top-level index is written to <idx_fname>.
+            made = common.run(
+                [str(args.djvmcvt), "-i", str(source), str(args.indirect_dir), str(target)]
+            )
             if made.returncode != 0:
                 row["indirect"] = {"ok": False, "detail": f"djvmcvt exit {made.returncode}"}
             else:
@@ -114,6 +138,7 @@ def main() -> int:
                     [str(args.oracle), str(target)],
                     target,
                     args.raw_dir,
+                    first_root=True,
                 )
                 row["ok"] = row["ok"] and row["indirect"]["ok"]
         print(source.name, "OK" if row["ok"] else "MISMATCH", flush=True)

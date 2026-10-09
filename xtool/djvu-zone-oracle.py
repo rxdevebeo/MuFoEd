@@ -26,25 +26,36 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import djvu_oracle_common as common  # noqa: E402
 
 PAGE = re.compile(r"\(\s*page\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)")
-WORD = re.compile(r"\bword\b\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s*(.*)")
+# djvutxt prints "(word XMIN YMIN XMAX YMAX \"text\")", a bounding box in pixels
+# from the bottom-left, not x/y/width/height. Several words may share a line.
+WORD = re.compile(r'\(\s*word\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+"((?:[^"\\]|\\.)*)"')
+
+
+def unescape(text: str) -> str:
+    out = []
+    at = 0
+    while at < len(text):
+        if text[at] == "\\" and at + 1 < len(text):
+            out.append(text[at + 1])
+            at += 2
+        else:
+            out.append(text[at])
+            at += 1
+    return "".join(out)
 
 
 def parse_oracle(text: str) -> list[dict]:
     pages: list[dict] = []
-    height = 0
     for line in text.splitlines():
-        header = PAGE.search(line)
-        if header:
-            height = int(header.group(4))
-            pages.append({"height": height, "words": []})
+        if PAGE.search(line):
+            pages.append({"words": []})
             continue
-        word = WORD.search(line)
-        if word and pages:
-            tail = word.group(5).strip().rstrip(")").strip()
-            if len(tail) >= 2 and tail[0] == '"' and tail[-1] == '"':
-                tail = tail[1:-1]
+        if not pages:
+            continue
+        for match in WORD.finditer(line):
+            xmin, ymin, xmax, ymax = (int(match.group(i)) for i in (1, 2, 3, 4))
             pages[-1]["words"].append(
-                (int(word.group(1)), int(word.group(2)), int(word.group(3)), int(word.group(4)), tail)
+                (xmin, ymin, xmax - xmin, ymax - ymin, unescape(match.group(5)))
             )
     return pages
 

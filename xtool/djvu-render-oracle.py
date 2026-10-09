@@ -56,6 +56,13 @@ def main() -> int:
     parser.add_argument("--oracle", type=Path, required=True, help="the ddjvu binary")
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--pages", default="1", help="pages to compare on every file, e.g. 1,3,5-7")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help='JSON {"file.djvu": [pages]} to select specific pages per file '
+        "(used for the bitonal pages SC-D7 claims today)",
+    )
     parser.add_argument("--tolerance", type=Path, default=None)
     parser.add_argument("--foreground", action="store_true", help="mask-only composite")
     parser.add_argument("--raw-dir", type=Path, default=None)
@@ -65,15 +72,21 @@ def main() -> int:
     pages = parse_pages(args.pages)
     tolerances = common.load_tolerances(args.tolerance)
     previous = common.load_previous(args.report) if args.resume else {}
+    if args.manifest is not None:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        files = manifest.get("files", manifest)
+        targets = [(args.corpus / name, [int(p) for p in pages]) for name, pages in files.items()]
+    else:
+        targets = [(source, pages) for source in common.iter_corpus(args.corpus)]
     results = []
-    for source in common.iter_corpus(args.corpus):
+    for source, selected in targets:
         digest = common.sha256_file(source)
         old = previous.get(source.name)
         if common.reused(old, digest):
             results.append(old)
             continue
         row = {"file": source.name, "sha256": digest, "pages": []}
-        for page in pages:
+        for page in selected:
             with tempfile.TemporaryDirectory() as scratch:
                 ours_png = Path(scratch) / "ours.png"
                 oracle_ppm = Path(scratch) / "oracle.ppm"
@@ -130,7 +143,7 @@ def main() -> int:
         "producer": {"name": "strict-ooxml-djvu examples/codec_probe"},
         "oracle": common.fingerprint(args.oracle, "djvulibre-bin"),
         "foreground": args.foreground,
-        "pages_per_file": pages,
+        "pages_per_file": "manifest" if args.manifest is not None else pages,
         "files": len(results),
         "ok": sum(1 for row in results if row["ok"]),
         "pages_compared": len(compared),

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Announce the annotation/hyperlink gap against `djvused print-ant` (SC-D9).
+"""Announce the annotation/hyperlink gap against `djvused` (SC-D9).
 
 SC-D9 is not implemented: our reader does not turn `ANTa`/`ANTz` `maparea`
 annotations into `w:hyperlink` yet. This driver measures the gap instead of
 failing it: for every file it counts the oracle's resolvable URLs and, when a
 producer is supplied, our own count. With no producer it is an inventory and
 always exits 0; with `--ours` it gates an equal count.
+
+`djvused` needs a page selected before `print-ant`, so the driver reads the page
+count with `... -e n` and chains `select P; print-ant` for every page in one
+call. The CC0 validation corpus carries no `ANTa`/`ANTz` at all, so its oracle
+total is 0; SC-D9 can only be exercised on a synthetic annotated fixture.
 
 `djvused` is GPL, invoked as a separate process only.
 
@@ -24,12 +29,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import djvu_oracle_common as common  # noqa: E402
 
 MAPAREA = re.compile(r"\(maparea\b")
+PAGES = re.compile(r"(\d+)")
 
 
 def oracle_mapareas(djvused: Path, source: Path) -> tuple[int | None, str]:
-    proc = common.run([str(djvused), "-e", "print-ant", str(source)])
+    count = common.run([str(djvused), "-e", "n", str(source)])
+    if count.returncode != 0:
+        return None, f"djvused n exit {count.returncode}"
+    numbers = PAGES.findall(count.stdout.decode("utf-8", errors="replace"))
+    if not numbers:
+        return None, "djvused n printed no page count"
+    pages = int(numbers[-1])
+    # One invocation, one select per page: annotations are rare and this keeps
+    # the process count at one per file.
+    command = "; ".join(f"select {page}; print-ant" for page in range(1, pages + 1))
+    proc = common.run([str(djvused), "-e", command, str(source)])
     if proc.returncode != 0:
-        return None, f"djvused exit {proc.returncode}"
+        return None, f"djvused print-ant exit {proc.returncode}"
     return len(MAPAREA.findall(proc.stdout.decode("utf-8", errors="replace"))), "ok"
 
 
