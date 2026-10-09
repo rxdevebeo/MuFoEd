@@ -83,7 +83,12 @@ pub fn convert_djvu(
     for warning in &reader.warnings {
         report.record("djvu.document.unsupported", Severity::Unsupported, warning);
     }
-    for (index, page) in all[start - 1..end].iter().enumerate() {
+    for (index, page) in all
+        .get(start - 1..end)
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+    {
         for warning in &page.warnings {
             report.record(
                 "djvu.reader",
@@ -237,6 +242,7 @@ fn section(page: &DjvuPage) -> SectionProperties {
             width: Some(Twips(to_twips(w))),
             height: Some(Twips(to_twips(h))),
             orientation: None,
+            code: None,
         }),
         page_margins: Some(PageMargins {
             top: Some(Twips(0)),
@@ -398,15 +404,23 @@ fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
                 id: None,
                 name: Some(Arc::from("DjVu page")),
                 descr: None,
+                title: None,
             }),
+            dist_top: None,
+            dist_bottom: None,
+            dist_left: None,
+            dist_right: None,
             graphic_uri: None,
             graphic: Box::new(Graphic::Picture(Picture {
                 name: Some(Arc::from("DjVu page")),
                 descr: None,
+                nv_id: None,
+                bw_mode: None,
                 blip: Some(BlipRef {
                     embed: None,
                     link: None,
                     resolved: Some(part.clone()),
+                    cstate: None,
                     location: location.clone(),
                 }),
                 extent: Some(extent),
