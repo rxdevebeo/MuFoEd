@@ -467,14 +467,17 @@ pub fn twips_to_universal(value: &str) -> Option<String> {
     // represent every twip value without loss. The trailing zero is then trimmed,
     // because `5.40pt` and `5.4pt` are the same number and a document that reads
     // `5.4pt` is the one a producer would have written.
-    let hundredths = twips * 5;
+    // The sign is kept apart: `-5` twips is `-0.25pt`, and `-25 / 100` is `0`,
+    // which wrote a negative table indent as a positive one.
+    let sign = if twips < 0 { "-" } else { "" };
+    let hundredths = twips.unsigned_abs() * 5;
     let whole = hundredths / 100;
-    let rest = (hundredths % 100).abs();
+    let rest = hundredths % 100;
     if rest == 0 {
-        return Some(format!("{whole}pt"));
+        return Some(format!("{sign}{whole}pt"));
     }
     let fraction = format!("{rest:02}");
-    Some(format!("{whole}.{}pt", fraction.trim_end_matches('0')))
+    Some(format!("{sign}{whole}.{}pt", fraction.trim_end_matches('0')))
 }
 
 /// `ST_TextScale`: a bare number where Strict's pattern wants a `%`.
@@ -654,7 +657,8 @@ pub fn is_ignorable_extension(uri: &str) -> bool {
 mod tests {
     use super::{
         drawingml_thousandths_percent, is_chart_whole_percent_attr, is_drawingml_percentage_attr,
-        map_value, removal_for, rename_attribute, rename_element, whole_percent, REMOVALS, RENAMES,
+        map_value, removal_for, rename_attribute, rename_element, twips_to_universal, whole_percent,
+        REMOVALS, RENAMES,
     };
     use crate::normalize::report::Severity;
 
@@ -870,6 +874,8 @@ mod tests {
             Some("1.253%")
         );
         assert_eq!(drawingml_thousandths_percent("65%"), None);
+        assert_eq!(twips_to_universal("-5").as_deref(), Some("-0.25pt"));
+        assert_eq!(twips_to_universal("-120").as_deref(), Some("-6pt"));
         assert_eq!(
             drawingml_thousandths_percent("300").as_deref(),
             Some("0.3%")

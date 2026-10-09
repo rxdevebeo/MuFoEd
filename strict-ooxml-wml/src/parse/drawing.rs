@@ -1833,6 +1833,11 @@ impl PartParser<'_> {
             width: plain_attr(attrs, "w")
                 .and_then(|v| v.trim().parse::<i64>().ok())
                 .map(Emu),
+            attributes: self
+                .plain_attr_pairs(attrs)
+                .into_iter()
+                .filter(|(name, _)| name.as_ref() != "w")
+                .collect(),
             ..ShapeStroke::default()
         };
         self.nested(|parser| {
@@ -1864,6 +1869,9 @@ impl PartParser<'_> {
                                     stroke.tail_end =
                                         plain_attr(&attrs, "type").map(|v| parser.intern(v));
                                     parser.skip_element()?;
+                                }
+                                "round" | "bevel" | "miter" => {
+                                    stroke.join = parser.capture_fragment(name.clone(), attrs)?;
                                 }
                                 _ => parser.skip_element()?,
                             }

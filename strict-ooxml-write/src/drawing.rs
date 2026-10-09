@@ -1062,6 +1062,7 @@ fn stroke_element(xml: &mut XmlWriter, stroke: &ShapeStroke) {
     if let Some(width) = stroke.width {
         xml.attr("w", width.0);
     }
+    plain_attrs(xml, &stroke.attributes);
     if stroke.none {
         xml.empty("a:noFill");
     } else if let Some(color) = &stroke.color {
@@ -1073,6 +1074,9 @@ fn stroke_element(xml: &mut XmlWriter, stroke: &ShapeStroke) {
         xml.start("a:prstDash");
         xml.attr("val", dash.as_ref());
         xml.end();
+    }
+    if let Some(join) = &stroke.join {
+        kept_markup(xml, join);
     }
     if let Some(head) = &stroke.head_end {
         xml.start("a:headEnd");

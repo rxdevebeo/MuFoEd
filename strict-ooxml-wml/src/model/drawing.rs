@@ -211,6 +211,10 @@ pub struct ShapeStroke {
     pub head_end: Option<Arc<str>>,
     /// Tail end decoration (`a:tailEnd/@type`).
     pub tail_end: Option<Arc<str>>,
+    /// `a:ln` attributes other than `w` (`cap`, `cmpd`, `algn`), as written.
+    pub attributes: Vec<(Arc<str>, Arc<str>)>,
+    /// The line join (`a:round`, `a:bevel`, `a:miter`) as markup.
+    pub join: Option<Arc<str>>,
 }
 
 /// One command of a custom-geometry path (`a:custGeom`).
