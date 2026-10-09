@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Announce the annotation/hyperlink gap against `djvused` (SC-D9).
+"""Compare our hyperlink count against `djvused`'s `maparea` total (SC-D9).
 
-SC-D9 is not implemented: our reader does not turn `ANTa`/`ANTz` `maparea`
-annotations into `w:hyperlink` yet. This driver measures the gap instead of
-failing it: for every file it counts the oracle's resolvable URLs and, when a
-producer is supplied, our own count. With no producer it is an inventory and
-always exits 0; with `--ours` it gates an equal count.
+Our producer (`strict-ooxml-convert --example djvu_links`) prints how many
+hyperlinks a DjVu file converts to; the oracle counts `maparea` annotations.
+With `--ours` the driver gates an equal count; without it, it only inventories
+(useful while the corpus carries no annotations).
 
 `djvused` needs a page selected before `print-ant`, so the driver reads the page
 count with `... -e n` and chains `select P; print-ant` for every page in one
-call. The CC0 validation corpus carries no `ANTa`/`ANTz` at all, so its oracle
-total is 0; SC-D9 can only be exercised on a synthetic annotated fixture.
+call. The CC0 validation corpus carries no `ANTa`/`ANTz` at all, so SC-D9 is
+exercised on a synthetic fixture (`xtool/djvu-annotate-fixture.py`).
 
 `djvused` is GPL, invoked as a separate process only.
 
 Usage:
     python3 xtool/djvu-ant-oracle.py --corpus DIR --oracle /usr/bin/djvused \\
-        --report out.json [--ours PRODUCER] [--resume]
+        --report out.json [--ours target/release/examples/djvu_links] [--resume]
 """
 from __future__ import annotations
 

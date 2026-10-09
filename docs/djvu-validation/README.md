@@ -103,8 +103,9 @@ image codecs перечислены в [руководстве](../DJVU_IMPORT.m
 `djvu-oracle` (schedule) ставит закреплённый `djvulibre-bin`, тянет корпус по
 манифесту и кладёт свидетельства в артефакт `djvu-oracle`.
 
-Что ещё открыто в этих драйверах: ant — инвентарь, пока отображение аннотаций
-не реализовано (SC-D9).
+Что ещё открыто вне этих драйверов: внутренние page-ссылки `maparea` (нужны
+закладки), `NAVM`-оглавление, metadata/XMP и сегментация фигур — остаются
+требованиями полного этапа 9.
 
 ## Первая проверка против DjVuLibre (2026-10-09)
 
@@ -119,7 +120,7 @@ WSL; драйверы прогнаны на реальных файлах кор
 | render (SC-D7) | точное совпадение (`max=0`) на битональных страницах `keraleeya` 5/7/10 и `PlaysHistories` 1; IW44 — измеренный regression floor ([iw44-tolerance.json](iw44-tolerance.json) по [render-sample.json](render-sample.json): mean ≤ 2.0, PSNR ≥ 30 dB) |
 | rotate (SC-D14) | синтетические 90/180/270 (`xtool/djvu-rotate-fixture.py`): зоны совпали с unrotated `djvutxt`, картинка — с повёрнутым `ddjvu`, точно |
 | text (SC-D4) | 3/3 совпали |
-| ant (SC-D9) | инвентарь; в корпусе **нет** `ANTa`/`ANTz`, oracle total = 0 |
+| ant (SC-D9) | гейт на синтетической фикстуре: 1 `maparea` URL → 1 `w:hyperlink` (в корпусе аннотаций нет) |
 
 Проверка уточнила форматы и исправила драйверы: `djvutxt --detail=word` печатает
 `xmin ymin xmax ymax` (начало внизу-слева), а не `x y w h`; `djvmcvt -i` требует
@@ -144,5 +145,5 @@ cargo +1.92.0 run -p strict-ooxml-djvu --features djvu-image --example codec_pro
 # Optional --foreground removes only background chunks; compare with ddjvu -mode=foreground.
 ```
 
-Striped Smmr remains unsupported. This extension does not close annotations,
-bookmarks, region OCR, native-zone rotation or the other open Stage 9 criteria.
+Striped Smmr remains unsupported. This extension does not close bookmarks,
+region OCR or the other open Stage 9 criteria.

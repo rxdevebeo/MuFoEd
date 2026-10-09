@@ -543,6 +543,7 @@ jobs:
           cargo build --release --locked -p strict-ooxml-cli
           cargo build --release --locked -p strict-ooxml-djvu --example corpus --example zones
           cargo build --release --locked -p strict-ooxml-djvu --features djvu-image --example codec_probe
+          cargo build --release --locked -p strict-ooxml-convert --features djvu --example djvu_links
       - name: Driver self-test (no oracle needed)
         run: python3 xtool/djvu-oracle-selftest.py
       - name: Run the oracle drivers
@@ -587,9 +588,16 @@ jobs:
             --oracle /usr/bin/djvutxt --report "$OUT/zone-rotated.json"
           python3 xtool/djvu-render-oracle.py --corpus "$OUT/rotated-render" --ours "$PROBE" \
             --oracle /usr/bin/ddjvu --report "$OUT/render-rotated.json" --pages 1
-          # SC-D9: the annotation/hyperlink gap, measured until the mapping lands.
-          python3 xtool/djvu-ant-oracle.py --corpus "$CORPUS" \
-            --oracle /usr/bin/djvused --report "$OUT/ant-oracle.json"
+          # SC-D9: every maparea URL becomes a w:hyperlink. The corpus has no
+          # annotations, so the fixture is synthesized with djvused.
+          mkdir -p "$OUT/annotated"
+          python3 xtool/djvu-annotate-fixture.py \
+            --input "$CORPUS/Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu" \
+            --out "$OUT/annotated/link.djvu" --djvused /usr/bin/djvused \
+            --url https://example.invalid/djvu-link
+          python3 xtool/djvu-ant-oracle.py --corpus "$OUT/annotated" \
+            --oracle /usr/bin/djvused --ours target/release/examples/djvu_links \
+            --report "$OUT/ant-oracle.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

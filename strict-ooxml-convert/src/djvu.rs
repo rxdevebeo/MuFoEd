@@ -1,9 +1,11 @@
 //! Map native DjVu zones; do not invent PDF glyphs or run PDF structure inference.
 use crate::{to_twips, ConversionReport, ConvertError, Converted, Mode, Severity};
-use strict_ooxml_djvu::{DjvuDocument, DjvuPage, TextLayer, TextZone, ZoneKind};
+use strict_ooxml_djvu::{
+    Annotation, AnnotationTarget, DjvuDocument, DjvuPage, Rect, TextLayer, TextZone, ZoneKind,
+};
 use strict_ooxml_wml::model::{
     block::{Block, Paragraph},
-    inline::{Inline, Run, RunContent, TextNode},
+    inline::{Hyperlink, Inline, Run, RunContent, TextNode},
     props::{
         PageMargins, PageSize, ParagraphProperties, RunProperties, Section, SectionProperties,
     },
@@ -104,6 +106,13 @@ pub fn convert_djvu(
                 report.lines += count_lines(root);
                 report.record("djvu.box-font",Severity::Inferred,"font size is estimated from a zone's box height; original font and emphasis are unknown");
                 report.record("djvu.graphics",Severity::Inferred,"native text zones are retained; drawings outside the zones are not segmented from the page image");
+                // SC-D9: a `maparea` URL becomes a hyperlink on the text it covers.
+                let links: Vec<&Annotation> = page
+                    .annotations
+                    .iter()
+                    .filter(|a| matches!(a.target, AnnotationTarget::Url(_)))
+                    .collect();
+                let mut mapped = vec![false; links.len()];
                 let mut previous = None;
                 for z in zones {
                     let mut p = paragraph(&normalize(&z.text));
@@ -128,7 +137,30 @@ pub fn convert_djvu(
                         previous = Some(baseline);
                         report.record("djvu.visual-placement",Severity::Inferred,"line boxes estimate leading; glyph positions and original typography are unavailable");
                     }
+                    if let Some(index) = links.iter().enumerate().position(|(index, a)| {
+                        !mapped.get(index).copied().unwrap_or(true) && covers(a.rect, z.rect)
+                    }) {
+                        if let Some(AnnotationTarget::Url(url)) =
+                            links.get(index).map(|a| &a.target)
+                        {
+                            wrap_hyperlink(&mut p, url);
+                            if let Some(slot) = mapped.get_mut(index) {
+                                *slot = true;
+                            }
+                        }
+                    }
                     document.body.blocks.push(Block::Paragraph(p));
+                }
+                for (index, annotation) in links.iter().enumerate() {
+                    if mapped.get(index).copied().unwrap_or(false) {
+                        report.record(
+                            "djvu.annotation.link",
+                            Severity::Inferred,
+                            format!("page {}: maparea URL became a hyperlink", page.number),
+                        );
+                    } else if let AnnotationTarget::Url(url) = &annotation.target {
+                        report.record("djvu.annotation.unmatched",Severity::Lost,format!("page {}: maparea URL {url:?} covers no text zone and is not a hyperlink",page.number));
+                    }
                 }
             }
             TextLayer::Unusable { text, reason } => {
@@ -168,6 +200,13 @@ pub fn convert_djvu(
         }
         if first == document.body.blocks.len() {
             document.body.blocks.push(Block::Paragraph(paragraph("")));
+        }
+        // SC-D9 covers URL mapareas; an internal page link needs a bookmark on
+        // the target page and is reported, not dropped silently.
+        for annotation in &page.annotations {
+            if let AnnotationTarget::Page(target) = &annotation.target {
+                report.record("djvu.annotation.page-link",Severity::Lost,format!("page {}: internal maparea link to page {target} is not mapped to a bookmark",page.number));
+            }
         }
         let properties = section(page);
         // Each source page ends its own WML section; the final one is the body sectPr.
@@ -431,6 +470,31 @@ fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
         }),
         location,
     })
+}
+
+/// Whether a zone's centre falls inside a `maparea` rectangle.
+///
+/// A maparea is an image-map hotspot; the text it means is the text under it, so
+/// the zone centre is the test. Both rectangles are in the same point system.
+fn covers(area: Rect, zone: Rect) -> bool {
+    let cx = zone.x + zone.width / 2.0;
+    let cy = zone.y + zone.height / 2.0;
+    cx >= area.x && cx <= area.x + area.width && cy >= area.y && cy <= area.y + area.height
+}
+
+/// Wraps a paragraph's inlines in an external hyperlink.
+fn wrap_hyperlink(paragraph: &mut Paragraph, url: &str) {
+    let inlines = std::mem::take(&mut paragraph.inlines);
+    paragraph.inlines = vec![Inline::Hyperlink(Hyperlink {
+        rel_id: None,
+        target: Some(std::sync::Arc::from(url)),
+        anchor: None,
+        tooltip: None,
+        history: false,
+        tgt_frame: None,
+        inlines,
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    })];
 }
 
 // A paragraph's total box height is not its font size. Prefer word boxes,

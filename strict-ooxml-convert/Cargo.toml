@@ -65,3 +65,7 @@ all-features = true
 [[example]]
 name = "djvu_corpus"
 required-features = ["djvu"]
+
+[[example]]
+name = "djvu_links"
+required-features = ["djvu"]

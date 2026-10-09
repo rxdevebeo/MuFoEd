@@ -9,6 +9,7 @@
     clippy::too_many_lines, clippy::items_after_statements,
     clippy::doc_markdown
 )]
+mod annotations;
 mod container;
 mod document;
 #[cfg(feature = "djvu-image")]
@@ -16,6 +17,7 @@ mod image;
 #[cfg(feature = "djvu-image")]
 pub use image::PageImage;
 mod text;
+pub use annotations::{Annotation, AnnotationTarget};
 pub use container::Chunk;
 pub use document::{DjvuDocument, DjvuPage, PageInfo};
 pub use text::{Rect, TextLayer, TextZone, ZoneKind};

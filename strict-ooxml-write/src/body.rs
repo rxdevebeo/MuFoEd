@@ -172,12 +172,18 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
         Inline::Hyperlink(link) => {
             xml.start("w:hyperlink");
             // The parsed id belongs to the source package; this write emits its
-            // own, and the map is empty when there is no source to ask.
-            if let Some(id) = link
+            // own, and the map is empty when there is no source to ask. A
+            // generated link carries its URL in `target` instead.
+            let id = link
                 .rel_id
                 .as_ref()
                 .and_then(|id| ctx.hyperlink_rel(id.as_str()))
-            {
+                .or_else(|| {
+                    link.target
+                        .as_deref()
+                        .and_then(|target| ctx.hyperlink_rel(target))
+                });
+            if let Some(id) = id {
                 xml.attr("r:id", id);
             }
             xml.attr_w_opt("anchor", link.anchor.as_deref());

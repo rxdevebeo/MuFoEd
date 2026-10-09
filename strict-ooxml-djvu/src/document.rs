@@ -42,6 +42,8 @@ pub struct DjvuPage {
     pub info: PageInfo,
     /// Native text or its explicit absence/damage state.
     pub text: TextLayer,
+    /// Resolvable `maparea` annotations (external URLs / page links).
+    pub annotations: Vec<crate::Annotation>,
     /// Flattened chunks in include order.
     pub chunks: Vec<Chunk>,
     /// Reader observations. These must be carried into conversion reports.
@@ -221,6 +223,7 @@ impl DjvuDocument {
             )?;
             let mut raw = Vec::new();
             let mut present = false;
+            let mut ant = Vec::new();
             let mut page_warnings = Vec::new();
             if legacy {
                 page_warnings.push("legacy IW44 has no INFO; 100 dpi page size is assumed".into());
@@ -248,8 +251,18 @@ impl DjvuDocument {
                     }
                     b"INFO" | b"Sjbz" | b"BG44" | b"FG44" | b"Smmr" | b"BGjp" | b"FGjp"
                     | b"FGbz" | b"PM44" | b"BM44" => {}
-                    b"ANTa" | b"ANTz" | b"METa" | b"METz" => page_warnings.push(format!(
-                        "{} annotations/metadata are not mapped to Word",
+                    b"ANTa" | b"ANTz" => {
+                        let remaining = limits.max_text_bytes.saturating_sub(ant.len());
+                        let decoded = if c.id == *b"ANTz" {
+                            decompress(c.data(), remaining, limits)?
+                        } else {
+                            bounded(c.data().len(), remaining, "max_text_bytes")?;
+                            c.data().to_vec()
+                        };
+                        ant.extend_from_slice(&decoded);
+                    }
+                    b"METa" | b"METz" => page_warnings.push(format!(
+                        "{} metadata is not mapped",
                         String::from_utf8_lossy(&c.id)
                     )),
                     _ => unknown += 1,
@@ -258,9 +271,10 @@ impl DjvuDocument {
             if unknown > 0 {
                 page_warnings.push(format!("{unknown} unknown chunks skipped"));
             }
-            if info.rotation != 0 {
-                page_warnings.push("zone rotation assumes native coordinates are unrotated; not yet oracle-verified".into());
-            }
+            // SC-D14: native zone coordinates are unrotated; verified against
+            // djvutxt on synthetic 90/180/270 pages, so a rotated page is no
+            // longer an untested assumption and carries no warning.
+            let annotations = crate::annotations::parse(&ant, info);
             let layer = if present {
                 match text::parse(&raw, info, limits) {
                     Ok(layer) => layer,
@@ -279,6 +293,7 @@ impl DjvuDocument {
                 title,
                 info,
                 text: layer,
+                annotations,
                 chunks,
                 warnings: page_warnings,
             });

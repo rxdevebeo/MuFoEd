@@ -668,10 +668,13 @@ pub fn write_package(
         })
         .unwrap_or_default();
 
-    // Hyperlinks: the target only exists in the source package.
+    // Hyperlinks: a parsed link's target lives in the source package; a
+    // generated link carries its URL in `target` and gets a fresh external
+    // relationship here.
     let main = PartId::new(MAIN_DOCUMENT);
     let mut hyperlink_map: BTreeMap<String, String> = BTreeMap::new();
-    for old_id in collect_hyperlink_ids(&document.body.blocks) {
+    let (hyperlink_ids, hyperlink_targets) = collect_hyperlinks(&document.body.blocks);
+    for old_id in hyperlink_ids {
         match source.relationship(&main, &old_id) {
             Some(info) => {
                 let id = rels.add(&info.rel_type, info.target, info.external);
@@ -683,6 +686,10 @@ pub fn write_package(
                 &strict_ooxml_core::error::SourceLocation::unknown(),
             ),
         }
+    }
+    for target in hyperlink_targets {
+        let id = rels.add(&RelType::Hyperlink, target.clone(), true);
+        hyperlink_map.insert(target, id);
     }
 
     // W7: the parts this project does not model - a chart, a SmartArt diagram, a
@@ -1333,11 +1340,18 @@ fn binary_content_type(name: &str) -> &'static str {
     }
 }
 
-/// Collects the relationship ids of every hyperlink in the body, in order.
-fn collect_hyperlink_ids(blocks: &[Block]) -> Vec<String> {
-    let mut out = UniqueIds::default();
-    collect_hyperlink_ids_in(blocks, &mut out);
-    out.into_vec()
+/// The relationship ids and external targets of every hyperlink, in order.
+fn collect_hyperlinks(blocks: &[Block]) -> (Vec<String>, Vec<String>) {
+    let mut refs = HyperlinkRefs::default();
+    collect_hyperlinks_in(blocks, &mut refs);
+    (refs.ids.into_vec(), refs.targets.into_vec())
+}
+
+/// The hyperlink ids and targets found while walking the body.
+#[derive(Default)]
+struct HyperlinkRefs {
+    ids: UniqueIds,
+    targets: UniqueIds,
 }
 
 /// Strings in first-seen order without repeats, in O(1) per insert.
@@ -1364,47 +1378,49 @@ impl UniqueIds {
     }
 }
 
-fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut UniqueIds) {
+fn collect_hyperlinks_in(blocks: &[Block], refs: &mut HyperlinkRefs) {
     for block in blocks {
         match block {
-            Block::Paragraph(paragraph) => collect_hyperlink_ids_inline(&paragraph.inlines, out),
+            Block::Paragraph(paragraph) => collect_hyperlinks_inline(&paragraph.inlines, refs),
             Block::Table(table) => {
                 for row in &table.rows {
                     for cell in &row.cells {
-                        collect_hyperlink_ids_in(&cell.blocks, out);
+                        collect_hyperlinks_in(&cell.blocks, refs);
                     }
                 }
             }
             Block::SdtBlock(sdt) => {
-                collect_hyperlink_ids_in(&sdt.blocks, out);
-                collect_hyperlink_ids_inline(&sdt.inlines, out);
+                collect_hyperlinks_in(&sdt.blocks, refs);
+                collect_hyperlinks_inline(&sdt.inlines, refs);
             }
             _ => {}
         }
     }
 }
 
-fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
+fn collect_hyperlinks_inline(inlines: &[Inline], refs: &mut HyperlinkRefs) {
     for inline in inlines {
         match inline {
             Inline::Hyperlink(link) => {
                 if let Some(id) = &link.rel_id {
-                    let id = id.as_str().to_owned();
-                    out.insert(id);
+                    refs.ids.insert(id.as_str().to_owned());
                 }
-                collect_hyperlink_ids_inline(&link.inlines, out);
+                if let Some(target) = &link.target {
+                    refs.targets.insert(target.to_string());
+                }
+                collect_hyperlinks_inline(&link.inlines, refs);
             }
-            Inline::Field(field) => collect_hyperlink_ids_inline(&field.inlines, out),
+            Inline::Field(field) => collect_hyperlinks_inline(&field.inlines, refs),
             Inline::SdtInline(sdt) => {
-                collect_hyperlink_ids_in(&sdt.blocks, out);
-                collect_hyperlink_ids_inline(&sdt.inlines, out);
+                collect_hyperlinks_in(&sdt.blocks, refs);
+                collect_hyperlinks_inline(&sdt.inlines, refs);
             }
-            Inline::Directional(dir) => collect_hyperlink_ids_inline(&dir.inlines, out),
-            Inline::Drawing(drawing) => collect_hyperlink_ids_drawing(drawing, out),
+            Inline::Directional(dir) => collect_hyperlinks_inline(&dir.inlines, refs),
+            Inline::Drawing(drawing) => collect_hyperlinks_drawing(drawing, refs),
             Inline::Run(run) => {
                 for content in &run.content {
                     if let RunContent::Drawing(drawing) = content {
-                        collect_hyperlink_ids_drawing(drawing, out);
+                        collect_hyperlinks_drawing(drawing, refs);
                     }
                 }
             }
@@ -1413,25 +1429,25 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
     }
 }
 
-fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut UniqueIds) {
+fn collect_hyperlinks_drawing(drawing: &Drawing, refs: &mut HyperlinkRefs) {
     let graphic = match &drawing.kind {
         DrawingKind::Inline(inline) => inline.graphic.as_ref(),
         DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
         DrawingKind::Opaque(_) => return,
     };
-    collect_hyperlink_ids_graphic(graphic, out);
+    collect_hyperlinks_graphic(graphic, refs);
 }
 
-fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut UniqueIds) {
+fn collect_hyperlinks_graphic(graphic: &Graphic, refs: &mut HyperlinkRefs) {
     match graphic {
         Graphic::Shape(shape) => {
             if let Some(text) = &shape.text {
-                collect_hyperlink_ids_in(&text.blocks, out);
+                collect_hyperlinks_in(&text.blocks, refs);
             }
         }
         Graphic::Group(group) => {
             for child in &group.children {
-                collect_hyperlink_ids_graphic(child, out);
+                collect_hyperlinks_graphic(child, refs);
             }
         }
         Graphic::None

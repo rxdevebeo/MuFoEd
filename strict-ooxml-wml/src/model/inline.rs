@@ -124,6 +124,13 @@ pub struct Run {
 pub struct Hyperlink {
     /// Relationship id (`r:id`), for external/internal targets.
     pub rel_id: Option<RelId>,
+    /// External target URL, for a link a converter generates.
+    ///
+    /// In a parsed document the URL lives in the source package's `.rels` and
+    /// only `rel_id` is set. A generated document has no such package, so the
+    /// converter sets this instead and the writer allocates an external
+    /// hyperlink relationship for it.
+    pub target: Option<Arc<str>>,
     /// Document anchor (`w:anchor`).
     pub anchor: Option<Arc<str>>,
     /// Tooltip (`w:tooltip`).
