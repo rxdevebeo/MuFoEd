@@ -755,8 +755,17 @@ substitute face), 032/087/099 (extra ink). Владелец конкретной
 100/100; Strict XSD 100/100 без нарушений; OPC 100 пакетов без нарушений;
 pagination **62 → 65/100**; pixels **3 → 6/100 документов** и **6 → 22/458
 страниц**, регрессий 0. RTF tests: structure 37 + import 36 + 1 doc-test.
-Остаточный разрыв — общий ~1pt baseline/leading offset (shared P5 metrics),
-rasterizer glyph-ink (row correlation) и documented WPS-квирк leading spaces;
-это не пропущенный RTF-mapping, а shared-metrics/exact-faces работа.
+
+Остаток после этих фиксов разобран дальше: доминирующий симптом
+`row_correlation` — это не вертикальный pitch, а **advance-driven reflow**.
+Свидетель 013 page 2: WPS укладывает `…тоже их получат.` до правого поля
+(x1=522.9), а наши Arimo-advances переносят `получат.` на следующую строку
+(x1=474.4), сдвигая весь остаток страницы на строку. RTF-шрифт `Helvetica`
+(`fcharset0`), WPS подставляет кириллическое лицо с другими advances. Это предел
+substitute-face fidelity (RC02/RC03), а не пропущенный RTF-mapping. Вторично:
+общий ~1pt baseline/leading offset (shared P5 metrics) и WPS-квирк leading
+spaces. Т.е. RTF-mapping часть RC04 закрыта; остаточный pixel-gap лежит в
+RC02/RC03 (exact faces) и P5 (baseline).
+
 
 

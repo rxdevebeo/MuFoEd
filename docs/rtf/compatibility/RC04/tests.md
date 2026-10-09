@@ -101,11 +101,18 @@ that the paragraph mark carries in the source rather than inventing a default.
 
 ## Not yet closed
 
-- Residual corpus pixels: the remaining `line_metrics` pages fail on a shared
-  ~1pt baseline/leading offset (P5 metrics) and rasterizer glyph-ink (row-ink
-  correlation), plus a WPS quirk where leading spaces advance by ~0.5em while
-  internal spaces match our Arimo/real advance (013 witness). None of these is a
-  missing RTF mapping; they need the shared metrics queue and exact faces.
+- Residual corpus pixels: the three fixes matched pitch and paragraph geometry
+  but the remaining `line_metrics`/`row_correlation` pages are dominated by
+  **advance-driven reflow**, not vertical pitch. Witness: 013 page 2 line 1 —
+  WPS fits `…тоже их получат.` to the right margin (x1=522.9), while our Arimo
+  advances push `получат.` to the next line (x1=474.4), shifting the rest of the
+  page by one line and collapsing the row-ink correlation. The RTF font is
+  `Helvetica` (`fcharset0`); WPS substitutes a Cyrillic-capable face whose
+  advances differ from the bundled Arimo. This is a substitute-face fidelity
+  limit (RC02/RC03), not a missing RTF mapping.
+- Remaining secondary effects: a shared ~1pt baseline/leading offset (P5 metrics)
+  and a WPS quirk where leading spaces advance by ~0.5em while internal spaces
+  match our real advance (013 witness).
 - Independent effective-style facts from the WPS reference index for the full
   corpus cascade remain open; the 019/039 probes are provisional.
 

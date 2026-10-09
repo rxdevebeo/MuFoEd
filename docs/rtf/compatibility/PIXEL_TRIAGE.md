@@ -12,7 +12,10 @@ a minimal fixture confirms it.
 > pixel-Pass (from 3/100, 6/423), pagination 65/100, with 0 regressions. See
 > [RC04/tests.md](RC04/tests.md) and the receipts `target/rtf-import/RC04-parmark-*`.
 > The per-class counts below describe the original receipt and are kept as the
-> triage baseline.
+> triage baseline. A follow-up witness (013 page 2) shows the residual
+> `row_correlation` failures are **advance-driven reflow** from substitute-face
+> advance differences, not vertical pitch: the symptom class is named after the
+> violated bound, not the horizontal mechanism that caused it.
 
 Reproduced from the fresh per-page receipt (the first pixel run that carries a
 per-page SSIM + structural measurement), joined to the pagination receipt it was
