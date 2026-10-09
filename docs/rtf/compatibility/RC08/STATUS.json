@@ -6,11 +6,11 @@
   "base_commit": "31188b6",
   "dependencies": ["RC01", "RC04"],
   "implemented": [
-    "per-section headers survive the WPS \\sectd\\sect ordering: the reset is deferred past the following \\sect, so a section commits the header/footer and geometry it accumulated instead of losing them; 072 now writes 40 header references (was 1) and the header renders on every section's pages"
+    "per-section headers survive the WPS \\sectd\\sect ordering: the reset is deferred past the following \\sect, so a section commits the header/footer and geometry it accumulated instead of losing them; 072 now writes 40 header references (was 1) and the header renders on every section's pages",
+    "\\chpgn and \\sectnum are kept as dynamic PAGE/SECTION fields instead of unknown controls; the renderer's page-dependent field pass computes them, so 072's headers read 'Ruth (Page 2)' (was 'Ruth (Page )'); 072 import losses 42 -> 2"
   ],
   "remaining": [
     "072 is still +34 pages (638 vs 604). The body line pitch now matches the reference (16.1pt = Arimo 1.15em x \\sl280/240). The residual is the gap between adjacent heading paragraphs: WPS adds w:before + w:after (line + 18 + 18) while the renderer uses max(pending_after, space_before) (line + 18). A naive max->sum change regressed the calibrated 06-strict-math-display SVG extent and matches_wps_references, so it was reverted; the reconciliation needs w:contextualSpacing (ignored today) and belongs to the shared P5 metrics/layout queue",
-    "\\chpgn (chapter page number field, 40 occurrences in 072 headers) is still an explicit Loss, so the header text reads 'Ruth (Page )' rather than 'Ruth (Page 2)'",
     "first/even/odd header regions, note placement/numbering, multi-paragraph/nested fields and custom marks are unreviewed"
   ],
   "blocked": [],
@@ -24,13 +24,21 @@
         "all 40 corpus header parts of 072 are referenced (headerReference count 1 -> 40)"
       ]
     },
+    "dynamic_page_fields": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::chapter_page_number_becomes_a_page_field",
+      "assertions": [
+        "\\chpgn becomes a PAGE field, \\sectnum a SECTION field",
+        "072 header renders 'Ruth (Page 2)' after the renderer's field pass"
+      ]
+    },
     "corpus_gates": {
       "status": "Measured",
       "date": "2026-10-09",
       "receipts": [
-        "target/rtf-import/RC08-sections-corpus/results.json",
-        "target/rtf-import/RC08-sections-visual/results.json",
-        "target/rtf-import/RC08-sections-pixels/results.json"
+        "target/rtf-import/RC08-fields-corpus/results.json",
+        "target/rtf-import/RC08-fields-visual/results.json",
+        "target/rtf-import/RC08-fields-pixels/results.json"
       ],
       "results": {
         "import_text_resource": "100/100 Pass",

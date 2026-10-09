@@ -37,6 +37,15 @@ the unknown-family wildcard resolved Verdana to Carlito (`1.222em`). Mapping the
 common sans families (`Verdana`, `Tahoma`, `Helvetica Neue`) to Arimo brings the
 pitch to 16.1pt and the page count from 641 to 638.
 
+## Chapter page numbers as dynamic fields (2026-10-09)
+
+The header text `Ruth (Page \chpgn)` lost the number because `\chpgn` (and
+`\sectnum`) fell through to the unknown-control Loss. They are now emitted as a
+`PAGE` / `SECTION` field with no cached result; the renderer's page-dependent
+field pass (AUD-70) computes the value for headers. 072's header now reads
+`Ruth (Page 2)`, and its import losses drop from 42 to 2.
+`structure.rs::chapter_page_number_becomes_a_page_field` pins the mapping.
+
 ## Not yet closed
 
 - 072 is still `+34` pages (638 vs 604). Body pages now match line-for-line. The
@@ -51,8 +60,5 @@ pitch to 16.1pt and the page count from 641 to 638.
   Implementing `w:contextualSpacing` (currently ignored by the renderer) is the
   prerequisite; it belongs to the shared P5 metrics/layout queue, not RTF
   mapping.
-- `\chpgn` is an explicit Loss, so the header reads `Ruth (Page )` instead of
-  `Ruth (Page 2)`. Per the plan, a dynamic field must be recomputed by an
-  explicit renderer function, not faked at import.
 - First/even/odd regions, note placement/numbering, multi-paragraph fields and
   custom marks are unreviewed.
