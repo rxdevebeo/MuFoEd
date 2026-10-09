@@ -25,7 +25,7 @@
   ],
   "remaining": [
     "normalize absent-vs-default in the resolved diff (remaining diffs are explicit-defaults-vs-inherited, not effective mismatches)",
-    "residual corpus pixels: 6/100 documents and 22/458 pages pass after the 2026-10-09 geometry fixes (from 3/100, 6/423). The remaining line_metrics/row_correlation pages are dominated by advance-driven reflow from substitute-face advance differences (witness 013 page 2: 'получат.' wraps early), a shared ~1pt baseline/leading offset (P5 metrics) and a documented WPS leading-space advance quirk; these need exact faces and the shared metrics queue, not a new RTF mapping"
+    "residual corpus pixels: 6/100 documents and 22/458 pages pass after the 2026-10-09 geometry fixes (from 3/100, 6/423). The remaining line_metrics/row_correlation pages are dominated by advance-driven reflow from substitute-face advance differences (witness 013 page 2: 'получат.' wraps early while the vertical profile matches, top/bottom +0/+1, shift 0), plus a documented WPS leading-whitespace advance difference (013 page 1); these need exact faces, not a new RTF mapping"
   ],
   "blocked": [
     {

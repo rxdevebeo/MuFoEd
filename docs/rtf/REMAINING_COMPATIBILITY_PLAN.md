@@ -760,12 +760,14 @@ pagination **62 → 65/100**; pixels **3 → 6/100 документов** и **6
 `row_correlation` — это не вертикальный pitch, а **advance-driven reflow**.
 Свидетель 013 page 2: WPS укладывает `…тоже их получат.` до правого поля
 (x1=522.9), а наши Arimo-advances переносят `получат.` на следующую строку
-(x1=474.4), сдвигая весь остаток страницы на строку. RTF-шрифт `Helvetica`
-(`fcharset0`), WPS подставляет кириллическое лицо с другими advances. Это предел
-substitute-face fidelity (RC02/RC03), а не пропущенный RTF-mapping. Вторично:
-общий ~1pt baseline/leading offset (shared P5 metrics) и WPS-квирк leading
-spaces. Т.е. RTF-mapping часть RC04 закрыта; остаточный pixel-gap лежит в
-RC02/RC03 (exact faces) и P5 (baseline).
+(x1=474.4), сдвигая весь остаток страницы на строку. Пиксельный компаратор
+подтверждает, что вертикальный профиль в норме (`top +1px, bottom +0px, shift
+(0,0)`), т.е. симптом назван по нарушенной границе, а не по горизонтальной
+причине. RTF-шрифт `Helvetica` (`fcharset0`), WPS подставляет кириллическое лицо
+с другими advances. Это предел substitute-face fidelity (RC02/RC03), а не
+пропущенный RTF-mapping. Отдельно — WPS-квирк leading-whitespace (013 page 1).
+Т.е. RTF-mapping часть RC04 закрыта; остаточный pixel-gap лежит в RC02/RC03
+(exact faces).
 
 
 

@@ -106,13 +106,14 @@ that the paragraph mark carries in the source rather than inventing a default.
   **advance-driven reflow**, not vertical pitch. Witness: 013 page 2 line 1 —
   WPS fits `…тоже их получат.` to the right margin (x1=522.9), while our Arimo
   advances push `получат.` to the next line (x1=474.4), shifting the rest of the
-  page by one line and collapsing the row-ink correlation. The RTF font is
-  `Helvetica` (`fcharset0`); WPS substitutes a Cyrillic-capable face whose
+  page by one line and collapsing the row-ink correlation. The pixel comparator
+  confirms the vertical profile is intact (`top +1px, bottom +0px, shift (0,0)`),
+  so the row-correlation symptom is the reflow, not a baseline bug. The RTF font
+  is `Helvetica` (`fcharset0`); WPS substitutes a Cyrillic-capable face whose
   advances differ from the bundled Arimo. This is a substitute-face fidelity
   limit (RC02/RC03), not a missing RTF mapping.
-- Remaining secondary effects: a shared ~1pt baseline/leading offset (P5 metrics)
-  and a WPS quirk where leading spaces advance by ~0.5em while internal spaces
-  match our real advance (013 witness).
+- A WPS quirk where leading whitespace advances differently from internal spaces
+  (013 page 1: `horizontal centroid -5.52px`, all vertical bounds zero).
 - Independent effective-style facts from the WPS reference index for the full
   corpus cascade remain open; the 019/039 probes are provisional.
 
