@@ -477,10 +477,12 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
                     for node in box.iter()
                     if isinstance(node.tag, str) and etree.QName(node).localname == "t"
                 )
-                chunks.append(f"text={text}")
+                if text:
+                    chunks.append(f"text={text}")
             for node in element.iter():
                 if isinstance(node.tag, str) and etree.QName(node).localname == "textpath":
-                    chunks.append(f"text={node.get('string', '')}")
+                    if node.get("string"):
+                        chunks.append(f"text={node.get('string')}")
             return
         # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
         pct = any(
