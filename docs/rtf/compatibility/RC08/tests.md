@@ -82,7 +82,19 @@ Consequences:
 the natural place to encode same-style suppression if a future witness needs it,
 but it does not change the two witnesses above (neither uses it).
 
-### Other open items
+## Bookmarks (2026-10-09)
 
-- First/even/odd regions, note placement/numbering, multi-paragraph fields and
+`{\*\bkmkstart Name}` / `{\*\bkmkend Name}` fell through to the
+`destination:bkmkstart`/`bkmkend` Loss (616 occurrences across 7 corpus docs), so
+every named anchor a hyperlink or `REF` field targets was lost. They now become
+`Inline::BookmarkStart`/`BookmarkEnd` with a shared decimal `w:id` (assigned per
+name) and the `w:name` taken from the destination text.
+`structure.rs::bookmarks_become_paired_start_and_end_inlines` pins the pairing;
+014 writes 8 start/end pairs. Bookmarks are zero-width, so pagination (65/100)
+and pixels (6/100, 22/458) are unchanged.
+
+## Other open items
+
+- Columns (`\cols`/`\colno`/`\column`, 2 corpus docs) and first/even/odd
+  header/footer regions, note placement/numbering, multi-paragraph fields and
   custom marks are unreviewed.

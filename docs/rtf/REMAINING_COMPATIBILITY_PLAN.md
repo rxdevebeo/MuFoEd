@@ -809,6 +809,14 @@ PAGE/SECTION fields (заголовок 072 читается `Ruth (Page 2)`), �
 не влияет. Gates после среза: text/resource 100/100, XSD/OPC 0 нарушений,
 pagination 65/100, pixels 6/100 и 22/458 без регрессий.
 
+Далее закрыт ещё один content-loss: bookmarks
+`{\*\bkmkstart Name}`/`{\*\bkmkend Name}` (616 вхождений в 7 документах, ранее
+дропались как unknown destination) теперь пишутся как paired
+`w:bookmarkStart`/`w:bookmarkEnd` с общим decimal `w:id` и `w:name`; якоря для
+hyperlink/`REF` сохранены. Zero-width — pagination/pixels не изменились.
+Открыты по RC08: columns (`\cols`/`\colno`/`\column`), first/even/odd regions,
+note placement/numbering и multi-paragraph fields.
+
 
 
 

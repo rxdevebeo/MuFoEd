@@ -7,7 +7,8 @@
   "dependencies": ["RC01", "RC04"],
   "implemented": [
     "per-section headers survive the WPS \\sectd\\sect ordering: the reset is deferred past the following \\sect, so a section commits the header/footer and geometry it accumulated instead of losing them; 072 now writes 40 header references (was 1) and the header renders on every section's pages",
-    "\\chpgn and \\sectnum are kept as dynamic PAGE/SECTION fields instead of unknown controls; the renderer's page-dependent field pass computes them, so 072's headers read 'Ruth (Page 2)' (was 'Ruth (Page )'); 072 import losses 42 -> 2"
+    "\\chpgn and \\sectnum are kept as dynamic PAGE/SECTION fields instead of unknown controls; the renderer's page-dependent field pass computes them, so 072's headers read 'Ruth (Page 2)' (was 'Ruth (Page )'); 072 import losses 42 -> 2",
+    "bookmarks are preserved: {\\*\\bkmkstart Name}/{\\*\\bkmkend Name} become paired w:bookmarkStart/w:bookmarkEnd with a shared decimal w:id and the name (616 occurrences across 7 corpus docs were dropped, losing every anchor a hyperlink or REF field targets)"
   ],
   "remaining": [
     "072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug. Body line pitch matches (16.1pt = Arimo 1.15em x \\sl280/240). The residual is inter-paragraph spacing: measured against the immutable WPS references, the WPS RTF path SUMS before+after (072 heading->heading 38.25pt = sum 36pt) while the WPS DOCX path takes MAX (06-strict-math-display body->Heading2 14.74pt = max 14pt). The renderer's max (paginate.rs) is what the DOCX baseline and the SVG refs require; a max->sum change regressed 06 and was reverted, and inflating w:before at import would misrepresent the document. Recorded as a WPS RTF-path quirk (not imitated, not a support blocker).",
@@ -33,13 +34,22 @@
         "072 header renders 'Ruth (Page 2)' after the renderer's field pass"
       ]
     },
+    "bookmarks": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::bookmarks_become_paired_start_and_end_inlines",
+      "assertions": [
+        "\\bkmkstart/\\bkmkend emit a paired start/end sharing one w:id and carrying the name",
+        "014 now writes 8 bookmarkStart + 8 bookmarkEnd",
+        "bookmarks are zero-width: pagination and pixel receipts are unchanged"
+      ]
+    },
     "corpus_gates": {
       "status": "Measured",
       "date": "2026-10-09",
       "receipts": [
-        "target/rtf-import/RC08-fields-corpus/results.json",
-        "target/rtf-import/RC08-fields-visual/results.json",
-        "target/rtf-import/RC08-fields-pixels/results.json"
+        "target/rtf-import/RC08-bookmarks-corpus/results.json",
+        "target/rtf-import/RC08-bookmarks-visual/results.json",
+        "target/rtf-import/RC08-bookmarks-pixels/results.json"
       ],
       "results": {
         "import_text_resource": "100/100 Pass",
