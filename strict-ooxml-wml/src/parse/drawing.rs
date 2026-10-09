@@ -804,22 +804,7 @@ impl PartParser<'_> {
     ) -> Result<Option<std::sync::Arc<str>>> {
         use strict_ooxml_core::xml::qname::NsUri;
 
-        let mut pieces = vec![Piece::Start(name, attrs)];
-        let mut depth = 1u32;
-        while depth > 0 {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    depth += 1;
-                    pieces.push(Piece::Start(name, attrs));
-                }
-                XmlEvent::EndElement { name } => {
-                    depth -= 1;
-                    pieces.push(Piece::End(name));
-                }
-                XmlEvent::Text(text) | XmlEvent::CData(text) => pieces.push(Piece::Text(text)),
-                XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept fragment")),
-            }
-        }
+        let pieces = self.read_pieces(name, attrs)?;
         let kept = self.drop_extension_ext(&pieces);
         // ADR-0014: nothing outside Strict is written, wherever it sat.
         let foreign = pieces
@@ -908,6 +893,27 @@ impl PartParser<'_> {
             }
         }
         Ok(Some(std::sync::Arc::from(body)))
+    }
+
+    /// The events of the element whose start was just read, through its end.
+    fn read_pieces(&mut self, name: QName, attrs: Vec<Attr>) -> Result<Vec<Piece>> {
+        let mut pieces = vec![Piece::Start(name, attrs)];
+        let mut depth = 1u32;
+        while depth > 0 {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    depth += 1;
+                    pieces.push(Piece::Start(name, attrs));
+                }
+                XmlEvent::EndElement { name } => {
+                    depth -= 1;
+                    pieces.push(Piece::End(name));
+                }
+                XmlEvent::Text(text) | XmlEvent::CData(text) => pieces.push(Piece::Text(text)),
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept fragment")),
+            }
+        }
+        Ok(pieces)
     }
 
     /// Which pieces of a captured fragment are written: every one, except an
