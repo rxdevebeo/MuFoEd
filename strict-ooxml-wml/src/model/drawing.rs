@@ -260,6 +260,9 @@ pub struct GeometryPath {
 pub struct CustomGeometry {
     /// Paths in document order; each keeps its own `w`/`h`.
     pub paths: Vec<GeometryPath>,
+    /// The text rectangle (`a:rect` `l`, `t`, `r`, `b`) as written: a guide
+    /// name or a coordinate. `None` writes `0 0 r b`.
+    pub text_rect: Option<[Arc<str>; 4]>,
 }
 
 /// A shape's geometry (`a:prstGeom`/`a:custGeom`).

@@ -847,10 +847,20 @@ fn custom_geometry(xml: &mut XmlWriter, custom: &CustomGeometry) {
     xml.start("a:cxnLst");
     xml.end();
     xml.start("a:rect");
-    xml.attr("l", "0");
-    xml.attr("t", "0");
-    xml.attr("r", "r");
-    xml.attr("b", "b");
+    match &custom.text_rect {
+        Some([l, t, r, b]) => {
+            xml.attr("l", l);
+            xml.attr("t", t);
+            xml.attr("r", r);
+            xml.attr("b", b);
+        }
+        None => {
+            xml.attr("l", "0");
+            xml.attr("t", "0");
+            xml.attr("r", "r");
+            xml.attr("b", "b");
+        }
+    }
     xml.end();
     xml.start("a:pathLst");
     // AUD-49: one `a:path` per modelled path, each with its own w/h.

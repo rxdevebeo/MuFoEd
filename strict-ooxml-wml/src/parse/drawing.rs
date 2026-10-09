@@ -1369,9 +1369,16 @@ impl PartParser<'_> {
             let mut geometry = CustomGeometry::default();
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pathLst" {
                             parser.parse_path_list(&mut geometry)?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "rect" {
+                            if let [Some(l), Some(t), Some(r), Some(b)] = ["l", "t", "r", "b"]
+                                .map(|side| plain_attr(&attrs, side).map(|v| parser.intern(v)))
+                            {
+                                geometry.text_rect = Some([l, t, r, b]);
+                            }
+                            parser.skip_element()?;
                         } else {
                             parser.skip_element()?;
                         }
