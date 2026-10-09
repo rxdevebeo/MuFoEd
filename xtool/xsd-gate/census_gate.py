@@ -218,6 +218,11 @@ def vanished_elements(
                 continue
             _drop_duplicate_singletons(old)
             _drop_duplicate_singletons(new)
+            # ADR-0014: an Office extension inside `a:extLst` is not written, and
+            # the report names it under `a:ext`. Without that citation the whole
+            # subtree stays inventory.
+            if _is_named(named, "a:ext"):
+                _strip_extension_ext(old)
             # `CT_RPr` allows one `w:rFonts`. A second sibling overrides only the
             # attributes it sets; the comparison uses that same overlay so a
             # repeated value is not a second fact and a slot the writer dropped
@@ -1146,6 +1151,44 @@ _SINGLETON_CHILDREN = {
         "view", "hyphenationZone", "decimalSymbol", "listSeparator",
     },
 }
+
+
+_DRAWINGML = {
+    "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "http://purl.oclc.org/ooxml/drawingml/main",
+}
+
+
+def _strip_extension_ext(root: etree._Element) -> None:
+    """Remove each DrawingML `a:ext` whose content is outside ECMA-376.
+
+    A namespace `NS_PREFIX` does not know (`a14`, `a15`, ...) is an extension.
+    An `a:extLst` left without an `a:ext` goes with them, since the writer does
+    not write an empty list.
+    """
+    known = set(NS_PREFIX) | {"http://www.w3.org/XML/1998/namespace"}
+
+    def foreign(element: etree._Element) -> bool:
+        for node in element.iter():
+            if not isinstance(node.tag, str):
+                continue
+            if etree.QName(node).namespace not in known:
+                return True
+            for key in node.attrib:
+                if key.startswith("{") and key[1:].split("}")[0] not in known:
+                    return True
+        return False
+
+    for ext in list(root.iter(*(f"{{{ns}}}ext" for ns in _DRAWINGML))):
+        parent = ext.getparent()
+        if parent is None or etree.QName(parent).localname != "extLst":
+            continue
+        if foreign(ext):
+            parent.remove(ext)
+            if not any(isinstance(child.tag, str) for child in parent):
+                grand = parent.getparent()
+                if grand is not None:
+                    grand.remove(parent)
 
 
 def _drop_duplicate_singletons(root: etree._Element) -> None:

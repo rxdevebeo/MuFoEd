@@ -105,7 +105,9 @@ behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">
     );
     assert!(xml.contains(r#"<pic:blipFill rotWithShape="1">"#), "{xml}");
     assert!(xml.contains(r#"bright="10000""#), "{xml}");
-    assert!(xml.contains("useLocalDpi"), "{xml}");
+    // ADR-0014: the Office 2010 extension is not written, and its list goes too.
+    assert!(!xml.contains("useLocalDpi"), "{xml}");
+    assert!(!xml.contains("extLst"), "{xml}");
     assert!(xml.contains(r#"prst="rect""#), "{xml}");
     assert!(xml.contains("<a:noFill"), "{xml}");
     // The kept markup parses again and comes back the same.

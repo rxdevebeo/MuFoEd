@@ -795,18 +795,15 @@ impl PartParser<'_> {
     /// markup that declares on its root every namespace it uses, so the writer
     /// can put it back wherever the element sat.
     ///
-    /// `None` when the subtree carries a relationship attribute: an id the
-    /// writer does not re-map would point at nothing (`a14:imgLayer@r:embed`).
+    /// `None` when what is left carries a relationship attribute, which the
+    /// writer would not re-map, or anything outside Strict (ADR-0014).
     fn capture_fragment(
         &mut self,
         name: QName,
         attrs: Vec<Attr>,
     ) -> Result<Option<std::sync::Arc<str>>> {
-        enum Piece {
-            Start(QName, Vec<Attr>),
-            End(QName),
-            Text(String),
-        }
+        use strict_ooxml_core::xml::qname::NsUri;
+
         let mut pieces = vec![Piece::Start(name, attrs)];
         let mut depth = 1u32;
         while depth > 0 {
@@ -823,8 +820,14 @@ impl PartParser<'_> {
                 XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept fragment")),
             }
         }
+        let kept = self.drop_extension_ext(&pieces);
+        // ADR-0014: nothing outside Strict is written, wherever it sat.
+        let foreign = pieces.iter().zip(&kept).any(|(piece, keep)| *keep && piece.is_foreign());
+        if foreign || !kept.first().copied().unwrap_or(false) {
+            return Ok(None);
+        }
         let mut prefixes: Vec<(String, String)> = Vec::new();
-        let mut prefix_of = |ns: Option<&strict_ooxml_core::xml::qname::NsUri>| -> Option<String> {
+        let mut prefix_of = |ns: Option<&NsUri>| -> Option<String> {
             let uri = ns?.as_str();
             if uri == "http://www.w3.org/XML/1998/namespace" {
                 return Some("xml".to_owned());
@@ -839,7 +842,7 @@ impl PartParser<'_> {
         };
         let mut body = String::new();
         let mut root_end = None;
-        for piece in &pieces {
+        for (piece, _) in pieces.iter().zip(&kept).filter(|(_, keep)| **keep) {
             match piece {
                 Piece::Start(name, attrs) => {
                     body.push('<');
@@ -893,6 +896,49 @@ impl PartParser<'_> {
         let at = root_end.unwrap_or(0);
         body.insert_str(at, &declarations);
         Ok(Some(std::sync::Arc::from(body)))
+    }
+
+    /// Which pieces of a captured fragment are written: every one, except an
+    /// `a:ext` whose content is in a namespace outside Strict (`a14:useLocalDpi`,
+    /// `a14:hiddenFill`) - ADR-0014 keeps extensions out of a part this writer
+    /// regenerates - and an `a:extLst` left with no `a:ext`. Each removed
+    /// extension is recorded under `a:ext` with its `uri`.
+    fn drop_extension_ext(&mut self, pieces: &[Piece]) -> Vec<bool> {
+        let mut kept = vec![true; pieces.len()];
+        for (at, piece) in pieces.iter().enumerate() {
+            let Piece::Start(name, attrs) = piece else {
+                continue;
+            };
+            if !kept[at] || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "ext" {
+                continue;
+            }
+            let end = piece_end(pieces, at);
+            if pieces[at..end].iter().any(Piece::is_foreign) {
+                let uri = plain_attr(attrs, "uri").unwrap_or_default().to_owned();
+                kept[at..end].iter_mut().for_each(|keep| *keep = false);
+                self.record(
+                    "a:ext",
+                    SupportStatus::Unsupported,
+                    Some(format!("Office extension {uri} is not Strict and is not written")),
+                    Some(self.location()),
+                );
+            }
+        }
+        for (at, piece) in pieces.iter().enumerate() {
+            let Piece::Start(name, _) = piece else {
+                continue;
+            };
+            if !kept[at] || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "extLst" {
+                continue;
+            }
+            let end = piece_end(pieces, at);
+            let has_child = (at + 1..end)
+                .any(|index| kept[index] && matches!(pieces[index], Piece::Start(..)));
+            if !has_child {
+                kept[at..end].iter_mut().for_each(|keep| *keep = false);
+            }
+        }
+        kept
     }
 
     /// The children of the element whose start was just read, through its end,
@@ -2207,6 +2253,50 @@ fn write_end_markup(out: &mut String, name: &QName) {
 
 fn escape_text_into_markup(out: &mut String, text: &str) {
     let _ = strict_ooxml_core::xml::escape::escape_text_into(out, text);
+}
+
+/// One event of a captured fragment (see `PartParser::capture_fragment`).
+enum Piece {
+    Start(QName, Vec<Attr>),
+    End(QName),
+    Text(String),
+}
+
+impl Piece {
+    /// A start tag in, or carrying an attribute in, a namespace outside Strict.
+    fn is_foreign(&self) -> bool {
+        let strict = |ns: Option<&strict_ooxml_core::xml::qname::NsUri>| {
+            ns.is_none_or(|ns| {
+                ns.as_str().starts_with("http://purl.oclc.org/ooxml/")
+                    || ns == "http://www.w3.org/XML/1998/namespace"
+            })
+        };
+        match self {
+            Self::Start(name, attrs) => {
+                !strict(name.ns.as_ref())
+                    || attrs.iter().any(|attr| !strict(attr.name.ns.as_ref()))
+            }
+            Self::End(_) | Self::Text(_) => false,
+        }
+    }
+}
+
+/// The index one past the end tag that closes the start tag at `at`.
+fn piece_end(pieces: &[Piece], at: usize) -> usize {
+    let mut depth = 0usize;
+    for (index, piece) in pieces.iter().enumerate().skip(at) {
+        match piece {
+            Piece::Start(..) => depth += 1,
+            Piece::End(_) => {
+                depth -= 1;
+                if depth == 0 {
+                    return index + 1;
+                }
+            }
+            Piece::Text(_) => {}
+        }
+    }
+    pieces.len()
 }
 
 /// A DrawingML colour element as markup: its unqualified attributes and its

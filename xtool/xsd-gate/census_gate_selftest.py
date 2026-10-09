@@ -610,6 +610,7 @@ def main() -> int:
     test_p15_bare_on_off_counts()
     test_p15_unsigned_char_space_is_the_signed_pitch()
     test_p15_extension_names_match_whole()
+    test_p15_extension_ext_is_stripped_alone()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -984,6 +985,26 @@ def test_p15_extension_names_match_whole() -> None:
     hits = census_gate.census_hits(registry, signals)
     if hits["counts"]["TZ-13"] != 1:
         raise SystemExit(f"TZ-13 counted {hits['counts']['TZ-13']} extension nodes, not 1")
+
+
+def test_p15_extension_ext_is_stripped_alone() -> None:
+    """P15: an a14 `a:ext` and its emptied list go; a Strict-only one stays."""
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    root = etree.fromstring(
+        f"<a:blip xmlns:a='{a}' xmlns:a14='http://schemas.microsoft.com/office/drawing/2010/main'>"
+        "<a:lum bright='1'/><a:extLst><a:ext uri='{28A0092B-C50C-407E-A947-70E740481C1C}'>"
+        "<a14:useLocalDpi val='0'/></a:ext></a:extLst></a:blip>"
+    )
+    census_gate._strip_extension_ext(root)
+    if [etree.QName(child).localname for child in root] != ["lum"]:
+        raise SystemExit("the a14 extension or its empty list survived")
+    kept = etree.fromstring(
+        f"<a:blip xmlns:a='{a}'><a:extLst><a:ext uri='x'><a:lum bright='1'/></a:ext>"
+        "</a:extLst></a:blip>"
+    )
+    census_gate._strip_extension_ext(kept)
+    if len(kept) != 1:
+        raise SystemExit("an extension with only DrawingML content was stripped")
 
 
 def test_p15_document_protection_needs_its_citation() -> None:
