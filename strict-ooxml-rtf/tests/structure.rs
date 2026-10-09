@@ -1009,6 +1009,21 @@ fn wps_sectd_before_sect_keeps_each_section_header() {
 }
 
 #[test]
+fn chapter_page_number_becomes_a_page_field() {
+    // `\chpgn`/`\sectnum` render numbers; keep them as dynamic fields so a
+    // renderer computes the value instead of dropping them.
+    let d = import(br"{\rtf1 Page \chpgn\par}", &RtfOptions::default())
+        .unwrap()
+        .document;
+    let Block::Paragraph(paragraph) = &d.body.blocks[0] else {
+        panic!()
+    };
+    assert!(paragraph.inlines.iter().any(
+        |i| matches!(i, Inline::Field(f) if f.instruction.as_deref().map(str::trim) == Some("PAGE"))
+    ));
+}
+
+#[test]
 fn field_instruction_and_formatted_cached_result_survive() {
     let input =
         br#"{\rtf1 A{\field{\*\fldinst HYPERLINK "https://example.test"}{\fldrslt{\b Link}}}Z}"#;

@@ -2843,6 +2843,29 @@ impl Parser<'_> {
                 };
                 self.text(text.into(), span.start)?;
             }
+            "chpgn" | "sectnum" => {
+                // RTF special characters that render a page/section number.
+                // Keep them as dynamic fields (a renderer computes the value)
+                // instead of dropping them: 072's headers read "Ruth (Page )".
+                self.finish_high()?;
+                if self.row.is_none() {
+                    self.finish_table();
+                }
+                self.node(1, span.start)?;
+                if self.inlines.is_empty() {
+                    self.paragraph_props = self.state.paragraph.clone();
+                }
+                let instruction: Arc<str> = Arc::from(if name == "chpgn" {
+                    " PAGE "
+                } else {
+                    " SECTION "
+                });
+                self.inlines.push(Inline::Field(Field {
+                    instruction: Some(instruction),
+                    inlines: vec![],
+                    location: SourceLocation::unknown(),
+                }));
+            }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
                 if self.options.compatibility_profile == CompatibilityProfile::WpsText
