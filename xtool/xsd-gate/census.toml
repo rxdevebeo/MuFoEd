@@ -651,3 +651,41 @@ was = ["0"]
 requires_cited = ["ext:restartNumberingAfterBreak"]
 summary = "numbering extension attribute Strict wml.xsd does not declare, cited when dropped"
 audit = "P15: w:abstractNum/@w:restartNumberingAfterBreak is not in CT_AbstractNum. The writer cites ext:restartNumberingAfterBreak. was=0 is the only value in the corpus. was=1, or a drop that does not cite the feature, stays unclassified."
+
+[[item]]
+id = "TZ-52"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = [
+  "w:documentProtection@hash", "w:documentProtection@salt",
+  "w:documentProtection@cryptSpinCount", "w:documentProtection@cryptAlgorithmSid",
+]
+parents = ["settings"]
+requires_cited = ["w:documentProtection"]
+summary = "Transitional protection hash attributes written under their Strict names"
+audit = "P15: CT_DocProtect in Strict has hashValue, saltValue, spinCount and algorithmName. strict_document_protection_attrs (write/src/parts.rs) moves hash, salt and cryptSpinCount there unchanged and turns cryptAlgorithmSid into algorithmName. The writer cites w:documentProtection. A drop without that citation stays unclassified."
+
+[[item]]
+id = "TZ-53"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "w:documentProtection@cryptProviderType", "w:documentProtection@cryptAlgorithmClass",
+  "w:documentProtection@cryptAlgorithmType",
+]
+parents = ["settings"]
+requires_cited = ["w:documentProtection"]
+summary = "Transitional crypto-provider attributes have no Strict home"
+audit = "P15: CT_DocProtect in Strict has no provider, class or type; the algorithm is algorithmName. The writer reports the drop as lossy (password verification is not preserved) and cites w:documentProtection. A drop without that citation stays unclassified."
+
+[[item]]
+id = "TZ-54"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["w:r"]
+parents = ["smartTag"]
+summary = "runs of an unwrapped w:smartTag, kept in its paragraph"
+audit = "P15 / AUD-42: Strict has no w:smartTag (TZ-43 names the wrapper). The parser keeps its content and drops the wrapper, so each run moves from parent smartTag to the paragraph. A run removed from any other parent stays unclassified."

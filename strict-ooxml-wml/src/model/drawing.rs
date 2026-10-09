@@ -107,6 +107,27 @@ pub struct Picture {
     pub src_rect: Option<SrcRect>,
     /// Applied transform (`a:xfrm`) with rotation/flips.
     pub xfrm: Option<Xfrm>,
+    /// Attributes the picture carries without a field of their own.
+    pub markup: PictureMarkup,
+}
+
+/// The attributes of a `pic:pic` that nothing reads but a writer keeps:
+/// `pic:cNvPicPr@preferRelativeResize`, `a:picLocks`, `pic:blipFill@rotWithShape`
+/// and `@dpi`. Each is the attribute's local name and its value as written.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PictureMarkup {
+    /// `pic:cNvPicPr` attributes.
+    pub non_visual: Vec<(Arc<str>, Arc<str>)>,
+    /// `a:picLocks` attributes; `None` when the element is absent.
+    pub locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// `pic:blipFill` attributes.
+    pub blip_fill: Vec<(Arc<str>, Arc<str>)>,
+    /// The children of `a:blip` (colour effects, `a:extLst`) as Strict markup
+    /// that declares its own namespaces.
+    pub blip_children: Option<Arc<str>>,
+    /// The children of `pic:spPr` after `a:xfrm` (geometry, fill, line,
+    /// effects, `a:extLst`), as markup in source order.
+    pub shape_properties: Option<Arc<str>>,
 }
 
 /// A colour that is either an explicit RGB value or a theme reference.
@@ -116,6 +137,11 @@ pub struct ShapeColor {
     pub value: Option<Color>,
     /// Theme colour reference.
     pub theme: Option<ThemeColorRef>,
+    /// The colour element as read (`a:srgbClr` with its `a:alpha`, a
+    /// `a:schemeClr` with `a:lumMod`/`a:lumOff`, `a:sysClr`, `a:prstClr`), which
+    /// the writer puts back instead of [`Self::value`]/[`Self::theme`]. A colour
+    /// built in code leaves it `None`.
+    pub markup: Option<Arc<str>>,
 }
 
 /// A gradient colour stop.
@@ -143,6 +169,10 @@ pub enum ShapeFill {
         stops: Vec<GradientStop>,
         /// Gradient angle in 60000ths of a degree.
         angle: Option<i32>,
+        /// `a:lin/@scaled`, when written.
+        scaled: Option<bool>,
+        /// `a:gradFill/@rotWithShape`, when written.
+        rotate_with_shape: Option<bool>,
     },
     /// Pattern fill (rendered as a flat foreground colour).
     Pattern {
@@ -239,6 +269,9 @@ pub struct GeometryPath {
 pub struct CustomGeometry {
     /// Paths in document order; each keeps its own `w`/`h`.
     pub paths: Vec<GeometryPath>,
+    /// The text rectangle (`a:rect` `l`, `t`, `r`, `b`) as written: a guide
+    /// name or a coordinate. `None` writes `0 0 r b`.
+    pub text_rect: Option<[Arc<str>; 4]>,
 }
 
 /// A shape's geometry (`a:prstGeom`/`a:custGeom`).
@@ -355,6 +388,11 @@ pub struct Shape {
     pub bw_mode: Option<Arc<str>>,
     /// Whether this shape is a text box (`wps:cNvSpPr/@txBox`).
     pub tx_box: Option<bool>,
+    /// `a:spLocks` attributes as written; `None` when the element is absent.
+    pub sp_locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// The `wps:spPr` children after the line (`a:effectLst`, `a:scene3d`,
+    /// `a:sp3d`, `a:extLst`) as markup that declares its own namespaces.
+    pub effects: Option<Arc<str>>,
     /// Geometry.
     pub geometry: ShapeGeometry,
     /// Transform (`a:xfrm`).
@@ -659,6 +697,11 @@ pub struct AnchorDrawing {
     pub doc_pr: Option<DocPr>,
     /// Simple positioning (`wp:simplePos`).
     pub simple_pos: bool,
+    /// The `wp:simplePos` point in EMU, `None` for `0, 0`. Word keeps a point
+    /// there even when `@simplePos` is off.
+    pub simple_pos_point: Option<(i64, i64)>,
+    /// `wp:anchor/@hidden`, when the producer wrote it.
+    pub hidden: Option<bool>,
     /// Horizontal position.
     pub position_h: Option<Position>,
     /// Vertical position.

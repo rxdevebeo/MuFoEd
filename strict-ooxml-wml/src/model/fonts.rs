@@ -96,8 +96,10 @@ pub struct EmbeddedFont {
     /// what says which case this is, and a consumer compares it rather than
     /// guessing.
     pub font_key: Option<Arc<str>>,
-    /// `w:subsetted`: whether the bytes are a subset of the face.
-    pub subsetted: bool,
+    /// `w:subsetted`: whether the bytes are a subset of the face; `None` when
+    /// the attribute is absent. Word writes `w:subsetted="0"` on full faces, and
+    /// the value is written back as read.
+    pub subsetted: Option<bool>,
 }
 
 /// `w:sig` Unicode/code-page coverage bits (`CT_FontSig`).

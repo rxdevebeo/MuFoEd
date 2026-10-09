@@ -117,7 +117,7 @@ fn shape_fills_geometry_outline_and_style_are_parsed() {
     let xfrm = parsed.xfrm.unwrap();
     assert_eq!(xfrm.rot, Some(5_400_000));
     assert!(xfrm.flip_h);
-    let ShapeFill::Gradient { stops, angle } = parsed.fill.as_ref().unwrap() else {
+    let ShapeFill::Gradient { stops, angle, .. } = parsed.fill.as_ref().unwrap() else {
         panic!("gradient");
     };
     assert_eq!(stops.len(), 2);

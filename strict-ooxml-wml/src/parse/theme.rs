@@ -30,6 +30,7 @@ impl PartParser<'_> {
                 shape_defaults: None,
                 text_defaults: None,
                 object_defaults_xml: None,
+                format_scheme_xml: None,
                 location: location.clone(),
             };
             loop {
@@ -59,7 +60,7 @@ impl PartParser<'_> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if is_drawingml(&name) {
                             match name.local() {
                                 "clrScheme" => {
@@ -71,15 +72,23 @@ impl PartParser<'_> {
                                     continue;
                                 }
                                 "fmtScheme" => {
-                                    parser.record(
-                                        "a:fmtScheme",
-                                        SupportStatus::Partial,
-                                        Some(
-                                            "theme effects/fills/line styles are not resolved (5A scope)"
-                                                .to_owned(),
-                                        ),
-                                        Some(parser.location()),
-                                    );
+                                    // The capture reads through the end tag.
+                                    let kept = parser.capture_fragment(name.clone(), attrs)?;
+                                    theme.format_scheme_xml =
+                                        kept.map(|markup| markup.to_string());
+                                    if theme.format_scheme_xml.is_none() {
+                                        parser.record(
+                                            "a:fmtScheme",
+                                            SupportStatus::Partial,
+                                            Some(
+                                                "theme fill, line and effect styles carry content \
+                                                 this writer may not write; a placeholder is written"
+                                                    .to_owned(),
+                                            ),
+                                            Some(parser.location()),
+                                        );
+                                    }
+                                    continue;
                                 }
                                 _ => {}
                             }
@@ -103,7 +112,11 @@ impl PartParser<'_> {
                     XmlEvent::StartElement { name, .. } => {
                         if is_drawingml(&name) {
                             let slot = name.local().to_owned();
-                            if let Some(color) = parser.parse_scheme_color()? {
+                            let (color, system) = parser.parse_scheme_color()?;
+                            if let Some(system) = system {
+                                theme.colors.set_system(slot.clone(), system);
+                            }
+                            if let Some(color) = color {
                                 theme.colors.insert(slot, color);
                             }
                         } else {
@@ -119,10 +132,12 @@ impl PartParser<'_> {
         })
     }
 
-    /// Parses a colour-scheme slot, returning its `#rrggbb` value.
-    fn parse_scheme_color(&mut self) -> Result<Option<Arc<str>>> {
+    /// Parses a colour-scheme slot, returning its `#rrggbb` value and, for an
+    /// `a:sysClr`, the system colour it names.
+    fn parse_scheme_color(&mut self) -> Result<(Option<Arc<str>>, Option<Arc<str>>)> {
         self.nested(|parser| {
             let mut color = None;
+            let mut system = None;
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -130,6 +145,7 @@ impl PartParser<'_> {
                             let value = match name.local() {
                                 "srgbClr" => plain_attr(&attrs, "val"),
                                 "sysClr" => {
+                                    system = plain_attr(&attrs, "val").map(|v| parser.intern(v));
                                     plain_attr(&attrs, "lastClr").or(plain_attr(&attrs, "val"))
                                 }
                                 _ => None,
@@ -143,7 +159,7 @@ impl PartParser<'_> {
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of colour slot")),
                 }
             }
-            Ok(color)
+            Ok((color, system))
         })
     }
 
@@ -190,6 +206,15 @@ impl PartParser<'_> {
                                 "latin" => merge_typeface(&mut set.latin, face),
                                 "ea" => merge_typeface(&mut set.east_asia, face),
                                 "cs" => merge_typeface(&mut set.cs, face),
+                                "font" => {
+                                    let script = plain_attr(&attrs, "script");
+                                    let typeface = plain_attr(&attrs, "typeface");
+                                    if let (Some(script), Some(typeface)) = (script, typeface) {
+                                        let script = parser.intern(script);
+                                        let typeface = parser.intern(typeface);
+                                        set.scripts.push((script, typeface));
+                                    }
+                                }
                                 _ => {}
                             }
                         }

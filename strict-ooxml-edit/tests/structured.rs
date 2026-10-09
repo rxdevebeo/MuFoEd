@@ -504,6 +504,8 @@ fn frame_and_shape_textbox_edits_have_exact_history() {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
+                effects: None,
                 geometry: ShapeGeometry::Preset("rect".into()),
                 xfrm: None,
                 offset: None,

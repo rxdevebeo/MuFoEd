@@ -522,7 +522,10 @@ pub fn drawingml_thousandths_percent(value: &str) -> Option<String> {
     if fraction == 0 {
         Some(format!("{sign}{whole}%"))
     } else {
-        Some(format!("{sign}{whole}.{fraction:03}%"))
+        // `ST_FixedPercentage` and `ST_PositiveFixedPercentage` admit two
+        // decimals, so `300` is `0.3%`, not `0.300%`: the trailing zeros go.
+        let digits = format!("{fraction:03}");
+        Some(format!("{sign}{whole}.{}%", digits.trim_end_matches('0')))
     }
 }
 
@@ -566,6 +569,25 @@ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
     if matches!(
         (element, attribute),
         ("spcPct" | "buSzPct", "val") | ("miter", "lim")
+    ) {
+        return true;
+    }
+    // The blip and shape effects the writer now keeps as markup: luminance,
+    // alpha, bi-level, HSL and tint amounts, and the shadow and reflection
+    // scales and stops. Their angles (`hue`, `kx`, `dir`, `fadeDir`) are not
+    // percentages.
+    if matches!(
+        (element, attribute),
+        ("lum", "bright" | "contrast")
+            | ("alphaModFix" | "tint", "amt")
+            | ("alphaBiLevel" | "biLevel", "thresh")
+            | ("alphaRepl", "a")
+            | ("hsl", "sat" | "lum")
+            | ("outerShdw", "sx" | "sy")
+            | (
+                "reflection",
+                "stA" | "stPos" | "endA" | "endPos" | "sx" | "sy"
+            )
     ) {
         return true;
     }
@@ -805,6 +827,11 @@ mod tests {
         assert!(is_drawingml_percentage_attr("buSzPct", "val"));
         assert!(is_drawingml_percentage_attr("miter", "lim"));
         assert!(!is_drawingml_percentage_attr("spcPts", "val"));
+        assert!(is_drawingml_percentage_attr("lum", "contrast"));
+        assert!(is_drawingml_percentage_attr("reflection", "endPos"));
+        assert!(is_drawingml_percentage_attr("outerShdw", "sx"));
+        assert!(!is_drawingml_percentage_attr("outerShdw", "kx"));
+        assert!(!is_drawingml_percentage_attr("hsl", "hue"));
         assert_eq!(
             drawingml_thousandths_percent("20000").as_deref(),
             Some("20%")
@@ -843,6 +870,14 @@ mod tests {
             Some("1.253%")
         );
         assert_eq!(drawingml_thousandths_percent("65%"), None);
+        assert_eq!(
+            drawingml_thousandths_percent("300").as_deref(),
+            Some("0.3%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("12500").as_deref(),
+            Some("12.5%")
+        );
         assert_eq!(
             drawingml_thousandths_percent("-65000").as_deref(),
             Some("-65%")

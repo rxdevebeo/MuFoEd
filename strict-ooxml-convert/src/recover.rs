@@ -635,6 +635,7 @@ pub(crate) fn declare_style(document: &mut Document) {
         id: StyleId::new(RECOVERED_STYLE_ID),
         style_type: StyleType::Paragraph,
         name: Some(Arc::from(RECOVERY_STYLE_NAME)),
+        aliases: None,
         based_on: None,
         next: None,
         link: None,

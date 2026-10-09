@@ -1164,7 +1164,7 @@ fn copy_attributes(
                     .flatten()
                     .any(|existing| existing.key.as_ref() == key.as_bytes());
                 if !duplicate {
-                    buffer.push_attribute((key.as_str(), value.as_str()));
+                    buffer.push_attribute(crate::xml::escape::attribute(&key, &value));
                 }
             }
             // A declaration that must not be emitted: the namespace is going away
@@ -3913,6 +3913,18 @@ mod tests {
         TransitionalNormalizer::new()
             .normalize(&part(), text.as_bytes())
             .expect("reparse");
+    }
+
+    #[test]
+    fn a_line_break_in_an_attribute_stays_a_character_reference() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:docPr id="1" name="a" descr="Bild.&#xA;&#xA;Beschreibung&#x9;x"/></w:p>"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(
+            text.contains(r#"descr="Bild.&#10;&#10;Beschreibung&#9;x""#),
+            "{text}"
+        );
     }
 
     #[test]

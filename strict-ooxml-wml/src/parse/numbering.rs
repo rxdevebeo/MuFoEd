@@ -86,6 +86,7 @@ impl PartParser<'_> {
             return Ok(None);
         };
         self.nested(|parser| {
+            let mut display_name = None;
             let mut multi_level_type = None;
             let mut num_style_link = None;
             let mut style_link = None;
@@ -99,6 +100,10 @@ impl PartParser<'_> {
                             continue;
                         }
                         match name.local() {
+                            "name" => {
+                                display_name = val_attr(&attrs).map(|value| parser.intern(value));
+                                parser.skip_element()?;
+                            }
                             "multiLevelType" => {
                                 multi_level_type =
                                     val_attr(&attrs).map(|value| parser.intern(value));
@@ -125,6 +130,7 @@ impl PartParser<'_> {
             }
             Ok(Some(AbstractNum {
                 id: AbstractNumId(id),
+                name: display_name,
                 multi_level_type,
                 num_style_link,
                 style_link,

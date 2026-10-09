@@ -510,6 +510,7 @@ fn invalid_xml_chars_are_reported_and_output_parses() {
         id: strict_ooxml_wml::model::StyleId::new(format!("S{}tyle", '\u{1}')),
         style_type: StyleType::Paragraph,
         name: Some(format!("Na{}me", '\u{1}').into()),
+        aliases: None,
         based_on: None,
         next: None,
         link: None,

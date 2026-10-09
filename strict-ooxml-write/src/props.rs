@@ -188,6 +188,7 @@ fn paragraph_child(
         "autoSpaceDN" => toggle(xml, "w:autoSpaceDN", props.auto_space_dn),
         "bidi" => toggle(xml, "w:bidi", props.bidi),
         "adjustRightInd" => toggle(xml, "w:adjustRightInd", props.adjust_right_ind),
+        "suppressOverlap" => toggle(xml, "w:suppressOverlap", props.suppress_overlap),
         "snapToGrid" => match props.snap_to_grid {
             TriState::On => xml.empty_attr_w("w:snapToGrid", "val", "true"),
             TriState::Off => xml.empty_attr_w("w:snapToGrid", "val", "false"),
@@ -280,6 +281,7 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && props.auto_space_de == TriState::Absent
         && props.auto_space_dn == TriState::Absent
         && props.adjust_right_ind == TriState::Absent
+        && props.suppress_overlap == TriState::Absent
         && props.frame.is_none()
 }
 
@@ -442,6 +444,7 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(language) = &props.language {
         language_element(xml, language);
     }
+    toggle(xml, "w:specVanish", props.spec_vanish);
 }
 
 fn language_element(xml: &mut XmlWriter, language: &strict_ooxml_wml::model::props::Language) {
@@ -475,6 +478,7 @@ fn is_empty_run(props: &RunProperties) -> bool {
         && props.small_caps == TriState::Absent
         && props.rtl == TriState::Absent
         && props.complex_script == TriState::Absent
+        && props.spec_vanish == TriState::Absent
         && props.vanish == TriState::Absent
         && props.emboss == TriState::Absent
         && props.imprint == TriState::Absent
@@ -582,6 +586,8 @@ fn borders_empty(borders: &Borders) -> bool {
         && borders.end.is_none()
         && borders.inside_horizontal.is_none()
         && borders.inside_vertical.is_none()
+        && borders.between.is_none()
+        && borders.bar.is_none()
 }
 
 /// Writes a border container (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
@@ -618,6 +624,9 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
         (far, &borders.end),
         ("insideH", &borders.inside_horizontal),
         ("insideV", &borders.inside_vertical),
+        // `CT_PBdr` ends with these two; no table container has them.
+        ("between", &borders.between),
+        ("bar", &borders.bar),
     ] {
         if let Some(edge) = edge {
             border_edge(xml, local, edge);
@@ -885,8 +894,38 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
     }
 }
 
-/// Writes `w:tblPrEx` when the row carries exception borders.
+/// `CT_TblPrEx`, `strict/wml.xsd`: the table properties a row may override.
+const TBLPREX: &[&str] = &[
+    "tblW",
+    "jc",
+    "tblCellSpacing",
+    "tblInd",
+    "tblBorders",
+    "shd",
+    "tblLayout",
+    "tblCellMar",
+    "tblLook",
+];
+
+/// Writes `w:tblPrEx` when the row carries an exception.
 pub fn row_exception(xml: &mut XmlWriter, props: &RowProperties) {
+    if let Some(exception) = &props.exception {
+        // `CT_TblPrEx` is the `tblPr` children a row may override, in `tblPr`
+        // order. The source had the element, so it is written even when empty;
+        // the borders are the row's own field, which an edit may change.
+        let exception = TableProperties {
+            borders: props.exception_borders.clone(),
+            ..(**exception).clone()
+        };
+        xml.start("w:tblPrEx");
+        for name in order::TBLPR {
+            if TBLPREX.contains(name) {
+                table_child(xml, &exception, name);
+            }
+        }
+        xml.end();
+        return;
+    }
     if borders_empty(&props.exception_borders) {
         return;
     }
@@ -903,7 +942,7 @@ pub fn row_exception(xml: &mut XmlWriter, props: &RowProperties) {
 /// Writes `w:trPr`.
 pub fn row_properties(xml: &mut XmlWriter, props: &RowProperties) {
     if props.height.is_none()
-        && !props.header
+        && props.header == TriState::Absent
         && !props.cant_split
         && props.grid_before.is_none()
         && props.grid_after.is_none()
@@ -959,7 +998,11 @@ fn row_child(xml: &mut XmlWriter, props: &RowProperties, name: &str) {
                 xml.end();
             }
         }
-        "tblHeader" if props.header => xml.empty("w:tblHeader"),
+        "tblHeader" => match props.header {
+            TriState::On => xml.empty("w:tblHeader"),
+            TriState::Off => xml.empty_attr_w("w:tblHeader", "val", "false"),
+            TriState::Absent => {}
+        },
         "tblCellSpacing" => {
             if let Some(spacing) = &props.cell_spacing {
                 width_element(xml, "w:tblCellSpacing", spacing);
@@ -1551,6 +1594,8 @@ mod tests {
             end: Some(border),
             inside_horizontal: None,
             inside_vertical: None,
+            between: None,
+            bar: None,
         };
         let mut xml = XmlWriter::new();
         borders_element(&mut xml, "w:pBdr", &borders, EdgeNames::Paragraph);

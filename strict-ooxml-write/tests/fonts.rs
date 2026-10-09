@@ -335,7 +335,7 @@ fn the_four_faces_are_four_named_cases_in_the_schemas_order() {
         strict_ooxml_wml::model::fonts::EmbeddedFont {
             part: PartId::new("/word/fonts/only-bold.ttf"),
             font_key: None,
-            subsetted: false,
+            subsetted: None,
         },
     );
     document.font_table = Some(strict_ooxml_wml::model::fonts::FontTable { fonts: vec![entry] });
@@ -409,7 +409,7 @@ fn an_unresolvable_embed_loses_the_face_and_keeps_the_family() {
         strict_ooxml_wml::model::fonts::EmbeddedFont {
             part: PartId::new(strict_ooxml_wml::parse::LOST_FONT_PART),
             font_key: None,
-            subsetted: false,
+            subsetted: None,
         },
     );
     document.font_table = Some(strict_ooxml_wml::model::fonts::FontTable { fonts: vec![entry] });

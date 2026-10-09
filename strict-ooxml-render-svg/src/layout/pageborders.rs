@@ -142,6 +142,7 @@ fn edge_line(
         &ShapeColor {
             value: edge.color.clone(),
             theme: edge.theme_color.as_deref().cloned(),
+            markup: None,
         },
     )
     .unwrap_or_else(|| "#000000".to_owned());

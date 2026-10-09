@@ -171,6 +171,11 @@ impl PartParser<'_> {
                                     parse_on_off_tristate(parser, &attrs, "w:adjustRightInd");
                                 parser.skip_element()?;
                             }
+                            "suppressOverlap" => {
+                                props.suppress_overlap =
+                                    parse_on_off_tristate(parser, &attrs, "w:suppressOverlap");
+                                parser.skip_element()?;
+                            }
                             "pBdr" => props.borders = parser.parse_borders()?,
                             "shd" => {
                                 props.shading = Some(parser.parse_shading(&attrs));
@@ -391,6 +396,10 @@ impl PartParser<'_> {
                                 props.complex_script =
                                     parse_on_off_tristate(parser, &attrs, "w:cs");
                             }
+                            "specVanish" => {
+                                props.spec_vanish =
+                                    parse_on_off_tristate(parser, &attrs, "w:specVanish");
+                            }
                             "vanish" => {
                                 props.vanish = parse_on_off_tristate(parser, &attrs, "w:vanish");
                             }
@@ -536,6 +545,8 @@ impl PartParser<'_> {
                                 "end" | "right" => borders.end = Some(border),
                                 "insideH" => borders.inside_horizontal = Some(border),
                                 "insideV" => borders.inside_vertical = Some(border),
+                                "between" => borders.between = Some(border),
+                                "bar" => borders.bar = Some(border),
                                 _ => {
                                     record_unmodelled_property(parser, &name)?;
                                     continue;
@@ -775,8 +786,8 @@ impl PartParser<'_> {
                         match name.local() {
                             "trHeight" => props.height = Some(parser.parse_row_height(&attrs)),
                             "tblHeader" => {
-                                props.header = parse_on_off(&attrs).unwrap_or(false);
-                                if props.header {
+                                props.header = parse_on_off_tristate(parser, &attrs, "w:tblHeader");
+                                if props.header.is_on() {
                                     parser.record(
                                         "w:tblHeader",
                                         SupportStatus::Supported,
@@ -1104,11 +1115,15 @@ impl PartParser<'_> {
                                         "linePitch",
                                         "w:docGrid",
                                     ),
-                                    character_space: parser.measure_i32(
-                                        &attrs,
-                                        "charSpace",
-                                        "w:docGrid",
-                                    ),
+                                    // Word writes a negative pitch as its unsigned
+                                    // 32-bit pattern (`4294961151` is -6145).
+                                    character_space: wml_attr(&attrs, "charSpace")
+                                        .and_then(|value| value.trim().parse::<u32>().ok())
+                                        .filter(|value| i32::try_from(*value).is_err())
+                                        .map(u32::cast_signed)
+                                        .or_else(|| {
+                                            parser.measure_i32(&attrs, "charSpace", "w:docGrid")
+                                        }),
                                 });
                             }
                             "vAlign" => {

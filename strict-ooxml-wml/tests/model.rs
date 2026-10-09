@@ -357,6 +357,7 @@ fn style_table_behaviour() {
         id: StyleId::new("A"),
         style_type: StyleType::Paragraph,
         name: Some(Arc::from("Alpha")),
+        aliases: None,
         based_on: None,
         next: None,
         link: None,
@@ -409,6 +410,7 @@ fn numbering_table_behaviour() {
     level.is_legal = true;
     let abstract_num = AbstractNum {
         id: AbstractNumId(0),
+        name: None,
         multi_level_type: Some(Arc::from("hybridMultilevel")),
         num_style_link: None,
         style_link: None,
@@ -599,6 +601,7 @@ fn drawing_and_run_constructors() {
         }),
         src_rect: None,
         xfrm: None,
+        markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
     };
     let inline = InlineDrawing {
         extent: Some(Extent {

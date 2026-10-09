@@ -275,6 +275,7 @@ fn picture_fixture() -> (
                 extent: Some(extent),
                 src_rect: None,
                 xfrm: None,
+                markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
             })),
             location: location.clone(),
         }),

@@ -199,7 +199,7 @@ fn parses_rich_table_properties() {
 
     let row = &table.rows[0];
     assert_eq!(row.props.height.unwrap().rule, Some(HeightRule::Exact));
-    assert!(row.props.header && row.props.cant_split);
+    assert!(row.props.header.is_on() && row.props.cant_split);
     assert_eq!(row.props.grid_before, Some(1));
     assert_eq!(row.props.grid_after, Some(1));
     assert_eq!(row.props.rsid.as_deref(), Some("00AB"));

@@ -154,6 +154,11 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
                     xml.empty_attr_w("w:name", "val", name.as_ref());
                 }
             }
+            "aliases" => {
+                if let Some(aliases) = &style.aliases {
+                    xml.empty_attr_w("w:aliases", "val", aliases.as_ref());
+                }
+            }
             "basedOn" => {
                 if let Some(based_on) = &style.based_on {
                     xml.empty_attr_w("w:basedOn", "val", based_on.as_str());
@@ -256,6 +261,10 @@ fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &A
     xml.attr_w("abstractNumId", abstract_num.id.0);
     if let Some(kind) = &abstract_num.multi_level_type {
         xml.empty_attr_w("w:multiLevelType", "val", kind.as_ref());
+    }
+    // `CT_AbstractNum`: `nsid`, `multiLevelType`, `tmpl`, `name`, then the links.
+    if let Some(name) = &abstract_num.name {
+        xml.empty_attr_w("w:name", "val", name.as_ref());
     }
     if let Some(link) = &abstract_num.num_style_link {
         xml.empty_attr_w("w:numStyleLink", "val", link.as_str());
@@ -775,7 +784,7 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             // alphabetically, which is not this order, so a round trip through a
             // producer that sorted them would otherwise move four of the seven.
             let flags = settings.compat_flags.set();
-            if !flags.is_empty() || !settings.compatibility.is_empty() {
+            if settings.compat_present || !flags.is_empty() || !settings.compatibility.is_empty() {
                 xml.start("w:compat");
                 for flag in flags {
                     xml.empty(flag);
@@ -1037,8 +1046,8 @@ fn write_font_entry(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, entry: &FontEntry) {
         xml.start(kind.element());
         xml.attr_r_opt("id", Some(rel));
         xml.attr_w_opt("fontKey", font.font_key.as_deref());
-        if font.subsetted {
-            xml.attr_w("subsetted", "true");
+        if let Some(subsetted) = font.subsetted {
+            xml.attr_w("subsetted", if subsetted { "true" } else { "false" });
         }
         xml.end();
     }
@@ -1069,12 +1078,14 @@ fn face_name(kind: EmbedKind) -> &'static str {
 /// through `parse/theme.rs`, so for those the loss would otherwise be silent
 /// (`STAGE-10-TASK.md` E35, SC-10). `ctx` is passed for exactly this reason.
 pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<String, WriteError> {
-    ctx.report_partial(
-        "a:fmtScheme",
-        "theme fill, line and effect styles are not carried by the model; a \
-         placeholder scheme was written",
-        &strict_ooxml_core::error::SourceLocation::unknown(),
-    );
+    if theme.format_scheme_xml.is_none() {
+        ctx.report_partial(
+            "a:fmtScheme",
+            "theme fill, line and effect styles are not carried by the model; a \
+             placeholder scheme was written",
+            &strict_ooxml_core::error::SourceLocation::unknown(),
+        );
+    }
     let mut xml = XmlWriter::new();
     xml.start_root("a:theme", &THEME_NAMESPACES);
     ctx.report_partial(
@@ -1109,7 +1120,17 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
             .unwrap_or("000000")
             .trim_start_matches('#');
         xml.start(&format!("a:{slot}"));
-        xml.empty_attr("a:srgbClr", "val", value);
+        match theme.colors.system(slot) {
+            // A slot read as `a:sysClr` goes back as one, with the colour it
+            // resolved to as `lastClr` - which is what the reader reads.
+            Some(system) => {
+                xml.start("a:sysClr");
+                xml.attr("val", system);
+                xml.attr("lastClr", value);
+                xml.end();
+            }
+            None => xml.empty_attr("a:srgbClr", "val", value),
+        }
         xml.end();
     }
     xml.end();
@@ -1133,10 +1154,19 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
         font_collection(&mut xml, "a:latin", &set.latin);
         font_collection(&mut xml, "a:ea", &set.east_asia);
         font_collection(&mut xml, "a:cs", &set.cs);
+        for (script, typeface) in &set.scripts {
+            xml.start("a:font");
+            xml.attr("script", script);
+            xml.attr("typeface", typeface);
+            xml.end();
+        }
         xml.end();
     }
     xml.end();
-    format_scheme(&mut xml);
+    match &theme.format_scheme_xml {
+        Some(markup) => xml.raw_markup(markup, &["a"]),
+        None => format_scheme(&mut xml),
+    }
     xml.end();
     if let Some(markup) = &theme.object_defaults_xml {
         // The parsed element, including `a:lnDef`, list styles and `a:sym`.
@@ -1522,6 +1552,7 @@ mod tests {
             id: StyleId::new("Heading1"),
             style_type: StyleType::Paragraph,
             name: Some("heading 1".into()),
+            aliases: None,
             based_on: Some(StyleId::new("Normal")),
             next: None,
             link: None,
@@ -1567,6 +1598,7 @@ mod tests {
                 id: StyleId::new(format!("S{index}")),
                 style_type: StyleType::Character,
                 name: None,
+                aliases: None,
                 based_on: None,
                 next: None,
                 link: None,
@@ -1605,6 +1637,7 @@ mod tests {
             id: StyleId::new("Normal"),
             style_type: StyleType::Paragraph,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,
@@ -1752,6 +1785,23 @@ mod tests {
         );
     }
 
+    /// Word's `<w:compat/>` carries no switch and still comes back.
+    #[test]
+    fn an_empty_compat_is_written_back() {
+        let settings = Settings {
+            compat_present: true,
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(xml.contains("<w:compat/>"), "{xml}");
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &Settings::default()).expect("settings");
+        assert!(!xml.contains("w:compat"), "{xml}");
+    }
+
     #[test]
     fn explicit_false_headers_and_auto_hyphenation_keep_their_values() {
         let settings = Settings {
@@ -1791,6 +1841,7 @@ mod tests {
             id: StyleId::new("TableGrid"),
             style_type: StyleType::Table,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,

@@ -121,6 +121,14 @@ NS_PREFIX = {
     "http://schemas.openxmlformats.org/drawingml/2006/picture": "pic",
     "http://purl.oclc.org/ooxml/drawingml/picture": "pic",
     "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing": "xdr",
+    # A canvas, a chart's drawing and a diagram keep their markup; without the
+    # pair the Strict copy of the same `a:sp` was a removal and an addition.
+    "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas": "lc",
+    "http://purl.oclc.org/ooxml/drawingml/lockedCanvas": "lc",
+    "http://schemas.openxmlformats.org/drawingml/2006/chartDrawing": "cdr",
+    "http://purl.oclc.org/ooxml/drawingml/chartDrawing": "cdr",
+    "http://schemas.openxmlformats.org/drawingml/2006/diagram": "dgm",
+    "http://purl.oclc.org/ooxml/drawingml/diagram": "dgm",
     "http://schemas.openxmlformats.org/package/2006/metadata/core-properties": "cp",
     "http://purl.oclc.org/ooxml/officeDocument/relationships": "r",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships": "r",
@@ -210,6 +218,13 @@ def vanished_elements(
                 continue
             _drop_duplicate_singletons(old)
             _drop_duplicate_singletons(new)
+            _drop_empty_containers(old)
+            _drop_empty_containers(new)
+            # ADR-0014: an Office extension inside `a:extLst` is not written, and
+            # the report names it under `a:ext`. Without that citation the whole
+            # subtree stays inventory.
+            if _is_named(named, "a:ext"):
+                _strip_extension_ext(old)
             # `CT_RPr` allows one `w:rFonts`. A second sibling overrides only the
             # attributes it sets; the comparison uses that same overlay so a
             # repeated value is not a second fact and a slot the writer dropped
@@ -581,6 +596,8 @@ def _changed_attributes(
     old_bag, namespace_of, old_stripped = _attribute_bag(old, old_rels)
     new_bag, _new_ns, new_stripped = _attribute_bag(new, new_rels)
     pane_left = _written_style_pane_sets(new_stripped)
+    bare_left = _bare_elements(new_stripped)
+    bare_left.subtract(_bare_elements(old_stripped))
     # `w:type="pct"` stores fiftieths (`5000`) in Transitional and `100%` in
     # Strict. Pair by element and type so a dxa `5000` cannot cancel a percent.
     _cancel_percent_widths(old_stripped, new_stripped, old_bag, new_bag)
@@ -642,6 +659,13 @@ def _changed_attributes(
                     continue
                 take = min(removed, spare)
                 appeared[other_key] -= take
+                removed -= take
+        if removed > 0 and attr_local == "val" and value.lower() in _TRUE_VALUES:
+            element_key = (elem_local, parent, elem_ns, parent_ns)
+            spare = bare_left[element_key]
+            if spare > 0:
+                take = min(removed, spare)
+                bare_left[element_key] -= take
                 removed -= take
         if (
             removed > 0
@@ -726,6 +750,38 @@ def _attribute_bag(
                 value = "relationship:" + json.dumps(relationships[value], ensure_ascii=True)
             bag[(qname.localname, parent_local, attr, value, elem_key[2], elem_key[3], _prefix_or_uri(namespace))] += 1
     return bag, namespace_of, copy
+
+
+def _bare_elements(stripped: etree._Element) -> collections.Counter:
+    """Childless elements with no `val`, keyed as `_attribute_bag` keys elements.
+
+    `CT_OnOff` with no `w:val` is on, so `<w:titlePg w:val="1"/>` written as
+    `<w:titlePg/>` is the same flag. Each new bare element pays for one lost
+    true `val`; the old bare ones are subtracted first.
+    """
+    bare: collections.Counter = collections.Counter()
+    for element in stripped.iter():
+        if not isinstance(element.tag, str) or len(element):
+            continue
+        if any(etree.QName(key).localname == "val" for key in element.attrib):
+            continue
+        qname = etree.QName(element)
+        parent = element.getparent()
+        if parent is None or not isinstance(parent.tag, str):
+            continue
+        parent_qname = etree.QName(parent)
+        bare[
+            (
+                qname.localname,
+                parent_qname.localname,
+                _prefix_or_uri(qname.namespace),
+                _prefix_or_uri(parent_qname.namespace),
+            )
+        ] += 1
+    return bare
+
+
+_TRUE_VALUES = {"1", "true", "on"}
 
 
 def _changed_resources(
@@ -945,7 +1001,9 @@ def census_hits(
                 elif signal == "mce":
                     hit = any(marker in where for marker in item["elements"])
                 elif signal == "extension":
-                    hit = any(marker in where for marker in item["elements"])
+                    # `where` is one local name. A substring match counted
+                    # `a14:shadowObscured`, kept inside `a:extLst`, as w14 `shadow`.
+                    hit = where in item["elements"]
                 elif signal == "element":
                     hit = element_item_matches(item, where, label, detail)
                 else:
@@ -1088,7 +1146,69 @@ _SINGLETON_CHILDREN = {
         "lang", "shd", "rStyle",
     },
     "pPr": {"spacing", "ind", "jc", "pStyle", "rPr", "pBdr", "shd", "tabs"},
+    # `CT_Settings` holds each of these once; a Tamil corpus family writes
+    # `w:proofState` twice with the same attributes.
+    "settings": {
+        "proofState", "zoom", "defaultTabStop", "characterSpacingControl",
+        "view", "hyphenationZone", "decimalSymbol", "listSeparator",
+    },
 }
+
+
+_DRAWINGML = {
+    "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "http://purl.oclc.org/ooxml/drawingml/main",
+}
+
+
+def _strip_extension_ext(root: etree._Element) -> None:
+    """Remove each DrawingML `a:ext` whose content is outside ECMA-376.
+
+    A namespace `NS_PREFIX` does not know (`a14`, `a15`, ...) is an extension.
+    An `a:extLst` left without an `a:ext` goes with them, since the writer does
+    not write an empty list.
+    """
+    known = set(NS_PREFIX) | {"http://www.w3.org/XML/1998/namespace"}
+
+    def foreign(element: etree._Element) -> bool:
+        for node in element.iter():
+            if not isinstance(node.tag, str):
+                continue
+            if etree.QName(node).namespace not in known:
+                return True
+            for key in node.attrib:
+                if key.startswith("{") and key[1:].split("}")[0] not in known:
+                    return True
+        return False
+
+    for ext in list(root.iter(*(f"{{{ns}}}ext" for ns in _DRAWINGML))):
+        parent = ext.getparent()
+        if parent is None or etree.QName(parent).localname != "extLst":
+            continue
+        if foreign(ext):
+            parent.remove(ext)
+            if not any(isinstance(child.tag, str) for child in parent):
+                grand = parent.getparent()
+                if grand is not None:
+                    grand.remove(parent)
+
+
+# Border, margin and tab containers whose meaning is their children: an empty
+# one (`<w:tcBorders></w:tcBorders>`) says nothing a missing one does not.
+_EMPTY_CONTAINERS = {"tcBorders", "tblBorders", "pBdr", "tcMar", "tblCellMar", "tabs"}
+
+
+def _drop_empty_containers(root: etree._Element) -> None:
+    for element in list(root.iter()):
+        if not isinstance(element.tag, str):
+            continue
+        if etree.QName(element).localname not in _EMPTY_CONTAINERS:
+            continue
+        if element.attrib or any(isinstance(child.tag, str) for child in element):
+            continue
+        parent = element.getparent()
+        if parent is not None:
+            parent.remove(element)
 
 
 def _drop_duplicate_singletons(root: etree._Element) -> None:
@@ -1281,6 +1401,13 @@ def _same_attr_value(
         return True
     if _same_measure(left, right):
         return True
+    # Word writes a negative `w:docGrid@charSpace` as its unsigned 32-bit pattern.
+    if element == "docGrid" and attr == "charSpace":
+        try:
+            if (int(left) - int(right)) % (1 << 32) == 0:
+                return True
+        except ValueError:
+            pass
     if _same_hex(left, right):
         return True
     # DrawingML ST_Percentage uses thousandths in Transitional and a percent
@@ -1298,6 +1425,13 @@ def _same_attr_value(
         or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
         or (element in {"spcPct", "buSzPct"} and attr == "val")
         or (element == "miter" and attr == "lim")
+        or (element == "lum" and attr in {"bright", "contrast"})
+        or (element in {"alphaModFix", "tint"} and attr == "amt")
+        or (element in {"alphaBiLevel", "biLevel"} and attr == "thresh")
+        or (element == "alphaRepl" and attr == "a")
+        or (element == "hsl" and attr in {"sat", "lum"})
+        or (element == "outerShdw" and attr in {"sx", "sy"})
+        or (element == "reflection" and attr in {"stA", "stPos", "endA", "endPos", "sx", "sy"})
     )
     if drawing_percent:
         a, b = _percent_number(left), _percent_number(right)
@@ -1918,6 +2052,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     registry = load_census()
     signals: dict[str, list[tuple[str, str, str]]] = collections.defaultdict(list)
     out_schema: collections.Counter = collections.Counter()
+    written_paths: dict[str, str] = {}
     dropped: collections.Counter = collections.Counter()
     unaccounted: collections.Counter = collections.Counter()
     silent_elements: collections.Counter = collections.Counter()
@@ -1966,6 +2101,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
                 label_in += sum(incoming.schema.values())
                 continue
             validated += 1
+            written_paths[name] = path
             outgoing = xsd_gate.validate_package(path, oracle)
             incoming_count = sum(incoming.schema.values())
             outgoing_count = sum(outgoing.schema.values())
@@ -2137,6 +2273,29 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         )
         for where, local, detail in hits["unclassified_element_changes"][:40]:
             print(f"  {where} [{local}]: {detail}")
+        # The first 40 rows are one or two documents; the labels say what is left.
+        labels = collections.Counter(local for _, local, _ in hits["unclassified_element_changes"])
+        print("\n=== unclassified by label")
+        for local, count in labels.most_common(60):
+            print(f"  {local:<48} {count:>4}")
+        if args.write_reports:
+            # The written package of each document with a row, to read what
+            # the writer did without rerunning it.
+            kept = Path(args.write_reports) / "written"
+            for where, _, _ in hits["unclassified_element_changes"]:
+                name = where.split(": ", 1)[0]
+                source = written_paths.get(name)
+                if source and not (kept / name).exists():
+                    kept.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, kept / name)
+            rows = Path(args.write_reports) / "unclassified.txt"
+            rows.write_text(
+                "".join(
+                    f"{where} [{local}]: {detail}\n"
+                    for where, local, detail in hits["unclassified_element_changes"]
+                ),
+                encoding="utf-8",
+            )
 
     if not args.quiet_messages and out_schema:
         print("\n=== every message, so nothing is counted on trust")

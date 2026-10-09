@@ -23,16 +23,48 @@ use super::{attr_in_ns, is_math, is_wml, parse_i32, parse_on_off, val_attr, wml_
 /// or off. They are a table rather than thirty struct fields so that adding the
 /// thirty-first is a line here and nothing else.
 const FLAT_ON_OFF: &[&str] = &[
+    "alignBordersAndEdges",
+    "alwaysMergeEmptyNamespace",
+    "alwaysShowPlaceholderText",
+    "autoFormatOverride",
     "bookFoldPrinting",
+    "bookFoldRevPrinting",
     "bordersDoNotSurroundFooter",
     "bordersDoNotSurroundHeader",
     "doNotAutoCompressPictures",
+    "doNotDemarcateInvalidXml",
+    "doNotDisplayPageBoundaries",
+    "doNotEmbedSmartTags",
     "doNotIncludeSubdocsInStats",
+    "doNotShadeFormData",
+    "doNotTrackFormatting",
+    "doNotTrackMoves",
     "doNotUseMarginsForDrawingGridOrigin",
+    "doNotValidateAgainstSchema",
     "embedSystemFonts",
     "embedTrueTypeFonts",
+    "formsDesign",
+    "ignoreMixedContent",
+    "linkStyles",
     "noPunctuationKerning",
+    "printFormsData",
+    "printFractionalCharacterWidth",
+    "printPostScriptOverText",
+    "printTwoOnOne",
+    "removeDateAndTime",
+    "removePersonalInformation",
+    "saveFormsData",
+    "saveInvalidXml",
     "savePreviewPicture",
+    "saveSubsetFonts",
+    "saveXmlDataOnly",
+    "showEnvelope",
+    "showXMLTags",
+    "strictFirstAndLastChars",
+    "styleLockQFSet",
+    "styleLockTheme",
+    "updateFields",
+    "useXSLTWhenSaving",
 ];
 
 /// Numeric children of `w:settings`, carried as the producer's own text.
@@ -194,6 +226,7 @@ impl PartParser<'_> {
                 let (pairs, flags) = self.parse_compat()?;
                 settings.compatibility.extend(pairs);
                 settings.compat_flags = flags;
+                settings.compat_present = true;
                 return Ok(true);
             }
             _ if FLAT_ON_OFF.contains(&name.local()) => {

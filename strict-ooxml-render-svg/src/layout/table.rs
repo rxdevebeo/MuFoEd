@@ -114,7 +114,7 @@ pub(crate) fn layout_table(
             height = 1.0;
         }
         rows.push(RawRow {
-            header: row.props.header,
+            header: row.props.header.is_on(),
             height,
             cells: raw.cells,
         });
@@ -599,10 +599,16 @@ fn cell_spacing_px(
     table: &Table,
     row: &strict_ooxml_wml::model::TableRow,
 ) -> f64 {
+    // `w:trPr` first, then the row's `w:tblPrEx`, then the table.
     let width = row
         .props
         .cell_spacing
         .as_ref()
+        .or(row
+            .props
+            .exception
+            .as_ref()
+            .and_then(|exception| exception.cell_spacing.as_ref()))
         .or(table.props.cell_spacing.as_ref());
     let Some(width) = width else {
         return 0.0;

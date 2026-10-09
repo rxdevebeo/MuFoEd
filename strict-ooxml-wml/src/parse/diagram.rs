@@ -343,6 +343,8 @@ impl PartParser<'_> {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,
@@ -669,5 +671,6 @@ fn scheme_color(slot: &Arc<str>) -> ShapeColor {
             tint: None,
             shade: None,
         }),
+        markup: None,
     }
 }

@@ -86,6 +86,8 @@ pub struct ParagraphProperties {
     pub auto_space_dn: TriState,
     /// Right indent follows the document grid (`w:adjustRightInd`).
     pub adjust_right_ind: TriState,
+    /// A framed paragraph may not overlap another frame (`w:suppressOverlap`).
+    pub suppress_overlap: TriState,
     /// Text frame (`w:framePr`), AUD-46. Render stays in-flow with a `partial` record.
     pub frame: Option<FrameProperties>,
     /// Source location of `w:pPr`.
@@ -141,6 +143,8 @@ pub struct RunProperties {
     pub rtl: TriState,
     /// Complex-script run (`w:cs`): the run uses its complex-script font and toggles.
     pub complex_script: TriState,
+    /// The paragraph mark is hidden even for the style separator (`w:specVanish`).
+    pub spec_vanish: TriState,
     /// Hidden text (`w:vanish`).
     pub vanish: TriState,
     /// Emboss (`w:emboss`).
@@ -211,8 +215,9 @@ pub struct TableProperties {
 pub struct RowProperties {
     /// Row height (`w:trHeight`).
     pub height: Option<super::values::RowHeight>,
-    /// Repeat as a header row on each page (`w:tblHeader`).
-    pub header: bool,
+    /// Repeat as a header row on each page (`w:tblHeader`). `Off` is an
+    /// explicit `w:val="0"`, which overrides a table style that turns it on.
+    pub header: TriState,
     /// Do not split the row across pages (`w:cantSplit`).
     pub cant_split: bool,
     /// Row cell margins (`w:tblCellMar`).
@@ -231,6 +236,10 @@ pub struct RowProperties {
     pub cell_spacing: Option<Width>,
     /// Borders from `w:tblPrEx/w:tblBorders`. Row exceptions are not `w:trPr`.
     pub exception_borders: Borders,
+    /// The row's `w:tblPrEx` as read: width, indent, cell margins, look and the
+    /// rest of `CT_TblPrEx`, written back when present. A row built in code
+    /// leaves it `None` and has only [`Self::exception_borders`] written.
+    pub exception: Option<Box<TableProperties>>,
     /// Revision id (`w:rsid`).
     pub rsid: Option<Arc<str>>,
     /// Source location of `w:trPr`.

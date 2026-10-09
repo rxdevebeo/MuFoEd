@@ -212,6 +212,8 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
             // at, so every internal link into a bookmark lost its destination
             // (`XS-20`).
             xml.attr_w("name", bookmark.name.as_ref());
+            xml.attr_w_opt("colFirst", bookmark.col_first);
+            xml.attr_w_opt("colLast", bookmark.col_last);
             xml.end();
         }
         Inline::BookmarkEnd(id) => {

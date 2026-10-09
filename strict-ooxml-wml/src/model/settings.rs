@@ -111,6 +111,9 @@ pub struct Settings {
     /// survives with its key/values and none of its switches is a document whose
     /// line breaking has silently changed.
     pub compat_flags: CompatFlags,
+    /// The part had a `w:compat`, even an empty one. Word writes `<w:compat/>`
+    /// in most of the corpus; it means no switches, and is written back as read.
+    pub compat_present: bool,
     /// Theme font languages (`w:themeFontLang`: `val`, `eastAsia`, `bidi`).
     pub theme_font_lang: Option<ThemeFontLang>,
     /// Footnote properties (`w:footnotePr`).

@@ -512,7 +512,10 @@ impl PartParser<'_> {
                     if name.is_empty() {
                         self.record_value("w:bookmarkStart/@w:name", "", &self.location());
                     }
-                    out.push(Inline::BookmarkStart(Bookmark::new(id, name)));
+                    let mut bookmark = Bookmark::new(id, name);
+                    bookmark.col_first = wml_attr(attrs, "colFirst").and_then(parse_u32);
+                    bookmark.col_last = wml_attr(attrs, "colLast").and_then(parse_u32);
+                    out.push(Inline::BookmarkStart(bookmark));
                 }
                 self.skip_element()?;
             }

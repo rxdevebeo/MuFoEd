@@ -161,6 +161,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         ShapeColor {
             value: Some(Color::new(format!("{r:02X}{g:02X}{b:02X}"))),
             theme: None,
+            markup: None,
         }
     };
     let fill = rect.fill.map(|rgb| ShapeFill::Solid { color: color(rgb) });
@@ -176,6 +177,8 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         nv_id: None,
         bw_mode: None,
         tx_box: None,
+        sp_locks: None,
+        effects: None,
         geometry: ShapeGeometry::Preset(Arc::from("rect")),
         xfrm: None,
         offset: Some((Emu(0), Emu(0))),
@@ -196,6 +199,8 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
             title: None,
         }),
         simple_pos: false,
+        simple_pos_point: None,
+        hidden: None,
         position_h: Some(Position {
             relative_from: Some(Arc::from("page")),
             align: None,

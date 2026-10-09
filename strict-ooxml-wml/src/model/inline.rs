@@ -180,6 +180,10 @@ pub struct Bookmark {
     pub id: BookmarkId,
     /// `w:name`, the bookmark's name in the document.
     pub name: Arc<str>,
+    /// `w:colFirst`: the first table column a column bookmark covers.
+    pub col_first: Option<u32>,
+    /// `w:colLast`: the last table column a column bookmark covers.
+    pub col_last: Option<u32>,
 }
 
 impl Bookmark {
@@ -188,6 +192,8 @@ impl Bookmark {
         Self {
             id: BookmarkId::new(id),
             name: name.into(),
+            col_first: None,
+            col_last: None,
         }
     }
 }

@@ -168,10 +168,14 @@ pub fn anchor_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, anchor: &AnchorDra
     xml.attr("locked", bool_str(anchor.locked));
     xml.attr("layoutInCell", bool_str(anchor.layout_in_cell));
     xml.attr("allowOverlap", bool_str(anchor.allow_overlap));
+    if let Some(hidden) = anchor.hidden {
+        xml.attr("hidden", bool_str(hidden));
+    }
 
+    let (x, y) = anchor.simple_pos_point.unwrap_or((0, 0));
     xml.start("wp:simplePos");
-    xml.attr("x", "0");
-    xml.attr("y", "0");
+    xml.attr("x", x);
+    xml.attr("y", y);
     xml.end();
     position_element(
         ctx,
@@ -601,10 +605,17 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.attr_opt("descr", picture.descr.as_deref());
     xml.end();
     xml.start("pic:cNvPicPr");
+    plain_attrs(xml, &picture.markup.non_visual);
+    if let Some(locks) = &picture.markup.locks {
+        xml.start("a:picLocks");
+        plain_attrs(xml, locks);
+        xml.end();
+    }
     xml.end();
     xml.end();
 
     xml.start("pic:blipFill");
+    plain_attrs(xml, &picture.markup.blip_fill);
     xml.start("a:blip");
     let embed = picture
         .blip
@@ -621,6 +632,9 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     if let Some(blip) = picture.blip.as_ref() {
         xml.attr_opt("cstate", blip.cstate.as_deref());
     }
+    if let Some(children) = &picture.markup.blip_children {
+        kept_markup(xml, children);
+    }
     // AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`, not a
     // child. The parser skips unknown children of `a:blip`, so a nested crop was
     // written once and lost on the next read — fixed-point failed.
@@ -636,9 +650,29 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.start("pic:spPr");
     xml.attr_opt("bwMode", picture.bw_mode.as_deref());
     transform(xml, &picture.xfrm, picture.extent.as_ref());
-    geometry_element(xml, &ShapeGeometry::None);
+    match &picture.markup.shape_properties {
+        // Geometry, fill, line and effects as read, after `a:xfrm`.
+        Some(rest) => kept_markup(xml, rest),
+        None => geometry_element(xml, &ShapeGeometry::None),
+    }
     xml.end();
     xml.end();
+}
+
+/// DrawingML markup kept as read; the part's root declares `a:` and `pic:`.
+fn kept_markup(xml: &mut XmlWriter, markup: &str) {
+    let prefixes: Vec<&str> = ["a", "pic"]
+        .into_iter()
+        .filter(|prefix| markup.contains(&format!("<{prefix}:")))
+        .collect();
+    xml.raw_markup(markup, &prefixes);
+}
+
+/// Attributes kept as read (`PictureMarkup`), in their source order.
+fn plain_attrs(xml: &mut XmlWriter, attrs: &[(std::sync::Arc<str>, std::sync::Arc<str>)]) {
+    for (name, value) in attrs {
+        xml.attr(name, value);
+    }
 }
 
 fn source_rect(xml: &mut XmlWriter, slice: &SrcRect) {
@@ -686,7 +720,11 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     if let Some(tx_box) = shape.tx_box {
         xml.attr("txBox", bool_str(tx_box));
     }
-    xml.empty("a:spLocks");
+    xml.start("a:spLocks");
+    if let Some(locks) = &shape.sp_locks {
+        plain_attrs(xml, locks);
+    }
+    xml.end();
     xml.end();
     xml.start("wps:spPr");
     xml.attr_opt("bwMode", shape.bw_mode.as_deref());
@@ -710,6 +748,9 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     }
     if let Some(stroke) = &shape.stroke {
         stroke_element(xml, stroke);
+    }
+    if let Some(effects) = &shape.effects {
+        kept_markup(xml, effects);
     }
     xml.end();
     if let Some(style) = &shape.style {
@@ -815,10 +856,20 @@ fn custom_geometry(xml: &mut XmlWriter, custom: &CustomGeometry) {
     xml.start("a:cxnLst");
     xml.end();
     xml.start("a:rect");
-    xml.attr("l", "0");
-    xml.attr("t", "0");
-    xml.attr("r", "r");
-    xml.attr("b", "b");
+    match &custom.text_rect {
+        Some([l, t, r, b]) => {
+            xml.attr("l", l);
+            xml.attr("t", t);
+            xml.attr("r", r);
+            xml.attr("b", b);
+        }
+        None => {
+            xml.attr("l", "0");
+            xml.attr("t", "0");
+            xml.attr("r", "r");
+            xml.attr("b", "b");
+        }
+    }
     xml.end();
     xml.start("a:pathLst");
     // AUD-49: one `a:path` per modelled path, each with its own w/h.
@@ -882,8 +933,16 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             shape_color(xml, color);
             xml.end();
         }
-        ShapeFill::Gradient { stops, angle } => {
+        ShapeFill::Gradient {
+            stops,
+            angle,
+            scaled,
+            rotate_with_shape,
+        } => {
             xml.start("a:gradFill");
+            if let Some(rotate) = rotate_with_shape {
+                xml.attr("rotWithShape", bool_str(*rotate));
+            }
             xml.start("a:gsLst");
             for stop in stops {
                 xml.start("a:gs");
@@ -897,7 +956,7 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             if let Some(angle) = angle {
                 xml.start("a:lin");
                 xml.attr("ang", angle);
-                xml.attr("scaled", "0");
+                xml.attr("scaled", bool_str(scaled.unwrap_or(false)));
                 xml.end();
             }
             xml.end();
@@ -949,6 +1008,12 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
 }
 
 fn shape_color(xml: &mut XmlWriter, color: &ShapeColor) {
+    // The element as read keeps its modifiers (`a:alpha`, `a:lumMod`) and the
+    // colour spaces the model does not resolve (`a:sysClr`, `a:prstClr`).
+    if let Some(markup) = &color.markup {
+        kept_markup(xml, markup);
+        return;
+    }
     match (&color.value, &color.theme) {
         (Some(value), _) => {
             xml.start("a:srgbClr");
@@ -1268,6 +1333,7 @@ mod tests {
                     }),
                     src_rect: None,
                     xfrm: None,
+                    markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
                 })),
                 location: SourceLocation::unknown(),
             }),
@@ -1350,6 +1416,7 @@ mod tests {
                         bottom: 4,
                     }),
                     xfrm: None,
+                    markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
                 })),
                 location: SourceLocation::unknown(),
             }),
@@ -1415,6 +1482,8 @@ mod tests {
                     nv_id: None,
                     bw_mode: None,
                     tx_box: Some(true),
+                    sp_locks: None,
+                    effects: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
                     offset: Some((Emu(0), Emu(0))),
@@ -1491,6 +1560,8 @@ mod tests {
                     nv_id: None,
                     bw_mode: None,
                     tx_box: Some(true),
+                    sp_locks: None,
+                    effects: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
                     offset: Some((Emu(0), Emu(0))),
@@ -1637,6 +1708,8 @@ mod tests {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: Some(Xfrm {
                     offset: Some((Emu(x), Emu(0))),
