@@ -127,9 +127,7 @@ fn t_p15_shape_colours_keep_their_element() {
 </wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
         )
     };
-    let xml = written_document(&shape(
-        r#"<a:sysClr val="windowText" lastClr="000000"/>"#,
-    ));
+    let xml = written_document(&shape(r#"<a:sysClr val="windowText" lastClr="000000"/>"#));
     assert!(xml.contains("<a:sysClr "), "{xml}");
     assert!(xml.contains(r#"lastClr="000000""#), "{xml}");
     let xml = written_document(&shape(r#"<a:prstClr val="black"/>"#));
