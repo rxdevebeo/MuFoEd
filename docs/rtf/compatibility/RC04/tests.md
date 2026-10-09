@@ -45,6 +45,26 @@ checks each through import → Strict write → reopen. The writer already emitt
 of these (`strict-ooxml-write/src/props.rs`), so the fix is the missing mapping,
 not new schema work.
 
+## Corpus effective-facts probe (019/039, 2026-10-08)
+
+Method: import the RTF with the corpus options (`--wps-text
+--allow-unsigned-unicode --drop-nul`), extract facts from our DOCX with
+`xtool/rtf/docx_facts.py::inspect`, and compare against the WPS reference facts
+(`target/rtf-import/R01/wps-facts-v2/files/039/facts.json`) at both the
+construct-count and per-paragraph level.
+
+For 039 the per-paragraph comparison shows our run carries
+`rFonts {ascii,hAnsi,eastAsia,cs}` + `color auto` + `sz 24`, while WPS mirrors
+`szCs 24` on every run and writes `w:spacing/beforeLines/afterLines` and
+docDefaults `w:kern`. Those are Word/WPS writer defaults (docDefaults and mirror
+`szCs`), not a required RTF control mapping — this is exactly the "WPS quirk vs
+correct RTF preservation" split the plan asks for, so no global default is
+invented here. Count-level comparison is dominated by styles.xml and is recorded
+as provisional, not as effective-property equality.
+
+Provisional observation only; the effective-style acceptance for the corpus is
+still open.
+
 ## Not yet closed
 
 - Independent effective-style facts from the WPS reference index (the corpus
