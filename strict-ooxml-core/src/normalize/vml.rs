@@ -292,8 +292,8 @@ pub struct VmlStyle {
     pub flip_h: bool,
     /// `flip:y`.
     pub flip_v: bool,
-    /// `rotation` in degrees, clockwise.
-    pub rotation: Option<f64>,
+    /// `rotation` in degrees, clockwise, as written.
+    pub rotation: Option<String>,
 }
 
 impl VmlStyle {
@@ -322,7 +322,7 @@ impl VmlStyle {
                 "mso-position-horizontal" => out.horizontal = Some(value),
                 "mso-position-vertical-relative" => out.vertical_relative = Some(value),
                 "mso-position-vertical" => out.vertical = Some(value),
-                "rotation" => out.rotation = value.trim_end_matches("deg").parse().ok(),
+                "rotation" => out.rotation = Some(value.trim_end_matches("deg").to_owned()),
                 "flip" => {
                     out.flip_h = value.split_whitespace().any(|axis| axis == "x");
                     out.flip_v = value.split_whitespace().any(|axis| axis == "y");
@@ -1512,7 +1512,7 @@ fn shape_payload(shape: &VmlShape, text_box: bool, cx: i64, cy: i64) -> Vec<Even
         Event::Start(el(
             "a:xfrm",
             &[
-                ("rot", rotation(shape.style.rotation).as_str()),
+                ("rot", rotation(shape.style.rotation.as_deref()).as_str()),
                 ("flipH", bool_str(shape.style.flip_h)),
                 ("flipV", bool_str(shape.style.flip_v)),
             ],
@@ -1543,7 +1543,8 @@ fn shape_payload(shape: &VmlShape, text_box: bool, cx: i64, cy: i64) -> Vec<Even
 }
 
 /// `a:xfrm/@rot`: 60 000ths of a degree in `[0, 21 600 000)`.
-fn rotation(degrees: Option<f64>) -> String {
+fn rotation(degrees: Option<&str>) -> String {
+    let degrees = degrees.and_then(|text| text.trim().parse::<f64>().ok());
     let Some(degrees) = degrees.filter(|degrees| degrees.is_finite()) else {
         return "0".to_owned();
     };
