@@ -522,7 +522,10 @@ pub fn drawingml_thousandths_percent(value: &str) -> Option<String> {
     if fraction == 0 {
         Some(format!("{sign}{whole}%"))
     } else {
-        Some(format!("{sign}{whole}.{fraction:03}%"))
+        // `ST_FixedPercentage` and `ST_PositiveFixedPercentage` admit two
+        // decimals, so `300` is `0.3%`, not `0.300%`: the trailing zeros go.
+        let digits = format!("{fraction:03}");
+        Some(format!("{sign}{whole}.{}%", digits.trim_end_matches('0')))
     }
 }
 
@@ -867,6 +870,14 @@ mod tests {
             Some("1.253%")
         );
         assert_eq!(drawingml_thousandths_percent("65%"), None);
+        assert_eq!(
+            drawingml_thousandths_percent("300").as_deref(),
+            Some("0.3%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("12500").as_deref(),
+            Some("12.5%")
+        );
         assert_eq!(
             drawingml_thousandths_percent("-65000").as_deref(),
             Some("-65%")

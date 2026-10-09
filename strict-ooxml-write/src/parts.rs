@@ -1120,7 +1120,17 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
             .unwrap_or("000000")
             .trim_start_matches('#');
         xml.start(&format!("a:{slot}"));
-        xml.empty_attr("a:srgbClr", "val", value);
+        match theme.colors.system(slot) {
+            // A slot read as `a:sysClr` goes back as one, with the colour it
+            // resolved to as `lastClr` - which is what the reader reads.
+            Some(system) => {
+                xml.start("a:sysClr");
+                xml.attr("val", system);
+                xml.attr("lastClr", value);
+                xml.end();
+            }
+            None => xml.empty_attr("a:srgbClr", "val", value),
+        }
         xml.end();
     }
     xml.end();
@@ -1144,6 +1154,12 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
         font_collection(&mut xml, "a:latin", &set.latin);
         font_collection(&mut xml, "a:ea", &set.east_asia);
         font_collection(&mut xml, "a:cs", &set.cs);
+        for (script, typeface) in &set.scripts {
+            xml.start("a:font");
+            xml.attr("script", script);
+            xml.attr("typeface", typeface);
+            xml.end();
+        }
         xml.end();
     }
     xml.end();

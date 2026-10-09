@@ -52,6 +52,8 @@ pub struct FontSet {
     pub east_asia: ThemeTypeface,
     /// Complex-script typeface (`a:cs`).
     pub cs: ThemeTypeface,
+    /// Per-script faces (`a:font` `script`, `typeface`), in source order.
+    pub scripts: Vec<(Arc<str>, Arc<str>)>,
 }
 
 /// `a:defRPr` latin/ea/cs under theme object defaults.
@@ -107,9 +109,23 @@ impl ThemeFonts {
 #[derive(Clone, Debug, Default)]
 pub struct ThemeColors {
     slots: HashMap<String, Arc<str>>,
+    /// Slots written as `a:sysClr`, with its `val` (`windowText`, `window`).
+    system: HashMap<String, Arc<str>>,
 }
 
 impl ThemeColors {
+    /// Marks `slot` as the system colour `name` (`a:sysClr/@val`); its value
+    /// is the last resolved colour, inserted as for any other slot.
+    pub fn set_system(&mut self, slot: impl Into<String>, name: impl Into<Arc<str>>) {
+        self.system.insert(slot.into(), name.into());
+    }
+
+    /// The system colour a slot names, when it was written as `a:sysClr`.
+    #[must_use]
+    pub fn system(&self, slot: &str) -> Option<&str> {
+        self.system.get(slot).map(AsRef::as_ref)
+    }
+
     /// Inserts a canonical slot colour (`#rrggbb`).
     pub fn insert(&mut self, slot: impl Into<String>, color: impl Into<Arc<str>>) {
         self.slots.insert(slot.into(), color.into());
@@ -196,6 +212,7 @@ mod tests {
                 latin: ThemeTypeface::named("Calibri Light"),
                 east_asia: ThemeTypeface::named("MS Mincho"),
                 cs: ThemeTypeface::named("Arial"),
+                scripts: Vec::new(),
             },
             minor: FontSet {
                 latin: ThemeTypeface::named("Calibri"),
