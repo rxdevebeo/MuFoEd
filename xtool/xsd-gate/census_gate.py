@@ -121,6 +121,14 @@ NS_PREFIX = {
     "http://schemas.openxmlformats.org/drawingml/2006/picture": "pic",
     "http://purl.oclc.org/ooxml/drawingml/picture": "pic",
     "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing": "xdr",
+    # A canvas, a chart's drawing and a diagram keep their markup; without the
+    # pair the Strict copy of the same `a:sp` was a removal and an addition.
+    "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas": "lc",
+    "http://purl.oclc.org/ooxml/drawingml/lockedCanvas": "lc",
+    "http://schemas.openxmlformats.org/drawingml/2006/chartDrawing": "cdr",
+    "http://purl.oclc.org/ooxml/drawingml/chartDrawing": "cdr",
+    "http://schemas.openxmlformats.org/drawingml/2006/diagram": "dgm",
+    "http://purl.oclc.org/ooxml/drawingml/diagram": "dgm",
     "http://schemas.openxmlformats.org/package/2006/metadata/core-properties": "cp",
     "http://purl.oclc.org/ooxml/officeDocument/relationships": "r",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships": "r",

@@ -679,3 +679,13 @@ parents = ["settings"]
 requires_cited = ["w:documentProtection"]
 summary = "Transitional crypto-provider attributes have no Strict home"
 audit = "P15: CT_DocProtect in Strict has no provider, class or type; the algorithm is algorithmName. The writer reports the drop as lossy (password verification is not preserved) and cites w:documentProtection. A drop without that citation stays unclassified."
+
+[[item]]
+id = "TZ-54"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["w:r"]
+parents = ["smartTag"]
+summary = "runs of an unwrapped w:smartTag, kept in its paragraph"
+audit = "P15 / AUD-42: Strict has no w:smartTag (TZ-43 names the wrapper). The parser keeps its content and drops the wrapper, so each run moves from parent smartTag to the paragraph. A run removed from any other parent stays unclassified."
