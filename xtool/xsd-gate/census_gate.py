@@ -1088,6 +1088,12 @@ _SINGLETON_CHILDREN = {
         "lang", "shd", "rStyle",
     },
     "pPr": {"spacing", "ind", "jc", "pStyle", "rPr", "pBdr", "shd", "tabs"},
+    # `CT_Settings` holds each of these once; a Tamil corpus family writes
+    # `w:proofState` twice with the same attributes.
+    "settings": {
+        "proofState", "zoom", "defaultTabStop", "characterSpacingControl",
+        "view", "hyphenationZone", "decimalSymbol", "listSeparator",
+    },
 }
 
 

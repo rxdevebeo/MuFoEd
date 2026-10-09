@@ -605,6 +605,8 @@ def test_process_choice_inventory_does_not_count_fallback() -> None:
 
 
 def main() -> int:
+    test_p15_duplicate_proof_state_is_one()
+    test_p15_document_protection_needs_its_citation()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -934,6 +936,41 @@ def test_p10_resource_identity() -> None:
             raise SystemExit(f"recompressed png was hidden: {rows}")
         if "resource:word/media/image#.gif" not in labels:
             raise SystemExit(f"dropped gif was hidden after recompress: {rows}")
+
+
+def test_p15_duplicate_proof_state_is_one() -> None:
+    """P15: a repeated identical `w:proofState` is one setting; a different one stays."""
+    root = etree.fromstring(
+        f"<w:settings xmlns:w='{WML_T}'>"
+        "<w:proofState w:spelling='clean' w:grammar='clean'/>"
+        "<w:proofState w:spelling='clean' w:grammar='clean'/>"
+        "<w:proofState w:spelling='dirty'/></w:settings>"
+    )
+    census_gate._drop_duplicate_singletons(root)
+    if len(root) != 2:
+        raise SystemExit("a repeated proofState was counted twice, or a different one dropped")
+
+
+def test_p15_document_protection_needs_its_citation() -> None:
+    """P15: the Strict protection mapping is accepted only when the writer cites it."""
+    registry = {entry["id"]: entry for entry in census_gate.load_census()}
+    where = "a.docx: word/settings.xml"
+    cited = (
+        "parent=settings|namespace=w|parent_namespace=w|attribute_namespace=w"
+        "|attr=hash|was=x|removed=1|named=1|cited=w:documentProtection"
+    )
+    if not census_gate.element_item_matches(
+        registry["TZ-52"], where, "w:documentProtection@hash", cited
+    ):
+        raise SystemExit("TZ-52 must accept a cited hash rename")
+    if census_gate.element_item_matches(
+        registry["TZ-52"], where, "w:documentProtection@hash", cited.replace("w:documentProtection", "")
+    ):
+        raise SystemExit("TZ-52 must not accept a silent hash drop")
+    if census_gate.element_item_matches(
+        registry["TZ-53"], where, "w:documentProtection@enforcement", cited
+    ):
+        raise SystemExit("TZ-53 must not swallow enforcement")
 
 
 def test_p9_hint_cs_and_duplicate_rfonts() -> None:
