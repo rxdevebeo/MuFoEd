@@ -162,6 +162,11 @@ pub struct Theme {
     /// as an empty shell would drop those. `None` means the theme had no
     /// object defaults (a hand-built theme may still set the faces).
     pub object_defaults_xml: Option<String>,
+    /// `a:fmtScheme` as read (fill, line, effect and background styles that a
+    /// shape's `wps:style` refers to), written back in place of the placeholder.
+    /// `None` when the theme had none, or when it carried something this
+    /// writer may not write (ADR-0014).
+    pub format_scheme_xml: Option<String>,
     /// Source location of the theme root.
     pub location: SourceLocation,
 }

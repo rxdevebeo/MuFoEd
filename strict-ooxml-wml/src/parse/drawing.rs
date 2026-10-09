@@ -797,7 +797,7 @@ impl PartParser<'_> {
     ///
     /// `None` when what is left carries a relationship attribute, which the
     /// writer would not re-map, or anything outside Strict (ADR-0014).
-    fn capture_fragment(
+    pub(super) fn capture_fragment(
         &mut self,
         name: QName,
         attrs: Vec<Attr>,

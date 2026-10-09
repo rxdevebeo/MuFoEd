@@ -1078,12 +1078,14 @@ fn face_name(kind: EmbedKind) -> &'static str {
 /// through `parse/theme.rs`, so for those the loss would otherwise be silent
 /// (`STAGE-10-TASK.md` E35, SC-10). `ctx` is passed for exactly this reason.
 pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<String, WriteError> {
-    ctx.report_partial(
-        "a:fmtScheme",
-        "theme fill, line and effect styles are not carried by the model; a \
-         placeholder scheme was written",
-        &strict_ooxml_core::error::SourceLocation::unknown(),
-    );
+    if theme.format_scheme_xml.is_none() {
+        ctx.report_partial(
+            "a:fmtScheme",
+            "theme fill, line and effect styles are not carried by the model; a \
+             placeholder scheme was written",
+            &strict_ooxml_core::error::SourceLocation::unknown(),
+        );
+    }
     let mut xml = XmlWriter::new();
     xml.start_root("a:theme", &THEME_NAMESPACES);
     ctx.report_partial(
@@ -1145,7 +1147,10 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
         xml.end();
     }
     xml.end();
-    format_scheme(&mut xml);
+    match &theme.format_scheme_xml {
+        Some(markup) => xml.raw_markup(markup, &[]),
+        None => format_scheme(&mut xml),
+    }
     xml.end();
     if let Some(markup) = &theme.object_defaults_xml {
         // The parsed element, including `a:lnDef`, list styles and `a:sym`.

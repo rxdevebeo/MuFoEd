@@ -73,6 +73,7 @@ fn theme() -> Theme {
         shape_defaults: None,
         text_defaults: None,
         object_defaults_xml: None,
+        format_scheme_xml: None,
         location: SourceLocation::unknown(),
     }
 }

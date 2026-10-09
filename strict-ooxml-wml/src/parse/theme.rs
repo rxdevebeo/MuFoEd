@@ -30,6 +30,7 @@ impl PartParser<'_> {
                 shape_defaults: None,
                 text_defaults: None,
                 object_defaults_xml: None,
+                format_scheme_xml: None,
                 location: location.clone(),
             };
             loop {
@@ -59,7 +60,7 @@ impl PartParser<'_> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if is_drawingml(&name) {
                             match name.local() {
                                 "clrScheme" => {
@@ -71,15 +72,23 @@ impl PartParser<'_> {
                                     continue;
                                 }
                                 "fmtScheme" => {
-                                    parser.record(
-                                        "a:fmtScheme",
-                                        SupportStatus::Partial,
-                                        Some(
-                                            "theme effects/fills/line styles are not resolved (5A scope)"
-                                                .to_owned(),
-                                        ),
-                                        Some(parser.location()),
-                                    );
+                                    // The capture reads through the end tag.
+                                    let kept = parser.capture_fragment(name.clone(), attrs)?;
+                                    theme.format_scheme_xml =
+                                        kept.map(|markup| markup.to_string());
+                                    if theme.format_scheme_xml.is_none() {
+                                        parser.record(
+                                            "a:fmtScheme",
+                                            SupportStatus::Partial,
+                                            Some(
+                                                "theme fill, line and effect styles carry content \
+                                                 this writer may not write; a placeholder is written"
+                                                    .to_owned(),
+                                            ),
+                                            Some(parser.location()),
+                                        );
+                                    }
+                                    continue;
                                 }
                                 _ => {}
                             }
