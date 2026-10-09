@@ -16,7 +16,7 @@
 |---|---|---|
 | P0, P2–P7, P9–P11, P13 | сделано (ACCEPT/PASS) | P2: визуальный допуск среза 0,75 px; P3/P11: `descr` у `wp:docPr`/`pic:cNvPr` перешёл в хвост P15; P5: линии VML-групп выбрасываются (`T7.vml-group`), waiver нет; P5/P6: тесты на RM0090 пропускаются без локального корпуса — нужны синтетические двойники |
 | P1 | сделано, перепроверено 2026-10-08 | перепроверка (hostq `wps`) нашла регрессию от `9d9b372` на с. 56 (подписи в таблице с `framePr`, до 0,67 px), исправлено `93b054a`: PASS 26/26 ≤ 0,25 px с `--wps-times`; запас `p104.modern.5` по-прежнему 0,002 px; без калибровки — до 3,4 px (по замыслу); Rust-теста на Clio нет (корпус локальный) |
-| P8 | частично | 21 строка: `a:srgbClr` в `a14:hiddenFill`, `a:sysClr`, одна `w:shd` |
+| P8 | сделано | цветовых строк в census нет: `a14:hiddenFill` уходит по ADR-0014 с цитатой `a:ext`, `a:sysClr`/`prstClr`/модификаторы пишутся исходным элементом (P15); тесты T-P8-1..3 в `p7_p8.rs` |
 | P12 | закрыт (кроме VML) | footnote/endnote −1 закрыт; `headerReference@id`/`footerReference@id` 139 → 10 частей: semantic digest (Strict-написания, MCE, текст надписей, `w:sym@char`), писатель сохраняет `w:cs`, `autoSpaceDE/DN`, `adjustRightInd`; остаток — VML-линии/фигуры (T7), уходит в VML-группы |
 | P14 | сделано, перезамер | после `5446135` (SDT-свойства сохраняются) `w:dataBinding`/`w:text` должны уйти; TZ-32 в `census.toml` устарел |
 | P15 | частично | census на хосте `b3bed99`: unclassified 633 → 108, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
@@ -29,7 +29,7 @@ M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waive
 нет; `CENSUS-LOCAL` устарел — ночной census уже в CI (`ci.yml`), `census-baseline.json` не закоммичен.
 
 Порядок дальше: ~~перепроверка P1~~ → ~~синтетические двойники P5/P6~~ → база census и `CENSUS-LOCAL` →
-~~`unmatched_schema`~~ → ~~P12~~ → P15 по метке → P8 → VML-группы → M5 (Word).
+~~`unmatched_schema`~~ → ~~P12~~ → P15 по метке (108) → ~~P8~~ → VML-группы → M5 (Word).
 
 Этот план не заменяет критерии приёмки D05/D06. Он задаёт **порядок работ по визуальному ущербу** и фиксирует, **на каких документах** каждый пункт измерять.
 
@@ -69,7 +69,7 @@ M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waive
 | P5 | Метрики run/абзаца | **V1** | 1 324 | 101 | D05 | sz/spacing/ind/tabs |
 | P6 | Табличные ширины/границы | **V1** | 503 | 55 | D05 | tcW/tblW/gridCol |
 | P7 | themeColor / themeTint / shade | **V2** | 1 027 | 57 | D05 | Цвет после resolve темы |
-| P8 | Явные цвета `w:color@val` / schemeClr | **V2** | 351 | 68 | D05 | Hex/scheme без silent change |
+| P8 | сделано | цветовых строк в census нет: `a14:hiddenFill` уходит по ADR-0014 с цитатой `a:ext`, `a:sysClr`/`prstClr`/модификаторы пишутся исходным элементом (P15); тесты T-P8-1..3 в `p7_p8.rs` |
 | P9 | Шрифты / hints | **V3** | 510 | 125 | D05/D09 | rFonts/hint/charset/panose |
 | P10 | Бинарные media | **V3** | 84 | 34 | D05 | SHA картинок/шрифтов |
 | P11 | graphicData URI / pic identity | **V3–V4** | 333 | 99 | D05 | URI и cNvPr |
@@ -282,6 +282,12 @@ SHA-256: `4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462`
 **Тесты.** T-P8-1 hex case-insensitive already OK — проверить real value change; T-P8-2 `auto`/`000000` сохранение политики; T-P8-3 schemeClr resolve.
 
 **Замер.** Как P7, labels без theme*.
+
+**STATUS 2026-10-09.** Закрыт вместе с P15: census `b3bed99` не содержит ни `w:color`, ни `a:srgbClr`,
+`a:sysClr`, `a:schemeClr@val`, `w:shd`. Попутно: T4.measure терял знак значения меньше пункта
+(`tblInd w="-5"` → `0.25pt`, отступ таблицы уезжал вправо); линии фигур держат `cap`/`cmpd`/`algn` и
+соединение (`a:round`/`a:miter`), группы — `a:grpSpLocks` и `bwMode`, соединители остаются
+`wps:cNvCnPr` с `a:cxnSpLocks`; census читает голый `w:vMerge` как `continue`.
 
 ---
 
