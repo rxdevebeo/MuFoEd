@@ -566,12 +566,27 @@ jobs:
           # SC-D5: word-zone rectangles == djvutxt --detail=word.
           python3 xtool/djvu-zone-oracle.py --corpus "$CORPUS" --ours "$ZONES" \
             --oracle /usr/bin/djvutxt --report "$OUT/zone-oracle.json" --raw-dir "$OUT/raw"
-          # SC-D7: page composite == ddjvu. Gated only on the bitonal pages the
-          # criterion claims today (docs/djvu-validation/render-bitonal.json);
-          # IW44 pages await a measured tolerance table.
+          # SC-D7: exact on the bitonal pages the criterion claims today, and a
+          # measured IW44 regression floor (page 1 of every file).
           python3 xtool/djvu-render-oracle.py --corpus "$CORPUS" --ours "$PROBE" \
             --oracle /usr/bin/ddjvu --report "$OUT/render-oracle.json" \
             --manifest docs/djvu-validation/render-bitonal.json --raw-dir "$OUT/raw"
+          python3 xtool/djvu-render-oracle.py --corpus "$CORPUS" --ours "$PROBE" \
+            --oracle /usr/bin/ddjvu --report "$OUT/render-iw44.json" \
+            --manifest docs/djvu-validation/render-sample.json \
+            --tolerance docs/djvu-validation/iw44-tolerance.json
+          # SC-D14: zones (unrotated) and the image (rotated) on synthetic
+          # 90/180/270 copies must still equal the oracle.
+          python3 xtool/djvu-rotate-fixture.py \
+            --input "$CORPUS/PlaysHistoriesAndNovelsOfTheIngeniousMrs.AphraBehnV.1.djvu" \
+            --out-dir "$OUT/rotated-render" > /dev/null
+          python3 xtool/djvu-rotate-fixture.py \
+            --input "$CORPUS/Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu" \
+            --out-dir "$OUT/rotated-zones" > /dev/null
+          python3 xtool/djvu-zone-oracle.py --corpus "$OUT/rotated-zones" --ours "$ZONES" \
+            --oracle /usr/bin/djvutxt --report "$OUT/zone-rotated.json"
+          python3 xtool/djvu-render-oracle.py --corpus "$OUT/rotated-render" --ours "$PROBE" \
+            --oracle /usr/bin/ddjvu --report "$OUT/render-rotated.json" --pages 1
           # SC-D9: the annotation/hyperlink gap, measured until the mapping lands.
           python3 xtool/djvu-ant-oracle.py --corpus "$CORPUS" \
             --oracle /usr/bin/djvused --report "$OUT/ant-oracle.json"

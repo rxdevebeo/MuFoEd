@@ -6,9 +6,9 @@ the top-left); the oracle prints pixels from the bottom-left at the page dpi.
 The driver converts ours to the oracle's system and compares each word's
 rectangle (default tolerance: 1 px) and text.
 
-Rotated pages are skipped and counted: native-zone rotation is SC-D14, still
-open, and comparing it now would assert the very thing under test. `djvutxt` is
-GPL, invoked as a separate process only.
+Zones stay in the unrotated page system, exactly as `djvutxt` prints them, so
+rotated pages are compared too (SC-D14: verified on 90/180/270 synthetic pages).
+`djvutxt` is GPL, invoked as a separate process only.
 
 Usage:
     python3 xtool/djvu-zone-oracle.py --corpus DIR --ours target/debug/examples/zones \\
@@ -74,30 +74,20 @@ def close(a: float, b: float, tolerance: float) -> bool:
 
 
 def compare(ours: dict, oracle_pages: list[dict], tolerance: float) -> tuple[bool, dict]:
-    skipped = 0
     our_words = 0
     oracle_words = 0
     checked = 0
     for index, page in enumerate(ours["pages"]):
-        if page["rotation"]:
-            skipped += 1
-            continue
         if index >= len(oracle_pages):
-            return False, {"detail": f"page {page['page']}: oracle has no page {index + 1}", "skipped_rotated": skipped}
+            return False, {"detail": f"page {page['page']}: oracle has no page {index + 1}"}
         expected = oracle_pages[index]["words"]
         ours_words = page["words"]
         our_words += len(ours_words)
         oracle_words += len(expected)
         if len(ours_words) != len(expected):
             if not expected and ours_words:
-                return False, {
-                    "detail": f"page {page['page']}: oracle printed no words (format not parsed?)",
-                    "skipped_rotated": skipped,
-                }
-            return False, {
-                "detail": f"page {page['page']}: {len(ours_words)} words, oracle {len(expected)}",
-                "skipped_rotated": skipped,
-            }
+                return False, {"detail": f"page {page['page']}: oracle printed no words (format not parsed?)"}
+            return False, {"detail": f"page {page['page']}: {len(ours_words)} words, oracle {len(expected)}"}
         for position, (mine, reference) in enumerate(zip(ours_words, expected)):
             left, bottom, width, height, text = convert(mine, page)
             ref_left, ref_bottom, ref_width, ref_height, ref_text = reference
@@ -113,11 +103,10 @@ def compare(ours: dict, oracle_pages: list[dict], tolerance: float) -> tuple[boo
                         f"page {page['page']} word {position}: ours "
                         f"({left:.1f},{bottom:.1f},{width:.1f},{height:.1f},{text!r}) vs oracle "
                         f"({ref_left},{ref_bottom},{ref_width},{ref_height},{ref_text!r})"
-                    ),
-                    "skipped_rotated": skipped,
+                    )
                 }
             checked += 1
-    return True, {"skipped_rotated": skipped, "our_words": our_words, "oracle_words": oracle_words, "checked_words": checked}
+    return True, {"our_words": our_words, "oracle_words": oracle_words, "checked_words": checked}
 
 
 def main() -> int:
@@ -165,14 +154,13 @@ def main() -> int:
         "producer": {"name": "strict-ooxml-djvu examples/zones"},
         "oracle": common.fingerprint(args.oracle, "djvulibre-bin"),
         "tolerance_px": args.tolerance,
-        "skipped_rotated_total": sum(row.get("skipped_rotated", 0) for row in results),
         "files": len(results),
         "ok": sum(1 for row in results if row.get("ok")),
         "mismatched": [row["file"] for row in results if not row.get("ok")],
         "results": results,
     }
     common.write_report(args.report, report)
-    print({"files": report["files"], "ok": report["ok"], "skipped_rotated": report["skipped_rotated_total"]})
+    print({"files": report["files"], "ok": report["ok"]})
     return 0 if report["ok"] == report["files"] else 1
 
 

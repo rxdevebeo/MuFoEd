@@ -1,0 +1,9 @@
+{
+  "what": "SC-D7 IW44 regression floor for the bounded sample in render-sample.json (the 14 smallest corpus files, every page; measured 2026-10-09 against djvulibre-bin 3.5.28-2ubuntu0.24.04.2). Worst mean 1.531, worst max 244, minimum PSNR 31.31 dB. This is a regression floor, not a fidelity claim; raising it is a code change, never a tolerance edit.",
+  "tolerances": {
+    "*": {
+      "mean_channel_error": 2.0,
+      "psnr_db_min": 30.0
+    }
+  }
+}

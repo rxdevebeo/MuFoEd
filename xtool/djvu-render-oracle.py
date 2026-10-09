@@ -65,6 +65,12 @@ def main() -> int:
     )
     parser.add_argument("--tolerance", type=Path, default=None)
     parser.add_argument("--foreground", action="store_true", help="mask-only composite")
+    parser.add_argument(
+        "--producer-max-pixels",
+        type=int,
+        default=100_000_000,
+        help="ink-pixel budget passed to the codec_probe producer (ddjvu has none)",
+    )
     parser.add_argument("--raw-dir", type=Path, default=None)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
@@ -90,7 +96,14 @@ def main() -> int:
             with tempfile.TemporaryDirectory() as scratch:
                 ours_png = Path(scratch) / "ours.png"
                 oracle_ppm = Path(scratch) / "oracle.ppm"
-                ours_argv = [str(args.ours), str(source), str(page), str(ours_png)]
+                ours_argv = [
+                    str(args.ours),
+                    str(source),
+                    str(page),
+                    str(ours_png),
+                    "--max-ink-pixels",
+                    str(args.producer_max_pixels),
+                ]
                 if args.foreground:
                     ours_argv.append("--foreground")
                 ours = common.run(ours_argv)

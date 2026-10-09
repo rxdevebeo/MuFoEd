@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import struct
 import subprocess
 import sys
@@ -228,25 +229,30 @@ def decode_pnm_rgb(data: bytes) -> tuple[int, int, bytes]:
 
 
 def diff_stats(left: bytes, right: bytes) -> dict:
-    """Exact/mean/max channel difference between two RGB8 buffers."""
+    """Exact/mean/max channel difference and PSNR between two RGB8 buffers."""
     if len(left) != len(right):
         raise ValueError("image sizes differ")
     total = 0
+    squared = 0
     worst = 0
     equal = 0
     for a, b in zip(left, right):
         delta = abs(a - b)
         total += delta
+        squared += delta * delta
         if delta > worst:
             worst = delta
         if delta == 0:
             equal += 1
     pixels = len(left)
+    mse = squared / pixels if pixels else 0.0
+    psnr = float("inf") if mse == 0 else round(10.0 * math.log10(255.0 * 255.0 / mse), 4)
     return {
         "channels": pixels,
         "mean_channel_error": round(total / pixels, 6) if pixels else 0.0,
         "max_channel_error": worst,
         "equal_fraction": round(equal / pixels, 6) if pixels else 1.0,
+        "psnr_db": psnr,
     }
 
 
@@ -261,10 +267,14 @@ def load_tolerances(path: Path | None) -> dict:
 def within(row_stats: dict, tolerance: dict | None) -> bool:
     if tolerance is None:
         return row_stats["max_channel_error"] == 0
-    return (
-        row_stats["mean_channel_error"] <= tolerance.get("mean_channel_error", 0)
-        and row_stats["max_channel_error"] <= tolerance.get("max_channel_error", 0)
-    )
+    if row_stats["mean_channel_error"] > tolerance.get("mean_channel_error", 0):
+        return False
+    if row_stats["max_channel_error"] > tolerance.get("max_channel_error", 255):
+        return False
+    minimum = tolerance.get("psnr_db_min")
+    if minimum is not None and row_stats["psnr_db"] < minimum:
+        return False
+    return True
 
 
 def main_guard(function) -> None:
