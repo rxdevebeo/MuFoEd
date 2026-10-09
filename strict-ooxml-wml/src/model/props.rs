@@ -236,6 +236,10 @@ pub struct RowProperties {
     pub cell_spacing: Option<Width>,
     /// Borders from `w:tblPrEx/w:tblBorders`. Row exceptions are not `w:trPr`.
     pub exception_borders: Borders,
+    /// The row's `w:tblPrEx` as read: width, indent, cell margins, look and the
+    /// rest of `CT_TblPrEx`, written back when present. A row built in code
+    /// leaves it `None` and has only [`Self::exception_borders`] written.
+    pub exception: Option<Box<TableProperties>>,
     /// Revision id (`w:rsid`).
     pub rsid: Option<Arc<str>>,
     /// Source location of `w:trPr`.

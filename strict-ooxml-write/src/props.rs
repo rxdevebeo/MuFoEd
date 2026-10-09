@@ -889,8 +889,38 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
     }
 }
 
-/// Writes `w:tblPrEx` when the row carries exception borders.
+/// `CT_TblPrEx`, `strict/wml.xsd`: the table properties a row may override.
+const TBLPREX: &[&str] = &[
+    "tblW",
+    "jc",
+    "tblCellSpacing",
+    "tblInd",
+    "tblBorders",
+    "shd",
+    "tblLayout",
+    "tblCellMar",
+    "tblLook",
+];
+
+/// Writes `w:tblPrEx` when the row carries an exception.
 pub fn row_exception(xml: &mut XmlWriter, props: &RowProperties) {
+    if let Some(exception) = &props.exception {
+        // `CT_TblPrEx` is the `tblPr` children a row may override, in `tblPr`
+        // order. The source had the element, so it is written even when empty;
+        // the borders are the row's own field, which an edit may change.
+        let exception = TableProperties {
+            borders: props.exception_borders.clone(),
+            ..(**exception).clone()
+        };
+        xml.start("w:tblPrEx");
+        for name in order::TBLPR {
+            if TBLPREX.contains(name) {
+                table_child(xml, &exception, name);
+            }
+        }
+        xml.end();
+        return;
+    }
     if borders_empty(&props.exception_borders) {
         return;
     }
