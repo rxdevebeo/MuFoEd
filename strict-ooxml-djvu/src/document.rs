@@ -68,6 +68,8 @@ pub struct DjvuDocument {
     pages: Vec<DjvuPage>,
     /// Budgets used while opening this document.
     pub limits: DjvuLimits,
+    /// Document metadata from `(metadata …)` / `(xmp …)`.
+    pub metadata: crate::DjvuMetadata,
     /// Document-level observations, including unsupported navigation.
     pub warnings: Vec<String>,
 }
@@ -176,6 +178,7 @@ impl DjvuDocument {
             return Err(invalid("document has no pages"));
         }
         let mut pages = Vec::new();
+        let mut metadata = crate::DjvuMetadata::default();
         let mut expanded = 0;
         for (id, title, form) in page_roots {
             let legacy = matches!(form.form_type.as_ref(), Some(b"PM44" | b"BM44"));
@@ -275,6 +278,19 @@ impl DjvuDocument {
             // djvutxt on synthetic 90/180/270 pages, so a rotated page is no
             // longer an untested assumption and carries no warning.
             let annotations = crate::annotations::parse(&ant, info);
+            let page_metadata = crate::annotations::metadata(&ant);
+            for (key, value) in page_metadata.entries {
+                if !metadata
+                    .entries
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case(&key))
+                {
+                    metadata.entries.push((key, value));
+                }
+            }
+            if metadata.xmp.is_none() {
+                metadata.xmp = page_metadata.xmp;
+            }
             let layer = if present {
                 match text::parse(&raw, info, limits) {
                     Ok(layer) => layer,
@@ -302,6 +318,7 @@ impl DjvuDocument {
             roots,
             pages,
             limits,
+            metadata,
             warnings,
         })
     }

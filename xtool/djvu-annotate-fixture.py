@@ -11,6 +11,9 @@ rectangle matches the text zones so the link maps to text.
 Usage:
     python3 xtool/djvu-annotate-fixture.py --input book.djvu --out annotated.djvu \\
         --url https://example.invalid/djvu-link [--page 1] [--rect "0 0 20000 20000"]
+    # or any raw annotation expression instead of a maparea:
+    python3 xtool/djvu-annotate-fixture.py --input book.djvu --out meta.djvu \\
+        --ant '(metadata (Title "…") (Author "…"))'
 """
 from __future__ import annotations
 
@@ -28,10 +31,19 @@ def main() -> int:
     parser.add_argument("--djvused", type=Path, default=Path("djvused"))
     parser.add_argument("--page", type=int, default=1)
     parser.add_argument("--rect", default="0 0 20000 20000")
-    parser.add_argument("--url", required=True)
+    parser.add_argument("--url", help="maparea target; mutually exclusive with --ant")
+    parser.add_argument(
+        "--ant",
+        help="raw annotation expression (e.g. a (metadata ...) block) instead of a maparea",
+    )
     args = parser.parse_args()
 
-    ant = f'(maparea "" (rect {args.rect}) (url "{args.url}"))\n'
+    if args.ant is not None:
+        ant = args.ant if args.ant.endswith("\n") else args.ant + "\n"
+    elif args.url is not None:
+        ant = f'(maparea "" (rect {args.rect}) (url "{args.url}"))\n'
+    else:
+        parser.error("one of --url or --ant is required")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(args.input.read_bytes())
     with tempfile.NamedTemporaryFile(

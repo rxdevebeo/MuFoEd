@@ -25,6 +25,32 @@ pub struct Annotation {
     pub target: AnnotationTarget,
 }
 
+/// Document metadata from `(metadata (Key "value") …)` and `(xmp "…")`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DjvuMetadata {
+    /// Key/value pairs in first-seen order, keys as the file spells them.
+    pub entries: Vec<(String, String)>,
+    /// The raw XMP packet, when the file carries one.
+    pub xmp: Option<String>,
+}
+
+impl DjvuMetadata {
+    /// The value of `key` (case-insensitive), if present.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(key))
+            .map(|(_, value)| value.as_str())
+    }
+
+    /// Whether nothing was found.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty() && self.xmp.is_none()
+    }
+}
+
 /// Caps work on a hostile chunk; a page cannot carry more annotations usefully.
 const MAX_ANNOTATIONS: usize = 200_000;
 
@@ -163,6 +189,50 @@ fn quoted(text: &str, open: usize) -> Option<String> {
     None
 }
 
+/// Reads `(metadata (Key "value") …)` and `(xmp "…")` from an annotation chunk.
+pub(crate) fn metadata(bytes: &[u8]) -> DjvuMetadata {
+    let text = String::from_utf8_lossy(bytes);
+    let mut out = DjvuMetadata::default();
+    if let Some(at) = text.find("(xmp") {
+        let rest = &text[at..];
+        if let Some(open) = rest.find('"') {
+            out.xmp = quoted(rest, open);
+        }
+    }
+    if let Some(at) = text.find("(metadata") {
+        if let Some(end) = matching_paren(&text, at) {
+            let region = &text[at..=end];
+            // Skip the `(metadata` head so the scan starts at the pairs.
+            let mut cursor = "(metadata".len();
+            while let Some(offset) = region[cursor..].find('(') {
+                let open = cursor + offset;
+                let Some(close) = matching_paren(region, open) else {
+                    break;
+                };
+                if let Some((key, value)) = key_value(&region[open + 1..close]) {
+                    out.entries.push((key, value));
+                }
+                cursor = close + 1;
+            }
+        }
+    }
+    out
+}
+
+/// `Key "value"` to a pair, or `None` for a nested/other expression.
+fn key_value(entry: &str) -> Option<(String, String)> {
+    let trimmed = entry.trim_start();
+    let key_end = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+    let key = &trimmed[..key_end];
+    if key.is_empty() || key.starts_with('"') || key.contains('(') {
+        return None;
+    }
+    let rest = &trimmed[key_end..];
+    let open = rest.find('"')?;
+    let value = quoted(rest, open)?;
+    Some((key.to_owned(), value))
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
@@ -218,5 +288,16 @@ mod tests {
         assert_eq!(found[0].target, AnnotationTarget::Url("x\"y".to_owned()));
         // A zero-size rect is not a hotspot.
         assert!(parse(b"(maparea (rect 0 0 0 5) (url \"u\"))", info()).is_empty());
+    }
+
+    #[test]
+    fn metadata_pairs_and_xmp_are_read() {
+        let bytes =
+            b"(metadata (Title \"Book\") (Author \"A. Uthor\") (Keywords \"a, b\")) (xmp \"<x/>\")";
+        let found = metadata(bytes);
+        assert_eq!(found.get("title"), Some("Book"));
+        assert_eq!(found.get("AUTHOR"), Some("A. Uthor"));
+        assert_eq!(found.get("Keywords"), Some("a, b"));
+        assert_eq!(found.xmp.as_deref(), Some("<x/>"));
     }
 }

@@ -70,6 +70,9 @@ const CONTENT_TYPE_FOOTER: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
 const CONTENT_TYPE_RELS: &str = "application/vnd.openxmlformats-package.relationships+xml";
 const CONTENT_TYPE_XML: &str = "application/xml";
+const CONTENT_TYPE_CORE_PROPERTIES: &str =
+    "application/vnd.openxmlformats-package.core-properties+xml";
+const CORE_PROPERTIES_PART: &str = "/docProps/core.xml";
 
 /// Allocates part names so generated media never collides with a passthrough
 /// part (AUD-62).
@@ -347,6 +350,38 @@ impl Source for NoSource {
     }
 }
 
+/// Document core properties (`docProps/core.xml`), for a document built in code.
+///
+/// A parsed document carries its own `core.xml` through the pass-through; a
+/// conversion (DjVu) has none, so the caller supplies the values here and the
+/// writer emits the part. OPC has no Strict/Transitional split for this part
+/// (ADR-0015): it always uses the standard namespace.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CoreProperties {
+    /// `dc:title`.
+    pub title: Option<String>,
+    /// `dc:creator`.
+    pub creator: Option<String>,
+    /// `dc:subject`.
+    pub subject: Option<String>,
+    /// `dc:description`.
+    pub description: Option<String>,
+    /// `cp:keywords`.
+    pub keywords: Option<String>,
+}
+
+impl CoreProperties {
+    /// Whether no property is set.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.creator.is_none()
+            && self.subject.is_none()
+            && self.description.is_none()
+            && self.keywords.is_none()
+    }
+}
+
 /// Options controlling a write.
 #[derive(Clone, Debug)]
 pub struct WriteOptions {
@@ -360,6 +395,8 @@ pub struct WriteOptions {
     pub write_font_table: bool,
     /// Write `word/settings.xml` even when the model recorded no setting.
     pub always_write_settings: bool,
+    /// Emit `docProps/core.xml` with these values, for a document built in code.
+    pub core_properties: Option<CoreProperties>,
 }
 
 impl Default for WriteOptions {
@@ -369,6 +406,7 @@ impl Default for WriteOptions {
             always_write_styles: false,
             write_font_table: true,
             always_write_settings: false,
+            core_properties: None,
         }
     }
 }
@@ -981,29 +1019,49 @@ pub fn write_package(
         "/word/_rels/document.xml.rels",
         write_relationships(rels.relationships()).into_bytes(),
     )?;
+    let mut root_rels = vec![Relationship {
+        id: "rId1".to_owned(),
+        rel_type: RelType::OfficeDocument,
+        raw_type: strict_type_uri(&RelType::OfficeDocument),
+        target: "word/document.xml".to_owned(),
+        target_mode: TargetMode::Internal,
+        resolved: None,
+    }];
+    root_rels.extend(pass.root_relationships().iter().map(|rel| Relationship {
+        id: rel.id.clone(),
+        rel_type: RelType::Other(rel.raw_type.clone()),
+        raw_type: rel.raw_type.clone(),
+        target: rel.target.clone(),
+        target_mode: TargetMode::Internal,
+        resolved: None,
+    }));
+    if let Some(props) = &options.core_properties {
+        if !props.is_empty() {
+            content_types.insert_override(
+                PartId::new(CORE_PROPERTIES_PART),
+                CONTENT_TYPE_CORE_PROPERTIES,
+            );
+            root_rels.push(Relationship {
+                // After the office document (rId1) and any carried root
+                // relationships, so the id never collides with theirs.
+                id: format!("rId{}", root_rels.len() + 1),
+                rel_type: RelType::CoreProperties,
+                raw_type: strict_type_uri(&RelType::CoreProperties),
+                target: "docProps/core.xml".to_owned(),
+                target_mode: TargetMode::Internal,
+                resolved: None,
+            });
+            add_part(
+                &mut zip,
+                CORE_PROPERTIES_PART,
+                core_properties_xml(props).into_bytes(),
+            )?;
+        }
+    }
     add_part(
         &mut zip,
         "/_rels/.rels",
-        write_relationships(
-            &std::iter::once(Relationship {
-                id: "rId1".to_owned(),
-                rel_type: RelType::OfficeDocument,
-                raw_type: strict_type_uri(&RelType::OfficeDocument),
-                target: "word/document.xml".to_owned(),
-                target_mode: TargetMode::Internal,
-                resolved: None,
-            })
-            .chain(pass.root_relationships().iter().map(|rel| Relationship {
-                id: rel.id.clone(),
-                rel_type: RelType::Other(rel.raw_type.clone()),
-                raw_type: rel.raw_type.clone(),
-                target: rel.target.clone(),
-                target_mode: TargetMode::Internal,
-                resolved: None,
-            }))
-            .collect::<Vec<_>>(),
-        )
-        .into_bytes(),
+        write_relationships(&root_rels).into_bytes(),
     )?;
     // A hash the model never indexed (a numbering bullet, a theme texture, a
     // VML pattern tile, an empty embedded font) is still the source's bytes.
@@ -1338,6 +1396,49 @@ fn binary_content_type(name: &str) -> &'static str {
         "ttf" => "application/x-font-ttf",
         _ => "application/octet-stream",
     }
+}
+
+/// The `docProps/core.xml` part for a document built in code.
+fn core_properties_xml(props: &CoreProperties) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    out.push_str(
+        "<cp:coreProperties \
+         xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" \
+         xmlns:dc=\"http://purl.org/dc/elements/1.1/\" \
+         xmlns:dcterms=\"http://purl.org/dc/terms/\" \
+         xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" \
+         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">",
+    );
+    for (tag, value) in [
+        ("dc:title", &props.title),
+        ("dc:creator", &props.creator),
+        ("dc:subject", &props.subject),
+        ("dc:description", &props.description),
+        ("cp:keywords", &props.keywords),
+    ] {
+        if let Some(value) = value {
+            let _ = write!(out, "<{tag}>{}</{tag}>", escape_xml(value));
+        }
+    }
+    out.push_str("</cp:coreProperties>");
+    out
+}
+
+/// Escapes the five XML metacharacters in a text node.
+fn escape_xml(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 /// The relationship ids and external targets of every hyperlink, in order.

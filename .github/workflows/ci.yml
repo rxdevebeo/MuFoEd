@@ -665,6 +665,18 @@ jobs:
           python3 xtool/djvu-ant-oracle.py --corpus "$OUT/annotated" \
             --oracle /usr/bin/djvused --ours target/release/examples/djvu_links \
             --report "$OUT/ant-oracle.json"
+          # SC-D9/L4: document metadata becomes docProps/core.xml.
+          python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
+            --out "$OUT/metadata.djvu" --djvused /usr/bin/djvused \
+            --ant '(metadata (Title "DjVu validation") (Author "Strict OOXML"))'
+          "$CLI" from-djvu "$OUT/metadata.djvu" --out "$OUT/metadata.docx"
+          python3 - <<'PY'
+          import zipfile
+          core = zipfile.ZipFile("artifacts/djvu-oracle/metadata.docx").read("docProps/core.xml").decode()
+          assert "<dc:title>DjVu validation</dc:title>" in core, core
+          assert "<dc:creator>Strict OOXML</dc:creator>" in core, core
+          print("metadata: docProps/core.xml ok")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

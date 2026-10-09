@@ -106,6 +106,18 @@ impl Args {
         Ok(result)
     }
 }
+/// Maps `DjVu` metadata keys to `docProps/core.xml` fields (SC-D9 / L4).
+fn core_properties(metadata: &strict_ooxml::DjvuMetadata) -> Option<strict_ooxml::CoreProperties> {
+    let props = strict_ooxml::CoreProperties {
+        title: metadata.get("Title").map(str::to_owned),
+        creator: metadata.get("Author").map(str::to_owned),
+        subject: metadata.get("Subject").map(str::to_owned),
+        description: metadata.get("Description").map(str::to_owned),
+        keywords: metadata.get("Keywords").map(str::to_owned),
+    };
+    (!props.is_empty()).then_some(props)
+}
+
 fn read_bounded(path: &Path, max: usize) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let len = file.metadata().map_err(|e| e.to_string())?.len();
@@ -203,7 +215,10 @@ fn execute(args: &[String], dump: bool) -> Result<bool, String> {
     let written = strict_ooxml::write_package(
         &converted.document,
         Some(&bag),
-        &strict_ooxml::WriteOptions::default(),
+        &strict_ooxml::WriteOptions {
+            core_properties: core_properties(&reader.metadata),
+            ..strict_ooxml::WriteOptions::default()
+        },
     )
     .map_err(|e| e.to_string())?;
     let out = args.out.ok_or("missing output path")?;

@@ -17,7 +17,7 @@ mod image;
 #[cfg(feature = "djvu-image")]
 pub use image::PageImage;
 mod text;
-pub use annotations::{Annotation, AnnotationTarget};
+pub use annotations::{Annotation, AnnotationTarget, DjvuMetadata};
 pub use container::Chunk;
 pub use document::{DjvuDocument, DjvuPage, PageInfo};
 pub use text::{Rect, TextLayer, TextZone, ZoneKind};
