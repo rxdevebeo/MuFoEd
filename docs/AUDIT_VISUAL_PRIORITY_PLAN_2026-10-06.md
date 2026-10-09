@@ -19,7 +19,7 @@
 | P8 | частично | 21 строка: `a:srgbClr` в `a14:hiddenFill`, `a:sysClr`, одна `w:shd` |
 | P12 | закрыт (кроме VML) | footnote/endnote −1 закрыт; `headerReference@id`/`footerReference@id` 139 → 10 частей: semantic digest (Strict-написания, MCE, текст надписей, `w:sym@char`), писатель сохраняет `w:cs`, `autoSpaceDE/DN`, `adjustRightInd`; остаток — VML-линии/фигуры (T7), уходит в VML-группы |
 | P14 | сделано, перезамер | после `5446135` (SDT-свойства сохраняются) `w:dataBinding`/`w:text` должны уйти; TZ-32 в `census.toml` устарел |
-| P15 | частично | census на хосте `b26fd91`: unclassified 633 → 119, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
+| P15 | частично | census на хосте `b3bed99`: unclassified 633 → 108, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
 
 Отдельно: ~~`unmatched_schema = 1198`~~ → **0** (census на `3332800`, 2026-10-08): все 1198 были
 процентами DrawingML/диаграмм, которых не было в T4 нормализатора (`a:spcPct` 1161, `a:miter@lim` 30,
@@ -76,7 +76,7 @@ M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waive
 | P12 | Header/footer rel + footnote −1 | **V4** | 422 | 112 | D05 | Semantic rel / sep ids |
 | P13 | Ignorable hdr/ftr/notes | **V4** | 387 | 100 | D05 | Узкое расширение TZ-46 |
 | P14 | SDT/docPart (unnamed) | **V4** | 405 | 54 | D05 | Cite named_loss или сохранить |
-| P15 | частично | census на хосте `b26fd91`: unclassified 633 → 119, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
+| P15 | частично | census на хосте `b3bed99`: unclassified 633 → 108, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
 
 \* Часть строк styles/settings пересекается с theme/metrics; после P5–P8 объём уменьшится. Не закрывать N_styles blanket’ом.
 
@@ -367,7 +367,7 @@ VML-линии и фигуры без надписи, которые T7 теря
 
 **Замер.** Полный 221; цель `unclassified_element_changes=0`.
 
-**STATUS 2026-10-09.** 633 → 119 (`b26fd91`), unmatched_schema 0, ours 0. Сделано:
+**STATUS 2026-10-09.** 633 → 108 (`b3bed99`), unmatched_schema 0, ours 0. Сделано:
 писатель держит alt text с переводами строк (атрибут переписывается со ссылками
 `&#10;`), пустой `w:compat`, все `CT_OnOff` из settings, `w:subsetted="0"`, колонки
 закладок, `tblHeader w:val="0"`, `suppressOverlap`, `specVanish`, `w:cs`,
@@ -377,15 +377,16 @@ VML-линии и фигуры без надписи, которые T7 теря
 `a:spLocks`, дети `a:blip` (эффекты), остаток `pic:spPr` (геометрия, линия, заливка),
 эффекты фигур, исходный элемент цвета (`lumMod`/`lumOff`, `alpha`, `sysClr`,
 `prstClr`), `a:rect` пользовательской геометрии, `a:lin@scaled`,
-`gradFill@rotWithShape`. Расширения Office (`a14` в `a:extLst`) по ADR-0014 не
+`gradFill@rotWithShape`; в теме — сам `a:fmtScheme` вместо заглушки, `a:font` по письменностям и
+`a:sysClr`. Сохранённая разметка пишется в той же форме, что и писатель (fixed point). Расширения Office (`a14` в `a:extLst`) по ADR-0014 не
 пишутся и называются в отчёте (`a:ext`). Census: `val="1"` → голый `CT_OnOff`,
 повторный `proofState`, `documentProtection` (TZ-52/53), раскрытый `smartTag`
 (TZ-54), пары пространств `lc`/`cdr`/`dgm`, точное совпадение имён для TZ-13;
 при `--write-reports` — `unclassified.txt` и записанные пакеты в `written/`.
 
-Остаток 119: VML (`w:txbxContent` 14, `o:rules`, `shapedefaults`, hdr/ftr 3+3) — в
+Остаток 108: VML (`w:txbxContent` 14, `o:rules`, `shapedefaults`, hdr/ftr 3+3) — в
 пункт «VML-группы»; внешние картинки `a:blip@link` 5; `c:chart@id` 6; тема
-(`a:reflection`, `a:hueOff`) 8; `w:br@clear` 4; `customMarkFollows` 2; поля форм
+`w:br@clear` 4; `customMarkFollows` 2; поля форм
 (`w:checkBox`, `w:textInput`, …) 7; прочие одиночные.
 
 ---
