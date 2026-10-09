@@ -1532,7 +1532,7 @@ impl PartParser<'_> {
                     color: color.unwrap_or_default(),
                 }))
             }
-            "gradFill" => Ok(Some(self.parse_grad_fill()?)),
+            "gradFill" => Ok(Some(self.parse_grad_fill(attrs)?)),
             "blipFill" => Ok(Some(self.parse_shape_blip_fill()?)),
             "pattFill" => {
                 let preset = plain_attr(attrs, "prst").map(|v| self.intern(v));
@@ -1686,9 +1686,11 @@ impl PartParser<'_> {
     }
 
     /// Parses `a:gradFill`.
-    fn parse_grad_fill(&mut self) -> Result<ShapeFill> {
+    fn parse_grad_fill(&mut self, attrs: &[Attr]) -> Result<ShapeFill> {
         let mut stops = Vec::new();
         let mut angle = None;
+        let mut scaled = None;
+        let rotate_with_shape = optional_bool_attr(attrs, "rotWithShape");
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
@@ -1697,6 +1699,7 @@ impl PartParser<'_> {
                             parser.parse_gradient_stops(&mut stops)?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "lin" {
                             angle = parse_i32_attr(&attrs, "ang");
+                            scaled = optional_bool_attr(&attrs, "scaled");
                             parser.skip_element()?;
                         } else {
                             parser.skip_element()?;
@@ -1707,7 +1710,12 @@ impl PartParser<'_> {
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of gradient fill")),
                 }
             }
-            Ok(ShapeFill::Gradient { stops, angle })
+            Ok(ShapeFill::Gradient {
+                stops,
+                angle,
+                scaled,
+                rotate_with_shape,
+            })
         })
     }
 

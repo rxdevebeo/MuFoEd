@@ -924,8 +924,16 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             shape_color(xml, color);
             xml.end();
         }
-        ShapeFill::Gradient { stops, angle } => {
+        ShapeFill::Gradient {
+            stops,
+            angle,
+            scaled,
+            rotate_with_shape,
+        } => {
             xml.start("a:gradFill");
+            if let Some(rotate) = rotate_with_shape {
+                xml.attr("rotWithShape", bool_str(*rotate));
+            }
             xml.start("a:gsLst");
             for stop in stops {
                 xml.start("a:gs");
@@ -939,7 +947,7 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             if let Some(angle) = angle {
                 xml.start("a:lin");
                 xml.attr("ang", angle);
-                xml.attr("scaled", "0");
+                xml.attr("scaled", bool_str(scaled.unwrap_or(false)));
                 xml.end();
             }
             xml.end();

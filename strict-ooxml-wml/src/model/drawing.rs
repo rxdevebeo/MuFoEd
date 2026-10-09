@@ -164,6 +164,10 @@ pub enum ShapeFill {
         stops: Vec<GradientStop>,
         /// Gradient angle in 60000ths of a degree.
         angle: Option<i32>,
+        /// `a:lin/@scaled`, when written.
+        scaled: Option<bool>,
+        /// `a:gradFill/@rotWithShape`, when written.
+        rotate_with_shape: Option<bool>,
     },
     /// Pattern fill (rendered as a flat foreground colour).
     Pattern {
