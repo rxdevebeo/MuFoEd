@@ -184,7 +184,10 @@ fn paragraph_child(
             TriState::Off => xml.empty_attr_w("w:wordWrap", "val", "false"),
             TriState::Absent => {}
         },
+        "autoSpaceDE" => toggle(xml, "w:autoSpaceDE", props.auto_space_de),
+        "autoSpaceDN" => toggle(xml, "w:autoSpaceDN", props.auto_space_dn),
         "bidi" => toggle(xml, "w:bidi", props.bidi),
+        "adjustRightInd" => toggle(xml, "w:adjustRightInd", props.adjust_right_ind),
         "snapToGrid" => match props.snap_to_grid {
             TriState::On => xml.empty_attr_w("w:snapToGrid", "val", "true"),
             TriState::Off => xml.empty_attr_w("w:snapToGrid", "val", "false"),
@@ -274,6 +277,9 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && props.contextual_spacing == TriState::Absent
         && props.word_wrap == TriState::Absent
         && props.snap_to_grid == TriState::Absent
+        && props.auto_space_de == TriState::Absent
+        && props.auto_space_dn == TriState::Absent
+        && props.adjust_right_ind == TriState::Absent
         && props.frame.is_none()
 }
 
@@ -429,6 +435,7 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(vert_align) = &props.vert_align {
         xml.empty_attr_w("w:vertAlign", "val", vert_align.as_str());
     }
+    toggle(xml, "w:cs", props.complex_script);
     if let Some(emphasis) = &props.emphasis {
         xml.empty_attr_w("w:em", "val", emphasis.as_ref());
     }
@@ -467,6 +474,7 @@ fn is_empty_run(props: &RunProperties) -> bool {
         && props.caps == TriState::Absent
         && props.small_caps == TriState::Absent
         && props.rtl == TriState::Absent
+        && props.complex_script == TriState::Absent
         && props.vanish == TriState::Absent
         && props.emboss == TriState::Absent
         && props.imprint == TriState::Absent

@@ -57,6 +57,7 @@ Inventory element changes and XSD messages are different measurements:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import collections
 import fnmatch
 import hashlib
@@ -284,7 +285,105 @@ def _strict_namespace_map() -> dict[str, str]:
 _STRICT_NS = _strict_namespace_map()
 
 
-def _semantic_part_digest(payload: bytes) -> str:
+# With `--write-reports DIR` the semantic text of every header and footer is
+# kept under DIR/semantic-parts/, so a relationship row that differs can be
+# explained by diffing the two sides instead of by guessing. An environment
+# variable, not a global: the comparisons run in worker processes.
+_SEMANTIC_DUMP_ENV = "CENSUS_SEMANTIC_DUMP"
+
+
+_XML_NS = "http://www.w3.org/XML/1998/namespace"
+# Editor state, not content: proofing marks.
+_SEMANTIC_SKIP = {"proofErr"}
+_BORDER_EDGES = {
+    "top", "left", "bottom", "right", "start", "end", "between", "bar", "insideH", "insideV",
+}
+# `w:tblLook` bits (ISO/IEC 29500-1 17.4.56 / -4 14.10.5): the Strict attributes.
+_TBL_LOOK = (
+    ("firstRow", 0x0020), ("lastRow", 0x0040), ("firstColumn", 0x0080),
+    ("lastColumn", 0x0100), ("noHBand", 0x0200), ("noVBand", 0x0400),
+)
+
+
+_WML_STRICT = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+
+
+def _text_boxes(element: etree._Element) -> list[etree._Element]:
+    """The outermost `w:txbxContent` under `element`, in document order."""
+    found: list[etree._Element] = []
+    for child in element:
+        if not isinstance(child.tag, str):
+            continue
+        if etree.QName(child).localname == "txbxContent":
+            found.append(child)
+        else:
+            found.extend(_text_boxes(child))
+    return found
+
+
+def _table_look(element: etree._Element) -> list[str]:
+    """`w:tblLook` as its six flags, whether written as a hex `val` or as attributes."""
+    flags: dict[str, bool] = {}
+    for key, value in element.attrib.items():
+        name = etree.QName(key).localname
+        if name == "val":
+            try:
+                bits = int(value, 16)
+            except ValueError:
+                continue
+            for flag, bit in _TBL_LOOK:
+                flags.setdefault(flag, bool(bits & bit))
+        elif name in dict(_TBL_LOOK):
+            flags[name] = value.lower() in {"1", "true", "on"}
+    return [f"{flag}={int(flags.get(flag, False))}" for flag, _bit in _TBL_LOOK]
+# T3 renames these attributes; the values stay.
+_DIRECTION_ATTRS = {
+    "left": "start", "right": "end", "leftChars": "startChars", "rightChars": "endChars",
+}
+
+
+def _canonical_value(name: str, value: str) -> str | None:
+    """One spelling per meaning, as `_same_attr_value` compares them.
+
+    `None` drops a default on/off `val`. On/off and direction words collapse to
+    one token, and a length is written in twips whether it came as `120` or
+    `6pt`. Both sides go through this, so a different value stays different.
+    """
+    lowered = value.lower()
+    # On/off is a number here, so `1`, `true` and `on` are one token whatever
+    # the attribute, and `0` stays equal to `0pt`.
+    if lowered in {"true", "on"}:
+        lowered = "1"
+    elif lowered in {"false", "off"}:
+        lowered = "0"
+    if name == "val":
+        if lowered == "1":
+            return None
+        if lowered in {"left", "start"}:
+            return "start"
+        if lowered in {"right", "end"}:
+            return "end"
+    if name == "char":
+        # `w:sym@char` is hex, not a length; the Symbol-font remap writes
+        # `F0A7` as `00A7` (`_same_sym_char`).
+        try:
+            code = int(value, 16)
+        except ValueError:
+            return value
+        if 0xF000 <= code <= 0xF0FF:
+            code -= 0xF000
+        return f"{code:04X}"
+    twips = _twips(lowered)
+    if twips is not None:
+        # `wp:wrap*` and `wp:anchor` distances: the writer spells out the zero.
+        if name.startswith("dist") and twips == 0:
+            return None
+        return f"{round(twips, 2):g}tw"
+    # A namespace URI as a value (`a:graphicData@uri`) in its Strict form.
+    return _STRICT_NS.get(value, value)
+
+
+def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
     """Header and footer identity after the Strict rewrite.
 
     Editor marks, `mc:Ignorable`, a default on/off `val`, and the complex-script
@@ -305,32 +404,99 @@ def _semantic_part_digest(payload: bytes) -> str:
             return
         qname = etree.QName(element)
         namespace = _STRICT_NS.get(qname.namespace or "", qname.namespace or "")
-        chunks.append(f"<{namespace} {qname.localname}")
+        local = qname.localname
+        if local in _SEMANTIC_SKIP:
+            return
+        # Markup compatibility: the output keeps the branch the reader chose
+        # (the first `mc:Choice`, else `mc:Fallback`) without the wrapper.
+        if local == "AlternateContent" and "markup-compatibility" in (qname.namespace or ""):
+            branches = [child for child in element if isinstance(child.tag, str)]
+            chosen = next(
+                (b for b in branches if etree.QName(b).localname == "Choice"),
+                next((b for b in branches if etree.QName(b).localname == "Fallback"), None),
+            )
+            if chosen is not None:
+                for child in chosen:
+                    walk(child, chunks)
+            return
+        # A border edge of `nil`/`none` is no border.
+        if local in _BORDER_EDGES and any(
+            etree.QName(key).localname == "val" and value in {"nil", "none"}
+            for key, value in element.attrib.items()
+        ):
+            return
+        # T3 renames the left/right edges and margins to start/end.
+        local = {"left": "start", "right": "end"}.get(local, local)
+        if local == "tblLook":
+            chunks.append(f"<{namespace} tblLook")
+            chunks.append(" ".join(_table_look(element)))
+            return
+        # A drawing counts by the text of its text boxes. VML becomes DrawingML
+        # (T7) and its geometry, locks and extensions are attribute and element
+        # rows of this part; the header's identity is what it says.
+        if local in {"pict", "drawing"} and namespace == _WML_STRICT:
+            chunks.append(f"<{namespace} drawing")
+            for box in _text_boxes(element):
+                for child in box:
+                    walk(child, chunks)
+            return
+        # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
+        pct = any(
+            etree.QName(key).localname == "type" and value == "pct"
+            for key, value in element.attrib.items()
+        )
         attributes: list[str] = []
         for key, value in element.attrib.items():
             attr = etree.QName(key)
-            if attr.localname in _EDITOR_ATTRS or attr.localname == "Ignorable":
+            name = attr.localname
+            if name in _EDITOR_ATTRS or name == "Ignorable":
                 continue
-            if qname.localname == "rFonts" and attr.localname == "hint" and value.lower() == "cs":
+            # The writer spells out xml:space on every text run.
+            if attr.namespace == _XML_NS and name == "space":
                 continue
-            if attr.localname == "val" and value.lower() in {"true", "on"}:
+            if qname.localname == "rFonts" and name == "hint" and value.lower() == "cs":
+                continue
+            if name == "prefixMappings":
+                # Namespace URIs inside the mapping string, in their Strict form.
+                for old_uri, strict_uri in _STRICT_NS.items():
+                    value = value.replace(old_uri, strict_uri)
+            elif pct and name == "w":
+                number = _percent_number(value)
+                if number is not None:
+                    value = f"{number if value.endswith('%') else number / 50.0:g}pct"
+            else:
+                value = _canonical_value(name, value)
+            if value is None:
                 continue
             attr_ns = _STRICT_NS.get(attr.namespace or "", attr.namespace or "")
-            attributes.append(f"{attr_ns} {attr.localname}={value}")
-        if attributes:
-            chunks.append(" ".join(sorted(attributes)))
-        text = (element.text or "").strip()
-        if text:
-            chunks.append(text)
+            name = _DIRECTION_ATTRS.get(name, name)
+            attributes.append(f"{attr_ns} {name}={value}")
         children = [child for child in element if isinstance(child.tag, str)]
         if qname.localname in property_bags:
             children.sort(key=lambda child: etree.QName(child).localname)
+        inner: list[str] = []
         for child in children:
-            walk(child, chunks)
+            walk(child, inner)
+        text = (element.text or "").strip()
+        # An empty property bag says nothing - also once its nil borders are
+        # gone; the writer leaves it out.
+        if qname.localname in property_bags and not attributes and not inner and not text:
+            return
+        chunks.append(f"<{namespace} {local}")
+        if attributes:
+            chunks.append(" ".join(sorted(attributes)))
+        if text:
+            chunks.append(text)
+        chunks.extend(inner)
 
     chunks: list[str] = []
     walk(root, chunks)
-    return hashlib.sha256("\n".join(chunks).encode("utf-8")).hexdigest()
+    text = "\n".join(chunks)
+    dump = os.environ.get(_SEMANTIC_DUMP_ENV)
+    if dump and dump_name:
+        Path(dump).mkdir(parents=True, exist_ok=True)
+        (Path(dump) / dump_name).write_text(text, encoding="utf-8")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
@@ -375,8 +541,14 @@ def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
             # A regenerated header or footer is a different zip entry even when
             # the paragraphs are the same. The relationship row is the part
             # identity; attribute losses inside the part stay their own rows.
+            package = Path(archive.filename or "package")
+            # The written copy keeps the input's file name; its folder tells
+            # the two sides apart.
+            dump_name = (
+                f"{package.parent.name}--{package.name}--{resolved.replace('/', '_')}.txt"
+            )
             digest = (
-                _semantic_part_digest(payload)
+                _semantic_part_digest(payload, dump_name)
                 if kind.endswith("/header") or kind.endswith("/footer")
                 else hashlib.sha256(payload).hexdigest()
             )
@@ -1681,6 +1853,8 @@ def main(argv: list[str]) -> int:
     # process still performs the writes and keeps the bytes for receipts.
     parser.add_argument("--written", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.write_reports:
+        os.environ[_SEMANTIC_DUMP_ENV] = str(Path(args.write_reports) / "semantic-parts")
     if args.written:
         raise SystemExit(
             "error: census_gate.py measures the write's own loss report, so it cannot judge "

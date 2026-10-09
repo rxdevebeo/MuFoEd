@@ -156,6 +156,21 @@ impl PartParser<'_> {
                                 props.bidi = parse_on_off_tristate(parser, &attrs, "w:bidi");
                                 parser.skip_element()?;
                             }
+                            "autoSpaceDE" => {
+                                props.auto_space_de =
+                                    parse_on_off_tristate(parser, &attrs, "w:autoSpaceDE");
+                                parser.skip_element()?;
+                            }
+                            "autoSpaceDN" => {
+                                props.auto_space_dn =
+                                    parse_on_off_tristate(parser, &attrs, "w:autoSpaceDN");
+                                parser.skip_element()?;
+                            }
+                            "adjustRightInd" => {
+                                props.adjust_right_ind =
+                                    parse_on_off_tristate(parser, &attrs, "w:adjustRightInd");
+                                parser.skip_element()?;
+                            }
                             "pBdr" => props.borders = parser.parse_borders()?,
                             "shd" => {
                                 props.shading = Some(parser.parse_shading(&attrs));
@@ -372,6 +387,10 @@ impl PartParser<'_> {
                                     parse_on_off_tristate(parser, &attrs, "w:smallCaps");
                             }
                             "rtl" => props.rtl = parse_on_off_tristate(parser, &attrs, "w:rtl"),
+                            "cs" => {
+                                props.complex_script =
+                                    parse_on_off_tristate(parser, &attrs, "w:cs");
+                            }
                             "vanish" => {
                                 props.vanish = parse_on_off_tristate(parser, &attrs, "w:vanish");
                             }
