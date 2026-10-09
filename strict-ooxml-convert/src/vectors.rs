@@ -177,6 +177,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         bw_mode: None,
         tx_box: None,
         sp_locks: None,
+        effects: None,
         geometry: ShapeGeometry::Preset(Arc::from("rect")),
         xfrm: None,
         offset: Some((Emu(0), Emu(0))),

@@ -122,6 +122,12 @@ pub struct PictureMarkup {
     pub locks: Option<Vec<(Arc<str>, Arc<str>)>>,
     /// `pic:blipFill` attributes.
     pub blip_fill: Vec<(Arc<str>, Arc<str>)>,
+    /// The children of `a:blip` (colour effects, `a:extLst`) as Strict markup
+    /// that declares its own namespaces.
+    pub blip_children: Option<Arc<str>>,
+    /// The children of `pic:spPr` after `a:xfrm` (geometry, fill, line,
+    /// effects, `a:extLst`), as markup in source order.
+    pub shape_properties: Option<Arc<str>>,
 }
 
 /// A colour that is either an explicit RGB value or a theme reference.
@@ -372,6 +378,9 @@ pub struct Shape {
     pub tx_box: Option<bool>,
     /// `a:spLocks` attributes as written; `None` when the element is absent.
     pub sp_locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// The `wps:spPr` children after the line (`a:effectLst`, `a:scene3d`,
+    /// `a:sp3d`, `a:extLst`) as markup that declares its own namespaces.
+    pub effects: Option<Arc<str>>,
     /// Geometry.
     pub geometry: ShapeGeometry,
     /// Transform (`a:xfrm`).

@@ -632,6 +632,9 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     if let Some(blip) = picture.blip.as_ref() {
         xml.attr_opt("cstate", blip.cstate.as_deref());
     }
+    if let Some(children) = &picture.markup.blip_children {
+        xml.raw_markup(children, &[]);
+    }
     // AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`, not a
     // child. The parser skips unknown children of `a:blip`, so a nested crop was
     // written once and lost on the next read — fixed-point failed.
@@ -647,7 +650,11 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.start("pic:spPr");
     xml.attr_opt("bwMode", picture.bw_mode.as_deref());
     transform(xml, &picture.xfrm, picture.extent.as_ref());
-    geometry_element(xml, &ShapeGeometry::None);
+    match &picture.markup.shape_properties {
+        // Geometry, fill, line and effects as read, after `a:xfrm`.
+        Some(rest) => xml.raw_markup(rest, &[]),
+        None => geometry_element(xml, &ShapeGeometry::None),
+    }
     xml.end();
     xml.end();
 }
@@ -732,6 +739,9 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     }
     if let Some(stroke) = &shape.stroke {
         stroke_element(xml, stroke);
+    }
+    if let Some(effects) = &shape.effects {
+        xml.raw_markup(effects, &[]);
     }
     xml.end();
     if let Some(style) = &shape.style {
@@ -1440,6 +1450,7 @@ mod tests {
                     bw_mode: None,
                     tx_box: Some(true),
                     sp_locks: None,
+                    effects: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
                     offset: Some((Emu(0), Emu(0))),
@@ -1517,6 +1528,7 @@ mod tests {
                     bw_mode: None,
                     tx_box: Some(true),
                     sp_locks: None,
+                    effects: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
                     offset: Some((Emu(0), Emu(0))),
@@ -1664,6 +1676,7 @@ mod tests {
                 bw_mode: None,
                 tx_box: None,
                 sp_locks: None,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: Some(Xfrm {
                     offset: Some((Emu(x), Emu(0))),

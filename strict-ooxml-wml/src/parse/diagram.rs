@@ -344,6 +344,7 @@ impl PartParser<'_> {
                 bw_mode: None,
                 tx_box: None,
                 sp_locks: None,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,

@@ -728,13 +728,13 @@ impl PartParser<'_> {
                             picture.descr = descr;
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
                             picture.markup.blip_fill = parser.plain_attr_pairs(&attrs);
-                            let (blip, src_rect) = parser.parse_blip_fill()?;
+                            let (blip, src_rect) = parser.parse_blip_fill(&mut picture.markup)?;
                             picture.blip = blip;
                             picture.src_rect = src_rect;
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "spPr" {
                             picture.bw_mode =
                                 plain_attr(&attrs, "bwMode").map(|value| parser.intern(value));
-                            let (extent, xfrm) = parser.parse_sp_pr()?;
+                            let (extent, xfrm) = parser.parse_sp_pr(&mut picture.markup)?;
                             picture.extent = extent;
                             picture.xfrm = xfrm;
                         } else {
@@ -791,6 +791,129 @@ impl PartParser<'_> {
         })
     }
 
+    /// Serialises the element whose start was just read, with its subtree, as
+    /// markup that declares on its root every namespace it uses, so the writer
+    /// can put it back wherever the element sat.
+    ///
+    /// `None` when the subtree carries a relationship attribute: an id the
+    /// writer does not re-map would point at nothing (`a14:imgLayer@r:embed`).
+    fn capture_fragment(
+        &mut self,
+        name: QName,
+        attrs: Vec<Attr>,
+    ) -> Result<Option<std::sync::Arc<str>>> {
+        enum Piece {
+            Start(QName, Vec<Attr>),
+            End(QName),
+            Text(String),
+        }
+        let mut pieces = vec![Piece::Start(name, attrs)];
+        let mut depth = 1u32;
+        while depth > 0 {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    depth += 1;
+                    pieces.push(Piece::Start(name, attrs));
+                }
+                XmlEvent::EndElement { name } => {
+                    depth -= 1;
+                    pieces.push(Piece::End(name));
+                }
+                XmlEvent::Text(text) | XmlEvent::CData(text) => pieces.push(Piece::Text(text)),
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept fragment")),
+            }
+        }
+        let mut prefixes: Vec<(String, String)> = Vec::new();
+        let mut prefix_of = |ns: Option<&strict_ooxml_core::xml::qname::NsUri>| -> Option<String> {
+            let uri = ns?.as_str();
+            if uri == "http://www.w3.org/XML/1998/namespace" {
+                return Some("xml".to_owned());
+            }
+            if let Some((_, prefix)) = prefixes.iter().find(|(known, _)| known == uri) {
+                return Some(prefix.clone());
+            }
+            let prefix = markup_prefix(Some(uri))
+                .map_or_else(|| format!("ns{}", prefixes.len()), str::to_owned);
+            prefixes.push((uri.to_owned(), prefix.clone()));
+            Some(prefix)
+        };
+        let mut body = String::new();
+        let mut root_end = None;
+        for piece in &pieces {
+            match piece {
+                Piece::Start(name, attrs) => {
+                    body.push('<');
+                    if let Some(prefix) = prefix_of(name.ns.as_ref()) {
+                        body.push_str(&prefix);
+                        body.push(':');
+                    }
+                    body.push_str(name.local());
+                    if root_end.is_none() {
+                        root_end = Some(body.len());
+                    }
+                    for attr in attrs {
+                        if attr.name.ns.as_ref().is_some_and(|ns| ns == RELS_STRICT_NS) {
+                            return Ok(None);
+                        }
+                        body.push(' ');
+                        if let Some(prefix) = prefix_of(attr.name.ns.as_ref()) {
+                            body.push_str(&prefix);
+                            body.push(':');
+                        }
+                        body.push_str(attr.name.local());
+                        body.push_str("=\"");
+                        let _ = strict_ooxml_core::xml::escape::escape_attr_into(
+                            &mut body,
+                            &attr.value,
+                        );
+                        body.push('"');
+                    }
+                    body.push('>');
+                }
+                Piece::End(name) => {
+                    body.push_str("</");
+                    if let Some(prefix) = prefix_of(name.ns.as_ref()) {
+                        body.push_str(&prefix);
+                        body.push(':');
+                    }
+                    body.push_str(name.local());
+                    body.push('>');
+                }
+                Piece::Text(text) => escape_text_into_markup(&mut body, text),
+            }
+        }
+        let mut declarations = String::new();
+        for (uri, prefix) in &prefixes {
+            declarations.push_str(" xmlns:");
+            declarations.push_str(prefix);
+            declarations.push_str("=\"");
+            let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut declarations, uri);
+            declarations.push('"');
+        }
+        let at = root_end.unwrap_or(0);
+        body.insert_str(at, &declarations);
+        Ok(Some(std::sync::Arc::from(body)))
+    }
+
+    /// The children of the element whose start was just read, through its end,
+    /// as one fragment (see [`Self::capture_fragment`]); `None` when it has none.
+    fn capture_children(&mut self) -> Result<Option<std::sync::Arc<str>>> {
+        let mut out = String::new();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if let Some(fragment) = self.capture_fragment(name, attrs)? {
+                        out.push_str(&fragment);
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept element")),
+            }
+        }
+        Ok((!out.is_empty()).then(|| std::sync::Arc::from(out)))
+    }
+
     /// The unqualified attributes of an element, as written.
     fn plain_attr_pairs(
         &mut self,
@@ -826,7 +949,10 @@ impl PartParser<'_> {
     }
 
     /// Parses `pic:blipFill`, resolving the image reference and crop.
-    fn parse_blip_fill(&mut self) -> Result<(Option<BlipRef>, Option<SrcRect>)> {
+    fn parse_blip_fill(
+        &mut self,
+        markup: &mut crate::model::drawing::PictureMarkup,
+    ) -> Result<(Option<BlipRef>, Option<SrcRect>)> {
         self.nested(|parser| {
             let mut blip = None;
             let mut src_rect = None;
@@ -851,7 +977,7 @@ impl PartParser<'_> {
                                 cstate,
                                 location: parser.location(),
                             });
-                            parser.skip_element()?;
+                            markup.blip_children = parser.capture_children()?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "srcRect" {
                             src_rect = Some(parse_src_rect(&attrs));
                             parser.skip_element()?;
@@ -1022,10 +1148,14 @@ impl PartParser<'_> {
     }
 
     /// Parses `pic:spPr`, extracting the extent and transform.
-    fn parse_sp_pr(&mut self) -> Result<(Option<Extent>, Option<Xfrm>)> {
+    fn parse_sp_pr(
+        &mut self,
+        markup: &mut crate::model::drawing::PictureMarkup,
+    ) -> Result<(Option<Extent>, Option<Xfrm>)> {
         self.nested(|parser| {
             let mut extent = None;
             let mut xfrm = None;
+            let mut rest = String::new();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -1043,8 +1173,8 @@ impl PartParser<'_> {
                                 flip_h: parts.flip_h,
                                 flip_v: parts.flip_v,
                             });
-                        } else {
-                            parser.skip_element()?;
+                        } else if let Some(fragment) = parser.capture_fragment(name, attrs)? {
+                            rest.push_str(&fragment);
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -1053,6 +1183,9 @@ impl PartParser<'_> {
                         return Err(parser.invalid("unexpected end of shape properties"))
                     }
                 }
+            }
+            if !rest.is_empty() {
+                markup.shape_properties = Some(std::sync::Arc::from(rest));
             }
             Ok((extent, xfrm))
         })
@@ -1069,6 +1202,7 @@ impl PartParser<'_> {
                 bw_mode: None,
                 tx_box: None,
                 sp_locks: None,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,
@@ -1176,6 +1310,10 @@ impl PartParser<'_> {
                                     }
                                 }
                                 "ln" => shape.stroke = Some(parser.parse_shape_stroke(&attrs)?),
+                                "effectLst" | "effectDag" | "scene3d" | "sp3d" | "extLst" => {
+                                    let fragment = parser.capture_fragment(name.clone(), attrs)?;
+                                    shape.effects = join_markup(shape.effects.take(), fragment);
+                                }
                                 _ => parser.skip_element()?,
                             }
                         } else {
@@ -2042,6 +2180,17 @@ fn write_end_markup(out: &mut String, name: &QName) {
 
 fn escape_text_into_markup(out: &mut String, text: &str) {
     let _ = strict_ooxml_core::xml::escape::escape_text_into(out, text);
+}
+
+/// Two kept fragments as one, in order.
+fn join_markup(
+    first: Option<std::sync::Arc<str>>,
+    second: Option<std::sync::Arc<str>>,
+) -> Option<std::sync::Arc<str>> {
+    match (first, second) {
+        (Some(first), Some(second)) => Some(std::sync::Arc::from(format!("{first}{second}"))),
+        (first, second) => first.or(second),
+    }
 }
 
 /// Stable prefix for a namespace URI when serialising locked-canvas markup.
