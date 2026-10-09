@@ -1275,6 +1275,7 @@ impl PartParser<'_> {
                 bw_mode: None,
                 tx_box: None,
                 sp_locks: None,
+                connector: false,
                 effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
@@ -1304,6 +1305,10 @@ impl PartParser<'_> {
                                 "cNvSpPr" => {
                                     shape.tx_box = optional_bool_attr(&attrs, "txBox");
                                     shape.sp_locks = parser.read_locks("spLocks")?;
+                                }
+                                "cNvCnPr" => {
+                                    shape.connector = true;
+                                    shape.sp_locks = parser.read_locks("cxnSpLocks")?;
                                 }
                                 "spPr" => {
                                     shape.bw_mode = plain_attr(&attrs, "bwMode")
@@ -2083,6 +2088,8 @@ impl PartParser<'_> {
                 name: None,
                 descr: None,
                 xfrm: None,
+                locks: None,
+                bw_mode: None,
                 children: Vec::new(),
                 location,
             };
@@ -2112,8 +2119,11 @@ impl PartParser<'_> {
                                     parser.skip_element()?;
                                 }
                                 "grpSpPr" => {
+                                    group.bw_mode =
+                                        plain_attr(&attrs, "bwMode").map(|v| parser.intern(v));
                                     group.xfrm = Some(parser.parse_group_transform(&attrs)?);
                                 }
+                                "cNvGrpSpPr" => group.locks = parser.read_locks("grpSpLocks")?,
                                 _ => parser.skip_element()?,
                             }
                         } else {

@@ -716,16 +716,28 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     xml.attr("name", shape.name.as_deref().unwrap_or("Shape"));
     xml.attr_opt("descr", shape.descr.as_deref());
     xml.end();
-    xml.start("wps:cNvSpPr");
-    if let Some(tx_box) = shape.tx_box {
-        xml.attr("txBox", bool_str(tx_box));
+    if shape.connector {
+        // `CT_WordprocessingShape` takes `cNvSpPr` or `cNvCnPr`; a connector
+        // written as a plain shape lost its `a:cxnSpLocks`.
+        xml.start("wps:cNvCnPr");
+        if let Some(locks) = &shape.sp_locks {
+            xml.start("a:cxnSpLocks");
+            plain_attrs(xml, locks);
+            xml.end();
+        }
+        xml.end();
+    } else {
+        xml.start("wps:cNvSpPr");
+        if let Some(tx_box) = shape.tx_box {
+            xml.attr("txBox", bool_str(tx_box));
+        }
+        xml.start("a:spLocks");
+        if let Some(locks) = &shape.sp_locks {
+            plain_attrs(xml, locks);
+        }
+        xml.end();
+        xml.end();
     }
-    xml.start("a:spLocks");
-    if let Some(locks) = &shape.sp_locks {
-        plain_attrs(xml, locks);
-    }
-    xml.end();
-    xml.end();
     xml.start("wps:spPr");
     xml.attr_opt("bwMode", shape.bw_mode.as_deref());
     let mut xfrm = shape.xfrm;
@@ -1204,8 +1216,14 @@ fn group_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape) {
 fn group_element_as(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape, tag: &'static str) {
     xml.start(tag);
     xml.start("wpg:cNvGrpSpPr");
+    if let Some(locks) = &group.locks {
+        xml.start("a:grpSpLocks");
+        plain_attrs(xml, locks);
+        xml.end();
+    }
     xml.end();
     xml.start("wpg:grpSpPr");
+    xml.attr_opt("bwMode", group.bw_mode.as_deref());
     group_transform(xml, &group.xfrm);
     xml.end();
     for child in &group.children {
@@ -1487,6 +1505,7 @@ mod tests {
                     bw_mode: None,
                     tx_box: Some(true),
                     sp_locks: None,
+                    connector: false,
                     effects: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
@@ -1565,6 +1584,7 @@ mod tests {
                     bw_mode: None,
                     tx_box: Some(true),
                     sp_locks: None,
+                    connector: false,
                     effects: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
@@ -1713,6 +1733,7 @@ mod tests {
                 bw_mode: None,
                 tx_box: None,
                 sp_locks: None,
+                connector: false,
                 effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: Some(Xfrm {
