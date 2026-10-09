@@ -784,8 +784,7 @@ impl PartParser<'_> {
                         match name.local() {
                             "trHeight" => props.height = Some(parser.parse_row_height(&attrs)),
                             "tblHeader" => {
-                                props.header =
-                                    parse_on_off_tristate(parser, &attrs, "w:tblHeader");
+                                props.header = parse_on_off_tristate(parser, &attrs, "w:tblHeader");
                                 if props.header.is_on() {
                                     parser.record(
                                         "w:tblHeader",

@@ -32,7 +32,10 @@ fn t_p15_paragraph_and_run_toggles_survive() {
         "<w:p><w:pPr><w:suppressOverlap/></w:pPr>\
 <w:r><w:rPr><w:specVanish/></w:rPr><w:t>x</w:t></w:r></w:p>",
     );
-    assert!(xml.contains(r#"<w:suppressOverlap w:val="true"/>"#), "{xml}");
+    assert!(
+        xml.contains(r#"<w:suppressOverlap w:val="true"/>"#),
+        "{xml}"
+    );
     assert!(xml.contains(r#"<w:specVanish w:val="true"/>"#), "{xml}");
 }
 
