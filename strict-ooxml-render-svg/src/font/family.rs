@@ -62,7 +62,8 @@ pub fn map_family(family: &str) -> &'static str {
         // names (STAGE-5C-REWORK-1 D1).
         // Regular PostScript names used by Cocoa RTF producers (name ID 6).
         // Font style still comes from the run's bold/italic properties.
-        "arial" | "arialmt" | "helvetica" | "liberation sans" | "arimo" => "Arimo",
+        "arial" | "arialmt" | "helvetica" | "helvetica neue" | "helveticaneue" | "verdana"
+        | "tahoma" | "liberation sans" | "arimo" => "Arimo",
         "times new roman" | "timesnewromanpsmt" | "liberation serif" | "tinos" => "Tinos",
         "courier new" | "liberation mono" | "cousine" => "Cousine",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
@@ -126,6 +127,16 @@ mod tests {
         assert_eq!(map_family("Liberation Serif"), "Tinos");
         assert_eq!(map_family("Liberation Mono"), "Cousine");
         assert_eq!(map_family("  liberation mono "), "Cousine");
+    }
+
+    #[test]
+    fn maps_the_common_sans_families_to_arimo() {
+        // WPS renders Verdana at the Arial-metric line height (072 line pitch
+        // 16.1pt = 1.15em x 1.1667); the Calibri-metric wildcard gave 17.1pt.
+        assert_eq!(map_family("Verdana"), "Arimo");
+        assert_eq!(map_family("Tahoma"), "Arimo");
+        assert_eq!(map_family("Helvetica Neue"), "Arimo");
+        assert_eq!(map_family("HelveticaNeue"), "Arimo");
     }
 
     #[test]
