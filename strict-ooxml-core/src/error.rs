@@ -93,6 +93,11 @@ pub enum LimitKind {
     /// records it; the renderer and the writer return it for a model built by
     /// hand.
     InlineNesting,
+    /// `ResourceLimits::max_xml_elements`.
+    ///
+    /// Counted per part, so it also bounds the number of relationships in a
+    /// `.rels` part and of `Default`/`Override` entries in `[Content_Types].xml`.
+    XmlElements,
 }
 
 impl LimitKind {
@@ -117,6 +122,7 @@ impl LimitKind {
             Self::MathDepth => "math_depth",
             Self::GroupNesting => "group_nesting",
             Self::InlineNesting => "inline_nesting",
+            Self::XmlElements => "xml_elements",
         }
     }
 }
@@ -333,6 +339,7 @@ mod tests {
         assert_eq!(LimitKind::ZipEntries.to_string(), "zip_entries");
         assert_eq!(LimitKind::XmlDepth.to_string(), "xml_depth");
         assert_eq!(LimitKind::Parts.to_string(), "parts");
+        assert_eq!(LimitKind::XmlElements.to_string(), "xml_elements");
     }
 
     #[test]

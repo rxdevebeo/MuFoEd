@@ -71,6 +71,12 @@ pub struct XmlReader {
     ns: NsStack,
     depth: u32,
     text_total: u64,
+    /// Start and empty-element tags read so far in this part, against
+    /// `max_xml_elements`.
+    elements: u64,
+    /// Attribute bytes (names plus raw values) read so far in this part,
+    /// against `max_text_len` but separately from `text_total`.
+    attr_total: u64,
     open_names: Vec<String>,
     pending_end: Option<QName>,
     /// Whether the document's single root element has been opened.
@@ -142,6 +148,8 @@ impl XmlReader {
             ns: NsStack::new(),
             depth: 0,
             text_total: 0,
+            elements: 0,
+            attr_total: 0,
             open_names: Vec::new(),
             pending_end: None,
             root_seen: false,
@@ -245,7 +253,8 @@ impl XmlReader {
             }
             self.root_seen = true;
         }
-        safety::check_attributes(attrs.len(), &self.limits)?;
+        // The element count and the attribute count and bytes were checked in
+        // `own_start`, before the attribute strings were allocated.
         let location = self.location();
         self.ns.push_scope();
         let mut resolved = Vec::with_capacity(attrs.len());
@@ -306,6 +315,11 @@ impl XmlReader {
     }
 
     fn push_text(&mut self, text: String, cdata: bool) -> Result<XmlEvent> {
+        // XML 1.0 §2.8: the prolog holds only misc (comments, PIs, whitespace),
+        // so character data before the root is as malformed as after it.
+        if !self.root_seen && !text.trim().is_empty() {
+            return Err(self.invalid_xml("content before the root element".to_owned(), 0));
+        }
         if self.root_closed && !text.trim().is_empty() {
             return Err(self.invalid_xml("content after the root element".to_owned(), 0));
         }
@@ -347,8 +361,22 @@ impl XmlReader {
         // Copy out of `scratch` before any further `&self` use: the event
         // borrows that buffer for its lifetime.
         let parsed = match event {
-            Event::Start(e) => Self::own_start(&e, false, &invalid)?,
-            Event::Empty(e) => Self::own_start(&e, true, &invalid)?,
+            Event::Start(e) => Self::own_start(
+                &e,
+                false,
+                &self.limits,
+                &mut self.elements,
+                &mut self.attr_total,
+                &invalid,
+            )?,
+            Event::Empty(e) => Self::own_start(
+                &e,
+                true,
+                &self.limits,
+                &mut self.elements,
+                &mut self.attr_total,
+                &invalid,
+            )?,
             Event::End(e) => {
                 let raw = std::str::from_utf8(e.name().as_ref())
                     .map(str::to_owned)
@@ -383,17 +411,37 @@ impl XmlReader {
     }
 
     /// Owns a start/empty tag's name and attributes.
+    ///
+    /// Every budget is charged before the allocation it bounds: the element
+    /// count before the name is copied, and for each attribute the attribute
+    /// count and the raw bytes of its name and value before either is copied.
+    /// The count used to be checked in `open_element`, after a `String` pair had
+    /// been allocated for every attribute. The raw value is charged rather than
+    /// the normalized one because normalization never makes it longer.
     fn own_start(
         element: &quick_xml::events::BytesStart<'_>,
         empty: bool,
+        limits: &ResourceLimits,
+        elements: &mut u64,
+        attr_total: &mut u64,
         invalid: &dyn Fn(String) -> StrictError,
     ) -> Result<Parsed> {
+        *elements = elements.saturating_add(1);
+        safety::check_elements(*elements, limits)?;
         let raw = std::str::from_utf8(element.name().as_ref())
             .map(str::to_owned)
             .map_err(|error| invalid(format!("invalid name: {error}")))?;
         let mut attrs = Vec::new();
         for attribute in element.attributes() {
             let attribute = attribute.map_err(|error| invalid(format!("{error}")))?;
+            safety::check_attributes(attrs.len().saturating_add(1), limits)?;
+            let raw_len = attribute
+                .key
+                .as_ref()
+                .len()
+                .saturating_add(attribute.value.len());
+            *attr_total = attr_total.saturating_add(raw_len as u64);
+            safety::check_attribute_bytes(*attr_total, limits)?;
             let key = std::str::from_utf8(attribute.key.as_ref())
                 .map_err(|error| invalid(format!("{error}")))?
                 .to_owned();
@@ -830,6 +878,47 @@ mod tests {
         );
     }
 
+    // Audit 2026-10-09 §3.2: the prolog holds misc only.
+
+    #[test]
+    fn non_whitespace_text_before_the_root_is_an_error() {
+        let detail = detail(read_error(b"text<a/>"));
+        assert_eq!(detail, "content before the root element");
+    }
+
+    #[test]
+    fn cdata_before_the_root_is_an_error() {
+        let detail = detail(read_error(b"<![CDATA[x]]><a/>"));
+        assert_eq!(detail, "content before the root element");
+    }
+
+    #[test]
+    fn a_reference_before_the_root_is_an_error() {
+        // Whether the tokenizer or the prolog check refuses it, it is refused.
+        let detail = detail(read_error(b"&amp;<a/>"));
+        assert!(!detail.is_empty());
+    }
+
+    #[test]
+    fn whitespace_comments_and_pis_may_precede_the_root() {
+        let events = read_all(b"<?xml version=\"1.0\"?>\r\n  <!--c-->\n<?pi?>\t<a/>");
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, XmlEvent::StartElement { .. })),
+            "{events:?}"
+        );
+        assert!(matches!(events.last(), Some(XmlEvent::Eof)), "{events:?}");
+    }
+
+    #[test]
+    fn a_utf8_bom_before_the_root_is_still_accepted() {
+        let mut xml = vec![0xEF, 0xBB, 0xBF];
+        xml.extend_from_slice(b"<?xml version=\"1.0\"?>\n<a/>");
+        let events = read_all(&xml);
+        assert!(matches!(events[0], XmlEvent::StartElement { .. }), "{events:?}");
+    }
+
     #[test]
     fn an_empty_document_has_no_root() {
         assert_eq!(detail(read_error(b"")), "no root element");
@@ -907,6 +996,102 @@ mod tests {
             reader.next_event(),
             Err(StrictError::LimitExceeded {
                 kind: crate::error::LimitKind::XmlAttributesPerElement,
+                ..
+            })
+        ));
+    }
+
+    /// Audit 2026-10-09 §3.1: the attribute count is checked while the
+    /// attributes are read, so the error names the first one past the budget
+    /// rather than the total the element declared.
+    #[test]
+    fn attribute_limit_stops_at_the_first_attribute_past_the_budget() {
+        let mut xml = String::from("<a");
+        for i in 0..100 {
+            let _ = write!(xml, " a{i}=\"{i}\"");
+        }
+        xml.push_str("/>");
+        let limits = ResourceLimits {
+            max_xml_attributes_per_elem: 8,
+            ..ResourceLimits::default()
+        };
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        assert!(matches!(
+            reader.next_event(),
+            Err(StrictError::LimitExceeded {
+                kind: crate::error::LimitKind::XmlAttributesPerElement,
+                limit: 8,
+                actual: 9,
+            })
+        ));
+    }
+
+    /// Hostile-input research 2026-10-09 §2.1: elements are counted per part.
+    #[test]
+    fn enforces_element_limit() {
+        let limits = ResourceLimits {
+            max_xml_elements: 3,
+            ..ResourceLimits::default()
+        };
+        // Exactly three elements (one of them empty) parse.
+        let mut reader = XmlReader::new(b"<a><b/><c></c></a>", part(), &limits).unwrap();
+        while reader.next_event().unwrap() != XmlEvent::Eof {}
+        // A fourth is refused.
+        let mut reader = XmlReader::new(b"<a><b/><c/><d/></a>", part(), &limits).unwrap();
+        let error = loop {
+            match reader.next_event() {
+                Ok(XmlEvent::Eof) => panic!("expected the element limit"),
+                Ok(_) => {}
+                Err(error) => break error,
+            }
+        };
+        assert!(
+            matches!(
+                error,
+                StrictError::LimitExceeded {
+                    kind: crate::error::LimitKind::XmlElements,
+                    limit: 3,
+                    actual: 4,
+                }
+            ),
+            "{error:?}"
+        );
+    }
+
+    /// Hostile-input research 2026-10-09 §2.2: attribute bytes are budgeted.
+    #[test]
+    fn enforces_attribute_byte_budget() {
+        let limits = ResourceLimits {
+            max_text_len: 64,
+            ..ResourceLimits::default()
+        };
+        let value = "x".repeat(40);
+        // One element with two 40-byte values: 2 * (2 + 40) > 64.
+        let xml = format!("<a k1=\"{value}\" k2=\"{value}\"/>");
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        assert!(matches!(
+            reader.next_event(),
+            Err(StrictError::LimitExceeded {
+                kind: crate::error::LimitKind::TextLen,
+                ..
+            })
+        ));
+        // The budget is per part, across elements, and not shared with text:
+        // 60 bytes of text plus 42 bytes of attributes both fit.
+        let text = "t".repeat(60);
+        let xml = format!("<a k1=\"{value}\">{text}</a>");
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        while reader.next_event().unwrap() != XmlEvent::Eof {}
+        let xml = format!("<a k1=\"{value}\"><b k2=\"{value}\"/></a>");
+        let mut reader = XmlReader::new(xml.as_bytes(), part(), &limits).unwrap();
+        assert!(matches!(
+            reader.next_event(),
+            Ok(XmlEvent::StartElement { .. })
+        ));
+        assert!(matches!(
+            reader.next_event(),
+            Err(StrictError::LimitExceeded {
+                kind: crate::error::LimitKind::TextLen,
                 ..
             })
         ));
