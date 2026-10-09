@@ -48,17 +48,41 @@ field pass (AUD-70) computes the value for headers. 072's header now reads
 
 ## Not yet closed
 
-- 072 is still `+34` pages (638 vs 604). Body pages now match line-for-line. The
-  residual is the gap between adjacent heading paragraphs: the WPS reference
-  measures `line + 18 + 18` (it adds `w:before` and `w:after`), while the
-  renderer's `pending_after.max(space_before)` gives `line + 18`. A naive
-  `max -> sum` change was tried and **reverted**: it moved the calibrated
-  `06-strict-math-display` structural extent (`was 5, now 37`) and failed
-  `matches_wps_references`. The reconciliation is a shared-layout item: the two
-  WPS-derived expectations differ, most likely because Word's
-  `contextualSpacing`/same-style suppression applies to the baseline documents.
-  Implementing `w:contextualSpacing` (currently ignored by the renderer) is the
-  prerequisite; it belongs to the shared P5 metrics/layout queue, not RTF
-  mapping.
+### 072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug
+
+Body pages now match line-for-line, so the residual is the inter-paragraph gap.
+Measured at 96 DPI against the two immutable WPS references:
+
+| witness | source | gap | `space_after + space_before` | max | WPS measured |
+| --- | --- | --- | --- | --- | --- |
+| 072 heading -> heading (`\sb360\sa360`, direct) | RTF | line + 720tw | 36pt (sum) | 18pt | **38.25pt ≈ sum** |
+| 06-strict-math-display body -> Heading2 (style 160/280) | DOCX | line + 440tw | 22pt (sum) | 14pt | **14.74pt ≈ max** |
+
+The same WPS Office sums `before`+`after` when rendering the **RTF** source and
+takes the **max** when rendering the **DOCX** source. Our renderer uses `max`
+(`paginate.rs`), which is what the immutable WPS-DOCX reference renders
+(`refs/06-strict-math-display`) and the whole SVG baseline expect. A naive
+`max -> sum` change was tried and **reverted**: it moved the calibrated
+`06-strict-math-display` structural extent (`was 5, now 37`) and failed
+`matches_wps_references`.
+
+Consequences:
+
+- 072's page count cannot be closed by a shared-layout spacing change without
+  breaking the DOCX baseline; the two WPS oracles are mutually inconsistent.
+- Emulating the RTF sum by inflating `w:before` at import would misrepresent the
+  document (a DOCX consumer applies `max` and over-spaces) and violates the plan's
+  "no hidden XML fragment substitutes for the contract".
+- Therefore 072's remaining gap is recorded as a **WPS RTF-path quirk**: our
+  model preserves the RTF `\sb`/`\sa` verbatim and the renderer applies the
+  correct OOXML `max`, which is what the supported profile (DOCX-produced Strict)
+  requires. It is not a defect and not a support-profile blocker.
+
+`w:contextualSpacing` remains unimplemented in the renderer (a real gap) and is
+the natural place to encode same-style suppression if a future witness needs it,
+but it does not change the two witnesses above (neither uses it).
+
+### Other open items
+
 - First/even/odd regions, note placement/numbering, multi-paragraph fields and
   custom marks are unreviewed.

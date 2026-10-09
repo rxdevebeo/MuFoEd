@@ -794,17 +794,20 @@ y≈35.5 (выше поля 72pt). У документа 40 `\sect`; это ук
    (Arimo), а wildcard Carlito — 17.1pt. Verdana/Tahoma/HelveticaNeue теперь
    маппятся в Arimo; pitch совпал, страниц 641→638.
 
-Остаток: 072 всё ещё +34 страницы (638/604) — body-страницы совпали построчно,
-остаётся промежуток между соседними heading-параграфами: WPS складывает
-`before+after` (line+18+18), а рендерер берёт `max` (line+18). Наивный `max→sum`
-проверен и **откачен** — он сдвинул калиброванный extent `06-strict-math-display`
-(`was 5, now 37`) и уронил `matches_wps_references`; согласование требует
-`w:contextualSpacing` (сейчас игнорируется) и относится к shared P5
-metrics/layout, а не к RTF mapping. Отдельно `\chpgn`/`\sectnum` теперь
-сохраняются как dynamic PAGE/SECTION fields (заголовок 072 читается
-`Ruth (Page 2)`); это не влияет на pagination/pixels. Gates после среза:
-text/resource 100/100, XSD/OPC 0 нарушений, pagination 65/100, pixels 6/100 и
-22/458 без регрессий.
+Остаток 072 (+34 страницы) разобран через общий layout и оказался **WPS
+source-format inconsistency**, а не mapping-багом. Измерено по неизменяемым WPS
+reference: WPS на RTF-пути **складывает** `before+after` (072 heading→heading
+38.25pt ≈ sum 36), а на DOCX-пути берёт **max** (06-strict-math-display
+body→Heading2 14.74pt ≈ max 14). Рендерер использует `max` (`paginate.rs`) —
+именно это требует DOCX-baseline и весь SVG refs. Наивный `max→sum` проверен и
+**откачен** (сдвинул `06-strict-math-display` extent 5→37 и уронил
+`matches_wps_references`); имитировать RTF-сумму через раздувание `w:before` на
+импорте нельзя — это искажает документ (DOCX-потребитель применит max и
+пере-разнесёт). Поэтому остаток 072 записан как **WPS RTF-path quirk** (не
+имитируется, не блокер supported profile). `\chpgn`/`\sectnum` теперь dynamic
+PAGE/SECTION fields (заголовок 072 читается `Ruth (Page 2)`), на pagination/pixels
+не влияет. Gates после среза: text/resource 100/100, XSD/OPC 0 нарушений,
+pagination 65/100, pixels 6/100 и 22/458 без регрессий.
 
 
 

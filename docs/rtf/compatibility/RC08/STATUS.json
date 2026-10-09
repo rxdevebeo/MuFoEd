@@ -10,7 +10,8 @@
     "\\chpgn and \\sectnum are kept as dynamic PAGE/SECTION fields instead of unknown controls; the renderer's page-dependent field pass computes them, so 072's headers read 'Ruth (Page 2)' (was 'Ruth (Page )'); 072 import losses 42 -> 2"
   ],
   "remaining": [
-    "072 is still +34 pages (638 vs 604). The body line pitch now matches the reference (16.1pt = Arimo 1.15em x \\sl280/240). The residual is the gap between adjacent heading paragraphs: WPS adds w:before + w:after (line + 18 + 18) while the renderer uses max(pending_after, space_before) (line + 18). A naive max->sum change regressed the calibrated 06-strict-math-display SVG extent and matches_wps_references, so it was reverted; the reconciliation needs w:contextualSpacing (ignored today) and belongs to the shared P5 metrics/layout queue",
+    "072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug. Body line pitch matches (16.1pt = Arimo 1.15em x \\sl280/240). The residual is inter-paragraph spacing: measured against the immutable WPS references, the WPS RTF path SUMS before+after (072 heading->heading 38.25pt = sum 36pt) while the WPS DOCX path takes MAX (06-strict-math-display body->Heading2 14.74pt = max 14pt). The renderer's max (paginate.rs) is what the DOCX baseline and the SVG refs require; a max->sum change regressed 06 and was reverted, and inflating w:before at import would misrepresent the document. Recorded as a WPS RTF-path quirk (not imitated, not a support blocker).",
+    "w:contextualSpacing is unimplemented in the renderer (a real gap; neither witness above uses it)",
     "first/even/odd header regions, note placement/numbering, multi-paragraph/nested fields and custom marks are unreviewed"
   ],
   "blocked": [],
