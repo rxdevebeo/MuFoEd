@@ -535,44 +535,68 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
             _ => {}
         }
     }
-    let mut shape = frame?;
-    shape.paint = vml_paint::paint(&shape_attributes, fill.as_ref(), stroke.as_ref());
+    let shape = frame?;
+    let found = Found {
+        attributes: shape_attributes,
+        fill,
+        stroke,
+        text_path,
+        rel_id,
+        has_textbox,
+        path,
+    };
+    settle(shape, found).map(|shape| (shape, wrap))
+}
+
+/// What `classify` saw under the frame.
+struct Found {
+    attributes: Attributes,
+    fill: Option<Attributes>,
+    stroke: Option<Attributes>,
+    text_path: Option<Attributes>,
+    rel_id: Option<String>,
+    has_textbox: bool,
+    path: Option<String>,
+}
+
+/// The class a frame is, from what was under it; `None` stays `None` for a
+/// shape this converts to nothing (an unknown `v:shape` without a preset).
+fn settle(mut shape: VmlShape, found: Found) -> Option<Shape> {
+    shape.paint = vml_paint::paint(&found.attributes, found.fill.as_ref(), found.stroke.as_ref());
     // A picture outranks the frame's other contents: a `v:shape` carrying both an
     // `r:id` and a text box is an OLE object whose *preview* is that image, and the
     // preview is what the reader saw.
-    if let Some(rel_id) = rel_id {
-        return Some((Shape::Picture(VmlPicture { shape, rel_id }), wrap));
+    if let Some(rel_id) = found.rel_id {
+        return Some(Shape::Picture(VmlPicture { shape, rel_id }));
     }
-    if has_textbox {
+    if found.has_textbox {
         shape.preset = shape.preset.or(Some("rect"));
-        return Some((Shape::TextBox(shape), wrap));
+        return Some(Shape::TextBox(shape));
     }
-    if let Some(word_art) = text_path.as_ref().and_then(|path| word_art(path, &shape.paint)) {
+    let art = found
+        .text_path
+        .as_ref()
+        .and_then(|path| word_art(path, &shape.paint));
+    if let Some(art) = art {
         // The string is the shape: the box itself is neither filled nor drawn.
-        shape.word_art = Some(word_art);
+        shape.word_art = Some(art);
         shape.preset = Some("rect");
         shape.paint = VmlPaint {
             fill: None,
             stroke: None,
         };
-        return Some((Shape::TextBox(shape), wrap));
+        return Some(Shape::TextBox(shape));
     }
-    if let Some(path) = path {
-        return Some((
-            if path_is_convertible(&path) {
-                shape.preset = shape.preset.or(Some("rect"));
-                Shape::Rectangle(shape)
-            } else {
-                shape.preset = None;
-                Shape::Freeform(shape)
-            },
-            wrap,
-        ));
+    if let Some(path) = found.path {
+        return Some(if path_is_convertible(&path) {
+            shape.preset = shape.preset.or(Some("rect"));
+            Shape::Rectangle(shape)
+        } else {
+            shape.preset = None;
+            Shape::Freeform(shape)
+        });
     }
-    shape
-        .preset
-        .is_some()
-        .then_some((Shape::Rectangle(shape), wrap))
+    shape.preset.is_some().then_some(Shape::Rectangle(shape))
 }
 
 /// The text, face, size and colour of a `v:textpath`.
@@ -651,7 +675,9 @@ fn preset_of(local: &str, attributes: &BTreeMap<String, String>) -> Option<&'sta
         "line" => Some("line"),
         "shape"
             if attributes.contains_key("connectortype")
-                || attributes.get("type").is_some_and(|kind| kind == "#_x0000_t32") =>
+                || attributes
+                    .get("type")
+                    .is_some_and(|kind| kind == "#_x0000_t32") =>
         {
             Some("line")
         }
@@ -670,8 +696,16 @@ fn line_box(style: &mut VmlStyle, attributes: &BTreeMap<String, String>) {
     let (Some((x1, y1)), Some((x2, y2))) = (point("from"), point("to")) else {
         return;
     };
-    let base_x = style.margin_left.as_deref().and_then(points_of).unwrap_or(0.0);
-    let base_y = style.margin_top.as_deref().and_then(points_of).unwrap_or(0.0);
+    let base_x = style
+        .margin_left
+        .as_deref()
+        .and_then(points_of)
+        .unwrap_or(0.0);
+    let base_y = style
+        .margin_top
+        .as_deref()
+        .and_then(points_of)
+        .unwrap_or(0.0);
     style.margin_left = Some(format_pt(base_x + x1.min(x2)));
     style.margin_top = Some(format_pt(base_y + y1.min(y2)));
     style.width_pt = Some(format_pt((x2 - x1).abs()));
@@ -905,8 +939,18 @@ fn finish_grouped(
     let scale_x = frame.width_pt / frame.coord_w;
     let scale_y = frame.height_pt / frame.coord_h;
     // The group's own offset, which its members sit inside.
-    let base_x = frame.style.margin_left.as_deref().and_then(points_of).unwrap_or(0.0);
-    let base_y = frame.style.margin_top.as_deref().and_then(points_of).unwrap_or(0.0);
+    let base_x = frame
+        .style
+        .margin_left
+        .as_deref()
+        .and_then(points_of)
+        .unwrap_or(0.0);
+    let base_y = frame
+        .style
+        .margin_top
+        .as_deref()
+        .and_then(points_of)
+        .unwrap_or(0.0);
     let mut style = frame.style.clone();
     style.absolute = true;
     style.horizontal = None;
@@ -944,9 +988,10 @@ fn finish_grouped(
 }
 
 /// The attributes of a member's own `v:fill` and `v:stroke`.
-fn paint_children(
-    events: &[Event<'static>],
-) -> (Option<BTreeMap<String, String>>, Option<BTreeMap<String, String>>) {
+/// A start tag's attributes, keyed by local name.
+type Attributes = BTreeMap<String, String>;
+
+fn paint_children(events: &[Event<'static>]) -> (Option<Attributes>, Option<Attributes>) {
     let mut fill = None;
     let mut stroke = None;
     for event in events.iter().skip(1) {

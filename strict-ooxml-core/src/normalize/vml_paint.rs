@@ -1,7 +1,7 @@
 //! The fill and the outline of a converted VML shape (T7).
 //!
 //! A `v:rect` converted to `wps:wsp` with nothing but a `prstGeom` is an
-//! invisible box: DrawingML draws no fill and no line unless they are written,
+//! invisible box: `DrawingML` draws no fill and no line unless they are written,
 //! while VML draws both unless told not to. `filled` and `stroked` default to
 //! true, `fillcolor` to white, `strokecolor` to black and `strokeweight` to
 //! 0.75pt (VML §14.1.2.19), so a shape that names none of them is a white box
