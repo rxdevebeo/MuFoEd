@@ -322,6 +322,21 @@ fn empty_paragraph_mark_carries_the_ambient_run_size() {
 }
 
 #[test]
+fn rtf10_indent_controls_map_like_their_modern_aliases() {
+    // RTF 1.0 `\lin`/`\rin`/`\fin` are the same indents as `\li`/`\ri`/`\fi`.
+    // They are common in the corpus (32 documents use `\lin`), and dropping
+    // them loses the paragraph indentation.
+    let d = reopened(br"{\rtf1\lin720\rin360\fin180 line}");
+    let Block::Paragraph(paragraph) = &d.body.blocks[0] else {
+        panic!()
+    };
+    let indentation = paragraph.props.indentation.expect("indentation");
+    assert_eq!(indentation.start, Some(Twips(720)));
+    assert_eq!(indentation.end, Some(Twips(360)));
+    assert_eq!(indentation.first_line, Some(Twips(180)));
+}
+
+#[test]
 fn numbering_suffix_precedes_level_text_in_the_written_package() {
     let source=br"{\rtf1{\*\listtable{\list{\listlevel\levelnfc0{\leveltext\'02\'00.;}}\listid42}}{\*\listoverridetable{\listoverride\listid42\listoverridecount0\ls7}}\ls7 item}";
     let d = import(source, &RtfOptions::default()).unwrap();

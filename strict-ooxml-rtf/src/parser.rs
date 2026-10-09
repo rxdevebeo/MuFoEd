@@ -2636,7 +2636,7 @@ impl Parser<'_> {
                 self.finish_high()?;
                 self.finish_row(span)?;
             }
-            "li" | "ri" | "fi" => {
+            "li" | "lin" | "ri" | "rin" | "fi" | "fin" => {
                 let value = n.ok_or(RtfError::Malformed {
                     offset: span.start,
                     reason: "missing indentation",
@@ -2647,8 +2647,8 @@ impl Parser<'_> {
                     .indentation
                     .get_or_insert_with(Default::default);
                 match name {
-                    "li" => props.start = Some(Twips(value)),
-                    "ri" => props.end = Some(Twips(value)),
+                    "li" | "lin" => props.start = Some(Twips(value)),
+                    "ri" | "rin" => props.end = Some(Twips(value)),
                     _ => {
                         if value < 0 {
                             props.hanging =
