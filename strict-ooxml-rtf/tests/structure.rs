@@ -2,7 +2,8 @@
 #![allow(clippy::default_trait_access)]
 use strict_ooxml_rtf::{import, RtfOptions};
 use strict_ooxml_wml::model::{
-    AbstractNumId, Block, Ilvl, Inline, NumId, RunContent, StyleId, TabLeader, TriState, Twips,
+    AbstractNumId, Block, HalfPoints, Ilvl, Inline, NumId, RunContent, StyleId, TabLeader,
+    TriState, Twips,
 };
 
 #[test]
@@ -814,6 +815,37 @@ fn character_scale_spacing_and_tab_leaders_roundtrip() {
         panic!()
     };
     assert_eq!(run.props.spacing, Some(Twips(12)));
+}
+
+#[test]
+fn run_effects_kerning_and_position_roundtrip() {
+    let input = br"{\rtf1\pard\outl\embo\impr\noproof\snaptogrid flagged\par\shad\kern24 kerned\par\up6 raised\par\dn4 lowered\par\shad0 plain\par}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let run_props = |index: usize| {
+            let Block::Paragraph(paragraph) = &document.body.blocks[index] else {
+                panic!()
+            };
+            let Inline::Run(run) = &paragraph.inlines[0] else {
+                panic!()
+            };
+            run.props.clone()
+        };
+        let flagged = run_props(0);
+        assert_eq!(flagged.outline, TriState::On);
+        assert_eq!(flagged.emboss, TriState::On);
+        assert_eq!(flagged.imprint, TriState::On);
+        assert_eq!(flagged.no_proof, TriState::On);
+        assert_eq!(flagged.snap_to_grid, TriState::On);
+        let kerned = run_props(1);
+        assert_eq!(kerned.shadow, TriState::On);
+        assert_eq!(kerned.kerning, Some(HalfPoints(24)));
+        assert_eq!(run_props(2).position, Some(HalfPoints(6)));
+        assert_eq!(run_props(3).position, Some(HalfPoints(-4)));
+        assert_eq!(run_props(4).shadow, TriState::Off);
+    }
 }
 
 #[test]

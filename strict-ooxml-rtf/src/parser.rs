@@ -2398,6 +2398,45 @@ impl Parser<'_> {
             "caps" => self.state.run.caps = toggle,
             "scaps" => self.state.run.small_caps = toggle,
             "v" => self.state.run.vanish = toggle,
+            "outl" => self.state.run.outline = toggle,
+            "shad" => self.state.run.shadow = toggle,
+            "embo" => self.state.run.emboss = toggle,
+            "impr" => self.state.run.imprint = toggle,
+            "noproof" => self.state.run.no_proof = toggle,
+            "snaptogrid" => self.state.run.snap_to_grid = toggle,
+            "kern" => {
+                let size = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing kerning size",
+                })?;
+                if size < 0 {
+                    self.issue(span, Severity::Loss, "run:kerning-out-of-range")?;
+                } else {
+                    self.state.run.kerning = Some(HalfPoints(size));
+                }
+            }
+            "position" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing vertical position",
+                })?;
+                self.state.run.position = Some(HalfPoints(value));
+            }
+            "up" | "dn" => {
+                let magnitude = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing position offset",
+                })?;
+                let signed = if name == "dn" {
+                    magnitude.checked_neg().ok_or(RtfError::Malformed {
+                        offset: span.start,
+                        reason: "position offset overflow",
+                    })?
+                } else {
+                    magnitude
+                };
+                self.state.run.position = Some(HalfPoints(signed));
+            }
             "rtlch" => {
                 self.state.run.rtl = TriState::On;
                 self.state.font_slot = Some(FontSlot::ComplexScript);

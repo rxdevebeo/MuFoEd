@@ -642,8 +642,14 @@ reopen regression'ом (`strict-ooxml-rtf/tests/structure.rs`):
   (нет WML-эквивалента);
 - `\plain` сбрасывает `scale`/`spacing` вместе со всем `RunProperties`.
 
+Второй срез закрыл ещё отбрасываемые run-свойства (writer их уже умеет):
+`\outl`/`\shad`/`\embo`/`\impr`/`\noproof`/`\snaptogrid` → соответствующие
+`w:rPr` toggle; `\kernN` → `w:kern` (half-points, отрицательное — явный Loss);
+`\positionN` и `\upN`/`\dnN` → знаковый `w:position`. Всё покрыто
+import → Strict write → reopen regression'ом.
+
 Артефакты: [compatibility/RC04/STATUS.json](compatibility/RC04/STATUS.json),
-[tests.md](compatibility/RC04/tests.md). Проверки: RTF structure 31 + import 36
+[tests.md](compatibility/RC04/tests.md). Проверки: RTF structure 32 + import 36
 Pass; workspace clippy `-D warnings` (MSRV 1.92) и rustfmt Pass.
 
 Открыто/Blocked: независимые effective-style facts из WPS reference index

@@ -23,6 +23,28 @@ pins them with an import → Strict write → reopen regression
 an explicit Loss rather than a wrapped value. The unit distinction matters: one
 quarter-point is five twips, which is why `\expnd4` is 20 twips.
 
+## Run effects, kerning and position (2026-10-08)
+
+A second slice closes run properties that the reader was dropping and the writer
+already supports:
+
+| RTF | WML | Rule |
+| --- | --- | --- |
+| `\outl` | `w:rPr/w:outline` | toggle |
+| `\shad` | `w:rPr/w:shadow` | toggle (`\shad0` off) |
+| `\embo` | `w:rPr/w:emboss` | toggle |
+| `\impr` | `w:rPr/w:imprint` | toggle |
+| `\noproof` | `w:rPr/w:noProof` | toggle |
+| `\snaptogrid` | `w:rPr/w:snapToGrid` | toggle |
+| `\kernN` | `w:rPr/w:kern` | minimum kerning size in half-points; negative is an explicit Loss |
+| `\positionN` | `w:rPr/w:position` | signed half-points |
+| `\upN` / `\dnN` | `w:rPr/w:position` | +N / -N half-points |
+
+`strict-ooxml-rtf/tests/structure.rs::run_effects_kerning_and_position_roundtrip`
+checks each through import → Strict write → reopen. The writer already emitted all
+of these (`strict-ooxml-write/src/props.rs`), so the fix is the missing mapping,
+not new schema work.
+
 ## Not yet closed
 
 - Independent effective-style facts from the WPS reference index (the corpus

@@ -11,6 +11,9 @@
     "heavy tab leader from \\tlth; explicit Loss for unsupported \\tleq",
     "explicit Loss for associated-script \\aexpnd with no WML run slot",
     "\\plain resets scale/spacing through the default run properties",
+    "run effects \\outl/\\shad/\\embo/\\impr/\\noproof/\\snaptogrid -> w:outline/shadow/emboss/imprint/noProof/snapToGrid",
+    "kerning threshold \\kernN -> w:kern (half-points, negative is an explicit Loss)",
+    "vertical position \\positionN and \\upN/\\dnN -> w:position (signed half-points)",
     "import -> Strict write -> reopen regression for all of the above"
   ],
   "remaining": [
@@ -40,7 +43,17 @@
     },
     "rtf_suite": {
       "status": "Pass",
-      "detail": "strict-ooxml-rtf structure 31 + import 36"
+      "detail": "strict-ooxml-rtf structure 32 + import 36"
+    },
+    "run_effects_roundtrip": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::run_effects_kerning_and_position_roundtrip",
+      "assertions": [
+        "\\outl/\\embo/\\impr/\\noproof/\\snaptogrid -> TriState::On",
+        "\\shad then \\shad0 -> TriState On then Off",
+        "\\kern24 -> Some(HalfPoints(24))",
+        "\\up6 -> position Some(HalfPoints(6)); \\dn4 -> Some(HalfPoints(-4))"
+      ]
     }
   }
 }
