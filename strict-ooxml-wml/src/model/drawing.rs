@@ -211,6 +211,10 @@ pub struct ShapeStroke {
     pub head_end: Option<Arc<str>>,
     /// Tail end decoration (`a:tailEnd/@type`).
     pub tail_end: Option<Arc<str>>,
+    /// `a:ln` attributes other than `w` (`cap`, `cmpd`, `algn`), as written.
+    pub attributes: Vec<(Arc<str>, Arc<str>)>,
+    /// The line join (`a:round`, `a:bevel`, `a:miter`) as markup.
+    pub join: Option<Arc<str>>,
 }
 
 /// One command of a custom-geometry path (`a:custGeom`).
@@ -390,6 +394,8 @@ pub struct Shape {
     pub tx_box: Option<bool>,
     /// `a:spLocks` attributes as written; `None` when the element is absent.
     pub sp_locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// A connector (`wps:cNvCnPr`); [`Self::sp_locks`] then holds `a:cxnSpLocks`.
+    pub connector: bool,
     /// The `wps:spPr` children after the line (`a:effectLst`, `a:scene3d`,
     /// `a:sp3d`, `a:extLst`) as markup that declares its own namespaces.
     pub effects: Option<Arc<str>>,
@@ -441,6 +447,10 @@ pub struct GroupShape {
     pub descr: Option<Arc<str>>,
     /// Group transform.
     pub xfrm: Option<GroupTransform>,
+    /// `a:grpSpLocks` attributes as written; `None` when the element is absent.
+    pub locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// `wpg:grpSpPr/@bwMode`.
+    pub bw_mode: Option<Arc<str>>,
     /// Child graphics.
     pub children: Vec<Graphic>,
     /// Source location.

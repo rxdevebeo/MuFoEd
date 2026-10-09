@@ -386,6 +386,7 @@ mod tests {
                         bw_mode: None,
                         tx_box: None,
                         sp_locks: None,
+                        connector: false,
                         effects: None,
                         geometry: ShapeGeometry::None,
                         xfrm: None,
@@ -485,6 +486,8 @@ mod tests {
                 name: None,
                 descr: None,
                 xfrm: None,
+                locks: None,
+                bw_mode: None,
                 children: vec![graphic],
                 location: location(),
             });

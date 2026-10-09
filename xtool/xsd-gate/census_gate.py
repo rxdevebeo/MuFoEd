@@ -660,7 +660,11 @@ def _changed_attributes(
                 take = min(removed, spare)
                 appeared[other_key] -= take
                 removed -= take
-        if removed > 0 and attr_local == "val" and value.lower() in _TRUE_VALUES:
+        # `w:vMerge` without `val` is `continue`, as `CT_OnOff` without it is on.
+        default_val = value.lower() in _TRUE_VALUES or (
+            elem_local == "vMerge" and value == "continue"
+        )
+        if removed > 0 and attr_local == "val" and default_val:
             element_key = (elem_local, parent, elem_ns, parent_ns)
             spare = bare_left[element_key]
             if spare > 0:

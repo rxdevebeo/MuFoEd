@@ -263,6 +263,8 @@ impl PartParser<'_> {
                 name: None,
                 descr: None,
                 xfrm: None,
+                locks: None,
+                bw_mode: None,
                 children: Vec::new(),
                 location,
             };
@@ -344,6 +346,7 @@ impl PartParser<'_> {
                 bw_mode: None,
                 tx_box: None,
                 sp_locks: None,
+                connector: false,
                 effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
