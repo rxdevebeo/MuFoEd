@@ -1164,7 +1164,7 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
     }
     xml.end();
     match &theme.format_scheme_xml {
-        Some(markup) => xml.raw_markup(markup, &[]),
+        Some(markup) => xml.raw_markup(markup, &["a"]),
         None => format_scheme(&mut xml),
     }
     xml.end();

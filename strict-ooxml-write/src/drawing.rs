@@ -633,7 +633,7 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
         xml.attr_opt("cstate", blip.cstate.as_deref());
     }
     if let Some(children) = &picture.markup.blip_children {
-        xml.raw_markup(children, &[]);
+        kept_markup(xml, children);
     }
     // AUD-38: `a:srcRect` is a sibling of `a:blip` under `pic:blipFill`, not a
     // child. The parser skips unknown children of `a:blip`, so a nested crop was
@@ -652,11 +652,20 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     transform(xml, &picture.xfrm, picture.extent.as_ref());
     match &picture.markup.shape_properties {
         // Geometry, fill, line and effects as read, after `a:xfrm`.
-        Some(rest) => xml.raw_markup(rest, &[]),
+        Some(rest) => kept_markup(xml, rest),
         None => geometry_element(xml, &ShapeGeometry::None),
     }
     xml.end();
     xml.end();
+}
+
+/// DrawingML markup kept as read; the part's root declares `a:` and `pic:`.
+fn kept_markup(xml: &mut XmlWriter, markup: &str) {
+    let prefixes: Vec<&str> = ["a", "pic"]
+        .into_iter()
+        .filter(|prefix| markup.contains(&format!("<{prefix}:")))
+        .collect();
+    xml.raw_markup(markup, &prefixes);
 }
 
 /// Attributes kept as read (`PictureMarkup`), in their source order.
@@ -741,7 +750,7 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
         stroke_element(xml, stroke);
     }
     if let Some(effects) = &shape.effects {
-        xml.raw_markup(effects, &[]);
+        kept_markup(xml, effects);
     }
     xml.end();
     if let Some(style) = &shape.style {
@@ -1002,7 +1011,7 @@ fn shape_color(xml: &mut XmlWriter, color: &ShapeColor) {
     // The element as read keeps its modifiers (`a:alpha`, `a:lumMod`) and the
     // colour spaces the model does not resolve (`a:sysClr`, `a:prstClr`).
     if let Some(markup) = &color.markup {
-        xml.raw_markup(markup, &[]);
+        kept_markup(xml, markup);
         return;
     }
     match (&color.value, &color.theme) {

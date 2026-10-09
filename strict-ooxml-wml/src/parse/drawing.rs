@@ -829,41 +829,48 @@ impl PartParser<'_> {
         if foreign || !kept.first().copied().unwrap_or(false) {
             return Ok(None);
         }
-        let mut prefixes: Vec<(String, String)> = Vec::new();
-        let mut prefix_of = |ns: Option<&NsUri>| -> Option<String> {
-            let uri = ns?.as_str();
-            if uri == "http://www.w3.org/XML/1998/namespace" {
-                return Some("xml".to_owned());
+        // The part's root declares `a:` and `pic:`; a fragment that needs
+        // anything else is not kept, so the markup is the same bytes this
+        // writer produces for the same elements, and a write is a fixed point.
+        let prefix_of = |ns: Option<&NsUri>| -> Option<Option<&'static str>> {
+            let Some(uri) = ns.map(NsUri::as_str) else {
+                return Some(None);
+            };
+            match markup_prefix(Some(uri)) {
+                Some(prefix @ ("a" | "pic" | "xml")) => Some(Some(prefix)),
+                _ => None,
             }
-            if let Some((_, prefix)) = prefixes.iter().find(|(known, _)| known == uri) {
-                return Some(prefix.clone());
-            }
-            let prefix = markup_prefix(Some(uri))
-                .map_or_else(|| format!("ns{}", prefixes.len()), str::to_owned);
-            prefixes.push((uri.to_owned(), prefix.clone()));
-            Some(prefix)
         };
+        let kept_pieces: Vec<&Piece> = pieces
+            .iter()
+            .zip(&kept)
+            .filter(|(_, keep)| **keep)
+            .map(|(piece, _)| piece)
+            .collect();
         let mut body = String::new();
-        let mut root_end = None;
-        for (piece, _) in pieces.iter().zip(&kept).filter(|(_, keep)| **keep) {
+        let mut pending = false;
+        for piece in &kept_pieces {
             match piece {
                 Piece::Start(name, attrs) => {
+                    if pending {
+                        body.push('>');
+                    }
+                    let Some(prefix) = prefix_of(name.ns.as_ref()) else {
+                        return Ok(None);
+                    };
                     body.push('<');
-                    if let Some(prefix) = prefix_of(name.ns.as_ref()) {
-                        body.push_str(&prefix);
+                    if let Some(prefix) = prefix {
+                        body.push_str(prefix);
                         body.push(':');
                     }
                     body.push_str(name.local());
-                    if root_end.is_none() {
-                        root_end = Some(body.len());
-                    }
                     for attr in attrs {
-                        if attr.name.ns.as_ref().is_some_and(|ns| ns == RELS_STRICT_NS) {
+                        let Some(prefix) = prefix_of(attr.name.ns.as_ref()) else {
                             return Ok(None);
-                        }
+                        };
                         body.push(' ');
-                        if let Some(prefix) = prefix_of(attr.name.ns.as_ref()) {
-                            body.push_str(&prefix);
+                        if let Some(prefix) = prefix {
+                            body.push_str(prefix);
                             body.push(':');
                         }
                         body.push_str(attr.name.local());
@@ -874,30 +881,32 @@ impl PartParser<'_> {
                         );
                         body.push('"');
                     }
-                    body.push('>');
+                    pending = true;
                 }
                 Piece::End(name) => {
+                    if pending {
+                        body.push_str("/>");
+                        pending = false;
+                        continue;
+                    }
+                    let prefix = prefix_of(name.ns.as_ref()).flatten();
                     body.push_str("</");
-                    if let Some(prefix) = prefix_of(name.ns.as_ref()) {
-                        body.push_str(&prefix);
+                    if let Some(prefix) = prefix {
+                        body.push_str(prefix);
                         body.push(':');
                     }
                     body.push_str(name.local());
                     body.push('>');
                 }
-                Piece::Text(text) => escape_text_into_markup(&mut body, text),
+                Piece::Text(text) => {
+                    if pending {
+                        body.push('>');
+                        pending = false;
+                    }
+                    escape_text_into_markup(&mut body, text);
+                }
             }
         }
-        let mut declarations = String::new();
-        for (uri, prefix) in &prefixes {
-            declarations.push_str(" xmlns:");
-            declarations.push_str(prefix);
-            declarations.push_str("=\"");
-            let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut declarations, uri);
-            declarations.push('"');
-        }
-        let at = root_end.unwrap_or(0);
-        body.insert_str(at, &declarations);
         Ok(Some(std::sync::Arc::from(body)))
     }
 
@@ -2319,9 +2328,9 @@ fn piece_end(pieces: &[Piece], at: usize) -> usize {
 }
 
 /// A DrawingML colour element as markup: its unqualified attributes and its
-/// kept children, declaring `a:` itself so it can sit anywhere.
+/// kept children, in the form this writer gives the same element.
 fn color_markup(local: &str, attrs: &[Attr], children: Option<&str>) -> std::sync::Arc<str> {
-    let mut out = format!("<a:{local} xmlns:a=\"{DRAWINGML_STRICT_NS}\"");
+    let mut out = format!("<a:{local}");
     for attr in attrs.iter().filter(|attr| attr.name.ns.is_none()) {
         out.push(' ');
         out.push_str(attr.name.local());
