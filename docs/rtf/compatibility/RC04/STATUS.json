@@ -21,7 +21,8 @@
     "independent resolved-cascade resolver (docDefaults -> pStyle chain -> rStyle -> direct) with a normalizing diff",
     "RTF default font (\\deff, else the first font-table entry) is written to w:docDefaults/w:rPrDefault/w:rPr/w:rFonts, so runs and paragraph marks with no explicit \\f inherit the real face instead of the renderer fallback",
     "empty paragraph marks carry the ambient run formatting (w:pPr/w:rPr font + half-points), so a blank line uses the body line height (054 Hotyn2)",
-    "font-family script qualifiers (Times New Roman Cyr, Arial CE, Calibri (Hebrew), Cambria Math Cyr, ...) are stripped before mapping to the bundled metric-compatible face (render-svg map_family)"
+    "font-family script qualifiers (Times New Roman Cyr, Arial CE, Calibri (Hebrew), Cambria Math Cyr, ...) are stripped before mapping to the bundled metric-compatible face (render-svg map_family)",
+    "RTF 1.0 indent controls \\lin/\\rin/\\fin map to the same w:ind start/end/firstLine as \\li/\\ri/\\fi (the corpus pairs them; 015 gains its indent and the ledger stops reporting the old spellings as loss)"
   ],
   "remaining": [
     "normalize absent-vs-default in the resolved diff (remaining diffs are explicit-defaults-vs-inherited, not effective mismatches)",
