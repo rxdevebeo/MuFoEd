@@ -29,7 +29,7 @@ use sha2::{Digest, Sha256};
 
 const DEFAULT_LOCK: &str = "testdata-lock/cc0.toml";
 const DEFAULT_ROOT: &str = "testdata";
-const TIERS: &[&str] = &["ci-core", "ci-full"];
+const TIERS: &[&str] = &["ci-core", "ci-full", "djvu"];
 /// Attempts per document, the first one included (waits 2, 4, ... 32 s).
 const ATTEMPTS: u32 = 6;
 /// The wait before a second pass over the documents the first pass could not
@@ -67,8 +67,8 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
 
 /// The `corpus` lines of `xtool --help`.
 pub(crate) const USAGE: &str = "\
-corpus fetch    --tier <ci-core|ci-full> [--root <dir>] [--lock <path>] [--allow-failures <n>]\n\
-corpus verify   --tier <ci-core|ci-full> [--root <dir>] [--lock <path>]\n\
+corpus fetch    --tier <ci-core|ci-full|djvu> [--root <dir>] [--lock <path>] [--allow-failures <n>]\n\
+corpus verify   --tier <ci-core|ci-full|djvu> [--root <dir>] [--lock <path>]\n\
                 (defaults: --root testdata, --lock testdata-lock/cc0.toml)";
 
 /// The tier's documents and where they live, or the exit code of the refusal.

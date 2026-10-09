@@ -917,3 +917,10 @@ IW44 формируют PNG. OCR через существующий `TextRecove
 изменением после baseline-коммита `93cc8ff`. Striped Smmr остаётся явным отказом.
 Результаты нового decoder oracle: [decoder-oracle.json](docs/djvu-validation/decoder-oracle.json).
 Native текст читается независимо от доступности конкретного растрового варианта.
+
+С 2026-10-09 корпус DjVu задан манифестом `testdata-lock/djvu.toml`
+(`xtool/corpus/make_djvu_lock.py`), а сверка с DjVuLibre вынесена в драйверы
+`xtool/djvu-oracle.py`, `djvu-dump-oracle.py`, `djvu-zone-oracle.py`,
+`djvu-render-oracle.py`, `djvu-ant-oracle.py` и job `djvu-oracle` CI. Критерии
+SC-D3…D14 остаются полным заказом этапа 9 и не закрыты автоматически; их
+текущее состояние — в [валидации](docs/djvu-validation/README.md).

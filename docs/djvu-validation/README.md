@@ -79,6 +79,35 @@ CI использует Linux target с sanitizer; внешняя CI этого 
 image codecs перечислены в [руководстве](../DJVU_IMPORT.md); полный Stage 9
 не объявлен завершённым.
 
+## Оракулы и CI (2026-10-09)
+
+Корпус DjVu задан манифестом: `testdata-lock/djvu.toml` (генератор
+`xtool/corpus/make_djvu_lock.py`) перечисляет 100 документов со SHA256,
+размером и URL; байты не коммитятся и скачиваются
+`cargo run -p xtool -- corpus fetch --lock testdata-lock/djvu.toml --tier djvu`.
+
+Драйверы сравнивают наш вывод с DjVuLibre **как с внешним процессом**
+(исходники не читаются, ничего не линкуется):
+
+| Скрипт | Наш producer | Оракул | Критерий |
+| --- | --- | --- | --- |
+| `xtool/djvu-oracle.py` | `examples/corpus` (native text) | `djvutxt` | SC-D4 |
+| `xtool/djvu-dump-oracle.py` | `strict-ooxml djvu-dump` | `djvudump`, `djvmcvt -i` | SC-D3, SC-D13 |
+| `xtool/djvu-zone-oracle.py` | `examples/zones` | `djvutxt --detail=word` | SC-D5 |
+| `xtool/djvu-render-oracle.py` | `examples/codec_probe` | `ddjvu -format=ppm` | SC-D7 |
+| `xtool/djvu-ant-oracle.py` | — (инвентарь) | `djvused print-ant` | SC-D9 |
+
+Общий контракт: SHA256 входа, отпечаток оракула (хеш бинарника + версия
+пакета), JSON-свидетельство, `--resume`. `xtool/djvu-oracle-selftest.py`
+проверяет плумбинг всех пяти на mock-оракулах без DjVuLibre. Job
+`djvu-oracle` (schedule) ставит закреплённый `djvulibre-bin`, тянет корпус по
+манифесту и кладёт свидетельства в артефакт `djvu-oracle`.
+
+Что ещё открыто в этих драйверах: render в CI сравнивает только страницу 1
+(полный SSIM-корпус и таблица допущений IW44 — SC-D7); zone пропускает
+повёрнутые страницы (SC-D14); ant — инвентарь, пока отображение аннотаций не
+реализовано (SC-D9).
+
 ## Decoder extension after baseline commit 93cc8ff
 
 [decoder-oracle.json](decoder-oracle.json) records exact RGB pixel equality for

@@ -505,3 +505,76 @@ jobs:
           for set in CC0 CC0_DOCX CC0_DOCX_1; do
             cargo run -p strict-ooxml --release --features write,svg --example corpus_scan -- "testdata/$set"
           done
+
+  # STAGE-9-TASK.md §11/§14.2: the DjVu reader is judged against the DjVuLibre
+  # CLI, run as a separate GPL process (never linked; its source is never read).
+  # The corpus is fetched by the manifest lock, never committed. Pinned to a
+  # schedule so an absent external corpus cannot redden a normal PR; the driver
+  # self-test still runs there independently.
+  djvu-oracle:
+    name: DjVu oracle (djvulibre)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      DJVULIBRE_BIN_VERSION: 3.5.28-2ubuntu0.24.04.2
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install the DjVuLibre oracle (pinned)
+        run: |
+          sudo apt-get update
+          if ! sudo apt-get install -y --no-install-recommends "djvulibre-bin=$DJVULIBRE_BIN_VERSION"; then
+            echo "::warning::djvulibre-bin $DJVULIBRE_BIN_VERSION is unavailable; installing the candidate"
+            sudo apt-get install -y --no-install-recommends djvulibre-bin
+          fi
+          dpkg-query -W -f='djvulibre-bin ${Version}\n' djvulibre-bin
+      - uses: actions/cache@v4
+        with:
+          path: testdata
+          key: cc0-djvu-${{ hashFiles('testdata-lock/djvu.toml') }}
+      - name: Fetch the DjVu corpus (by manifest hashes)
+        # Up to three documents may stay unfetched (archive.org nodes come and
+        # go); the cache fills in next night.
+        run: cargo run -p xtool --release --locked -- corpus fetch --lock testdata-lock/djvu.toml --tier djvu --allow-failures 3
+      - name: Build the producers
+        run: |
+          cargo build --release --locked -p strict-ooxml-cli
+          cargo build --release --locked -p strict-ooxml-djvu --example corpus --example zones
+          cargo build --release --locked -p strict-ooxml-djvu --features djvu-image --example codec_probe
+      - name: Driver self-test (no oracle needed)
+        run: python3 xtool/djvu-oracle-selftest.py
+      - name: Run the oracle drivers
+        run: |
+          set -o pipefail
+          CLI=target/release/strict-ooxml
+          CORPUS_EXAMPLE=target/release/examples/corpus
+          ZONES=target/release/examples/zones
+          PROBE=target/release/examples/codec_probe
+          CORPUS=testdata/CC0_DJVU
+          OUT=artifacts/djvu-oracle
+          mkdir -p "$OUT/native-text" "$OUT/raw"
+          # SC-D4: native text against djvutxt.
+          "$CORPUS_EXAMPLE" "$CORPUS" "$OUT/native-text" > "$OUT/native-corpus.tsv"
+          python3 xtool/djvu-oracle.py --corpus "$CORPUS" --text "$OUT/native-text" \
+            --oracle /usr/bin/djvutxt --report "$OUT/text-oracle.json"
+          # SC-D3/SC-D13: chunk index == djvudump, including a synthesized indirect copy.
+          python3 xtool/djvu-dump-oracle.py --corpus "$CORPUS" --ours "$CLI" \
+            --oracle /usr/bin/djvudump --report "$OUT/dump-oracle.json" --raw-dir "$OUT/raw" \
+            --indirect-dir "$OUT/indirect" --djvmcvt /usr/bin/djvmcvt
+          # SC-D5: word-zone rectangles == djvutxt --detail=word.
+          python3 xtool/djvu-zone-oracle.py --corpus "$CORPUS" --ours "$ZONES" \
+            --oracle /usr/bin/djvutxt --report "$OUT/zone-oracle.json" --raw-dir "$OUT/raw"
+          # SC-D7: page composite == ddjvu (page 1 exact; IW44 tolerances later).
+          python3 xtool/djvu-render-oracle.py --corpus "$CORPUS" --ours "$PROBE" \
+            --oracle /usr/bin/ddjvu --report "$OUT/render-oracle.json" --pages 1 --raw-dir "$OUT/raw"
+          # SC-D9: the annotation/hyperlink gap, measured until the mapping lands.
+          python3 xtool/djvu-ant-oracle.py --corpus "$CORPUS" \
+            --oracle /usr/bin/djvused --report "$OUT/ant-oracle.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: djvu-oracle
+          path: artifacts/djvu-oracle/
+          if-no-files-found: ignore
