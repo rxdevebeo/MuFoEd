@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    ConformancePolicy, OpenOptions, RenderOptions, StrictDocument, TransitionalNormalizer,
+    ConformancePolicy, OpenOptions, PageSelection, RenderOptions, StrictDocument,
+    TransitionalNormalizer,
 };
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::pipeline::{PipelineIssue, PipelineStage, PipelineSummary};
@@ -195,8 +196,14 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
     let render_options = RenderOptions::default()
         .scale(scale)
         .floating(true)
-        .math(true);
+        .math(true)
+        .pages(PageSelection::Range {
+            start: 1,
+            end: MAX_VIEW_PAGES,
+        });
     let pages = document.render_svg(&render_options)?;
+    let note = (pages.len() >= MAX_VIEW_PAGES)
+        .then(|| format!("only the first {MAX_VIEW_PAGES} pages are shown"));
     let rendered = pages
         .into_iter()
         .map(|page| Rendered {
@@ -210,11 +217,19 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
         name: entry.name.clone(),
         conformance,
         summary: Some(summary),
-        note: None,
+        note,
         pages: rendered,
         pipeline,
     })
 }
+
+/// Pages one view carries at most.
+///
+/// Every page is an SVG string held in memory for as long as the viewer runs,
+/// and a document that lays out to a hundred thousand pages is a document
+/// nobody is going to scroll. Past this many the rest is not rendered and the
+/// view's note says so.
+pub const MAX_VIEW_PAGES: usize = 2000;
 
 /// A view describing a document that could not be opened.
 ///

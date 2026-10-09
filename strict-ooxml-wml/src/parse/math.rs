@@ -247,12 +247,16 @@ fn parse_math_node(
     scope: &mut MathScope,
 ) -> Result<Option<MathNode>> {
     let location = parser.location();
+    // Both refusals leave the level they entered: the depth is a count of
+    // the open elements, and an element skipped here is no longer open.
     if scope.enter(parser.max_math_depth) {
+        scope.leave();
         scope.exhaust("max_math_depth");
         parser.skip_element()?;
         return Ok(None);
     }
     if scope.charge_node(parser.max_math_nodes) {
+        scope.leave();
         scope.exhaust("max_math_nodes");
         parser.skip_element()?;
         return Ok(None);

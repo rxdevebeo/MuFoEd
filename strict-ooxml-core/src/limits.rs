@@ -49,8 +49,27 @@ pub struct ResourceLimits {
     pub max_xml_depth: u32,
     /// Maximum number of attributes on a single XML element. Default: 1024.
     pub max_xml_attributes_per_elem: u32,
+    /// Maximum number of XML elements within one part. Default: `8_000_000`.
+    ///
+    /// Every start tag and every empty-element tag counts once. Without it a
+    /// part was bounded only by its size: 128 MiB of `<w:p/>` is about 18
+    /// million elements at depth one with no text, and every one of them
+    /// becomes a model node several times its seven bytes. Eight million is
+    /// roughly what a [`max_single_uncompressed`](Self::max_single_uncompressed)
+    /// part of ordinary `WordprocessingML` holds at ~16 bytes per element, so a
+    /// real document reaches the size limit first.
+    ///
+    /// Counted per part, so the same bound caps the relationships of a `.rels`
+    /// part and the `Default`/`Override` entries of `[Content_Types].xml`.
+    pub max_xml_elements: u64,
     /// Maximum length of a text node within one part, in bytes.
     /// Default: 64 MiB.
+    ///
+    /// The same number separately bounds the attribute bytes of one part (the
+    /// names and raw values of every attribute, `xmlns` declarations included),
+    /// so a part cannot spend unbounded memory on attribute strings either.
+    /// The two budgets are not shared: a part may hold up to this much text
+    /// *and* up to this much in attributes. Both report `LimitKind::TextLen`.
     pub max_text_len: usize,
     /// Maximum relationship resolution depth between parts. Default: 32.
     pub max_rel_depth: u32,
@@ -158,6 +177,7 @@ impl Default for ResourceLimits {
             max_compression_ratio: 1000,
             max_xml_depth: 256,
             max_xml_attributes_per_elem: 1024,
+            max_xml_elements: 8_000_000,
             max_text_len: 64 * 1024 * 1024,
             max_rel_depth: 32,
             max_parts: 4096,
@@ -188,6 +208,7 @@ mod tests {
         assert_eq!(limits.max_compression_ratio, 1000);
         assert_eq!(limits.max_xml_depth, 256);
         assert_eq!(limits.max_xml_attributes_per_elem, 1024);
+        assert_eq!(limits.max_xml_elements, 8_000_000);
         assert_eq!(limits.max_text_len, 64 * 1024 * 1024);
         assert_eq!(limits.max_rel_depth, 32);
         assert_eq!(limits.max_parts, 4096);

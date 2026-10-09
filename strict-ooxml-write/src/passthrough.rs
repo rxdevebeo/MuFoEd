@@ -529,7 +529,9 @@ pub(crate) fn report_what_was_dropped(
         let name = part.as_str();
         if produced.contains(name)
             || renamed.contains(name)
-            || OPC_SCAFFOLD.contains(&name)
+            || OPC_SCAFFOLD
+                .iter()
+                .any(|scaffold| scaffold.eq_ignore_ascii_case(name))
             || !name.starts_with('/')
         {
             continue;
@@ -540,7 +542,7 @@ pub(crate) fn report_what_was_dropped(
         // The owner being present is the test, and not "a rels part is present" —
         // the writer is free to emit none for a part that ended up with no
         // relationships.
-        if name.ends_with(CONTENT_TYPE_RELS_SUFFIX)
+        if strip_suffix_ignore_ascii_case(name, CONTENT_TYPE_RELS_SUFFIX).is_some()
             && rels_owner(name).is_none_or(|owner| produced.contains(owner.as_str()))
         {
             continue;
@@ -644,11 +646,25 @@ fn property_rel_targets(
 }
 
 /// The part a `.rels` belongs to: `/word/_rels/header1.xml.rels` -> `/word/header1.xml`.
+///
+/// `_rels` and `.rels` match ASCII case-insensitively, as part names do in the
+/// reader (audit 2.2); the owner keeps the spelling of the name it came from.
 fn rels_owner(rels_name: &str) -> Option<String> {
     let (dir, file) = rels_name.rsplit_once('/')?;
-    let dir = dir.strip_suffix("/_rels")?;
-    let file = file.strip_suffix(".rels")?;
+    let dir = strip_suffix_ignore_ascii_case(dir, "/_rels")?;
+    let file = strip_suffix_ignore_ascii_case(file, CONTENT_TYPE_RELS_SUFFIX)?;
     Some(format!("{dir}/{file}"))
+}
+
+/// `value` without `suffix`, the suffix compared ASCII case-insensitively.
+fn strip_suffix_ignore_ascii_case<'a>(value: &'a str, suffix: &str) -> Option<&'a str> {
+    let split = value.len().checked_sub(suffix.len())?;
+    let tail = value.get(split..)?;
+    if tail.eq_ignore_ascii_case(suffix) {
+        value.get(..split)
+    } else {
+        None
+    }
 }
 
 /// The property part itself, plus its `.rels` when it has one.
@@ -1168,7 +1184,8 @@ fn push(out: &mut Vec<String>, id: String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        referenced_ids, rels_part_of, remove_element, resolve, without_rendering_counters,
+        referenced_ids, rels_owner, rels_part_of, remove_element, resolve,
+        without_rendering_counters,
     };
     use strict_ooxml_core::part::PartId;
     use strict_ooxml_wml::model::block::{Block, Paragraph, Table, TableCell, TableRow};
@@ -1249,6 +1266,22 @@ mod tests {
 
     /// A chart inside a table cell is still a reference the pass-through must
     /// see: the cells are the most common place a table of figures lives.
+    /// Audit 2.2: the owner of a `.rels` is found whatever the casing of
+    /// `_rels` and `.rels`, the way the reader finds it.
+    #[test]
+    fn the_owner_of_a_rels_part_is_found_case_insensitively() {
+        assert_eq!(
+            rels_owner("/word/_rels/header1.xml.rels"),
+            Some("/word/header1.xml".to_owned())
+        );
+        assert_eq!(
+            rels_owner("/word/_RELS/document.xml.RELS"),
+            Some("/word/document.xml".to_owned())
+        );
+        assert_eq!(rels_owner("/word/document.xml.rels"), None);
+        assert_eq!(rels_owner("/word/_rels/document.xml"), None);
+    }
+
     #[test]
     fn a_chart_in_a_table_cell_is_reached() {
         let blocks = vec![Block::Table(Table {

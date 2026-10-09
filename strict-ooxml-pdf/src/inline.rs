@@ -361,6 +361,16 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
         };
     }
     let limits = crate::PdfLimits::default();
+    // The same pixel budget as an XObject's, for every filter: an inline JPEG
+    // goes on as its bytes, and `/W 65535 /H 65535` in front of a few bytes of
+    // `ID` data is a decode nobody downstream can afford (default limits, as
+    // for `/JPX`).
+    if let Err(reject) = crate::image::check_pixels(width, height, &limits) {
+        return InlineImage {
+            encoded: None,
+            missing: Some(reject.to_string()),
+        };
+    }
     match filter {
         Some(b"DCT" | b"DCTDecode") => InlineImage {
             encoded: Some(Encoded::Jpeg {
@@ -478,5 +488,29 @@ mod tests {
         // The garbage operators must not remain as free text for lopdf.
         assert!(!text.contains(" BT "), "{text}");
         assert!(!text.contains(" Tj"), "{text}");
+    }
+
+    #[test]
+    fn an_inline_jpeg_over_the_pixel_budget_is_reported_not_carried() {
+        let mut stream = Vec::new();
+        stream.extend_from_slice(b"q BI /W 65535 /H 65535 /BPC 8 /CS /RGB /F /DCT ID ");
+        stream.extend_from_slice(&[0xFF, 0xD8, 0xFF, 0xD9]);
+        stream.extend_from_slice(b" EI Q");
+        let (_, images) = extract(&stream);
+        assert_eq!(images.len(), 1);
+        assert!(images[0].encoded.is_none());
+        let missing = images[0].missing.as_deref().unwrap_or_default();
+        assert!(missing.contains("budget"), "{missing}");
+    }
+
+    #[test]
+    fn a_small_inline_jpeg_is_still_carried() {
+        let mut stream = Vec::new();
+        stream.extend_from_slice(b"q BI /W 4 /H 4 /BPC 8 /CS /RGB /F /DCT ID ");
+        stream.extend_from_slice(&[0xFF, 0xD8, 0xFF, 0xD9]);
+        stream.extend_from_slice(b" EI Q");
+        let (_, images) = extract(&stream);
+        assert_eq!(images.len(), 1);
+        assert!(images[0].encoded.is_some());
     }
 }

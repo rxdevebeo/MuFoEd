@@ -574,9 +574,12 @@ impl PartParser<'_> {
         attrs: &[Attr],
     ) -> Result<Option<Graphic>> {
         if is_locked_canvas_ns(name) && name.local() == "lockedCanvas" {
-            return Ok(Some(Graphic::LockedCanvas(
-                self.capture_locked_canvas(name, attrs)?,
-            )));
+            // A canvas whose markup could not be kept faithfully still
+            // occupies its place, as a payload no writer reproduces.
+            return Ok(Some(
+                self.capture_locked_canvas(name.clone(), attrs.to_vec())?
+                    .map_or(Graphic::Other, Graphic::LockedCanvas),
+            ));
         }
         if is_ns(name, PICTURE_STRICT_NS) && name.local() == "pic" {
             return Ok(Some(Graphic::Picture(self.parse_picture()?)));
@@ -596,7 +599,11 @@ impl PartParser<'_> {
                 self.parse_group()?.map_or(Graphic::None, Graphic::Group),
             ));
         }
-        if name.local() == "chart" {
+        // Both references are matched in their Strict namespace only: the
+        // normalizer has already rewritten a Transitional `c:`/`dgm:`, and a
+        // `chart` from any other vocabulary (`cx:chart`, Office's chartex) is
+        // not a `c:chart` a writer can put back under that name.
+        if is_ns(name, CHART_STRICT_NS) && name.local() == "chart" {
             // The attributes of *this* element, not of the `a:graphicData` that
             // carries it: `r:id` is where the chart part is named.
             let mut refs = self.foreign_refs(attrs, &[R_ID]);
@@ -608,7 +615,7 @@ impl PartParser<'_> {
             self.skip_element()?;
             return Ok(Some(graphic));
         }
-        if name.local() == "relIds" {
+        if is_ns(name, DIAGRAM_STRICT_NS) && name.local() == "relIds" {
             // `dgm:relIds` carries four ids in a fixed order, and the order is
             // the only thing that says which is which.
             let mut refs = self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]);
@@ -631,39 +638,46 @@ impl PartParser<'_> {
 
     /// Captures `lc:lockedCanvas` as Strict markup so `a:off`/`a:ext`/`chOff`
     /// round-trip (audit P2). The start event is already consumed.
-    fn capture_locked_canvas(&mut self, name: &QName, attrs: &[Attr]) -> Result<LockedCanvas> {
+    ///
+    /// The whole subtree is read either way, so the parser resumes after the
+    /// canvas. An `a:ext` in a namespace outside Strict is dropped, as in
+    /// [`Self::capture_fragment`]. `None` when anything left is in a namespace
+    /// [`markup_prefix`] has no prefix for: the markup would carry it with no
+    /// prefix at all, so `w:val` would come back as `val`, an attribute in no
+    /// namespace. Such a canvas is recorded and kept out of the model rather
+    /// than written back as something it was not.
+    fn capture_locked_canvas(
+        &mut self,
+        name: QName,
+        attrs: Vec<Attr>,
+    ) -> Result<Option<LockedCanvas>> {
         let location = self.location();
+        let pieces = self.read_pieces(name, attrs)?;
+        let kept = self.drop_extension_ext(&pieces);
         let mut markup = String::new();
         let mut images = Vec::new();
-        self.note_canvas_image(attrs, &mut images);
-        write_start_markup(&mut markup, name, attrs);
-        let mut depth = 1u32;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    depth = depth.saturating_add(1);
-                    self.note_canvas_image(&attrs, &mut images);
-                    write_start_markup(&mut markup, &name, &attrs);
-                }
-                XmlEvent::EndElement { name } => {
-                    write_end_markup(&mut markup, &name);
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                XmlEvent::Text(text) => {
-                    escape_text_into_markup(&mut markup, &text);
-                }
-                XmlEvent::CData(text) => {
-                    markup.push_str("<![CDATA[");
-                    markup.push_str(&text);
-                    markup.push_str("]]>");
-                }
-                XmlEvent::Eof => {
-                    return Err(self.invalid("unexpected end of locked canvas"));
-                }
+        let mut known = true;
+        for (piece, keep) in pieces.iter().zip(&kept) {
+            if !*keep {
+                continue;
             }
+            match piece {
+                Piece::Start(name, attrs) => {
+                    self.note_canvas_image(attrs, &mut images);
+                    known &= write_start_markup(&mut markup, name, attrs);
+                }
+                Piece::End(name) => write_end_markup(&mut markup, name),
+                Piece::Text(text) => escape_text_into_markup(&mut markup, text),
+            }
+        }
+        if !known {
+            self.record(
+                "lc:lockedCanvas",
+                SupportStatus::Unsupported,
+                Some("namespace outside lc/a/r/pic; canvas not kept".to_owned()),
+                Some(location),
+            );
+            return Ok(None);
         }
         self.record(
             "lc:lockedCanvas",
@@ -671,11 +685,11 @@ impl PartParser<'_> {
             None,
             Some(location.clone()),
         );
-        Ok(LockedCanvas {
+        Ok(Some(LockedCanvas {
             markup: std::sync::Arc::<str>::from(markup),
             images,
             location,
-        })
+        }))
     }
 
     /// Captures the relationship ids a foreign graphic element carries.
@@ -2227,12 +2241,17 @@ fn is_locked_canvas_ns(name: &QName) -> bool {
 }
 
 /// Writes a start tag with Strict namespace prefixes for locked-canvas capture.
-fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
-    let prefix = markup_prefix(
-        name.ns
-            .as_ref()
-            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
-    );
+///
+/// `false` when the element or one of its namespaced attributes is in a
+/// namespace [`markup_prefix`] has no prefix for. The tag is still written, with
+/// that name unprefixed, so the caller must not keep the markup.
+fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) -> bool {
+    let element_ns = name
+        .ns
+        .as_ref()
+        .map(strict_ooxml_core::xml::qname::NsUri::as_str);
+    let prefix = markup_prefix(element_ns);
+    let mut known = element_ns.is_none() || prefix.is_some();
     out.push('<');
     if let Some(prefix) = prefix {
         out.push_str(prefix);
@@ -2253,12 +2272,13 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
         out.push('"');
     }
     for attr in attrs {
-        let attr_prefix = markup_prefix(
-            attr.name
-                .ns
-                .as_ref()
-                .map(strict_ooxml_core::xml::qname::NsUri::as_str),
-        );
+        let attr_ns = attr
+            .name
+            .ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str);
+        let attr_prefix = markup_prefix(attr_ns);
+        known &= attr_ns.is_none() || attr_prefix.is_some();
         out.push(' ');
         if let Some(prefix) = attr_prefix {
             // Unprefixed attributes stay unprefixed (XML Namespaces).
@@ -2278,6 +2298,7 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
         out.push('"');
     }
     out.push('>');
+    known
 }
 
 /// Writes an end tag with the same prefix policy as [`write_start_markup`].

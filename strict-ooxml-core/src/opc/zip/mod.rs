@@ -36,6 +36,10 @@ const LOCAL_SIG: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
 const METHOD_STORED: u16 = 0;
 const METHOD_DEFLATE: u16 = 8;
 
+/// General-purpose flag bits that mean the entry is encrypted: bit 0
+/// (traditional `PKWARE` encryption) and bit 6 (strong encryption).
+const FLAGS_ENCRYPTED: u16 = 0x0001 | 0x0040;
+
 /// A parsed entry of the ZIP central directory.
 #[derive(Clone, Debug)]
 pub(crate) struct ZipEntry {
@@ -43,8 +47,11 @@ pub(crate) struct ZipEntry {
     pub(crate) compression: Compression,
     pub(crate) compressed_size: u64,
     pub(crate) uncompressed_size: u64,
-    pub(crate) local_header_offset: u64,
     pub(crate) crc32: u32,
+    /// Where the entry's compressed bytes sit in the archive, resolved from
+    /// its local header once, at open (`start..end`).
+    data_start: usize,
+    data_end: usize,
 }
 
 /// A parsed ZIP archive held entirely in memory.
@@ -63,6 +70,9 @@ impl ZipArchive {
         let mut entries = Vec::with_capacity(directory.entries.capacity());
         let mut by_id: HashMap<PartId, usize> = HashMap::with_capacity(directory.entries.len());
         let mut total_uncompressed: u64 = 0;
+        // `local header offset..end of data` of every part, for the overlap
+        // check after the loop.
+        let mut spans: Vec<(usize, usize)> = Vec::with_capacity(directory.entries.len());
 
         for raw in directory.entries {
             if raw.name.ends_with('/') {
@@ -72,6 +82,17 @@ impl ZipArchive {
             let id = canonicalize_part_name(&raw.name)?;
             if by_id.contains_key(&id) {
                 return Err(StrictError::DuplicatePart(id));
+            }
+            // A stored entry is its own bytes: the two sizes are one size, and
+            // an archive that declares two different ones has lied about at
+            // least one of them (audit 3.11).
+            if raw.compression == Compression::Stored
+                && raw.compressed_size != raw.uncompressed_size
+            {
+                return Err(StrictError::InvalidZip(format!(
+                    "stored entry {} declares compressed size {} but uncompressed size {}",
+                    raw.name, raw.compressed_size, raw.uncompressed_size
+                )));
             }
             if raw.uncompressed_size > limits.max_single_uncompressed {
                 return Err(StrictError::LimitExceeded {
@@ -96,16 +117,24 @@ impl ZipArchive {
             // (REWORK-CORE-1 C-1). `actual` reports the ratio itself, not bytes
             // (C-2).
             if raw.compression == Compression::Deflate {
-                let ratio = raw
-                    .uncompressed_size
-                    .checked_div(raw.compressed_size)
-                    .unwrap_or(u64::MAX);
-                let ratio_exceeded = if raw.compressed_size == 0 {
-                    raw.uncompressed_size > 0
-                } else {
-                    ratio > u64::from(limits.max_compression_ratio)
-                };
+                // Compared by multiplication, not by an integer quotient: 2001
+                // bytes out of 2 is over a 1000:1 limit although `2001 / 2`
+                // is 1000 (audit 3.14). Saturation pins the bound at
+                // `u64::MAX`, which no declared size exceeds — correct, since
+                // the true bound is larger still. A zero compressed size makes
+                // the bound 0, so any output at all exceeds it, as before.
+                let ratio_exceeded = raw.uncompressed_size
+                    > raw
+                        .compressed_size
+                        .saturating_mul(u64::from(limits.max_compression_ratio));
                 if ratio_exceeded {
+                    // Rounded up, so the reported ratio is above the limit
+                    // whenever the check is.
+                    let ratio = if raw.compressed_size == 0 {
+                        u64::MAX
+                    } else {
+                        raw.uncompressed_size.div_ceil(raw.compressed_size)
+                    };
                     return Err(StrictError::LimitExceeded {
                         kind: LimitKind::CompressionRatio,
                         limit: u64::from(limits.max_compression_ratio),
@@ -113,16 +142,23 @@ impl ZipArchive {
                     });
                 }
             }
+            let (data_start, data_end) = local_data_range(data.as_slice(), &raw)?;
+            let header_start = usize::try_from(raw.local_header_offset).map_err(|_| {
+                StrictError::InvalidZip("local header offset out of range".to_owned())
+            })?;
+            spans.push((header_start, data_end));
             by_id.insert(id.clone(), entries.len());
             entries.push(ZipEntry {
                 id,
                 compression: raw.compression,
                 compressed_size: raw.compressed_size,
                 uncompressed_size: raw.uncompressed_size,
-                local_header_offset: raw.local_header_offset,
                 crc32: raw.crc32,
+                data_start,
+                data_end,
             });
         }
+        check_spans(spans, directory.cd_start)?;
 
         Ok(Self {
             data,
@@ -181,32 +217,81 @@ impl ZipArchive {
         })
     }
 
-    /// Resolves the compressed byte range of an entry from its local header.
+    /// The compressed bytes of an entry, as resolved and checked at open.
     fn local_data(&self, entry: &ZipEntry) -> Result<&[u8]> {
-        let data: &[u8] = self.data.as_slice();
-        let offset = usize::try_from(entry.local_header_offset)
-            .map_err(|_| StrictError::InvalidZip("local header offset out of range".to_owned()))?;
-        let sig = slice_at(data, offset, 4)?;
-        if sig != LOCAL_SIG {
-            return Err(StrictError::InvalidZip(
-                "bad local file header signature".to_owned(),
-            ));
-        }
-        let name_len = usize::from(u16_at(data, offset_add(offset, 26)?)?);
-        let extra_len = usize::from(u16_at(data, offset_add(offset, 28)?)?);
-        let data_start = offset
-            .checked_add(30)
-            .and_then(|v| v.checked_add(name_len))
-            .and_then(|v| v.checked_add(extra_len))
-            .ok_or_else(|| StrictError::InvalidZip("local header overflow".to_owned()))?;
-        let size = usize::try_from(entry.compressed_size)
-            .map_err(|_| StrictError::InvalidZip("part too large".to_owned()))?;
-        let end = data_start
-            .checked_add(size)
-            .ok_or_else(|| StrictError::InvalidZip("part size overflow".to_owned()))?;
-        data.get(data_start..end)
+        self.data
+            .get(entry.data_start..entry.data_end)
             .ok_or_else(|| StrictError::InvalidZip("part data out of bounds".to_owned()))
     }
+}
+
+/// Resolves an entry's compressed byte range from its local header.
+///
+/// The local header must name the entry exactly as the central directory
+/// does (audit 3.16): the two disagreeing is how one archive shows a different
+/// file list to a reader that walks local headers than to one that reads the
+/// directory, and this reader does not get to pick which story is true.
+fn local_data_range(data: &[u8], raw: &RawEntry) -> Result<(usize, usize)> {
+    let offset = usize::try_from(raw.local_header_offset)
+        .map_err(|_| StrictError::InvalidZip("local header offset out of range".to_owned()))?;
+    let sig = slice_at(data, offset, 4)?;
+    if sig != LOCAL_SIG {
+        return Err(StrictError::InvalidZip(
+            "bad local file header signature".to_owned(),
+        ));
+    }
+    let name_len = usize::from(u16_at(data, offset_add(offset, 26)?)?);
+    let extra_len = usize::from(u16_at(data, offset_add(offset, 28)?)?);
+    let local_name = slice_at(data, offset_add(offset, 30)?, name_len)?;
+    if local_name != raw.name.as_bytes() {
+        return Err(StrictError::InvalidZip(format!(
+            "local header name mismatch for {}",
+            raw.name
+        )));
+    }
+    let data_start = offset
+        .checked_add(30)
+        .and_then(|v| v.checked_add(name_len))
+        .and_then(|v| v.checked_add(extra_len))
+        .ok_or_else(|| StrictError::InvalidZip("local header overflow".to_owned()))?;
+    let size = usize::try_from(raw.compressed_size)
+        .map_err(|_| StrictError::InvalidZip("part too large".to_owned()))?;
+    let end = data_start
+        .checked_add(size)
+        .ok_or_else(|| StrictError::InvalidZip("part size overflow".to_owned()))?;
+    if end > data.len() {
+        return Err(StrictError::InvalidZip(
+            "part data out of bounds".to_owned(),
+        ));
+    }
+    Ok((data_start, end))
+}
+
+/// Rejects entries whose bytes overlap, or run into the central directory
+/// (audit 3.10).
+///
+/// Each span is `local header offset..end of compressed data`. Two parts that
+/// share bytes are the classic overlapping-entry bomb — one small deflate
+/// stream referenced a thousand times — and a part that reaches into the
+/// directory is reading the directory as its own data; neither is a ZIP any
+/// writer produces.
+fn check_spans(mut spans: Vec<(usize, usize)>, cd_start: usize) -> Result<()> {
+    spans.sort_unstable();
+    let mut previous_end: usize = 0;
+    for (start, end) in spans {
+        if start < previous_end {
+            return Err(StrictError::InvalidZip(format!(
+                "entry at offset {start} overlaps the entry before it"
+            )));
+        }
+        if end > cd_start {
+            return Err(StrictError::InvalidZip(format!(
+                "entry at offset {start} extends into the central directory"
+            )));
+        }
+        previous_end = end;
+    }
+    Ok(())
 }
 
 /// Raw central-directory fields before limit validation.
@@ -221,6 +306,8 @@ struct RawEntry {
 
 struct CentralDirectory {
     entries: Vec<RawEntry>,
+    /// Offset of the first central-directory byte: no entry data may reach it.
+    cd_start: usize,
 }
 
 impl CentralDirectory {
@@ -300,7 +387,10 @@ impl CentralDirectory {
             let next = extra_end
                 .checked_add(comment_len)
                 .ok_or_else(|| StrictError::InvalidZip("comment length overflow".to_owned()))?;
-            if next > data.len() {
+            // Bounded by the directory's *declared* end, not the archive's:
+            // an entry that spills past it is reading the end record (or
+            // whatever follows) as its own name and extra fields (audit 3.9).
+            if next > cd_end {
                 return Err(StrictError::InvalidZip(
                     "central directory entry out of bounds".to_owned(),
                 ));
@@ -334,15 +424,21 @@ impl CentralDirectory {
                 local_header_offset = v;
             }
 
+            // Data descriptor bit (bit 3) is fine: authoritative sizes come from
+            // the central directory, not the local header. Encryption is not:
+            // the bytes would inflate to noise, or to a CRC error that names
+            // the wrong cause (hostile 2.10).
+            if flags & FLAGS_ENCRYPTED != 0 {
+                return Err(StrictError::InvalidZip(format!(
+                    "encrypted entry {name} is not supported"
+                )));
+            }
+
             let compression = match method {
                 METHOD_STORED => Compression::Stored,
                 METHOD_DEFLATE => Compression::Deflate,
                 other => return Err(StrictError::UnsupportedCompression(other)),
             };
-
-            // Data descriptor bit (bit 3) is fine: authoritative sizes come from
-            // the central directory, not the local header.
-            let _ = flags;
 
             entries.push(RawEntry {
                 name,
@@ -355,7 +451,7 @@ impl CentralDirectory {
             pos = next;
         }
 
-        Ok(Self { entries })
+        Ok(Self { entries, cd_start })
     }
 }
 
@@ -614,6 +710,9 @@ impl Read for PartReader<'_> {
         self.crc = crc32_update(self.crc, window.get(..n).unwrap_or_default());
         // Bounded by `expected_len`; saturation keeps the limit check sound.
         self.produced = self.produced.saturating_add(n as u64);
+        // Defence in depth only: `ZipArchive::new` already refuses an entry
+        // whose declared size is over `max_single_uncompressed`, and reads stop
+        // at that declared size, so this does not fire for an archive it built.
         if self.produced > self.max_len {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -943,7 +1042,8 @@ mod tests {
         push_u16(&mut central, 0);
         push_u16(&mut central, 0);
         push_u32(&mut central, 0);
-        push_u32(&mut central, cd_offset);
+        // The local header is at the start of the archive.
+        push_u32(&mut central, 0);
         central.extend_from_slice(name.as_bytes());
         let cd_size = central.len() as u32;
         out.extend_from_slice(&central);
@@ -1060,7 +1160,8 @@ mod tests {
         push_u16(&mut central, 0);
         push_u16(&mut central, 0);
         push_u32(&mut central, 0);
-        push_u32(&mut central, cd_offset);
+        // The local header is at the start of the archive.
+        push_u32(&mut central, 0);
         central.extend_from_slice(name.as_bytes());
         let cd_size = central.len() as u32;
         out.extend_from_slice(&central);
@@ -1115,6 +1216,131 @@ mod tests {
             } => assert_eq!(actual, 227),
             other => panic!("expected CompressionRatio, got {other:?}"),
         }
+    }
+
+    /// The archive offset of the central directory, read from the end record
+    /// of an archive built by `build_test_zip` (no comment, no ZIP64).
+    fn cd_offset_of(bytes: &[u8]) -> usize {
+        let at = bytes.len() - 22 + 16;
+        u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize
+    }
+
+    fn put_u32(bytes: &mut [u8], at: usize, value: u32) {
+        bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn invalid_zip_message(bytes: Vec<u8>) -> String {
+        match ZipArchive::new(Arc::new(bytes), &ResourceLimits::default()) {
+            Err(StrictError::InvalidZip(message)) => message,
+            other => panic!("expected InvalidZip, got {other:?}"),
+        }
+    }
+
+    /// Audit 3.9: an entry is bounded by the directory's declared end, not by
+    /// the end of the archive.
+    #[test]
+    fn a_directory_entry_past_the_declared_directory_end_is_rejected() {
+        let mut bytes = build_test_zip(&[("a.txt", b"hello", false)]);
+        // One byte less of declared directory: the entry's name now spills
+        // into the end record.
+        let size_at = bytes.len() - 22 + 12;
+        let size = u32::from_le_bytes(bytes[size_at..size_at + 4].try_into().unwrap());
+        put_u32(&mut bytes, size_at, size - 1);
+        let message = invalid_zip_message(bytes);
+        assert!(message.contains("central directory entry"), "{message}");
+    }
+
+    /// Audit 3.11: a stored entry whose two sizes differ is refused at open,
+    /// not when (or if) the part is read.
+    #[test]
+    fn a_stored_entry_with_two_different_sizes_is_rejected_at_open() {
+        let mut bytes = build_test_zip(&[("a.txt", b"hello", false)]);
+        let cd = cd_offset_of(&bytes);
+        put_u32(&mut bytes, cd + 20, 4); // compressed size
+        let message = invalid_zip_message(bytes);
+        assert!(message.contains("stored entry a.txt"), "{message}");
+    }
+
+    /// Audit 3.14: the ratio is compared exactly, not through an integer
+    /// quotient that rounds 1000.5:1 down to an allowed 1000:1.
+    #[test]
+    fn a_ratio_just_over_the_limit_is_not_rounded_down() {
+        let limits = ResourceLimits {
+            max_compression_ratio: 1000,
+            ..ResourceLimits::default()
+        };
+        let exactly = build_declared_deflate_zip("doc.xml", 2, 2000);
+        assert!(ZipArchive::new(Arc::new(exactly), &limits).is_ok());
+
+        let over = build_declared_deflate_zip("doc.xml", 2, 2001);
+        match ZipArchive::new(Arc::new(over), &limits).unwrap_err() {
+            StrictError::LimitExceeded {
+                kind: LimitKind::CompressionRatio,
+                limit,
+                actual,
+            } => {
+                assert_eq!(limit, 1000);
+                assert_eq!(actual, 1001, "rounded up, so it reads as over the limit");
+            }
+            other => panic!("expected CompressionRatio, got {other:?}"),
+        }
+
+        // A zero compressed size with output is still over any limit.
+        let zero = build_declared_deflate_zip("doc.xml", 0, 1);
+        assert!(matches!(
+            ZipArchive::new(Arc::new(zero), &limits),
+            Err(StrictError::LimitExceeded {
+                kind: LimitKind::CompressionRatio,
+                actual: u64::MAX,
+                ..
+            })
+        ));
+    }
+
+    /// Audit 3.16: the local header must name the entry the directory names.
+    #[test]
+    fn a_local_header_naming_another_file_is_rejected() {
+        let mut bytes = build_test_zip(&[("a.txt", b"hello", false)]);
+        // The local name starts right after the 30-byte local header.
+        bytes[30] = b'b';
+        let message = invalid_zip_message(bytes);
+        assert!(message.contains("local header name mismatch"), "{message}");
+    }
+
+    /// Audit 3.10: two entries may not share bytes.
+    #[test]
+    fn overlapping_entries_are_rejected() {
+        // `a.txt` spans 0..40, `b.txt` 40..80. Declaring `a.txt` 45 bytes long
+        // (both sizes, so it stays a consistent stored entry) makes it cover
+        // all of `b.txt`.
+        let mut bytes = build_test_zip(&[("a.txt", b"hello", false), ("b.txt", b"world", false)]);
+        let cd = cd_offset_of(&bytes);
+        assert_eq!(cd, 80);
+        put_u32(&mut bytes, cd + 20, 45);
+        put_u32(&mut bytes, cd + 24, 45);
+        let message = invalid_zip_message(bytes);
+        assert!(message.contains("overlaps"), "{message}");
+    }
+
+    /// Audit 3.10: an entry's data may not run into the central directory.
+    #[test]
+    fn an_entry_reaching_into_the_central_directory_is_rejected() {
+        let mut bytes = build_test_zip(&[("a.txt", b"hello", false)]);
+        let cd = cd_offset_of(&bytes);
+        put_u32(&mut bytes, cd + 20, 6);
+        put_u32(&mut bytes, cd + 24, 6);
+        let message = invalid_zip_message(bytes);
+        assert!(message.contains("central directory"), "{message}");
+    }
+
+    /// Hostile 2.10: an encrypted entry is refused by name, not read as noise.
+    #[test]
+    fn an_encrypted_entry_is_rejected() {
+        let mut bytes = build_test_zip(&[("a.txt", b"hello", false)]);
+        let cd = cd_offset_of(&bytes);
+        bytes[cd + 8] |= 0x01; // general-purpose flag bit 0
+        let message = invalid_zip_message(bytes);
+        assert!(message.contains("encrypted entry a.txt"), "{message}");
     }
 
     fn zip64_extra(values: &[u64]) -> Vec<u8> {

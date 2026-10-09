@@ -19,6 +19,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::control::{self, OpenControl, Stage};
 use crate::error::{LimitKind, Result, StrictError};
 use crate::limits::ResourceLimits;
 use crate::normalize::RawNormalizer;
@@ -54,6 +55,11 @@ pub struct OpenOptions {
     /// Shared as an [`Arc`] so an opened [`Package`] can keep using it after
     /// `OpenOptions` is dropped.
     pub normalization: Option<Arc<dyn RawNormalizer>>,
+    /// Progress and cancellation handle (default none); see [`crate::control`].
+    ///
+    /// Installed for the duration of the open, so the checkpoints in the
+    /// reader, the inflater and the normalizer see it.
+    pub control: Option<OpenControl>,
 }
 
 impl Default for OpenOptions {
@@ -62,6 +68,7 @@ impl Default for OpenOptions {
             conformance: ConformancePolicy::StrictOnly,
             limits: ResourceLimits::default(),
             normalization: None,
+            control: None,
         }
     }
 }
@@ -78,6 +85,13 @@ impl OpenOptions {
     #[must_use]
     pub fn limits(mut self, limits: ResourceLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Sets the progress and cancellation handle; see [`crate::control`].
+    #[must_use]
+    pub fn control(mut self, control: OpenControl) -> Self {
+        self.control = Some(control);
         self
     }
 
@@ -145,14 +159,32 @@ impl Package {
     ///
     /// Returns a [`StrictError`] for damaged archives, missing required parts,
     /// resource-limit violations or a conformance policy mismatch.
-    pub fn open_reader<R: Read>(mut reader: R, options: &OpenOptions) -> Result<Self> {
+    pub fn open_reader<R: Read>(reader: R, options: &OpenOptions) -> Result<Self> {
+        Self::open_sized(reader, 0, options)
+    }
+
+    /// [`open_reader`](Self::open_reader) for a source whose size is known,
+    /// so that progress can say how far through it the read is (`0` = unknown).
+    fn open_sized<R: Read>(mut reader: R, size: u64, options: &OpenOptions) -> Result<Self> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
+        control::stage(Stage::ReadingInput, size);
         let limit = options.limits.max_compressed_input;
         let mut data = Vec::new();
-        reader
-            .by_ref()
-            .take(limit.saturating_add(1))
-            .read_to_end(&mut data)
-            .map_err(StrictError::Io)?;
+        let mut chunk = vec![0u8; INPUT_CHUNK];
+        loop {
+            control::checkpoint_now()?;
+            let read = match reader.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(StrictError::Io(error)),
+            };
+            data.extend_from_slice(chunk.get(..read).unwrap_or_default());
+            control::advance(data.len() as u64);
+            if data.len() as u64 > limit {
+                break;
+            }
+        }
         if data.len() as u64 > limit {
             return Err(StrictError::LimitExceeded {
                 kind: LimitKind::CompressedInput,
@@ -170,11 +202,13 @@ impl Package {
     /// See [`Package::open_reader`].
     pub fn open_path(path: impl AsRef<Path>, options: &OpenOptions) -> Result<Self> {
         let file = std::fs::File::open(path).map_err(StrictError::Io)?;
-        Self::open_reader(file, options)
+        let size = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+        Self::open_sized(file, size, options)
     }
 
-    #[allow(clippy::case_sensitive_file_extension_comparisons)]
     fn open_archive(data: Arc<Vec<u8>>, options: &OpenOptions) -> Result<Self> {
+        control::stage(Stage::OpeningPackage, 0);
+        control::checkpoint_now()?;
         let zip = ZipArchive::new(data, &options.limits)?;
         let normalizer = options.normalization.as_deref();
         let mut was_normalized = false;
@@ -200,12 +234,11 @@ impl Package {
         let mut rels = RelationshipGraph::new();
         let mut raw_relationship_types: Vec<String> = Vec::new();
         for entry in zip.entries() {
-            if !entry.id.as_str().ends_with(".rels") {
-                continue;
-            }
             // AUD-25: only `<dir>/_rels/<name>.rels` is a relationship part.
             // A stray `*.rels` elsewhere stays an ordinary part (and is not
-            // attributed to the package root).
+            // attributed to the package root). The match is ASCII
+            // case-insensitive, like every other part-name comparison: a
+            // `_RELS/.RELS` is the same part as `_rels/.rels` (audit 2.2).
             let Some(source) = source_part_for_rels(&entry.id) else {
                 continue;
             };
@@ -416,11 +449,19 @@ impl Package {
     /// Returns a [`StrictError`] for a missing part, a corrupt stream or a
     /// resource-limit violation.
     pub fn read_part(&self, id: &PartId) -> Result<Vec<u8>> {
-        let (bytes, touched) = apply_normalizer(
-            self.normalizer.as_deref(),
-            id,
-            read_part(&self.zip, id, &self.limits)?,
-        )?;
+        let tracked = control::is_tracked(id);
+        if tracked {
+            let size = self
+                .zip
+                .entry(id)
+                .map_or(0, |entry| entry.uncompressed_size);
+            control::stage(Stage::InflatingDocument, size);
+        }
+        let raw = read_part(&self.zip, id, &self.limits)?;
+        if tracked && self.normalizer.is_some() {
+            control::stage(Stage::NormalizingDocument, raw.len() as u64);
+        }
+        let (bytes, touched) = apply_normalizer(self.normalizer.as_deref(), id, raw)?;
         if touched {
             self.was_normalized.store(true, Ordering::Relaxed);
         }
@@ -479,13 +520,27 @@ fn build_parts(zip: &ZipArchive, content_types: &ContentTypeIndex) -> Vec<Part> 
 fn locate_main_document(rels: &RelationshipGraph, zip: &ZipArchive) -> Result<PartId> {
     use rels::RelType;
     let root = PartId::new("/");
-    let target = rels
+    let mut office_documents = rels
         .relationships(&root)
         .iter()
-        .find(|rel| rel.rel_type == RelType::OfficeDocument)
-        .and_then(|rel| rel.resolved.clone())
+        .filter(|rel| rel.rel_type == RelType::OfficeDocument)
+        .peekable();
+    // An `External` officeDocument relationship has no part to resolve to;
+    // the first *internal* one is the main document, wherever it sits in the
+    // list. When there are some and every one of them is external, say so:
+    // "no officeDocument relationship" would send the reader looking for a
+    // relationship that is plainly there (audit 3.13).
+    let any_declared = office_documents.peek().is_some();
+    let target = office_documents
+        .find_map(|rel| rel.resolved.clone())
         .ok_or_else(|| {
-            StrictError::InvalidZip("package has no officeDocument relationship".to_owned())
+            StrictError::InvalidZip(if any_declared {
+                "package officeDocument relationship is external; \
+                 the main document must be a part inside the package"
+                    .to_owned()
+            } else {
+                "package has no officeDocument relationship".to_owned()
+            })
         })?;
     if zip.entry(&target).is_none() {
         return Err(StrictError::MissingPart(target));
@@ -504,10 +559,31 @@ const MAIN_CONTENT_TYPES: &[&str] = &[
     "application/vnd.ms-word.template.macroEnabled.main+xml",
 ];
 
+/// Whether `content_type` names the main part of a spreadsheet, a presentation
+/// or a drawing: an OOXML package, but not a document.
+///
+/// Refused under every policy. `Permissive` exists to let an odd *Word*
+/// package through; a workbook it let through only failed later, in the WML
+/// parser, with "expected 'document' root element, found 'workbook'".
+fn is_another_office_format(content_type: &str) -> bool {
+    const OTHER_FAMILIES: &[&str] = &[
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.",
+        "application/vnd.openxmlformats-officedocument.presentationml.",
+        "application/vnd.ms-excel.",
+        "application/vnd.ms-powerpoint.",
+        "application/vnd.ms-visio.",
+    ];
+    let lower = content_type.to_ascii_lowercase();
+    OTHER_FAMILIES
+        .iter()
+        .any(|family| lower.starts_with(family))
+}
+
 /// Validates the main document's content type (AUD-26).
 ///
-/// Under [`ConformancePolicy::StrictOnly`] an unexpected MIME is a hard error.
-/// Under `Normalize`/`Permissive` with a normalizer, the open continues and the
+/// Under [`ConformancePolicy::StrictOnly`] an unexpected MIME is a hard error,
+/// and so, under every policy, is the main part of another Office format.
+/// Otherwise, under `Normalize`/`Permissive` with a normalizer, the open continues and the
 /// normalizer records `T2.content-type`. Without a normalizer the open still
 /// continues (the inspect path under `Permissive`).
 fn check_main_content_type(
@@ -517,10 +593,15 @@ fn check_main_content_type(
     normalizer: Option<&dyn RawNormalizer>,
 ) -> Result<()> {
     let content_type = content_types.content_type_for(main).unwrap_or("");
-    if MAIN_CONTENT_TYPES.contains(&content_type) {
+    // MIME types are case-insensitive (RFC 2045 §5.1): a producer that writes
+    // `macroenabled` for `macroEnabled` names the same type (audit 3.7).
+    if MAIN_CONTENT_TYPES
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(content_type))
+    {
         return Ok(());
     }
-    if policy == ConformancePolicy::StrictOnly {
+    if policy == ConformancePolicy::StrictOnly || is_another_office_format(content_type) {
         return Err(StrictError::UnexpectedContentType {
             part: main.clone(),
             content_type: content_type.to_owned(),
@@ -708,9 +789,30 @@ fn read_prefix(
 fn read_part(zip: &ZipArchive, id: &PartId, limits: &ResourceLimits) -> Result<Vec<u8>> {
     let mut reader = zip.open_reader(id, limits)?;
     let mut buffer = Vec::new();
-    reader.read_to_end(&mut buffer).map_err(map_read_error)?;
+    let report = control::is_tracked(id);
+    // In chunks rather than `read_to_end`, so that a cancelled open stops in
+    // the middle of inflating a large part, and progress moves while it does.
+    let mut chunk = vec![0u8; INPUT_CHUNK];
+    loop {
+        control::checkpoint_now()?;
+        let read = match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(map_read_error(error)),
+        };
+        buffer.extend_from_slice(chunk.get(..read).unwrap_or_default());
+        if report {
+            control::advance(buffer.len() as u64);
+        }
+    }
     Ok(buffer)
 }
+
+/// How much the archive reader and the part inflater take per step: small
+/// enough that a cancel is seen in well under a millisecond, large enough
+/// that the checkpoint costs nothing measurable.
+const INPUT_CHUNK: usize = 256 * 1024;
 
 /// Maps a stream error into a package-level error.
 fn map_read_error(error: io::Error) -> StrictError {
@@ -719,5 +821,173 @@ fn map_read_error(error: io::Error) -> StrictError {
             StrictError::InvalidZip(error.to_string())
         }
         _ => StrictError::Io(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OpenOptions, Package};
+    use crate::error::StrictError;
+    use crate::opc::zip::write::ZipWriter;
+    use crate::part::PartId;
+
+    const MAIN_TYPE: &str =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
+
+    fn content_types(main_type: &str) -> Vec<u8> {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="{main_type}"/>
+</Types>"#
+        )
+        .into_bytes()
+    }
+
+    fn relationship(id: &str, target: &str, external: bool) -> String {
+        let mode = if external {
+            r#" TargetMode="External""#
+        } else {
+            ""
+        };
+        format!(
+            r#"<Relationship Id="{id}" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument" Target="{target}"{mode}/>"#
+        )
+    }
+
+    fn rels(relationships: &[String]) -> Vec<u8> {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{}</Relationships>"#,
+            relationships.concat()
+        )
+        .into_bytes()
+    }
+
+    fn package(rels_name: &str, rels: Vec<u8>, main_type: &str) -> Vec<u8> {
+        let mut writer = ZipWriter::new();
+        writer
+            .add_part(
+                &PartId::new("/[Content_Types].xml"),
+                content_types(main_type),
+            )
+            .expect("content types");
+        writer
+            .add_part(&PartId::new(rels_name), rels)
+            .expect("rels");
+        writer
+            .add_part(&PartId::new("/word/document.xml"), b"<document/>".to_vec())
+            .expect("document");
+        writer.finish().expect("finish")
+    }
+
+    fn open(bytes: &[u8]) -> crate::error::Result<Package> {
+        Package::open_reader(bytes, &OpenOptions::default())
+    }
+
+    /// Audit 2.2: the package relationships are found whatever the casing of
+    /// `_rels/.rels`, as every other part name is.
+    #[test]
+    fn upper_case_package_relationships_are_found() {
+        let bytes = package(
+            "/_RELS/.RELS",
+            rels(&[relationship("rId1", "word/document.xml", false)]),
+            MAIN_TYPE,
+        );
+        let package = open(&bytes).expect("open");
+        assert_eq!(
+            package.main_document_part().expect("main").as_str(),
+            "/word/document.xml"
+        );
+    }
+
+    /// Audit 3.7: a MIME type is case-insensitive.
+    #[test]
+    fn the_main_content_type_is_compared_case_insensitively() {
+        let bytes = package(
+            "/_rels/.rels",
+            rels(&[relationship("rId1", "word/document.xml", false)]),
+            &MAIN_TYPE.to_ascii_uppercase(),
+        );
+        open(&bytes).expect("an upper-case MIME is the same MIME");
+    }
+
+    /// A workbook or a presentation is refused under every policy, not only
+    /// under `StrictOnly`: it is not a document `Permissive` can be lenient about.
+    #[test]
+    fn spreadsheets_and_presentations_are_refused_under_every_policy() {
+        let permissive = OpenOptions::default().conformance(super::ConformancePolicy::Permissive);
+        for main_type in [
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+            "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+        ] {
+            let bytes = package(
+                "/_rels/.rels",
+                rels(&[relationship("rId1", "word/document.xml", false)]),
+                main_type,
+            );
+            match Package::open_reader(bytes.as_slice(), &permissive) {
+                Err(StrictError::UnexpectedContentType { content_type, .. }) => {
+                    assert_eq!(content_type, main_type);
+                }
+                other => panic!("{main_type}: expected UnexpectedContentType, got {other:?}"),
+            }
+        }
+        let odd_word = package(
+            "/_rels/.rels",
+            rels(&[relationship("rId1", "word/document.xml", false)]),
+            "application/xml",
+        );
+        assert!(
+            Package::open_reader(odd_word.as_slice(), &permissive).is_ok(),
+            "an odd Word spelling is still Permissive's to let through"
+        );
+    }
+
+    /// Audit 3.13: an external officeDocument relationship listed first does
+    /// not hide the internal one after it.
+    #[test]
+    fn an_external_office_document_relationship_is_skipped() {
+        let bytes = package(
+            "/_rels/.rels",
+            rels(&[
+                relationship("rId1", "http://example.com/doc.xml", true),
+                relationship("rId2", "word/document.xml", false),
+            ]),
+            MAIN_TYPE,
+        );
+        let package = open(&bytes).expect("open");
+        assert_eq!(
+            package.main_document_part().expect("main").as_str(),
+            "/word/document.xml"
+        );
+    }
+
+    /// Audit 3.13: when every officeDocument relationship is external, the
+    /// error says that, not that there is none.
+    #[test]
+    fn only_external_office_document_relationships_are_named_as_such() {
+        let bytes = package(
+            "/_rels/.rels",
+            rels(&[relationship("rId1", "http://example.com/doc.xml", true)]),
+            MAIN_TYPE,
+        );
+        match open(&bytes) {
+            Err(StrictError::InvalidZip(message)) => {
+                assert!(message.contains("is external"), "{message}");
+            }
+            other => panic!("expected InvalidZip, got {other:?}"),
+        }
+
+        let bytes = package("/_rels/.rels", rels(&[]), MAIN_TYPE);
+        match open(&bytes) {
+            Err(StrictError::InvalidZip(message)) => {
+                assert!(message.contains("no officeDocument"), "{message}");
+            }
+            other => panic!("expected InvalidZip, got {other:?}"),
+        }
     }
 }

@@ -426,8 +426,13 @@ fn decode_inner(
     let mut encoded = match first {
         Some(b"DCTDecode") => {
             // The filter *is* the codec, so the bytes go in untouched.
+            let (jpeg_width, jpeg_height) = jpeg_size(&stream.content).unwrap_or((width, height));
+            // The bytes go on undecoded, so the byte budget never sees what
+            // drawing them costs: both the header and the dictionary are
+            // checked against the pixel budget before anything is kept.
+            check_pixels(jpeg_width, jpeg_height, limits)?;
+            check_pixels(width, height, limits)?;
             let bytes = stream.content.clone();
-            let (jpeg_width, jpeg_height) = jpeg_size(&bytes).unwrap_or((width, height));
             Encoded::Jpeg {
                 width: jpeg_width,
                 height: jpeg_height,
@@ -940,6 +945,23 @@ pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encode
     })
 }
 
+/// Refuses a picture whose stated size is over [`PdfLimits::max_image_pixels`].
+///
+/// The product is taken in `u64`, where two `u32` dimensions cannot overflow,
+/// and the refusal is [`Reject::TooLarge`] — the same answer as a picture over
+/// the byte budget, because to the page it is the same loss.
+///
+/// # Errors
+///
+/// [`Reject::TooLarge`] past the budget.
+pub(crate) fn check_pixels(width: u32, height: u32, limits: &PdfLimits) -> Result<(), Reject> {
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    if pixels > limits.max_image_pixels {
+        return Err(Reject::TooLarge);
+    }
+    Ok(())
+}
+
 /// A JPEG's dimensions, read from its SOF marker.
 ///
 /// The compressed data is never touched, so a truncated JPEG still yields a size
@@ -1146,6 +1168,77 @@ mod tests {
                 255, 255, 255, 255, 0, 0, 0, 0, //
                 0, 0, 0, 0, 255, 255, 255, 255
             ]
+        );
+    }
+
+    /// A `/DCTDecode` XObject around `bytes`, with the dictionary's own size.
+    fn dct_xobject(bytes: Vec<u8>, width: i64, height: i64) -> (lopdf::Document, lopdf::ObjectId) {
+        let mut dictionary = lopdf::Dictionary::new();
+        dictionary.set("Width", width);
+        dictionary.set("Height", height);
+        dictionary.set("BitsPerComponent", 8);
+        dictionary.set("ColorSpace", lopdf::Object::Name(b"DeviceRGB".to_vec()));
+        dictionary.set("Filter", lopdf::Object::Name(b"DCTDecode".to_vec()));
+        let mut document = lopdf::Document::new();
+        let id = document.add_object(lopdf::Stream::new(dictionary, bytes));
+        (document, id)
+    }
+
+    /// A JPEG header claiming 65 535 × 65 535: 16 GiB of RGBA in 23 bytes.
+    fn giant_jpeg() -> Vec<u8> {
+        let mut bytes = vec![0xFF, 0xD8];
+        bytes.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]);
+        bytes.extend_from_slice(&u16::MAX.to_be_bytes());
+        bytes.extend_from_slice(&u16::MAX.to_be_bytes());
+        bytes.extend_from_slice(&[0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
+    #[test]
+    fn a_jpeg_within_the_pixel_budget_is_carried() {
+        let (document, id) = dct_xobject(jpeg(), 32, 64);
+        let (encoded, _, _) =
+            super::decode_from(id, &document, &PdfLimits::default()).expect("small jpeg");
+        assert_eq!(encoded.pixel_size(), (32, 64));
+    }
+
+    #[test]
+    fn a_jpeg_header_over_the_pixel_budget_is_refused() {
+        // The dictionary is honest-looking; the SOF marker is the bomb.
+        let (document, id) = dct_xobject(giant_jpeg(), 10, 10);
+        let rejection =
+            super::decode_from(id, &document, &PdfLimits::default()).expect_err("pixel bomb");
+        assert_eq!(rejection, Reject::TooLarge);
+    }
+
+    #[test]
+    fn a_jpeg_dictionary_over_the_pixel_budget_is_refused() {
+        // A JPEG with no readable SOF falls back on the dictionary's size, and
+        // that size is checked the same way.
+        let (document, id) = dct_xobject(vec![0xFF, 0xD8, 0xFF, 0xD9], 100_000, 100_000);
+        let rejection =
+            super::decode_from(id, &document, &PdfLimits::default()).expect_err("pixel bomb");
+        assert_eq!(rejection, Reject::TooLarge);
+    }
+
+    #[test]
+    fn the_pixel_budget_is_the_configured_one() {
+        // 32 × 64 = 2048 pixels; a budget of 2047 refuses it and 2048 does not.
+        let tight = PdfLimits {
+            max_image_pixels: 2047,
+            ..PdfLimits::default()
+        };
+        assert_eq!(super::check_pixels(32, 64, &tight), Err(Reject::TooLarge));
+        let exact = PdfLimits {
+            max_image_pixels: 2048,
+            ..PdfLimits::default()
+        };
+        assert_eq!(super::check_pixels(32, 64, &exact), Ok(()));
+        // The product of two `u32::MAX` does not wrap into a small number.
+        assert_eq!(
+            super::check_pixels(u32::MAX, u32::MAX, &PdfLimits::default()),
+            Err(Reject::TooLarge)
         );
     }
 }

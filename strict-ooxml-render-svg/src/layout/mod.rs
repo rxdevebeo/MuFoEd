@@ -517,6 +517,7 @@ impl LayoutContext<'_> {
 
     /// Charges `count` paint items against the document-wide budget (AUD-72).
     pub(crate) fn charge_items(&self, count: usize) -> strict_ooxml_core::error::Result<()> {
+        strict_ooxml_core::control::checkpoint()?;
         let limit = self.options.limits.max_render_items;
         let added = u64::try_from(count).unwrap_or(u64::MAX);
         let next = self.render_items.get().saturating_add(added);

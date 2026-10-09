@@ -19,6 +19,7 @@
 //!   detection.
 //! - [`normalize`] — extension point for the future Transitional → Strict raw
 //!   normalization stages (T1–T8).
+//! - [`control`] — progress and cancellation of a long open or render.
 //! - [`error`] — the crate-wide error type and result alias.
 //! - [`limits`] — the tunable resource budget.
 //! - [`part`] — part identifiers and lazy part access.
@@ -45,6 +46,7 @@
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]
 
+pub mod control;
 pub mod error;
 pub mod limits;
 pub mod normalize;
