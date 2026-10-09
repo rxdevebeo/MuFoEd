@@ -331,6 +331,9 @@ impl TransitionalNormalizer {
         // reader reports the end of a truncated document as `Eof`, not as an
         // error - is recognised as damaged rather than written out unbalanced.
         let mut depth = 0usize;
+        // Progress and cancellation (`crate::control`), every few hundred events.
+        let tracked = crate::control::is_tracked(part);
+        let mut events = 0u32;
 
         loop {
             // The seam hands the normalizer a *prefix* of a part as well as
@@ -350,6 +353,16 @@ impl TransitionalNormalizer {
             // location, and — historically — a truncated prefix, which no
             // longer happens because conformance detection scans the prefix
             // raw and asks the registry what the URI will become.
+            events = events.wrapping_add(1);
+            if events % 256 == 0 {
+                if let Err(error) = crate::control::checkpoint() {
+                    self.commit_part_report(part, report);
+                    return Err(error);
+                }
+                if tracked {
+                    crate::control::advance(reader.buffer_position());
+                }
+            }
             let event = if let Some(event) = buffered.pop_front() {
                 event
             } else {

@@ -78,6 +78,7 @@ fn quantize_px(value: f64) -> i64 {
 
 /// Lays out the whole document into pages.
 pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
+    strict_ooxml_core::control::stage(strict_ooxml_core::control::Stage::Layout, 0);
     // The model's block nesting, checked before a single item is placed (AUD-05
     // п.2). A `Document` built in code never met the reader's bound, so this is
     // the only place the renderer can refuse one; and the check has to come
@@ -972,6 +973,10 @@ impl<'a> Paginator<'a> {
     }
 
     fn check_page_capacity(&self) -> Result<()> {
+        // Called once per page: the place to report layout progress and to
+        // look at the clock.
+        strict_ooxml_core::control::checkpoint_now()?;
+        strict_ooxml_core::control::advance(self.pages.len() as u64);
         let limit = usize::try_from(self.ctx.options.limits.max_pages).unwrap_or(usize::MAX);
         if self.pages.len() >= limit {
             return Err(RenderError::LimitExceeded {

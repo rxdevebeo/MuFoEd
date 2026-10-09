@@ -69,6 +69,7 @@ mod table_style;
 pub use layout::{
     ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,
 };
+use strict_ooxml_core::control;
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_core::part::PartId;
@@ -199,6 +200,10 @@ pub struct RenderOptions {
     /// the `strict-text` pixel gate failed. It is kept for reproducing that
     /// audit, behind this switch.
     pub wps_times_calibration: bool,
+    /// Progress and cancellation handle (default none); see
+    /// [`strict_ooxml_core::control`]. Layout reports pages laid out, painting
+    /// pages written, and either stops with `StrictError::Cancelled`.
+    pub control: Option<strict_ooxml_core::control::OpenControl>,
 }
 
 impl Default for RenderOptions {
@@ -214,6 +219,7 @@ impl Default for RenderOptions {
             revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
             wps_times_calibration: false,
+            control: None,
         }
     }
 }
@@ -232,6 +238,13 @@ impl RenderOptions {
     #[must_use]
     pub fn media(mut self, media: MediaMode) -> Self {
         self.media = media;
+        self
+    }
+
+    /// Sets the progress and cancellation handle.
+    #[must_use]
+    pub fn control(mut self, control: strict_ooxml_core::control::OpenControl) -> Self {
+        self.control = Some(control);
         self
     }
 
@@ -303,6 +316,7 @@ pub fn place_pages(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<PlacedPage>> {
+    let _scope = options.control.as_ref().map(control::OpenControl::enter);
     let provider = options.font_provider.make();
     let context = layout::LayoutContext {
         document,
@@ -355,6 +369,7 @@ pub fn render_with_media(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<Page>> {
+    let _scope = options.control.as_ref().map(control::OpenControl::enter);
     let provider = options.font_provider.make();
     let context = layout::LayoutContext {
         document,
@@ -380,7 +395,10 @@ pub fn render_with_media(
     let layout_warnings = laid_out.warnings.clone();
 
     let mut pages = Vec::new();
+    control::stage(control::Stage::Painting, laid_out.pages.len() as u64);
     for (index, page) in laid_out.pages.iter().enumerate() {
+        control::checkpoint_now()?;
+        control::advance(index as u64);
         if !options.pages.contains(index + 1) {
             continue;
         }
@@ -395,6 +413,7 @@ pub fn render_with_media(
                 .collect(),
         });
     }
+    control::advance(laid_out.pages.len() as u64);
     Ok(pages)
 }
 

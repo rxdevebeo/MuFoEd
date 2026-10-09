@@ -325,6 +325,14 @@ pub enum StrictError {
         /// What the writer reported.
         detail: String,
     },
+    /// The run was stopped through its [`OpenControl`](crate::control::OpenControl):
+    /// cancelled by the caller or out of time. Nothing about the input is
+    /// implied.
+    #[error("{reason}")]
+    Cancelled {
+        /// Why the run stopped.
+        reason: crate::control::CancelReason,
+    },
 }
 
 #[cfg(test)]

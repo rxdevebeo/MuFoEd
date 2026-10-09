@@ -93,6 +93,7 @@
 use std::io::Read;
 use std::path::Path;
 
+use strict_ooxml_core::control::{self, OpenControl, Stage};
 use strict_ooxml_core::error::Result;
 #[cfg(feature = "report")]
 use strict_ooxml_core::ns::Conformance;
@@ -110,6 +111,7 @@ pub use strict_ooxml_convert::{
     convert as convert_pdf, ConversionReport, ConvertError, Converted, Mode, ParagraphRules,
     PdfOptions,
 };
+pub use strict_ooxml_core::control::{CancelReason, OpenControl, Progress, Stage};
 pub use strict_ooxml_core::error::StrictError;
 pub use strict_ooxml_core::limits::ResourceLimits;
 /// How much a normalization removal matters.
@@ -181,10 +183,12 @@ impl StrictDocument {
     ///
     /// See [`StrictDocument::from_package`].
     pub fn open_path(path: impl AsRef<Path>, options: &OpenOptions) -> Result<Self> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
         let path = path.as_ref();
         let package = Package::open_path(path, options)?;
         let mut document = Self::from_package(package, &parse_options_from(options))?;
         document.file = path.display().to_string();
+        control::stage(Stage::Finished, 0);
         Ok(document)
     }
 
@@ -194,9 +198,11 @@ impl StrictDocument {
     ///
     /// See [`StrictDocument::from_package`].
     pub fn open_reader<R: Read>(reader: R, options: &OpenOptions) -> Result<Self> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
         let package = Package::open_reader(reader, options)?;
         let mut document = Self::from_package(package, &parse_options_from(options))?;
         document.file = String::from("<reader>");
+        control::stage(Stage::Finished, 0);
         Ok(document)
     }
 
@@ -366,7 +372,14 @@ impl StrictDocument {
     /// ```
     #[cfg(feature = "svg")]
     pub fn render_svg(&self, options: &RenderOptions) -> Result<Vec<Page>> {
-        strict_ooxml_render_svg::render_with_media(&self.document, options, Some(&self.package))
+        let _scope = options.control.as_ref().map(OpenControl::enter);
+        let pages = strict_ooxml_render_svg::render_with_media(
+            &self.document,
+            options,
+            Some(&self.package),
+        )?;
+        control::stage(Stage::Finished, 0);
+        Ok(pages)
     }
 
     /// Renders a single page to an SVG string (zero-based `index`).
@@ -418,9 +431,13 @@ impl StrictDocument {
     /// exceeded.
     #[cfg(feature = "pdf")]
     pub fn render_pdf(&self, options: &RenderOptions) -> Result<PdfOutput> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
         let pages =
             strict_ooxml_render_svg::place_pages(&self.document, options, Some(&self.package))?;
-        strict_ooxml_render_pdf::render_with_source(&pages, options, Some(&self.package))
+        let output =
+            strict_ooxml_render_pdf::render_with_source(&pages, options, Some(&self.package))?;
+        control::stage(Stage::Finished, 0);
+        Ok(output)
     }
 }
 

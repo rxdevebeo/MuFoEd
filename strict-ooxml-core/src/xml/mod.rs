@@ -16,6 +16,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use quick_xml::XmlVersion;
 
+use crate::control;
 use crate::error::{Result, SourceLocation, StrictError};
 use crate::limits::ResourceLimits;
 use crate::part::PartId;
@@ -94,7 +95,14 @@ pub struct XmlReader {
     column: u32,
     event_line: u32,
     event_col: u32,
+    /// Events returned so far, for spacing the [`control`] checkpoints.
+    events: u32,
+    /// Whether this part is the one the installed control's progress measures.
+    tracked: bool,
 }
+
+/// How many events pass between two [`control::checkpoint`] calls.
+const CHECKPOINT_EVERY: u32 = 256;
 
 /// Owned intermediate produced while the underlying event borrow is alive.
 enum Parsed {
@@ -139,7 +147,6 @@ impl XmlReader {
         reader.config_mut().check_end_names = false;
         reader.config_mut().allow_unmatched_ends = true;
         Ok(Self {
-            part,
             reader,
             scratch: Vec::new(),
             pos: 0,
@@ -159,6 +166,9 @@ impl XmlReader {
             column: 1,
             event_line: 1,
             event_col: 1,
+            events: 0,
+            tracked: control::is_tracked(&part),
+            part,
         })
     }
 
@@ -194,6 +204,13 @@ impl XmlReader {
     /// Returns a [`StrictError`] on malformed XML, a forbidden construct, an
     /// unbound prefix or a resource-limit violation.
     pub fn next_event(&mut self) -> Result<XmlEvent> {
+        self.events = self.events.wrapping_add(1);
+        if self.events % CHECKPOINT_EVERY == 0 {
+            control::checkpoint()?;
+            if self.tracked {
+                control::advance(self.reader.buffer_position());
+            }
+        }
         loop {
             if let Some(name) = self.pending_end.take() {
                 self.close_scope();

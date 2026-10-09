@@ -19,6 +19,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::control::{self, OpenControl, Stage};
 use crate::error::{LimitKind, Result, StrictError};
 use crate::limits::ResourceLimits;
 use crate::normalize::RawNormalizer;
@@ -54,6 +55,11 @@ pub struct OpenOptions {
     /// Shared as an [`Arc`] so an opened [`Package`] can keep using it after
     /// `OpenOptions` is dropped.
     pub normalization: Option<Arc<dyn RawNormalizer>>,
+    /// Progress and cancellation handle (default none); see [`crate::control`].
+    ///
+    /// Installed for the duration of the open, so the checkpoints in the
+    /// reader, the inflater and the normalizer see it.
+    pub control: Option<OpenControl>,
 }
 
 impl Default for OpenOptions {
@@ -62,6 +68,7 @@ impl Default for OpenOptions {
             conformance: ConformancePolicy::StrictOnly,
             limits: ResourceLimits::default(),
             normalization: None,
+            control: None,
         }
     }
 }
@@ -78,6 +85,13 @@ impl OpenOptions {
     #[must_use]
     pub fn limits(mut self, limits: ResourceLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Sets the progress and cancellation handle; see [`crate::control`].
+    #[must_use]
+    pub fn control(mut self, control: OpenControl) -> Self {
+        self.control = Some(control);
         self
     }
 
@@ -145,14 +159,32 @@ impl Package {
     ///
     /// Returns a [`StrictError`] for damaged archives, missing required parts,
     /// resource-limit violations or a conformance policy mismatch.
-    pub fn open_reader<R: Read>(mut reader: R, options: &OpenOptions) -> Result<Self> {
+    pub fn open_reader<R: Read>(reader: R, options: &OpenOptions) -> Result<Self> {
+        Self::open_sized(reader, 0, options)
+    }
+
+    /// [`open_reader`](Self::open_reader) for a source whose size is known,
+    /// so that progress can say how far through it the read is (`0` = unknown).
+    fn open_sized<R: Read>(mut reader: R, size: u64, options: &OpenOptions) -> Result<Self> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
+        control::stage(Stage::ReadingInput, size);
         let limit = options.limits.max_compressed_input;
         let mut data = Vec::new();
-        reader
-            .by_ref()
-            .take(limit.saturating_add(1))
-            .read_to_end(&mut data)
-            .map_err(StrictError::Io)?;
+        let mut chunk = vec![0u8; INPUT_CHUNK];
+        loop {
+            control::checkpoint_now()?;
+            let read = match reader.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(StrictError::Io(error)),
+            };
+            data.extend_from_slice(chunk.get(..read).unwrap_or_default());
+            control::advance(data.len() as u64);
+            if data.len() as u64 > limit {
+                break;
+            }
+        }
         if data.len() as u64 > limit {
             return Err(StrictError::LimitExceeded {
                 kind: LimitKind::CompressedInput,
@@ -170,10 +202,13 @@ impl Package {
     /// See [`Package::open_reader`].
     pub fn open_path(path: impl AsRef<Path>, options: &OpenOptions) -> Result<Self> {
         let file = std::fs::File::open(path).map_err(StrictError::Io)?;
-        Self::open_reader(file, options)
+        let size = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+        Self::open_sized(file, size, options)
     }
 
     fn open_archive(data: Arc<Vec<u8>>, options: &OpenOptions) -> Result<Self> {
+        control::stage(Stage::OpeningPackage, 0);
+        control::checkpoint_now()?;
         let zip = ZipArchive::new(data, &options.limits)?;
         let normalizer = options.normalization.as_deref();
         let mut was_normalized = false;
@@ -414,11 +449,19 @@ impl Package {
     /// Returns a [`StrictError`] for a missing part, a corrupt stream or a
     /// resource-limit violation.
     pub fn read_part(&self, id: &PartId) -> Result<Vec<u8>> {
-        let (bytes, touched) = apply_normalizer(
-            self.normalizer.as_deref(),
-            id,
-            read_part(&self.zip, id, &self.limits)?,
-        )?;
+        let tracked = control::is_tracked(id);
+        if tracked {
+            let size = self
+                .zip
+                .entry(id)
+                .map_or(0, |entry| entry.uncompressed_size);
+            control::stage(Stage::InflatingDocument, size);
+        }
+        let raw = read_part(&self.zip, id, &self.limits)?;
+        if tracked && self.normalizer.is_some() {
+            control::stage(Stage::NormalizingDocument, raw.len() as u64);
+        }
+        let (bytes, touched) = apply_normalizer(self.normalizer.as_deref(), id, raw)?;
         if touched {
             self.was_normalized.store(true, Ordering::Relaxed);
         }
@@ -746,9 +789,30 @@ fn read_prefix(
 fn read_part(zip: &ZipArchive, id: &PartId, limits: &ResourceLimits) -> Result<Vec<u8>> {
     let mut reader = zip.open_reader(id, limits)?;
     let mut buffer = Vec::new();
-    reader.read_to_end(&mut buffer).map_err(map_read_error)?;
+    let report = control::is_tracked(id);
+    // In chunks rather than `read_to_end`, so that a cancelled open stops in
+    // the middle of inflating a large part, and progress moves while it does.
+    let mut chunk = vec![0u8; INPUT_CHUNK];
+    loop {
+        control::checkpoint_now()?;
+        let read = match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(map_read_error(error)),
+        };
+        buffer.extend_from_slice(chunk.get(..read).unwrap_or_default());
+        if report {
+            control::advance(buffer.len() as u64);
+        }
+    }
     Ok(buffer)
 }
+
+/// How much the archive reader and the part inflater take per step: small
+/// enough that a cancel is seen in well under a millisecond, large enough
+/// that the checkpoint costs nothing measurable.
+const INPUT_CHUNK: usize = 256 * 1024;
 
 /// Maps a stream error into a package-level error.
 fn map_read_error(error: io::Error) -> StrictError {

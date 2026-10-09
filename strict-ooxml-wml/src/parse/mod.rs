@@ -30,6 +30,7 @@ pub mod theme;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use strict_ooxml_core::control::{self, Stage};
 use strict_ooxml_core::error::{Result, SourceLocation, StrictError};
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_core::ns::Conformance;
@@ -100,13 +101,14 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     let endnotes_part = find_related_part(package, &main, &RelType::Endnotes);
     let theme_part = find_related_part(package, &main, &RelType::Theme);
 
-    let mut parser = PartParser::new(
-        package,
-        main.clone(),
-        package.read_part(&main)?,
-        &options.limits,
-    )?;
+    // Progress (`strict_ooxml_core::control`) measures the main part: its
+    // inflating and normalizing in `read_part`, then its parsing here.
+    control::track(&main);
+    let main_bytes = package.read_part(&main)?;
+    control::stage(Stage::ParsingDocument, main_bytes.len() as u64);
+    let mut parser = PartParser::new(package, main.clone(), main_bytes, &options.limits)?;
     let mut body = parser.parse_document_root()?;
+    control::stage(Stage::ParsingParts, 0);
     let body_section = std::mem::take(&mut parser.body_section);
     let mut media = std::mem::take(&mut parser.media);
     let mut support = std::mem::take(&mut parser.support);
@@ -262,9 +264,18 @@ fn parse_auxiliary(
 ) -> Result<AuxiliaryParts> {
     #[cfg(feature = "parallel")]
     {
+        // The progress/cancel handle is installed per thread; the second half of
+        // the join may run on a pool thread that has never seen it.
+        let installed = control::current();
         let (styles_result, numbering_result) = rayon::join(
-            || parse_aux_styles(package, styles_part, options),
-            || parse_aux_numbering(package, numbering_part, options),
+            || {
+                let _scope = installed.as_ref().map(control::OpenControl::enter);
+                parse_aux_styles(package, styles_part, options)
+            },
+            || {
+                let _scope = installed.as_ref().map(control::OpenControl::enter);
+                parse_aux_numbering(package, numbering_part, options)
+            },
         );
         let (styles, styles_support) = styles_result?;
         let (numbering, numbering_support) = numbering_result?;

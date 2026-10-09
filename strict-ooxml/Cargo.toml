@@ -79,3 +79,7 @@ required-features = ["edit"]
 [[test]]
 name = "pipeline_never_panics"
 required-features = ["write", "pdf"]
+
+[[test]]
+name = "control"
+required-features = ["svg"]

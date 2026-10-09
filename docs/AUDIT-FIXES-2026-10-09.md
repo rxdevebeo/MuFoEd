@@ -68,3 +68,19 @@
 - census — те же `unclassified_element_changes=72` и 453 lossy-записи, что на `b8ec27c` до этой ветки.
 - XSD — `unmatched=376` (`satMod`, `gs`, `fillToRect`, `shade`, `tint`, `alpha`), **ровно столько же на master
   `3ed5596`**; последний зелёный XSD — `de92e43` (2026-10-08). Не связано с этой веткой.
+
+## Прогресс и отмена (решение владельца по HOSTILE 2.5)
+
+`strict_ooxml_core::control` (реэкспорт в `strict_ooxml`): `OpenControl` — общий хэндл, который вызывающий
+передаёт в `OpenOptions::control` и `RenderOptions::control` и опрашивает из другого потока.
+
+- `progress()` → `{ stage, done, total }`. Этапы: `ReadingInput` (байты файла) → `OpeningPackage` →
+  `InflatingDocument` / `NormalizingDocument` / `ParsingDocument` (байты `document.xml`) → `ParsingParts` →
+  `Layout` (страниц свёрстано) → `Painting` (страниц из N) → `Finished`.
+- `cancel()`, `with_deadline(Instant)`, `with_timeout(Duration)` → `StrictError::Cancelled { reason }`.
+- Контрольные точки: чтение входа и распаковка частей (кусками по 256 KiB), `XmlReader` и нормализатор (раз в
+  256 событий), вёрстка (на каждый элемент и страницу), отрисовка SVG/PDF (на страницу). Часы читаются раз в
+  1024 контрольные точки.
+- Модель «опрос»: работа пишет в атомики, чужой код посреди разбора не вызывается. Без `control` поведение
+  прежнее. Для прямых вызовов (`parse_document`) — `let _scope = control.enter();`.
+- Прогресс двигает только главная часть: графики и колонтитулы, читаемые по ходу, полосу не сбивают.

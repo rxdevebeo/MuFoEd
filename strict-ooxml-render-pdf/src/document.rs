@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use pdf_writer::types::FontFlags;
 use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str};
+use strict_ooxml_core::control;
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_render_svg::layout::{Item, PathItem, PlacedPage, TextAdvanceKind, TextItem};
@@ -107,7 +108,11 @@ pub fn render_with_source(
 
     // Pass one: content streams and the images each page needs.
     let mut streams: Vec<(Vec<u8>, BTreeMap<PartId, String>)> = Vec::with_capacity(pages.len());
+    let _scope = options.control.as_ref().map(control::OpenControl::enter);
+    control::stage(control::Stage::Painting, pages.len() as u64);
     for page in pages {
+        control::checkpoint_now()?;
+        control::advance(streams.len() as u64);
         let mut writer = PageWriter {
             content: Content::new(),
             page_height_pt: px_to_pt(page.height_px, scale),
