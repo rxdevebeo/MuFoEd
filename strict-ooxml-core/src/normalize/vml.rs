@@ -125,7 +125,7 @@ pub struct VmlShape {
     /// The `a:prstGeom` this shape is: `rect`, `roundRect`, `ellipse`, `line`.
     /// `None` keeps the frame without geometry (a freeform).
     pub preset: Option<&'static str>,
-    /// The text of a WordArt shape (`v:textpath`), which becomes a text box.
+    /// The text of a `WordArt` shape (`v:textpath`), which becomes a text box.
     pub word_art: Option<VmlWordArt>,
 }
 
@@ -562,7 +562,11 @@ struct Found {
 /// The class a frame is, from what was under it; `None` stays `None` for a
 /// shape this converts to nothing (an unknown `v:shape` without a preset).
 fn settle(mut shape: VmlShape, found: Found) -> Option<Shape> {
-    shape.paint = vml_paint::paint(&found.attributes, found.fill.as_ref(), found.stroke.as_ref());
+    shape.paint = vml_paint::paint(
+        &found.attributes,
+        found.fill.as_ref(),
+        found.stroke.as_ref(),
+    );
     // A picture outranks the frame's other contents: a `v:shape` carrying both an
     // `r:id` and a text box is an OLE object whose *preview* is that image, and the
     // preview is what the reader saw.
@@ -601,7 +605,10 @@ fn settle(mut shape: VmlShape, found: Found) -> Option<Shape> {
 
 /// The text, face, size and colour of a `v:textpath`.
 fn word_art(path: &BTreeMap<String, String>, paint: &VmlPaint) -> Option<VmlWordArt> {
-    let text = path.get("string").filter(|text| !text.trim().is_empty())?.clone();
+    let text = path
+        .get("string")
+        .filter(|text| !text.trim().is_empty())?
+        .clone();
     let mut font = None;
     let mut size = None;
     for declaration in path.get("style").map_or("", String::as_str).split(';') {
@@ -632,7 +639,7 @@ fn word_art(path: &BTreeMap<String, String>, paint: &VmlPaint) -> Option<VmlWord
     })
 }
 
-/// The paragraph a WordArt text box holds, as Transitional `w:` events: the
+/// The paragraph a `WordArt` text box holds, as Transitional `w:` events: the
 /// caller writes them through the same rewrite as any text box content.
 #[must_use]
 pub(crate) fn word_art_content(art: &VmlWordArt) -> Vec<Event<'static>> {
@@ -650,7 +657,10 @@ pub(crate) fn word_art_content(art: &VmlWordArt) -> Vec<Event<'static>> {
             &[("w:ascii", font), ("w:hAnsi", font), ("w:cs", font)],
         )));
     }
-    out.push(Event::Empty(el("w:color", &[("w:val", art.color.as_str())])));
+    out.push(Event::Empty(el(
+        "w:color",
+        &[("w:val", art.color.as_str())],
+    )));
     if let Some(size) = art.size {
         let size = size.to_string();
         out.push(Event::Empty(el("w:sz", &[("w:val", size.as_str())])));
@@ -781,11 +791,8 @@ pub(crate) fn grouped_text_boxes(
                     continue;
                 }
                 if let Some(group) = stack.last_mut() {
-                    if local == "wrap" && uri == WORD_NS {
-                        let attributes = attributes_of(start.attributes().flatten());
-                        if let Some(kind) = attributes.get("type") {
-                            group.wrap = Wrap::from_type(kind).unwrap_or(Wrap::None);
-                        }
+                    if let Some(wrap) = group_wrap(start, &local, &uri) {
+                        group.wrap = wrap;
                     }
                 }
             }
@@ -809,11 +816,8 @@ pub(crate) fn grouped_text_boxes(
                     continue;
                 }
                 if let Some(group) = stack.last_mut() {
-                    if local == "wrap" && uri == WORD_NS {
-                        let attributes = attributes_of(start.attributes().flatten());
-                        if let Some(kind) = attributes.get("type") {
-                            group.wrap = Wrap::from_type(kind).unwrap_or(Wrap::None);
-                        }
+                    if let Some(wrap) = group_wrap(start, &local, &uri) {
+                        group.wrap = wrap;
                     }
                 }
             }
@@ -844,6 +848,17 @@ pub(crate) fn grouped_text_boxes(
         }
     }
     out
+}
+
+/// The wrap a `w10:wrap` gives the group it sits in.
+fn group_wrap(start: &BytesStart<'_>, local: &str, uri: &str) -> Option<Wrap> {
+    if local != "wrap" || uri != WORD_NS {
+        return None;
+    }
+    let attributes = attributes_of(start.attributes().flatten());
+    attributes
+        .get("type")
+        .map(|kind| Wrap::from_type(kind).unwrap_or(Wrap::None))
 }
 
 /// A `v:group` child that becomes a shape of its own.

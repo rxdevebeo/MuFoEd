@@ -527,11 +527,11 @@ impl TransitionalNormalizer {
         Self::write_raw_events(writer, head, context)?;
         if text_box {
             // A WordArt string has no `w:txbxContent`; its paragraph is made here.
-            let content = match &shape.frame().word_art {
+            let box_events = match &shape.frame().word_art {
                 Some(art) => vml::word_art_content(art),
                 None => Self::drain_textbox_content(subtree),
             };
-            for content in content {
+            for content in box_events {
                 Self::rewrite_event(writer, content, context, report)?;
             }
             Self::write_raw_events(writer, vml::text_box_close(), context)?;
