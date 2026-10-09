@@ -51,10 +51,19 @@ which is only true if the glyphs were reordered rather than accumulated
 left-to-right. Tamil/Bengali stay left-to-right while still exercising combining
 and conjunct substitution.
 
+## Line-break boundaries
+
+`long_devanagari_token_breaks_at_cluster_boundaries` renders an unbreakable
+Devanagari token (120 repetitions of a conjunct) through the witness face and
+checks that the fallback wrap cuts only at cluster boundaries: no line piece
+starts with a dependent sign (`U+093A`, `U+093C`, `U+093E..=U+094F`,
+`U+0951..=U+0957`, `U+0962..=U+0963`), and concatenating the pieces returns the
+exact logical string. This guards the RC03 "break boundaries" requirement against
+the line pieces that `place_long_token` produces.
+
 ## Not yet closed
 
 - The corpus witnesses 007/010/011/018 need their real system faces; those are not
   bundled or licensed here and no rasterizer is available, so they are Blocked.
 - Full PDF Unicode cluster extraction for the new scripts over the shared
-  ActualText path, the line-break boundary policy across shaped clusters, and
-  mixed LTR/RTL segmentation inside one run remain open.
+  ActualText path and mixed LTR/RTL segmentation inside one run remain open.

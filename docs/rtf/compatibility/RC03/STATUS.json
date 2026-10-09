@@ -12,12 +12,12 @@
     "logical scalar order covered exactly once per run",
     "one x position per logical scalar",
     "RTL visual reordering witness",
-    "strict SVG delivery of the new witness faces"
+    "strict SVG delivery of the new witness faces",
+    "cluster-safe line-break boundary witness for an unbreakable Devanagari token"
   ],
   "remaining": [
     "RTF corpus witnesses 007 Sanskrit, 010 Arabic, 011 Tamil, 018 Bengali on their real system faces",
     "PDF Unicode cluster extraction for the new scripts over the shared ActualText path",
-    "line-break boundary policy across shaped clusters",
     "mixed LTR/RTL segmentation within a single run"
   ],
   "blocked": [
@@ -48,6 +48,15 @@
         "every cluster span is non-empty and on char boundaries",
         "unicode_x_positions_px returns one position per scalar",
         "the Arabic logical start is right of the visual left edge"
+      ]
+    },
+    "line_break_boundary": {
+      "status": "Pass",
+      "test": "strict-ooxml-render-svg/tests/font_witnesses.rs::long_devanagari_token_breaks_at_cluster_boundaries",
+      "assertions": [
+        "an unbreakable Devanagari token wraps into more than one line piece",
+        "no line piece starts with a dependent sign",
+        "the pieces concatenate back to the exact logical string"
       ]
     }
   }

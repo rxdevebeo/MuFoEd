@@ -625,8 +625,11 @@ Arabic логический первый скаляр стоит правее в
 Открыто/Blocked: корпусные свидетели 007 Sanskrit, 010 Arabic, 011 Tamil,
 018 Bengali требуют их реальных system faces (не забандлены, не лицензированы)
 и RTF-источников из sibling worktree; полноценная PDF Unicode cluster extraction
-для новых скриптов, границы переноса shaped clusters и mixed LTR/RTL внутри
-одного run остаются. RC03 остаётся InProgress.
+для новых скриптов и mixed LTR/RTL внутри одного run остаются. Границы переноса
+закрыты witness'ом `long_devanagari_token_breaks_at_cluster_boundaries`: длинный
+неразрывный Devanagari токен режется только на cluster-границах, ни один piece не
+начинается с dependent sign, а склейка pieces даёт исходную строку. RC03 остаётся
+InProgress.
 
 ### RC04: character geometry mapping — 2026-10-08
 

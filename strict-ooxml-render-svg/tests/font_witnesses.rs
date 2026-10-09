@@ -189,3 +189,56 @@ fn bengali_geometry_matches_native_harfbuzz_and_keeps_logical_order() {
     );
     assert_logical_order_is_preserved(family, bytes, text, false);
 }
+
+/// Text of every `<text>` element on every rendered page.
+fn render_pieces(family: &str, bytes: &'static [u8], text: &str) -> Vec<String> {
+    let registry = Arc::new(
+        FontAssetRegistry::from_assets(vec![asset(family, bytes)], FontRegistryLimits::default())
+            .unwrap(),
+    );
+    let (_package, document) = common::open_body(&format!(
+        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{family}\" w:eastAsia=\"{family}\" w:cs=\"{family}\"/></w:rPr><w:t>{text}</w:t></w:r></w:p>"
+    ));
+    let options = RenderOptions::default().font_assets(registry);
+    render(&document, &options)
+        .unwrap()
+        .iter()
+        .flat_map(|page| {
+            let tree = roxmltree::Document::parse(&page.svg).expect("svg");
+            tree.descendants()
+                .filter(|node| node.is_element() && node.tag_name().name() == "text")
+                .map(|node| node.text().unwrap_or_default().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn is_devanagari_dependent(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{093A}' | '\u{093C}' | '\u{093E}'..='\u{094F}' | '\u{0951}'..='\u{0957}'
+            | '\u{0962}'..='\u{0963}'
+    )
+}
+
+/// RC03 line-break boundary: an unbreakable complex-script token must be cut only
+/// at cluster boundaries, so no line piece starts with a dependent sign.
+#[test]
+fn long_devanagari_token_breaks_at_cluster_boundaries() {
+    let family = "StrictLib Witness Devanagari";
+    let bytes = include_bytes!("../fonts/witnesses/devanagari.ttf");
+    let token = "कर्मनमस्तेक्षि".repeat(120);
+    let pieces = render_pieces(family, bytes, &token);
+    assert!(pieces.len() > 1, "the token must wrap: {}", pieces.len());
+    for piece in &pieces {
+        assert!(
+            !piece.chars().next().is_some_and(is_devanagari_dependent),
+            "a dependent sign was separated from its base: {piece:?}"
+        );
+    }
+    assert_eq!(
+        pieces.concat(),
+        token,
+        "nothing lost, duplicated or reordered across the break"
+    );
+}
