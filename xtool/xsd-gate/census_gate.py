@@ -1989,6 +1989,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     registry = load_census()
     signals: dict[str, list[tuple[str, str, str]]] = collections.defaultdict(list)
     out_schema: collections.Counter = collections.Counter()
+    written_paths: dict[str, str] = {}
     dropped: collections.Counter = collections.Counter()
     unaccounted: collections.Counter = collections.Counter()
     silent_elements: collections.Counter = collections.Counter()
@@ -2037,6 +2038,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
                 label_in += sum(incoming.schema.values())
                 continue
             validated += 1
+            written_paths[name] = path
             outgoing = xsd_gate.validate_package(path, oracle)
             incoming_count = sum(incoming.schema.values())
             outgoing_count = sum(outgoing.schema.values())
@@ -2214,6 +2216,15 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         for local, count in labels.most_common(60):
             print(f"  {local:<48} {count:>4}")
         if args.write_reports:
+            # The written package of each document with a row, to read what
+            # the writer did without rerunning it.
+            kept = Path(args.write_reports) / "written"
+            for where, _, _ in hits["unclassified_element_changes"]:
+                name = where.split(": ", 1)[0]
+                source = written_paths.get(name)
+                if source and not (kept / name).exists():
+                    kept.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, kept / name)
             rows = Path(args.write_reports) / "unclassified.txt"
             rows.write_text(
                 "".join(
