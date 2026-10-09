@@ -629,9 +629,11 @@ Arabic логический первый скаляр стоит правее в
 закрыт MuPDF-witness'ом для всех пяти скриптов
 (`RC03-actualtext-extraction.json`); mixed LTR/RTL внутри одного run режется на
 import'е по Unicode Bidirectional Algorithm (`unicode-bidi`) на
-direction-homogeneous runs с `w:rtl` (тест import → write → reopen). Остаётся
-рендерный line-level visual reordering mixed-direction runs в RTL-base
-параграфах. RC03 остаётся InProgress.
+direction-homogeneous runs с `w:rtl` (тест import → write → reopen). Рендерный
+line-level visual reordering mixed-direction runs в RTL-base параграфах переведён
+в **Blocked** на bidi-aware независимый oracle (native HarfBuzz witness шейпит
+одиночные буферы без UBA); без него корректность переупорядочивания не проверить.
+RC03 остаётся InProgress.
 
 ### RC04: character geometry mapping — 2026-10-08
 
@@ -654,10 +656,17 @@ reopen regression'ом (`strict-ooxml-rtf/tests/structure.rs`):
 import → Strict write → reopen regression'ом.
 
 Артефакты: [compatibility/RC04/STATUS.json](compatibility/RC04/STATUS.json),
-[tests.md](compatibility/RC04/tests.md). Проверки: RTF structure 32 + import 36
+[tests.md](compatibility/RC04/tests.md). Проверки: RTF structure 34 + import 36
 Pass; workspace clippy `-D warnings` (MSRV 1.92) и rustfmt Pass.
 
-Открыто/Blocked: независимые effective-style facts из WPS reference index
-(document defaults → paragraph style → character style → direct), probes для
-tabs/leaders, keep/widow и section defaults на 019/039 и затем 052/076, а также
-targeted pixel/geometry приёмка (нужен rasterizer). RC04 остаётся InProgress.
+Добавлены keep/widow/page-break witness (`\keep`/`\keepn`/`\widctlpar`/
+`\nowidctlpar`/`\pagebb`) и probe `xtool/rtf/effective_style_probe.py` против
+WPS reference facts для 019/039 (receipts `RC04-effective-style-{019,039}.json`):
+все geometry-relevant прямые свойства присутствуют; WPS-only имена — это
+writer defaults (paragraph-mark rPr, szCs mirror, docDefaults spacing/kern), а не
+пропущенные mapping. Section defaults закрыты существующим
+section-reset round-trip тестом.
+
+Открыто/Blocked: resolved-cascade effective-style equality (нужен styles.xml
+resolver; direct-diff сделан) и corpus tab/leader/keep/widow/pixel geometry на
+019/039, 052/076 (нужен rasterizer). RC04 остаётся InProgress.

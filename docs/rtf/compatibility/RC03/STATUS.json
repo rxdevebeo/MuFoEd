@@ -18,14 +18,18 @@
     "mixed LTR/RTL run split at import (unicode-bidi; one w:rtl=On segment per RTL run)"
   ],
   "remaining": [
-    "RTF corpus witnesses 007 Sanskrit, 010 Arabic, 011 Tamil, 018 Bengali on their real system faces",
-    "renderer line-level visual reordering of mixed-direction runs in RTL-base paragraphs"
+    "RTF corpus witnesses 007 Sanskrit, 010 Arabic, 011 Tamil, 018 Bengali on their real system faces"
   ],
   "blocked": [
     {
       "item": "corpus script witnesses (007/010/011/018)",
       "contract": "the original system faces (Sanskrit 2003, Vijaya, Amar Bangla Normal) and the RTF sources",
       "reason": "the corpus sources live in the sibling worktree; the named faces are not bundled or provided as licensed assets, and no rasterizer (poppler) is available for the visual half."
+    },
+    {
+      "item": "renderer line-level visual reordering of mixed-direction runs in RTL-base paragraphs",
+      "contract": "a bidi-aware independent geometry oracle (the native HarfBuzz witness shapes single buffers without the UBA)",
+      "reason": "without an independent bidi oracle, a renderer reordering cannot be validated as correct; the import-level direction split is done and round-trips."
     }
   ],
   "checks": {

@@ -15,13 +15,13 @@
     "kerning threshold \\kernN -> w:kern (half-points, negative is an explicit Loss)",
     "vertical position \\positionN and \\upN/\\dnN -> w:position (signed half-points)",
     "keep/widow/page-break rules (\\keep/\\keepn/\\widctlpar/\\nowidctlpar/\\pagebb) round-trip",
-    "import -> Strict write -> reopen regression for all of the above"
+    "import -> Strict write -> reopen regression for all of the above",
+    "section defaults reset (\\sectd) already covered by section-reset round-trip",
+    "direct effective-facts probe against WPS reference facts for 019/039"
   ],
   "remaining": [
-    "independent effective-style facts from the WPS reference index for the corpus cascade",
-    "tab/leader and keep/widow geometry probes on 019/039, then 052/076",
-    "section defaults and document defaults probes",
-    "targeted pixel/geometry acceptance (needs the external rasterizer)"
+    "resolved-cascade effective-style equality (needs a styles.xml resolver; direct-property diff is done)",
+    "corpus tab/leader/keep/widow geometry on 019/039 and 052/076 (needs the external rasterizer)"
   ],
   "blocked": [
     {
@@ -63,6 +63,15 @@
         "\\keep/\\keepn/\\widctlpar/\\pagebb -> On",
         "\\pard + \\nowidctlpar resets other paragraph rules and sets w:widowControl Off"
       ]
+    },
+    "effective_style_probe": {
+      "status": "Probe",
+      "tool": "xtool/rtf/effective_style_probe.py",
+      "receipts": [
+        "target/rtf-import/RC04-effective-style-019.json",
+        "target/rtf-import/RC04-effective-style-039.json"
+      ],
+      "finding": "every geometry-relevant direct property is present; WPS-only names are writer defaults (paragraph-mark rPr, szCs mirror, docDefaults spacing/kern), not missing mappings"
     }
   }
 }
