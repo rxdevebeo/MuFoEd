@@ -8,7 +8,8 @@
 //! |---|---|
 //! | `v:imagedata/@r:id` | `wp:inline` / `wp:anchor` + `pic:pic` |
 //! | `v:textbox/w:txbxContent` | `wps:wsp` with `wps:txbx/w:txbxContent` |
-//! | nothing, and the element is `v:rect` | `wps:wsp` with `a:prstGeom/@prst="rect"` |
+//! | nothing, and the element is `v:rect`, `v:roundrect`, `v:oval` | `wps:wsp` with that `a:prstGeom` |
+//! | `v:line`, or a straight connector | `wps:wsp` with `a:prstGeom/@prst="line"` in its box |
 //! | `w10:wrap` + `position:absolute` | a `wp:anchor` with that wrap and that position |
 //! | `v:path` (a freeform) | its frame, with the **geometry declined and named** |
 //! | `o:OLEObject` | its preview raster only — the object itself has no Strict equivalent |
@@ -61,6 +62,7 @@ use crate::error::SourceLocation;
 use crate::normalize::report::{LossRecord, NormalizationReport, Severity};
 use crate::normalize::tables::VML_NAMESPACES;
 use crate::normalize::transitional::PartContext;
+use crate::normalize::vml_paint::{self, VmlPaint};
 
 /// Strict `drawingml/main`.
 const NS_A: &str = "http://purl.oclc.org/ooxml/drawingml/main";
@@ -118,6 +120,11 @@ pub struct VmlShape {
     pub description: Option<String>,
     /// The parsed `style` string.
     pub style: VmlStyle,
+    /// Fill and outline, with VML's defaults.
+    pub paint: VmlPaint,
+    /// The `a:prstGeom` this shape is: `rect`, `roundRect`, `ellipse`, `line`.
+    /// `None` keeps the frame without geometry (a freeform).
+    pub preset: Option<&'static str>,
 }
 
 /// A `v:shape` that turned out to be a picture.
@@ -145,7 +152,8 @@ pub enum Shape {
     /// that is the same reason the `mc:Fallback` branch is: `w:txbxContent` is
     /// ordinary WML that has not met T1–T5 yet.
     TextBox(VmlShape),
-    /// `wps:wsp` with `a:prstGeom/@prst="rect"`.
+    /// `wps:wsp` with the frame's preset (`rect`, `roundRect`, `ellipse`,
+    /// `line`), its fill and its outline.
     Rectangle(VmlShape),
     /// A frame whose **geometry** this module declines: a freeform `v:path`.
     ///
@@ -265,6 +273,10 @@ pub struct VmlStyle {
     pub vertical_relative: Option<String>,
     /// `mso-position-vertical`: `center`, `top`, `bottom`, or an offset.
     pub vertical: Option<String>,
+    /// `flip:x`.
+    pub flip_h: bool,
+    /// `flip:y`.
+    pub flip_v: bool,
 }
 
 impl VmlStyle {
@@ -293,6 +305,10 @@ impl VmlStyle {
                 "mso-position-horizontal" => out.horizontal = Some(value),
                 "mso-position-vertical-relative" => out.vertical_relative = Some(value),
                 "mso-position-vertical" => out.vertical = Some(value),
+                "flip" => {
+                    out.flip_h = value.split_whitespace().any(|axis| axis == "x");
+                    out.flip_v = value.split_whitespace().any(|axis| axis == "y");
+                }
                 _ => {}
             }
         }
@@ -310,7 +326,8 @@ impl VmlStyle {
     /// not a watermark.
     fn relative_h(&self) -> &'static str {
         match self.horizontal_relative.as_deref() {
-            Some("column") => "column",
+            // VML's `text` is the column the anchor paragraph is set in.
+            Some("column" | "text") => "column",
             Some("character") => "character",
             Some("left-margin") => "leftMargin",
             Some("right-margin") => "rightMargin",
@@ -326,7 +343,8 @@ impl VmlStyle {
     /// `bottomMargin`, `insideMargin`, `outsideMargin`.
     fn relative_v(&self) -> &'static str {
         match self.vertical_relative.as_deref() {
-            Some("paragraph") => "paragraph",
+            // VML's `text` is the anchor paragraph.
+            Some("paragraph" | "text") => "paragraph",
             Some("line") => "line",
             Some("top-margin") => "topMargin",
             Some("bottom-margin") => "bottomMargin",
@@ -428,6 +446,9 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
     let mut has_textbox = false;
     let mut path: Option<String> = None;
     let mut wrap = Wrap::None;
+    let mut shape_attributes = BTreeMap::new();
+    let mut fill = None;
+    let mut stroke = None;
     for event in subtree {
         let start: &BytesStart<'_> = match event {
             Event::Start(start) | Event::Empty(start) => start,
@@ -438,19 +459,27 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
             continue;
         };
         let uri = context.uri_for(prefix.as_bytes()).unwrap_or_default();
-        if frame.is_none() && is_drawable_namespace(uri) && matches!(local, "shape" | "rect") {
+        let drawable = matches!(local, "shape" | "rect" | "roundrect" | "oval" | "line");
+        if frame.is_none() && is_drawable_namespace(uri) && drawable {
             let attributes = attributes_of(start.attributes().flatten());
+            let mut style = VmlStyle::parse(attributes.get("style").map_or("", String::as_str));
+            if local == "line" {
+                line_box(&mut style, &attributes);
+            }
             frame = Some(VmlShape {
                 name: attributes
                     .get("id")
                     .cloned()
                     .unwrap_or_else(|| "Shape".to_owned()),
                 description: attributes.get("alt").cloned().filter(|alt| !alt.is_empty()),
-                style: VmlStyle::parse(attributes.get("style").map_or("", String::as_str)),
+                style,
+                paint: VmlPaint::default(),
+                preset: preset_of(local, &attributes),
             });
             element.clear();
             element.push_str(local);
             path = attributes.get("path").cloned();
+            shape_attributes = attributes;
             continue;
         }
         if frame.is_none() {
@@ -464,6 +493,12 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
                 }
             }
             "textbox" => has_textbox = true,
+            "fill" if is_vml(uri) && fill.is_none() => {
+                fill = Some(attributes_of(start.attributes().flatten()));
+            }
+            "stroke" if is_vml(uri) && stroke.is_none() => {
+                stroke = Some(attributes_of(start.attributes().flatten()));
+            }
             // `w10:wrap` is the positioning vocabulary of VML, in its own
             // namespace, and it is what says how text goes round this shape. It is
             // a **translation of a name**: `w10:wrap/@type` and `wp:wrap*` share a
@@ -477,7 +512,8 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
             _ => {}
         }
     }
-    let shape = frame?;
+    let mut shape = frame?;
+    shape.paint = vml_paint::paint(&shape_attributes, fill.as_ref(), stroke.as_ref());
     // A picture outranks the frame's other contents: a `v:shape` carrying both an
     // `r:id` and a text box is an OLE object whose *preview* is that image, and the
     // preview is what the reader saw.
@@ -485,22 +521,70 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
         return Some((Shape::Picture(VmlPicture { shape, rel_id }), wrap));
     }
     if has_textbox {
+        shape.preset = shape.preset.or(Some("rect"));
         return Some((Shape::TextBox(shape), wrap));
     }
     if let Some(path) = path {
         return Some((
             if path_is_convertible(&path) {
+                shape.preset = shape.preset.or(Some("rect"));
                 Shape::Rectangle(shape)
             } else {
+                shape.preset = None;
                 Shape::Freeform(shape)
             },
             wrap,
         ));
     }
-    (element == "rect").then_some((Shape::Rectangle(shape), wrap))
+    shape
+        .preset
+        .is_some()
+        .then_some((Shape::Rectangle(shape), wrap))
 }
 
-/// One text box inside a `v:group`, already mapped into the group's point frame.
+/// The `a:prstGeom` a VML element is: its own kind, or a straight connector
+/// (`o:connectortype`, the `_x0000_t32` shape type) drawn as a line.
+fn preset_of(local: &str, attributes: &BTreeMap<String, String>) -> Option<&'static str> {
+    match local {
+        "rect" => Some("rect"),
+        "roundrect" => Some("roundRect"),
+        "oval" => Some("ellipse"),
+        "line" => Some("line"),
+        "shape"
+            if attributes.contains_key("connectortype")
+                || attributes.get("type").is_some_and(|kind| kind == "#_x0000_t32") =>
+        {
+            Some("line")
+        }
+        _ => None,
+    }
+}
+
+/// A `v:line`'s box from its `from`/`to` points: the offset is the nearer
+/// corner and the size the distance, and a line drawn right-to-left or upwards
+/// is the same box flipped.
+fn line_box(style: &mut VmlStyle, attributes: &BTreeMap<String, String>) {
+    let point = |name: &str| {
+        let (x, y) = attributes.get(name)?.split_once(',')?;
+        Some((points_of(x)?, points_of(y)?))
+    };
+    let (Some((x1, y1)), Some((x2, y2))) = (point("from"), point("to")) else {
+        return;
+    };
+    let base_x = style.margin_left.as_deref().and_then(points_of).unwrap_or(0.0);
+    let base_y = style.margin_top.as_deref().and_then(points_of).unwrap_or(0.0);
+    style.margin_left = Some(format_pt(base_x + x1.min(x2)));
+    style.margin_top = Some(format_pt(base_y + y1.min(y2)));
+    style.width_pt = Some(format_pt((x2 - x1).abs()));
+    style.height_pt = Some(format_pt((y2 - y1).abs()));
+    style.absolute = true;
+    style.flip_h ^= x2 < x1;
+    style.flip_v ^= y2 < y1;
+}
+
+/// One member of a `v:group` - a text box, a line or a preset shape - already
+/// mapped into the group's point frame. A member that is not a text box has no
+/// `content`.
 ///
 /// `classify` keeps the first `v:shape` and treats every later sibling as part of
 /// that one shape. A group is a diagram: the later siblings are the labels, and
@@ -557,7 +641,7 @@ pub(crate) fn grouped_text_boxes(
                 }
                 if stack.last().is_some_and(|group| group.depth == depth - 1)
                     && is_vml(&uri)
-                    && matches!(local.as_str(), "shape" | "rect" | "oval")
+                    && is_group_member(&local)
                 {
                     child = Some(vec![event.clone()]);
                     child_depth = 1;
@@ -580,6 +664,17 @@ pub(crate) fn grouped_text_boxes(
                 let Some((local, uri)) = qualified(start, context) else {
                     continue;
                 };
+                let direct = stack.last().is_some_and(|group| group.depth == depth);
+                if is_vml(&uri) && is_group_member(&local) && direct {
+                    if let Some(group) = stack.last() {
+                        if let Some(grouped) =
+                            finish_grouped(std::slice::from_ref(event), &group.frame, group.wrap)
+                        {
+                            out.push(grouped);
+                        }
+                    }
+                    continue;
+                }
                 if let Some(group) = stack.last_mut() {
                     if local == "wrap" && uri == WORD_NS {
                         let attributes = attributes_of(start.attributes().flatten());
@@ -616,6 +711,11 @@ pub(crate) fn grouped_text_boxes(
         }
     }
     out
+}
+
+/// A `v:group` child that becomes a shape of its own.
+fn is_group_member(local: &str) -> bool {
+    matches!(local, "shape" | "rect" | "oval" | "roundrect" | "line")
 }
 
 struct OpenGroup {
@@ -674,39 +774,94 @@ fn finish_grouped(
     frame: &GroupFrame,
     wrap: Wrap,
 ) -> Option<GroupedTextBox> {
-    let content = textbox_children(events)?;
-    let Event::Start(start) = events.first()? else {
+    let (Event::Start(start) | Event::Empty(start)) = events.first()? else {
         return None;
     };
+    let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
+    let local = name.rsplit(':').next().unwrap_or_default().to_owned();
     let attributes = attributes_of(start.attributes().flatten());
-    let numbers = style_numbers(attributes.get("style").map_or("", String::as_str));
-    let left = numbers.get("left").copied().unwrap_or(frame.origin_x);
-    let top = numbers.get("top").copied().unwrap_or(frame.origin_y);
-    let width = numbers.get("width").copied().unwrap_or(frame.coord_w);
-    let height = numbers.get("height").copied().unwrap_or(frame.coord_h);
+    let content = textbox_children(events);
+    let preset = match &content {
+        Some(_) => preset_of(&local, &attributes).or(Some("rect")),
+        None => Some(preset_of(&local, &attributes)?),
+    };
+    let style_text = attributes.get("style").map_or("", String::as_str);
+    let numbers = style_numbers(style_text);
+    let child_style = VmlStyle::parse(style_text);
+    let (mut flip_h, mut flip_v) = (child_style.flip_h, child_style.flip_v);
+    let (left, top, width, height) = if local == "line" {
+        let (x1, y1) = attributes.get("from").and_then(|value| pair(value))?;
+        let (x2, y2) = attributes.get("to").and_then(|value| pair(value))?;
+        flip_h ^= x2 < x1;
+        flip_v ^= y2 < y1;
+        (x1.min(x2), y1.min(y2), (x2 - x1).abs(), (y2 - y1).abs())
+    } else {
+        (
+            numbers.get("left").copied().unwrap_or(frame.origin_x),
+            numbers.get("top").copied().unwrap_or(frame.origin_y),
+            numbers.get("width").copied().unwrap_or(frame.coord_w),
+            numbers.get("height").copied().unwrap_or(frame.coord_h),
+        )
+    };
     let scale_x = frame.width_pt / frame.coord_w;
     let scale_y = frame.height_pt / frame.coord_h;
+    // The group's own offset, which its members sit inside.
+    let base_x = frame.style.margin_left.as_deref().and_then(points_of).unwrap_or(0.0);
+    let base_y = frame.style.margin_top.as_deref().and_then(points_of).unwrap_or(0.0);
     let mut style = frame.style.clone();
     style.absolute = true;
     style.horizontal = None;
     style.vertical = None;
+    style.flip_h = flip_h;
+    style.flip_v = flip_v;
     style.width_pt = Some(format_pt(width * scale_x));
     style.height_pt = Some(format_pt(height * scale_y));
-    style.margin_left = Some(format_pt((left - frame.origin_x) * scale_x));
-    style.margin_top = Some(format_pt((top - frame.origin_y) * scale_y));
-    let shape = Shape::TextBox(VmlShape {
+    style.margin_left = Some(format_pt(base_x + (left - frame.origin_x) * scale_x));
+    style.margin_top = Some(format_pt(base_y + (top - frame.origin_y) * scale_y));
+    let (fill, stroke) = paint_children(events);
+    let shape = VmlShape {
         name: attributes
             .get("id")
             .cloned()
             .unwrap_or_else(|| "Shape".to_owned()),
         description: attributes.get("alt").cloned().filter(|alt| !alt.is_empty()),
         style,
-    });
-    Some(GroupedTextBox {
-        shape,
-        wrap,
-        content,
+        paint: vml_paint::paint(&attributes, fill.as_ref(), stroke.as_ref()),
+        preset,
+    };
+    Some(match content {
+        Some(content) => GroupedTextBox {
+            shape: Shape::TextBox(shape),
+            wrap,
+            content,
+        },
+        None => GroupedTextBox {
+            shape: Shape::Rectangle(shape),
+            wrap,
+            content: Vec::new(),
+        },
     })
+}
+
+/// The attributes of a member's own `v:fill` and `v:stroke`.
+fn paint_children(
+    events: &[Event<'static>],
+) -> (Option<BTreeMap<String, String>>, Option<BTreeMap<String, String>>) {
+    let mut fill = None;
+    let mut stroke = None;
+    for event in events.iter().skip(1) {
+        let (Event::Start(start) | Event::Empty(start)) = event else {
+            continue;
+        };
+        match start.name().as_ref() {
+            b"v:fill" if fill.is_none() => fill = Some(attributes_of(start.attributes().flatten())),
+            b"v:stroke" if stroke.is_none() => {
+                stroke = Some(attributes_of(start.attributes().flatten()));
+            }
+            _ => {}
+        }
+    }
+    (fill, stroke)
 }
 
 fn textbox_children(events: &[Event<'static>]) -> Option<Vec<Event<'static>>> {
@@ -1147,33 +1302,11 @@ fn doc_pr_events(name: &str, description: Option<&str>, doc_pr_id: u32) -> Vec<E
 fn graphic_events(class: &Shape, cx: i64, cy: i64) -> Vec<Event<'static>> {
     match class {
         Shape::Picture(picture) => picture_payload(&picture.shape.name, &picture.rel_id, cx, cy),
-        Shape::Rectangle(rect) => shape_payload(
-            &rect.name,
-            rect.description.as_deref(),
-            Some("rect"),
-            false,
-            cx,
-            cy,
-        ),
         // A freeform keeps its frame and loses its geometry; a text box's content
         // is spliced in by the caller. Both losses are recorded there, where the
         // shape's name is in scope.
-        Shape::Freeform(frame) => shape_payload(
-            &frame.name,
-            frame.description.as_deref(),
-            None,
-            false,
-            cx,
-            cy,
-        ),
-        Shape::TextBox(frame) => shape_payload(
-            &frame.name,
-            frame.description.as_deref(),
-            None,
-            true,
-            cx,
-            cy,
-        ),
+        Shape::Rectangle(frame) | Shape::Freeform(frame) => shape_payload(frame, false, cx, cy),
+        Shape::TextBox(frame) => shape_payload(frame, true, cx, cy),
     }
 }
 
@@ -1213,16 +1346,13 @@ fn picture_payload(name: &str, rel_id: &str, cx: i64, cy: i64) -> Vec<Event<'sta
 }
 
 /// `wps:wsp`, the shape the writer already reads and writes back.
-fn shape_payload(
-    name: &str,
-    description: Option<&str>,
-    geometry: Option<&'static str>,
-    text_box: bool,
-    cx: i64,
-    cy: i64,
-) -> Vec<Event<'static>> {
+///
+/// A shape with geometry gets its VML fill and outline ([`vml_paint`]); a
+/// freeform frame, which has none, gets neither.
+fn shape_payload(shape: &VmlShape, text_box: bool, cx: i64, cy: i64) -> Vec<Event<'static>> {
+    let name = shape.name.as_str();
     let mut c_nv_pr: Vec<(&str, &str)> = vec![("id", "0"), ("name", name)];
-    if let Some(description) = description {
+    if let Some(description) = shape.description.as_deref() {
         c_nv_pr.push(("descr", description));
     }
     let mut out = vec![
@@ -1236,16 +1366,21 @@ fn shape_payload(
         Event::Start(el("wps:spPr", &[])),
         Event::Start(el(
             "a:xfrm",
-            &[("rot", "0"), ("flipH", "0"), ("flipV", "0")],
+            &[
+                ("rot", "0"),
+                ("flipH", bool_str(shape.style.flip_h)),
+                ("flipV", bool_str(shape.style.flip_v)),
+            ],
         )),
         Event::Empty(el("a:off", &[("x", "0"), ("y", "0")])),
         Event::Empty(shape_extent(cx, cy)),
         Event::End(BytesEnd::new("a:xfrm").into_owned()),
     ];
-    if let Some(preset) = geometry {
+    if let Some(preset) = shape.preset {
         out.push(Event::Start(el("a:prstGeom", &[("prst", preset)])));
         out.push(Event::Empty(el("a:avLst", &[])));
         out.push(Event::End(BytesEnd::new("a:prstGeom").into_owned()));
+        out.extend(vml_paint::events(&shape.paint, preset == "line"));
     }
     out.push(Event::End(BytesEnd::new("wps:spPr").into_owned()));
     // `wps:txbx` sits between `wps:spPr` and `wps:bodyPr` in

@@ -184,6 +184,17 @@ def load_census() -> list[dict]:
         return tomllib.load(handle)["item"]
 
 
+# T7 moves a text box's `w:txbxContent` from `v:textbox` to `wps:txbx`; the
+# content is the same and a missing one is still a missing one.
+_TEXT_BOX_WRAPPERS = {"textbox", "txbx"}
+
+
+def _text_box_context(local, parent, namespace, parent_namespace):
+    if local == "txbxContent" and parent in _TEXT_BOX_WRAPPERS:
+        return (local, "text box", namespace, None)
+    return (local, parent, namespace, parent_namespace)
+
+
 def vanished_elements(
     source: str, written: str, oracle, named: set[str]
 ) -> list[tuple[str, str, str]]:
@@ -235,12 +246,12 @@ def vanished_elements(
                 _keep_last_duplicate_style(old)
                 _keep_last_duplicate_style(new)
             old_rows = [
-                (local, parent, namespace, parent_namespace)
+                _text_box_context(local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(old)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
             new_rows = [
-                (local, parent, namespace, parent_namespace)
+                _text_box_context(local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(new)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]

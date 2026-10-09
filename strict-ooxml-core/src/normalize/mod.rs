@@ -13,6 +13,7 @@ pub mod report;
 pub mod tables;
 pub mod transitional;
 pub mod vml;
+mod vml_paint;
 
 use std::borrow::Cow;
 
