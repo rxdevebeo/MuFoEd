@@ -477,7 +477,10 @@ pub fn twips_to_universal(value: &str) -> Option<String> {
         return Some(format!("{sign}{whole}pt"));
     }
     let fraction = format!("{rest:02}");
-    Some(format!("{sign}{whole}.{}pt", fraction.trim_end_matches('0')))
+    Some(format!(
+        "{sign}{whole}.{}pt",
+        fraction.trim_end_matches('0')
+    ))
 }
 
 /// `ST_TextScale`: a bare number where Strict's pattern wants a `%`.
@@ -657,8 +660,8 @@ pub fn is_ignorable_extension(uri: &str) -> bool {
 mod tests {
     use super::{
         drawingml_thousandths_percent, is_chart_whole_percent_attr, is_drawingml_percentage_attr,
-        map_value, removal_for, rename_attribute, rename_element, twips_to_universal, whole_percent,
-        REMOVALS, RENAMES,
+        map_value, removal_for, rename_attribute, rename_element, twips_to_universal,
+        whole_percent, REMOVALS, RENAMES,
     };
     use crate::normalize::report::Severity;
 
