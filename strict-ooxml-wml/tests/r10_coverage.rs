@@ -64,7 +64,7 @@ fn embed_kind_and_font_table_model_cover_every_face() {
             EmbeddedFont {
                 part: PartId::new(format!("/word/fonts/{}.ttf", kind.element())),
                 font_key: Some(Arc::from("{00000000-0000-0000-0000-000000000000}")),
-                subsetted: matches!(kind, EmbedKind::Bold),
+                subsetted: Some(matches!(kind, EmbedKind::Bold)),
             },
         );
     }
@@ -114,7 +114,7 @@ fn font_table_parses_embeds_lost_faces_and_hints() {
     assert_eq!(entry.name.as_ref(), "Embedded");
     let regular = entry.embeds.get(&EmbedKind::Regular).expect("regular");
     assert_eq!(regular.part.as_str(), "/word/fonts/Embedded.ttf");
-    assert!(regular.subsetted);
+    assert_eq!(regular.subsetted, Some(true));
     assert!(regular.font_key.is_some());
     let bold = entry.embeds.get(&EmbedKind::Bold).expect("bold lost");
     assert_eq!(bold.part.as_str(), "/word/fonts/none");

@@ -1037,8 +1037,8 @@ fn write_font_entry(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, entry: &FontEntry) {
         xml.start(kind.element());
         xml.attr_r_opt("id", Some(rel));
         xml.attr_w_opt("fontKey", font.font_key.as_deref());
-        if font.subsetted {
-            xml.attr_w("subsetted", "true");
+        if let Some(subsetted) = font.subsetted {
+            xml.attr_w("subsetted", if subsetted { "true" } else { "false" });
         }
         xml.end();
     }
