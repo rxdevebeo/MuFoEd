@@ -29,7 +29,7 @@ M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waive
 нет; `CENSUS-LOCAL` устарел — ночной census уже в CI (`ci.yml`), `census-baseline.json` не закоммичен.
 
 Порядок дальше: ~~перепроверка P1~~ → ~~синтетические двойники P5/P6~~ → база census и `CENSUS-LOCAL` →
-~~`unmatched_schema`~~ → ~~P12~~ → P15 по метке (108) → ~~P8~~ → VML-группы → M5 (Word).
+~~`unmatched_schema`~~ → ~~P12~~ → P15 по метке (72) → ~~P8~~ → ~~VML-группы~~ → M5 (Word).
 
 Этот план не заменяет критерии приёмки D05/D06. Он задаёт **порядок работ по визуальному ущербу** и фиксирует, **на каких документах** каждый пункт измерять.
 
@@ -390,8 +390,18 @@ VML-линии и фигуры без надписи, которые T7 теря
 (TZ-54), пары пространств `lc`/`cdr`/`dgm`, точное совпадение имён для TZ-13;
 при `--write-reports` — `unclassified.txt` и записанные пакеты в `written/`.
 
-Остаток 108: VML (`w:txbxContent` 14, `o:rules`, `shapedefaults`, hdr/ftr 3+3) — в
-пункт «VML-группы»; внешние картинки `a:blip@link` 5; `c:chart@id` 6; тема
+**VML-группы, 2026-10-09** (ветка `task/vml-groups-2026-10-09`): 92 → 72, колонтитулов в остатке нет. Конвертированные VML-фигуры
+получают заливку и обводку по атрибутам VML (`fillcolor`/`filled`, `strokecolor`/`strokeweight`/`stroked`,
+`v:fill`, `v:stroke`, прозрачность, пунктир) с умолчаниями VML — до этого 721 `v:rect` и все надписи
+выходили невидимыми рамками. `v:line` (55) и прямые соединители (14) — `prstGeom line` в своём габарите с
+отражением; `v:roundrect`, `v:oval`. Члены `v:group` — не только надписи, но и линии и простые фигуры, и все
+ставятся со смещением самой группы. WordArt-водяной знак (`v:textpath`) — повёрнутая надпись со строкой,
+шрифтом, размером и цветом заливки; `rotation` сохраняется. `mso-position-*-relative:text` — колонка и абзац,
+не страница. Census: `w:txbxContent` не зависит от обёртки (`v:textbox`/`wps:txbx`), члены группы в одном
+прогоне — один рисунок, рисунок колонтитула — его текст. Pixels на `ae506cd` зелёные.
+Остаток VML: `o:rules`/`o:shapedefaults` в settings, VML-маркеры списков (`w:numPicBullet`).
+
+Остаток 108 (до VML-групп): VML (`w:txbxContent` 14, `o:rules`, `shapedefaults`, hdr/ftr 3+3); внешние картинки `a:blip@link` 5; `c:chart@id` 6; тема
 `w:br@clear` 4; `customMarkFollows` 2; поля форм
 (`w:checkBox`, `w:textInput`, …) 7; прочие одиночные.
 

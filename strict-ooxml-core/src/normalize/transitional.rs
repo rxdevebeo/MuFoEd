@@ -526,7 +526,12 @@ impl TransitionalNormalizer {
         };
         Self::write_raw_events(writer, head, context)?;
         if text_box {
-            for content in Self::drain_textbox_content(subtree) {
+            // A WordArt string has no `w:txbxContent`; its paragraph is made here.
+            let box_events = match &shape.frame().word_art {
+                Some(art) => vml::word_art_content(art),
+                None => Self::drain_textbox_content(subtree),
+            };
+            for content in box_events {
                 Self::rewrite_event(writer, content, context, report)?;
             }
             Self::write_raw_events(writer, vml::text_box_close(), context)?;
@@ -619,8 +624,9 @@ impl TransitionalNormalizer {
         report.record_loss(LossRecord {
             transform_id: "T7.vml-group",
             feature_id: "v:group".to_owned(),
-            reason: "a VML group has no DrawingML group here; each of its text boxes is \
-                     converted on its own, and the lines and non-text geometry are dropped"
+            reason: "a VML group has no DrawingML group here; each of its text boxes, lines \
+                     and preset shapes is converted on its own and placed by the group's \
+                     coordinates, and freeform geometry is dropped"
                 .to_owned(),
             severity: Severity::Lossy,
             locations: vec![location.clone()],
@@ -645,6 +651,18 @@ impl TransitionalNormalizer {
         let location = context.location();
         for grouped_box in grouped {
             let doc_pr_id = context.next_doc_pr_id();
+            if !matches!(grouped_box.shape, vml::Shape::TextBox(_)) {
+                // A line or a preset shape: no content to write in place.
+                let (head, tail) = vml::shape_events(
+                    &grouped_box.shape,
+                    grouped_box.wrap,
+                    doc_pr_id,
+                    report,
+                    &location,
+                );
+                Self::write_raw_events(writer, head.into_iter().chain(tail), context)?;
+                continue;
+            }
             let (head, tail) = vml::text_box_shape_events(
                 &grouped_box.shape,
                 grouped_box.wrap,
@@ -3310,6 +3328,62 @@ mod tests {
         assert!(text.contains(">254000<"), "20 pt offset: {text}");
         assert!(text.contains("one"), "{text}");
         assert!(text.contains("two"), "{text}");
+    }
+
+    /// T7: a `v:line` is a `line` preset in its box, a rectangle carries VML's
+    /// fill and outline, and a line inside a group is placed by the group.
+    #[test]
+    fn vml_lines_and_painted_rectangles_are_shapes() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:body><w:p><w:r><w:pict>
+<v:line id="l" style="position:absolute;mso-position-horizontal-relative:text;mso-position-vertical-relative:text" from="10pt,40pt" to="110pt,20pt" strokecolor="#ff0000" strokeweight="2pt"/>
+</w:pict><w:pict>
+<v:rect id="r" style="position:absolute;margin-left:5pt;margin-top:5pt;width:50pt;height:20pt" fillcolor="#e36c0a [2409]" stroked="f"><v:fill opacity=".5"/></v:rect>
+</w:pict><w:pict>
+<v:group coordsize="100,100" coordorigin="0,0" style="position:absolute;margin-left:100pt;margin-top:0;width:100pt;height:100pt">
+<v:line id="g" from="0,0" to="50,0"/>
+</v:group>
+</w:pict></w:r></w:p></w:body></w:document>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(!text.contains("v:line"), "{text}");
+        assert_eq!(text.matches(r#"prst="line""#).count(), 2, "{text}");
+        // 100pt by 20pt, drawn upwards: the box is flipped vertically.
+        assert!(text.contains(r#"cx="1270000" cy="254000""#), "{text}");
+        assert!(text.contains(r#"flipV="1""#), "{text}");
+        assert!(text.contains(r#"relativeFrom="column""#), "{text}");
+        assert!(text.contains(r#"<a:ln w="25400">"#), "{text}");
+        assert!(text.contains(r#"<a:srgbClr val="FF0000"/>"#), "{text}");
+        assert!(text.contains(r#"prst="rect""#), "{text}");
+        assert!(
+            text.contains(r#"<a:srgbClr val="E36C0A"><a:alpha val="50%"/>"#),
+            "{text}"
+        );
+        // The group member sits at the group's 100pt offset.
+        assert!(text.contains(">1270000<"), "{text}");
+    }
+
+    /// T7: Word's text watermark (`v:textpath`) becomes a turned text box that
+    /// holds the string in the shape's fill colour.
+    #[test]
+    fn a_vml_word_art_watermark_is_a_turned_text_box() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:p><w:r><w:pict>
+<v:shape id="wm" type="#_x0000_t136" style="position:absolute;width:321.75pt;height:66pt;rotation:315;mso-position-horizontal:center;mso-position-horizontal-relative:margin" fillcolor="#d99594 [1941]" stroked="f"><v:fill opacity=".5"/><v:textpath style="font-family:&quot;Calibri&quot;;font-size:54pt" string="DRAFT"/></v:shape>
+</w:pict></w:r></w:p></w:hdr>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(!text.contains("v:textpath"), "{text}");
+        assert!(text.contains("<wps:txbx>"), "{text}");
+        assert!(text.contains(">DRAFT<"), "{text}");
+        assert!(text.contains(r#"rot="18900000""#), "{text}");
+        assert!(text.contains(r#"w:val="D99594""#), "{text}");
+        assert!(text.contains(r#"w:val="108""#), "{text}");
+        assert!(text.contains(r#"w:ascii="Calibri""#), "{text}");
     }
 
     /// Dropping an empty child must not steal the parent's stack slot: after

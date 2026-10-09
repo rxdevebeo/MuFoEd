@@ -184,6 +184,17 @@ def load_census() -> list[dict]:
         return tomllib.load(handle)["item"]
 
 
+# T7 moves a text box's `w:txbxContent` from `v:textbox` to `wps:txbx`; the
+# content is the same and a missing one is still a missing one.
+_TEXT_BOX_WRAPPERS = {"textbox", "txbx"}
+
+
+def _text_box_context(local, parent, namespace, parent_namespace):
+    if local == "txbxContent" and parent in _TEXT_BOX_WRAPPERS:
+        return (local, "text box", namespace, None)
+    return (local, parent, namespace, parent_namespace)
+
+
 def vanished_elements(
     source: str, written: str, oracle, named: set[str]
 ) -> list[tuple[str, str, str]]:
@@ -235,12 +246,12 @@ def vanished_elements(
                 _keep_last_duplicate_style(old)
                 _keep_last_duplicate_style(new)
             old_rows = [
-                (local, parent, namespace, parent_namespace)
+                _text_box_context(local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(old)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
             new_rows = [
-                (local, parent, namespace, parent_namespace)
+                _text_box_context(local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(new)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
@@ -450,10 +461,28 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
         # (T7) and its geometry, locks and extensions are attribute and element
         # rows of this part; the header's identity is what it says.
         if local in {"pict", "drawing"} and namespace == _WML_STRICT:
-            chunks.append(f"<{namespace} drawing")
+            # T7 writes each member of a VML group as its own `w:drawing` in the
+            # same run: the run's drawings are one mark.
+            previous = element.getprevious()
+            run_of_drawings = previous is not None and isinstance(previous.tag, str) and (
+                etree.QName(previous).localname in {"pict", "drawing"}
+            )
+            if not run_of_drawings:
+                chunks.append(f"<{namespace} drawing")
+            # A drawing is what it says: the text of its boxes, and the string of
+            # a WordArt `v:textpath`, which T7 writes as a text box.
             for box in _text_boxes(element):
-                for child in box:
-                    walk(child, chunks)
+                text = "".join(
+                    node.text or ""
+                    for node in box.iter()
+                    if isinstance(node.tag, str) and etree.QName(node).localname == "t"
+                )
+                if text:
+                    chunks.append(f"text={text}")
+            for node in element.iter():
+                if isinstance(node.tag, str) and etree.QName(node).localname == "textpath":
+                    if node.get("string"):
+                        chunks.append(f"text={node.get('string')}")
             return
         # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
         pct = any(
