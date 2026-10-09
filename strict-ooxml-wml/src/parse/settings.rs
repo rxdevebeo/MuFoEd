@@ -194,6 +194,7 @@ impl PartParser<'_> {
                 let (pairs, flags) = self.parse_compat()?;
                 settings.compatibility.extend(pairs);
                 settings.compat_flags = flags;
+                settings.compat_present = true;
                 return Ok(true);
             }
             _ if FLAT_ON_OFF.contains(&name.local()) => {

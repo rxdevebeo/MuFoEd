@@ -775,7 +775,7 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             // alphabetically, which is not this order, so a round trip through a
             // producer that sorted them would otherwise move four of the seven.
             let flags = settings.compat_flags.set();
-            if !flags.is_empty() || !settings.compatibility.is_empty() {
+            if settings.compat_present || !flags.is_empty() || !settings.compatibility.is_empty() {
                 xml.start("w:compat");
                 for flag in flags {
                     xml.empty(flag);
@@ -1750,6 +1750,23 @@ mod tests {
             }),
             "{report:?}"
         );
+    }
+
+    /// Word's `<w:compat/>` carries no switch and still comes back.
+    #[test]
+    fn an_empty_compat_is_written_back() {
+        let settings = Settings {
+            compat_present: true,
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(xml.contains("<w:compat/>"), "{xml}");
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &Settings::default()).expect("settings");
+        assert!(!xml.contains("w:compat"), "{xml}");
     }
 
     #[test]
