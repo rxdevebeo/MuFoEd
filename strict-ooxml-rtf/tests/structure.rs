@@ -1009,6 +1009,24 @@ fn wps_sectd_before_sect_keeps_each_section_header() {
 }
 
 #[test]
+fn titlepg_and_even_headers_are_recorded() {
+    // `\titlepg` needs `w:titlePg`, and an even-page header only renders when
+    // settings carry `w:evenAndOddHeaders`.
+    let d = reopened(br"{\rtf1\titlepg{\headerl Even}{\headerr Odd}Body\par}");
+    assert!(
+        d.settings.even_and_odd_headers,
+        "an even header implies evenAndOddHeaders"
+    );
+    let section = &d.sections[0].properties;
+    assert!(section.title_page, "\\titlepg sets w:titlePg");
+    assert_eq!(
+        section.headers.len(),
+        2,
+        "even and default header references"
+    );
+}
+
+#[test]
 fn bookmarks_become_paired_start_and_end_inlines() {
     let d = import(
         br"{\rtf1 Before{\*\bkmkstart mark}Text{\*\bkmkend mark}After}",

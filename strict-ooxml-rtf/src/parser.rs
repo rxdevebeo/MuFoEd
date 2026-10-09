@@ -377,6 +377,8 @@ struct Parser<'a> {
     /// Bookmark name to `w:id`, so a `\bkmkstart`/`\bkmkend` pair shares an id.
     bookmarks: std::collections::HashMap<String, u32>,
     bookmark_seq: u32,
+    /// An even-page (`\headerl`/`\footerl`) region was seen: `w:evenAndOddHeaders`.
+    even_and_odd_headers: bool,
     footnotes: NoteTable,
     endnotes: NoteTable,
     numbering: NumberingTable,
@@ -564,6 +566,9 @@ impl Parser<'_> {
                     if is_header { "header" } else { "footer" },
                     self.headers_footers.len() + 1
                 ));
+                if kind == HeaderFooterKind::Even {
+                    self.even_and_odd_headers = true;
+                }
                 let refs = if is_header {
                     &mut self.section.headers
                 } else {
@@ -2458,6 +2463,7 @@ impl Parser<'_> {
             "sectd" => {
                 self.section_reset_pending = true;
             }
+            "titlepg" => self.section.title_page = true,
             "sbknone" | "sbkpage" | "sbkcol" | "sbkeven" | "sbkodd" => {
                 self.section.section_type = Some(match name {
                     "sbknone" => SectionType::Continuous,
@@ -3170,6 +3176,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         headers_footers: vec![],
         bookmarks: std::collections::HashMap::new(),
         bookmark_seq: 0,
+        even_and_odd_headers: false,
         footnotes: NoteTable::new(),
         endnotes: NoteTable::new(),
         numbering: NumberingTable::new(),
@@ -3557,7 +3564,10 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         numbering: p.numbering,
         footnotes: p.footnotes,
         endnotes: p.endnotes,
-        settings: Default::default(),
+        settings: strict_ooxml_wml::model::settings::Settings {
+            even_and_odd_headers: p.even_and_odd_headers,
+            ..Default::default()
+        },
         theme: None,
         font_table,
         sections: p.sections,
