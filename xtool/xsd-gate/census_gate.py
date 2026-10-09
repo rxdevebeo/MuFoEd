@@ -2137,6 +2137,20 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         )
         for where, local, detail in hits["unclassified_element_changes"][:40]:
             print(f"  {where} [{local}]: {detail}")
+        # The first 40 rows are one or two documents; the labels say what is left.
+        labels = collections.Counter(local for _, local, _ in hits["unclassified_element_changes"])
+        print("\n=== unclassified by label")
+        for local, count in labels.most_common(60):
+            print(f"  {local:<48} {count:>4}")
+        if args.write_reports:
+            rows = Path(args.write_reports) / "unclassified.txt"
+            rows.write_text(
+                "".join(
+                    f"{where} [{local}]: {detail}\n"
+                    for where, local, detail in hits["unclassified_element_changes"]
+                ),
+                encoding="utf-8",
+            )
 
     if not args.quiet_messages and out_schema:
         print("\n=== every message, so nothing is counted on trust")
