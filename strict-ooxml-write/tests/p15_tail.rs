@@ -69,8 +69,11 @@ behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">
 <a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
 <pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"p\"/>\
 <pic:cNvPicPr preferRelativeResize=\"0\"><a:picLocks noChangeAspect=\"1\" noChangeArrowheads=\"1\"/>\
-</pic:cNvPicPr></pic:nvPicPr><pic:blipFill rotWithShape=\"1\"><a:blip r:embed=\"rId5\"/>\
-</pic:blipFill><pic:spPr><a:xfrm><a:ext cx=\"100\" cy=\"100\"/></a:xfrm></pic:spPr>\
+</pic:cNvPicPr></pic:nvPicPr><pic:blipFill rotWithShape=\"1\"><a:blip r:embed=\"rId5\">\
+<a:lum bright=\"10000\"/><a:extLst><a:ext uri=\"{28A0092B-C50C-407E-A947-70E740481C1C}\">\
+<a14:useLocalDpi xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\" val=\"0\"/>\
+</a:ext></a:extLst></a:blip></pic:blipFill><pic:spPr><a:xfrm><a:ext cx=\"100\" cy=\"100\"/>\
+</a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:ln><a:noFill/></a:ln></pic:spPr>\
 </pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>";
     let bytes = DocxBuilder::strict()
         .body(body)
@@ -98,4 +101,13 @@ behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">
         "{xml}"
     );
     assert!(xml.contains(r#"<pic:blipFill rotWithShape="1">"#), "{xml}");
+    assert!(xml.contains(r#"bright="10000""#), "{xml}");
+    assert!(xml.contains("useLocalDpi"), "{xml}");
+    assert!(xml.contains(r#"prst="rect""#), "{xml}");
+    assert!(xml.contains("<a:noFill"), "{xml}");
+    // The kept markup parses again and comes back the same.
+    let again = parse_document(&reopened, &ParseOptions::default()).expect("reparse");
+    let rewritten =
+        write_package(&again, Some(&reopened), &WriteOptions::default()).expect("rewrite");
+    assert_eq!(written.bytes, rewritten.bytes, "not a fixed point");
 }
