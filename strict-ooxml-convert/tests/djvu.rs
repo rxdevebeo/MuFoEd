@@ -11,6 +11,11 @@ fn convert(bytes: &[u8], options: &DjvuOptions) -> strict_ooxml_convert::Convert
     convert_djvu(&mut d, options).expect("convert")
 }
 fn xml(c: &strict_ooxml_convert::Converted) -> String {
+    parts(c).0
+}
+
+/// The written `document.xml` and `document.xml.rels`.
+fn parts(c: &strict_ooxml_convert::Converted) -> (String, String) {
     let mut media = strict_ooxml_write::package::MediaBag::new();
     for (id, bytes) in &c.media {
         media.insert(id.clone(), bytes.clone());
@@ -26,11 +31,15 @@ fn xml(c: &strict_ooxml_convert::Converted) -> String {
         &strict_ooxml_core::opc::OpenOptions::default(),
     )
     .expect("Strict package");
-    String::from_utf8(
-        p.read_part(&strict_ooxml_core::part::PartId::new("/word/document.xml"))
-            .expect("document"),
+    let read = |name: &str| {
+        p.read_part(&strict_ooxml_core::part::PartId::new(name))
+            .map(|bytes| String::from_utf8(bytes).expect("UTF-8"))
+            .unwrap_or_default()
+    };
+    (
+        read("/word/document.xml"),
+        read("/word/_rels/document.xml.rels"),
     )
-    .expect("UTF-8")
 }
 #[test]
 fn native_text_reaches_strict_xml_without_loss() {
@@ -251,4 +260,42 @@ fn blank_page_does_not_call_recognition_provider() {
         &DjvuOptions::default().text_recovery(std::sync::Arc::new(NoCall)),
     );
     assert_eq!(c.report.recovered_pages(), 0);
+}
+
+#[test]
+fn a_url_maparea_becomes_an_external_hyperlink() {
+    let page = single(&[
+        chunk(b"INFO", &info(100, 100, 72)),
+        chunk(b"TXTa", &text("link")),
+        ant("(maparea \"\" (rect 0 0 100 100) (url \"https://example.invalid/x\"))"),
+    ]);
+    let c = convert(&page, &DjvuOptions::default());
+    let (document, rels) = parts(&c);
+    assert_eq!(document.matches("<w:hyperlink").count(), 1, "{document}");
+    assert!(document.contains("r:id="), "{document}");
+    assert!(rels.contains("https://example.invalid/x"), "{rels}");
+    assert!(rels.contains("TargetMode=\"External\""), "{rels}");
+}
+
+#[test]
+fn an_internal_maparea_links_to_a_page_bookmark() {
+    let first = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("link")),
+            ant("(maparea \"\" (rect 0 0 100 100) (url \"#page=2\"))"),
+        ],
+    );
+    let second = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("target")),
+        ],
+    );
+    let c = convert(&bundled(&[first, second]), &DjvuOptions::default());
+    let (document, _rels) = parts(&c);
+    assert!(document.contains("w:anchor=\"djvu-page-2\""), "{document}");
+    assert!(document.contains("w:name=\"djvu-page-2\""), "{document}");
 }

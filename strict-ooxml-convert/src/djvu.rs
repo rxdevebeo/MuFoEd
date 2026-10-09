@@ -1,11 +1,13 @@
 //! Map native DjVu zones; do not invent PDF glyphs or run PDF structure inference.
+use std::collections::BTreeSet;
+
 use crate::{to_twips, ConversionReport, ConvertError, Converted, Mode, Severity};
 use strict_ooxml_djvu::{
-    Annotation, AnnotationTarget, DjvuDocument, DjvuPage, Rect, TextLayer, TextZone, ZoneKind,
+    AnnotationTarget, DjvuDocument, DjvuPage, Rect, TextLayer, TextZone, ZoneKind,
 };
 use strict_ooxml_wml::model::{
     block::{Block, Paragraph},
-    inline::{Hyperlink, Inline, Run, RunContent, TextNode},
+    inline::{Bookmark, BookmarkId, Hyperlink, Inline, Run, RunContent, TextNode},
     props::{
         PageMargins, PageSize, ParagraphProperties, RunProperties, Section, SectionProperties,
     },
@@ -85,6 +87,8 @@ pub fn convert_djvu(
     for warning in &reader.warnings {
         report.record("djvu.document.unsupported", Severity::Unsupported, warning);
     }
+    // SC-D9/L2: a page that some `maparea` points at gets a bookmark to link to.
+    let bookmarked = bookmarked_pages(all);
     for (index, page) in all
         .get(start - 1..end)
         .unwrap_or_default()
@@ -106,12 +110,32 @@ pub fn convert_djvu(
                 report.lines += count_lines(root);
                 report.record("djvu.box-font",Severity::Inferred,"font size is estimated from a zone's box height; original font and emphasis are unknown");
                 report.record("djvu.graphics",Severity::Inferred,"native text zones are retained; drawings outside the zones are not segmented from the page image");
-                // SC-D9: a `maparea` URL becomes a hyperlink on the text it covers.
-                let links: Vec<&Annotation> = page
-                    .annotations
-                    .iter()
-                    .filter(|a| matches!(a.target, AnnotationTarget::Url(_)))
-                    .collect();
+                // SC-D9: a `maparea` becomes a hyperlink on the text it covers.
+                let mut links: Vec<(Rect, Link)> = Vec::new();
+                for annotation in &page.annotations {
+                    match &annotation.target {
+                        AnnotationTarget::Url(url) => {
+                            links.push((annotation.rect, Link::External(url.clone())));
+                        }
+                        AnnotationTarget::Page(reference) => {
+                            if let Some(target) = resolve_page(reference, page.number, all) {
+                                links.push((
+                                    annotation.rect,
+                                    Link::Anchor(format!("djvu-page-{target}")),
+                                ));
+                            } else {
+                                report.record(
+                                    "djvu.annotation.unresolved",
+                                    Severity::Lost,
+                                    format!(
+                                        "page {}: maparea page link {reference:?} does not resolve",
+                                        page.number
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
                 let mut mapped = vec![false; links.len()];
                 let mut previous = None;
                 for z in zones {
@@ -137,13 +161,11 @@ pub fn convert_djvu(
                         previous = Some(baseline);
                         report.record("djvu.visual-placement",Severity::Inferred,"line boxes estimate leading; glyph positions and original typography are unavailable");
                     }
-                    if let Some(index) = links.iter().enumerate().position(|(index, a)| {
-                        !mapped.get(index).copied().unwrap_or(true) && covers(a.rect, z.rect)
+                    if let Some(index) = links.iter().enumerate().position(|(index, (area, _))| {
+                        !mapped.get(index).copied().unwrap_or(true) && covers(*area, z.rect)
                     }) {
-                        if let Some(AnnotationTarget::Url(url)) =
-                            links.get(index).map(|a| &a.target)
-                        {
-                            wrap_hyperlink(&mut p, url);
+                        if let Some((_, link)) = links.get(index) {
+                            wrap_hyperlink(&mut p, link);
                             if let Some(slot) = mapped.get_mut(index) {
                                 *slot = true;
                             }
@@ -151,15 +173,23 @@ pub fn convert_djvu(
                     }
                     document.body.blocks.push(Block::Paragraph(p));
                 }
-                for (index, annotation) in links.iter().enumerate() {
+                for (index, (_, link)) in links.iter().enumerate() {
                     if mapped.get(index).copied().unwrap_or(false) {
                         report.record(
                             "djvu.annotation.link",
                             Severity::Inferred,
-                            format!("page {}: maparea URL became a hyperlink", page.number),
+                            format!("page {}: maparea became a hyperlink", page.number),
                         );
-                    } else if let AnnotationTarget::Url(url) = &annotation.target {
-                        report.record("djvu.annotation.unmatched",Severity::Lost,format!("page {}: maparea URL {url:?} covers no text zone and is not a hyperlink",page.number));
+                    } else {
+                        let _ = link;
+                        report.record(
+                            "djvu.annotation.unmatched",
+                            Severity::Lost,
+                            format!(
+                                "page {}: maparea covers no text zone and is not a hyperlink",
+                                page.number
+                            ),
+                        );
                     }
                 }
             }
@@ -201,11 +231,31 @@ pub fn convert_djvu(
         if first == document.body.blocks.len() {
             document.body.blocks.push(Block::Paragraph(paragraph("")));
         }
-        // SC-D9 covers URL mapareas; an internal page link needs a bookmark on
-        // the target page and is reported, not dropped silently.
-        for annotation in &page.annotations {
-            if let AnnotationTarget::Page(target) = &annotation.target {
-                report.record("djvu.annotation.page-link",Severity::Lost,format!("page {}: internal maparea link to page {target} is not mapped to a bookmark",page.number));
+        // A `maparea` on a page with no native text cannot cover a word; report
+        // it rather than dropping it silently (SC-D10).
+        if !matches!(page.text, TextLayer::Readable(_)) {
+            for _ in &page.annotations {
+                report.record(
+                    "djvu.annotation.no-text",
+                    Severity::Lost,
+                    format!("page {}: maparea has no native text to cover", page.number),
+                );
+            }
+        }
+        // A page an internal `maparea` points at carries a bookmark to link to.
+        if bookmarked.contains(&page.number) {
+            if let Some(blocks) = document.body.blocks.get_mut(first..) {
+                if add_page_bookmark(
+                    blocks,
+                    &page.number.to_string(),
+                    &format!("djvu-page-{}", page.number),
+                ) {
+                    report.record(
+                        "djvu.annotation.bookmark",
+                        Severity::Inferred,
+                        format!("page {}: bookmark for internal maparea links", page.number),
+                    );
+                }
             }
         }
         let properties = section(page);
@@ -472,6 +522,14 @@ fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
     })
 }
 
+/// A resolved `maparea` link.
+enum Link {
+    /// An external URL (`r:id` via the writer).
+    External(String),
+    /// An in-document bookmark name (`w:anchor`).
+    Anchor(String),
+}
+
 /// Whether a zone's centre falls inside a `maparea` rectangle.
 ///
 /// A maparea is an image-map hotspot; the text it means is the text under it, so
@@ -482,13 +540,91 @@ fn covers(area: Rect, zone: Rect) -> bool {
     cx >= area.x && cx <= area.x + area.width && cy >= area.y && cy <= area.y + area.height
 }
 
-/// Wraps a paragraph's inlines in an external hyperlink.
-fn wrap_hyperlink(paragraph: &mut Paragraph, url: &str) {
+/// The one-based page a `maparea` reference points at, if it resolves.
+///
+/// Order follows `STAGE-9-TASK.md` §7.3 L2: `page=N`, a `±N` offset, a numeric
+/// index, then a page id or title.
+fn resolve_page(reference: &str, current: usize, pages: &[DjvuPage]) -> Option<usize> {
+    let count = pages.len();
+    if let Some(number) = reference.strip_prefix("page=") {
+        return number
+            .parse::<usize>()
+            .ok()
+            .filter(|number| (1..=count).contains(number));
+    }
+    let count = i64::try_from(count).ok()?;
+    if reference.starts_with('+') || reference.starts_with('-') {
+        let delta = reference.parse::<i64>().ok()?;
+        let target = i64::try_from(current).ok()? + delta;
+        if (1..=count).contains(&target) {
+            return usize::try_from(target).ok();
+        }
+        return None;
+    }
+    if let Ok(number) = reference.parse::<usize>() {
+        return (1..=pages.len()).contains(&number).then_some(number);
+    }
+    pages
+        .iter()
+        .find(|page| page.id == reference || page.title == reference)
+        .map(|page| page.number)
+}
+
+/// Every page an internal `maparea` in `pages` points at.
+fn bookmarked_pages(pages: &[DjvuPage]) -> BTreeSet<usize> {
+    let mut bookmarked = BTreeSet::new();
+    for page in pages {
+        for annotation in &page.annotations {
+            if let AnnotationTarget::Page(reference) = &annotation.target {
+                if let Some(target) = resolve_page(reference, page.number, pages) {
+                    bookmarked.insert(target);
+                }
+            }
+        }
+    }
+    bookmarked
+}
+
+/// Wraps a page's first-to-last paragraph in a bookmark. Returns whether one was
+/// written (a page with no paragraph has nowhere to attach it). `id` is the
+/// numeric `w:id` OOXML requires; `name` is the `w:anchor` target.
+fn add_page_bookmark(blocks: &mut [Block], id: &str, name: &str) -> bool {
+    let id = BookmarkId::new(id);
+    let Some(first) = blocks.iter_mut().find_map(paragraph_mut) else {
+        return false;
+    };
+    first.inlines.insert(
+        0,
+        Inline::BookmarkStart(Bookmark {
+            id: id.clone(),
+            name: std::sync::Arc::from(name),
+        }),
+    );
+    let Some(last) = blocks.iter_mut().rev().find_map(paragraph_mut) else {
+        return false;
+    };
+    last.inlines.push(Inline::BookmarkEnd(id));
+    true
+}
+
+fn paragraph_mut(block: &mut Block) -> Option<&mut Paragraph> {
+    match block {
+        Block::Paragraph(paragraph) => Some(paragraph),
+        _ => None,
+    }
+}
+
+/// Wraps a paragraph's inlines in a hyperlink, external or internal.
+fn wrap_hyperlink(paragraph: &mut Paragraph, link: &Link) {
+    let (target, anchor) = match link {
+        Link::External(url) => (Some(std::sync::Arc::from(url.as_str())), None),
+        Link::Anchor(name) => (None, Some(std::sync::Arc::from(name.as_str()))),
+    };
     let inlines = std::mem::take(&mut paragraph.inlines);
     paragraph.inlines = vec![Inline::Hyperlink(Hyperlink {
         rel_id: None,
-        target: Some(std::sync::Arc::from(url)),
-        anchor: None,
+        target,
+        anchor,
         tooltip: None,
         history: false,
         tgt_frame: None,

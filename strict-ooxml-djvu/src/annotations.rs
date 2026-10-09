@@ -12,8 +12,8 @@ use crate::PageInfo;
 pub enum AnnotationTarget {
     /// An external URL.
     Url(String),
-    /// A one-based page within the document.
-    Page(usize),
+    /// An in-document reference: `page=N`, `+N`/`-N`, a page id or a title.
+    Page(String),
 }
 
 /// One resolvable `maparea` annotation.
@@ -117,9 +117,9 @@ fn find_target(region: &str) -> Option<AnnotationTarget> {
     if let Some(at) = region.find("(url") {
         let rest = &region[at..];
         if let Some(open) = rest.find('"') {
-            if let Some(url) = quoted(rest, open) {
-                if !url.is_empty() {
-                    return Some(AnnotationTarget::Url(url));
+            if let Some(href) = quoted(rest, open) {
+                if !href.is_empty() {
+                    return Some(classify(&href));
                 }
             }
         }
@@ -131,7 +131,18 @@ fn find_target(region: &str) -> Option<AnnotationTarget> {
         .next()?
         .parse::<usize>()
         .ok()?;
-    (page > 0).then_some(AnnotationTarget::Page(page))
+    (page > 0).then(|| AnnotationTarget::Page(format!("page={page}")))
+}
+
+/// A `maparea` href is internal when it is a fragment or a page offset.
+fn classify(href: &str) -> AnnotationTarget {
+    if let Some(reference) = href.strip_prefix('#') {
+        AnnotationTarget::Page(reference.to_owned())
+    } else if href.starts_with('+') || href.starts_with('-') {
+        AnnotationTarget::Page(href.to_owned())
+    } else {
+        AnnotationTarget::Url(href.to_owned())
+    }
 }
 
 /// The `"…"` string whose opening quote is at byte index `open`, unescaped.
@@ -185,11 +196,18 @@ mod tests {
     }
 
     #[test]
-    fn a_page_maparea_is_an_internal_target() {
-        let bytes = b"(maparea (rect 0 0 5 5) (page 3))";
-        let found = parse(bytes, info());
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].target, AnnotationTarget::Page(3));
+    fn internal_references_are_page_targets() {
+        // The `#page=N` href and the `(page N)` compatibility form both resolve.
+        for bytes in [
+            b"(maparea (rect 0 0 5 5) (url \"#page=3\"))".as_slice(),
+            b"(maparea (rect 0 0 5 5) (page 3))".as_slice(),
+        ] {
+            let found = parse(bytes, info());
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].target, AnnotationTarget::Page("page=3".to_owned()));
+        }
+        let offset = parse(b"(maparea (rect 0 0 5 5) (url \"+1\"))", info());
+        assert_eq!(offset[0].target, AnnotationTarget::Page("+1".to_owned()));
     }
 
     #[test]

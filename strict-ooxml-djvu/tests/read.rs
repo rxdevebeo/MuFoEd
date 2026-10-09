@@ -108,6 +108,32 @@ fn bundled_pages_follow_dirm_order() {
     assert_eq!(d.pages()[1].info.width, 200);
     assert_eq!(d.pages()[0].id, "p0.djvu");
 }
+
+#[test]
+fn annotations_are_read_per_page() {
+    let first = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("first")),
+            ant("(maparea \"\" (rect 0 0 100 100) (url \"#page=2\"))"),
+        ],
+    );
+    let second = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("second")),
+        ],
+    );
+    let d = open(&bundled(&[first, second]));
+    assert_eq!(d.pages()[0].annotations.len(), 1);
+    assert_eq!(
+        d.pages()[0].annotations[0].target,
+        strict_ooxml_djvu::AnnotationTarget::Page("page=2".to_owned())
+    );
+    assert!(d.pages()[1].annotations.is_empty());
+}
 #[test]
 fn indirect_resolver_and_shared_includes_are_explicit() {
     let page = single(&[

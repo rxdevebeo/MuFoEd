@@ -588,13 +588,16 @@ jobs:
             --oracle /usr/bin/djvutxt --report "$OUT/zone-rotated.json"
           python3 xtool/djvu-render-oracle.py --corpus "$OUT/rotated-render" --ours "$PROBE" \
             --oracle /usr/bin/ddjvu --report "$OUT/render-rotated.json" --pages 1
-          # SC-D9: every maparea URL becomes a w:hyperlink. The corpus has no
-          # annotations, so the fixture is synthesized with djvused.
+          # SC-D9: every maparea becomes a hyperlink (external URL and internal
+          # page link). The corpus has no annotations, so fixtures are synthesized.
           mkdir -p "$OUT/annotated"
-          python3 xtool/djvu-annotate-fixture.py \
-            --input "$CORPUS/Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu" \
-            --out "$OUT/annotated/link.djvu" --djvused /usr/bin/djvused \
+          SRC="$CORPUS/Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu"
+          python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
+            --out "$OUT/annotated/external.djvu" --djvused /usr/bin/djvused \
             --url https://example.invalid/djvu-link
+          python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
+            --out "$OUT/annotated/internal.djvu" --djvused /usr/bin/djvused \
+            --url '#page=2'
           python3 xtool/djvu-ant-oracle.py --corpus "$OUT/annotated" \
             --oracle /usr/bin/djvused --ours target/release/examples/djvu_links \
             --report "$OUT/ant-oracle.json"

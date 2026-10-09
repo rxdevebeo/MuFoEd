@@ -87,6 +87,10 @@ pub(crate) fn text_file(value: &str, compressed: bool) -> Vec<u8> {
     };
     single(&[chunk(b"INFO", &info(100, 100, 72)), txt])
 }
+/// A plain annotation chunk holding `expression` as its UTF-8 S-expression.
+pub(crate) fn ant(expression: &str) -> Vec<u8> {
+    chunk(b"ANTa", expression.as_bytes())
+}
 #[cfg(feature = "djvu-image")]
 pub(crate) fn scan() -> Vec<u8> {
     let mut bm = djvu_bitmap::Bitmap::new(100, 100);
