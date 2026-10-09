@@ -691,7 +691,12 @@ resolver; direct-diff сделан) и corpus tab/leader/keep/widow/pixel geomet
    нулевого auto-spacing остаются только explicit-defaults-vs-inherited
    расхождения (наш writer пишет docDefaults явно, WPS наследует); effective-value
    mismatch на 019/039 не найден.
-4. **Bidi oracle.** Для renderer-level переупорядочивания нужен независимый
-   bidi-oracle (Python `python-bidi` + `uharfbuzz`); пока renderer получает уже
-   direction-homogeneous runs после import-сплита, поэтому этот пункт остаётся
-   Blocked на oracle contract.
+4. **Bidi oracle.** Добавлен независимый `xtool/rtf/bidi_oracle.py`
+   (python-bidi 0.6.11 + uharfbuzz 0.56.3), receipt
+   `RC03-bidi-oracle-arabic.json`: UBA visual string + LTR glyph
+   origins/advances. Однако python-bidi 0.6 отдаёт только переупорядоченную
+   строку, без per-character levels, поэтому geometry-oracle под стратегию
+   «шейпить каждый level-run» не строится напрямую. RTF-очередь отдаёт
+   renderer'у direction-homogeneous runs (import-сплит), так что renderer-level
+   reordering — вне scope RTF mapping и остаётся отдельным renderer-пунктом
+   (Blocked на per-level-run oracle).

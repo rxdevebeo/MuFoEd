@@ -28,8 +28,8 @@
     },
     {
       "item": "renderer line-level visual reordering of mixed-direction runs in RTL-base paragraphs",
-      "contract": "a bidi-aware independent geometry oracle (the native HarfBuzz witness shapes single buffers without the UBA)",
-      "reason": "without an independent bidi oracle, a renderer reordering cannot be validated as correct; the import-level direction split is done and round-trips."
+      "contract": "a per-level-run geometry oracle for the renderer's strategy",
+      "reason": "An independent UBA oracle exists (xtool/rtf/bidi_oracle.py, python-bidi + uharfbuzz), but python-bidi 0.6 exposes only the reordered string, not per-character levels, so a per-level-run geometry oracle cannot be built with it directly. The RTF queue feeds the renderer direction-homogeneous runs (import split), so renderer-level reordering is out of the RTF mapping scope and stays a separate renderer item."
     }
   ],
   "checks": {
@@ -87,6 +87,13 @@
       "detail": "corpus 007 (requested 'Sanskrit 2003') renders through the pinned Devanagari witness via --fonts: 90 pages, 2 embedded faces, honestly Degraded with font.glyph.missing (finite witness subset) and font.script.degraded",
       "receipt": "target/rtf-import/rc03-substitute/007.pdf",
       "limit": "a substitute does not establish exact system-face coverage and is never Clean"
+    },
+    "bidi_oracle": {
+      "status": "Available",
+      "tool": "xtool/rtf/bidi_oracle.py",
+      "engines": "python-bidi 0.6.11 + uharfbuzz 0.56.3 (independent of the renderer's unicode-bidi + harfrust)",
+      "receipt": "target/rtf-import/RC03-bidi-oracle-arabic.json",
+      "output": "UBA visual string and LTR glyph origins/advances of that visual string"
     }
   }
 }
