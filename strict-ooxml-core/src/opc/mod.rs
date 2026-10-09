@@ -516,10 +516,31 @@ const MAIN_CONTENT_TYPES: &[&str] = &[
     "application/vnd.ms-word.template.macroEnabled.main+xml",
 ];
 
+/// Whether `content_type` names the main part of a spreadsheet, a presentation
+/// or a drawing: an OOXML package, but not a document.
+///
+/// Refused under every policy. `Permissive` exists to let an odd *Word*
+/// package through; a workbook it let through only failed later, in the WML
+/// parser, with "expected 'document' root element, found 'workbook'".
+fn is_another_office_format(content_type: &str) -> bool {
+    const OTHER_FAMILIES: &[&str] = &[
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.",
+        "application/vnd.openxmlformats-officedocument.presentationml.",
+        "application/vnd.ms-excel.",
+        "application/vnd.ms-powerpoint.",
+        "application/vnd.ms-visio.",
+    ];
+    let lower = content_type.to_ascii_lowercase();
+    OTHER_FAMILIES
+        .iter()
+        .any(|family| lower.starts_with(family))
+}
+
 /// Validates the main document's content type (AUD-26).
 ///
-/// Under [`ConformancePolicy::StrictOnly`] an unexpected MIME is a hard error.
-/// Under `Normalize`/`Permissive` with a normalizer, the open continues and the
+/// Under [`ConformancePolicy::StrictOnly`] an unexpected MIME is a hard error,
+/// and so, under every policy, is the main part of another Office format.
+/// Otherwise, under `Normalize`/`Permissive` with a normalizer, the open continues and the
 /// normalizer records `T2.content-type`. Without a normalizer the open still
 /// continues (the inspect path under `Permissive`).
 fn check_main_content_type(
@@ -537,7 +558,7 @@ fn check_main_content_type(
     {
         return Ok(());
     }
-    if policy == ConformancePolicy::StrictOnly {
+    if policy == ConformancePolicy::StrictOnly || is_another_office_format(content_type) {
         return Err(StrictError::UnexpectedContentType {
             part: main.clone(),
             content_type: content_type.to_owned(),
@@ -827,6 +848,39 @@ mod tests {
             &MAIN_TYPE.to_ascii_uppercase(),
         );
         open(&bytes).expect("an upper-case MIME is the same MIME");
+    }
+
+    /// A workbook or a presentation is refused under every policy, not only
+    /// under `StrictOnly`: it is not a document `Permissive` can be lenient about.
+    #[test]
+    fn spreadsheets_and_presentations_are_refused_under_every_policy() {
+        let permissive = OpenOptions::default().conformance(super::ConformancePolicy::Permissive);
+        for main_type in [
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+            "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+        ] {
+            let bytes = package(
+                "/_rels/.rels",
+                rels(&[relationship("rId1", "word/document.xml", false)]),
+                main_type,
+            );
+            match Package::open_reader(bytes.as_slice(), &permissive) {
+                Err(StrictError::UnexpectedContentType { content_type, .. }) => {
+                    assert_eq!(content_type, main_type);
+                }
+                other => panic!("{main_type}: expected UnexpectedContentType, got {other:?}"),
+            }
+        }
+        let odd_word = package(
+            "/_rels/.rels",
+            rels(&[relationship("rId1", "word/document.xml", false)]),
+            "application/xml",
+        );
+        assert!(
+            Package::open_reader(odd_word.as_slice(), &permissive).is_ok(),
+            "an odd Word spelling is still Permissive's to let through"
+        );
     }
 
     /// Audit 3.13: an external officeDocument relationship listed first does
