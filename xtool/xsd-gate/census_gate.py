@@ -218,6 +218,8 @@ def vanished_elements(
                 continue
             _drop_duplicate_singletons(old)
             _drop_duplicate_singletons(new)
+            _drop_empty_containers(old)
+            _drop_empty_containers(new)
             # ADR-0014: an Office extension inside `a:extLst` is not written, and
             # the report names it under `a:ext`. Without that citation the whole
             # subtree stays inventory.
@@ -1189,6 +1191,24 @@ def _strip_extension_ext(root: etree._Element) -> None:
                 grand = parent.getparent()
                 if grand is not None:
                     grand.remove(parent)
+
+
+# Border, margin and tab containers whose meaning is their children: an empty
+# one (`<w:tcBorders></w:tcBorders>`) says nothing a missing one does not.
+_EMPTY_CONTAINERS = {"tcBorders", "tblBorders", "pBdr", "tcMar", "tblCellMar", "tabs"}
+
+
+def _drop_empty_containers(root: etree._Element) -> None:
+    for element in list(root.iter()):
+        if not isinstance(element.tag, str):
+            continue
+        if etree.QName(element).localname not in _EMPTY_CONTAINERS:
+            continue
+        if element.attrib or any(isinstance(child.tag, str) for child in element):
+            continue
+        parent = element.getparent()
+        if parent is not None:
+            parent.remove(element)
 
 
 def _drop_duplicate_singletons(root: etree._Element) -> None:

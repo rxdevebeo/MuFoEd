@@ -611,6 +611,7 @@ def main() -> int:
     test_p15_unsigned_char_space_is_the_signed_pitch()
     test_p15_extension_names_match_whole()
     test_p15_extension_ext_is_stripped_alone()
+    test_p15_empty_border_container_is_nothing()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -1005,6 +1006,17 @@ def test_p15_extension_ext_is_stripped_alone() -> None:
     census_gate._strip_extension_ext(kept)
     if len(kept) != 1:
         raise SystemExit("an extension with only DrawingML content was stripped")
+
+
+def test_p15_empty_border_container_is_nothing() -> None:
+    """P15: an empty `w:tcBorders` goes; one with an edge stays."""
+    root = etree.fromstring(
+        f"<w:tc xmlns:w='{WML_T}'><w:tcPr><w:tcBorders></w:tcBorders></w:tcPr>"
+        "<w:tcPr><w:tcBorders><w:top w:val='single'/></w:tcBorders></w:tcPr></w:tc>"
+    )
+    census_gate._drop_empty_containers(root)
+    if [len(tc_pr) for tc_pr in root] != [0, 1]:
+        raise SystemExit("an empty tcBorders was counted, or a bordered one dropped")
 
 
 def test_p15_document_protection_needs_its_citation() -> None:
