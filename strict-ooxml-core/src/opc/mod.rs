@@ -173,7 +173,6 @@ impl Package {
         Self::open_reader(file, options)
     }
 
-    #[allow(clippy::case_sensitive_file_extension_comparisons)]
     fn open_archive(data: Arc<Vec<u8>>, options: &OpenOptions) -> Result<Self> {
         let zip = ZipArchive::new(data, &options.limits)?;
         let normalizer = options.normalization.as_deref();
@@ -200,12 +199,11 @@ impl Package {
         let mut rels = RelationshipGraph::new();
         let mut raw_relationship_types: Vec<String> = Vec::new();
         for entry in zip.entries() {
-            if !entry.id.as_str().ends_with(".rels") {
-                continue;
-            }
             // AUD-25: only `<dir>/_rels/<name>.rels` is a relationship part.
             // A stray `*.rels` elsewhere stays an ordinary part (and is not
-            // attributed to the package root).
+            // attributed to the package root). The match is ASCII
+            // case-insensitive, like every other part-name comparison: a
+            // `_RELS/.RELS` is the same part as `_rels/.rels` (audit 2.2).
             let Some(source) = source_part_for_rels(&entry.id) else {
                 continue;
             };
@@ -479,13 +477,27 @@ fn build_parts(zip: &ZipArchive, content_types: &ContentTypeIndex) -> Vec<Part> 
 fn locate_main_document(rels: &RelationshipGraph, zip: &ZipArchive) -> Result<PartId> {
     use rels::RelType;
     let root = PartId::new("/");
-    let target = rels
+    let mut office_documents = rels
         .relationships(&root)
         .iter()
-        .find(|rel| rel.rel_type == RelType::OfficeDocument)
-        .and_then(|rel| rel.resolved.clone())
+        .filter(|rel| rel.rel_type == RelType::OfficeDocument)
+        .peekable();
+    // An `External` officeDocument relationship has no part to resolve to;
+    // the first *internal* one is the main document, wherever it sits in the
+    // list. When there are some and every one of them is external, say so:
+    // "no officeDocument relationship" would send the reader looking for a
+    // relationship that is plainly there (audit 3.13).
+    let any_declared = office_documents.peek().is_some();
+    let target = office_documents
+        .find_map(|rel| rel.resolved.clone())
         .ok_or_else(|| {
-            StrictError::InvalidZip("package has no officeDocument relationship".to_owned())
+            StrictError::InvalidZip(if any_declared {
+                "package officeDocument relationship is external; \
+                 the main document must be a part inside the package"
+                    .to_owned()
+            } else {
+                "package has no officeDocument relationship".to_owned()
+            })
         })?;
     if zip.entry(&target).is_none() {
         return Err(StrictError::MissingPart(target));
@@ -517,7 +529,12 @@ fn check_main_content_type(
     normalizer: Option<&dyn RawNormalizer>,
 ) -> Result<()> {
     let content_type = content_types.content_type_for(main).unwrap_or("");
-    if MAIN_CONTENT_TYPES.contains(&content_type) {
+    // MIME types are case-insensitive (RFC 2045 §5.1): a producer that writes
+    // `macroenabled` for `macroEnabled` names the same type (audit 3.7).
+    if MAIN_CONTENT_TYPES
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(content_type))
+    {
         return Ok(());
     }
     if policy == ConformancePolicy::StrictOnly {
@@ -719,5 +736,140 @@ fn map_read_error(error: io::Error) -> StrictError {
             StrictError::InvalidZip(error.to_string())
         }
         _ => StrictError::Io(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OpenOptions, Package};
+    use crate::error::StrictError;
+    use crate::opc::zip::write::ZipWriter;
+    use crate::part::PartId;
+
+    const MAIN_TYPE: &str =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
+
+    fn content_types(main_type: &str) -> Vec<u8> {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="{main_type}"/>
+</Types>"#
+        )
+        .into_bytes()
+    }
+
+    fn relationship(id: &str, target: &str, external: bool) -> String {
+        let mode = if external {
+            r#" TargetMode="External""#
+        } else {
+            ""
+        };
+        format!(
+            r#"<Relationship Id="{id}" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument" Target="{target}"{mode}/>"#
+        )
+    }
+
+    fn rels(relationships: &[String]) -> Vec<u8> {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{}</Relationships>"#,
+            relationships.concat()
+        )
+        .into_bytes()
+    }
+
+    fn package(rels_name: &str, rels: Vec<u8>, main_type: &str) -> Vec<u8> {
+        let mut writer = ZipWriter::new();
+        writer
+            .add_part(
+                &PartId::new("/[Content_Types].xml"),
+                content_types(main_type),
+            )
+            .expect("content types");
+        writer
+            .add_part(&PartId::new(rels_name), rels)
+            .expect("rels");
+        writer
+            .add_part(&PartId::new("/word/document.xml"), b"<document/>".to_vec())
+            .expect("document");
+        writer.finish().expect("finish")
+    }
+
+    fn open(bytes: &[u8]) -> crate::error::Result<Package> {
+        Package::open_reader(bytes, &OpenOptions::default())
+    }
+
+    /// Audit 2.2: the package relationships are found whatever the casing of
+    /// `_rels/.rels`, as every other part name is.
+    #[test]
+    fn upper_case_package_relationships_are_found() {
+        let bytes = package(
+            "/_RELS/.RELS",
+            rels(&[relationship("rId1", "word/document.xml", false)]),
+            MAIN_TYPE,
+        );
+        let package = open(&bytes).expect("open");
+        assert_eq!(
+            package.main_document_part().expect("main").as_str(),
+            "/word/document.xml"
+        );
+    }
+
+    /// Audit 3.7: a MIME type is case-insensitive.
+    #[test]
+    fn the_main_content_type_is_compared_case_insensitively() {
+        let bytes = package(
+            "/_rels/.rels",
+            rels(&[relationship("rId1", "word/document.xml", false)]),
+            &MAIN_TYPE.to_ascii_uppercase(),
+        );
+        open(&bytes).expect("an upper-case MIME is the same MIME");
+    }
+
+    /// Audit 3.13: an external officeDocument relationship listed first does
+    /// not hide the internal one after it.
+    #[test]
+    fn an_external_office_document_relationship_is_skipped() {
+        let bytes = package(
+            "/_rels/.rels",
+            rels(&[
+                relationship("rId1", "http://example.com/doc.xml", true),
+                relationship("rId2", "word/document.xml", false),
+            ]),
+            MAIN_TYPE,
+        );
+        let package = open(&bytes).expect("open");
+        assert_eq!(
+            package.main_document_part().expect("main").as_str(),
+            "/word/document.xml"
+        );
+    }
+
+    /// Audit 3.13: when every officeDocument relationship is external, the
+    /// error says that, not that there is none.
+    #[test]
+    fn only_external_office_document_relationships_are_named_as_such() {
+        let bytes = package(
+            "/_rels/.rels",
+            rels(&[relationship("rId1", "http://example.com/doc.xml", true)]),
+            MAIN_TYPE,
+        );
+        match open(&bytes) {
+            Err(StrictError::InvalidZip(message)) => {
+                assert!(message.contains("is external"), "{message}");
+            }
+            other => panic!("expected InvalidZip, got {other:?}"),
+        }
+
+        let bytes = package("/_rels/.rels", rels(&[]), MAIN_TYPE);
+        match open(&bytes) {
+            Err(StrictError::InvalidZip(message)) => {
+                assert!(message.contains("no officeDocument"), "{message}");
+            }
+            other => panic!("expected InvalidZip, got {other:?}"),
+        }
     }
 }

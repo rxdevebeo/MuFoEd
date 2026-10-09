@@ -138,15 +138,18 @@ impl ZipWriter {
                 actual: data.len() as u64,
             });
         }
-        // Saturating: the limit check right after still refuses.
-        self.total = self.total.saturating_add(data.len() as u64);
-        if self.total > self.limits.max_total_uncompressed {
+        // Saturating: the limit check right after still refuses. The running
+        // total is stored only once the part is accepted, so a refused part
+        // does not eat into the budget of the parts added after it.
+        let total = self.total.saturating_add(data.len() as u64);
+        if total > self.limits.max_total_uncompressed {
             return Err(StrictError::LimitExceeded {
                 kind: LimitKind::TotalUncompressed,
                 limit: self.limits.max_total_uncompressed,
-                actual: self.total,
+                actual: total,
             });
         }
+        self.total = total;
         self.entries.push((name, data));
         Ok(())
     }
@@ -196,6 +199,18 @@ impl ZipWriter {
                 name_len,
                 offset,
             );
+            // Checked as the archive grows, not only at the end: a package far
+            // over the budget is refused before the rest of it is compressed.
+            // The central directory and the end record only add to this, so
+            // the running size is a lower bound of the final one.
+            let running = (local.len() as u64).saturating_add(central.len() as u64);
+            if running > self.limits.max_compressed_input {
+                return Err(StrictError::LimitExceeded {
+                    kind: LimitKind::CompressedInput,
+                    limit: self.limits.max_compressed_input,
+                    actual: running,
+                });
+            }
         }
 
         let central_offset = u32_field(local.len())?;
@@ -455,6 +470,71 @@ mod tests {
             .add_part(&PartId::new("/b.xml"), b"1")
             .expect_err("entry-count limit");
         assert!(error.to_string().contains("zip_entries"), "{error}");
+    }
+
+    #[test]
+    fn a_refused_part_does_not_consume_the_total_budget() {
+        // Audit 2.1: the running total used to be raised before the check and
+        // kept after the refusal, so a part that did not fit shrank the budget
+        // for every part after it.
+        let limits = ResourceLimits {
+            max_zip_entries: 8,
+            max_single_uncompressed: 16,
+            max_total_uncompressed: 10,
+            ..ResourceLimits::default()
+        };
+        let mut writer = ZipWriter::with_limits(limits);
+        writer
+            .add_part(&PartId::new("/a.xml"), vec![0u8; 6])
+            .expect("6 of 10");
+        let error = writer
+            .add_part(&PartId::new("/b.xml"), vec![0u8; 8])
+            .expect_err("6 + 8 > 10");
+        assert!(
+            matches!(
+                error,
+                StrictError::LimitExceeded {
+                    kind: LimitKind::TotalUncompressed,
+                    actual: 14,
+                    ..
+                }
+            ),
+            "{error}"
+        );
+        writer
+            .add_part(&PartId::new("/c.xml"), vec![0u8; 4])
+            .expect("6 + 4 = 10 still fits");
+        assert_eq!(writer.len(), 2);
+    }
+
+    #[test]
+    fn the_compressed_input_budget_is_checked_while_building() {
+        // Audit 3.8: the archive is refused as soon as its running size passes
+        // the budget, and the error carries the size reached so far rather
+        // than the size of the whole archive.
+        let limits = ResourceLimits {
+            max_compressed_input: 64,
+            ..ResourceLimits::default()
+        };
+        let mut writer = ZipWriter::with_limits(limits);
+        for index in 0..32u32 {
+            writer
+                .add_part(&PartId::new(format!("/p{index}.bin")), vec![0u8; 1])
+                .expect("added");
+        }
+        match writer.finish() {
+            Err(StrictError::LimitExceeded {
+                kind: LimitKind::CompressedInput,
+                limit,
+                actual,
+            }) => {
+                assert_eq!(limit, 64);
+                // One entry is 30 + 6 + 1 local and 46 + 6 central bytes (89):
+                // the first entry alone is over, so the loop stops there.
+                assert_eq!(actual, 89, "stopped after the first entry");
+            }
+            other => panic!("expected CompressedInput, got {other:?}"),
+        }
     }
 
     #[test]
