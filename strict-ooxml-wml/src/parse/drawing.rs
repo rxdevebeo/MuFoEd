@@ -822,7 +822,10 @@ impl PartParser<'_> {
         }
         let kept = self.drop_extension_ext(&pieces);
         // ADR-0014: nothing outside Strict is written, wherever it sat.
-        let foreign = pieces.iter().zip(&kept).any(|(piece, keep)| *keep && piece.is_foreign());
+        let foreign = pieces
+            .iter()
+            .zip(&kept)
+            .any(|(piece, keep)| *keep && piece.is_foreign());
         if foreign || !kept.first().copied().unwrap_or(false) {
             return Ok(None);
         }
@@ -909,17 +912,21 @@ impl PartParser<'_> {
             let Piece::Start(name, attrs) = piece else {
                 continue;
             };
-            if !kept[at] || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "ext" {
+            let open = kept.get(at).copied().unwrap_or(false);
+            if !open || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "ext" {
                 continue;
             }
             let end = piece_end(pieces, at);
-            if pieces[at..end].iter().any(Piece::is_foreign) {
+            let foreign = pieces.iter().take(end).skip(at).any(Piece::is_foreign);
+            if foreign {
                 let uri = plain_attr(attrs, "uri").unwrap_or_default().to_owned();
-                kept[at..end].iter_mut().for_each(|keep| *keep = false);
+                clear_pieces(&mut kept, at, end);
                 self.record(
                     "a:ext",
                     SupportStatus::Unsupported,
-                    Some(format!("Office extension {uri} is not Strict and is not written")),
+                    Some(format!(
+                        "Office extension {uri} is not Strict and is not written"
+                    )),
                     Some(self.location()),
                 );
             }
@@ -928,14 +935,19 @@ impl PartParser<'_> {
             let Piece::Start(name, _) = piece else {
                 continue;
             };
-            if !kept[at] || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "extLst" {
+            let open = kept.get(at).copied().unwrap_or(false);
+            if !open || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "extLst" {
                 continue;
             }
             let end = piece_end(pieces, at);
-            let has_child = (at + 1..end)
-                .any(|index| kept[index] && matches!(pieces[index], Piece::Start(..)));
+            let has_child = pieces
+                .iter()
+                .zip(&kept)
+                .take(end)
+                .skip(at + 1)
+                .any(|(piece, keep)| *keep && matches!(piece, Piece::Start(..)));
             if !has_child {
-                kept[at..end].iter_mut().for_each(|keep| *keep = false);
+                clear_pieces(&mut kept, at, end);
             }
         }
         kept
@@ -2273,12 +2285,19 @@ impl Piece {
         };
         match self {
             Self::Start(name, attrs) => {
-                !strict(name.ns.as_ref())
-                    || attrs.iter().any(|attr| !strict(attr.name.ns.as_ref()))
+                !strict(name.ns.as_ref()) || attrs.iter().any(|attr| !strict(attr.name.ns.as_ref()))
             }
             Self::End(_) | Self::Text(_) => false,
         }
     }
+}
+
+/// Marks the pieces from `at` up to `end` as not written.
+fn clear_pieces(kept: &mut [bool], at: usize, end: usize) {
+    kept.iter_mut()
+        .take(end)
+        .skip(at)
+        .for_each(|keep| *keep = false);
 }
 
 /// The index one past the end tag that closes the start tag at `at`.

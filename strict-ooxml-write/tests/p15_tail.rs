@@ -96,9 +96,15 @@ behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">
             .expect("document"),
     )
     .into_owned();
-    assert!(xml.contains(r#"<wp:simplePos x="635" y="914400"/>"#), "{xml}");
+    assert!(
+        xml.contains(r#"<wp:simplePos x="635" y="914400"/>"#),
+        "{xml}"
+    );
     assert!(xml.contains(r#"hidden="false""#), "{xml}");
-    assert!(xml.contains(r#"<pic:cNvPicPr preferRelativeResize="0">"#), "{xml}");
+    assert!(
+        xml.contains(r#"<pic:cNvPicPr preferRelativeResize="0">"#),
+        "{xml}"
+    );
     assert!(
         xml.contains(r#"<a:picLocks noChangeAspect="1" noChangeArrowheads="1"/>"#),
         "{xml}"
@@ -138,6 +144,12 @@ fn t_p15_shape_colours_keep_their_element() {
     let xml = written_document(&shape(
         r#"<a:schemeClr val="accent1"><a:lumMod val="60%"/><a:lumOff val="40%"/></a:schemeClr>"#,
     ));
-    assert!(xml.contains("<a:lumMod ") && xml.contains(r#"val="60%""#), "{xml}");
-    assert!(xml.contains("<a:lumOff ") && xml.contains(r#"val="40%""#), "{xml}");
+    assert!(
+        xml.contains("<a:lumMod ") && xml.contains(r#"val="60%""#),
+        "{xml}"
+    );
+    assert!(
+        xml.contains("<a:lumOff ") && xml.contains(r#"val="40%""#),
+        "{xml}"
+    );
 }

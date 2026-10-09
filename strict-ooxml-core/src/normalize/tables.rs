@@ -581,7 +581,10 @@ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
             | ("alphaRepl", "a")
             | ("hsl", "sat" | "lum")
             | ("outerShdw", "sx" | "sy")
-            | ("reflection", "stA" | "stPos" | "endA" | "endPos" | "sx" | "sy")
+            | (
+                "reflection",
+                "stA" | "stPos" | "endA" | "endPos" | "sx" | "sy"
+            )
     ) {
         return true;
     }
