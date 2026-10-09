@@ -1009,6 +1009,33 @@ fn wps_sectd_before_sect_keeps_each_section_header() {
 }
 
 #[test]
+fn bookmarks_become_paired_start_and_end_inlines() {
+    let d = import(
+        br"{\rtf1 Before{\*\bkmkstart mark}Text{\*\bkmkend mark}After}",
+        &RtfOptions::default(),
+    )
+    .unwrap()
+    .document;
+    let mut start = None;
+    let mut end = None;
+    for block in &d.body.blocks {
+        if let Block::Paragraph(paragraph) = block {
+            for inline in &paragraph.inlines {
+                match inline {
+                    Inline::BookmarkStart(bookmark) => {
+                        assert_eq!(bookmark.name.as_ref(), "mark");
+                        start = Some(bookmark.id.clone());
+                    }
+                    Inline::BookmarkEnd(id) => end = Some(id.clone()),
+                    _ => {}
+                }
+            }
+        }
+    }
+    assert_eq!(start, end, "start and end must share a w:id");
+}
+
+#[test]
 fn chapter_page_number_becomes_a_page_field() {
     // `\chpgn`/`\sectnum` render numbers; keep them as dynamic fields so a
     // renderer computes the value instead of dropping them.

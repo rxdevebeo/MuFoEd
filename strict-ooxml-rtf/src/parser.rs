@@ -15,14 +15,14 @@ use strict_ooxml_core::opc::rels::RelId;
 use strict_ooxml_wml::model::document::{Body, DocumentSource};
 use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
-    AbstractNum, AbstractNumId, Block, BreakKind, CellProperties, Color, Field, Fonts, GridCol,
-    HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl, Inline, Justification,
-    Language, Level, LineSpacingRule, Note, NoteKind, NoteTable, Num, NumId, NumPr, NumberingTable,
-    PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, RowProperties, Rsids,
-    Run, RunContent, RunProperties, Section, SectionProperties, SectionType, Space, Style, StyleId,
-    StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell,
-    TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign, VerticalJc,
-    VerticalMerge, Width, WidthKind,
+    AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, BreakKind, CellProperties, Color,
+    Field, Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl,
+    Inline, Justification, Language, Level, LineSpacingRule, Note, NoteKind, NoteTable, Num, NumId,
+    NumPr, NumberingTable, PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties,
+    RowProperties, Rsids, Run, RunContent, RunProperties, Section, SectionProperties, SectionType,
+    Space, Style, StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table,
+    TableCell, TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign,
+    VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -61,6 +61,9 @@ enum RegionKind {
     },
     Field {
         instruction: String,
+    },
+    Bookmark {
+        is_start: bool,
     },
 }
 struct RegionFrame {
@@ -371,6 +374,9 @@ struct Parser<'a> {
     style_draft: Option<StyleDraft>,
     regions: Vec<RegionFrame>,
     headers_footers: Vec<HeaderFooter>,
+    /// Bookmark name to `w:id`, so a `\bkmkstart`/`\bkmkend` pair shares an id.
+    bookmarks: std::collections::HashMap<String, u32>,
+    bookmark_seq: u32,
     footnotes: NoteTable,
     endnotes: NoteTable,
     numbering: NumberingTable,
@@ -673,6 +679,45 @@ impl Parser<'_> {
                     inlines,
                     location: SourceLocation::unknown(),
                 })))
+            }
+            RegionKind::Bookmark { is_start } => {
+                let mut name = String::new();
+                for block in &blocks {
+                    if let Block::Paragraph(paragraph) = block {
+                        for inline in &paragraph.inlines {
+                            if let Inline::Run(run) = inline {
+                                for content in &run.content {
+                                    if let RunContent::Text(text) = content {
+                                        name.push_str(&text.text);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let name = name.trim().to_owned();
+                if name.is_empty() {
+                    self.issue(span, Severity::Loss, "bookmark:empty-name")?;
+                    return Ok(None);
+                }
+                // `w:id` is a decimal number and pairs start with end; `w:name`
+                // is the bookmark's identity for hyperlinks and REF fields.
+                let id = if let Some(id) = self.bookmarks.get(&name) {
+                    *id
+                } else {
+                    let id = self.bookmark_seq;
+                    self.bookmark_seq = self.bookmark_seq.saturating_add(1);
+                    self.bookmarks.insert(name.clone(), id);
+                    id
+                };
+                if is_start {
+                    Ok(Some(Inline::BookmarkStart(Bookmark::new(
+                        id.to_string(),
+                        name,
+                    ))))
+                } else {
+                    Ok(Some(Inline::BookmarkEnd(BookmarkId::new(id.to_string()))))
+                }
             }
         }
     }
@@ -1934,6 +1979,17 @@ impl Parser<'_> {
                 self.state.destination = Destination::FieldInstruction;
                 return Ok(());
             }
+            if name == "bkmkstart" || name == "bkmkend" {
+                // `{\*\bkmkstart Name}` / `{\*\bkmkend Name}`: the name is the
+                // destination's text.
+                self.state.ignorable = false;
+                return self.begin_region(
+                    RegionKind::Bookmark {
+                        is_start: name == "bkmkstart",
+                    },
+                    span.start,
+                );
+            }
         }
         if first && self.state.ignorable {
             self.state.skip = true;
@@ -3112,6 +3168,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         style_draft: None,
         regions: vec![],
         headers_footers: vec![],
+        bookmarks: std::collections::HashMap::new(),
+        bookmark_seq: 0,
         footnotes: NoteTable::new(),
         endnotes: NoteTable::new(),
         numbering: NumberingTable::new(),
