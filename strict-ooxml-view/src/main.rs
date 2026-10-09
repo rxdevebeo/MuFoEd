@@ -247,7 +247,9 @@ where
             let _ = sender.send(job());
         });
     if let Err(error) = spawned {
-        return Err(Unfinished::Lost(format!("could not start a thread: {error}")));
+        return Err(Unfinished::Lost(format!(
+            "could not start a thread: {error}"
+        )));
     }
     match receiver.recv_timeout(timeout) {
         Ok(value) => Ok(value),
@@ -685,8 +687,8 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::{
-        corpus_json, json_number, json_string, known_for, query_value, render_bounded,
-        run_bounded, slug, unique_id, Config, Corpus, Entry, Unfinished, EXIT_OK, KNOWN_CORPORA,
+        corpus_json, json_number, json_string, known_for, query_value, render_bounded, run_bounded,
+        slug, unique_id, Config, Corpus, Entry, Unfinished, EXIT_OK, KNOWN_CORPORA,
     };
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};

@@ -289,6 +289,7 @@ impl TransitionalNormalizer {
     /// Returns an error when the part is not well-formed XML, when rewriting
     /// would exceed [`NormalizerOptions::max_expansion`], or when
     /// [`InvariantMode::Strict`] is set and an invariant is violated.
+    #[allow(clippy::too_many_lines)]
     pub fn normalize<'a>(&self, part: &PartId, bytes: &'a [u8]) -> Result<Cow<'a, [u8]>> {
         // Cheap pre-check: a part with no Transitional signal at all is
         // returned untouched without being parsed. This is what makes SC-1
@@ -1935,9 +1936,10 @@ impl PartContext {
     fn prefix_for(&mut self, uri: &str) -> String {
         // Outermost first, as the table always answered, but never a prefix an
         // inner declaration has since rebound to something else.
-        let bound = self.prefixes.iter().find(|binding| {
-            binding.uri == uri && self.uri_for(&binding.prefix) == Some(uri)
-        });
+        let bound = self
+            .prefixes
+            .iter()
+            .find(|binding| binding.uri == uri && self.uri_for(&binding.prefix) == Some(uri));
         if let Some(binding) = bound {
             return String::from_utf8_lossy(&binding.prefix).into_owned();
         }
@@ -4540,7 +4542,7 @@ mod tests {
         let source = r#"<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
  xmlns:cd="http://schemas.microsoft.com/office/word/2010/wordprocessingCustomData">
-<w:settings><mc:AlternateContent><mc:Choice Requires="cd"><cd:typoFeatureVersion val="1"/>
+<mc:AlternateContent><mc:Choice Requires="cd"><cd:typoFeatureVersion val="1"/>
 </mc:Choice></mc:AlternateContent><w:zoom w:percent="100"/></w:settings>"#;
         let output = normalizer
             .normalize(&PartId::new("/word/settings.xml"), source.as_bytes())
@@ -5033,9 +5035,20 @@ mod tests {
 <p:tag/></w:body></w:document>"#;
         let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
         let text = String::from_utf8(output.into_owned()).unwrap();
-        assert!(text.contains(r#"w:val="start""#), "the part was rewritten: {text}");
-        assert_eq!(namespace_of(&text, "inside").as_deref(), Some("urn:inner"), "{text}");
-        assert_eq!(namespace_of(&text, "tag").as_deref(), Some("urn:outer"), "{text}");
+        assert!(
+            text.contains(r#"w:val="start""#),
+            "the part was rewritten: {text}"
+        );
+        assert_eq!(
+            namespace_of(&text, "inside").as_deref(),
+            Some("urn:inner"),
+            "{text}"
+        );
+        assert_eq!(
+            namespace_of(&text, "tag").as_deref(),
+            Some("urn:outer"),
+            "{text}"
+        );
     }
 
     /// The bookkeeping under the test above, including the record that a
@@ -5087,7 +5100,7 @@ mod tests {
             br#"<a xmlns:m="http://schemas.openxmlformats.org/markup-compatibility/2006" m:Ignorable="x"/>"#
         ));
         assert!(super::has_mce_ignorable(br#"<a mc:Ignorable="x"/>"#));
-        assert!(!super::has_mce_ignorable(br#"<a><b>mc:Ignorable</b></a>"#));
+        assert!(!super::has_mce_ignorable(br"<a><b>mc:Ignorable</b></a>"));
     }
 
     /// A part that stops inside a `w:pict` is damaged, and is left exactly as it

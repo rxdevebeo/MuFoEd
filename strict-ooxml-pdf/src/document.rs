@@ -609,10 +609,7 @@ fn deref<'a>(document: &'a lopdf::Document, object: &'a Object) -> Option<&'a Ob
 }
 
 /// `object` as a dictionary, references followed.
-fn dict_of<'a>(
-    document: &'a lopdf::Document,
-    object: &'a Object,
-) -> Option<&'a lopdf::Dictionary> {
+fn dict_of<'a>(document: &'a lopdf::Document, object: &'a Object) -> Option<&'a lopdf::Dictionary> {
     deref(document, object).and_then(|value| value.as_dict().ok())
 }
 
@@ -1295,7 +1292,9 @@ mod tests {
         pdf.page(1).expect("first page");
         pdf.page(2).expect("second page");
         assert_eq!(pdf.content_bytes_read(), 32);
-        let error = pdf.page(3).expect_err("third page is over the document budget");
+        let error = pdf
+            .page(3)
+            .expect_err("third page is over the document budget");
         assert!(
             matches!(
                 error,

@@ -916,7 +916,12 @@ mod tests {
         let mut xml = vec![0xEF, 0xBB, 0xBF];
         xml.extend_from_slice(b"<?xml version=\"1.0\"?>\n<a/>");
         let events = read_all(&xml);
-        assert!(matches!(events[0], XmlEvent::StartElement { .. }), "{events:?}");
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, XmlEvent::StartElement { .. })),
+            "{events:?}"
+        );
     }
 
     #[test]

@@ -47,7 +47,6 @@ pub(crate) struct ZipEntry {
     pub(crate) compression: Compression,
     pub(crate) compressed_size: u64,
     pub(crate) uncompressed_size: u64,
-    pub(crate) local_header_offset: u64,
     pub(crate) crc32: u32,
     /// Where the entry's compressed bytes sit in the archive, resolved from
     /// its local header once, at open (`start..end`).
@@ -154,7 +153,6 @@ impl ZipArchive {
                 compression: raw.compression,
                 compressed_size: raw.compressed_size,
                 uncompressed_size: raw.uncompressed_size,
-                local_header_offset: raw.local_header_offset,
                 crc32: raw.crc32,
                 data_start,
                 data_end,
@@ -1044,7 +1042,8 @@ mod tests {
         push_u16(&mut central, 0);
         push_u16(&mut central, 0);
         push_u32(&mut central, 0);
-        push_u32(&mut central, cd_offset);
+        // The local header is at the start of the archive.
+        push_u32(&mut central, 0);
         central.extend_from_slice(name.as_bytes());
         let cd_size = central.len() as u32;
         out.extend_from_slice(&central);
@@ -1161,7 +1160,8 @@ mod tests {
         push_u16(&mut central, 0);
         push_u16(&mut central, 0);
         push_u32(&mut central, 0);
-        push_u32(&mut central, cd_offset);
+        // The local header is at the start of the archive.
+        push_u32(&mut central, 0);
         central.extend_from_slice(name.as_bytes());
         let cd_size = central.len() as u32;
         out.extend_from_slice(&central);
