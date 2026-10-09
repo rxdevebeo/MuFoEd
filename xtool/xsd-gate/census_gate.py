@@ -1328,6 +1328,13 @@ def _same_attr_value(
         return True
     if _same_measure(left, right):
         return True
+    # Word writes a negative `w:docGrid@charSpace` as its unsigned 32-bit pattern.
+    if element == "docGrid" and attr == "charSpace":
+        try:
+            if (int(left) - int(right)) % (1 << 32) == 0:
+                return True
+        except ValueError:
+            pass
     if _same_hex(left, right):
         return True
     # DrawingML ST_Percentage uses thousandths in Transitional and a percent

@@ -608,6 +608,7 @@ def main() -> int:
     test_p15_duplicate_proof_state_is_one()
     test_p15_document_protection_needs_its_citation()
     test_p15_bare_on_off_counts()
+    test_p15_unsigned_char_space_is_the_signed_pitch()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -961,6 +962,14 @@ def test_p15_bare_on_off_counts() -> None:
     bare = census_gate._bare_elements(root)
     if bare[("titlePg", "sectPr", "w", "w")] != 1 or bare[("cols", "sectPr", "w", "w")]:
         raise SystemExit(f"bare on/off elements miscounted: {dict(bare)}")
+
+
+def test_p15_unsigned_char_space_is_the_signed_pitch() -> None:
+    """P15: `4294961151` and `-6145` are one `w:docGrid@charSpace`."""
+    if not census_gate._same_attr_value("charSpace", "4294961151", "-6145", "docGrid"):
+        raise SystemExit("the unsigned charSpace pattern was a different pitch")
+    if census_gate._same_attr_value("charSpace", "4294961151", "-6144", "docGrid"):
+        raise SystemExit("a different charSpace matched")
 
 
 def test_p15_document_protection_needs_its_citation() -> None:

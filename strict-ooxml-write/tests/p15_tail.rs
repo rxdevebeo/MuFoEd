@@ -48,3 +48,11 @@ fn t_p15_column_bookmark_and_header_off_survive() {
     assert!(xml.contains(r#"w:colLast="2""#), "{xml}");
     assert!(xml.contains(r#"<w:tblHeader w:val="false"/>"#), "{xml}");
 }
+
+#[test]
+fn t_p15_unsigned_char_space_is_written_signed() {
+    let xml = written_document(
+        "<w:p/><w:sectPr><w:docGrid w:linePitch=\"360\" w:charSpace=\"4294961151\"/></w:sectPr>",
+    );
+    assert!(xml.contains(r#"w:charSpace="-6145""#), "{xml}");
+}

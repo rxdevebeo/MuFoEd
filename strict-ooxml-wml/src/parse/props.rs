@@ -1114,11 +1114,15 @@ impl PartParser<'_> {
                                         "linePitch",
                                         "w:docGrid",
                                     ),
-                                    character_space: parser.measure_i32(
-                                        &attrs,
-                                        "charSpace",
-                                        "w:docGrid",
-                                    ),
+                                    // Word writes a negative pitch as its unsigned
+                                    // 32-bit pattern (`4294961151` is -6145).
+                                    character_space: wml_attr(&attrs, "charSpace")
+                                        .and_then(|value| value.trim().parse::<u32>().ok())
+                                        .filter(|value| i32::try_from(*value).is_err())
+                                        .map(u32::cast_signed)
+                                        .or_else(|| {
+                                            parser.measure_i32(&attrs, "charSpace", "w:docGrid")
+                                        }),
                                 });
                             }
                             "vAlign" => {
