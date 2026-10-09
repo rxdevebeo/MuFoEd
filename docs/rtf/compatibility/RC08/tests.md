@@ -39,9 +39,18 @@ pitch to 16.1pt and the page count from 641 to 638.
 
 ## Not yet closed
 
-- 072 is still `+34` pages (638 vs 604). Body pages now match line-for-line, so
-  the residual is section-start paragraph spacing (the reference book-title gaps
-  are ~70-79pt vs our ~52-59pt); it needs a focused paragraph-spacing witness.
+- 072 is still `+34` pages (638 vs 604). Body pages now match line-for-line. The
+  residual is the gap between adjacent heading paragraphs: the WPS reference
+  measures `line + 18 + 18` (it adds `w:before` and `w:after`), while the
+  renderer's `pending_after.max(space_before)` gives `line + 18`. A naive
+  `max -> sum` change was tried and **reverted**: it moved the calibrated
+  `06-strict-math-display` structural extent (`was 5, now 37`) and failed
+  `matches_wps_references`. The reconciliation is a shared-layout item: the two
+  WPS-derived expectations differ, most likely because Word's
+  `contextualSpacing`/same-style suppression applies to the baseline documents.
+  Implementing `w:contextualSpacing` (currently ignored by the renderer) is the
+  prerequisite; it belongs to the shared P5 metrics/layout queue, not RTF
+  mapping.
 - `\chpgn` is an explicit Loss, so the header reads `Ruth (Page )` instead of
   `Ruth (Page 2)`. Per the plan, a dynamic field must be recomputed by an
   explicit renderer function, not faked at import.

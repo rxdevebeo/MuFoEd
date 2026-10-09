@@ -795,9 +795,14 @@ y≈35.5 (выше поля 72pt). У документа 40 `\sect`; это ук
    маппятся в Arimo; pitch совпал, страниц 641→638.
 
 Остаток: 072 всё ещё +34 страницы (638/604) — body-страницы совпали построчно,
-остаётся paragraph-spacing на старте секций; `\chpgn` пока explicit Loss
-(заголовок читается `Ruth (Page )`). Gates после среза: text/resource 100/100,
-XSD/OPC 0 нарушений, pagination 65/100, pixels 6/100 и 22/458 без регрессий.
+остаётся промежуток между соседними heading-параграфами: WPS складывает
+`before+after` (line+18+18), а рендерер берёт `max` (line+18). Наивный `max→sum`
+проверен и **откачен** — он сдвинул калиброванный extent `06-strict-math-display`
+(`was 5, now 37`) и уронил `matches_wps_references`; согласование требует
+`w:contextualSpacing` (сейчас игнорируется) и относится к shared P5
+metrics/layout, а не к RTF mapping. `\chpgn` пока explicit Loss (заголовок
+читается `Ruth (Page )`). Gates после среза: text/resource 100/100, XSD/OPC 0
+нарушений, pagination 65/100, pixels 6/100 и 22/458 без регрессий.
 
 
 
