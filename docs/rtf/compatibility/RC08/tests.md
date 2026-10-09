@@ -93,8 +93,23 @@ name) and the `w:name` taken from the destination text.
 014 writes 8 start/end pairs. Bookmarks are zero-width, so pagination (65/100)
 and pixels (6/100, 22/458) are unchanged.
 
+## First/even-page regions (2026-10-09)
+
+`\titlepg` and the even-page `\headerl`/`\footerl` regions were dropped, so
+first-page and even-page headers/footers never rendered (002 carried neither
+`w:titlePg` nor `w:evenAndOddHeaders`). `\titlepg` now sets the section's
+`w:titlePg`, and an even region sets `w:evenAndOddHeaders` in settings; 002
+writes 7 `w:titlePg` and even/default header references.
+`structure.rs::titlepg_and_even_headers_are_recorded` pins it. Headers sit in
+the margin, so pagination (65/100) and pixels (6/100, 22/458) are unchanged.
+
 ## Other open items
 
-- Columns (`\cols`/`\colno`/`\column`, 2 corpus docs) and first/even/odd
-  header/footer regions, note placement/numbering, multi-paragraph fields and
-  custom marks are unreviewed.
+- Columns (`\cols`/`\colno`/`\column`, 2 corpus docs) need a section-column
+  model and renderer support (a shared build), and are not yet started.
+- Note placement/numbering (`\ftn*`, `\aftn*`), multi-paragraph field block
+  results (a shared model change) and custom marks are unreviewed.
+- `field-instruction-control:*` (~40k events) are formatting controls inside
+  `\fldinst` that are correctly kept out of the instruction text but reported as
+  Loss; whether to reclassify them as explicit ignored-formatting Info is open
+  (the plan forbids a blanket rename).

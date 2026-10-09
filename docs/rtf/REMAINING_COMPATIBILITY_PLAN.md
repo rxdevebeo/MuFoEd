@@ -814,8 +814,19 @@ pagination 65/100, pixels 6/100 и 22/458 без регрессий.
 дропались как unknown destination) теперь пишутся как paired
 `w:bookmarkStart`/`w:bookmarkEnd` с общим decimal `w:id` и `w:name`; якоря для
 hyperlink/`REF` сохранены. Zero-width — pagination/pixels не изменились.
-Открыты по RC08: columns (`\cols`/`\colno`/`\column`), first/even/odd regions,
-note placement/numbering и multi-paragraph fields.
+
+Ещё закрыт рендер first/even-регионов: `\titlepg` → `w:titlePg` секции, а
+even-регион `\headerl`/`\footerl` включает `w:evenAndOddHeaders` (002 пишет 7
+`w:titlePg` и even/default header refs — раньше и то, и другое терялось).
+Заголовки в поле, поэтому pagination (65/100) и pixels (6/100, 22/458) не
+изменились.
+
+Открыты по RC08: columns (`\cols`/`\colno`/`\column` — нужен section-column
+модель+renderer, shared), note placement/numbering, multi-paragraph field
+block-result (shared model) и custom marks. `field-instruction-control:*`
+(~40k) — форматирование внутри `\fldinst`, корректно не попадает в instruction,
+но помечено Loss; вопрос реклассификации в явный ignored-formatting Info открыт
+(blanket rename запрещён планом).
 
 
 
