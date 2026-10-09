@@ -205,7 +205,7 @@ impl XmlReader {
     /// unbound prefix or a resource-limit violation.
     pub fn next_event(&mut self) -> Result<XmlEvent> {
         self.events = self.events.wrapping_add(1);
-        if self.events % CHECKPOINT_EVERY == 0 {
+        if self.events.is_multiple_of(CHECKPOINT_EVERY) {
             control::checkpoint()?;
             if self.tracked {
                 control::advance(self.reader.buffer_position());

@@ -354,7 +354,7 @@ impl TransitionalNormalizer {
             // longer happens because conformance detection scans the prefix
             // raw and asks the registry what the URI will become.
             events = events.wrapping_add(1);
-            if events % 256 == 0 {
+            if events.is_multiple_of(256) {
                 if let Err(error) = crate::control::checkpoint() {
                     self.commit_part_report(part, report);
                     return Err(error);

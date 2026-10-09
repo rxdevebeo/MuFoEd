@@ -270,7 +270,7 @@ pub fn current() -> Option<OpenControl> {
 /// or its deadline passed; `Ok` when there is no control.
 ///
 /// Cheap enough for an inner loop: the cancel flag is one atomic load, and the
-/// clock is read once every [`CLOCK_EVERY`] calls.
+/// clock is read once every `CLOCK_EVERY` (1024) calls.
 ///
 /// # Errors
 ///

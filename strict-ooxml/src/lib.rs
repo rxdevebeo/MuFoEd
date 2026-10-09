@@ -93,7 +93,7 @@
 use std::io::Read;
 use std::path::Path;
 
-use strict_ooxml_core::control::{self, OpenControl, Stage};
+use strict_ooxml_core::control;
 use strict_ooxml_core::error::Result;
 #[cfg(feature = "report")]
 use strict_ooxml_core::ns::Conformance;
