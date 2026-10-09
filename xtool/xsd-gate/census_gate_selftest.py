@@ -607,6 +607,7 @@ def test_process_choice_inventory_does_not_count_fallback() -> None:
 def main() -> int:
     test_p15_duplicate_proof_state_is_one()
     test_p15_document_protection_needs_its_citation()
+    test_p15_bare_on_off_counts()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -949,6 +950,17 @@ def test_p15_duplicate_proof_state_is_one() -> None:
     census_gate._drop_duplicate_singletons(root)
     if len(root) != 2:
         raise SystemExit("a repeated proofState was counted twice, or a different one dropped")
+
+
+def test_p15_bare_on_off_counts() -> None:
+    """P15: a bare `w:titlePg` is counted; one with a `val` or children is not."""
+    root = etree.fromstring(
+        f"<w:sectPr xmlns:w='{WML_T}'><w:titlePg/><w:titlePg w:val='0'/>"
+        "<w:pgSz w:w='1'/><w:cols><w:col/></w:cols></w:sectPr>"
+    )
+    bare = census_gate._bare_elements(root)
+    if bare[("titlePg", "sectPr", "w", "w")] != 1 or bare[("cols", "sectPr", "w", "w")]:
+        raise SystemExit(f"bare on/off elements miscounted: {dict(bare)}")
 
 
 def test_p15_document_protection_needs_its_citation() -> None:

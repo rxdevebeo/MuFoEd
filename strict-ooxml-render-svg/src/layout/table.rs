@@ -114,7 +114,7 @@ pub(crate) fn layout_table(
             height = 1.0;
         }
         rows.push(RawRow {
-            header: row.props.header,
+            header: row.props.header.is_on(),
             height,
             cells: raw.cells,
         });

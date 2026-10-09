@@ -211,8 +211,9 @@ pub struct TableProperties {
 pub struct RowProperties {
     /// Row height (`w:trHeight`).
     pub height: Option<super::values::RowHeight>,
-    /// Repeat as a header row on each page (`w:tblHeader`).
-    pub header: bool,
+    /// Repeat as a header row on each page (`w:tblHeader`). `Off` is an
+    /// explicit `w:val="0"`, which overrides a table style that turns it on.
+    pub header: TriState,
     /// Do not split the row across pages (`w:cantSplit`).
     pub cant_split: bool,
     /// Row cell margins (`w:tblCellMar`).

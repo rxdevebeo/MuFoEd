@@ -903,7 +903,7 @@ pub fn row_exception(xml: &mut XmlWriter, props: &RowProperties) {
 /// Writes `w:trPr`.
 pub fn row_properties(xml: &mut XmlWriter, props: &RowProperties) {
     if props.height.is_none()
-        && !props.header
+        && props.header == TriState::Absent
         && !props.cant_split
         && props.grid_before.is_none()
         && props.grid_after.is_none()
@@ -959,7 +959,11 @@ fn row_child(xml: &mut XmlWriter, props: &RowProperties, name: &str) {
                 xml.end();
             }
         }
-        "tblHeader" if props.header => xml.empty("w:tblHeader"),
+        "tblHeader" => match props.header {
+            TriState::On => xml.empty("w:tblHeader"),
+            TriState::Off => xml.empty_attr_w("w:tblHeader", "val", "false"),
+            TriState::Absent => {}
+        },
         "tblCellSpacing" => {
             if let Some(spacing) = &props.cell_spacing {
                 width_element(xml, "w:tblCellSpacing", spacing);

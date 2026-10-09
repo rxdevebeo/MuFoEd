@@ -581,6 +581,8 @@ def _changed_attributes(
     old_bag, namespace_of, old_stripped = _attribute_bag(old, old_rels)
     new_bag, _new_ns, new_stripped = _attribute_bag(new, new_rels)
     pane_left = _written_style_pane_sets(new_stripped)
+    bare_left = _bare_elements(new_stripped)
+    bare_left.subtract(_bare_elements(old_stripped))
     # `w:type="pct"` stores fiftieths (`5000`) in Transitional and `100%` in
     # Strict. Pair by element and type so a dxa `5000` cannot cancel a percent.
     _cancel_percent_widths(old_stripped, new_stripped, old_bag, new_bag)
@@ -642,6 +644,13 @@ def _changed_attributes(
                     continue
                 take = min(removed, spare)
                 appeared[other_key] -= take
+                removed -= take
+        if removed > 0 and attr_local == "val" and value.lower() in _TRUE_VALUES:
+            element_key = (elem_local, parent, elem_ns, parent_ns)
+            spare = bare_left[element_key]
+            if spare > 0:
+                take = min(removed, spare)
+                bare_left[element_key] -= take
                 removed -= take
         if (
             removed > 0
@@ -726,6 +735,38 @@ def _attribute_bag(
                 value = "relationship:" + json.dumps(relationships[value], ensure_ascii=True)
             bag[(qname.localname, parent_local, attr, value, elem_key[2], elem_key[3], _prefix_or_uri(namespace))] += 1
     return bag, namespace_of, copy
+
+
+def _bare_elements(stripped: etree._Element) -> collections.Counter:
+    """Childless elements with no `val`, keyed as `_attribute_bag` keys elements.
+
+    `CT_OnOff` with no `w:val` is on, so `<w:titlePg w:val="1"/>` written as
+    `<w:titlePg/>` is the same flag. Each new bare element pays for one lost
+    true `val`; the old bare ones are subtracted first.
+    """
+    bare: collections.Counter = collections.Counter()
+    for element in stripped.iter():
+        if not isinstance(element.tag, str) or len(element):
+            continue
+        if any(etree.QName(key).localname == "val" for key in element.attrib):
+            continue
+        qname = etree.QName(element)
+        parent = element.getparent()
+        if parent is None or not isinstance(parent.tag, str):
+            continue
+        parent_qname = etree.QName(parent)
+        bare[
+            (
+                qname.localname,
+                parent_qname.localname,
+                _prefix_or_uri(qname.namespace),
+                _prefix_or_uri(parent_qname.namespace),
+            )
+        ] += 1
+    return bare
+
+
+_TRUE_VALUES = {"1", "true", "on"}
 
 
 def _changed_resources(
