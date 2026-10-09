@@ -61,9 +61,26 @@ starts with a dependent sign (`U+093A`, `U+093C`, `U+093E..=U+094F`,
 exact logical string. This guards the RC03 "break boundaries" requirement against
 the line pieces that `place_long_token` produces.
 
+## PDF Unicode extraction for the new scripts
+
+`strict-ooxml-render-pdf/tests/pdf.rs::licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation`
+now embeds and extracts all five witnesses. For each it checks one embedded
+program, no missing/shaping/embedding diagnostic, the exact ActualText structure
+(`verify_cluster_actual_text`), and the raw `ToUnicode` layer:
+
+- CJK extracts exactly (no continuation CIDs);
+- Devanagari/Tamil/Bengali keep every logical character once the documented
+  replacement characters are removed;
+- Arabic (RTL) is asserted by logical character presence because the content
+  stream is visual order and the `lopdf` helper ignores ActualText.
+
+The independent MuPDF gate was extended to all five and passes:
+`python xtool/rtf/font_extraction_witness.py --pdfs <dir> --receipt
+target/rtf-import/RC03-actualtext-extraction.json` (PyMuPDF 1.26.4 / MuPDF
+1.26.7), after generating the PDFs with `STRICTLIB_FONT_WITNESS_OUTPUT`.
+
 ## Not yet closed
 
 - The corpus witnesses 007/010/011/018 need their real system faces; those are not
   bundled or licensed here and no rasterizer is available, so they are Blocked.
-- Full PDF Unicode cluster extraction for the new scripts over the shared
-  ActualText path and mixed LTR/RTL segmentation inside one run remain open.
+- Mixed LTR/RTL segmentation inside one run remains open.

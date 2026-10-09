@@ -19,9 +19,9 @@ def main():
     args = parser.parse_args()
     fixtures = Path(__file__).resolve().parents[2] / "strict-ooxml-render-svg/fonts/witnesses"
     rows = []
-    for key in ("cjk", "devanagari"):
+    for key in ("cjk", "devanagari", "arabic", "tamil", "bengali"):
         path = args.pdfs / (key + ".pdf")
-        expected = (fixtures / (key + ".txt")).read_text(encoding="utf-8")
+        expected = "".join((fixtures / (key + ".txt")).read_text(encoding="utf-8").split())
         with pymupdf.open(path) as document:
             assert len(document) == 1, key + ": unexpected pages"
             raw = document[0].get_text()
@@ -35,7 +35,7 @@ def main():
                "pymupdf": pymupdf.VersionBind, "mupdf": pymupdf.VersionFitz, "files": rows}
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     args.receipt.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("Pass: CJK and Devanagari Unicode extraction")
+    print("Pass: CJK, Devanagari, Arabic, Tamil and Bengali Unicode extraction")
 
 
 if __name__ == "__main__":

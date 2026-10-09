@@ -13,11 +13,11 @@
     "one x position per logical scalar",
     "RTL visual reordering witness",
     "strict SVG delivery of the new witness faces",
-    "cluster-safe line-break boundary witness for an unbreakable Devanagari token"
+    "cluster-safe line-break boundary witness for an unbreakable Devanagari token",
+    "PDF Unicode extraction witness for CJK, Devanagari, Arabic, Tamil and Bengali over the shared ActualText path"
   ],
   "remaining": [
     "RTF corpus witnesses 007 Sanskrit, 010 Arabic, 011 Tamil, 018 Bengali on their real system faces",
-    "PDF Unicode cluster extraction for the new scripts over the shared ActualText path",
     "mixed LTR/RTL segmentation within a single run"
   ],
   "blocked": [
@@ -58,6 +58,14 @@
         "no line piece starts with a dependent sign",
         "the pieces concatenate back to the exact logical string"
       ]
+    },
+    "pdf_unicode_extraction": {
+      "status": "Pass",
+      "test": "strict-ooxml-render-pdf/tests/pdf.rs::licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation",
+      "witness": "xtool/rtf/font_extraction_witness.py (PyMuPDF 1.26.4 / MuPDF 1.26.7)",
+      "receipt": "target/rtf-import/RC03-actualtext-extraction.json",
+      "scripts": ["cjk", "devanagari", "arabic", "tamil", "bengali"],
+      "extraction": "MuPDF extracts the exact logical text for all five; lopdf raw ToUnicode keeps the documented continuation-CID limitation (present, not dropped)"
     }
   }
 }

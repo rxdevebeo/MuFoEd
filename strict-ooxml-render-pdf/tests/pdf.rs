@@ -990,20 +990,57 @@ fn pdf_embedding_failure_reports_request_and_strict_policy_refuses_output() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // One table-driven witness for five scripts.
 fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
     use strict_ooxml_render_svg::font::{hash_face_bytes, FontDiagnosticKind, FontFailurePolicy};
-    for (family, bytes, text, degraded) in [
+    // (family, id, bytes, text, degraded, lopdf mode, expect a replacement char)
+    for (family, id, bytes, text, degraded, mode, expect_fffd) in [
         (
             "StrictLib Witness CJK SC",
+            "cjk",
             &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.otf")[..],
             include_str!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.txt"),
+            false,
+            "exact",
             false,
         ),
         (
             "StrictLib Witness Devanagari",
+            "devanagari",
             &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/devanagari.ttf")[..],
             include_str!("../../strict-ooxml-render-svg/fonts/witnesses/devanagari.txt"),
             true,
+            "concat",
+            true,
+        ),
+        (
+            "StrictLib Witness Arabic",
+            "arabic",
+            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/arabic.ttf")[..],
+            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/arabic.txt"),
+            true,
+            // RTL: the content stream is visual order and lopdf ignores ActualText,
+            // so only logical character presence can be asserted here.
+            "present",
+            false,
+        ),
+        (
+            "StrictLib Witness Tamil",
+            "tamil",
+            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/tamil.ttf")[..],
+            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/tamil.txt"),
+            true,
+            "concat",
+            false,
+        ),
+        (
+            "StrictLib Witness Bengali",
+            "bengali",
+            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/bengali.ttf")[..],
+            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/bengali.txt"),
+            true,
+            "concat",
+            false,
         ),
     ] {
         let mut asset = policy_asset(family);
@@ -1031,7 +1068,6 @@ fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
         if let Ok(directory) = std::env::var("STRICTLIB_FONT_WITNESS_OUTPUT") {
             let directory = std::path::Path::new(&directory);
             std::fs::create_dir_all(directory).unwrap();
-            let id = if degraded { "devanagari" } else { "cjk" };
             std::fs::write(directory.join(format!("{id}.pdf")), &output.bytes).unwrap();
         }
         let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
@@ -1042,21 +1078,39 @@ fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
             .chars()
             .filter(|ch| !ch.is_whitespace())
             .collect();
+        match mode {
+            "exact" => assert_eq!(
+                extracted, text,
+                "{family}: ToUnicode must preserve logical clusters"
+            ),
+            "concat" => {
+                // lopdf ignores ActualText; its raw ToUnicode layer may replace
+                // continuation CIDs, but must not drop a logical character.
+                let expected: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
+                assert_eq!(extracted.replace('\u{fffd}', ""), expected, "{family}");
+            }
+            _ => {
+                for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
+                    assert!(
+                        extracted.contains(ch),
+                        "{family}: {ch:?} is missing from the ToUnicode layer"
+                    );
+                }
+            }
+        }
+        if expect_fffd {
+            assert!(
+                extracted.contains('\u{fffd}'),
+                "{family}: the documented continuation-CID limitation must be visible"
+            );
+        }
         if degraded {
-            // lopdf ignores ActualText; verify its raw ToUnicode limitation separately.
-            assert!(extracted.contains('\u{fffd}'));
-            assert_eq!(extracted.replace('\u{fffd}', ""), text);
             assert!(output
                 .report
                 .font_report()
                 .diagnostics()
                 .iter()
                 .any(|entry| entry.kind == FontDiagnosticKind::DegradedScript));
-        } else {
-            assert_eq!(
-                extracted, text,
-                "{family}: ToUnicode must preserve logical clusters"
-            );
         }
         let program_refs: Vec<_> = reader
             .objects
