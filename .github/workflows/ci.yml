@@ -454,6 +454,70 @@ jobs:
           sys.exit(0 if lines+1e-9>=85.0 and branches+1e-9>=70.0 else 1)
           PY
 
+  # STAGE-9-TASK.md §9.1 floors: the DjVu reader (container/text) ≥80% lines,
+  # the codec-bearing build ≥70%, and the converter's DjVu module ≥80%. Measured
+  # 2026-10-09 at 82.89 / 85.25 / 85.09; the floors sit below, not at, the
+  # measurement so a refactor is not a red build.
+  coverage-djvu-nightly:
+    name: coverage (djvu)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
+      LLVM_COV_IGNORE: (/\\.cargo/registry|/\\.cargo/git|/rustc-|/rustlib/|/build/|/deps/)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - name: Coverage (djvu container/text ≥80%)
+        run: |
+          mkdir -p target/cov-ci-djvu
+          # A separate target dir per feature set: sharing one lets the core run
+          # pick up the image files instrumented by the other and read 0%.
+          CARGO_TARGET_DIR=target/cov-ci-djvu-core cargo +nightly llvm-cov -p strict-ooxml-djvu --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --summary-only --output-path target/cov-ci-djvu/djvu-core.json
+          python - <<'PY'
+          import json,sys
+          t=json.load(open("target/cov-ci-djvu/djvu-core.json"))["data"][0]["totals"]["lines"]
+          p=100.0*t["covered"]/t["count"] if t["count"] else 0.0
+          print(f"djvu core lines {t['covered']}/{t['count']} = {p:.4f}% (floor 80)")
+          sys.exit(0 if p+1e-9>=80.0 else 1)
+          PY
+      - name: Coverage (djvu with image codecs ≥70%)
+        run: |
+          CARGO_TARGET_DIR=target/cov-ci-djvu-image cargo +nightly llvm-cov -p strict-ooxml-djvu --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --summary-only --output-path target/cov-ci-djvu/djvu-image.json
+          python - <<'PY'
+          import json,sys
+          t=json.load(open("target/cov-ci-djvu/djvu-image.json"))["data"][0]["totals"]["lines"]
+          p=100.0*t["covered"]/t["count"] if t["count"] else 0.0
+          print(f"djvu image lines {t['covered']}/{t['count']} = {p:.4f}% (floor 70)")
+          sys.exit(0 if p+1e-9>=70.0 else 1)
+          PY
+      - name: Coverage (convert djvu module ≥80%)
+        run: |
+          CARGO_TARGET_DIR=target/cov-ci-djvu-convert cargo +nightly llvm-cov -p strict-ooxml-convert --features djvu-image --locked \
+            --test djvu --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --output-path target/cov-ci-djvu/convert-djvu.json
+          python - <<'PY'
+          import json,sys
+          files=json.load(open("target/cov-ci-djvu/convert-djvu.json"))["data"][0]["files"]
+          hit=[f for f in files if f["filename"].replace("\\","/").endswith("/src/djvu.rs")]
+          if not hit:
+              print("convert src/djvu.rs missing from the coverage report"); sys.exit(1)
+          t=hit[0]["summary"]["lines"]
+          p=t.get("percent", 100.0*t["covered"]/t["count"] if t["count"] else 0.0)
+          print(f"convert djvu.rs lines {t['covered']}/{t['count']} = {p:.4f}% (floor 80)")
+          sys.exit(0 if p+1e-9>=80.0 else 1)
+          PY
+
   corpus-full:
     name: CC0 corpus (nightly, full)
     if: github.event_name == 'schedule'
