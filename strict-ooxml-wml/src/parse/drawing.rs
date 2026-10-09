@@ -1628,17 +1628,20 @@ impl PartParser<'_> {
         match name.local() {
             "srgbClr" => {
                 let value = plain_attr(attrs, "val").map(Color::new);
-                self.skip_element()?;
+                let children = self.capture_children()?;
+                let markup = color_markup(name.local(), attrs, children.as_deref());
                 Ok(value.map(|value| ShapeColor {
                     value: Some(value),
                     theme: None,
+                    markup: Some(markup),
                 }))
             }
             "schemeClr" => {
                 let slot = plain_attr(attrs, "val").map(str::to_owned);
-                self.nested(|parser| {
+                let (tint, shade, children) = self.nested(|parser| {
                     let mut tint = None;
                     let mut shade = None;
+                    let mut children = String::new();
                     loop {
                         match parser.next_event()? {
                             XmlEvent::StartElement { name, attrs } => {
@@ -1649,7 +1652,9 @@ impl PartParser<'_> {
                                 {
                                     shade = plain_attr(&attrs, "val").map(|v| parser.intern(v));
                                 }
-                                parser.skip_element()?;
+                                if let Some(fragment) = parser.capture_fragment(name, attrs)? {
+                                    children.push_str(&fragment);
+                                }
                             }
                             XmlEvent::EndElement { .. } => break,
                             XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -1658,25 +1663,32 @@ impl PartParser<'_> {
                             }
                         }
                     }
-                    Ok(slot.map(|slot| ShapeColor {
-                        value: None,
-                        theme: Some(ThemeColorRef {
-                            color: ThemeColor::new(slot),
-                            tint,
-                            shade,
-                        }),
-                    }))
-                })
+                    Ok((tint, shade, children))
+                })?;
+                let markup = color_markup(name.local(), attrs, Some(&children));
+                Ok(slot.map(|slot| ShapeColor {
+                    value: None,
+                    theme: Some(ThemeColorRef {
+                        color: ThemeColor::new(slot),
+                        tint,
+                        shade,
+                    }),
+                    markup: Some(markup),
+                }))
             }
             "prstClr" | "sysClr" | "scrgbClr" | "hslClr" => {
-                self.skip_element()?;
+                let children = self.capture_children()?;
                 self.record(
                     "a:color",
                     SupportStatus::Partial,
-                    Some("colour space not resolved".to_owned()),
+                    Some("colour space not resolved; the element is kept".to_owned()),
                     Some(self.location()),
                 );
-                Ok(None)
+                Ok(Some(ShapeColor {
+                    value: None,
+                    theme: None,
+                    markup: Some(color_markup(name.local(), attrs, children.as_deref())),
+                }))
             }
             _ => {
                 self.skip_element()?;
@@ -2195,6 +2207,30 @@ fn write_end_markup(out: &mut String, name: &QName) {
 
 fn escape_text_into_markup(out: &mut String, text: &str) {
     let _ = strict_ooxml_core::xml::escape::escape_text_into(out, text);
+}
+
+/// A DrawingML colour element as markup: its unqualified attributes and its
+/// kept children, declaring `a:` itself so it can sit anywhere.
+fn color_markup(local: &str, attrs: &[Attr], children: Option<&str>) -> std::sync::Arc<str> {
+    let mut out = format!("<a:{local} xmlns:a=\"{DRAWINGML_STRICT_NS}\"");
+    for attr in attrs.iter().filter(|attr| attr.name.ns.is_none()) {
+        out.push(' ');
+        out.push_str(attr.name.local());
+        out.push_str("=\"");
+        let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut out, &attr.value);
+        out.push('"');
+    }
+    match children {
+        Some(children) if !children.is_empty() => {
+            out.push('>');
+            out.push_str(children);
+            out.push_str("</a:");
+            out.push_str(local);
+            out.push('>');
+        }
+        _ => out.push_str("/>"),
+    }
+    std::sync::Arc::from(out)
 }
 
 /// Two kept fragments as one, in order.

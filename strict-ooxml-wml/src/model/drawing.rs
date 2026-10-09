@@ -137,6 +137,11 @@ pub struct ShapeColor {
     pub value: Option<Color>,
     /// Theme colour reference.
     pub theme: Option<ThemeColorRef>,
+    /// The colour element as read (`a:srgbClr` with its `a:alpha`, a
+    /// `a:schemeClr` with `a:lumMod`/`a:lumOff`, `a:sysClr`, `a:prstClr`), which
+    /// the writer puts back instead of [`Self::value`]/[`Self::theme`]. A colour
+    /// built in code leaves it `None`.
+    pub markup: Option<Arc<str>>,
 }
 
 /// A gradient colour stop.

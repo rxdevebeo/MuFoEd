@@ -999,6 +999,12 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
 }
 
 fn shape_color(xml: &mut XmlWriter, color: &ShapeColor) {
+    // The element as read keeps its modifiers (`a:alpha`, `a:lumMod`) and the
+    // colour spaces the model does not resolve (`a:sysClr`, `a:prstClr`).
+    if let Some(markup) = &color.markup {
+        xml.raw_markup(markup, &[]);
+        return;
+    }
     match (&color.value, &color.theme) {
         (Some(value), _) => {
             xml.start("a:srgbClr");

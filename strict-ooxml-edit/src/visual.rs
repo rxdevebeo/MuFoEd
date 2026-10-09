@@ -747,6 +747,7 @@ fn stamp_drawing(
                     color: strict_ooxml_wml::model::ShapeColor {
                         value: Some(Color::new(hex_digits(key).to_owned())),
                         theme: None,
+                        markup: None,
                     },
                 });
             }

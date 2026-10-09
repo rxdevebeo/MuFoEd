@@ -161,6 +161,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         ShapeColor {
             value: Some(Color::new(format!("{r:02X}{g:02X}{b:02X}"))),
             theme: None,
+            markup: None,
         }
     };
     let fill = rect.fill.map(|rgb| ShapeFill::Solid { color: color(rgb) });

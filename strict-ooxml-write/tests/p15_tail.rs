@@ -114,3 +114,30 @@ behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">
         write_package(&again, Some(&reopened), &WriteOptions::default()).expect("rewrite");
     assert_eq!(written.bytes, rewritten.bytes, "not a fixed point");
 }
+
+#[test]
+fn t_p15_shape_colours_keep_their_element() {
+    let shape = |fill: &str| {
+        format!(
+            "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"100\" cy=\"100\"/>\
+<wp:docPr id=\"1\" name=\"s\"/><a:graphic>\
+<a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"100\" cy=\"100\"/>\
+</a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill>{fill}</a:solidFill>\
+</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+        )
+    };
+    let xml = written_document(&shape(
+        r#"<a:sysClr val="windowText" lastClr="000000"/>"#,
+    ));
+    assert!(xml.contains("<a:sysClr "), "{xml}");
+    assert!(xml.contains(r#"lastClr="000000""#), "{xml}");
+    let xml = written_document(&shape(r#"<a:prstClr val="black"/>"#));
+    assert!(xml.contains("<a:prstClr "), "{xml}");
+    assert!(xml.contains(r#"val="black""#), "{xml}");
+    let xml = written_document(&shape(
+        r#"<a:schemeClr val="accent1"><a:lumMod val="60%"/><a:lumOff val="40%"/></a:schemeClr>"#,
+    ));
+    assert!(xml.contains("<a:lumMod ") && xml.contains(r#"val="60%""#), "{xml}");
+    assert!(xml.contains("<a:lumOff ") && xml.contains(r#"val="40%""#), "{xml}");
+}

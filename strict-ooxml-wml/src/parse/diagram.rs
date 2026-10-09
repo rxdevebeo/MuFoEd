@@ -671,5 +671,6 @@ fn scheme_color(slot: &Arc<str>) -> ShapeColor {
             tint: None,
             shade: None,
         }),
+        markup: None,
     }
 }
