@@ -989,6 +989,26 @@ fn headers_footers_and_both_note_kinds_are_separate_parts() {
 }
 
 #[test]
+fn wps_sectd_before_sect_keeps_each_section_header() {
+    // WPS writes `\sectd\sect` — the reverse of Word's `\sect\sectd`. Deferring
+    // the reset past the following `\sect` must leave each section with the
+    // header it accumulated (072 lost every header but the last).
+    let input = br"{\rtf1{\fonttbl{\f0 Arial;}}intro\par\sectd\sect{\header First}{\pard bodyA\par}\sectd\sect{\header Second}{\pard bodyB\par}}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        assert_eq!(document.headers_footers.len(), 2);
+        // intro, bodyA, bodyB: the header written after a break belongs to the
+        // section that follows it, so the intro section carries none.
+        assert_eq!(document.sections.len(), 3);
+        assert_eq!(document.sections[0].properties.headers.len(), 0);
+        assert_eq!(document.sections[1].properties.headers.len(), 1);
+        assert_eq!(document.sections[2].properties.headers.len(), 1);
+    }
+}
+
+#[test]
 fn field_instruction_and_formatted_cached_result_survive() {
     let input =
         br#"{\rtf1 A{\field{\*\fldinst HYPERLINK "https://example.test"}{\fldrslt{\b Link}}}Z}"#;

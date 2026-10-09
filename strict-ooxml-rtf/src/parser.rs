@@ -345,6 +345,16 @@ struct Parser<'a> {
     rgb: [u8; 3],
     color_set: bool,
     section: SectionProperties,
+    /// A `\sectd` reset whose effect is deferred to the section boundary.
+    ///
+    /// `\sectd` resets the running section properties. Word writes it *after*
+    /// the `\sect` that ends a section (`\sect\sectd`), but WPS writes it
+    /// *before* (`\sectd\sect`). In the latter order an immediate reset would
+    /// wipe the headers/footers and geometry a section accumulated before that
+    /// section is committed at the following `\sect` (072 lost every header but
+    /// the last). Deferring the reset past the next `\sect` makes both orders
+    /// commit the section that actually preceded the break.
+    section_reset_pending: bool,
     document_page_size: PageSize,
     document_page_margins: PageMargins,
     sections: Vec<Section>,
@@ -1174,6 +1184,9 @@ impl Parser<'_> {
         if text.is_empty() {
             return Ok(());
         }
+        if self.section_reset_pending {
+            self.reset_section();
+        }
         if self.state.destination == Destination::LevelText {
             let draft = self.level_draft.as_mut().ok_or(RtfError::Malformed {
                 offset,
@@ -1603,9 +1616,23 @@ impl Parser<'_> {
             span.start,
         )
     }
+    /// Resets the running section properties to the document defaults.
+    fn reset_section(&mut self) {
+        self.section = SectionProperties {
+            page_size: Some(self.document_page_size),
+            page_margins: Some(self.document_page_margins),
+            ..Default::default()
+        };
+        self.section_reset_pending = false;
+    }
     fn word(&mut self, name: &str, n: Option<i32>, span: RtfSpan) -> Result<(), RtfError> {
         let first = self.state.first;
         self.state.first = false;
+        // Resolve a deferred `\sectd` before the next control word takes effect,
+        // unless that word is the `\sect` that must commit the section first.
+        if self.section_reset_pending && name != "sect" {
+            self.reset_section();
+        }
         if self.state.skip {
             return Ok(());
         }
@@ -2373,11 +2400,7 @@ impl Parser<'_> {
                     n.and_then(|n| u8::try_from(n).ok()).filter(|n| *n <= 9);
             }
             "sectd" => {
-                self.section = SectionProperties {
-                    page_size: Some(self.document_page_size),
-                    page_margins: Some(self.document_page_margins),
-                    ..Default::default()
-                }
+                self.section_reset_pending = true;
             }
             "sbknone" | "sbkpage" | "sbkcol" | "sbkeven" | "sbkodd" => {
                 self.section.section_type = Some(match name {
@@ -2407,6 +2430,9 @@ impl Parser<'_> {
                     properties: self.section.clone(),
                     location: SourceLocation::unknown(),
                 });
+                if self.section_reset_pending {
+                    self.reset_section();
+                }
             }
             "b" => self.state.run.bold = toggle,
             "ab" => self.state.run.bold_cs = toggle,
@@ -3046,6 +3072,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
             page_margins: Some(document_page_margins),
             ..Default::default()
         },
+        section_reset_pending: false,
         document_page_size,
         document_page_margins,
         sections: vec![],
