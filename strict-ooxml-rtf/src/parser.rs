@@ -1415,7 +1415,17 @@ impl Parser<'_> {
         self.paragraph_pending = false;
         self.node(1, offset)?;
         let props = if self.inlines.is_empty() {
-            self.state.paragraph.clone()
+            // An empty paragraph is only a paragraph mark, so its height comes
+            // from `w:pPr/w:rPr`. Carry the ambient run formatting (font and
+            // half-point size) so the mark matches the surrounding text instead
+            // of falling back to the document defaults; WPS renders the empty
+            // line at the body size, and a size mismatch shifts every following
+            // line by one line's worth of leading.
+            let mut props = self.state.paragraph.clone();
+            if self.state.run != RunProperties::default() {
+                props.run_props = Some(self.state.run.clone());
+            }
+            props
         } else {
             self.paragraph_props.clone()
         };
@@ -3391,16 +3401,20 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         properties: p.section,
         location: SourceLocation::unknown(),
     });
-    let default_fonts = p.default_font.and_then(|id| p.fonts.get(&id)).map(|f| {
-        let name = Arc::<str>::from(f.name.as_str());
-        Fonts {
-            ascii: Some(name.clone()),
-            h_ansi: Some(name.clone()),
-            east_asia: Some(name.clone()),
-            complex_script: Some(name),
-            ..Default::default()
-        }
-    });
+    let default_fonts = p
+        .default_font
+        .or_else(|| p.fonts.keys().next().copied())
+        .and_then(|id| p.fonts.get(&id))
+        .map(|f| {
+            let name = Arc::<str>::from(f.name.as_str());
+            Fonts {
+                ascii: Some(name.clone()),
+                h_ansi: Some(name.clone()),
+                east_asia: Some(name.clone()),
+                complex_script: Some(name),
+                ..Default::default()
+            }
+        });
     p.styles
         .set_defaults(strict_ooxml_wml::model::styles::DocDefaults {
             run: RunProperties {

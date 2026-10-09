@@ -273,6 +273,55 @@ fn document_defaults_survive_without_named_styles() {
 }
 
 #[test]
+fn absent_deff_defaults_to_the_first_font_in_the_table() {
+    // RTF 1.9.1 `\deff`: when the control is absent the default font is font 0.
+    // The default must reach `w:docDefaults` so runs with no `\f` (empty
+    // paragraphs, paragraph marks) inherit the real face metrics instead of the
+    // renderer's fallback.
+    let d = reopened(br"{\rtf1{\fonttbl{\f0 Helvetica;}{\f1 Times;}}Text}");
+    let defaults = d.styles.defaults().expect("docDefaults are always emitted");
+    assert_eq!(
+        defaults.run.fonts.as_ref().unwrap().ascii.as_deref(),
+        Some("Helvetica")
+    );
+}
+
+#[test]
+fn explicit_deff_wins_over_the_first_font_in_the_table() {
+    let d = reopened(br"{\rtf1\deff1{\fonttbl{\f0 Helvetica;}{\f1 Times;}}Text}");
+    let defaults = d.styles.defaults().expect("docDefaults are always emitted");
+    assert_eq!(
+        defaults.run.fonts.as_ref().unwrap().ascii.as_deref(),
+        Some("Times")
+    );
+}
+
+#[test]
+fn empty_paragraph_mark_carries_the_ambient_run_size() {
+    // An empty paragraph is a bare paragraph mark; its height comes from
+    // `w:pPr/w:rPr`. Without the ambient run formatting the mark falls back to
+    // the 12pt document default and every following line shifts by the leading
+    // difference (054 Hotyn2 body is 10pt).
+    let d = reopened(br"{\rtf1{\fonttbl{\f0 Arial;}}\f0\fs20 A\par\par B}");
+    let empty = d
+        .body
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) if paragraph.inlines.is_empty() => Some(paragraph),
+            _ => None,
+        })
+        .expect("the source has an empty paragraph");
+    let run = empty
+        .props
+        .run_props
+        .as_ref()
+        .expect("the paragraph mark carries run properties");
+    assert_eq!(run.size, Some(HalfPoints(20)));
+    assert_eq!(run.fonts.as_ref().unwrap().ascii.as_deref(), Some("Arial"));
+}
+
+#[test]
 fn numbering_suffix_precedes_level_text_in_the_written_package() {
     let source=br"{\rtf1{\*\listtable{\list{\listlevel\levelnfc0{\leveltext\'02\'00.;}}\listid42}}{\*\listoverridetable{\listoverride\listid42\listoverridecount0\ls7}}\ls7 item}";
     let d = import(source, &RtfOptions::default()).unwrap();

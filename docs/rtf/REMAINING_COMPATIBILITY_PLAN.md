@@ -377,9 +377,11 @@ ignored raw artifacts `target/rtf-import/compatibility/RCxx/`. Receipt фикс�
 hashes и до/после каждого witness. Status: Planned → InProgress → Verified;
 Blocked содержит конкретный отсутствующий asset/contract, а не истёкший срок.
 
-Срок полной совместимости уточняется после RC00–RC02: нынешние 97 pixel failures
-ещё не разбиты на доказанные root causes. План не даёт календарного обещания
-до интеграции новой базы и установления реально используемых fonts.
+Срок полной совместимости уточняется после RC00–RC02. Триаж 97 pixel failures
+выполнен 2026-10-09 (см. [PIXEL_TRIAGE.md](compatibility/PIXEL_TRIAGE.md)): они
+разбиты на доказуемые gate-механизмы, и доминирующий класс — RC04 metrics, а не
+fonts. Реалистичная оценка остаётся привязанной к RC03/RC04 (shaping/metrics) и к
+отдельным witnesses пагинации, а не к интеграции новой базы.
 
 ### RC02: East Asian face selection — 2026-10-07
 
@@ -700,3 +702,61 @@ resolver; direct-diff сделан) и corpus tab/leader/keep/widow/pixel geomet
    renderer'у direction-homogeneous runs (import-сплит), так что renderer-level
    reordering — вне scope RTF mapping и остаётся отдельным renderer-пунктом
    (Blocked на per-level-run oracle).
+
+### Триаж 97 pixel failures — 2026-10-09
+
+Свежий pixel-receipt (`target/rtf-import/RC02-merge-pixels`) впервые несёт
+per-page SSIM и structural measurement. По нему 97 `Fail` разбиты на доказуемые,
+непересекающиеся gate-механизмы. Полный разбор, receipt и команда воспроизведения
+— [compatibility/PIXEL_TRIAGE.md](compatibility/PIXEL_TRIAGE.md); классификатор
+`xtool/rtf/pixel_triage.py` закреплён `xtool/rtf/test_pixel_triage.py`.
+
+Итог: 3 Pass-контроля (040/043/046), 38 документов падают на несовпадении числа
+страниц (19 «больше», 19 «меньше»; 22 рендерятся Clean), 59 — на совпавшем числе
+страниц (423 страницы: 6 Pass, 417 Fail). По механизмам страниц: `line_metrics`
+402, `blank_reference` 5, `glyph_appearance` 3, `extra_ink` 3, `missing_ink` 2,
+`content_position` 2. Документальные primary-классы: `line_metrics` 53,
+`glyph_appearance` 3, `blank_reference` 2, `missing_ink` 1 (specific-механизмы
+внутри `line_metrics`-документов сохранены как `secondary`).
+
+Доказано: 72 из 97 падающих документов рендерятся `Clean`, и 39 из 44
+документов с чисто вертикальными механизмами отказа (row correlation / vertical
+shift / extent) не имеют ни одного `pdf.font.*` diagnostic — значит
+доминирующий отказ это line/pitch metrics (RC04), а не отсутствие faces. Отдельно
+доказанные точечные классы: 035 (SimSun, 141 no-glyph → пустая страница),
+5 blank-reference страниц (из них 036/048/059 — SSIM ≈ 1.0, то есть
+gate-артефакт пустой страницы), 019/037/071 (structure Ok, SSIM 0.91–0.957 =
+substitute face), 032/087/099 (extra ink). Владелец конкретной RTF-фичи для
+доминирующего класса остаётся гипотезой до fixture; это единственная часть
+триажа, не помеченная как confirmed.
+
+### RC04: три доказанных geometry-фикса — 2026-10-09
+
+Триаж указал доминирующий класс `line_metrics`; дальнейшие свидетели дали три
+независимых доказанных дефекта, каждый закреплён import → Strict write → reopen
+тестом:
+
+1. **Отсутствующий `\deff`.** По RTF 1.9.1 default font — это font 0 (первый в
+   таблице), но при отсутствии `\deff` он не попадал в
+   `w:docDefaults/w:rPrDefault/w:rPr/w:rFonts`, поэтому параграфы без `\f`
+   (paragraph mark, пустая строка) мерились fallback-лицом рендерера. Фикс в
+   `strict-ooxml-rtf/src/parser.rs`; свидетель 013 COPYING: межстрочный разрыв
+   пустого параграфа 28.4 → 27.6pt (совпал с WPS).
+2. **Paragraph mark пустого параграфа.** Пустая строка получала 12pt из
+   docDefaults вместо body-size (10pt), сдвигая весь остаток страницы. Теперь
+   `w:pPr/w:rPr` несёт ambient run-форматирование; свидетель 054 Hotyn2: разрыв
+   пустого параграфа 25.3 → 23.0pt.
+3. **Script-qualified fonts.** Имена вида `Times New Roman Cyr`, `Arial CE`,
+   `Calibri (Hebrew)`, `Cambria Math Cyr` не нормализовались и падали в wildcard
+   Carlito. `render-svg::map_family` теперь снимает script-квалификатор до
+   маппинга; свидетель 054 Hotyn2: pitch 12.2 → 11.5pt (Arimo).
+
+Измерения (receipts `target/rtf-import/RC04-parmark-*`): import text/resource
+100/100; Strict XSD 100/100 без нарушений; OPC 100 пакетов без нарушений;
+pagination **62 → 65/100**; pixels **3 → 6/100 документов** и **6 → 22/458
+страниц**, регрессий 0. RTF tests: structure 37 + import 36 + 1 doc-test.
+Остаточный разрыв — общий ~1pt baseline/leading offset (shared P5 metrics),
+rasterizer glyph-ink (row correlation) и documented WPS-квирк leading spaces;
+это не пропущенный RTF-mapping, а shared-metrics/exact-faces работа.
+
+

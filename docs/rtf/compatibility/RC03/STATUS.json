@@ -24,7 +24,7 @@
     {
       "item": "corpus script witnesses (007/010/011/018)",
       "contract": "the original system faces (Sanskrit 2003, Vijaya, Amar Bangla Normal) and the RTF sources",
-      "reason": "the corpus sources live in the sibling worktree; the named faces are not bundled or provided as licensed assets, and no rasterizer (poppler) is available for the visual half."
+      "reason": "the RTF sources are reachable in the sibling worktree (testdata/CC0_RTF), so the only missing asset is the licensed system face; the substitute path is measured for 007 (target/rtf-import/rc03-substitute/007.pdf). A substitute is never Clean and does not establish exact-face coverage."
     },
     {
       "item": "renderer line-level visual reordering of mixed-direction runs in RTL-base paragraphs",

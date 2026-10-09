@@ -1,5 +1,51 @@
 //! Family-name mapping to the bundled metric-compatible faces (S4F.2).
 
+/// RTF/Word script qualifiers appended to a base family name.
+///
+/// Word and WPS export one font-table entry per char-set under names such as
+/// `Times New Roman Cyr`, `Arial CE`, `Calibri (Hebrew)`. They name the same
+/// design, so the qualifier must be removed before the family is mapped — an
+/// unnormalized `Times New Roman Cyr` otherwise falls through to the Calibri
+/// (Carlito) wildcard and the whole document is measured with the wrong face,
+/// shifting both line pitch and advances.
+const SCRIPT_SUFFIXES: [&str; 15] = [
+    "cyr",
+    "cyrillic",
+    "ce",
+    "baltic",
+    "greek",
+    "tur",
+    "turkish",
+    "latin",
+    "hebrew",
+    "arabic",
+    "vietnamese",
+    "thai",
+    "devanagari",
+    "complex",
+    "central european",
+];
+
+/// Strips a trailing `(...)` script tag and a bare script suffix word.
+///
+/// Only the final qualifier is removed, and only when it is a whole trailing
+/// token, so a base name that merely contains those letters (`Courier`) is left
+/// alone.
+fn base_family(family: &str) -> String {
+    let mut name = family.trim().to_ascii_lowercase();
+    if name.ends_with(')') {
+        if let Some(open) = name.rfind(" (") {
+            name.truncate(open);
+        }
+    }
+    for suffix in SCRIPT_SUFFIXES {
+        if let Some(stripped) = name.strip_suffix(&format!(" {suffix}")) {
+            return stripped.to_string();
+        }
+    }
+    name
+}
+
 /// Maps a requested font family to its bundled metric-compatible equivalent.
 ///
 /// Word documents request proprietary families (Calibri, Arial, …). The renderer
@@ -8,7 +54,7 @@
 /// same name is what the SVG `@font-face` delivers.
 #[must_use]
 pub fn map_family(family: &str) -> &'static str {
-    match family.trim().to_ascii_lowercase().as_str() {
+    match base_family(family).as_str() {
         // Calibri is the wildcard below: it is the family Carlito metrics match.
         "cambria" | "caladea" => "Caladea",
         // LibreOffice writes its own metric-compatible Liberation families;
@@ -80,6 +126,23 @@ mod tests {
         assert_eq!(map_family("Liberation Serif"), "Tinos");
         assert_eq!(map_family("Liberation Mono"), "Cousine");
         assert_eq!(map_family("  liberation mono "), "Cousine");
+    }
+
+    #[test]
+    fn strips_script_qualifiers_before_mapping() {
+        // Word/WPS export one entry per char-set; these name the same design.
+        assert_eq!(map_family("Times New Roman Cyr"), "Tinos");
+        assert_eq!(map_family("Times New Roman CE"), "Tinos");
+        assert_eq!(map_family("Times New Roman Baltic"), "Tinos");
+        assert_eq!(map_family("Arial CYR"), "Arimo");
+        assert_eq!(map_family("Arial Greek"), "Arimo");
+        assert_eq!(map_family("Arial (Hebrew)"), "Arimo");
+        assert_eq!(map_family("Cambria (Vietnamese)"), "Caladea");
+        assert_eq!(map_family("Cambria Math Cyr"), "STIX Two Math");
+        assert_eq!(map_family("Courier New Tur"), "Cousine");
+        // The qualifier is only stripped from the end; a base name containing
+        // the same letters is untouched.
+        assert_eq!(map_family("Courier"), "Carlito");
     }
 
     #[test]

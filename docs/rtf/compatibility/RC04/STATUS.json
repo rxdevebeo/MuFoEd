@@ -1,7 +1,7 @@
 {
   "card": "RC04",
   "status": "InProgress",
-  "updated": "2026-10-08",
+  "updated": "2026-10-09",
   "scope": "style cascade and paragraph/run text geometry",
   "base_commit": "a53042b",
   "dependencies": ["RC02"],
@@ -18,17 +18,20 @@
     "import -> Strict write -> reopen regression for all of the above",
     "section defaults reset (\\sectd) already covered by section-reset round-trip",
     "direct effective-facts probe against WPS reference facts for 019/039",
-    "independent resolved-cascade resolver (docDefaults -> pStyle chain -> rStyle -> direct) with a normalizing diff"
+    "independent resolved-cascade resolver (docDefaults -> pStyle chain -> rStyle -> direct) with a normalizing diff",
+    "RTF default font (\\deff, else the first font-table entry) is written to w:docDefaults/w:rPrDefault/w:rPr/w:rFonts, so runs and paragraph marks with no explicit \\f inherit the real face instead of the renderer fallback",
+    "empty paragraph marks carry the ambient run formatting (w:pPr/w:rPr font + half-points), so a blank line uses the body line height (054 Hotyn2)",
+    "font-family script qualifiers (Times New Roman Cyr, Arial CE, Calibri (Hebrew), Cambria Math Cyr, ...) are stripped before mapping to the bundled metric-compatible face (render-svg map_family)"
   ],
   "remaining": [
     "normalize absent-vs-default in the resolved diff (remaining diffs are explicit-defaults-vs-inherited, not effective mismatches)",
-    "corpus tab/leader/keep/widow/pixel geometry on 019/039 and 052/076 (poppler now provisioned; pixel acceptance still 3/100)"
+    "residual corpus pixels: 6/100 documents and 22/458 pages pass after the 2026-10-09 geometry fixes (from 3/100, 6/423). The remaining line_metrics pages fail on shared P5 baseline/leading (~1pt constant offset) and rasterizer glyph-ink (row-ink correlation), plus a documented WPS leading-space advance quirk on 013; these need the shared metrics queue and exact faces, not a new RTF mapping"
   ],
   "blocked": [
     {
       "item": "targeted pixels and full geometry acceptance",
       "contract": "poppler/rasterizer plus the pinned pixel comparator and WPS references",
-      "reason": "no rasterizer is installed in this environment; the sibling worktree holds the references."
+      "reason": "the remaining gap is shared-metrics/rasterizer, not a missing RTF mapping; a full visual acceptance needs the shared P5 metrics work and exact faces."
     }
   ],
   "checks": {
@@ -45,7 +48,7 @@
     },
     "rtf_suite": {
       "status": "Pass",
-      "detail": "strict-ooxml-rtf structure 32 + import 36"
+      "detail": "strict-ooxml-rtf structure 37 + import 36 + 1 doc-test"
     },
     "run_effects_roundtrip": {
       "status": "Pass",
@@ -82,6 +85,28 @@
         "target/rtf-import/RC04-resolved-039.json"
       ],
       "finding": "after normalizing Strict/Transitional names and zero auto-spacing, the remaining diffs are explicit-defaults-vs-inherited (our writer states docDefaults explicitly, WPS inherits them); no effective-value mismatch found on 019/039"
+    },
+    "corpus_geometry": {
+      "status": "Measured",
+      "date": "2026-10-09",
+      "receipts": [
+        "target/rtf-import/RC04-parmark-corpus/results.json",
+        "target/rtf-import/RC04-parmark-visual/results.json",
+        "target/rtf-import/RC04-parmark-pixels/results.json",
+        "target/rtf-import/RC04-parmark-triage/triage.json"
+      ],
+      "results": {
+        "import_text_resource": "100/100 Pass",
+        "xsd": "100/100, 0 violations",
+        "opc": "100 packages, 0 violations",
+        "pagination": "65/100 Pass (was 62)",
+        "pixels": "6/100 documents, 22/458 pages (was 3/100, 6/423)",
+        "pixel_regressions": 0
+      },
+      "witnesses": [
+        "013 COPYING: empty-paragraph line pitch matched after the docDefaults-font fix (paragraph gaps 27.6 -> 27.6pt)",
+        "054 Hotyn2: Arial CYR -> Arimo line pitch 12.2 -> 11.5pt after the script-suffix fix; empty-paragraph gaps 25.3 -> 23.0pt after the paragraph-mark rPr fix"
+      ]
     }
   }
 }
