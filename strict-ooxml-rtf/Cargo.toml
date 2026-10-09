@@ -13,6 +13,9 @@ strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 encoding_rs.workspace = true
 thiserror.workspace = true
+# Splits a run that mixes LTR and RTL strong characters into direction-homogeneous
+# runs at import time (RC03), matching Word's run-per-direction convention.
+unicode-bidi = "0.3"
 
 [dev-dependencies]
 strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write" }

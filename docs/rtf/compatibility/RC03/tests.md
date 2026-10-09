@@ -79,8 +79,21 @@ The independent MuPDF gate was extended to all five and passes:
 target/rtf-import/RC03-actualtext-extraction.json` (PyMuPDF 1.26.4 / MuPDF
 1.26.7), after generating the PDFs with `STRICTLIB_FONT_WITNESS_OUTPUT`.
 
+## Mixed LTR/RTL within one run
+
+`mixed_direction_run_is_split_into_directional_runs` imports a paragraph whose
+single run has no `\rtlch`/`\ltrch` and mixes Latin and Arabic. At paragraph end
+the importer runs the Unicode Bidirectional Algorithm (`unicode-bidi`) over the
+run text and replaces it with direction-homogeneous runs: exactly one `w:rtl=On`
+segment per RTL span, LTR left as the default. The test checks that the logical
+text is preserved across the split and that the RTL run round-trips through
+Strict write and reopen. This is the RTF mapping layer of the requirement; the
+renderer's line-level visual reordering for RTL-base paragraphs is a separate
+renderer concern and remains open.
+
 ## Not yet closed
 
 - The corpus witnesses 007/010/011/018 need their real system faces; those are not
   bundled or licensed here and no rasterizer is available, so they are Blocked.
-- Mixed LTR/RTL segmentation inside one run remains open.
+- Renderer line-level visual reordering of mixed-direction runs in RTL-base
+  paragraphs remains open.

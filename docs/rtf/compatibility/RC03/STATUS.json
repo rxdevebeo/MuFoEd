@@ -14,11 +14,12 @@
     "RTL visual reordering witness",
     "strict SVG delivery of the new witness faces",
     "cluster-safe line-break boundary witness for an unbreakable Devanagari token",
-    "PDF Unicode extraction witness for CJK, Devanagari, Arabic, Tamil and Bengali over the shared ActualText path"
+    "PDF Unicode extraction witness for CJK, Devanagari, Arabic, Tamil and Bengali over the shared ActualText path",
+    "mixed LTR/RTL run split at import (unicode-bidi; one w:rtl=On segment per RTL run)"
   ],
   "remaining": [
     "RTF corpus witnesses 007 Sanskrit, 010 Arabic, 011 Tamil, 018 Bengali on their real system faces",
-    "mixed LTR/RTL segmentation within a single run"
+    "renderer line-level visual reordering of mixed-direction runs in RTL-base paragraphs"
   ],
   "blocked": [
     {
@@ -66,6 +67,16 @@
       "receipt": "target/rtf-import/RC03-actualtext-extraction.json",
       "scripts": ["cjk", "devanagari", "arabic", "tamil", "bengali"],
       "extraction": "MuPDF extracts the exact logical text for all five; lopdf raw ToUnicode keeps the documented continuation-CID limitation (present, not dropped)"
+    },
+    "mixed_direction_split": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::mixed_direction_run_is_split_into_directional_runs",
+      "splitter": "RTF import, Unicode Bidirectional Algorithm (unicode-bidi)",
+      "assertions": [
+        "a run with no w:rtl mixing LTR and RTL becomes direction-homogeneous runs",
+        "logical text order is preserved across the split",
+        "the RTL segment round-trips as w:rtl On"
+      ]
     }
   }
 }

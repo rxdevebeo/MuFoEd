@@ -849,6 +849,58 @@ fn run_effects_kerning_and_position_roundtrip() {
 }
 
 #[test]
+fn keep_widow_and_page_break_rules_roundtrip() {
+    let input = br"{\rtf1\pard\keep\keepn\widctlpar\pagebb a\par\pard\nowidctlpar b\par}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let Block::Paragraph(first) = &document.body.blocks[0] else {
+            panic!()
+        };
+        assert_eq!(first.props.keep_lines, TriState::On);
+        assert_eq!(first.props.keep_next, TriState::On);
+        assert_eq!(first.props.widow_control, TriState::On);
+        assert_eq!(first.props.page_break_before, TriState::On);
+        let Block::Paragraph(second) = &document.body.blocks[1] else {
+            panic!()
+        };
+        assert_eq!(second.props.widow_control, TriState::Off);
+        assert_eq!(second.props.keep_lines, TriState::Absent);
+    }
+}
+
+#[test]
+fn mixed_direction_run_is_split_into_directional_runs() {
+    // "abc" + Arabic "السلام" + "123", written with no explicit `\rtlch`/`\ltrch`.
+    let input = br"{\rtf1\uc0\pard abc \u1575\u1604\u1587\u1604\u1575\u1605  123\par}";
+    let expected = "abc \u{627}\u{644}\u{633}\u{644}\u{627}\u{645} 123";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+            panic!()
+        };
+        let mut text = String::new();
+        let mut rtl_on = false;
+        for inline in &paragraph.inlines {
+            let Inline::Run(run) = inline else {
+                continue;
+            };
+            rtl_on |= run.props.rtl == TriState::On;
+            for content in &run.content {
+                if let RunContent::Text(node) = content {
+                    text.push_str(&node.text);
+                }
+            }
+        }
+        assert_eq!(text, expected, "mixed-run split must preserve logical text");
+        assert!(rtl_on, "the RTL segment must be recorded as w:rtl");
+    }
+}
+
+#[test]
 fn headers_footers_and_both_note_kinds_are_separate_parts() {
     let input = br"{\rtf1{\header Header\par}{\footer Footer}Body\chftn{\footnote\chftn Note\par}X{\footnote\ftnalt End}\par}";
     for document in [

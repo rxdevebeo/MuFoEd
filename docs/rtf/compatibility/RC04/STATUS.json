@@ -14,6 +14,7 @@
     "run effects \\outl/\\shad/\\embo/\\impr/\\noproof/\\snaptogrid -> w:outline/shadow/emboss/imprint/noProof/snapToGrid",
     "kerning threshold \\kernN -> w:kern (half-points, negative is an explicit Loss)",
     "vertical position \\positionN and \\upN/\\dnN -> w:position (signed half-points)",
+    "keep/widow/page-break rules (\\keep/\\keepn/\\widctlpar/\\nowidctlpar/\\pagebb) round-trip",
     "import -> Strict write -> reopen regression for all of the above"
   ],
   "remaining": [
@@ -53,6 +54,14 @@
         "\\shad then \\shad0 -> TriState On then Off",
         "\\kern24 -> Some(HalfPoints(24))",
         "\\up6 -> position Some(HalfPoints(6)); \\dn4 -> Some(HalfPoints(-4))"
+      ]
+    },
+    "keep_widow_roundtrip": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::keep_widow_and_page_break_rules_roundtrip",
+      "assertions": [
+        "\\keep/\\keepn/\\widctlpar/\\pagebb -> On",
+        "\\pard + \\nowidctlpar resets other paragraph rules and sets w:widowControl Off"
       ]
     }
   }

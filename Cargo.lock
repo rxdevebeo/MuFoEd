@@ -2371,6 +2371,7 @@ dependencies = [
  "strict-ooxml-wml",
  "strict-ooxml-write",
  "thiserror",
+ "unicode-bidi",
 ]
 
 [[package]]

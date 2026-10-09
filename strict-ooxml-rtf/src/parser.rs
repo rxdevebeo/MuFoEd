@@ -24,6 +24,7 @@ use strict_ooxml_wml::model::{
     TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign, VerticalJc,
     VerticalMerge, Width, WidthKind,
 };
+use unicode_bidi::BidiInfo;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Destination {
@@ -1339,8 +1340,14 @@ impl Parser<'_> {
             offset,
             "text_scalars",
         )?;
-        // Coalesce adjacent text in equal runs, so source escape density cannot
-        // multiply model nodes. Never coalesce across explicit paragraph breaks.
+        // A run with no explicit direction that mixes LTR and RTL strong text is
+        // split into direction-homogeneous runs at paragraph end (RC03).
+        self.push_text(text, offset)
+    }
+
+    /// Coalesces adjacent text in equal runs, so source escape density cannot
+    /// multiply model nodes. Never called across explicit paragraph breaks.
+    fn push_text(&mut self, text: String, offset: usize) -> Result<(), RtfError> {
         if let Some(Inline::Run(run)) = self.inlines.last_mut() {
             if run.props == self.state.run {
                 if let Some(RunContent::Text(previous)) = run.content.last_mut() {
@@ -1412,9 +1419,11 @@ impl Parser<'_> {
         } else {
             self.paragraph_props.clone()
         };
+        let mut inlines = std::mem::take(&mut self.inlines);
+        split_mixed_directional_runs(&mut inlines);
         let block = Block::Paragraph(Paragraph {
             props,
-            inlines: std::mem::take(&mut self.inlines),
+            inlines,
             rsids: Rsids::default(),
             revision: None,
             para_id: None,
@@ -2817,6 +2826,84 @@ impl Parser<'_> {
         }
         Ok(())
     }
+}
+/// Replaces each direction-mixed, text-only run with direction-homogeneous runs.
+/// Runs that already carry `w:rtl` or hold non-text content are left untouched.
+fn split_mixed_directional_runs(inlines: &mut Vec<Inline>) {
+    let mut out = Vec::with_capacity(inlines.len());
+    for inline in std::mem::take(inlines) {
+        let Inline::Run(run) = inline else {
+            out.push(inline);
+            continue;
+        };
+        let text_only = run
+            .content
+            .iter()
+            .all(|content| matches!(content, RunContent::Text(_)));
+        if run.props.rtl != TriState::Absent || !text_only {
+            out.push(Inline::Run(run));
+            continue;
+        }
+        let text: String = run
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                RunContent::Text(node) => Some(node.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        let segments = bidi_direction_segments(&text);
+        if segments.len() <= 1 {
+            out.push(Inline::Run(run));
+            continue;
+        }
+        for (segment, rtl) in segments {
+            let mut props = run.props.clone();
+            props.rtl = if rtl { TriState::On } else { TriState::Absent };
+            out.push(Inline::Run(Run {
+                props,
+                content: vec![RunContent::Text(TextNode {
+                    text: segment,
+                    space: Space::Preserve,
+                })],
+                revision: run.revision.clone(),
+                location: run.location.clone(),
+            }));
+        }
+    }
+    *inlines = out;
+}
+
+/// Splits `text` into logical-order segments of one direction each using the
+/// Unicode Bidirectional Algorithm. A single-direction string returns one
+/// segment, so the caller only acts on genuinely mixed text.
+fn bidi_direction_segments(text: &str) -> Vec<(String, bool)> {
+    let bidi = BidiInfo::new(text, None);
+    let mut segments: Vec<(String, bool)> = Vec::new();
+    let mut start = 0;
+    let mut current: Option<bool> = None;
+    for (index, _) in text.char_indices() {
+        let rtl = bidi
+            .levels
+            .get(index)
+            .is_some_and(unicode_bidi::Level::is_rtl);
+        match current {
+            Some(previous) if previous == rtl => {}
+            Some(previous) => {
+                segments.push((text[start..index].to_owned(), previous));
+                start = index;
+                current = Some(rtl);
+            }
+            None => current = Some(rtl),
+        }
+    }
+    if let Some(previous) = current {
+        segments.push((text[start..].to_owned(), previous));
+    }
+    if segments.is_empty() {
+        segments.push((text.to_owned(), false));
+    }
+    segments
 }
 fn xml_char(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\r')
