@@ -1,0 +1,44 @@
+{
+  "card": "RC08",
+  "status": "InProgress",
+  "updated": "2026-10-09",
+  "scope": "sections, regions, notes and complex fields",
+  "base_commit": "31188b6",
+  "dependencies": ["RC01", "RC04"],
+  "implemented": [
+    "per-section headers survive the WPS \\sectd\\sect ordering: the reset is deferred past the following \\sect, so a section commits the header/footer and geometry it accumulated instead of losing them; 072 now writes 40 header references (was 1) and the header renders on every section's pages"
+  ],
+  "remaining": [
+    "072 is still +34 pages (638 vs 604). The body line pitch now matches the reference (16.1pt = Arimo 1.15em x \\sl280/240); the residual is section-start paragraph spacing, which needs its own witness",
+    "\\chpgn (chapter page number field, 40 occurrences in 072 headers) is still an explicit Loss, so the header text reads 'Ruth (Page )' rather than 'Ruth (Page 2)'",
+    "first/even/odd header regions, note placement/numbering, multi-paragraph/nested fields and custom marks are unreviewed"
+  ],
+  "blocked": [],
+  "checks": {
+    "section_header_ordering": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::wps_sectd_before_sect_keeps_each_section_header",
+      "assertions": [
+        "a `\\sectd\\sect` pair keeps the header written after the break on the following section",
+        "the intro section carries no header; sections 2 and 3 each carry one",
+        "all 40 corpus header parts of 072 are referenced (headerReference count 1 -> 40)"
+      ]
+    },
+    "corpus_gates": {
+      "status": "Measured",
+      "date": "2026-10-09",
+      "receipts": [
+        "target/rtf-import/RC08-sections-corpus/results.json",
+        "target/rtf-import/RC08-sections-visual/results.json",
+        "target/rtf-import/RC08-sections-pixels/results.json"
+      ],
+      "results": {
+        "import_text_resource": "100/100 Pass",
+        "xsd": "100/100, 0 violations",
+        "opc": "100 packages, 0 violations",
+        "pagination": "65/100 Pass (072 641 -> 638 pages; reference 604)",
+        "pixels": "6/100 documents, 22/458 pages, 0 regressions"
+      }
+    }
+  }
+}
