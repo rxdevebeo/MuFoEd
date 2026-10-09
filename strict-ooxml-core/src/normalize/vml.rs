@@ -125,6 +125,21 @@ pub struct VmlShape {
     /// The `a:prstGeom` this shape is: `rect`, `roundRect`, `ellipse`, `line`.
     /// `None` keeps the frame without geometry (a freeform).
     pub preset: Option<&'static str>,
+    /// The text of a WordArt shape (`v:textpath`), which becomes a text box.
+    pub word_art: Option<VmlWordArt>,
+}
+
+/// `v:textpath`: a string drawn as the shape, as Word's text watermark is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VmlWordArt {
+    /// `@string`.
+    pub text: String,
+    /// `font-family` of its `style`, without quotes.
+    pub font: Option<String>,
+    /// `font-size` in half-points.
+    pub size: Option<u32>,
+    /// The text colour: the shape's fill.
+    pub color: String,
 }
 
 /// A `v:shape` that turned out to be a picture.
@@ -277,6 +292,8 @@ pub struct VmlStyle {
     pub flip_h: bool,
     /// `flip:y`.
     pub flip_v: bool,
+    /// `rotation` in degrees, clockwise.
+    pub rotation: Option<f64>,
 }
 
 impl VmlStyle {
@@ -305,6 +322,7 @@ impl VmlStyle {
                 "mso-position-horizontal" => out.horizontal = Some(value),
                 "mso-position-vertical-relative" => out.vertical_relative = Some(value),
                 "mso-position-vertical" => out.vertical = Some(value),
+                "rotation" => out.rotation = value.trim_end_matches("deg").parse().ok(),
                 "flip" => {
                     out.flip_h = value.split_whitespace().any(|axis| axis == "x");
                     out.flip_v = value.split_whitespace().any(|axis| axis == "y");
@@ -449,6 +467,7 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
     let mut shape_attributes = BTreeMap::new();
     let mut fill = None;
     let mut stroke = None;
+    let mut text_path = None;
     for event in subtree {
         let start: &BytesStart<'_> = match event {
             Event::Start(start) | Event::Empty(start) => start,
@@ -475,6 +494,7 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
                 style,
                 paint: VmlPaint::default(),
                 preset: preset_of(local, &attributes),
+                word_art: None,
             });
             element.clear();
             element.push_str(local);
@@ -493,6 +513,9 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
                 }
             }
             "textbox" => has_textbox = true,
+            "textpath" if is_vml(uri) && text_path.is_none() => {
+                text_path = Some(attributes_of(start.attributes().flatten()));
+            }
             "fill" if is_vml(uri) && fill.is_none() => {
                 fill = Some(attributes_of(start.attributes().flatten()));
             }
@@ -524,6 +547,16 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
         shape.preset = shape.preset.or(Some("rect"));
         return Some((Shape::TextBox(shape), wrap));
     }
+    if let Some(word_art) = text_path.as_ref().and_then(|path| word_art(path, &shape.paint)) {
+        // The string is the shape: the box itself is neither filled nor drawn.
+        shape.word_art = Some(word_art);
+        shape.preset = Some("rect");
+        shape.paint = VmlPaint {
+            fill: None,
+            stroke: None,
+        };
+        return Some((Shape::TextBox(shape), wrap));
+    }
     if let Some(path) = path {
         return Some((
             if path_is_convertible(&path) {
@@ -540,6 +573,72 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
         .preset
         .is_some()
         .then_some((Shape::Rectangle(shape), wrap))
+}
+
+/// The text, face, size and colour of a `v:textpath`.
+fn word_art(path: &BTreeMap<String, String>, paint: &VmlPaint) -> Option<VmlWordArt> {
+    let text = path.get("string").filter(|text| !text.trim().is_empty())?.clone();
+    let mut font = None;
+    let mut size = None;
+    for declaration in path.get("style").map_or("", String::as_str).split(';') {
+        let Some((name, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        let value = value.trim().trim_matches(|c: char| c == '"' || c == '\'');
+        match name.trim() {
+            "font-family" => font = Some(value.to_owned()),
+            "font-size" => {
+                size = points_of(value)
+                    .filter(|points| (1.0..=1600.0).contains(points))
+                    .map(|points| format!("{:.0}", points * 2.0))
+                    .and_then(|half| half.parse().ok());
+            }
+            _ => {}
+        }
+    }
+    let color = paint
+        .fill
+        .as_ref()
+        .map_or_else(|| "C0C0C0".to_owned(), |fill| fill.rgb.clone());
+    Some(VmlWordArt {
+        text,
+        font,
+        size,
+        color,
+    })
+}
+
+/// The paragraph a WordArt text box holds, as Transitional `w:` events: the
+/// caller writes them through the same rewrite as any text box content.
+#[must_use]
+pub(crate) fn word_art_content(art: &VmlWordArt) -> Vec<Event<'static>> {
+    let mut out = vec![
+        Event::Start(el("w:p", &[])),
+        Event::Start(el("w:pPr", &[])),
+        Event::Empty(el("w:jc", &[("w:val", "center")])),
+        Event::End(BytesEnd::new("w:pPr").into_owned()),
+        Event::Start(el("w:r", &[])),
+        Event::Start(el("w:rPr", &[])),
+    ];
+    if let Some(font) = art.font.as_deref() {
+        out.push(Event::Empty(el(
+            "w:rFonts",
+            &[("w:ascii", font), ("w:hAnsi", font), ("w:cs", font)],
+        )));
+    }
+    out.push(Event::Empty(el("w:color", &[("w:val", art.color.as_str())])));
+    if let Some(size) = art.size {
+        let size = size.to_string();
+        out.push(Event::Empty(el("w:sz", &[("w:val", size.as_str())])));
+        out.push(Event::Empty(el("w:szCs", &[("w:val", size.as_str())])));
+    }
+    out.push(Event::End(BytesEnd::new("w:rPr").into_owned()));
+    out.push(Event::Start(el("w:t", &[("xml:space", "preserve")])));
+    out.push(Event::Text(BytesText::new(&art.text).into_owned()));
+    out.push(Event::End(BytesEnd::new("w:t").into_owned()));
+    out.push(Event::End(BytesEnd::new("w:r").into_owned()));
+    out.push(Event::End(BytesEnd::new("w:p").into_owned()));
+    out
 }
 
 /// The `a:prstGeom` a VML element is: its own kind, or a straight connector
@@ -828,6 +927,7 @@ fn finish_grouped(
         style,
         paint: vml_paint::paint(&attributes, fill.as_ref(), stroke.as_ref()),
         preset,
+        word_art: None,
     };
     Some(match content {
         Some(content) => GroupedTextBox {
@@ -1367,7 +1467,7 @@ fn shape_payload(shape: &VmlShape, text_box: bool, cx: i64, cy: i64) -> Vec<Even
         Event::Start(el(
             "a:xfrm",
             &[
-                ("rot", "0"),
+                ("rot", rotation(shape.style.rotation).as_str()),
                 ("flipH", bool_str(shape.style.flip_h)),
                 ("flipV", bool_str(shape.style.flip_v)),
             ],
@@ -1395,6 +1495,15 @@ fn shape_payload(shape: &VmlShape, text_box: bool, cx: i64, cy: i64) -> Vec<Even
     out.push(Event::End(BytesEnd::new("a:graphicData").into_owned()));
     out.push(Event::End(BytesEnd::new("a:graphic").into_owned()));
     out
+}
+
+/// `a:xfrm/@rot`: 60 000ths of a degree in `[0, 21 600 000)`.
+fn rotation(degrees: Option<f64>) -> String {
+    let Some(degrees) = degrees.filter(|degrees| degrees.is_finite()) else {
+        return "0".to_owned();
+    };
+    let turned = degrees.rem_euclid(360.0);
+    format!("{:.0}", turned * 60_000.0)
 }
 
 fn shape_extent(cx: i64, cy: i64) -> BytesStart<'static> {

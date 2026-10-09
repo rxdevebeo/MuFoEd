@@ -526,7 +526,12 @@ impl TransitionalNormalizer {
         };
         Self::write_raw_events(writer, head, context)?;
         if text_box {
-            for content in Self::drain_textbox_content(subtree) {
+            // A WordArt string has no `w:txbxContent`; its paragraph is made here.
+            let content = match &shape.frame().word_art {
+                Some(art) => vml::word_art_content(art),
+                None => Self::drain_textbox_content(subtree),
+            };
+            for content in content {
                 Self::rewrite_event(writer, content, context, report)?;
             }
             Self::write_raw_events(writer, vml::text_box_close(), context)?;
@@ -3358,6 +3363,27 @@ mod tests {
         );
         // The group member sits at the group's 100pt offset.
         assert!(text.contains(">1270000<"), "{text}");
+    }
+
+    /// T7: Word's text watermark (`v:textpath`) becomes a turned text box that
+    /// holds the string in the shape's fill colour.
+    #[test]
+    fn a_vml_word_art_watermark_is_a_turned_text_box() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:p><w:r><w:pict>
+<v:shape id="wm" type="#_x0000_t136" style="position:absolute;width:321.75pt;height:66pt;rotation:315;mso-position-horizontal:center;mso-position-horizontal-relative:margin" fillcolor="#d99594 [1941]" stroked="f"><v:fill opacity=".5"/><v:textpath style="font-family:&quot;Calibri&quot;;font-size:54pt" string="DRAFT"/></v:shape>
+</w:pict></w:r></w:p></w:hdr>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(!text.contains("v:textpath"), "{text}");
+        assert!(text.contains("<wps:txbx>"), "{text}");
+        assert!(text.contains(">DRAFT<"), "{text}");
+        assert!(text.contains(r#"rot="18900000""#), "{text}");
+        assert!(text.contains(r#"w:val="D99594""#), "{text}");
+        assert!(text.contains(r#"w:val="108""#), "{text}");
+        assert!(text.contains(r#"w:ascii="Calibri""#), "{text}");
     }
 
     /// Dropping an empty child must not steal the parent's stack slot: after
