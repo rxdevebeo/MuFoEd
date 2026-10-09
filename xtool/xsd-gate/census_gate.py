@@ -461,7 +461,14 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
         # (T7) and its geometry, locks and extensions are attribute and element
         # rows of this part; the header's identity is what it says.
         if local in {"pict", "drawing"} and namespace == _WML_STRICT:
-            chunks.append(f"<{namespace} drawing")
+            # T7 writes each member of a VML group as its own `w:drawing` in the
+            # same run: the run's drawings are one mark.
+            previous = element.getprevious()
+            run_of_drawings = previous is not None and isinstance(previous.tag, str) and (
+                etree.QName(previous).localname in {"pict", "drawing"}
+            )
+            if not run_of_drawings:
+                chunks.append(f"<{namespace} drawing")
             for box in _text_boxes(element):
                 for child in box:
                     walk(child, chunks)
