@@ -986,7 +986,9 @@ def census_hits(
                 elif signal == "mce":
                     hit = any(marker in where for marker in item["elements"])
                 elif signal == "extension":
-                    hit = any(marker in where for marker in item["elements"])
+                    # `where` is one local name. A substring match counted
+                    # `a14:shadowObscured`, kept inside `a:extLst`, as w14 `shadow`.
+                    hit = where in item["elements"]
                 elif signal == "element":
                     hit = element_item_matches(item, where, label, detail)
                 else:
@@ -1352,6 +1354,13 @@ def _same_attr_value(
         or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
         or (element in {"spcPct", "buSzPct"} and attr == "val")
         or (element == "miter" and attr == "lim")
+        or (element == "lum" and attr in {"bright", "contrast"})
+        or (element in {"alphaModFix", "tint"} and attr == "amt")
+        or (element in {"alphaBiLevel", "biLevel"} and attr == "thresh")
+        or (element == "alphaRepl" and attr == "a")
+        or (element == "hsl" and attr in {"sat", "lum"})
+        or (element == "outerShdw" and attr in {"sx", "sy"})
+        or (element == "reflection" and attr in {"stA", "stPos", "endA", "endPos", "sx", "sy"})
     )
     if drawing_percent:
         a, b = _percent_number(left), _percent_number(right)

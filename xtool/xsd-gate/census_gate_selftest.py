@@ -609,6 +609,7 @@ def main() -> int:
     test_p15_document_protection_needs_its_citation()
     test_p15_bare_on_off_counts()
     test_p15_unsigned_char_space_is_the_signed_pitch()
+    test_p15_extension_names_match_whole()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -970,6 +971,19 @@ def test_p15_unsigned_char_space_is_the_signed_pitch() -> None:
         raise SystemExit("the unsigned charSpace pattern was a different pitch")
     if census_gate._same_attr_value("charSpace", "4294961151", "-6144", "docGrid"):
         raise SystemExit("a different charSpace matched")
+
+
+def test_p15_extension_names_match_whole() -> None:
+    """P15: TZ-13 counts w14 `shadow`, not the a14 `shadowObscured` an extLst keeps."""
+    registry = census_gate.load_census()
+    signals = {
+        name: []
+        for name in ("message", "element", "dropped", "unaccounted", "lossy", "picture", "mce")
+    }
+    signals["extension"] = [("shadowObscured", "shadowObscured", ""), ("shadow", "shadow", "")]
+    hits = census_gate.census_hits(registry, signals)
+    if hits["counts"]["TZ-13"] != 1:
+        raise SystemExit(f"TZ-13 counted {hits['counts']['TZ-13']} extension nodes, not 1")
 
 
 def test_p15_document_protection_needs_its_citation() -> None:

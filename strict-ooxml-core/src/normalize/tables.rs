@@ -569,6 +569,22 @@ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
     ) {
         return true;
     }
+    // The blip and shape effects the writer now keeps as markup: luminance,
+    // alpha, bi-level, HSL and tint amounts, and the shadow and reflection
+    // scales and stops. Their angles (`hue`, `kx`, `dir`, `fadeDir`) are not
+    // percentages.
+    if matches!(
+        (element, attribute),
+        ("lum", "bright" | "contrast")
+            | ("alphaModFix" | "tint", "amt")
+            | ("alphaBiLevel" | "biLevel", "thresh")
+            | ("alphaRepl", "a")
+            | ("hsl", "sat" | "lum")
+            | ("outerShdw", "sx" | "sy")
+            | ("reflection", "stA" | "stPos" | "endA" | "endPos" | "sx" | "sy")
+    ) {
+        return true;
+    }
     // `CT_TextCharacterProperties/@baseline` is `ST_Percentage`.
     matches!(element, "defRPr" | "rPr" | "endParaRPr") && attribute == "baseline"
 }
@@ -805,6 +821,11 @@ mod tests {
         assert!(is_drawingml_percentage_attr("buSzPct", "val"));
         assert!(is_drawingml_percentage_attr("miter", "lim"));
         assert!(!is_drawingml_percentage_attr("spcPts", "val"));
+        assert!(is_drawingml_percentage_attr("lum", "contrast"));
+        assert!(is_drawingml_percentage_attr("reflection", "endPos"));
+        assert!(is_drawingml_percentage_attr("outerShdw", "sx"));
+        assert!(!is_drawingml_percentage_attr("outerShdw", "kx"));
+        assert!(!is_drawingml_percentage_attr("hsl", "hue"));
         assert_eq!(
             drawingml_thousandths_percent("20000").as_deref(),
             Some("20%")
