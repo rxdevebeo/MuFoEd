@@ -469,9 +469,18 @@ def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
             )
             if not run_of_drawings:
                 chunks.append(f"<{namespace} drawing")
+            # A drawing is what it says: the text of its boxes, and the string of
+            # a WordArt `v:textpath`, which T7 writes as a text box.
             for box in _text_boxes(element):
-                for child in box:
-                    walk(child, chunks)
+                text = "".join(
+                    node.text or ""
+                    for node in box.iter()
+                    if isinstance(node.tag, str) and etree.QName(node).localname == "t"
+                )
+                chunks.append(f"text={text}")
+            for node in element.iter():
+                if isinstance(node.tag, str) and etree.QName(node).localname == "textpath":
+                    chunks.append(f"text={node.get('string', '')}")
             return
         # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
         pct = any(

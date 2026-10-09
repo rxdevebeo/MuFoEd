@@ -613,6 +613,7 @@ def main() -> int:
     test_p15_extension_ext_is_stripped_alone()
     test_p15_empty_border_container_is_nothing()
     test_vml_group_members_are_one_drawing()
+    test_word_art_is_its_string()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -1032,6 +1033,26 @@ def test_vml_group_members_are_one_drawing() -> None:
     ).encode()
     if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
         raise SystemExit("a group's members counted as several drawings")
+
+
+def test_word_art_is_its_string() -> None:
+    """A WordArt `v:textpath` and the text box T7 makes of it are one header."""
+    transitional = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    source = (
+        f"<w:hdr xmlns:w='{transitional}' xmlns:v='urn:schemas-microsoft-com:vml'><w:p><w:r>"
+        "<w:pict><v:shape><v:textpath string='DRAFT'/></v:shape></w:pict></w:r></w:p></w:hdr>"
+    ).encode()
+    written = (
+        f"<w:hdr xmlns:w='{strict}'><w:p><w:r><w:drawing><w:txbxContent><w:p><w:pPr><w:jc w:val='center'/>"
+        "</w:pPr><w:r><w:t>DRAFT</w:t></w:r></w:p></w:txbxContent></w:drawing></w:r></w:p></w:hdr>"
+    ).encode()
+    if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
+        raise SystemExit("a WordArt watermark written as a text box was a different header")
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(
+        written.replace(b"DRAFT", b"OTHER")
+    ):
+        raise SystemExit("a different watermark string matched")
 
 
 def test_p15_document_protection_needs_its_citation() -> None:
