@@ -545,6 +545,8 @@ impl PartParser<'_> {
                                 "end" | "right" => borders.end = Some(border),
                                 "insideH" => borders.inside_horizontal = Some(border),
                                 "insideV" => borders.inside_vertical = Some(border),
+                                "between" => borders.between = Some(border),
+                                "bar" => borders.bar = Some(border),
                                 _ => {
                                     record_unmodelled_property(parser, &name)?;
                                     continue;

@@ -401,6 +401,8 @@ pub(crate) fn table_of(planned: &PlannedTable, paragraphs: Vec<Vec<Vec<Paragraph
         end: Some(border.clone()),
         inside_horizontal: Some(border.clone()),
         inside_vertical: Some(border),
+        between: None,
+        bar: None,
     };
     let mut rows = Vec::with_capacity(planned.rows.len());
     for (row, cell_paragraphs) in planned.rows.iter().zip(paragraphs) {

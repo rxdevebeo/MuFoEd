@@ -656,6 +656,10 @@ pub struct Borders {
     pub inside_horizontal: Option<Border>,
     /// Inside vertical border (tables).
     pub inside_vertical: Option<Border>,
+    /// Border between paragraphs with the same borders (`w:pBdr/w:between`).
+    pub between: Option<Border>,
+    /// Bar border beside the paragraph (`w:pBdr/w:bar`).
+    pub bar: Option<Border>,
 }
 
 /// The set of fonts for the four script classes (`w:rFonts`).

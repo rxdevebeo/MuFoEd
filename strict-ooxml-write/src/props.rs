@@ -586,6 +586,8 @@ fn borders_empty(borders: &Borders) -> bool {
         && borders.end.is_none()
         && borders.inside_horizontal.is_none()
         && borders.inside_vertical.is_none()
+        && borders.between.is_none()
+        && borders.bar.is_none()
 }
 
 /// Writes a border container (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
@@ -622,6 +624,9 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
         (far, &borders.end),
         ("insideH", &borders.inside_horizontal),
         ("insideV", &borders.inside_vertical),
+        // `CT_PBdr` ends with these two; no table container has them.
+        ("between", &borders.between),
+        ("bar", &borders.bar),
     ] {
         if let Some(edge) = edge {
             border_edge(xml, local, edge);
@@ -1589,6 +1594,8 @@ mod tests {
             end: Some(border),
             inside_horizontal: None,
             inside_vertical: None,
+            between: None,
+            bar: None,
         };
         let mut xml = XmlWriter::new();
         borders_element(&mut xml, "w:pBdr", &borders, EdgeNames::Paragraph);
