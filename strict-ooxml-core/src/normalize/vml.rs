@@ -1024,16 +1024,23 @@ fn paint_children(events: &[Event<'static>]) -> (Option<Attributes>, Option<Attr
     (fill, stroke)
 }
 
-fn textbox_children(events: &[Event<'static>]) -> Option<Vec<Event<'static>>> {
+/// The events inside the first `txbxContent` of `events`, without the wrapper;
+/// `None` when there is none.
+///
+/// Everything between the wrapper's tags is carried - text, CDATA, entity
+/// references - because a text box is its text, and a walk that kept only
+/// `Text` lost every `&amp;` and every CDATA section without a record. The
+/// wrapper is found by its local name: `<txbxContent xmlns="…/main">` is the
+/// same element as `<w:txbxContent>`.
+pub(crate) fn textbox_children(events: &[Event<'static>]) -> Option<Vec<Event<'static>>> {
     let mut out = Vec::new();
     let mut depth = 0i32;
     let mut seen = false;
     for event in events {
         match event {
             Event::Start(start) => {
-                let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
                 if depth == 0 {
-                    if !name.ends_with(":txbxContent") {
+                    if start.local_name().as_ref() != b"txbxContent" {
                         continue;
                     }
                     depth = 1;

@@ -33,6 +33,7 @@ use std::sync::Mutex;
 
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{BytesEnd, BytesStart, Event};
+use quick_xml::name::ResolveResult;
 use quick_xml::{Reader, Writer};
 
 use crate::error::{Result, SourceLocation, StrictError};
@@ -325,6 +326,10 @@ impl TransitionalNormalizer {
         // converted by it.
         let mut buffered: std::collections::VecDeque<Event<'static>> =
             std::collections::VecDeque::new();
+        // Open elements of the input, so that a part which simply stops - a
+        // reader reports the end of a truncated document as `Eof`, not as an
+        // error - is recognised as damaged rather than written out unbalanced.
+        let mut depth = 0usize;
 
         loop {
             // The seam hands the normalizer a *prefix* of a part as well as
@@ -355,6 +360,14 @@ impl TransitionalNormalizer {
                 };
                 event
             };
+            if let Event::DocType(_) = event {
+                // A DTD is refused by every reader in this crate, so a part that
+                // has one is never going to be read as Strict; it is left as the
+                // producer wrote it rather than re-serialized, DTD and all, under
+                // a report that says it was normalized.
+                self.commit_part_report(part, report);
+                return Ok(Cow::Borrowed(bytes));
+            }
             let Event::Eof = event else {
                 // ---- T6 and T7: the two elements judged whole ---------------
                 //
@@ -365,25 +378,39 @@ impl TransitionalNormalizer {
                 // descendant `mc:Choice`. A streaming pass sees the start tag
                 // and not the thing that decides.
                 let mut source = EventSource::new(&mut reader, &mut buffered);
-                let rewrite = if context.skip_depth == 0 && is_legacy_graphics(&event, &context) {
-                    let subtree = collect_subtree(&mut source, event);
-                    Self::rewrite_legacy_graphics(
-                        &mut writer,
-                        &subtree,
-                        &mut context,
-                        &mut report,
-                        &mut buffered,
-                    )
-                } else if context.skip_depth == 0 && is_alternate_content(&event, &context) {
-                    let subtree = collect_subtree(&mut source, event);
-                    rewrite_alternate_content(
-                        &mut writer,
-                        &subtree,
-                        &mut context,
-                        &mut report,
-                        &mut buffered,
-                    )
+                let legacy = context.skip_depth == 0 && is_legacy_graphics(&event, &context);
+                let alternate =
+                    !legacy && context.skip_depth == 0 && is_alternate_content(&event, &context);
+                let rewrite = if legacy || alternate {
+                    let Some(subtree) = collect_subtree(&mut source, event) else {
+                        // Damaged inside a judged subtree: as for any part that
+                        // does not parse, the bytes are left alone.
+                        self.commit_part_report(part, report);
+                        return Ok(Cow::Borrowed(bytes));
+                    };
+                    if legacy {
+                        Self::rewrite_legacy_graphics(
+                            &mut writer,
+                            &subtree,
+                            &mut context,
+                            &mut report,
+                            &mut buffered,
+                        )
+                    } else {
+                        rewrite_alternate_content(
+                            &mut writer,
+                            &subtree,
+                            &mut context,
+                            &mut report,
+                            &mut buffered,
+                        )
+                    }
                 } else {
+                    match &event {
+                        Event::Start(_) => depth += 1,
+                        Event::End(_) => depth = depth.saturating_sub(1),
+                        _ => {}
+                    }
                     Self::rewrite_event(&mut writer, event, &mut context, &mut report)
                 };
                 if let Err(error) = rewrite {
@@ -400,6 +427,11 @@ impl TransitionalNormalizer {
                 }
                 continue;
             };
+            if depth > 0 {
+                // Truncated: the same policy as for any part that does not parse.
+                self.commit_part_report(part, report);
+                return Ok(Cow::Borrowed(bytes));
+            }
             break;
         }
 
@@ -699,37 +731,7 @@ impl TransitionalNormalizer {
     /// their runs emptied is a frame around nothing, and it passes every
     /// structural assertion.
     fn drain_textbox_content(subtree: &[Event<'static>]) -> Vec<Event<'static>> {
-        let mut out = Vec::new();
-        let mut depth = 0usize;
-        for event in subtree {
-            match event {
-                Event::Start(start) => {
-                    let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
-                    if depth == 0 {
-                        if !name.ends_with(":txbxContent") {
-                            continue;
-                        }
-                        depth = 1;
-                        continue;
-                    }
-                    depth += 1;
-                    out.push(event.clone());
-                }
-                Event::End(_) => {
-                    if depth == 0 {
-                        continue;
-                    }
-                    depth -= 1;
-                    if depth == 0 {
-                        return out;
-                    }
-                    out.push(event.clone());
-                }
-                Event::Empty(_) | Event::Text(_) if depth > 0 => out.push(event.clone()),
-                _ => {}
-            }
-        }
-        out
+        vml::textbox_children(subtree).unwrap_or_default()
     }
 
     /// Rewrites one event into the writer. Dropping is what makes this more than a
@@ -764,10 +766,15 @@ impl TransitionalNormalizer {
                 // `rewrite_start` itself, once it has agreed to keep it, so the
                 // stack is exactly the tree being written and a dropped subtree
                 // leaves nothing behind for the matching `End` to pop.
+                //
+                // The element's namespace declarations last until that `End`; a
+                // dropped element's go at once, since nothing inside it is read.
+                context.open_scope();
                 match Self::rewrite_start(&start, false, context, report) {
                     Rewritten::Keep(rewritten) => write_start(writer, &rewritten)
                         .map_err(|error| xml_error(&context.part, error.to_string())),
                     Rewritten::Drop => {
+                        context.close_scope();
                         context.skip_depth = 1;
                         Ok(())
                     }
@@ -777,7 +784,10 @@ impl TransitionalNormalizer {
                 if context.skip_depth > 0 {
                     return Ok(());
                 }
-                match Self::rewrite_start(&start, true, context, report) {
+                context.open_scope();
+                let rewritten = Self::rewrite_start(&start, true, context, report);
+                context.close_scope();
+                match rewritten {
                     // `rewrite_start` pushes onto the open-element stack, and for
                     // an `Event::Empty` there is no `Event::End` to pop it - a
                     // self-closing tag is one event, not two. Without this the
@@ -816,6 +826,7 @@ impl TransitionalNormalizer {
                 let output_name = context
                     .pop_element()
                     .unwrap_or_else(|| String::from_utf8_lossy(end.name().as_ref()).into_owned());
+                context.close_scope();
                 let rewritten = BytesEnd::new(output_name);
                 write_end(writer, &rewritten)
                     .map_err(|error| xml_error(&context.part, error.to_string()))
@@ -1259,7 +1270,7 @@ fn check_invariants(
         }
     }
 
-    if output.windows(4).any(|window| window == b"mc:I") {
+    if has_mce_ignorable(output) {
         violations.push(
             "an mc:Ignorable survived T6; Strict conformance is defined on the post-MCE part \
              (ECMA-376 Part 1 §2.1 clause (ii))"
@@ -1287,6 +1298,41 @@ fn check_invariants(
         });
     }
     Ok(())
+}
+
+/// Whether any element of `output` still carries an `mc:Ignorable` attribute.
+///
+/// Asked of the parsed attributes, not of the bytes: a paragraph that *says*
+/// "mc:Ignorable" is prose, and a byte search failed every such part under
+/// [`InvariantMode::Strict`] - the same false positive AUD-32 removed from
+/// [`namespace_declarations`]. The attribute is recognised by its namespace, so
+/// a producer's own prefix for markup compatibility is caught too; an unbound
+/// `mc:` - not XML, but what a broken rewrite would leave - by its spelling.
+fn has_mce_ignorable(output: &[u8]) -> bool {
+    let mut reader = quick_xml::NsReader::from_reader(output);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(start) | Event::Empty(start)) => {
+                for attribute in start.attributes().flatten() {
+                    let (namespace, local) = reader.resolver().resolve_attribute(attribute.key);
+                    if local.as_ref() != b"Ignorable" {
+                        continue;
+                    }
+                    let is_mce = match namespace {
+                        ResolveResult::Bound(uri) => uri.as_ref() == mce::MC_NS.as_bytes(),
+                        ResolveResult::Unknown(prefix) => prefix == b"mc",
+                        ResolveResult::Unbound => false,
+                    };
+                    if is_mce {
+                        return true;
+                    }
+                }
+            }
+            Ok(Event::Eof) | Err(_) => return false,
+            _ => {}
+        }
+    }
 }
 
 /// The `xml:` namespace, which XML binds and no document declares.
@@ -1511,27 +1557,28 @@ impl<'a, 'r> EventSource<'a, 'r> {
 
 /// Reads a subtree into memory, starting from the event that opened it.
 ///
-/// Returns the opening event followed by everything down to its matching end tag.
-/// A document that ends inside the subtree — damaged input — returns what it has,
-/// and the stages above then decline it, which is the safe direction: a truncated
-/// subtree is not a picture anybody should draw and not a branch anybody should
-/// resolve.
-fn collect_subtree(source: &mut EventSource<'_, '_>, open: Event<'static>) -> Vec<Event<'static>> {
+/// Returns the opening event followed by everything down to its matching end tag,
+/// or `None` when the document ends (or stops parsing) inside the subtree. That is
+/// damaged input, and the caller leaves the part as it is: a truncated subtree is
+/// not a picture anybody should draw and not a branch anybody should resolve —
+/// and the classifier, which only needs a `v:imagedata`, would happily do both.
+fn collect_subtree(
+    source: &mut EventSource<'_, '_>,
+    open: Event<'static>,
+) -> Option<Vec<Event<'static>>> {
     let mut out = vec![open];
     let mut depth = 1usize;
     while depth > 0 {
-        let Some(event) = source.next() else {
-            break;
-        };
+        let event = source.next()?;
         match &event {
             Event::Start(_) => depth += 1,
             Event::End(_) => depth -= 1,
-            Event::Eof => break,
+            Event::Eof => return None,
             _ => {}
         }
         out.push(event);
     }
-    out
+    Some(out)
 }
 
 /// Detaches an event from the reader's buffer.
@@ -1564,6 +1611,19 @@ enum RootTag {
     Seen(Option<Vec<u8>>),
 }
 
+/// One namespace binding: `xmlns:prefix="uri"` (the empty prefix is the
+/// default namespace).
+struct Binding {
+    prefix: Vec<u8>,
+    uri: String,
+    /// Whether the pipeline did not emit this binding's `xmlns:` declaration.
+    ///
+    /// The binding itself stays - `resolve` needs it to recognise a node in a
+    /// namespace it removes - so this is the separate record that the
+    /// declaration is gone. See [`map_namespace_declaration`].
+    dropped: bool,
+}
+
 /// Per-part mutable state.
 ///
 /// Visible to the [`vml`] module, which resolves a buffered `w:pict` subtree
@@ -1571,13 +1631,16 @@ enum RootTag {
 /// the one question `vml` asks, [`PartContext::uri_for`].
 pub(crate) struct PartContext {
     part: PartId,
-    prefixes: Vec<(Vec<u8>, String)>,
-    /// Prefixes whose `xmlns:` declaration the pipeline did not emit.
+    /// The namespace bindings in scope, outermost first; a prefix bound twice
+    /// is answered by its innermost binding.
     ///
-    /// The binding is still in `prefixes` - `resolve` needs it to recognise a
-    /// node in a namespace it removes - so this is the separate record that the
-    /// declaration itself is gone. See [`map_namespace_declaration`].
-    dropped_declarations: std::collections::BTreeSet<Vec<u8>>,
+    /// A stack, not a table: a binding made on an element ends with it, so
+    /// `<w:p xmlns:p="urn:inner">` must not leave `p` meaning `urn:inner` for
+    /// the sibling after it. [`scope_marks`](Self::scope_marks) says where each
+    /// open element's bindings begin.
+    prefixes: Vec<Binding>,
+    /// For each open element, the length of `prefixes` when it was opened.
+    scope_marks: Vec<usize>,
     /// Every prefix the part's bytes use, scanned before the streaming pass.
     ///
     /// `mc:Ignorable` names prefixes, and whether a name is dead depends on
@@ -1684,7 +1747,7 @@ impl PartContext {
         Self {
             part,
             prefixes: Vec::new(),
-            dropped_declarations: std::collections::BTreeSet::new(),
+            scope_marks: Vec::new(),
             used_prefixes: std::collections::BTreeSet::new(),
             line: 1,
             column: 1,
@@ -1778,36 +1841,76 @@ impl PartContext {
         SourceLocation::new(self.part.clone(), self.line, self.column, self.offset)
     }
 
-    /// Binds `prefix` to `uri`, replacing any earlier binding.
+    /// Binds `prefix` to `uri` in the innermost open element, replacing a
+    /// binding that element already made.
     ///
     /// Replacing rather than keeping the first binding matters: the start tag
     /// is read once to learn the original namespace and again to rewrite the
     /// declaration, and the second pass must win or every rewritten attribute
     /// ends up on a freshly minted prefix while the declaration still names
-    /// the old one.
+    /// the old one. A binding made by an **enclosing** element is shadowed,
+    /// not replaced: it comes back when this element closes.
     fn remember_prefix(&mut self, prefix: Vec<u8>, uri: String) {
-        if let Some(slot) = self.prefixes.iter_mut().find(|(known, _)| *known == prefix) {
-            slot.1 = uri;
+        let scope = self.scope_marks.last().copied().unwrap_or(0);
+        let own = self
+            .prefixes
+            .get_mut(scope..)
+            .and_then(|own| own.iter_mut().find(|binding| binding.prefix == prefix));
+        if let Some(binding) = own {
+            binding.uri = uri;
+            binding.dropped = false;
         } else {
-            self.prefixes.push((prefix, uri));
+            self.prefixes.push(Binding {
+                prefix,
+                uri,
+                dropped: false,
+            });
         }
     }
 
-    pub(crate) fn uri_for(&self, prefix: &[u8]) -> Option<&str> {
+    /// Opens the scope of an element's namespace declarations.
+    fn open_scope(&mut self) {
+        self.scope_marks.push(self.prefixes.len());
+    }
+
+    /// Ends the scope [`open_scope`](Self::open_scope) began: the element's
+    /// own bindings go, and whatever they shadowed is visible again.
+    fn close_scope(&mut self) {
+        if let Some(mark) = self.scope_marks.pop() {
+            self.prefixes.truncate(mark);
+        }
+    }
+
+    /// The innermost binding of `prefix`.
+    fn binding(&self, prefix: &[u8]) -> Option<&Binding> {
         self.prefixes
             .iter()
-            .find(|(known, _)| known == prefix)
-            .map(|(_, uri)| uri.as_str())
+            .rev()
+            .find(|binding| binding.prefix == prefix)
+    }
+
+    pub(crate) fn uri_for(&self, prefix: &[u8]) -> Option<&str> {
+        self.binding(prefix).map(|binding| binding.uri.as_str())
     }
 
     /// Records that `prefix`'s `xmlns:` declaration is not being emitted.
     fn forget_declaration(&mut self, prefix: &[u8]) {
-        self.dropped_declarations.insert(prefix.to_vec());
+        if let Some(binding) = self
+            .prefixes
+            .iter_mut()
+            .rev()
+            .find(|binding| binding.prefix == prefix)
+        {
+            binding.dropped = true;
+        }
     }
 
-    /// Whether `prefix`'s `xmlns:` declaration was dropped.
+    /// Whether the declaration of the binding `prefix` has here was dropped.
+    ///
+    /// Asked of the binding in scope, not of the part: a prefix whose VML
+    /// declaration went on one paragraph can mean something live on the next.
     fn declaration_dropped(&self, prefix: &[u8]) -> bool {
-        self.dropped_declarations.contains(prefix)
+        self.binding(prefix).is_some_and(|binding| binding.dropped)
     }
 
     /// Whether any name in the part uses `prefix`.
@@ -1830,8 +1933,13 @@ impl PartContext {
     }
 
     fn prefix_for(&mut self, uri: &str) -> String {
-        if let Some((prefix, _)) = self.prefixes.iter().find(|(_, known)| known == uri) {
-            return String::from_utf8_lossy(prefix).into_owned();
+        // Outermost first, as the table always answered, but never a prefix an
+        // inner declaration has since rebound to something else.
+        let bound = self.prefixes.iter().find(|binding| {
+            binding.uri == uri && self.uri_for(&binding.prefix) == Some(uri)
+        });
+        if let Some(binding) = bound {
+            return String::from_utf8_lossy(&binding.prefix).into_owned();
         }
         if uri.is_empty() {
             // The empty URI is "no namespace", and an unprefixed name is
@@ -2848,6 +2956,8 @@ fn used_prefixes(bytes: &[u8]) -> std::collections::BTreeSet<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+
+    use quick_xml::events::Event;
 
     use super::{
         map_rel_or_content_type, part_needs_normalization, repair_legacy_package_uri,
@@ -4857,5 +4967,167 @@ mod tests {
         reverse.normalize(&a, document).unwrap();
 
         assert_eq!(forward.report(), reverse.report());
+    }
+
+    /// The namespace `output` binds the first element named `local` to.
+    fn namespace_of(output: &str, local: &str) -> Option<String> {
+        let mut reader = quick_xml::NsReader::from_str(output);
+        loop {
+            match reader.read_resolved_event() {
+                Ok((namespace, Event::Start(start) | Event::Empty(start)))
+                    if start.local_name().as_ref() == local.as_bytes() =>
+                {
+                    return match namespace {
+                        quick_xml::name::ResolveResult::Bound(uri) => {
+                            Some(String::from_utf8_lossy(uri.as_ref()).into_owned())
+                        }
+                        _ => None,
+                    };
+                }
+                Ok((_, Event::Eof)) | Err(_) => return None,
+                _ => {}
+            }
+        }
+    }
+
+    /// A text box is its text, whichever way the producer spelled it: CDATA and
+    /// entity references are events of their own, and the walk that carried only
+    /// `Text` lost both without a record.
+    #[test]
+    fn a_vml_text_box_keeps_cdata_and_entity_references() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:body><w:p><w:r><w:pict><v:shape id="tb" type="#_x0000_t202" style="width:200pt;height:60pt">
+<v:textbox><w:txbxContent><w:p><w:r><w:t><![CDATA[in the box]]></w:t></w:r><w:r><w:t>A &amp; B&#160;C</w:t></w:r></w:p></w:txbxContent></v:textbox>
+</v:shape></w:pict></w:r></w:p></w:body></w:document>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(text.contains("<wps:txbx><w:txbxContent>"), "{text}");
+        assert!(text.contains("<![CDATA[in the box]]>"), "CDATA: {text}");
+        assert!(text.contains("A &amp; B&#160;C"), "references: {text}");
+    }
+
+    /// `txbxContent` in the default namespace is the same element as
+    /// `w:txbxContent`, and its content is carried the same way.
+    #[test]
+    fn a_text_box_wrapper_in_the_default_namespace_is_recognised() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml">
+<w:body><w:p><w:r><w:pict><v:shape id="tb" type="#_x0000_t202" style="width:200pt;height:60pt">
+<v:textbox><txbxContent xmlns="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>unprefixed wrapper</w:t></w:r></w:p></txbxContent></v:textbox>
+</v:shape></w:pict></w:r></w:p></w:body></w:document>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(text.contains("unprefixed wrapper"), "{text}");
+    }
+
+    /// A binding ends with the element that made it. `p` redeclared on one
+    /// paragraph must mean the root's namespace again on the sibling after it.
+    #[test]
+    fn a_namespace_redeclared_on_an_element_ends_with_it() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:p="urn:outer">
+<w:body><w:p xmlns:p="urn:inner"><w:pPr><w:jc w:val="left"/></w:pPr><p:inside/><w:r><w:t>x</w:t></w:r></w:p>
+<p:tag/></w:body></w:document>"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert!(text.contains(r#"w:val="start""#), "the part was rewritten: {text}");
+        assert_eq!(namespace_of(&text, "inside").as_deref(), Some("urn:inner"), "{text}");
+        assert_eq!(namespace_of(&text, "tag").as_deref(), Some("urn:outer"), "{text}");
+    }
+
+    /// The bookkeeping under the test above, including the record that a
+    /// declaration was dropped: it belongs to the binding, and goes with it.
+    #[test]
+    fn bindings_and_dropped_declarations_are_scoped() {
+        let mut context = super::PartContext::new(part());
+        context.open_scope();
+        context.remember_prefix(b"p".to_vec(), "urn:outer".to_owned());
+        context.open_scope();
+        context.remember_prefix(b"p".to_vec(), "urn:schemas-microsoft-com:vml".to_owned());
+        context.forget_declaration(b"p");
+        assert_eq!(context.uri_for(b"p"), Some("urn:schemas-microsoft-com:vml"));
+        assert!(context.declaration_dropped(b"p"));
+        assert_eq!(context.prefix_for("urn:outer"), "n2", "outer p is shadowed");
+        context.close_scope();
+        assert_eq!(context.uri_for(b"p"), Some("urn:outer"));
+        assert!(!context.declaration_dropped(b"p"));
+        assert_eq!(context.prefix_for("urn:outer"), "p");
+        context.close_scope();
+        assert_eq!(context.uri_for(b"p"), None);
+    }
+
+    /// `mc:Ignorable` is an attribute, and prose that names it is not one. The
+    /// byte scan failed this part under `Strict` and booked a false
+    /// `T8.invariant` under `Lenient`.
+    #[test]
+    fn prose_that_says_mc_ignorable_is_not_an_invariant_violation() {
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>strip mc:Ignorable before going Strict</w:t></w:r></w:p></w:body></w:document>"#;
+        let strict = TransitionalNormalizer::with_options(NormalizerOptions::with_invariants(
+            InvariantMode::Strict,
+        ));
+        let output = strict.normalize(&part(), source.as_bytes()).unwrap();
+        assert!(matches!(output, Cow::Owned(_)), "the part was rewritten");
+        let lenient = TransitionalNormalizer::new();
+        lenient.normalize(&part(), source.as_bytes()).unwrap();
+        assert!(
+            !lenient.report().to_string().contains("T8.invariant"),
+            "{}",
+            lenient.report()
+        );
+    }
+
+    /// The attribute itself is still caught, under any prefix.
+    #[test]
+    fn a_surviving_mc_ignorable_attribute_is_still_found() {
+        assert!(super::has_mce_ignorable(
+            br#"<a xmlns:m="http://schemas.openxmlformats.org/markup-compatibility/2006" m:Ignorable="x"/>"#
+        ));
+        assert!(super::has_mce_ignorable(br#"<a mc:Ignorable="x"/>"#));
+        assert!(!super::has_mce_ignorable(br#"<a><b>mc:Ignorable</b></a>"#));
+    }
+
+    /// A part that stops inside a `w:pict` is damaged, and is left exactly as it
+    /// is - not converted into half a picture and returned unbalanced as a
+    /// success.
+    #[test]
+    fn a_part_truncated_inside_a_picture_is_left_alone() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r##"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:pict><v:shape type="#_x0000_t75" style="width:100pt;height:50pt">
+<v:imagedata r:id="rId1"/>"##;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        assert!(matches!(output, Cow::Borrowed(_)), "left as it was");
+        assert!(
+            !normalizer.report().to_string().contains("T7.vml-shape"),
+            "{}",
+            normalizer.report()
+        );
+    }
+
+    /// The same for a part that simply stops: the reader reports the end of a
+    /// truncated document as `Eof`, not as an error.
+    #[test]
+    fn a_part_that_stops_with_open_elements_is_left_alone() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>cut"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        assert!(matches!(output, Cow::Borrowed(_)));
+    }
+
+    /// A DTD is never re-serialized: the part is left as the producer wrote it,
+    /// for the reader to refuse.
+    #[test]
+    fn a_part_with_a_doctype_is_left_alone() {
+        let normalizer = TransitionalNormalizer::new();
+        let source = r#"<?xml version="1.0"?><!DOCTYPE w:document [<!ENTITY x "y">]>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body><w:p><w:pPr><w:jc w:val="left"/></w:pPr></w:p></w:body></w:document>"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        assert!(matches!(output, Cow::Borrowed(_)));
     }
 }
