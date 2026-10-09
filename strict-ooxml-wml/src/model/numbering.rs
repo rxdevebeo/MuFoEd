@@ -56,6 +56,8 @@ impl Level {
 pub struct AbstractNum {
     /// Abstract definition id.
     pub id: AbstractNumId,
+    /// The definition's name in the UI (`w:name`).
+    pub name: Option<Arc<str>>,
     /// Multi-level numbering type (`w:multiLevelType`).
     pub multi_level_type: Option<Arc<str>>,
     /// Numbering style link (`w:numStyleLink`).

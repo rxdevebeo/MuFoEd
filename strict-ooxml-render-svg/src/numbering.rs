@@ -289,6 +289,7 @@ mod tests {
         let mut table = NumberingTable::new();
         table.insert_abstract(AbstractNum {
             id: AbstractNumId(0),
+            name: None,
             multi_level_type: None,
             num_style_link: None,
             style_link: None,
@@ -324,6 +325,7 @@ mod tests {
         let mut table = NumberingTable::new();
         table.insert_abstract(AbstractNum {
             id: AbstractNumId(0),
+            name: None,
             multi_level_type: None,
             num_style_link: None,
             style_link: None,

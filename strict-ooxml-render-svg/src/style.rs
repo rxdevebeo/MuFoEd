@@ -806,6 +806,7 @@ mod tests {
             id: strict_ooxml_wml::model::StyleId::new("Base"),
             style_type: strict_ooxml_wml::model::values::StyleType::Paragraph,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,

@@ -154,6 +154,11 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
                     xml.empty_attr_w("w:name", "val", name.as_ref());
                 }
             }
+            "aliases" => {
+                if let Some(aliases) = &style.aliases {
+                    xml.empty_attr_w("w:aliases", "val", aliases.as_ref());
+                }
+            }
             "basedOn" => {
                 if let Some(based_on) = &style.based_on {
                     xml.empty_attr_w("w:basedOn", "val", based_on.as_str());
@@ -256,6 +261,10 @@ fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &A
     xml.attr_w("abstractNumId", abstract_num.id.0);
     if let Some(kind) = &abstract_num.multi_level_type {
         xml.empty_attr_w("w:multiLevelType", "val", kind.as_ref());
+    }
+    // `CT_AbstractNum`: `nsid`, `multiLevelType`, `tmpl`, `name`, then the links.
+    if let Some(name) = &abstract_num.name {
+        xml.empty_attr_w("w:name", "val", name.as_ref());
     }
     if let Some(link) = &abstract_num.num_style_link {
         xml.empty_attr_w("w:numStyleLink", "val", link.as_str());
@@ -1522,6 +1531,7 @@ mod tests {
             id: StyleId::new("Heading1"),
             style_type: StyleType::Paragraph,
             name: Some("heading 1".into()),
+            aliases: None,
             based_on: Some(StyleId::new("Normal")),
             next: None,
             link: None,
@@ -1567,6 +1577,7 @@ mod tests {
                 id: StyleId::new(format!("S{index}")),
                 style_type: StyleType::Character,
                 name: None,
+                aliases: None,
                 based_on: None,
                 next: None,
                 link: None,
@@ -1605,6 +1616,7 @@ mod tests {
             id: StyleId::new("Normal"),
             style_type: StyleType::Paragraph,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,
@@ -1808,6 +1820,7 @@ mod tests {
             id: StyleId::new("TableGrid"),
             style_type: StyleType::Table,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,
