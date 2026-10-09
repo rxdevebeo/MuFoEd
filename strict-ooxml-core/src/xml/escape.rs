@@ -73,6 +73,20 @@ pub fn escape_text(value: &str) -> String {
     out
 }
 
+/// A `quick-xml` attribute whose value is escaped by [`escape_attr_into`].
+///
+/// `BytesStart::push_attribute((key, value))` escapes only the five entities,
+/// so a decoded `&#xA;` went back out as a literal newline and the next reader
+/// normalized it to a space: Word's alt text `…enthält.&#xA;&#xA;Automatisch
+/// generierte Beschreibung` lost its line breaks (census `wp:docPr@descr`).
+#[must_use]
+pub fn attribute<'a>(key: &'a str, value: &str) -> quick_xml::events::attributes::Attribute<'a> {
+    quick_xml::events::attributes::Attribute {
+        key: quick_xml::name::QName(key.as_bytes()),
+        value: std::borrow::Cow::Owned(escape_attr(value).into_bytes()),
+    }
+}
+
 /// [`escape_attr_into`] into a new string; the count is discarded.
 #[must_use]
 pub fn escape_attr(value: &str) -> String {

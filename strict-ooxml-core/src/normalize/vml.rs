@@ -1283,7 +1283,7 @@ fn bool_str(value: bool) -> &'static str {
 fn el(name: &'static str, attributes: &[(&str, &str)]) -> BytesStart<'static> {
     let mut start = BytesStart::new(name);
     for (key, value) in attributes {
-        start.push_attribute((*key, *value));
+        start.push_attribute(crate::xml::escape::attribute(key, value));
     }
     start
 }
