@@ -1,0 +1,50 @@
+//! P15 — small facts the writer used to drop.
+//!
+//! Each one was a census row: `w:suppressOverlap`, `w:specVanish`, a column
+//! bookmark's `w:colFirst`/`w:colLast`, and `w:tblHeader w:val="0"` (which
+//! overrides a table style that repeats the row).
+
+use strict_ooxml_core::opc::{OpenOptions, Package};
+use strict_ooxml_core::part::PartId;
+use strict_ooxml_testkit::DocxBuilder;
+use strict_ooxml_wml::{parse_document, ParseOptions};
+use strict_ooxml_write::{write_package, WriteOptions};
+
+fn written_document(body: &str) -> String {
+    let bytes = DocxBuilder::strict().body(body).build();
+    let package = Package::open_reader(bytes.as_slice(), &OpenOptions::default()).expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written =
+        write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
+    let reopened =
+        Package::open_reader(written.bytes.as_slice(), &OpenOptions::default()).expect("reopen");
+    String::from_utf8_lossy(
+        &reopened
+            .read_part(&PartId::new("/word/document.xml"))
+            .expect("document"),
+    )
+    .into_owned()
+}
+
+#[test]
+fn t_p15_paragraph_and_run_toggles_survive() {
+    let xml = written_document(
+        "<w:p><w:pPr><w:suppressOverlap/></w:pPr>\
+<w:r><w:rPr><w:specVanish/></w:rPr><w:t>x</w:t></w:r></w:p>",
+    );
+    assert!(xml.contains(r#"<w:suppressOverlap w:val="true"/>"#), "{xml}");
+    assert!(xml.contains(r#"<w:specVanish w:val="true"/>"#), "{xml}");
+}
+
+#[test]
+fn t_p15_column_bookmark_and_header_off_survive() {
+    let xml = written_document(
+        "<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w=\"100\"/></w:tblGrid>\
+<w:tr><w:trPr><w:tblHeader w:val=\"0\"/></w:trPr><w:tc><w:p>\
+<w:bookmarkStart w:id=\"1\" w:name=\"c\" w:colFirst=\"0\" w:colLast=\"2\"/>\
+<w:r><w:t>x</w:t></w:r><w:bookmarkEnd w:id=\"1\"/></w:p></w:tc></w:tr></w:tbl><w:p/>",
+    );
+    assert!(xml.contains(r#"w:colFirst="0""#), "{xml}");
+    assert!(xml.contains(r#"w:colLast="2""#), "{xml}");
+    assert!(xml.contains(r#"<w:tblHeader w:val="false"/>"#), "{xml}");
+}

@@ -188,6 +188,7 @@ fn paragraph_child(
         "autoSpaceDN" => toggle(xml, "w:autoSpaceDN", props.auto_space_dn),
         "bidi" => toggle(xml, "w:bidi", props.bidi),
         "adjustRightInd" => toggle(xml, "w:adjustRightInd", props.adjust_right_ind),
+        "suppressOverlap" => toggle(xml, "w:suppressOverlap", props.suppress_overlap),
         "snapToGrid" => match props.snap_to_grid {
             TriState::On => xml.empty_attr_w("w:snapToGrid", "val", "true"),
             TriState::Off => xml.empty_attr_w("w:snapToGrid", "val", "false"),
@@ -280,6 +281,7 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && props.auto_space_de == TriState::Absent
         && props.auto_space_dn == TriState::Absent
         && props.adjust_right_ind == TriState::Absent
+        && props.suppress_overlap == TriState::Absent
         && props.frame.is_none()
 }
 
@@ -442,6 +444,7 @@ fn run_properties_children(xml: &mut XmlWriter, props: &RunProperties) {
     if let Some(language) = &props.language {
         language_element(xml, language);
     }
+    toggle(xml, "w:specVanish", props.spec_vanish);
 }
 
 fn language_element(xml: &mut XmlWriter, language: &strict_ooxml_wml::model::props::Language) {
@@ -475,6 +478,7 @@ fn is_empty_run(props: &RunProperties) -> bool {
         && props.small_caps == TriState::Absent
         && props.rtl == TriState::Absent
         && props.complex_script == TriState::Absent
+        && props.spec_vanish == TriState::Absent
         && props.vanish == TriState::Absent
         && props.emboss == TriState::Absent
         && props.imprint == TriState::Absent

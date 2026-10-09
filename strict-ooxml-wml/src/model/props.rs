@@ -86,6 +86,8 @@ pub struct ParagraphProperties {
     pub auto_space_dn: TriState,
     /// Right indent follows the document grid (`w:adjustRightInd`).
     pub adjust_right_ind: TriState,
+    /// A framed paragraph may not overlap another frame (`w:suppressOverlap`).
+    pub suppress_overlap: TriState,
     /// Text frame (`w:framePr`), AUD-46. Render stays in-flow with a `partial` record.
     pub frame: Option<FrameProperties>,
     /// Source location of `w:pPr`.
@@ -141,6 +143,8 @@ pub struct RunProperties {
     pub rtl: TriState,
     /// Complex-script run (`w:cs`): the run uses its complex-script font and toggles.
     pub complex_script: TriState,
+    /// The paragraph mark is hidden even for the style separator (`w:specVanish`).
+    pub spec_vanish: TriState,
     /// Hidden text (`w:vanish`).
     pub vanish: TriState,
     /// Emboss (`w:emboss`).
