@@ -56,3 +56,46 @@ fn t_p15_unsigned_char_space_is_written_signed() {
     );
     assert!(xml.contains(r#"w:charSpace="-6145""#), "{xml}");
 }
+
+#[test]
+fn t_p15_picture_locks_and_anchor_point_survive() {
+    let body = "<w:p><w:r><w:drawing>\
+<wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"1\" \
+behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">\
+<wp:simplePos x=\"635\" y=\"914400\"/>\
+<wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"100\" cy=\"100\"/><wp:wrapNone/><wp:docPr id=\"1\" name=\"p\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
+<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"p\"/>\
+<pic:cNvPicPr preferRelativeResize=\"0\"><a:picLocks noChangeAspect=\"1\" noChangeArrowheads=\"1\"/>\
+</pic:cNvPicPr></pic:nvPicPr><pic:blipFill rotWithShape=\"1\"><a:blip r:embed=\"rId5\"/>\
+</pic:blipFill><pic:spPr><a:xfrm><a:ext cx=\"100\" cy=\"100\"/></a:xfrm></pic:spPr>\
+</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>";
+    let bytes = DocxBuilder::strict()
+        .body(body)
+        .rel("rId5", "image", "media/image1.png")
+        .content_type("/word/media/image1.png", "image/png")
+        .part("word/media/image1.png", b"\x89PNG\r\n\x1a\nimage".to_vec())
+        .build();
+    let package = Package::open_reader(bytes.as_slice(), &OpenOptions::default()).expect("open");
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let written =
+        write_package(&document, Some(&package), &WriteOptions::default()).expect("write");
+    let reopened =
+        Package::open_reader(written.bytes.as_slice(), &OpenOptions::default()).expect("reopen");
+    let xml = String::from_utf8_lossy(
+        &reopened
+            .read_part(&PartId::new("/word/document.xml"))
+            .expect("document"),
+    )
+    .into_owned();
+    assert!(xml.contains(r#"<wp:simplePos x="635" y="914400"/>"#), "{xml}");
+    assert!(xml.contains(r#"hidden="false""#), "{xml}");
+    assert!(xml.contains(r#"<pic:cNvPicPr preferRelativeResize="0">"#), "{xml}");
+    assert!(
+        xml.contains(r#"<a:picLocks noChangeAspect="1" noChangeArrowheads="1"/>"#),
+        "{xml}"
+    );
+    assert!(xml.contains(r#"<pic:blipFill rotWithShape="1">"#), "{xml}");
+}

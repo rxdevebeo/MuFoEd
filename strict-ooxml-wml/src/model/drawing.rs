@@ -107,6 +107,21 @@ pub struct Picture {
     pub src_rect: Option<SrcRect>,
     /// Applied transform (`a:xfrm`) with rotation/flips.
     pub xfrm: Option<Xfrm>,
+    /// Attributes the picture carries without a field of their own.
+    pub markup: PictureMarkup,
+}
+
+/// The attributes of a `pic:pic` that nothing reads but a writer keeps:
+/// `pic:cNvPicPr@preferRelativeResize`, `a:picLocks`, `pic:blipFill@rotWithShape`
+/// and `@dpi`. Each is the attribute's local name and its value as written.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PictureMarkup {
+    /// `pic:cNvPicPr` attributes.
+    pub non_visual: Vec<(Arc<str>, Arc<str>)>,
+    /// `a:picLocks` attributes; `None` when the element is absent.
+    pub locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// `pic:blipFill` attributes.
+    pub blip_fill: Vec<(Arc<str>, Arc<str>)>,
 }
 
 /// A colour that is either an explicit RGB value or a theme reference.
@@ -355,6 +370,8 @@ pub struct Shape {
     pub bw_mode: Option<Arc<str>>,
     /// Whether this shape is a text box (`wps:cNvSpPr/@txBox`).
     pub tx_box: Option<bool>,
+    /// `a:spLocks` attributes as written; `None` when the element is absent.
+    pub sp_locks: Option<Vec<(Arc<str>, Arc<str>)>>,
     /// Geometry.
     pub geometry: ShapeGeometry,
     /// Transform (`a:xfrm`).
@@ -659,6 +676,11 @@ pub struct AnchorDrawing {
     pub doc_pr: Option<DocPr>,
     /// Simple positioning (`wp:simplePos`).
     pub simple_pos: bool,
+    /// The `wp:simplePos` point in EMU, `None` for `0, 0`. Word keeps a point
+    /// there even when `@simplePos` is off.
+    pub simple_pos_point: Option<(i64, i64)>,
+    /// `wp:anchor/@hidden`, when the producer wrote it.
+    pub hidden: Option<bool>,
     /// Horizontal position.
     pub position_h: Option<Position>,
     /// Vertical position.

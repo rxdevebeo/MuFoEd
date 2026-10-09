@@ -601,6 +601,7 @@ fn drawing_and_run_constructors() {
         }),
         src_rect: None,
         xfrm: None,
+        markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
     };
     let inline = InlineDrawing {
         extent: Some(Extent {

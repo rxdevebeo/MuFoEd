@@ -168,10 +168,14 @@ pub fn anchor_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, anchor: &AnchorDra
     xml.attr("locked", bool_str(anchor.locked));
     xml.attr("layoutInCell", bool_str(anchor.layout_in_cell));
     xml.attr("allowOverlap", bool_str(anchor.allow_overlap));
+    if let Some(hidden) = anchor.hidden {
+        xml.attr("hidden", bool_str(hidden));
+    }
 
+    let (x, y) = anchor.simple_pos_point.unwrap_or((0, 0));
     xml.start("wp:simplePos");
-    xml.attr("x", "0");
-    xml.attr("y", "0");
+    xml.attr("x", x);
+    xml.attr("y", y);
     xml.end();
     position_element(
         ctx,
@@ -601,10 +605,17 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     xml.attr_opt("descr", picture.descr.as_deref());
     xml.end();
     xml.start("pic:cNvPicPr");
+    plain_attrs(xml, &picture.markup.non_visual);
+    if let Some(locks) = &picture.markup.locks {
+        xml.start("a:picLocks");
+        plain_attrs(xml, locks);
+        xml.end();
+    }
     xml.end();
     xml.end();
 
     xml.start("pic:blipFill");
+    plain_attrs(xml, &picture.markup.blip_fill);
     xml.start("a:blip");
     let embed = picture
         .blip
@@ -639,6 +650,13 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     geometry_element(xml, &ShapeGeometry::None);
     xml.end();
     xml.end();
+}
+
+/// Attributes kept as read (`PictureMarkup`), in their source order.
+fn plain_attrs(xml: &mut XmlWriter, attrs: &[(std::sync::Arc<str>, std::sync::Arc<str>)]) {
+    for (name, value) in attrs {
+        xml.attr(name, value);
+    }
 }
 
 fn source_rect(xml: &mut XmlWriter, slice: &SrcRect) {
@@ -686,7 +704,11 @@ fn shape_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, shape: &Shape) {
     if let Some(tx_box) = shape.tx_box {
         xml.attr("txBox", bool_str(tx_box));
     }
-    xml.empty("a:spLocks");
+    xml.start("a:spLocks");
+    if let Some(locks) = &shape.sp_locks {
+        plain_attrs(xml, locks);
+    }
+    xml.end();
     xml.end();
     xml.start("wps:spPr");
     xml.attr_opt("bwMode", shape.bw_mode.as_deref());
@@ -1268,6 +1290,7 @@ mod tests {
                     }),
                     src_rect: None,
                     xfrm: None,
+                    markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
                 })),
                 location: SourceLocation::unknown(),
             }),
@@ -1350,6 +1373,7 @@ mod tests {
                         bottom: 4,
                     }),
                     xfrm: None,
+                    markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
                 })),
                 location: SourceLocation::unknown(),
             }),
@@ -1415,6 +1439,7 @@ mod tests {
                     nv_id: None,
                     bw_mode: None,
                     tx_box: Some(true),
+                    sp_locks: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
                     offset: Some((Emu(0), Emu(0))),
@@ -1491,6 +1516,7 @@ mod tests {
                     nv_id: None,
                     bw_mode: None,
                     tx_box: Some(true),
+                    sp_locks: None,
                     geometry: ShapeGeometry::Preset("rect".into()),
                     xfrm: None,
                     offset: Some((Emu(0), Emu(0))),
@@ -1637,6 +1663,7 @@ mod tests {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
                 geometry: ShapeGeometry::None,
                 xfrm: Some(Xfrm {
                     offset: Some((Emu(x), Emu(0))),

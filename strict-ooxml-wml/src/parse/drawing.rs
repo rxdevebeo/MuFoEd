@@ -164,6 +164,12 @@ impl PartParser<'_> {
                 effect_extent: None,
                 doc_pr: None,
                 simple_pos: bool_attr(attrs, "simplePos"),
+                simple_pos_point: None,
+                hidden: plain_attr(attrs, "hidden").and_then(|value| match value {
+                    "1" | "true" | "on" => Some(true),
+                    "0" | "false" | "off" => Some(false),
+                    _ => None,
+                }),
                 position_h: None,
                 position_v: None,
                 wrap: None,
@@ -204,6 +210,15 @@ impl PartParser<'_> {
                 XmlEvent::StartElement { name, attrs } => {
                     if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
                         match name.local() {
+                            "simplePos" => {
+                                let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
+                                let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
+                                anchor.simple_pos_point = match (x, y) {
+                                    (Some(0) | None, Some(0) | None) => None,
+                                    (x, y) => Some((x.unwrap_or(0), y.unwrap_or(0))),
+                                };
+                                self.skip_element()?;
+                            }
                             "positionH" => {
                                 anchor.position_h = Some(self.parse_position(&attrs)?);
                             }
@@ -700,16 +715,19 @@ impl PartParser<'_> {
                 extent: None,
                 src_rect: None,
                 xfrm: None,
+                markup: crate::model::drawing::PictureMarkup::default(),
             };
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "nvPicPr" {
-                            let (nv_id, name, descr) = parser.parse_nv_pic_pr()?;
+                            let (nv_id, name, descr) =
+                                parser.parse_nv_pic_pr(&mut picture.markup)?;
                             picture.nv_id = nv_id;
                             picture.name = name;
                             picture.descr = descr;
                         } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
+                            picture.markup.blip_fill = parser.plain_attr_pairs(&attrs);
                             let (blip, src_rect) = parser.parse_blip_fill()?;
                             picture.blip = blip;
                             picture.src_rect = src_rect;
@@ -735,6 +753,7 @@ impl PartParser<'_> {
     /// Parses `pic:nvPicPr`.
     fn parse_nv_pic_pr(
         &mut self,
+        markup: &mut crate::model::drawing::PictureMarkup,
     ) -> Result<(
         Option<u32>,
         Option<std::sync::Arc<str>>,
@@ -754,6 +773,12 @@ impl PartParser<'_> {
                             nv_id = plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
                             name = plain_attr(&attrs, "name").map(|value| parser.intern(value));
                             descr = plain_attr(&attrs, "descr").map(|value| parser.intern(value));
+                        } else if is_ns(&element, PICTURE_STRICT_NS)
+                            && element.local() == "cNvPicPr"
+                        {
+                            markup.non_visual = parser.plain_attr_pairs(&attrs);
+                            markup.locks = parser.read_locks("picLocks")?;
+                            continue;
                         }
                         parser.skip_element()?;
                     }
@@ -764,6 +789,40 @@ impl PartParser<'_> {
             }
             Ok((nv_id, name, descr))
         })
+    }
+
+    /// The unqualified attributes of an element, as written.
+    fn plain_attr_pairs(
+        &mut self,
+        attrs: &[Attr],
+    ) -> Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> {
+        attrs
+            .iter()
+            .filter(|attr| attr.name.ns.is_none())
+            .map(|attr| (self.intern(attr.name.local()), self.intern(&attr.value)))
+            .collect()
+    }
+
+    /// The children of a `cNv*Pr`, whose start is consumed, through its end:
+    /// the attributes of the `a:{local}` lock element, when there is one.
+    fn read_locks(
+        &mut self,
+        local: &str,
+    ) -> Result<Option<Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>>> {
+        let mut locks = None;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == local {
+                        locks = Some(self.plain_attr_pairs(&attrs));
+                    }
+                    self.skip_element()?;
+                }
+                XmlEvent::EndElement { .. } => return Ok(locks),
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of cNvPr")),
+            }
+        }
     }
 
     /// Parses `pic:blipFill`, resolving the image reference and crop.
@@ -1009,6 +1068,7 @@ impl PartParser<'_> {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,
@@ -1036,7 +1096,7 @@ impl PartParser<'_> {
                                 }
                                 "cNvSpPr" => {
                                     shape.tx_box = optional_bool_attr(&attrs, "txBox");
-                                    parser.skip_element()?;
+                                    shape.sp_locks = parser.read_locks("spLocks")?;
                                 }
                                 "spPr" => {
                                     shape.bw_mode = plain_attr(&attrs, "bwMode")

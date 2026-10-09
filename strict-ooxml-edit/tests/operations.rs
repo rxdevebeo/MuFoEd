@@ -555,6 +555,7 @@ fn shape_textbox_search_replace_and_move_stay_in_scope() {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
                 geometry: ShapeGeometry::Preset("rect".into()),
                 xfrm: None,
                 offset: None,
