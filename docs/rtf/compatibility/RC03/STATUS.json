@@ -81,6 +81,12 @@
         "logical text order is preserved across the split",
         "the RTL segment round-trips as w:rtl On"
       ]
+    },
+    "substitute_face_path": {
+      "status": "Substitute",
+      "detail": "corpus 007 (requested 'Sanskrit 2003') renders through the pinned Devanagari witness via --fonts: 90 pages, 2 embedded faces, honestly Degraded with font.glyph.missing (finite witness subset) and font.script.degraded",
+      "receipt": "target/rtf-import/rc03-substitute/007.pdf",
+      "limit": "a substitute does not establish exact system-face coverage and is never Clean"
     }
   }
 }

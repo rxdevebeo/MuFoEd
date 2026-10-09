@@ -670,3 +670,28 @@ section-reset round-trip тестом.
 Открыто/Blocked: resolved-cascade effective-style equality (нужен styles.xml
 resolver; direct-diff сделан) и corpus tab/leader/keep/widow/pixel geometry на
 019/039, 052/076 (нужен rasterizer). RC04 остаётся InProgress.
+
+### Разбор блокеров — 2026-10-08
+
+1. **Rasterizer.** poppler 26.09.0 provisioned в
+   `target/rtf-import/poppler/`; WPS references — в sibling worktree. Свежий
+   прогон на merged HEAD (CLI `3e40d368…`): import 100/100 text Pass,
+   pagination **62 Pass / 38 Fail**, pixels **3/100 документов** (6/423 страниц).
+   Совпадает с прежним dev-замером; регрессий нет. Это снимает «нет tooling», но
+   не снимает 97 pixel failures — это shaping/metrics (RC03/RC04), а не fonts.
+2. **Corpus script faces (007/010/011/018).** Точные system faces не
+   лицензируются; проверен substitute-путь: 007 с `--fonts` (requested
+   `Sanskrit 2003` → pinned Devanagari witness) рендерится (90 страниц, 2
+   embedded face), но честно Degraded (`font.glyph.missing` на конечном subset +
+   `font.script.degraded`). Substitute не даёт exact-face покрытия.
+3. **styles resolver.** Добавлен независимый
+   `xtool/rtf/effective_style_resolver.py`
+   (`docDefaults → pStyle chain → rStyle → direct`), receipts
+   `RC04-resolved-{019,039}.json`. После нормализации Strict/Transitional имён и
+   нулевого auto-spacing остаются только explicit-defaults-vs-inherited
+   расхождения (наш writer пишет docDefaults явно, WPS наследует); effective-value
+   mismatch на 019/039 не найден.
+4. **Bidi oracle.** Для renderer-level переупорядочивания нужен независимый
+   bidi-oracle (Python `python-bidi` + `uharfbuzz`); пока renderer получает уже
+   direction-homogeneous runs после import-сплита, поэтому этот пункт остаётся
+   Blocked на oracle contract.

@@ -47,8 +47,8 @@
   "blocked": [
     {
       "item": "full corpus visual acceptance (pagination/pixel)",
-      "contract": "poppler pdfinfo/pdftoppm plus the pinned pixel comparator and the WPS reference PDFs",
-      "reason": "poppler is not installed in this environment; the WPS reference PDFs exist in the sibling worktree at C:/Users/gamer/.codex/worktrees/rtf-import/StrictLib/target/rtf-import/visual-corpus-v1. Even with the harness present, the measured 3/100 document pixel Pass rate is a shaping/metrics gap (RC03/RC04), not a font-resolution defect."
+      "contract": "thresholds met for every page (not a missing tool)",
+      "reason": "The harness now runs: poppler 26.09.0 was provisioned under target/rtf-import/poppler and the WPS references are in the sibling worktree. Fresh measurement on the merged HEAD: import 100/100 text Pass, pagination 62/100 Pass, pixels 3/100 documents and 6/423 pages Pass. Acceptance stays open because 97 pixel failures are a shaping/metrics gap (RC03/RC04), not a font-resolution defect."
     },
     {
       "item": "full complex-script placement and visual acceptance",
@@ -57,6 +57,20 @@
     }
   ],
   "checks": {
+    "merged_head_visual": {
+      "status": "Measured",
+      "cli_sha256": "3e40d368e194c808d5a61767fce7b14c93fd9cec7605d7a88f96e37636f31890",
+      "oracle_sha256": "b2fc52852686cfa9f83e53f73c291e854f73570d31a410104b39ce1c04690256",
+      "import": "100/100 text Pass",
+      "pagination": "62 Pass, 38 Fail",
+      "pixels": "3 documents Pass / 97 Fail; 6 pages Pass / 417 Fail",
+      "comparator_sha256": "399d0af501ec525a4446e877f195deb90820f153660e86b12d7e8983f6ff1c14",
+      "receipts": [
+        "target/rtf-import/RC02-merge-corpus/results.json",
+        "target/rtf-import/RC02-merge-visual/results.json",
+        "target/rtf-import/RC02-merge-pixels/results.json"
+      ]
+    },
     "full_svg_pdf_public_api": {
       "status": "PassWithBaselineExclusion",
       "passed": 436,
