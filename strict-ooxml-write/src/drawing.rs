@@ -14,9 +14,9 @@
 //! than an absent picture.
 
 use strict_ooxml_wml::model::drawing::{
-    AnchorDrawing, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent, ForeignRefs,
-    Graphic, GroupShape, GroupTransform, InlineDrawing, LockedCanvas, PathCommand, Picture,
-    Position, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, SrcRect, TextBox,
+    AnchorDrawing, BlipRef, CustomGeometry, DocPr, Drawing, DrawingKind, EffectExtent, Extent,
+    ForeignRefs, Graphic, GroupShape, GroupTransform, InlineDrawing, LockedCanvas, PathCommand,
+    Picture, Position, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, SrcRect, TextBox,
     TextBoxBody, Xfrm,
 };
 use strict_ooxml_wml::model::values::Emu;
@@ -621,13 +621,23 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
         .blip
         .as_ref()
         .and_then(|blip| ctx.media_rel(blip.resolved.as_ref()));
+    let link = blip_link(ctx, picture.blip.as_ref());
     match embed {
         Some(embed) => xml.attr("r:embed", embed),
+        // A linked-only picture (`r:link` and no `r:embed`) lost nothing here.
+        None if link.is_some()
+            && picture
+                .blip
+                .as_ref()
+                .is_some_and(|blip| blip.embed.is_none()) => {}
         None => ctx.report_unsupported(
             "a:blip/@r:embed",
             "picture has no embedded image relationship",
             &strict_ooxml_core::error::SourceLocation::unknown(),
         ),
+    }
+    if let Some(link) = &link {
+        xml.attr("r:link", link);
     }
     if let Some(blip) = picture.blip.as_ref() {
         xml.attr_opt("cstate", blip.cstate.as_deref());
@@ -657,6 +667,24 @@ fn picture_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, picture: &Picture) {
     }
     xml.end();
     xml.end();
+}
+
+/// The relationship id to write for `a:blip/@r:link`, a linked (usually
+/// `TargetMode="External"`) image the pass-through carried; `None` when the blip
+/// has no link. A link that cannot be re-pointed is recorded, not dropped in
+/// silence.
+fn blip_link(ctx: &mut Ctx<'_>, blip: Option<&BlipRef>) -> Option<String> {
+    let blip = blip?;
+    let old_id = blip.link.as_ref()?;
+    let new_id = ctx.foreign_rel(old_id.as_str()).map(str::to_owned);
+    if new_id.is_none() {
+        ctx.report_unsupported(
+            "a:blip/@r:link",
+            "the linked image relationship is not in this package, so the link would dangle",
+            &blip.location,
+        );
+    }
+    new_id
 }
 
 /// DrawingML markup kept as read; the part's root declares `a:` and `pic:`.
@@ -696,6 +724,13 @@ fn thousandths_percent(value: i32) -> String {
     let whole = absolute / 1000;
     let fraction = absolute % 1000;
     format!("{sign}{whole}.{fraction:03}%")
+}
+
+/// Thousandths of a percent as the Strict percentage the normalizer writes for
+/// the same value (`100000` is `100%`, `12500` is `12.5%`).
+fn fixed_percent(value: i32) -> String {
+    strict_ooxml_core::normalize::tables::drawingml_thousandths_percent(&value.to_string())
+        .unwrap_or_else(|| thousandths_percent(value))
 }
 
 /// Writes `wps:wsp`.
@@ -959,8 +994,9 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             for stop in stops {
                 xml.start("a:gs");
                 // `a:gs/@pos` is `ST_PositiveFixedPercentage`. Model values are
-                // thousandths; Strict wants a `%` form.
-                xml.attr("pos", thousandths_percent(stop.position));
+                // thousandths; Strict wants a `%` form with at most two decimals,
+                // so `100000` is `100%`, not `100.000%`.
+                xml.attr("pos", fixed_percent(stop.position));
                 shape_color(xml, &stop.color);
                 xml.end();
             }
@@ -995,13 +1031,18 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
         ShapeFill::Blip { blip, fill_rect } => {
             xml.start("a:blipFill");
             xml.start("a:blip");
+            let link = blip_link(ctx, Some(blip));
             match ctx.media_rel(blip.resolved.as_ref()) {
                 Some(embed) => xml.attr("r:embed", embed),
+                None if link.is_some() && blip.embed.is_none() => {}
                 None => ctx.report_unsupported(
                     "a:blipFill/@r:embed",
                     "shape fill has no embedded image relationship",
                     &strict_ooxml_core::error::SourceLocation::unknown(),
                 ),
+            }
+            if let Some(link) = &link {
+                xml.attr("r:link", link);
             }
             xml.attr_opt("cstate", blip.cstate.as_deref());
             xml.end();
@@ -1215,6 +1256,25 @@ fn group_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape) {
 
 fn group_element_as(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, group: &GroupShape, tag: &'static str) {
     xml.start(tag);
+    // `wpg:cNvPr` is optional in `CT_WordprocessingGroup`, and a nested
+    // `wpg:grpSp` from Word always has one. It goes back when the source had it.
+    if group.nv_id.is_some() || group.name.is_some() {
+        xml.start("wpg:cNvPr");
+        match group.nv_id {
+            Some(id) => xml.attr("id", id),
+            None => {
+                ctx.report_partial(
+                    "wpg:cNvPr@id",
+                    "group non-visual id is not stored and is written as 0",
+                    &group.location,
+                );
+                xml.attr("id", "0");
+            }
+        }
+        xml.attr("name", group.name.as_deref().unwrap_or(""));
+        xml.attr_opt("descr", group.descr.as_deref());
+        xml.end();
+    }
     xml.start("wpg:cNvGrpSpPr");
     if let Some(locks) = &group.locks {
         xml.start("a:grpSpLocks");

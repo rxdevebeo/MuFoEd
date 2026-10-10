@@ -132,7 +132,7 @@ impl PartParser<'_> {
                             && name.local() == "docPr"
                         {
                             inline.doc_pr = Some(parser.parse_doc_pr(&attrs));
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "effectExtent"
                         {
@@ -143,7 +143,7 @@ impl PartParser<'_> {
                             inline.graphic_uri = uri;
                             inline.graphic = Box::new(graphic);
                         } else {
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -235,7 +235,7 @@ impl PartParser<'_> {
                             }
                             "docPr" => {
                                 anchor.doc_pr = Some(self.parse_doc_pr(&attrs));
-                                self.skip_element()?;
+                                self.skip_citing_extensions()?;
                             }
                             "wrapNone" => {
                                 anchor.wrap = Some(self.parse_wrap(WrapKind::None, &attrs)?);
@@ -253,7 +253,8 @@ impl PartParser<'_> {
                                 anchor.wrap =
                                     Some(self.parse_wrap(WrapKind::TopAndBottom, &attrs)?);
                             }
-                            _ => self.skip_element()?,
+                            // `wp:cNvGraphicFramePr` and anything else not modelled.
+                            _ => self.skip_citing_extensions()?,
                         }
                     } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
                         let (uri, graphic) = self.parse_graphic()?;
@@ -794,7 +795,7 @@ impl PartParser<'_> {
                             markup.locks = parser.read_locks("picLocks")?;
                             continue;
                         }
-                        parser.skip_element()?;
+                        parser.skip_citing_extensions()?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -874,10 +875,8 @@ impl PartParser<'_> {
                         }
                         body.push_str(attr.name.local());
                         body.push_str("=\"");
-                        let _ = strict_ooxml_core::xml::escape::escape_attr_into(
-                            &mut body,
-                            &attr.value,
-                        );
+                        let value = strict_percent(name, attr);
+                        let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut body, &value);
                         body.push('"');
                     }
                     pending = true;
@@ -982,6 +981,36 @@ impl PartParser<'_> {
         kept
     }
 
+    /// Skips the element whose start was just read, as `skip_element` does, and
+    /// records each Office extension inside it - an `a:ext` whose content is in
+    /// a namespace outside Strict (`a16:creationId` under `wp:docPr`) - under
+    /// `a:ext`, as a kept fragment does (ADR-0014). The extension is not
+    /// written either way; skipping it used to leave the report silent.
+    pub(super) fn skip_citing_extensions(&mut self) -> Result<()> {
+        let mut depth = 1u32;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
+                        // Read through its end tag; depth is unchanged.
+                        let pieces = self.read_pieces(name, attrs)?;
+                        let _ = self.drop_extension_ext(&pieces);
+                    } else {
+                        depth = depth.saturating_add(1);
+                    }
+                }
+                XmlEvent::EndElement { .. } => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return Ok(());
+                    }
+                }
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a skipped element")),
+            }
+        }
+    }
+
     /// The children of the element whose start was just read, through its end,
     /// as one fragment (see [`Self::capture_fragment`]); `None` when it has none.
     fn capture_children(&mut self) -> Result<Option<std::sync::Arc<str>>> {
@@ -1026,7 +1055,7 @@ impl PartParser<'_> {
                     if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == local {
                         locks = Some(self.plain_attr_pairs(&attrs));
                     }
-                    self.skip_element()?;
+                    self.skip_citing_extensions()?;
                 }
                 XmlEvent::EndElement { .. } => return Ok(locks),
                 XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -1314,7 +1343,7 @@ impl PartParser<'_> {
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     shape.descr =
                                         plain_attr(&attrs, "descr").map(|v| parser.intern(v));
-                                    parser.skip_element()?;
+                                    parser.skip_citing_extensions()?;
                                 }
                                 "cNvSpPr" => {
                                     shape.tx_box = optional_bool_attr(&attrs, "txBox");
@@ -1332,10 +1361,10 @@ impl PartParser<'_> {
                                 "style" => shape.style = Some(parser.parse_shape_style()?),
                                 "txbx" => shape.text = Some(parser.parse_text_box()?),
                                 "bodyPr" => body = Some(parser.parse_text_box_body(&attrs)?),
-                                _ => parser.skip_element()?,
+                                _ => parser.skip_citing_extensions()?,
                             }
                         } else {
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -1830,7 +1859,13 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "gs" {
-                            let position = parse_i32_attr(&attrs, "pos").unwrap_or(0);
+                            // Thousandths in a part written as Strict by a producer
+                            // that kept them, or the Strict percentage the normalizer
+                            // turns them into (`100000` -> `100%`). Reading only the
+                            // integer form made every normalized stop position 0.
+                            let position = plain_attr(&attrs, "pos")
+                                .and_then(src_component_value)
+                                .unwrap_or(0);
                             let color = parser.parse_fill_color()?.unwrap_or_default();
                             stops.push(GradientStop { position, color });
                         } else {
@@ -2063,7 +2098,7 @@ impl PartParser<'_> {
             spc_col: parse_i32_attr(attrs, "spcCol"),
             spc_first_last_para: optional_bool_attr(attrs, "spcFirstLastPara"),
         };
-        self.skip_element()?;
+        self.skip_citing_extensions()?;
         Ok(body)
     }
 
@@ -2099,6 +2134,7 @@ impl PartParser<'_> {
     fn parse_group_body(&mut self, location: SourceLocation) -> Result<GroupShape> {
         self.nested(|parser| {
             let mut group = GroupShape {
+                nv_id: None,
                 name: None,
                 descr: None,
                 xfrm: None,
@@ -2126,11 +2162,13 @@ impl PartParser<'_> {
                         } else if is_group_ns(&name) {
                             match name.local() {
                                 "cNvPr" => {
+                                    group.nv_id = plain_attr(&attrs, "id")
+                                        .and_then(|value| value.trim().parse().ok());
                                     group.name =
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     group.descr =
                                         plain_attr(&attrs, "descr").map(|v| parser.intern(v));
-                                    parser.skip_element()?;
+                                    parser.skip_citing_extensions()?;
                                 }
                                 "grpSpPr" => {
                                     group.bw_mode =
@@ -2138,7 +2176,7 @@ impl PartParser<'_> {
                                     group.xfrm = Some(parser.parse_group_transform(&attrs)?);
                                 }
                                 "cNvGrpSpPr" => group.locks = parser.read_locks("grpSpLocks")?,
-                                _ => parser.skip_element()?,
+                                _ => parser.skip_citing_extensions()?,
                             }
                         } else {
                             parser.skip_element()?;
@@ -2169,7 +2207,7 @@ impl PartParser<'_> {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
                             parts = parser.parse_xfrm_parts(&attrs)?;
                         } else {
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -2289,10 +2327,11 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) -> bool {
         }
         out.push_str(attr.name.local());
         out.push_str("=\"");
+        let percent = strict_percent(name, attr);
         let value = match attr.name.local() {
             "uri" => strict_ooxml_core::ns::registry::strict_form(&attr.value)
                 .unwrap_or(attr.value.as_str()),
-            _ => attr.value.as_str(),
+            _ => percent.as_ref(),
         };
         let _ = strict_ooxml_core::xml::escape::escape_attr_into(out, value);
         out.push('"');
@@ -2405,6 +2444,29 @@ fn join_markup(
         (Some(first), Some(second)) => Some(std::sync::Arc::from(format!("{first}{second}"))),
         (first, second) => first.or(second),
     }
+}
+
+/// The value a kept `DrawingML` attribute is written with.
+///
+/// A percentage (`a:gs/@pos`, `a:satMod/@val`, `a:fillToRect/@l`, ...) that a
+/// producer wrote as bare Transitional thousandths in a *Strict* part goes back
+/// as the Strict percentage it means: `35000` is `35%`. The normalizer does this
+/// for Transitional parts; a Strict part never meets it, and a theme kept as
+/// read carried the SDK's `pos="35000"` straight into the schema's refusal.
+/// Every other value is written as read.
+fn strict_percent<'a>(element: &QName, attr: &'a Attr) -> std::borrow::Cow<'a, str> {
+    use strict_ooxml_core::normalize::tables::{
+        drawingml_thousandths_percent, is_drawingml_percentage_attr,
+    };
+    if is_ns(element, DRAWINGML_STRICT_NS)
+        && attr.name.ns.is_none()
+        && is_drawingml_percentage_attr(element.local(), attr.name.local())
+    {
+        if let Some(strict) = drawingml_thousandths_percent(&attr.value) {
+            return std::borrow::Cow::Owned(strict);
+        }
+    }
+    std::borrow::Cow::Borrowed(attr.value.as_str())
 }
 
 /// Stable prefix for a namespace URI when serialising locked-canvas markup.

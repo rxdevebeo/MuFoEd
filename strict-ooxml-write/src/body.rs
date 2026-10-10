@@ -5,7 +5,7 @@ use strict_ooxml_wml::model::block::{
     Block, Paragraph, SdtCheckboxState, SdtContainer, SdtControl, SdtDocPart, SdtListItem,
     SdtProperties, Table, TableCell, TableRow,
 };
-use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
+use strict_ooxml_wml::model::inline::{FormFieldElement, Inline, Run, RunContent, TextNode};
 use strict_ooxml_wml::model::values::{Space, Twips, WidthKind};
 
 use crate::ctx::Ctx;
@@ -305,6 +305,12 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
         RunContent::Text(node) => text_node(xml, node, if deleted { "w:delText" } else { "w:t" }),
         RunContent::Tab => xml.empty("w:tab"),
         RunContent::Break(kind) => xml.empty_attr_w("w:br", "type", kind.as_str()),
+        RunContent::ClearingBreak(clear) => {
+            xml.start("w:br");
+            xml.attr_w("type", "textWrapping");
+            xml.attr_w("clear", clear.as_str());
+            xml.end();
+        }
         RunContent::CarriageReturn => xml.empty("w:cr"),
         RunContent::Drawing(drawing) => crate::drawing::drawing_element(ctx, xml, drawing),
         RunContent::InstrText(text) => {
@@ -322,6 +328,15 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
             xml.attr_w("fldCharType", field.kind.as_str());
             if field.dirty {
                 xml.attr_w("dirty", "true");
+            }
+            // `CT_FFData` needs at least one child, so an empty `w:ffData` (which
+            // the schema would refuse) is not written.
+            if let Some(form_data) = field.form_data.as_deref().filter(|data| !data.is_empty()) {
+                xml.start("w:ffData");
+                for element in form_data {
+                    form_field_element(xml, element);
+                }
+                xml.end();
             }
             xml.end();
         }
@@ -378,6 +393,21 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
             );
         }
     }
+}
+
+/// Writes one kept `w:ffData` element and its children, as read.
+///
+/// The parser bounds the depth of the subtree (`FORM_FIELD_MAX_DEPTH` in
+/// `wml/src/parse/document.rs`), so this recursion is bounded too.
+fn form_field_element(xml: &mut XmlWriter, element: &FormFieldElement) {
+    xml.start(&format!("w:{}", element.local));
+    for (local, value) in &element.attributes {
+        xml.attr_w(local, value.as_ref());
+    }
+    for child in &element.children {
+        form_field_element(xml, child);
+    }
+    xml.end();
 }
 
 /// Writes `w:t` or `w:delText`, including the `xml:space` attribute the model recorded.
@@ -652,6 +682,16 @@ fn sdt_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtProperties) {
             .prefix_mappings
             .as_deref()
             .map(strict_prefix_mappings);
+        if mappings.as_deref() != binding.prefix_mappings.as_deref() {
+            // Cited so the census can tell this declared rewrite (a
+            // Transitional namespace URI inside the XPath mappings, written in
+            // its Strict form) from an attribute that disappeared.
+            ctx.report_info(
+                "w:dataBinding@prefixMappings",
+                "namespace URIs in the XPath prefix mappings written in their Strict form",
+                &SourceLocation::unknown(),
+            );
+        }
         xml.attr_w_opt("prefixMappings", mappings.as_deref());
         xml.attr_w("xpath", &*binding.xpath);
         xml.attr_w("storeItemID", &*binding.store_item_id);

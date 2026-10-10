@@ -219,6 +219,341 @@ strict_enum! {
         Outset => "outset",
         /// `inset`.
         Inset => "inset",
+        // The art borders. `ST_Border` declares them in Strict as in
+        // Transitional; a page border such as `palmsColor` that this enum did
+        // not list was read as no style and dropped on write.
+        /// `apples` (art border).
+        Apples => "apples",
+        /// `archedScallops` (art border).
+        ArchedScallops => "archedScallops",
+        /// `babyPacifier` (art border).
+        BabyPacifier => "babyPacifier",
+        /// `babyRattle` (art border).
+        BabyRattle => "babyRattle",
+        /// `balloons3Colors` (art border).
+        Balloons3Colors => "balloons3Colors",
+        /// `balloonsHotAir` (art border).
+        BalloonsHotAir => "balloonsHotAir",
+        /// `basicBlackDashes` (art border).
+        BasicBlackDashes => "basicBlackDashes",
+        /// `basicBlackDots` (art border).
+        BasicBlackDots => "basicBlackDots",
+        /// `basicBlackSquares` (art border).
+        BasicBlackSquares => "basicBlackSquares",
+        /// `basicThinLines` (art border).
+        BasicThinLines => "basicThinLines",
+        /// `basicWhiteDashes` (art border).
+        BasicWhiteDashes => "basicWhiteDashes",
+        /// `basicWhiteDots` (art border).
+        BasicWhiteDots => "basicWhiteDots",
+        /// `basicWhiteSquares` (art border).
+        BasicWhiteSquares => "basicWhiteSquares",
+        /// `basicWideInline` (art border).
+        BasicWideInline => "basicWideInline",
+        /// `basicWideMidline` (art border).
+        BasicWideMidline => "basicWideMidline",
+        /// `basicWideOutline` (art border).
+        BasicWideOutline => "basicWideOutline",
+        /// `bats` (art border).
+        Bats => "bats",
+        /// `birds` (art border).
+        Birds => "birds",
+        /// `birdsFlight` (art border).
+        BirdsFlight => "birdsFlight",
+        /// `cabins` (art border).
+        Cabins => "cabins",
+        /// `cakeSlice` (art border).
+        CakeSlice => "cakeSlice",
+        /// `candyCorn` (art border).
+        CandyCorn => "candyCorn",
+        /// `celticKnotwork` (art border).
+        CelticKnotwork => "celticKnotwork",
+        /// `certificateBanner` (art border).
+        CertificateBanner => "certificateBanner",
+        /// `chainLink` (art border).
+        ChainLink => "chainLink",
+        /// `champagneBottle` (art border).
+        ChampagneBottle => "champagneBottle",
+        /// `checkedBarBlack` (art border).
+        CheckedBarBlack => "checkedBarBlack",
+        /// `checkedBarColor` (art border).
+        CheckedBarColor => "checkedBarColor",
+        /// `checkered` (art border).
+        Checkered => "checkered",
+        /// `christmasTree` (art border).
+        ChristmasTree => "christmasTree",
+        /// `circlesLines` (art border).
+        CirclesLines => "circlesLines",
+        /// `circlesRectangles` (art border).
+        CirclesRectangles => "circlesRectangles",
+        /// `classicalWave` (art border).
+        ClassicalWave => "classicalWave",
+        /// `clocks` (art border).
+        Clocks => "clocks",
+        /// `compass` (art border).
+        Compass => "compass",
+        /// `confetti` (art border).
+        Confetti => "confetti",
+        /// `confettiGrays` (art border).
+        ConfettiGrays => "confettiGrays",
+        /// `confettiOutline` (art border).
+        ConfettiOutline => "confettiOutline",
+        /// `confettiStreamers` (art border).
+        ConfettiStreamers => "confettiStreamers",
+        /// `confettiWhite` (art border).
+        ConfettiWhite => "confettiWhite",
+        /// `cornerTriangles` (art border).
+        CornerTriangles => "cornerTriangles",
+        /// `couponCutoutDashes` (art border).
+        CouponCutoutDashes => "couponCutoutDashes",
+        /// `couponCutoutDots` (art border).
+        CouponCutoutDots => "couponCutoutDots",
+        /// `crazyMaze` (art border).
+        CrazyMaze => "crazyMaze",
+        /// `creaturesButterfly` (art border).
+        CreaturesButterfly => "creaturesButterfly",
+        /// `creaturesFish` (art border).
+        CreaturesFish => "creaturesFish",
+        /// `creaturesInsects` (art border).
+        CreaturesInsects => "creaturesInsects",
+        /// `creaturesLadyBug` (art border).
+        CreaturesLadyBug => "creaturesLadyBug",
+        /// `crossStitch` (art border).
+        CrossStitch => "crossStitch",
+        /// `cup` (art border).
+        Cup => "cup",
+        /// `decoArch` (art border).
+        DecoArch => "decoArch",
+        /// `decoArchColor` (art border).
+        DecoArchColor => "decoArchColor",
+        /// `decoBlocks` (art border).
+        DecoBlocks => "decoBlocks",
+        /// `diamondsGray` (art border).
+        DiamondsGray => "diamondsGray",
+        /// `doubleD` (art border).
+        DoubleD => "doubleD",
+        /// `doubleDiamonds` (art border).
+        DoubleDiamonds => "doubleDiamonds",
+        /// `earth1` (art border).
+        Earth1 => "earth1",
+        /// `earth2` (art border).
+        Earth2 => "earth2",
+        /// `earth3` (art border).
+        Earth3 => "earth3",
+        /// `eclipsingSquares1` (art border).
+        EclipsingSquares1 => "eclipsingSquares1",
+        /// `eclipsingSquares2` (art border).
+        EclipsingSquares2 => "eclipsingSquares2",
+        /// `eggsBlack` (art border).
+        EggsBlack => "eggsBlack",
+        /// `fans` (art border).
+        Fans => "fans",
+        /// `film` (art border).
+        Film => "film",
+        /// `firecrackers` (art border).
+        Firecrackers => "firecrackers",
+        /// `flowersBlockPrint` (art border).
+        FlowersBlockPrint => "flowersBlockPrint",
+        /// `flowersDaisies` (art border).
+        FlowersDaisies => "flowersDaisies",
+        /// `flowersModern1` (art border).
+        FlowersModern1 => "flowersModern1",
+        /// `flowersModern2` (art border).
+        FlowersModern2 => "flowersModern2",
+        /// `flowersPansy` (art border).
+        FlowersPansy => "flowersPansy",
+        /// `flowersRedRose` (art border).
+        FlowersRedRose => "flowersRedRose",
+        /// `flowersRoses` (art border).
+        FlowersRoses => "flowersRoses",
+        /// `flowersTeacup` (art border).
+        FlowersTeacup => "flowersTeacup",
+        /// `flowersTiny` (art border).
+        FlowersTiny => "flowersTiny",
+        /// `gems` (art border).
+        Gems => "gems",
+        /// `gingerbreadMan` (art border).
+        GingerbreadMan => "gingerbreadMan",
+        /// `gradient` (art border).
+        Gradient => "gradient",
+        /// `handmade1` (art border).
+        Handmade1 => "handmade1",
+        /// `handmade2` (art border).
+        Handmade2 => "handmade2",
+        /// `heartBalloon` (art border).
+        HeartBalloon => "heartBalloon",
+        /// `heartGray` (art border).
+        HeartGray => "heartGray",
+        /// `hearts` (art border).
+        Hearts => "hearts",
+        /// `heebieJeebies` (art border).
+        HeebieJeebies => "heebieJeebies",
+        /// `holly` (art border).
+        Holly => "holly",
+        /// `houseFunky` (art border).
+        HouseFunky => "houseFunky",
+        /// `hypnotic` (art border).
+        Hypnotic => "hypnotic",
+        /// `iceCreamCones` (art border).
+        IceCreamCones => "iceCreamCones",
+        /// `lightBulb` (art border).
+        LightBulb => "lightBulb",
+        /// `lightning1` (art border).
+        Lightning1 => "lightning1",
+        /// `lightning2` (art border).
+        Lightning2 => "lightning2",
+        /// `mapPins` (art border).
+        MapPins => "mapPins",
+        /// `mapleLeaf` (art border).
+        MapleLeaf => "mapleLeaf",
+        /// `mapleMuffins` (art border).
+        MapleMuffins => "mapleMuffins",
+        /// `marquee` (art border).
+        Marquee => "marquee",
+        /// `marqueeToothed` (art border).
+        MarqueeToothed => "marqueeToothed",
+        /// `moons` (art border).
+        Moons => "moons",
+        /// `mosaic` (art border).
+        Mosaic => "mosaic",
+        /// `musicNotes` (art border).
+        MusicNotes => "musicNotes",
+        /// `northwest` (art border).
+        Northwest => "northwest",
+        /// `ovals` (art border).
+        Ovals => "ovals",
+        /// `packages` (art border).
+        Packages => "packages",
+        /// `palmsBlack` (art border).
+        PalmsBlack => "palmsBlack",
+        /// `palmsColor` (art border).
+        PalmsColor => "palmsColor",
+        /// `paperClips` (art border).
+        PaperClips => "paperClips",
+        /// `papyrus` (art border).
+        Papyrus => "papyrus",
+        /// `partyFavor` (art border).
+        PartyFavor => "partyFavor",
+        /// `partyGlass` (art border).
+        PartyGlass => "partyGlass",
+        /// `pencils` (art border).
+        Pencils => "pencils",
+        /// `people` (art border).
+        People => "people",
+        /// `peopleWaving` (art border).
+        PeopleWaving => "peopleWaving",
+        /// `peopleHats` (art border).
+        PeopleHats => "peopleHats",
+        /// `poinsettias` (art border).
+        Poinsettias => "poinsettias",
+        /// `postageStamp` (art border).
+        PostageStamp => "postageStamp",
+        /// `pumpkin1` (art border).
+        Pumpkin1 => "pumpkin1",
+        /// `pushPinNote2` (art border).
+        PushPinNote2 => "pushPinNote2",
+        /// `pushPinNote1` (art border).
+        PushPinNote1 => "pushPinNote1",
+        /// `pyramids` (art border).
+        Pyramids => "pyramids",
+        /// `pyramidsAbove` (art border).
+        PyramidsAbove => "pyramidsAbove",
+        /// `quadrants` (art border).
+        Quadrants => "quadrants",
+        /// `rings` (art border).
+        Rings => "rings",
+        /// `safari` (art border).
+        Safari => "safari",
+        /// `sawtooth` (art border).
+        Sawtooth => "sawtooth",
+        /// `sawtoothGray` (art border).
+        SawtoothGray => "sawtoothGray",
+        /// `scaredCat` (art border).
+        ScaredCat => "scaredCat",
+        /// `seattle` (art border).
+        Seattle => "seattle",
+        /// `shadowedSquares` (art border).
+        ShadowedSquares => "shadowedSquares",
+        /// `sharksTeeth` (art border).
+        SharksTeeth => "sharksTeeth",
+        /// `shorebirdTracks` (art border).
+        ShorebirdTracks => "shorebirdTracks",
+        /// `skyrocket` (art border).
+        Skyrocket => "skyrocket",
+        /// `snowflakeFancy` (art border).
+        SnowflakeFancy => "snowflakeFancy",
+        /// `snowflakes` (art border).
+        Snowflakes => "snowflakes",
+        /// `sombrero` (art border).
+        Sombrero => "sombrero",
+        /// `southwest` (art border).
+        Southwest => "southwest",
+        /// `stars` (art border).
+        Stars => "stars",
+        /// `starsTop` (art border).
+        StarsTop => "starsTop",
+        /// `stars3d` (art border).
+        Stars3d => "stars3d",
+        /// `starsBlack` (art border).
+        StarsBlack => "starsBlack",
+        /// `starsShadowed` (art border).
+        StarsShadowed => "starsShadowed",
+        /// `sun` (art border).
+        Sun => "sun",
+        /// `swirligig` (art border).
+        Swirligig => "swirligig",
+        /// `tornPaper` (art border).
+        TornPaper => "tornPaper",
+        /// `tornPaperBlack` (art border).
+        TornPaperBlack => "tornPaperBlack",
+        /// `trees` (art border).
+        Trees => "trees",
+        /// `triangleParty` (art border).
+        TriangleParty => "triangleParty",
+        /// `triangles` (art border).
+        Triangles => "triangles",
+        /// `triangle1` (art border).
+        Triangle1 => "triangle1",
+        /// `triangle2` (art border).
+        Triangle2 => "triangle2",
+        /// `triangleCircle1` (art border).
+        TriangleCircle1 => "triangleCircle1",
+        /// `triangleCircle2` (art border).
+        TriangleCircle2 => "triangleCircle2",
+        /// `shapes1` (art border).
+        Shapes1 => "shapes1",
+        /// `shapes2` (art border).
+        Shapes2 => "shapes2",
+        /// `twistedLines1` (art border).
+        TwistedLines1 => "twistedLines1",
+        /// `twistedLines2` (art border).
+        TwistedLines2 => "twistedLines2",
+        /// `vine` (art border).
+        Vine => "vine",
+        /// `waveline` (art border).
+        Waveline => "waveline",
+        /// `weavingAngles` (art border).
+        WeavingAngles => "weavingAngles",
+        /// `weavingBraid` (art border).
+        WeavingBraid => "weavingBraid",
+        /// `weavingRibbon` (art border).
+        WeavingRibbon => "weavingRibbon",
+        /// `weavingStrips` (art border).
+        WeavingStrips => "weavingStrips",
+        /// `whiteFlowers` (art border).
+        WhiteFlowers => "whiteFlowers",
+        /// `woodwork` (art border).
+        Woodwork => "woodwork",
+        /// `xIllusions` (art border).
+        XIllusions => "xIllusions",
+        /// `zanyTriangles` (art border).
+        ZanyTriangles => "zanyTriangles",
+        /// `zigZag` (art border).
+        ZigZag => "zigZag",
+        /// `zigZagStitch` (art border).
+        ZigZagStitch => "zigZagStitch",
+        /// `custom` (custom art border).
+        Custom => "custom",
     }
 }
 
@@ -446,6 +781,19 @@ strict_enum! {
         Column => "column",
         /// `textWrapping`.
         TextWrapping => "textWrapping",
+    }
+}
+
+strict_enum! {
+    /// `ST_BrClear` other than `none`: which side's floating objects a text
+    /// wrapping break moves the next line below.
+    pub enum BreakClear {
+        /// `left`.
+        Left => "left",
+        /// `right`.
+        Right => "right",
+        /// `all`.
+        All => "all",
     }
 }
 

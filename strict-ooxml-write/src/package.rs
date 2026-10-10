@@ -234,6 +234,15 @@ pub trait Source {
         Ok(out)
     }
 
+    /// Whether the reader rewrote any part of the source to Strict on the way
+    /// in, so a part copied from it is not byte for byte the producer's.
+    ///
+    /// The default is `false`: a source that is not a normalizing package hands
+    /// out the bytes it holds.
+    fn was_normalized(&self) -> bool {
+        false
+    }
+
     /// The relationship ids `from` declares, in order.
     ///
     /// # Errors
@@ -280,6 +289,10 @@ impl Source for strict_ooxml_core::opc::Package {
 
     fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
         strict_ooxml_core::opc::Package::reachable_parts(self, from)
+    }
+
+    fn was_normalized(&self) -> bool {
+        strict_ooxml_core::opc::Package::was_normalized(self)
     }
 }
 
@@ -565,6 +578,25 @@ pub fn write_package(
             }
         }
     }
+    // `w:shapeDefaults` / `w:hdrShapeDefaults` hold VML (`o:shapedefaults`,
+    // `o:shapelayout`) and nothing else; Strict carries no VML (ADR-0014), so the
+    // parser skips them and this write names what went, child by child, so a
+    // reader of the report can tell which defaults the document lost.
+    for feature in ["w:shapeDefaults", "w:hdrShapeDefaults"] {
+        if let Some(entry) = document.support.get(feature) {
+            use strict_ooxml_core::normalize::report::{LossRecord, Severity};
+            report.record_loss(LossRecord {
+                transform_id: crate::ctx::WRITE_PARTIAL_ID,
+                feature_id: feature.to_owned(),
+                reason: "VML default shape properties are not written: o:shapedefaults \
+                         (v:fill, v:stroke, o:colormru) and o:shapelayout (o:idmap, \
+                         o:rules, o:r connector rules)"
+                    .to_owned(),
+                severity: Severity::Ignorable,
+                locations: entry.locations.clone(),
+            });
+        }
+    }
     let mut ctx = Ctx::new(&mut report);
 
     let mut rels = RelBuilder::new();
@@ -775,14 +807,26 @@ pub fn write_package(
             .into_bytes(),
         )?;
     }
+    // Extra parts copied because a header/footer/notes part referenced them
+    // (AUD-61); merged with the document passthrough by name when writing.
+    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
+
     if !document.numbering.is_empty() {
-        add_part(
+        // Picture bullets: `numbering.xml` owns the image relationships its
+        // `w:numPicBullet` drawings use, allocated against the written media
+        // target the same way a header's pictures are, so the ids are stable
+        // from one write to the next. Nothing else in the part refers to
+        // another part, so no foreign id is bound.
+        write_content_part_with_rels(
             &mut zip,
+            &mut ctx,
+            source,
             NUMBERING_PART,
-            part_xml(&mut ctx, NUMBERING_PART, |ctx| {
-                parts::numbering_part(ctx, &document.numbering)
-            })?
-            .into_bytes(),
+            "numbering.xml",
+            None,
+            &[],
+            &mut part_extra_copies,
+            |ctx| parts::numbering_part(ctx, &document.numbering),
         )?;
     }
     if document.settings != Default::default() || options.always_write_settings {
@@ -844,10 +888,6 @@ pub fn write_package(
             part_xml(&mut ctx, THEME_PART, |ctx| parts::theme_part(ctx, theme))?.into_bytes(),
         )?;
     }
-    // Extra parts copied because a header/footer/notes part referenced them
-    // (AUD-61); merged with the document passthrough by name when writing.
-    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
-
     if !document.footnotes.is_empty() {
         let foreign = note_foreign_ids(&document.footnotes);
         write_content_part_with_rels(
@@ -1128,11 +1168,13 @@ fn bind_part_foreign(
             let Ok(bytes) = source.read_part(&seed) else {
                 continue;
             };
+            let content_type = source.content_type(&seed);
+            passthrough::cite_carried_rewrite(ctx, source, seed.as_str(), content_type.as_deref());
             // Also copy the part's own .rels so its internal ids keep working.
             extra.push(passthrough::CopiedPart {
                 name: seed.as_str().to_owned(),
                 bytes,
-                content_type: source.content_type(&seed),
+                content_type,
             });
             if let Some(rels_part) = passthrough::rels_part_of(&seed) {
                 if let Ok(rels_bytes) = source.read_part(&rels_part) {

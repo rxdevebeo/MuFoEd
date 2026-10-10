@@ -490,6 +490,7 @@ fn flatten_run(
             RunContent::Tab => out.push(Seg::Tab),
             RunContent::Break(BreakKind::Page) => out.push(Seg::PageBreak),
             RunContent::Break(BreakKind::Column | BreakKind::TextWrapping)
+            | RunContent::ClearingBreak(_)
             | RunContent::CarriageReturn => out.push(Seg::Break),
             RunContent::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             RunContent::Symbol(symbol) => {
@@ -613,6 +614,7 @@ fn build_lines(
             marker.text.clone(),
             marker.run.clone(),
             marker.suffix.clone(),
+            marker.pic_bullet,
         )
     });
 
@@ -789,11 +791,27 @@ fn build_lines(
     let anchors = sink.anchors;
 
     // Prepend the numbering marker to the first line, if any.
-    if let Some((marker_text, marker_run, suffix)) = &marker {
+    if let Some((marker_text, marker_run, suffix, pic_bullet)) = &marker {
         if let Some(Flow::Line(first)) = flows.iter_mut().find(|flow| matches!(flow, Flow::Line(_)))
         {
             let size_px = ctx.size_px(marker_run.size_pt);
-            let width = ctx.measure(marker_text, marker_run);
+            // A picture bullet is drawn at the marker's font size, its bottom on
+            // the baseline and its width by the picture's own proportions - the
+            // size Word gives it whatever the picture's declared extent.
+            let picture = pic_bullet
+                .and_then(|id| ctx.document.numbering.pic_bullet(id))
+                .and_then(|bullet| layout_inline_image(ctx, &bullet.drawing, 0.0, 0.0))
+                .map(|image| {
+                    let width = if image.h > 0.0 {
+                        image.w * size_px / image.h
+                    } else {
+                        size_px
+                    };
+                    (image, width)
+                });
+            let width = picture
+                .as_ref()
+                .map_or_else(|| ctx.measure(marker_text, marker_run), |(_, width)| *width);
             let clearance = marker_clearance(ctx, marker_run, suffix.as_deref());
             let mut marker_x = first_x;
             // The text anchor stays where the paragraph declared it. A marker
@@ -802,22 +820,32 @@ fn build_lines(
             if marker_x + width + clearance > normal_x + 1e-6 {
                 marker_x = normal_x - clearance - width;
             }
-            first.items.insert(
-                0,
-                TextItem {
+            if let Some((image, width)) = picture {
+                first.graphics.push(Item::Image(ImageItem {
                     x: marker_x,
-                    baseline: first.ascent,
-                    width,
-                    text: marker_text.clone(),
-                    run: marker_run.clone(),
-                    size_px,
-                    advance: ctx.advance_kind_for(marker_text, marker_run),
-                    field: None,
-                    compress_punctuation: false,
-                    following_non_space: None,
-                    plain_space_factor: 1.0,
-                },
-            );
+                    y: -size_px,
+                    w: width,
+                    h: size_px,
+                    ..image
+                }));
+            } else {
+                first.items.insert(
+                    0,
+                    TextItem {
+                        x: marker_x,
+                        baseline: first.ascent,
+                        width,
+                        text: marker_text.clone(),
+                        run: marker_run.clone(),
+                        size_px,
+                        advance: ctx.advance_kind_for(marker_text, marker_run),
+                        field: None,
+                        compress_punctuation: false,
+                        following_non_space: None,
+                        plain_space_factor: 1.0,
+                    },
+                );
+            }
         }
     }
 

@@ -441,6 +441,9 @@ pub struct GroupTransform {
 /// A `wpg:wgp` group of graphics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupShape {
+    /// Group non-visual id (`wpg:cNvPr/@id`); `None` when the group had no
+    /// `wpg:cNvPr` (a top-level `wpg:wgp` usually has none).
+    pub nv_id: Option<u32>,
     /// Group name (`wpg:cNvPr/@name`).
     pub name: Option<Arc<str>>,
     /// Group description (`wpg:cNvPr/@descr`).

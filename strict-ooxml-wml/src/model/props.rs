@@ -196,6 +196,10 @@ pub struct TableProperties {
     pub look: Option<TableLook>,
     /// Table indent (`w:tblInd`).
     pub indent: Option<Twips>,
+    /// `w:tblInd/@w:type` as read. `None` is the writer's default (`dxa`);
+    /// `nil` and the other `ST_TblWidth` values are kept so a write puts back
+    /// the type the source carried rather than rewriting it to `dxa`.
+    pub indent_kind: Option<super::values::WidthKind>,
     /// Visual right-to-left table (`w:bidiVisual`).
     pub bidi_visual: bool,
     /// Floating-table positioning (`w:tblpPr`), AUD-46. Render stays in-flow.
@@ -261,6 +265,10 @@ pub struct CellProperties {
     pub text_direction: Option<TextDirection>,
     /// Borders (`w:tcBorders`).
     pub borders: Borders,
+    /// Top-left to bottom-right diagonal (`w:tcBorders/w:tl2br`).
+    pub diagonal_down: Option<super::values::Border>,
+    /// Top-right to bottom-left diagonal (`w:tcBorders/w:tr2bl`).
+    pub diagonal_up: Option<super::values::Border>,
     /// Shading (`w:shd`).
     pub shading: Option<Shading>,
     /// Cell margins (`w:tcMar`).
@@ -424,8 +432,9 @@ pub struct FrameProperties {
     pub y_align: Option<Arc<str>>,
     /// Height rule (`w:hRule`).
     pub height_rule: Option<Arc<str>>,
-    /// Lock against dragging (`w:anchorLock`).
-    pub anchor_lock: bool,
+    /// Lock against dragging (`w:anchorLock`): `Some(false)` is an explicit
+    /// off as read, kept so it is written back rather than dropped.
+    pub anchor_lock: Option<bool>,
 }
 
 /// Which header/footer a reference points at.

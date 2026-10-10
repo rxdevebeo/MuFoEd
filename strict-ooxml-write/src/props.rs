@@ -67,37 +67,14 @@ pub fn paragraph_properties(
     props: &ParagraphProperties,
     mark_revision: Option<&strict_ooxml_wml::model::Revision>,
 ) {
-    if let Some(revision) = mark_revision {
-        // `CT_ParaRPr` puts `w:ins`/`w:del` in its revision-tracking group
-        // ahead of `EG_RPrBase`, which is where the earlier version wrote
-        // this - but only for a *standalone* tracked insertion/deletion of
-        // the mark itself, distinct from the `w:rPrChange` that records a
-        // *formatting* change to the mark's `w:rPr`. The cases this writer
-        // has seen the schema reject here were all the latter, so writing
-        // `w:ins`/`w:del` unconditionally produced invalid Strict. Rather
-        // than guess which one the model meant, the marker is omitted and
-        // the loss is recorded (ADR-0018 follow-up) - here, before the
-        // emptiness check below, so a paragraph whose only property is this
-        // marker still gets the report and reaches the same (empty) output
-        // on every write, rather than writing a pointless `<w:pPr/>` on the
-        // first pass and nothing at all once that pass is reparsed.
-        let tag = format!("w:{}", revision.kind.as_str());
-        ctx.report_unsupported(
-            &tag,
-            "a paragraph mark's tracked-change marker was not written: Strict's \
-             CT_ParaRPr expects w:rPrChange here in the cases this writer has seen \
-             fail, and writing w:ins/w:del unconditionally produced invalid Strict",
-            &props.location.clone().unwrap_or_default(),
-        );
-    }
-    // Nothing is written for `mark_revision` any more (see above), so whether
-    // `w:pPr` is worth writing at all depends on `props` alone now.
-    if is_empty_paragraph(props) {
+    // A paragraph whose only property is the mark's tracked change still
+    // needs `w:pPr/w:rPr` to carry it.
+    if is_empty_paragraph(props) && mark_revision.is_none() {
         return;
     }
     xml.start("w:pPr");
     schema_order(xml, order::PPR, |name, xml| {
-        paragraph_child(ctx, xml, props, name);
+        paragraph_child(ctx, xml, props, name, mark_revision);
     });
     xml.end();
 }
@@ -108,6 +85,7 @@ fn paragraph_child(
     xml: &mut XmlWriter,
     props: &ParagraphProperties,
     name: &str,
+    mark_revision: Option<&strict_ooxml_wml::model::Revision>,
 ) {
     match name {
         "pStyle" => {
@@ -225,11 +203,12 @@ fn paragraph_child(
             let has_props = run_props.is_some_and(|props| !is_empty_run(props));
             // `w:rPr` marks the paragraph mark. An empty `<w:rPr/>` is legal but
             // pointless; we write the container only when it carries run props
-            // (ADR-0018). The tracked-change marker that used to be written here
-            // too is handled by the caller, before this container's emptiness is
-            // even decided - see [`paragraph_properties`].
-            if has_props {
+            // or the mark's own tracked change (ADR-0018).
+            if has_props || mark_revision.is_some() {
                 xml.start("w:rPr");
+                if let Some(revision) = mark_revision {
+                    paragraph_mark_revision(xml, revision);
+                }
                 if let Some(run_props) = run_props {
                     run_properties_children(xml, run_props);
                 }
@@ -243,6 +222,23 @@ fn paragraph_child(
         }
         _ => {}
     }
+}
+
+/// The paragraph mark's tracked change: `w:ins`, `w:del`, `w:moveFrom` or
+/// `w:moveTo`, first in `CT_ParaRPr` (`EG_ParaRPrTrackChanges` comes before
+/// `EG_RPrBase`).
+///
+/// `CT_TrackChange` makes `w:author` required, and a mark read without one is
+/// written with an empty author rather than without the attribute: that missing
+/// attribute is what made the earlier writer's output invalid Strict.
+fn paragraph_mark_revision(xml: &mut XmlWriter, revision: &strict_ooxml_wml::model::Revision) {
+    xml.start(revision.kind.feature_id());
+    xml.attr_w("id", revision.id);
+    xml.attr_w("author", revision.author.as_deref().unwrap_or(""));
+    if let Some(date) = &revision.date {
+        xml.attr_w("date", date);
+    }
+    xml.end();
 }
 
 /// Returns `true` when writing `props` would produce an empty `w:pPr`.
@@ -612,6 +608,13 @@ fn borders_empty(borders: &Borders) -> bool {
 /// `w:rPr/w:bdr` is a single `CT_Border`, an element with attributes and no
 /// children. See [`run_border`].
 fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: EdgeNames) {
+    borders_element_open(xml, name, borders, edges);
+    xml.end();
+}
+
+/// [`borders_element`] without the closing tag, so `w:tcBorders` can append
+/// its diagonals inside the same element.
+fn borders_element_open(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: EdgeNames) {
     xml.start(name);
     let (near, far) = match edges {
         EdgeNames::Paragraph => ("left", "right"),
@@ -632,7 +635,6 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
             border_edge(xml, local, edge);
         }
     }
-    xml.end();
 }
 
 /// Which spelling the horizontal edges take in the container being written.
@@ -791,6 +793,7 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         && props.shading.is_none()
         && props.look.is_none()
         && props.indent.is_none()
+        && props.indent_kind.is_none()
         && !props.bidi_visual
         && props.positioning.is_none()
         && props.cell_spacing.is_none()
@@ -851,13 +854,19 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
             }
         }
         "tblInd" => {
-            if let Some(indent) = props.indent {
+            if props.indent.is_some() || props.indent_kind.is_some() {
                 // `w:tblInd` is a `CT_TblWidth` too, so it takes the same lexical
-                // form as a table width - see [`tbl_width_value`].
-                xml.start("w:tblInd");
-                xml.attr("w:w", tbl_width_value(indent.0));
-                xml.attr_w("type", "dxa");
-                xml.end();
+                // form as a table width - see [`width_element`]. The type is the
+                // one read (`nil` included, which `ST_TblWidth` declares), and
+                // `dxa` when the model has none.
+                width_element(
+                    xml,
+                    "w:tblInd",
+                    &Width {
+                        kind: props.indent_kind.unwrap_or(WidthKind::Dxa),
+                        value: props.indent.map(|indent| indent.0),
+                    },
+                );
             }
         }
         "tblBorders" => {
@@ -1029,6 +1038,8 @@ pub fn cell_properties(xml: &mut XmlWriter, props: &CellProperties) {
         && !props.fit_text
         && !props.no_wrap
         && borders_empty(&props.borders)
+        && props.diagonal_down.is_none()
+        && props.diagonal_up.is_none()
         && props.margins.top.is_none()
         && props.margins.start.is_none()
         && props.margins.bottom.is_none()
@@ -1068,8 +1079,23 @@ fn cell_child(xml: &mut XmlWriter, props: &CellProperties, name: &str) {
             }
         }
         "tcBorders" => {
-            if !borders_empty(&props.borders) {
-                borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
+            let diagonals = [
+                ("tl2br", props.diagonal_down.as_ref()),
+                ("tr2bl", props.diagonal_up.as_ref()),
+            ];
+            let has_diagonal = diagonals.iter().any(|(_, edge)| edge.is_some());
+            if !borders_empty(&props.borders) || has_diagonal {
+                // `CT_TcBorders` is the table edges followed by the two
+                // diagonals, so they go after `insideV` inside the same element.
+                // A container holding only a diagonal is still written: it used
+                // to vanish because the edges alone were tested.
+                borders_element_open(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
+                for (local, edge) in diagonals {
+                    if let Some(edge) = edge {
+                        border_edge(xml, local, edge);
+                    }
+                }
+                xml.end();
             }
         }
         "shd" => {
@@ -1330,9 +1356,15 @@ fn frame_pr(xml: &mut XmlWriter, frame: &FrameProperties) {
     xml.attr_w_opt("y", frame.y);
     xml.attr_w_opt("yAlign", frame.y_align.as_deref());
     xml.attr_w_opt("hRule", frame.height_rule.as_deref());
-    if frame.anchor_lock {
-        xml.attr_w("anchorLock", "true");
-    }
+    // An explicit off is written back as read (`w:anchorLock="false"`), the
+    // same rule `w:tblHeader` follows: absent and off mean the same thing, but
+    // dropping the attribute is a difference between the input and the output.
+    xml.attr_w_opt(
+        "anchorLock",
+        frame
+            .anchor_lock
+            .map(|lock| if lock { "true" } else { "false" }),
+    );
     xml.end();
 }
 
@@ -1664,12 +1696,11 @@ mod tests {
         assert!(text.contains(r#"w:hint="eastAsia""#), "{text}");
     }
 
-    /// A standalone tracked-change marker on the paragraph mark has no legal
-    /// home in `CT_ParaRPr` in the cases this writer has seen fail, so it is
-    /// omitted rather than written as invalid `w:ins`/`w:del`, and the loss is
-    /// recorded instead of being silently dropped.
+    /// The paragraph mark's own tracked insertion is written where
+    /// `CT_ParaRPr` has it - first inside `w:pPr/w:rPr` - with the author
+    /// `CT_TrackChange` requires, even when the input had none.
     #[test]
-    fn paragraph_mark_revision_is_not_written_as_ins_or_del() {
+    fn paragraph_mark_revision_is_written_first_in_the_mark_rpr() {
         let mut xml = XmlWriter::new();
         let mut report = NormalizationReport::new();
         let mut ctx = Ctx::new(&mut report);
@@ -1681,21 +1712,16 @@ mod tests {
             Some(&revision),
         );
         let text = xml.finish().expect("balanced");
-        assert!(!text.contains("w:ins"), "{text}");
-        assert!(!text.contains("w:del"), "{text}");
         assert!(
-            report
-                .losses()
-                .iter()
-                .any(|loss| loss.feature_id == "w:ins"),
-            "{report:?}"
+            text.contains(r#"<w:pPr><w:rPr><w:ins w:id="7" w:author=""/></w:rPr></w:pPr>"#),
+            "{text}"
         );
+        assert!(report.losses().is_empty(), "{report:?}");
     }
 
-    /// A paragraph mark that has both run props and a revision keeps the run
-    /// props but still omits the illegal revision marker.
+    /// With run properties beside it, the marker still comes first.
     #[test]
-    fn paragraph_mark_revision_with_run_props_keeps_props_only() {
+    fn paragraph_mark_revision_precedes_the_mark_run_props() {
         let props = ParagraphProperties {
             run_props: Some(RunProperties {
                 bold: strict_ooxml_wml::model::values::TriState::On,
@@ -1706,11 +1732,16 @@ mod tests {
         let mut xml = XmlWriter::new();
         let mut report = NormalizationReport::new();
         let mut ctx = Ctx::new(&mut report);
-        let revision = Revision::new(RevisionKind::Delete, 3);
+        let mut revision = Revision::new(RevisionKind::Delete, 3);
+        revision.author = Some("A".into());
+        revision.date = Some("2026-10-10T00:00:00Z".into());
         paragraph_properties(&mut ctx, &mut xml, &props, Some(&revision));
         let text = xml.finish().expect("balanced");
-        assert!(text.contains("<w:rPr>"), "{text}");
-        assert!(text.contains(r#"<w:b w:val="true"/>"#), "{text}");
-        assert!(!text.contains("w:del"), "{text}");
+        assert!(
+            text.contains(
+                r#"<w:rPr><w:del w:id="3" w:author="A" w:date="2026-10-10T00:00:00Z"/><w:b w:val="true"/>"#
+            ),
+            "{text}"
+        );
     }
 }

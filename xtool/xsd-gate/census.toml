@@ -689,3 +689,136 @@ elements = ["w:r"]
 parents = ["smartTag"]
 summary = "runs of an unwrapped w:smartTag, kept in its paragraph"
 audit = "P15 / AUD-42: Strict has no w:smartTag (TZ-43 names the wrapper). The parser keeps its content and drops the wrapper, so each run moves from parent smartTag to the paragraph. A run removed from any other parent stays unclassified."
+
+[[item]]
+id = "TZ-60"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = ["r"]
+parents = ["rules"]
+parts = ["word/settings.xml"]
+requires_cited = ["o:shapelayout"]
+summary = "VML connector rules (o:shapelayout/o:rules/o:r) inside w:shapeDefaults have no Strict home"
+audit = "Census 2026-10-10: o:r under o:rules in settings.xml - 001_wajiz removed=6, 022_S_301 removed=1, 041_l_lm_l_qyd removed=1, 070_Innovations removed=6, 090_Gritos removed=16, Spanner visibility graph removed=10; all named=0, and w:shapeDefaults cited in none of them. Strict carries no VML (ADR-0014). The label is the bare local because the office namespace is not a Strict one. The normalizer's loss id is the namespace URI plus #shapeDefaults, which the census tokenizes to a bare local, so the item binds on o:shapelayout - printed only by that reason. Both paths that drop the block now name it with its children: the normalizer's T5.removal reason for w:shapeDefaults lists o:shapedefaults/v:fill/v:stroke/o:colormru and o:shapelayout/o:idmap/o:rules/o:r, and write/src/package.rs records w:shapeDefaults (and w:hdrShapeDefaults) with the same list when the parser skipped it. A removal without the citation stays unclassified."
+
+[[item]]
+id = "TZ-61"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = ["fill"]
+parents = ["shapedefaults"]
+parts = ["word/settings.xml"]
+requires_cited = ["o:shapedefaults"]
+summary = "VML default fill (o:shapedefaults/v:fill) inside w:shapeDefaults has no Strict home"
+audit = "Census 2026-10-10: v:fill under o:shapedefaults - 057_Wen_Xue removed=1 named=0, 090_Gritos removed=2 named=1 (by coincidence). Same block and the same two citations as TZ-60: w:shapeDefaults is cited and its reason names v:fill, so named=1 is earned by this input's report."
+
+[[item]]
+id = "TZ-62"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["w:stylePaneSortMethod@val"]
+parents = ["settings"]
+was = ["0000", "0001", "0002", "0003", "0004", "0005"]
+requires_cited = ["w:stylePaneSortMethod"]
+summary = "Transitional ST_StylePaneSortMethods code written as its Strict name"
+audit = "Census 2026-10-10: 044_Yekuana_Prayers w:stylePaneSortMethod w:val=0001. The element is now kept (it used to be dropped as foreign). Strict ST_StylePaneSortMethods has only name/priority/font/basedOn/type/default; write/src/parts.rs::strict_style_pane_sort_method maps 0000..0005 onto them in that order and write_style_pane_sort_method cites w:stylePaneSortMethod (report_info) whenever it rewrites. A value outside both vocabularies is not written and is reported Lossy under the same id, but it is not in `was` and stays unclassified."
+
+[[item]]
+id = "TZ-64"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["shape", "f", "path", "lock"]
+parents = ["pict", "formulas", "shapetype"]
+parts = ["word/numbering.xml"]
+summary = "a VML picture bullet (w:numPicBullet/w:pict) is converted to its DrawingML w:drawing"
+audit = "Census 2026-10-10: 009_stratigrafi numbering.xml - v:shape (parent pict), v:f (parent formulas) removed=12, v:path and o:lock (parent shapetype) removed=1. TZ-34 covers these locals only in story parts. Picture bullets are now modelled (model/numbering.rs PictureBullet, Level::pic_bullet_id): the normalizer's T7 turns the bullet's w:pict into a w:drawing with the same image relationship, parse/numbering.rs reads it with the body's drawing parser against numbering.xml's relationships, and write/src/parts.rs writes w:numPicBullet first in CT_Numbering and w:lvlPicBulletId in CT_Lvl order, with word/_rels/numbering.xml.rels carrying the image (package.rs). The VML vocabulary leaves the part because the picture is now DrawingML, not because it is lost. The former TZ-63 (w:numPicBullet and w:lvlPicBulletId dropped together) is closed: both are written back. A w:pict nothing converted (VmlFallback::Report/Drop) is still dropped and named by the T7.vml loss, or by parse/numbering.rs's w:numPicBullet Unsupported record when the w:pict reaches the parser."
+
+[[item]]
+id = "TZ-65"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "a:blipFill", "a:blip", "a:duotone", "a:tile",
+  "a:satMod@val", "a:shade@val", "a:tint@val",
+]
+parents = ["bgFillStyleLst", "fillStyleLst", "blipFill", "blip", "schemeClr"]
+parts = ["word/theme/theme*.xml"]
+requires_cited = ["a:fmtScheme"]
+summary = "a theme texture fill (a:blipFill with r:embed) is replaced by a:solidFill over phClr"
+audit = "Census 2026-10-10: 090_Gritos theme1.xml - a:blipFill (parent bgFillStyleLst), a:blip, a:tile (parent blipFill), a:duotone (parent blip), a:contourClr (parent sp3d), named=0. Cause: the generic capture_fragment refuses any prefix beyond a:/pic:, so r:embed made the WHOLE a:fmtScheme fall back to the placeholder (a:contourClr, the gradients and bevels went with it). parse/theme.rs::capture_format_scheme now keeps the scheme and replaces only each relationship-bearing a:blipFill by a:solidFill/phClr (EG_FillProperties keeps its three entries); the theme part is written without relationships, so the texture itself cannot be kept. The a:fmtScheme Partial record names every element inside the replaced fill (a:blipFill, a:blip, a:duotone, a:schemeClr, a:shade, a:tint, a:tile...), so named=1 is this input's. a:contourClr is no longer removed. The colour transforms of the duotone's a:schemeClr (a:satMod/a:shade/a:tint @val, measured 2026-10-10 on 090 after the scheme stopped falling back) leave with it and are listed here; elsewhere in a theme a changed percentage without the a:fmtScheme citation stays unclassified."
+
+[[item]]
+id = "TZ-71"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["w:footnoteReference@customMarkFollows", "w:endnoteReference@customMarkFollows"]
+parents = ["r"]
+was = ["0", "false", "off"]
+requires_cited = ["w:footnoteReference@customMarkFollows", "w:endnoteReference@customMarkFollows"]
+summary = "explicit customMarkFollows off on a note reference is the default and is not written back"
+audit = "Census 2026-10-10: 033_Nghiep_cam_but_chi removed=14, 034_CCOO removed=2 (document.xml), all was=0. RunContent::FootnoteRef/EndnoteRef hold the id alone and are matched by render-svg and edit, so the attribute cannot be kept without a cross-crate change. parse/document.rs::record_custom_mark_follows cites the attribute. Only the off spellings match: customMarkFollows=1 (a custom mark, a real loss) stays unclassified."
+
+[[item]]
+id = "TZ-74"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["w:dataBinding@prefixMappings"]
+parents = ["sdtPr"]
+requires_cited = ["w:dataBinding@prefixMappings"]
+summary = "Transitional namespace URIs inside w:dataBinding/@w:prefixMappings written in their Strict form"
+audit = "Census 2026-10-10: 021_Ljudi_Vole footer1.xml, was=xmlns:ns0='http://schemas.openxmlformats.org/officeDocument/2006/extended-properties'. write/src/body.rs::strict_prefix_mappings maps each quoted URI through the namespace registry, so the binding still addresses docProps/app.xml after the write, and now cites w:dataBinding@prefixMappings (report_info) whenever the value changed. A change without the citation stays unclassified."
+
+[[item]]
+id = "TZ-80"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["c:chart@id"]
+parents = ["graphicData"]
+requires_cited = ["c:chartSpace"]
+summary = "a carried chart part is the reader's Strict rewrite, so its relationship content hash changes"
+audit = "C-2026-10-10: the chart part keeps its name, its relationship and its content, but Package::read_part under Normalize returns it in Strict (namespaces renamed, bare percentages given %, empty c:ext removed and named as T5.empty-chart-ext). The census hashes the relationship target's bytes, so c:chart/@r:id compares unequal. passthrough::cite_carried_rewrite (write/src/passthrough.rs) records c:chartSpace for each carried chart part when the source was normalized; a changed chart without that citation, or one from a Strict source, stays unclassified. The part's own element and attribute changes are still separate rows of word/charts/chartN.xml. Rows: 020_Nghien_cuu_cac_roi_loan... x1, 077_2016_Greater_Launceston... x5."
+
+[[item]]
+id = "TZ-81"
+origin = "waived"
+signal = "element"
+disposition = "declared_transform"
+elements = ["c:userShapes@id"]
+parents = ["chartSpace"]
+requires_cited = ["c:userShapes"]
+summary = "a carried chartUserShapes part is the reader's Strict rewrite; the relationship and the part are kept"
+audit = "C-2026-10-10: chart3.xml keeps <c:userShapes r:id=\"rId2\"/> and its .rels keeps the chartUserShapes relationship to ../drawings/drawing1.xml, which is copied. Only its bytes differ (Transitional chart/chartDrawing/main namespaces renamed to Strict), so the target content hash changes. passthrough::cite_carried_rewrite records c:userShapes for a carried chartshapes+xml part of a normalized source. A dropped part or relationship, or a change without the citation, stays unclassified. Row: 077_2016_Greater_Launceston... chart3.xml x1."
+
+[[item]]
+id = "TZ-82"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = ["c:ext"]
+parents = ["extLst"]
+parts = ["word/charts/*.xml"]
+requires_cited = ["c:ext"]
+summary = "an empty chart c:ext (no extension child) is dropped and named"
+audit = "C-2026-10-10: Strict CT_Extension needs content. 077 chart1.xml ships eight self-closing <c:ext uri=\"{CE6537A1-...}\" xmlns:c15=.../> under c:dLbl/c:extLst; normalize/transitional.rs drop_unsupported_start removes the empty shell and records it as T5.empty-chart-ext under c:ext (Lossy). Matches only chart parts and only when this input's report cites c:ext. Row: 077_2016_Greater_Launceston... chart1.xml removed=8."
+
+[[item]]
+id = "TZ-75"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "w:ins", "w:ins@id", "w:ins@author", "w:ins@date",
+  "w:del", "w:del@id", "w:del@author", "w:del@date",
+]
+parents = ["rPr"]
+requires_cited = ["w:rPrChange"]
+summary = "a revision mark inside w:rPrChange's previous properties leaves with the dropped change history"
+audit = "Census 2026-10-10 (8b7648e): 020_Nghien_cuu, four w:ins (ids 2, 15, 26, 36) under w:pPr/w:rPr/w:rPrChange/w:rPr - the previous properties of a tracked formatting change on the paragraph mark. The paragraph mark's own w:ins is written since b5ea221 (the other four rows of this document disappeared); w:rPrChange is not modelled and its record now names the w:ins/w:del it takes with it. The census sees only the parent rPr, so this item also matches a mark-level w:ins that went missing - but that one is written and stays covered by the round-trip test census_body_2026_10_10::a_paragraph_mark_revision_round_trips; a drop without the w:rPrChange citation stays unclassified."

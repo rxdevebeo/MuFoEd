@@ -10,7 +10,7 @@ use super::drawing::Drawing;
 use super::math::{MathExpression, MathParagraph};
 use super::props::RunProperties;
 use super::revision::Revision;
-use super::values::{BreakKind, FieldCharType, Space};
+use super::values::{BreakClear, BreakKind, FieldCharType, Space};
 
 /// A text node with its `xml:space` handling (`w:t`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,12 +31,33 @@ pub struct Symbol {
 }
 
 /// A field character (`w:fldChar`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldChar {
     /// Character kind.
     pub kind: FieldCharType,
     /// Preserve formatting during update.
     pub dirty: bool,
+    /// The children of a legacy form field's `w:ffData` (`CT_FFData`: name,
+    /// enabled, calcOnExit, checkBox, textInput, ddList, ...), kept as read and
+    /// written back in source order. `None` when the field character has no
+    /// `w:ffData`. Nothing reads them; they are kept so a form field is still a
+    /// form field after a write.
+    pub form_data: Option<Vec<FormFieldElement>>,
+}
+
+/// One element of a kept `w:ffData` subtree.
+///
+/// Every element and attribute of `CT_FFData` is in the `w:`
+/// namespace and carries no character data, so a name, its `w:` attributes and
+/// its children are the whole element.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormFieldElement {
+    /// Local name (`checkBox`, `default`, `textInput`, ...).
+    pub local: Arc<str>,
+    /// Local names and values of the element's `w:` attributes, in source order.
+    pub attributes: Vec<(Arc<str>, Arc<str>)>,
+    /// Child elements in source order.
+    pub children: Vec<FormFieldElement>,
 }
 
 /// Content of a run (`w:r`).
@@ -48,6 +69,14 @@ pub enum RunContent {
     Tab,
     /// Break (`w:br`).
     Break(BreakKind),
+    /// A text wrapping break that also clears floating objects
+    /// (`w:br w:clear="left|right|all"`): the next line starts below the floats
+    /// on that side.
+    ///
+    /// A variant of its own rather than a field of [`Self::Break`]: `ST_BrClear`
+    /// applies to text wrapping breaks only, and every reader of `Break` keeps
+    /// matching the one shape it always had.
+    ClearingBreak(BreakClear),
     /// Carriage return (`w:cr`).
     CarriageReturn,
     /// Inline drawing (`w:drawing`).

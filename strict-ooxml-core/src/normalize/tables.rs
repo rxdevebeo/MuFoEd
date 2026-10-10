@@ -334,7 +334,8 @@ pub const REMOVALS: &[Removal] = &[
     wml(
         "shapeDefaults",
         Severity::Ignorable,
-        "Transitional-only default shape properties; Strict does not declare it",
+        "Transitional-only VML default shape properties (o:shapedefaults with v:fill, \
+         v:stroke, o:colormru; o:shapelayout with o:idmap, o:rules, o:r); Strict carries no VML",
     ),
     wml(
         "hdrShapeDefaults",

@@ -73,9 +73,23 @@ impl PartParser<'_> {
                                 }
                                 "fmtScheme" => {
                                     // The capture reads through the end tag.
-                                    let kept = parser.capture_fragment(name.clone(), attrs)?;
-                                    theme.format_scheme_xml =
-                                        kept.map(|markup| markup.to_string());
+                                    let captured =
+                                        parser.capture_format_scheme(name.clone(), attrs)?;
+                                    if captured.markup.is_some() && !captured.replaced.is_empty() {
+                                        parser.record(
+                                            "a:fmtScheme",
+                                            SupportStatus::Partial,
+                                            Some(format!(
+                                                "a theme fill that needs a relationship the theme \
+                                                 part is not written with ({}) is replaced by \
+                                                 a:solidFill over phClr; the rest of the scheme \
+                                                 is kept",
+                                                captured.replaced.join(", ")
+                                            )),
+                                            Some(parser.location()),
+                                        );
+                                    }
+                                    theme.format_scheme_xml = captured.markup;
                                     if theme.format_scheme_xml.is_none() {
                                         parser.record(
                                             "a:fmtScheme",
@@ -102,6 +116,124 @@ impl PartParser<'_> {
             }
             Ok(())
         })
+    }
+
+    /// Captures `a:fmtScheme` as the markup the writer emits.
+    ///
+    /// The start tag has already been read; this reads through the end tag.
+    ///
+    /// This used to be the generic drawing capture, which refuses a fragment that
+    /// needs any prefix beyond `a:`/`pic:`. One `a:blipFill` with `r:embed` (a
+    /// background texture, 090_Gritos) therefore threw away the WHOLE scheme -
+    /// every gradient, shadow and bevel - for the placeholder. The theme part is
+    /// written without relationships, so the texture cannot be kept; but it is
+    /// the only thing that cannot. Each relationship-bearing `a:blipFill` is
+    /// replaced by `a:solidFill` over `phClr` (the list keeps its required three
+    /// entries) and named by the caller; everything else is kept as read.
+    ///
+    /// The rest follows the drawing capture: an `a:ext` whose content is outside
+    /// Strict is dropped and cited under `a:ext`, an `a:extLst` left empty goes
+    /// with it, and anything else outside `a:` (or an attribute outside
+    /// `xml:`) makes the capture return no markup, so the placeholder is written.
+    fn capture_format_scheme(&mut self, name: QName, attrs: Vec<Attr>) -> Result<CapturedScheme> {
+        let pieces = self.read_scheme_pieces(name, attrs)?;
+        let mut kept = vec![true; pieces.len()];
+        let mut replace_at = Vec::new();
+        let mut replaced: Vec<String> = Vec::new();
+        let mut at = 0;
+        while at < pieces.len() {
+            let open = kept.get(at).copied().unwrap_or(false);
+            let Some(SchemePiece::Start(element, _)) = pieces.get(at) else {
+                at += 1;
+                continue;
+            };
+            if !open || !is_drawingml(element) {
+                at += 1;
+                continue;
+            }
+            let end = scheme_piece_end(&pieces, at);
+            let (all, from) = (&pieces, at);
+            let subtree = move || all.iter().take(end).skip(from);
+            match element.local() {
+                "blipFill" if subtree().any(SchemePiece::has_qualified_attr) => {
+                    for piece in subtree() {
+                        if let SchemePiece::Start(inner, _) = piece {
+                            let label = scheme_label(inner);
+                            if !replaced.contains(&label) {
+                                replaced.push(label);
+                            }
+                        }
+                    }
+                    clear_scheme_pieces(&mut kept, at, end);
+                    replace_at.push(at);
+                    at = end;
+                }
+                "ext" if subtree().any(SchemePiece::is_foreign) => {
+                    let uri = match pieces.get(at) {
+                        Some(SchemePiece::Start(_, ext_attrs)) => {
+                            plain_attr(ext_attrs, "uri").unwrap_or_default().to_owned()
+                        }
+                        _ => String::new(),
+                    };
+                    clear_scheme_pieces(&mut kept, at, end);
+                    self.record(
+                        "a:ext",
+                        SupportStatus::Unsupported,
+                        Some(format!(
+                            "Office extension {uri} is not Strict and is not written"
+                        )),
+                        Some(self.location()),
+                    );
+                    at = end;
+                }
+                _ => at += 1,
+            }
+        }
+        // An `a:extLst` with no kept `a:ext` left is not written either.
+        for (index, piece) in pieces.iter().enumerate() {
+            let open = kept.get(index).copied().unwrap_or(false);
+            let SchemePiece::Start(element, _) = piece else {
+                continue;
+            };
+            if !open || !is_drawingml(element) || element.local() != "extLst" {
+                continue;
+            }
+            let end = scheme_piece_end(&pieces, index);
+            let has_child = pieces
+                .iter()
+                .zip(&kept)
+                .take(end)
+                .skip(index + 1)
+                .any(|(piece, keep)| *keep && matches!(piece, SchemePiece::Start(..)));
+            if !has_child {
+                clear_scheme_pieces(&mut kept, index, end);
+            }
+        }
+        let markup = serialize_scheme(&pieces, &kept, &replace_at);
+        Ok(CapturedScheme { markup, replaced })
+    }
+
+    /// The events of the element whose start was just read, through its end.
+    fn read_scheme_pieces(&mut self, name: QName, attrs: Vec<Attr>) -> Result<Vec<SchemePiece>> {
+        let mut pieces = vec![SchemePiece::Start(name, attrs)];
+        let mut depth = 1u32;
+        while depth > 0 {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    depth = depth.saturating_add(1);
+                    pieces.push(SchemePiece::Start(name, attrs));
+                }
+                XmlEvent::EndElement { name } => {
+                    depth -= 1;
+                    pieces.push(SchemePiece::End(name));
+                }
+                XmlEvent::Text(text) | XmlEvent::CData(text) => {
+                    pieces.push(SchemePiece::Text(text));
+                }
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a:fmtScheme")),
+            }
+        }
+        Ok(pieces)
     }
 
     /// Parses `a:clrScheme` into `theme.colors`.
@@ -335,6 +467,157 @@ impl PartParser<'_> {
         write_markup_end(out, name);
         Ok(fonts)
     }
+}
+
+/// The result of [`PartParser::capture_format_scheme`].
+struct CapturedScheme {
+    /// The markup to write, or `None` when the placeholder has to stand in.
+    markup: Option<String>,
+    /// Qualified names inside the fills that were replaced, first-seen order.
+    replaced: Vec<String>,
+}
+
+/// One event of a captured `a:fmtScheme`.
+enum SchemePiece {
+    Start(QName, Vec<Attr>),
+    End(QName),
+    Text(String),
+}
+
+impl SchemePiece {
+    /// A start tag carrying an attribute in a namespace (`r:embed`, `r:link`)
+    /// other than `xml:`. The theme part is written without relationships, so
+    /// such an attribute cannot be kept.
+    fn has_qualified_attr(&self) -> bool {
+        match self {
+            Self::Start(_, attrs) => attrs
+                .iter()
+                .any(|attr| attr.name.ns.as_ref().is_some_and(|ns| ns != XML_NS)),
+            Self::End(_) | Self::Text(_) => false,
+        }
+    }
+
+    /// A start tag in, or carrying an attribute in, a namespace outside Strict.
+    fn is_foreign(&self) -> bool {
+        let strict = |ns: Option<&strict_ooxml_core::xml::qname::NsUri>| {
+            ns.is_none_or(|ns| {
+                ns.as_str().starts_with("http://purl.oclc.org/ooxml/") || ns == XML_NS
+            })
+        };
+        match self {
+            Self::Start(name, attrs) => {
+                !strict(name.ns.as_ref()) || attrs.iter().any(|attr| !strict(attr.name.ns.as_ref()))
+            }
+            Self::End(_) | Self::Text(_) => false,
+        }
+    }
+}
+
+const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
+
+/// The index one past the end tag that closes the start tag at `at`.
+fn scheme_piece_end(pieces: &[SchemePiece], at: usize) -> usize {
+    let mut depth = 0usize;
+    for (index, piece) in pieces.iter().enumerate().skip(at) {
+        match piece {
+            SchemePiece::Start(..) => depth += 1,
+            SchemePiece::End(_) => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return index + 1;
+                }
+            }
+            SchemePiece::Text(_) => {}
+        }
+    }
+    pieces.len()
+}
+
+/// Marks the pieces from `at` up to `end` as not written.
+fn clear_scheme_pieces(kept: &mut [bool], at: usize, end: usize) {
+    kept.iter_mut()
+        .take(end)
+        .skip(at)
+        .for_each(|keep| *keep = false);
+}
+
+/// `a:local` for DrawingML, `prefix:local` (or the bare local) otherwise.
+fn scheme_label(name: &QName) -> String {
+    markup_name(name)
+}
+
+/// Serializes the kept pieces, with `a:solidFill` over `phClr` at each index in
+/// `replace_at`. `None` when a kept element is not DrawingML or a kept attribute
+/// is in a namespace other than `xml:`: the root declares `a:` only.
+fn serialize_scheme(pieces: &[SchemePiece], kept: &[bool], replace_at: &[usize]) -> Option<String> {
+    use strict_ooxml_core::normalize::tables::{
+        drawingml_thousandths_percent, is_drawingml_percentage_attr,
+    };
+    let mut body = String::new();
+    let mut pending = false;
+    for (index, piece) in pieces.iter().enumerate() {
+        if replace_at.contains(&index) {
+            if pending {
+                body.push('>');
+                pending = false;
+            }
+            body.push_str(r#"<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>"#);
+            continue;
+        }
+        if !kept.get(index).copied().unwrap_or(false) {
+            continue;
+        }
+        match piece {
+            SchemePiece::Start(name, attrs) => {
+                if pending {
+                    body.push('>');
+                }
+                if !is_drawingml(name) {
+                    return None;
+                }
+                body.push_str("<a:");
+                body.push_str(name.local());
+                for attr in attrs {
+                    body.push(' ');
+                    match attr.name.ns.as_ref() {
+                        None => {}
+                        Some(ns) if *ns == XML_NS => body.push_str("xml:"),
+                        Some(_) => return None,
+                    }
+                    body.push_str(attr.name.local());
+                    body.push_str("=\"");
+                    let converted = if attr.name.ns.is_none()
+                        && is_drawingml_percentage_attr(name.local(), attr.name.local())
+                    {
+                        drawingml_thousandths_percent(&attr.value)
+                    } else {
+                        None
+                    };
+                    body.push_str(&escape_attr(converted.as_deref().unwrap_or(&attr.value)));
+                    body.push('"');
+                }
+                pending = true;
+            }
+            SchemePiece::End(name) => {
+                if pending {
+                    body.push_str("/>");
+                    pending = false;
+                    continue;
+                }
+                body.push_str("</");
+                body.push_str(&markup_name(name));
+                body.push('>');
+            }
+            SchemePiece::Text(text) => {
+                if pending {
+                    body.push('>');
+                    pending = false;
+                }
+                body.push_str(&escape_text(text));
+            }
+        }
+    }
+    Some(body)
 }
 
 /// First `a:defRPr` faces under `a:spDef` and `a:txDef` while the subtree is copied.
