@@ -1283,3 +1283,52 @@ fn note_separator_definitions_become_reserved_notes() {
         imported.report.issues
     );
 }
+
+#[test]
+fn field_instruction_formatting_is_info_not_loss() {
+    // Run formatting embedded in `\fldinst` styles the field-code display, not
+    // the instruction text: each known formatting control is Info, not Loss.
+    let imported = import(
+        br#"{\rtf1 A{\field{\*\fldinst\b\i\insrsid42\lang1033 HYPERLINK "https://example.test"}{\fldrslt Link}}Z}"#,
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "field-instruction-formatting:b"));
+    let Block::Paragraph(paragraph) = &imported.document.body.blocks[0] else {
+        panic!()
+    };
+    let Inline::Field(field) = &paragraph.inlines[1] else {
+        panic!()
+    };
+    assert_eq!(
+        field.instruction.as_deref(),
+        Some("HYPERLINK \"https://example.test\"")
+    );
+}
+
+#[test]
+fn unknown_field_instruction_control_stays_a_loss() {
+    let imported = import(
+        br"{\rtf1 A{\field{\*\fldinst\bogus}{\fldrslt Link}}Z}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "field-instruction-control:bogus"),
+        "{:?}",
+        imported.report.issues
+    );
+}

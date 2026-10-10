@@ -372,6 +372,32 @@ fn note_control_base(name: &str) -> Option<NoteControl> {
     Some(NoteControl { role, property })
 }
 
+/// Character-formatting control words the writer embeds inside `\fldinst`.
+///
+/// They format the field-code display, not the instruction text, so the
+/// importer drops them. This set is deliberately curated: a control word that is
+/// not a known run/paragraph formatting property stays an explicit `Loss`
+/// instead of being renamed away wholesale.
+fn is_field_instruction_formatting(name: &str) -> bool {
+    matches!(
+        name,
+        // Fonts, script slots and languages.
+        "f" | "af" | "fs" | "afs" | "fcs" | "loch" | "hich" | "dbch"
+            | "ltrch" | "rtlch" | "lang" | "langnp" | "langfe" | "langfenp" | "alang"
+        // Colour and highlight.
+            | "cf" | "cb" | "chcbpat" | "highlight"
+        // Bold/italic/underline/strike and other character toggles.
+            | "b" | "ab" | "i" | "ai" | "ul" | "ulnone" | "uld" | "uldb" | "ulth"
+            | "ulw" | "ulwave" | "strike" | "striked" | "caps" | "scaps" | "v"
+            | "outl" | "shad" | "embo" | "impr" | "noproof" | "snaptogrid" | "cs"
+            | "webhidden" | "super" | "sub" | "nosupersub"
+        // Size, position, spacing and scaling.
+            | "expnd" | "expndtw" | "charscalex" | "kern" | "position" | "up" | "dn"
+        // Revision save ids.
+            | "insrsid" | "charrsid"
+    )
+}
+
 fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
     match slot {
         FontSlot::Ascii => fonts.ascii = Some(face),
@@ -2317,7 +2343,20 @@ impl Parser<'_> {
                         })?;
                     return Ok(());
                 }
+                _ if is_field_instruction_formatting(name) => {
+                    // The writer embeds the run formatting in `\fldinst`; it
+                    // styles the field-code display, not the instruction text,
+                    // so it is dropped as ignored formatting rather than a loss.
+                    return self.issue(
+                        span,
+                        Severity::Info,
+                        format!("field-instruction-formatting:{name}"),
+                    );
+                }
                 _ => {
+                    // Anything else inside an instruction is not recognized;
+                    // a blanket rename of every instruction control to Info is
+                    // forbidden, so an unknown one stays a Loss.
                     return self.issue(
                         span,
                         Severity::Loss,
