@@ -126,8 +126,16 @@ fn compatible(reference: Option<&str>, actual: Option<&str>) -> bool {
     }
 }
 
+/// One whole occurrence of a key: its neighbourhood and its origin.
+struct Hit {
+    left: Option<String>,
+    right: Option<String>,
+    x: Option<f64>,
+    y: f64,
+}
+
 /// Every whole occurrence of `key` with its neighbourhood and origin.
-fn hits(glyphs: &[Glyph], key: &str) -> Vec<(Option<String>, Option<String>, Option<f64>, f64)> {
+fn hits(glyphs: &[Glyph], key: &str) -> Vec<Hit> {
     // Underscores are skipped so split runs concatenate; spaces are boundaries.
     let kept: Vec<&Glyph> = glyphs.iter().filter(|g| g.ch != '_').collect();
     let chars: Vec<char> = kept
@@ -164,7 +172,12 @@ fn hits(glyphs: &[Glyph], key: &str) -> Vec<(Option<String>, Option<String>, Opt
         }
         let left = window(Box::new((0..start).rev()), true);
         let right = window(Box::new(end..chars.len()), false);
-        out.push((left, right, kept[start].x, kept[start].y));
+        out.push(Hit {
+            left,
+            right,
+            x: kept[start].x,
+            y: kept[start].y,
+        });
     }
     out
 }
@@ -207,11 +220,12 @@ fn clio_matches_wps_on_the_mandatory_points() {
         let glyphs = glyphs(&page.svg);
         let candidates: Vec<_> = hits(&glyphs, point.text)
             .into_iter()
-            .filter(|(left, right, _, _)| {
-                compatible(point.left, left.as_deref()) && compatible(point.right, right.as_deref())
+            .filter(|hit| {
+                compatible(point.left, hit.left.as_deref())
+                    && compatible(point.right, hit.right.as_deref())
             })
             .collect();
-        let [(_, _, Some(x), y)] = candidates.as_slice() else {
+        let [Hit { x: Some(x), y, .. }] = candidates.as_slice() else {
             failures.push(format!(
                 "{}: {} candidate(s) for {:?}",
                 point.id,

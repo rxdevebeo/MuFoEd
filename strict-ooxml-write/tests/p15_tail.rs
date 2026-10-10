@@ -110,7 +110,8 @@ behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" hidden=\"0\" allowOverlap=\"1\">
         "{xml}"
     );
     assert!(xml.contains(r#"<pic:blipFill rotWithShape="1">"#), "{xml}");
-    assert!(xml.contains(r#"bright="10000""#), "{xml}");
+    // A bare thousandth in a Strict part is written as the percentage it means.
+    assert!(xml.contains(r#"bright="10%""#), "{xml}");
     // ADR-0014: the Office 2010 extension is not written, and its list goes too.
     assert!(!xml.contains("useLocalDpi"), "{xml}");
     assert!(!xml.contains("extLst"), "{xml}");
