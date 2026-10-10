@@ -124,6 +124,30 @@ pub struct Settings {
     pub click_and_type: bool,
     /// Recognise the document as having a "mirror margins" preference.
     pub mirror_margins: bool,
+    /// Explicit `w:mirrorMargins w:val="false"`. Absence is neither flag.
+    ///
+    /// Word writes the off value explicitly (`w:val="0"`), and the reader used to
+    /// fold it into "absent", so the element left `settings.xml` with nothing in
+    /// the report saying so. Same shape as
+    /// [`even_and_odd_headers_off`](Self::even_and_odd_headers_off).
+    pub mirror_margins_off: bool,
+    /// Explicit `w:autoHyphenation w:val="false"`. Absence is neither flag.
+    pub auto_hyphenation_off: bool,
+    /// `w:activeWritingStyle` entries (`CT_WritingStyle`, unbounded), each as
+    /// its `w:` attributes (`lang`, `vendorID`, `dllVersion`, `nlCheck`,
+    /// `checkStyle`, `appName`) in the order read.
+    ///
+    /// Grammar-checker state, but a `CT_Settings` child Strict declares, so it is
+    /// carried rather than dropped.
+    pub active_writing_styles: Vec<Vec<(Arc<str>, Arc<str>)>>,
+    /// `w:stylePaneSortMethod/@w:val` as read.
+    ///
+    /// Transitional also allows the hexadecimal spellings `0000`..`0005`; Strict
+    /// `ST_StylePaneSortMethods` has only the names, so the writer maps them.
+    pub style_pane_sort_method: Option<Arc<str>>,
+    /// `w:smartTagType` entries (`CT_SmartTagType`, unbounded), each as its `w:`
+    /// attributes (`namespaceuri`, `name`, `url`) in the order read.
+    pub smart_tag_types: Vec<Vec<(Arc<str>, Arc<str>)>>,
     /// Put the gutter at the top of the page rather than the side (`w:gutterAtTop`).
     ///
     /// **A document setting, not a section one.** Strict's `EG_SectPrContents`

@@ -15,12 +15,13 @@ use crate::model::document::Body;
 use crate::model::ids::{ParaId, TextId};
 use crate::model::inline::{
     Bookmark, BookmarkId, CommentId, Directional, DirectionalKind, DirectionalVal, Field,
-    FieldChar, Hyperlink, Inline, OpaqueInline, Run, RunContent, Symbol, TextNode,
+    FieldChar, FormFieldElement, Hyperlink, Inline, OpaqueInline, Run, RunContent, Symbol,
+    TextNode,
 };
 use crate::model::props::{ParagraphProperties, RunProperties, Section};
 use crate::model::revision::{Revision, RevisionKind};
 use crate::model::support::SupportStatus;
-use crate::model::values::{BreakKind, FieldCharType, Rsids, Space, TriState};
+use crate::model::values::{BreakClear, BreakKind, FieldCharType, Rsids, Space, TriState};
 use crate::RELS_STRICT_NS;
 
 use super::dispatch::{body_kind, inline_kind, run_kind, BodyKind, InlineKind, RunKind};
@@ -28,6 +29,10 @@ use super::{
     attr_in_ns, feature_id_for, is_wml, parse_on_off_tristate, parse_u32, val_attr, wml_attr,
     PartParser, MCE_NS, W14_NS, XML_NS,
 };
+
+/// How deep a kept `w:ffData` subtree may go below `w:ffData` itself.
+/// `CT_FFData` needs two levels (`w:checkBox/w:default`); one more is slack.
+const FORM_FIELD_MAX_DEPTH: usize = 3;
 
 /// Fields of `w:sdtPr` the model keeps.
 #[derive(Default)]
@@ -685,7 +690,28 @@ impl PartParser<'_> {
                 let kind = wml_attr(attrs, "type")
                     .and_then(BreakKind::from_strict)
                     .unwrap_or(BreakKind::TextWrapping);
-                content.push(RunContent::Break(kind));
+                // `ST_BrClear` applies to text wrapping breaks only; on a
+                // page or column break it means nothing and is cited.
+                let clear = wml_attr(attrs, "clear").filter(|value| *value != "none");
+                match (kind, clear.and_then(BreakClear::from_strict)) {
+                    (BreakKind::TextWrapping, Some(clear)) => {
+                        content.push(RunContent::ClearingBreak(clear));
+                    }
+                    _ => {
+                        if let Some(clear) = clear {
+                            self.record(
+                                "w:br@clear",
+                                SupportStatus::Partial,
+                                Some(format!(
+                                    "clear={clear} on a {} break is not written",
+                                    kind.as_str()
+                                )),
+                                Some(self.location()),
+                            );
+                        }
+                        content.push(RunContent::Break(kind));
+                    }
+                }
                 self.skip_element()?;
             }
             RunKind::CarriageReturn => {
@@ -719,10 +745,15 @@ impl PartParser<'_> {
                     .and_then(FieldCharType::from_strict)
                     .unwrap_or(FieldCharType::Begin);
                 let dirty = wml_attr(attrs, "dirty").is_some_and(parse_on_off_value);
-                content.push(RunContent::FieldChar(FieldChar { kind, dirty }));
-                self.skip_element()?;
+                let form_data = self.parse_field_char_children()?;
+                content.push(RunContent::FieldChar(FieldChar {
+                    kind,
+                    dirty,
+                    form_data,
+                }));
             }
             RunKind::FootnoteRef => {
+                record_custom_mark_follows(self, "w:footnoteReference", attrs);
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     content.push(RunContent::FootnoteRef(id));
                     self.record(
@@ -742,6 +773,7 @@ impl PartParser<'_> {
                 self.skip_element()?;
             }
             RunKind::EndnoteRef => {
+                record_custom_mark_follows(self, "w:endnoteReference", attrs);
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     content.push(RunContent::EndnoteRef(id));
                     self.record(
@@ -871,6 +903,103 @@ impl PartParser<'_> {
             }
         }
         Ok(())
+    }
+
+    /// Reads the children of a `w:fldChar` whose start was just consumed,
+    /// through its end, and returns the content of its `w:ffData`.
+    ///
+    /// `w:fldData` and `w:numberingChange` are not modelled and are recorded.
+    fn parse_field_char_children(&mut self) -> Result<Option<Vec<FormFieldElement>>> {
+        let mut form_data = None;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, .. } => {
+                    if is_wml(&name) && name.local() == "ffData" {
+                        let children = self.capture_form_field_children(0)?;
+                        self.record(
+                            "w:ffData",
+                            SupportStatus::Partial,
+                            Some(
+                                "legacy form-field data kept as read; the field is not interactive"
+                                    .to_owned(),
+                            ),
+                            Some(self.location()),
+                        );
+                        form_data = Some(children);
+                    } else {
+                        let feature = feature_id_for(&name);
+                        self.record(
+                            &feature,
+                            SupportStatus::Unsupported,
+                            Some("field character child not modelled".to_owned()),
+                            Some(self.location()),
+                        );
+                        self.skip_element()?;
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of fldChar")),
+            }
+        }
+        Ok(form_data)
+    }
+
+    /// The `w:` children of the element whose start was just consumed, through
+    /// its end, for a kept `w:ffData` subtree.
+    ///
+    /// `CT_FFData` is three levels deep at most (`w:ffData/w:checkBox/w:default`);
+    /// anything below [`FORM_FIELD_MAX_DEPTH`], outside the `w:`
+    /// namespace, or carrying a foreign attribute is recorded and not kept, so
+    /// the recursion is bounded by a constant and not by the input.
+    fn capture_form_field_children(&mut self, depth: usize) -> Result<Vec<FormFieldElement>> {
+        let mut out = Vec::new();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if !is_wml(&name) || depth >= FORM_FIELD_MAX_DEPTH {
+                        self.record_foreign(&name);
+                        self.skip_element()?;
+                        continue;
+                    }
+                    let mut attributes = Vec::with_capacity(attrs.len());
+                    for attr in &attrs {
+                        let in_wml = attr
+                            .name
+                            .ns
+                            .as_ref()
+                            .is_some_and(|ns| ns == crate::WML_STRICT_NS);
+                        if in_wml {
+                            attributes.push((
+                                self.intern(attr.name.local()),
+                                self.intern(attr.value.as_str()),
+                            ));
+                        } else {
+                            self.record(
+                                "w:ffData",
+                                SupportStatus::Partial,
+                                Some(format!(
+                                    "attribute {} outside WordprocessingML is not kept",
+                                    attr.name.local()
+                                )),
+                                Some(self.location()),
+                            );
+                        }
+                    }
+                    let local = self.intern(name.local());
+                    let children = self.capture_form_field_children(depth + 1)?;
+                    out.push(FormFieldElement {
+                        local,
+                        attributes,
+                        children,
+                    });
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of ffData")),
+            }
+        }
+        Ok(out)
     }
 
     /// Reads `w:id` / `w:author` / `w:date` from a tracked-change wrapper.
@@ -2063,6 +2192,29 @@ fn rsids_from_attrs(attrs: &[Attr]) -> Rsids {
 /// Returns `true` if a qualified name is in the `w14` extension namespace.
 fn is_w14(name: &QName) -> bool {
     name.ns.as_ref().is_some_and(|ns| ns.as_str() == W14_NS)
+}
+
+/// Cites `@w:customMarkFollows` on a note reference, which the model does not
+/// carry (`RunContent::FootnoteRef`/`EndnoteRef` hold the id alone).
+///
+/// An explicit off (`0`/`false`/`off`) is the attribute's default, so dropping
+/// it changes no meaning; an on means the reference mark is the text that
+/// follows, and the written reference is numbered automatically instead.
+fn record_custom_mark_follows(parser: &mut PartParser<'_>, element: &str, attrs: &[Attr]) {
+    let Some(value) = wml_attr(attrs, "customMarkFollows") else {
+        return;
+    };
+    let message = if parse_on_off_value(value) {
+        "custom reference mark is not modelled; the reference is numbered automatically"
+    } else {
+        "explicit customMarkFollows off is the default and is not written back"
+    };
+    parser.record(
+        &format!("{element}@customMarkFollows"),
+        SupportStatus::Partial,
+        Some(message.to_owned()),
+        Some(parser.location()),
+    );
 }
 
 /// Parses a boolean attribute value.

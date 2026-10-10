@@ -669,6 +669,112 @@ fn hash_algorithm_name(sid: u32) -> Option<&'static str> {
     }
 }
 
+/// The attributes `CT_WritingStyle` declares in Strict. All but `nlCheck` are
+/// required, so an entry missing one is refused rather than written invalid.
+const WRITING_STYLE_ATTRS: &[(&str, bool)] = &[
+    ("lang", true),
+    ("vendorID", true),
+    ("dllVersion", true),
+    ("nlCheck", false),
+    ("checkStyle", true),
+    ("appName", true),
+];
+
+/// The attributes `CT_SmartTagType` declares; all three are optional.
+const SMART_TAG_TYPE_ATTRS: &[&str] = &["namespaceuri", "name", "url"];
+
+/// Writes each `w:activeWritingStyle` (`CT_WritingStyle`, unbounded).
+///
+/// `nlCheck` and `checkStyle` are `s:ST_OnOff`, which is `xsd:boolean` in
+/// Strict: `1`/`0`/`true`/`false` pass through, Transitional's `on`/`off` are
+/// spelled as the boolean they mean. An entry without one of the required
+/// attributes is not written and the loss is named.
+fn write_active_writing_styles(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    entries: &[Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>],
+) {
+    let mut location = SourceLocation::unknown();
+    location.part = PartId::new(crate::package::SETTINGS_PART);
+    for attributes in entries {
+        let value_of = |local: &str| {
+            attributes
+                .iter()
+                .find(|(name, _)| name.as_ref() == local)
+                .map(|(_, value)| value.clone())
+        };
+        let missing: Vec<&str> = WRITING_STYLE_ATTRS
+            .iter()
+            .filter(|(local, required)| *required && value_of(*local).is_none())
+            .map(|(local, _)| *local)
+            .collect();
+        if !missing.is_empty() {
+            ctx.report_unsupported(
+                "w:activeWritingStyle",
+                &format!(
+                    "CT_WritingStyle requires {}; the entry is not written",
+                    missing.join(", ")
+                ),
+                &location,
+            );
+            continue;
+        }
+        xml.start("w:activeWritingStyle");
+        for &(local, _) in WRITING_STYLE_ATTRS {
+            let Some(value) = value_of(local) else {
+                continue;
+            };
+            let value: &str = match (local, value.trim()) {
+                ("nlCheck" | "checkStyle", "on") => "true",
+                ("nlCheck" | "checkStyle", "off") => "false",
+                _ => value.as_ref(),
+            };
+            xml.attr_w(local, value);
+        }
+        xml.end();
+    }
+}
+
+/// Maps Transitional `ST_StylePaneSortMethods` onto its Strict spelling.
+///
+/// Transitional pairs every name with a four-digit code (`0000` = `name`,
+/// `0001` = `priority`, ...). Strict keeps only the names.
+fn strict_style_pane_sort_method(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        "0000" | "name" => Some("name"),
+        "0001" | "priority" => Some("priority"),
+        "0002" | "font" => Some("font"),
+        "0003" | "basedOn" => Some("basedOn"),
+        "0004" | "type" => Some("type"),
+        "0005" | "default" => Some("default"),
+        _ => None,
+    }
+}
+
+/// Writes `w:stylePaneSortMethod`, citing the feature when a Transitional code
+/// is rewritten to its Strict name and naming the loss of a value outside both.
+fn write_style_pane_sort_method(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, value: &str) {
+    let mut location = SourceLocation::unknown();
+    location.part = PartId::new(crate::package::SETTINGS_PART);
+    match strict_style_pane_sort_method(value) {
+        Some(strict) => {
+            if strict != value {
+                ctx.report_info(
+                    "w:stylePaneSortMethod",
+                    &format!("Transitional sort code {value:?} written as {strict:?}"),
+                    &location,
+                );
+            }
+            xml.empty_attr_w("w:stylePaneSortMethod", "val", strict);
+        }
+        None => ctx.report_unsupported(
+            "w:stylePaneSortMethod",
+            &format!("{value:?} is not an ST_StylePaneSortMethods value; not written"),
+            &location,
+        ),
+    }
+}
+
 fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, name: &str) {
     match name {
         "zoom" => {
@@ -748,6 +854,11 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         "autoHyphenation" if settings.auto_hyphenation => {
             xml.empty_attr_w("w:autoHyphenation", "val", "true");
         }
+        // Word writes the off value explicitly; dropping it was a silent change
+        // in `settings.xml` (DOCX_Mathematical_Equations).
+        "autoHyphenation" if settings.auto_hyphenation_off => {
+            xml.empty_attr_w("w:autoHyphenation", "val", "false");
+        }
         "hyphenationZone" => {
             if let Some(zone) = settings.hyphenation_zone {
                 xml.empty_attr_w("w:hyphenationZone", "val", zone.0);
@@ -763,6 +874,28 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             xml.empty_attr_w("w:evenAndOddHeaders", "val", "false");
         }
         "mirrorMargins" if settings.mirror_margins => xml.empty("w:mirrorMargins"),
+        "mirrorMargins" if settings.mirror_margins_off => {
+            xml.empty_attr_w("w:mirrorMargins", "val", "false");
+        }
+        "activeWritingStyle" => {
+            write_active_writing_styles(ctx, xml, &settings.active_writing_styles);
+        }
+        "stylePaneSortMethod" => {
+            if let Some(value) = &settings.style_pane_sort_method {
+                write_style_pane_sort_method(ctx, xml, value);
+            }
+        }
+        "smartTagType" => {
+            for attributes in &settings.smart_tag_types {
+                xml.start("w:smartTagType");
+                for (attribute, value) in attributes {
+                    if SMART_TAG_TYPE_ATTRS.contains(&attribute.as_ref()) {
+                        xml.attr_w(attribute, value.as_ref());
+                    }
+                }
+                xml.end();
+            }
+        }
         // The Strict home of the flag Transitional writes inside `w:sectPr`,
         // where `EG_SectPrContents` has no slot for it. See
         // `Settings::gutter_at_top`.
@@ -1819,6 +1952,117 @@ mod tests {
         assert!(
             xml.contains(r#"<w:autoHyphenation w:val="true"/>"#),
             "{xml}"
+        );
+    }
+
+    /// Census 2026-10-10: explicit off values, `CT_Settings` children Strict
+    /// declares, and the Transitional sort code rewritten with a citation.
+    #[test]
+    fn census_settings_children_are_written_with_strict_values() {
+        let pairs = |items: &[(&str, &str)]| -> Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> {
+            items
+                .iter()
+                .map(|(name, value)| ((*name).into(), (*value).into()))
+                .collect()
+        };
+        let settings = Settings {
+            mirror_margins_off: true,
+            auto_hyphenation_off: true,
+            active_writing_styles: vec![
+                pairs(&[
+                    ("appName", "MSWord"),
+                    ("lang", "en-US"),
+                    ("vendorID", "64"),
+                    ("dllVersion", "6"),
+                    ("nlCheck", "on"),
+                    ("checkStyle", "0"),
+                ]),
+                // `appName` is required: refused, and named.
+                pairs(&[("lang", "en-US"), ("vendorID", "64"), ("dllVersion", "0")]),
+            ],
+            style_pane_sort_method: Some("0001".into()),
+            smart_tag_types: vec![pairs(&[
+                ("namespaceuri", "urn:schemas-microsoft-com:office:smarttags"),
+                ("name", "date"),
+            ])],
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings_part balances");
+        assert!(xml.contains(r#"<w:mirrorMargins w:val="false"/>"#), "{xml}");
+        assert!(
+            xml.contains(r#"<w:autoHyphenation w:val="false"/>"#),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<w:activeWritingStyle ").count(), 1, "{xml}");
+        assert!(
+            xml.contains(
+                r#"<w:activeWritingStyle w:lang="en-US" w:vendorID="64" w:dllVersion="6" w:nlCheck="true" w:checkStyle="0" w:appName="MSWord"/>"#
+            ),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<w:stylePaneSortMethod w:val="priority"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(
+                r#"<w:smartTagType w:namespaceuri="urn:schemas-microsoft-com:office:smarttags" w:name="date"/>"#
+            ),
+            "{xml}"
+        );
+        let losses = report.losses();
+        assert!(
+            losses
+                .iter()
+                .any(|loss| loss.feature_id == "w:stylePaneSortMethod"
+                    && loss.severity == Severity::Info),
+            "{losses:?}"
+        );
+        assert!(
+            losses
+                .iter()
+                .any(|loss| loss.feature_id == "w:activeWritingStyle"
+                    && loss.severity == Severity::Lossy
+                    && loss.reason.contains("appName")),
+            "{losses:?}"
+        );
+    }
+
+    /// A Strict sort name is written as is and cites nothing; a value outside
+    /// both vocabularies is not written and is named.
+    #[test]
+    fn census_style_pane_sort_method_names_pass_and_unknown_values_are_named() {
+        let settings = Settings {
+            style_pane_sort_method: Some("basedOn".into()),
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(
+            xml.contains(r#"<w:stylePaneSortMethod w:val="basedOn"/>"#),
+            "{xml}"
+        );
+        assert!(report.losses().is_empty(), "{:?}", report.losses());
+
+        let settings = Settings {
+            style_pane_sort_method: Some("0009".into()),
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(!xml.contains("stylePaneSortMethod"), "{xml}");
+        assert!(
+            report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "w:stylePaneSortMethod"
+                    && loss.severity == Severity::Lossy),
+            "{:?}",
+            report.losses()
         );
     }
 

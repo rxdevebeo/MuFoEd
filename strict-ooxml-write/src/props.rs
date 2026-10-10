@@ -612,6 +612,13 @@ fn borders_empty(borders: &Borders) -> bool {
 /// `w:rPr/w:bdr` is a single `CT_Border`, an element with attributes and no
 /// children. See [`run_border`].
 fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: EdgeNames) {
+    borders_element_open(xml, name, borders, edges);
+    xml.end();
+}
+
+/// [`borders_element`] without the closing tag, so `w:tcBorders` can append
+/// its diagonals inside the same element.
+fn borders_element_open(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: EdgeNames) {
     xml.start(name);
     let (near, far) = match edges {
         EdgeNames::Paragraph => ("left", "right"),
@@ -632,7 +639,6 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
             border_edge(xml, local, edge);
         }
     }
-    xml.end();
 }
 
 /// Which spelling the horizontal edges take in the container being written.
@@ -791,6 +797,7 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         && props.shading.is_none()
         && props.look.is_none()
         && props.indent.is_none()
+        && props.indent_kind.is_none()
         && !props.bidi_visual
         && props.positioning.is_none()
         && props.cell_spacing.is_none()
@@ -851,13 +858,19 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
             }
         }
         "tblInd" => {
-            if let Some(indent) = props.indent {
+            if props.indent.is_some() || props.indent_kind.is_some() {
                 // `w:tblInd` is a `CT_TblWidth` too, so it takes the same lexical
-                // form as a table width - see [`tbl_width_value`].
-                xml.start("w:tblInd");
-                xml.attr("w:w", tbl_width_value(indent.0));
-                xml.attr_w("type", "dxa");
-                xml.end();
+                // form as a table width - see [`width_element`]. The type is the
+                // one read (`nil` included, which `ST_TblWidth` declares), and
+                // `dxa` when the model has none.
+                width_element(
+                    xml,
+                    "w:tblInd",
+                    &Width {
+                        kind: props.indent_kind.unwrap_or(WidthKind::Dxa),
+                        value: props.indent.map(|indent| indent.0),
+                    },
+                );
             }
         }
         "tblBorders" => {
@@ -1029,6 +1042,8 @@ pub fn cell_properties(xml: &mut XmlWriter, props: &CellProperties) {
         && !props.fit_text
         && !props.no_wrap
         && borders_empty(&props.borders)
+        && props.diagonal_down.is_none()
+        && props.diagonal_up.is_none()
         && props.margins.top.is_none()
         && props.margins.start.is_none()
         && props.margins.bottom.is_none()
@@ -1068,8 +1083,23 @@ fn cell_child(xml: &mut XmlWriter, props: &CellProperties, name: &str) {
             }
         }
         "tcBorders" => {
-            if !borders_empty(&props.borders) {
-                borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
+            let diagonals = [
+                ("tl2br", props.diagonal_down.as_ref()),
+                ("tr2bl", props.diagonal_up.as_ref()),
+            ];
+            let has_diagonal = diagonals.iter().any(|(_, edge)| edge.is_some());
+            if !borders_empty(&props.borders) || has_diagonal {
+                // `CT_TcBorders` is the table edges followed by the two
+                // diagonals, so they go after `insideV` inside the same element.
+                // A container holding only a diagonal is still written: it used
+                // to vanish because the edges alone were tested.
+                borders_element_open(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
+                for (local, edge) in diagonals {
+                    if let Some(edge) = edge {
+                        border_edge(xml, local, edge);
+                    }
+                }
+                xml.end();
             }
         }
         "shd" => {
@@ -1330,9 +1360,13 @@ fn frame_pr(xml: &mut XmlWriter, frame: &FrameProperties) {
     xml.attr_w_opt("y", frame.y);
     xml.attr_w_opt("yAlign", frame.y_align.as_deref());
     xml.attr_w_opt("hRule", frame.height_rule.as_deref());
-    if frame.anchor_lock {
-        xml.attr_w("anchorLock", "true");
-    }
+    // An explicit off is written back as read (`w:anchorLock="false"`), the
+    // same rule `w:tblHeader` follows: absent and off mean the same thing, but
+    // dropping the attribute is a difference between the input and the output.
+    xml.attr_w_opt(
+        "anchorLock",
+        frame.anchor_lock.map(|lock| if lock { "true" } else { "false" }),
+    );
     xml.end();
 }
 

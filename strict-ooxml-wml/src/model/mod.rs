@@ -62,10 +62,10 @@ pub use styles::{Style, StyleTable};
 pub use support::{FeatureUse, SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};
 pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts, ThemeRunFonts, ThemeTypeface};
 pub use values::{
-    Border, BorderStyle, Borders, BreakKind, CellMargins, Color, DocGridType, EighthsPoint, Emu,
-    FieldCharType, Fonts, HalfPoints, HeightRule, Highlight, HighlightOrColor, Indentation,
-    Justification, LineNumberRestart, LineSpacingRule, PageOrientation, RowHeight, Rsids,
-    SectionType, Shading, Space, Spacing, StyleType, TabAlignment, TabLeader, TabStop, TableLayout,
-    TableLook, TextDirection, ThemeColor, ThemeColorRef, TriState, Twips, Underline, UnderlineSpec,
-    VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
+    Border, BorderStyle, Borders, BreakClear, BreakKind, CellMargins, Color, DocGridType,
+    EighthsPoint, Emu, FieldCharType, Fonts, HalfPoints, HeightRule, Highlight, HighlightOrColor,
+    Indentation, Justification, LineNumberRestart, LineSpacingRule, PageOrientation, RowHeight,
+    Rsids, SectionType, Shading, Space, Spacing, StyleType, TabAlignment, TabLeader, TabStop,
+    TableLayout, TableLook, TextDirection, ThemeColor, ThemeColorRef, TriState, Twips, Underline,
+    UnderlineSpec, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };

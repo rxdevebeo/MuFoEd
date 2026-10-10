@@ -490,6 +490,7 @@ fn flatten_run(
             RunContent::Tab => out.push(Seg::Tab),
             RunContent::Break(BreakKind::Page) => out.push(Seg::PageBreak),
             RunContent::Break(BreakKind::Column | BreakKind::TextWrapping)
+            | RunContent::ClearingBreak(_)
             | RunContent::CarriageReturn => out.push(Seg::Break),
             RunContent::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             RunContent::Symbol(symbol) => {

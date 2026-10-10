@@ -327,10 +327,12 @@ pub(crate) fn plan(
                 &SourceLocation::unknown(),
             );
         }
+        let content_type = source.content_type(&part);
+        cite_carried_rewrite(ctx, source, part.as_str(), content_type.as_deref());
         out.parts.push(CopiedPart {
             name: part.as_str().to_owned(),
             bytes,
-            content_type: source.content_type(&part),
+            content_type,
         });
         if let Some(rels_part) = rels_part_of(&part) {
             if let Ok(bytes) = source.read_part(&rels_part) {
@@ -477,6 +479,51 @@ pub(crate) fn plan(
         });
     }
     out
+}
+
+/// The feature a carried part's Strict rewrite is cited under, by content type.
+///
+/// A chart and its user shapes are copied as the reader returned them, and a
+/// reader that normalized the package returns them in Strict: the namespaces
+/// renamed, a bare percentage given its `%`, an Office extension removed (and
+/// named by the normalizer). The part keeps its name and its content, so the
+/// reference to it is kept; its bytes are not the source's, and the report says
+/// so rather than letting a changed part pass as a verbatim copy.
+fn carried_feature(content_type: Option<&str>) -> Option<&'static str> {
+    match content_type? {
+        "application/vnd.openxmlformats-officedocument.drawingml.chart+xml" => Some("c:chartSpace"),
+        "application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml" => {
+            Some("c:userShapes")
+        }
+        _ => None,
+    }
+}
+
+/// Cites a carried chart or chart-shapes part whose bytes the reader rewrote
+/// to Strict (see [`carried_feature`]). Nothing is cited for a source that was
+/// not normalized: its parts are copied byte for byte.
+pub(crate) fn cite_carried_rewrite(
+    ctx: &mut Ctx<'_>,
+    source: &dyn Source,
+    part: &str,
+    content_type: Option<&str>,
+) {
+    if !source.was_normalized() {
+        return;
+    }
+    let Some(feature) = carried_feature(content_type) else {
+        return;
+    };
+    let mut location = SourceLocation::unknown();
+    location.part = PartId::new(part);
+    ctx.report_info(
+        feature,
+        &format!(
+            "{part} is carried in the Strict form the reader rewrote it to (namespaces, \
+             percentages, Office extensions), so its bytes differ from the source's"
+        ),
+        &location,
+    );
 }
 
 /// The two parts OPC defines and **every** package has, which this write emits
@@ -1157,13 +1204,35 @@ fn graphic_refs(payload: &Graphic, out: &mut Vec<String>) {
                 push(out, id.to_owned());
             }
         }
-        Graphic::Shape(shape) => text_box(&shape.text, out),
+        Graphic::Shape(shape) => {
+            if let Some(strict_ooxml_wml::model::drawing::ShapeFill::Blip { blip, .. }) =
+                &shape.fill
+            {
+                blip_link(blip, out);
+            }
+            text_box(&shape.text, out);
+        }
         Graphic::Group(group) => {
             for child in &group.children {
                 graphic_refs(child, out);
             }
         }
-        Graphic::None | Graphic::Picture(_) | Graphic::LockedCanvas(_) | Graphic::Other => {}
+        Graphic::Picture(picture) => {
+            if let Some(blip) = &picture.blip {
+                blip_link(blip, out);
+            }
+        }
+        Graphic::None | Graphic::LockedCanvas(_) | Graphic::Other => {}
+    }
+}
+
+/// A linked picture's `a:blip/@r:link`: an image relationship the model does
+/// not own as a media part (its target is usually `TargetMode="External"`), so
+/// it is carried like any other reference into something the writer does not
+/// produce and re-pointed by [`Ctx::foreign_rel`].
+fn blip_link(blip: &strict_ooxml_wml::model::drawing::BlipRef, out: &mut Vec<String>) {
+    if let Some(link) = &blip.link {
+        push(out, link.as_str().to_owned());
     }
 }
 

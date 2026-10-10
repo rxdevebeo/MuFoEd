@@ -483,6 +483,7 @@ mod tests {
         let mut graphic = Graphic::None;
         for _ in 0..depth {
             graphic = Graphic::Group(GroupShape {
+                nv_id: None,
                 name: None,
                 descr: None,
                 xfrm: None,

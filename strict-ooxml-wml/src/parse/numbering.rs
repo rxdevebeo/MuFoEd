@@ -12,6 +12,19 @@ use super::{attr_in_ns, is_wml, parse_u32, val_attr, wml_attr, PartParser};
 
 const WORDML_2012_NS: &str = "http://schemas.microsoft.com/office/word/2012/wordml";
 
+/// The report text for a dropped `w:numPicBullet`.
+///
+/// Strict declares the element, but the model has no picture-bullet slot and the
+/// writer gives `numbering.xml` no image relationship, so the definition and its
+/// picture are not written. The picture arrives either as a `w:drawing` or as the
+/// VML `w:pict` a Transitional producer wrote (the normalizer converts the
+/// latter); the VML vocabulary is named because that is what leaves the part.
+const PICTURE_BULLET_LOSS: &str = "picture bullet is not carried: the model has no \
+     picture-bullet slot and numbering.xml gets no image relationship, so its picture \
+     (w:drawing, or the VML w:pict it came from: v:shapetype with v:stroke, v:formulas/v:f, \
+     v:path and o:lock; v:shape with v:imagedata) is dropped and levels that reference it \
+     through w:lvlPicBulletId keep their w:lvlText bullet";
+
 impl PartParser<'_> {
     /// Parses a `numbering.xml` part.
     pub(crate) fn parse_numbering_root(&mut self) -> Result<NumberingTable> {
@@ -64,6 +77,15 @@ impl PartParser<'_> {
                                         );
                                     }
                                 }
+                            }
+                            "numPicBullet" => {
+                                parser.record(
+                                    "w:numPicBullet",
+                                    SupportStatus::Unsupported,
+                                    Some(PICTURE_BULLET_LOSS.to_owned()),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
                             }
                             _ => parser.skip_element()?,
                         }
@@ -141,6 +163,7 @@ impl PartParser<'_> {
     }
 
     /// Parses a `w:lvl` element.
+    #[allow(clippy::too_many_lines)]
     fn parse_level(&mut self, attrs: &[Attr]) -> Result<Level> {
         let ilvl = self.clamped_ilvl(wml_attr(attrs, "ilvl").and_then(parse_u32));
         let tentative_attr =
@@ -211,6 +234,22 @@ impl PartParser<'_> {
                                 level.paragraph = parser.parse_paragraph_properties()?.0;
                             }
                             "rPr" => level.run = parser.parse_run_properties()?,
+                            "lvlPicBulletId" => {
+                                // Dropped together with the `w:numPicBullet` it
+                                // points at; a reference to a picture bullet the
+                                // part no longer defines would be dangling.
+                                parser.record(
+                                    "w:lvlPicBulletId",
+                                    SupportStatus::Unsupported,
+                                    Some(
+                                        "picture-bullet reference is not written; the level \
+                                         keeps its w:lvlText bullet (see w:numPicBullet)"
+                                            .to_owned(),
+                                    ),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
                             _ => parser.skip_element()?,
                         }
                     }

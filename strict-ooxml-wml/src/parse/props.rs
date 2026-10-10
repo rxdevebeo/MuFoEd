@@ -529,8 +529,28 @@ impl PartParser<'_> {
         }
     }
 
-    /// Parses a border-collection element (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
+    /// Parses a border-collection element (`w:pBdr`, `w:tblBorders`).
     fn parse_borders(&mut self) -> Result<Borders> {
+        self.parse_border_container(None)
+    }
+
+    /// Parses `w:tcBorders`: the edges, and the two diagonals `CT_TcBorders`
+    /// adds (`w:tl2br`, `w:tr2bl`) into `diagonals`. A container holding only a
+    /// diagonal used to come back empty, and the writer then dropped the whole
+    /// `w:tcBorders`.
+    fn parse_cell_borders(
+        &mut self,
+        diagonals: &mut (Option<Border>, Option<Border>),
+    ) -> Result<Borders> {
+        self.parse_border_container(Some(diagonals))
+    }
+
+    /// The shared body of [`Self::parse_borders`] and
+    /// [`Self::parse_cell_borders`]; `diagonals` is `Some` only for a cell.
+    fn parse_border_container(
+        &mut self,
+        mut diagonals: Option<&mut (Option<Border>, Option<Border>)>,
+    ) -> Result<Borders> {
         self.nested(|parser| {
             let mut borders = Borders::default();
             loop {
@@ -538,15 +558,17 @@ impl PartParser<'_> {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_wml(&name) {
                             let border = parser.parse_border_edge(&attrs);
-                            match name.local() {
-                                "top" => borders.top = Some(border),
-                                "bottom" => borders.bottom = Some(border),
-                                "start" | "left" => borders.start = Some(border),
-                                "end" | "right" => borders.end = Some(border),
-                                "insideH" => borders.inside_horizontal = Some(border),
-                                "insideV" => borders.inside_vertical = Some(border),
-                                "between" => borders.between = Some(border),
-                                "bar" => borders.bar = Some(border),
+                            match (name.local(), diagonals.as_deref_mut()) {
+                                ("tl2br", Some(diagonals)) => diagonals.0 = Some(border),
+                                ("tr2bl", Some(diagonals)) => diagonals.1 = Some(border),
+                                ("top", _) => borders.top = Some(border),
+                                ("bottom", _) => borders.bottom = Some(border),
+                                ("start" | "left", _) => borders.start = Some(border),
+                                ("end" | "right", _) => borders.end = Some(border),
+                                ("insideH", _) => borders.inside_horizontal = Some(border),
+                                ("insideV", _) => borders.inside_vertical = Some(border),
+                                ("between", _) => borders.between = Some(border),
+                                ("bar", _) => borders.bar = Some(border),
                                 _ => {
                                     record_unmodelled_property(parser, &name)?;
                                     continue;
@@ -728,6 +750,8 @@ impl PartParser<'_> {
                                 props.indent = parser
                                     .measure_or_percent(&attrs, "w", "w:tblInd")
                                     .map(Twips);
+                                props.indent_kind =
+                                    wml_attr(&attrs, "type").and_then(WidthKind::from_strict);
                             }
                             "bidiVisual" => {
                                 props.bidi_visual = parse_on_off(&attrs).unwrap_or(false);
@@ -894,7 +918,9 @@ impl PartParser<'_> {
                                 );
                             }
                             "tcBorders" => {
-                                props.borders = parser.parse_borders()?;
+                                let mut diagonals = (None, None);
+                                props.borders = parser.parse_cell_borders(&mut diagonals)?;
+                                (props.diagonal_down, props.diagonal_up) = diagonals;
                                 continue;
                             }
                             "shd" => props.shading = Some(parser.parse_shading(&attrs)),
@@ -1349,8 +1375,11 @@ impl PartParser<'_> {
             y: parser.measure_i32(attrs, "y", "w:framePr"),
             y_align: wml_attr(attrs, "yAlign").map(|value| parser.intern(value)),
             height_rule: wml_attr(attrs, "hRule").map(|value| parser.intern(value)),
-            anchor_lock: wml_attr(attrs, "anchorLock")
-                .is_some_and(|value| matches!(value, "true" | "on" | "1")),
+            anchor_lock: wml_attr(attrs, "anchorLock").and_then(|value| match value {
+                "true" | "on" | "1" => Some(true),
+                "false" | "off" | "0" => Some(false),
+                _ => None,
+            }),
         }
     }
 

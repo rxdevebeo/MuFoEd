@@ -260,6 +260,7 @@ impl PartParser<'_> {
         let location = self.location();
         self.nested(|parser| {
             let mut group = GroupShape {
+                nv_id: None,
                 name: None,
                 descr: None,
                 xfrm: None,

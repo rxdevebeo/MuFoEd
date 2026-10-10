@@ -234,6 +234,15 @@ pub trait Source {
         Ok(out)
     }
 
+    /// Whether the reader rewrote any part of the source to Strict on the way
+    /// in, so a part copied from it is not byte for byte the producer's.
+    ///
+    /// The default is `false`: a source that is not a normalizing package hands
+    /// out the bytes it holds.
+    fn was_normalized(&self) -> bool {
+        false
+    }
+
     /// The relationship ids `from` declares, in order.
     ///
     /// # Errors
@@ -280,6 +289,10 @@ impl Source for strict_ooxml_core::opc::Package {
 
     fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
         strict_ooxml_core::opc::Package::reachable_parts(self, from)
+    }
+
+    fn was_normalized(&self) -> bool {
+        strict_ooxml_core::opc::Package::was_normalized(self)
     }
 }
 
@@ -563,6 +576,25 @@ pub fn write_package(
                     locations: entry.locations.clone(),
                 });
             }
+        }
+    }
+    // `w:shapeDefaults` / `w:hdrShapeDefaults` hold VML (`o:shapedefaults`,
+    // `o:shapelayout`) and nothing else; Strict carries no VML (ADR-0014), so the
+    // parser skips them and this write names what went, child by child, so a
+    // reader of the report can tell which defaults the document lost.
+    for feature in ["w:shapeDefaults", "w:hdrShapeDefaults"] {
+        if let Some(entry) = document.support.get(feature) {
+            use strict_ooxml_core::normalize::report::{LossRecord, Severity};
+            report.record_loss(LossRecord {
+                transform_id: crate::ctx::WRITE_PARTIAL_ID,
+                feature_id: feature.to_owned(),
+                reason: "VML default shape properties are not written: o:shapedefaults \
+                         (v:fill, v:stroke, o:colormru) and o:shapelayout (o:idmap, \
+                         o:rules, o:r connector rules)"
+                    .to_owned(),
+                severity: Severity::Ignorable,
+                locations: entry.locations.clone(),
+            });
         }
     }
     let mut ctx = Ctx::new(&mut report);
@@ -1128,11 +1160,13 @@ fn bind_part_foreign(
             let Ok(bytes) = source.read_part(&seed) else {
                 continue;
             };
+            let content_type = source.content_type(&seed);
+            passthrough::cite_carried_rewrite(ctx, source, seed.as_str(), content_type.as_deref());
             // Also copy the part's own .rels so its internal ids keep working.
             extra.push(passthrough::CopiedPart {
                 name: seed.as_str().to_owned(),
                 bytes,
-                content_type: source.content_type(&seed),
+                content_type,
             });
             if let Some(rels_part) = passthrough::rels_part_of(&seed) {
                 if let Ok(rels_bytes) = source.read_part(&rels_part) {
