@@ -1146,3 +1146,91 @@ fn multilevel_list_definition_and_instance_roundtrip() {
         assert_eq!(p.props.numbering.unwrap().num_id, Some(NumId(7)));
     }
 }
+
+#[test]
+fn document_note_numbering_and_placement_map_to_settings() {
+    // `\ftn*`/`\aftn*` are document-wide and land in `settings.xml` as
+    // `w:footnotePr`/`w:endnotePr` (RTF 1.5 "Footnotes and Endnotes").
+    let input =
+        br"{\rtf1\ftnnalc\ftnstart3\ftnrestart\ftnbj\aftnnruc\aftnstart2\aftnrstcont\aenddoc Body}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let footnote = &document.settings.footnote_properties;
+        assert_eq!(footnote.num_format.as_deref(), Some("lowerLetter"));
+        assert_eq!(footnote.num_start, Some(3));
+        assert_eq!(footnote.num_restart.as_deref(), Some("eachSect"));
+        assert_eq!(footnote.position.as_deref(), Some("pageBottom"));
+        let endnote = &document.settings.endnote_properties;
+        assert_eq!(endnote.num_format.as_deref(), Some("upperRoman"));
+        assert_eq!(endnote.num_start, Some(2));
+        assert_eq!(endnote.num_restart.as_deref(), Some("continuous"));
+        assert_eq!(endnote.position.as_deref(), Some("docEnd"));
+    }
+}
+
+#[test]
+fn section_note_properties_map_to_the_running_section() {
+    // WPS writes the section-scoped `\s*` note controls inside `\sectd`; they
+    // must reach the committed `w:sectPr`, not the document settings.
+    let d = reopened(br"{\rtf1\ftnbj\sectd\sftnnar\sftnstart7\sftnrestart\saftnnruc Body\par}");
+    assert_eq!(
+        d.settings.footnote_properties.position.as_deref(),
+        Some("pageBottom")
+    );
+    assert!(
+        d.settings.footnote_properties.num_format.is_none(),
+        "the section form must not leak into the document settings"
+    );
+    let section = &d.sections[0].properties;
+    assert_eq!(
+        section.footnote_properties.num_format.as_deref(),
+        Some("decimal")
+    );
+    assert_eq!(section.footnote_properties.num_start, Some(7));
+    assert_eq!(
+        section.footnote_properties.num_restart.as_deref(),
+        Some("eachSect")
+    );
+    assert_eq!(
+        section.endnote_properties.num_format.as_deref(),
+        Some("upperRoman")
+    );
+}
+
+#[test]
+fn recognized_note_controls_are_not_reported_as_loss() {
+    let imported = import(
+        br"{\rtf1\ftnnar\ftnbj\sftnbj\aenddoc Body}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+}
+
+#[test]
+fn unsupported_note_controls_stay_explicit_losses() {
+    // `\aftnbj` has no `ST_EdnPos` value and `\ftnlytwnine` is a layout
+    // compatibility hint; both must stay honest Loss, not be renamed away.
+    for source in [
+        &br"{\rtf1\aftnbj Body}"[..],
+        &br"{\rtf1\ftnlytwnine Body}"[..],
+    ] {
+        let imported = import(source, &RtfOptions::default()).unwrap();
+        assert_eq!(
+            imported.report.loss_count, 1,
+            "{:?}",
+            imported.report.issues
+        );
+        assert!(imported
+            .report
+            .issues
+            .iter()
+            .any(|issue| issue.feature.starts_with("control:")));
+    }
+}

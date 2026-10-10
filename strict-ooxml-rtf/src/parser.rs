@@ -16,8 +16,8 @@ use strict_ooxml_wml::model::document::{Body, DocumentSource};
 use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, BreakKind, CellProperties, Color,
-    ColumnSpec, Field, Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind,
-    HeaderFooterRef, Ilvl, Inline, Justification, Language, Level, LineSpacingRule, Note, NoteKind,
+    ColumnSpec, Field, Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef,
+    Ilvl, Inline, Justification, Language, Level, LineSpacingRule, Note, NoteKind, NoteProperties,
     NoteTable, Num, NumId, NumPr, NumberingTable, PageMargins, PageOrientation, PageSize,
     Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent, RunProperties, Section,
     SectionProperties, SectionType, Space, Style, StyleId, StyleTable, StyleType, Symbol,
@@ -303,6 +303,71 @@ enum LanguageSlot {
     Bidi,
 }
 
+/// Which note role a `\ftn*`/`\aftn*` control configures.
+#[derive(Clone, Copy)]
+enum NoteRole {
+    Footnote,
+    Endnote,
+}
+
+/// The `NoteProperties` field an RTF note control sets.
+#[derive(Clone, Copy)]
+enum NoteProperty {
+    /// Placement (`w:pos`).
+    Position(&'static str),
+    /// Number format (`w:numFmt`).
+    Format(&'static str),
+    /// Restart mode (`w:numRestart`).
+    Restart(&'static str),
+    /// Starting number (`w:numStart`); the value is the control word parameter.
+    Start,
+}
+
+struct NoteControl {
+    role: NoteRole,
+    property: NoteProperty,
+}
+
+/// Classifies a footnote/endnote control word without its section `s` prefix.
+///
+/// Follows the RTF 1.5 "Footnotes and Endnotes" table. Position values are the
+/// Strict `ST_FtnPos`/`ST_EdnPos` lexical forms; an endnote has no
+/// `pageBottom`/`beneathText` position, so `\aftnbj`/`\aftntj` are intentionally
+/// left unrecognized.
+fn note_control_base(name: &str) -> Option<NoteControl> {
+    use NoteProperty::{Format, Position, Restart, Start};
+    use NoteRole::{Endnote, Footnote};
+    let (role, property) = match name {
+        "ftnnar" => (Footnote, Format("decimal")),
+        "ftnnalc" => (Footnote, Format("lowerLetter")),
+        "ftnnauc" => (Footnote, Format("upperLetter")),
+        "ftnnrlc" => (Footnote, Format("lowerRoman")),
+        "ftnnruc" => (Footnote, Format("upperRoman")),
+        "ftnnchi" => (Footnote, Format("chicago")),
+        "aftnnar" => (Endnote, Format("decimal")),
+        "aftnnalc" => (Endnote, Format("lowerLetter")),
+        "aftnnauc" => (Endnote, Format("upperLetter")),
+        "aftnnrlc" => (Endnote, Format("lowerRoman")),
+        "aftnnruc" => (Endnote, Format("upperRoman")),
+        "aftnnchi" => (Endnote, Format("chicago")),
+        "ftnbj" => (Footnote, Position("pageBottom")),
+        "ftntj" => (Footnote, Position("beneathText")),
+        "endnotes" => (Footnote, Position("sectEnd")),
+        "enddoc" => (Footnote, Position("docEnd")),
+        "aendnotes" => (Endnote, Position("sectEnd")),
+        "aenddoc" => (Endnote, Position("docEnd")),
+        "ftnstart" => (Footnote, Start),
+        "aftnstart" => (Endnote, Start),
+        "ftnrstcont" => (Footnote, Restart("continuous")),
+        "ftnrestart" => (Footnote, Restart("eachSect")),
+        "ftnrstpg" => (Footnote, Restart("eachPage")),
+        "aftnrstcont" => (Endnote, Restart("continuous")),
+        "aftnrestart" => (Endnote, Restart("eachSect")),
+        _ => return None,
+    };
+    Some(NoteControl { role, property })
+}
+
 fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
     match slot {
         FontSlot::Ascii => fonts.ascii = Some(face),
@@ -383,6 +448,10 @@ struct Parser<'a> {
     column_index: usize,
     footnotes: NoteTable,
     endnotes: NoteTable,
+    /// Document-wide footnote numbering/placement (`\ftn*`/`\enddoc`).
+    document_footnote: NoteProperties,
+    /// Document-wide endnote numbering/placement (`\aftn*`/`\aenddoc`).
+    document_endnote: NoteProperties,
     numbering: NumberingTable,
     list_draft: Option<ListDraft>,
     level_draft: Option<LevelDraft>,
@@ -1677,6 +1746,48 @@ impl Parser<'_> {
         };
         self.section_reset_pending = false;
     }
+    /// Applies a footnote/endnote control word to [`NoteProperties`].
+    ///
+    /// `\ftn*`/`\aftn*` (and `\enddoc`/`\aenddoc`) are document-wide and land in
+    /// `settings.xml`; a leading `s` (`\sftnbj`, `\saftnnrlc`, ...) marks the
+    /// section-scoped variant and lands in the running `w:sectPr`. Returns
+    /// `true` when `name` is a recognized note property.
+    fn note_control(
+        &mut self,
+        name: &str,
+        n: Option<i32>,
+        span: RtfSpan,
+    ) -> Result<bool, RtfError> {
+        let (base, section) = match name.strip_prefix('s') {
+            Some(rest) if note_control_base(rest).is_some() => (rest, true),
+            _ => (name, false),
+        };
+        let Some(control) = note_control_base(base) else {
+            return Ok(false);
+        };
+        let props = match (section, control.role) {
+            (true, NoteRole::Footnote) => &mut self.section.footnote_properties,
+            (true, NoteRole::Endnote) => &mut self.section.endnote_properties,
+            (false, NoteRole::Footnote) => &mut self.document_footnote,
+            (false, NoteRole::Endnote) => &mut self.document_endnote,
+        };
+        match control.property {
+            NoteProperty::Position(value) => props.position = Some(Arc::from(value)),
+            NoteProperty::Format(value) => props.num_format = Some(Arc::from(value)),
+            NoteProperty::Restart(value) => props.num_restart = Some(Arc::from(value)),
+            NoteProperty::Start => {
+                let value = n
+                    .and_then(|n| u32::try_from(n).ok())
+                    .filter(|n| *n > 0)
+                    .ok_or(RtfError::Malformed {
+                        offset: span.start,
+                        reason: "invalid note start number",
+                    })?;
+                props.num_start = Some(value);
+            }
+        }
+        Ok(true)
+    }
     fn word(&mut self, name: &str, n: Option<i32>, span: RtfSpan) -> Result<(), RtfError> {
         let first = self.state.first;
         self.state.first = false;
@@ -2243,6 +2354,9 @@ impl Parser<'_> {
         } else {
             TriState::On
         };
+        if self.note_control(name, n, span)? {
+            return Ok(());
+        }
         match name {
             "upr" => self.state.upr_children = Some(0),
             "rtf" if n == Some(1) && self.stack.len() == 1 => (),
@@ -3228,6 +3342,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         column_index: 0,
         footnotes: NoteTable::new(),
         endnotes: NoteTable::new(),
+        document_footnote: NoteProperties::default(),
+        document_endnote: NoteProperties::default(),
         numbering: NumberingTable::new(),
         list_draft: None,
         level_draft: None,
@@ -3615,6 +3731,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         endnotes: p.endnotes,
         settings: strict_ooxml_wml::model::settings::Settings {
             even_and_odd_headers: p.even_and_odd_headers,
+            footnote_properties: p.document_footnote,
+            endnote_properties: p.document_endnote,
             ..Default::default()
         },
         theme: None,

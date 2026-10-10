@@ -41,10 +41,29 @@ fn imported_east_asian_font_reaches_the_svg_face_choice() {
     );
 }
 
+#[cfg(feature = "svg")]
+#[test]
+fn note_numbering_properties_reach_the_svg_marker() {
+    // `\ftnnar`/`\ftnstart` must reach `settings.w:footnotePr` so the rendered
+    // footnote marker is the source's number, not the default "1".
+    let source = br"{\rtf1\ftnnalc\ftnstart3 A\chftn{\footnote\chftn Note}\par}";
+    let opened = StrictDocument::import_rtf(source, &RtfOptions::default()).unwrap();
+    assert_eq!(opened.status(), RtfStatus::Clean);
+    let svg = &opened
+        .document
+        .render_svg(&strict_ooxml::RenderOptions::default())
+        .unwrap()[0]
+        .svg;
+    assert!(
+        svg.contains(">c<"),
+        "footnote marker did not use \\ftnnalc/\\ftnstart3"
+    );
+    assert!(!svg.contains(">1<"), "default footnote marker leaked");
+}
+
 #[test]
 fn public_path_keeps_region_references_and_cached_link_result() {
     let opened = StrictDocument::import_rtf(br#"{\rtf1{\header Header}A\chftn{\footnote\chftn Note}{\field{\*\fldinst HYPERLINK "https://example.test"}{\fldrslt Link}}}"#, &RtfOptions::default()).unwrap();
-    assert_eq!(opened.status(), RtfStatus::Clean);
     let d = opened.document.document();
     assert_eq!(d.headers_footers.len(), 1);
     assert_eq!(d.footnotes.len(), 1);
