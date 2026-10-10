@@ -20,7 +20,7 @@ use crate::layout::{
 use crate::style::compute_paragraph;
 use crate::units::pt_to_px;
 use strict_ooxml_wml::model::values::SectionType;
-use strict_ooxml_wml::model::Block;
+use strict_ooxml_wml::model::{Block, StyleId};
 
 /// Height reserved for the footnote separator, in px.
 const FOOTNOTE_SEPARATOR_HEIGHT: f64 = 10.0;
@@ -353,6 +353,11 @@ fn layout_blocks(
     // top of the `before`. A page break ends the paragraph, so nothing pending
     // follows it onto the next page.
     let mut pending_after = 0.0f64;
+    // Style of the previous body paragraph and whether it asked for contextual
+    // spacing, for `w:contextualSpacing` (suppress the gap between paragraphs of
+    // the same style). Reset across a non-paragraph block or a frame group.
+    let mut previous_style: Option<Option<StyleId>> = None;
+    let mut previous_contextual = false;
     let mut index = 0;
     while let Some(block) = blocks.get(index) {
         if paginator.selection_exhausted() {
@@ -364,16 +369,34 @@ fn layout_blocks(
                 let group = blocks.get(index..end).unwrap_or_default();
                 place_frame_group(ctx, group, paginator)?;
                 pending_after = 0.0;
+                previous_style = None;
+                previous_contextual = false;
                 index = end;
                 continue;
             }
         }
         match block {
             Block::Paragraph(para) => {
-                pending_after =
-                    place_body_paragraph(ctx, para, left, width, grid, paginator, pending_after)?;
+                let collapse = previous_style
+                    .as_ref()
+                    .is_some_and(|style| *style == para.props.style)
+                    && (previous_contextual || para.props.contextual_spacing.is_on());
+                pending_after = place_body_paragraph(
+                    ctx,
+                    para,
+                    left,
+                    width,
+                    grid,
+                    paginator,
+                    pending_after,
+                    collapse,
+                )?;
+                previous_style = Some(para.props.style.clone());
+                previous_contextual = para.props.contextual_spacing.is_on();
             }
             Block::Table(table) => {
+                previous_style = None;
+                previous_contextual = false;
                 ctx.frame_anchor.set((
                     paginator.geometry.left,
                     paginator.geometry.top,
@@ -394,6 +417,8 @@ fn layout_blocks(
                 }
             }
             Block::SdtBlock(sdt) => {
+                previous_style = None;
+                previous_contextual = false;
                 layout_blocks(ctx, &sdt.blocks, width, paginator, depth + 1)?;
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
@@ -404,6 +429,7 @@ fn layout_blocks(
 }
 
 /// Lays out one body paragraph, registers wrap exclusions, returns `space_after`.
+#[allow(clippy::too_many_arguments)]
 fn place_body_paragraph(
     ctx: &LayoutContext<'_>,
     para: &strict_ooxml_wml::model::Paragraph,
@@ -412,6 +438,7 @@ fn place_body_paragraph(
     grid: Option<f64>,
     paginator: &mut Paginator<'_>,
     pending_after: f64,
+    collapse_spacing: bool,
 ) -> Result<f64> {
     // An empty paragraph that only carries `w:sectPr` is a boundary, not a line
     // of text. Letting it overflow would insert a blank page before the section
@@ -420,7 +447,7 @@ fn place_body_paragraph(
         return Ok(0.0);
     }
     let boundary_marker = para.props.section.is_some() && para.inlines.is_empty();
-    let mut pending_after = pending_after;
+    let mut pending_after = if collapse_spacing { 0.0 } else { pending_after };
     if para.props.page_break_before.is_on() && !paginator.at_page_top() {
         paginator.keep_empty_page = true;
         paginator.page_break()?;
@@ -429,10 +456,15 @@ fn place_body_paragraph(
         }
         pending_after = 0.0;
     }
-    let space_before = pt_to_px(
-        compute_paragraph(ctx.document, para).space_before_pt,
-        ctx.options.scale,
-    );
+    // `w:contextualSpacing` suppresses the gap to a paragraph of the same style.
+    let space_before = if collapse_spacing {
+        0.0
+    } else {
+        pt_to_px(
+            compute_paragraph(ctx.document, para).space_before_pt,
+            ctx.options.scale,
+        )
+    };
     let gap = pending_after.max(space_before);
     let host_x = paginator.geometry.left;
     let host_y_pred = paginator.geometry.top + paginator.cursor + gap;
@@ -452,7 +484,12 @@ fn place_body_paragraph(
         &local_exclusions,
         Some((&paginator.geometry, host_x, host_y_pred)),
     );
-    paginator.add_vspace(pending_after.max(flow.space_before));
+    let leading_space = if collapse_spacing {
+        0.0
+    } else {
+        pending_after.max(flow.space_before)
+    };
+    paginator.add_vspace(leading_space);
     paginator.add_vspace(flow.border_before);
     if flow.keep_lines && !boundary_marker {
         let total: f64 = flow

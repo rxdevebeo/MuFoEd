@@ -1332,3 +1332,23 @@ fn unknown_field_instruction_control_stays_a_loss() {
         imported.report.issues
     );
 }
+
+#[test]
+fn contextual_space_maps_to_wml_contextual_spacing() {
+    // `\contextualspace` == "don't add space between paragraphs of the same
+    // style" -> `w:contextualSpacing`.
+    let input = br"{\rtf1\contextualspace Same\par\contextualspace0 Off\par}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let Block::Paragraph(first) = &document.body.blocks[0] else {
+            panic!()
+        };
+        assert_eq!(first.props.contextual_spacing, TriState::On);
+        let Block::Paragraph(second) = &document.body.blocks[1] else {
+            panic!()
+        };
+        assert_eq!(second.props.contextual_spacing, TriState::Off);
+    }
+}

@@ -2672,6 +2672,7 @@ impl Parser<'_> {
             }
             "widctlpar" => self.state.paragraph.widow_control = toggle,
             "nowidctlpar" => self.state.paragraph.widow_control = TriState::Off,
+            "contextualspace" => self.state.paragraph.contextual_spacing = toggle,
             "outlinelevel" => {
                 self.state.paragraph.outline_level =
                     n.and_then(|n| u8::try_from(n).ok()).filter(|n| *n <= 9);

@@ -339,3 +339,30 @@ fn t_p6_2_rm0090_table_columns() {
         column2 + col2 / 2.0
     );
 }
+
+/// RC08: `w:contextualSpacing` suppresses the gap between two paragraphs of
+/// the same style, leaving only their own line height.
+#[test]
+fn t_rc08_contextual_spacing_suppresses_same_style_gap() {
+    // before = after = 480 twips = 32 px.
+    let gap = "<w:pPr><w:spacing w:before=\"480\" w:after=\"480\"/></w:pPr>";
+    let contextual =
+        "<w:pPr><w:spacing w:before=\"480\" w:after=\"480\"/><w:contextualSpacing/></w:pPr>";
+    let spaced = placed(&section(&format!(
+        "<w:p>{gap}<w:r><w:t>First</w:t></w:r></w:p><w:p>{gap}<w:r><w:t>Second</w:t></w:r></w:p>"
+    )));
+    let collapsed = placed(&section(&format!(
+        "<w:p>{gap}<w:r><w:t>First</w:t></w:r></w:p><w:p>{contextual}<w:r><w:t>Second</w:t></w:r></w:p>"
+    )));
+    let spaced_gap = text_item(&spaced, "Second").baseline - text_item(&spaced, "First").baseline;
+    let collapsed_gap =
+        text_item(&collapsed, "Second").baseline - text_item(&collapsed, "First").baseline;
+    assert!(
+        collapsed_gap < spaced_gap,
+        "contextual {collapsed_gap} must be smaller than spaced {spaced_gap}"
+    );
+    assert!(
+        (spaced_gap - collapsed_gap - 32.0).abs() <= 1.0,
+        "the 32 px gap must be removed: spaced {spaced_gap}, collapsed {collapsed_gap}"
+    );
+}
