@@ -1013,7 +1013,10 @@ fn section_bidi_controls_map() {
     let rtl = reopened(br"{\rtf1\rtlsect Body}");
     assert!(rtl.sections[0].properties.bidi);
     let ltr = reopened(br"{\rtf1\rtlsect\ltrsect Body}");
-    assert!(!ltr.sections[0].properties.bidi, "\\ltrsect clears section bidi");
+    assert!(
+        !ltr.sections[0].properties.bidi,
+        "\\ltrsect clears section bidi"
+    );
 }
 
 #[test]
