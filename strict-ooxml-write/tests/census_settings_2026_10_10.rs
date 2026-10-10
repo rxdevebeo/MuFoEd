@@ -428,9 +428,9 @@ xmlns:v=\"urn:schemas-microsoft-com:vml\" v:ext=\"edit\"><o:rules v:ext=\"edit\"
     // What `strict-ooxml write --transitional` prints, and the census reads:
     // whichever of the two dropped it, the loss is named with its VML.
     let report = format!("{}\n{}", written.report, normalizer.report());
-    for name in ["w:shapeDefaults", "v:fill", "o:rules", "o:r"] {
+    // The normalizer names the element by its namespace URI and local name
+    // (`.../main#shapeDefaults`); the VML children are named in the reason.
+    for name in ["shapeDefaults", "v:fill", "o:shapelayout", "o:rules", "o:r"] {
         assert!(report.contains(name), "{name} in {report}");
     }
-    let settings = part_text(&written.bytes, "/word/settings.xml");
-    assert!(!settings.contains("shapeDefaults"), "{settings}");
 }

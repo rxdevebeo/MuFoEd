@@ -693,24 +693,23 @@ impl PartParser<'_> {
                 // `ST_BrClear` applies to text wrapping breaks only; on a
                 // page or column break it means nothing and is cited.
                 let clear = wml_attr(attrs, "clear").filter(|value| *value != "none");
-                match (kind, clear.and_then(BreakClear::from_strict)) {
-                    (BreakKind::TextWrapping, Some(clear)) => {
-                        content.push(RunContent::ClearingBreak(clear));
+                if let (BreakKind::TextWrapping, Some(clear)) =
+                    (kind, clear.and_then(BreakClear::from_strict))
+                {
+                    content.push(RunContent::ClearingBreak(clear));
+                } else {
+                    if let Some(clear) = clear {
+                        self.record(
+                            "w:br@clear",
+                            SupportStatus::Partial,
+                            Some(format!(
+                                "clear={clear} on a {} break is not written",
+                                kind.as_str()
+                            )),
+                            Some(self.location()),
+                        );
                     }
-                    _ => {
-                        if let Some(clear) = clear {
-                            self.record(
-                                "w:br@clear",
-                                SupportStatus::Partial,
-                                Some(format!(
-                                    "clear={clear} on a {} break is not written",
-                                    kind.as_str()
-                                )),
-                                Some(self.location()),
-                            );
-                        }
-                        content.push(RunContent::Break(kind));
-                    }
+                    content.push(RunContent::Break(kind));
                 }
                 self.skip_element()?;
             }

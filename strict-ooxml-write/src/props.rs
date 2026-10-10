@@ -1365,7 +1365,9 @@ fn frame_pr(xml: &mut XmlWriter, frame: &FrameProperties) {
     // dropping the attribute is a difference between the input and the output.
     xml.attr_w_opt(
         "anchorLock",
-        frame.anchor_lock.map(|lock| if lock { "true" } else { "false" }),
+        frame
+            .anchor_lock
+            .map(|lock| if lock { "true" } else { "false" }),
     );
     xml.end();
 }
