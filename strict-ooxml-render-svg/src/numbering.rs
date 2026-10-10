@@ -30,6 +30,9 @@ pub(crate) struct NumberingMarker {
     pub first_line_pt: Option<f64>,
     /// Suffix after the marker (`w:suff`): `tab`, `space` or `nothing`.
     pub suffix: Option<String>,
+    /// The picture bullet the level names (`w:lvlPicBulletId`), when the
+    /// numbering part defines it; drawn in place of `text`.
+    pub pic_bullet: Option<u32>,
 }
 
 /// Markers for every numbered paragraph.
@@ -161,6 +164,9 @@ impl<'a> Engine<'a> {
             indent_start_pt,
             first_line_pt,
             suffix: level.suffix.as_ref().map(ToString::to_string),
+            pic_bullet: level
+                .pic_bullet_id
+                .filter(|id| self.table.pic_bullet(*id).is_some()),
         })
     }
 }

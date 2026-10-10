@@ -87,3 +87,7 @@ required-features = ["svg"]
 [[test]]
 name = "clio_wps_geometry"
 required-features = ["svg"]
+
+[[test]]
+name = "picture_bullet_render"
+required-features = ["svg"]
