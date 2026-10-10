@@ -313,6 +313,46 @@ mod recognition {
         let xml = xml(&c);
         assert!(xml.contains("descr=\"A portrait of a woman.\""), "{xml}");
     }
+
+    #[test]
+    fn a_region_ocr_failure_is_recorded_and_the_document_still_writes() {
+        let ocr = provider(Err(VisionError::TimedOut));
+        let c = convert(
+            &text_and_figure(),
+            &DjvuOptions::default().text_recovery(ocr.clone()),
+        );
+        assert_eq!(
+            ocr.calls.load(Ordering::SeqCst),
+            1,
+            "the region is asked about"
+        );
+        assert!(c.report.losses().iter().any(|l| l.id == "djvu.ocr.region"));
+        let _ = xml(&c);
+    }
+
+    #[test]
+    fn a_classifier_failure_is_recorded_not_guessed() {
+        struct Refusing;
+        impl strict_ooxml_ocr::FigureClassifier for Refusing {
+            fn model_name(&self) -> &'static str {
+                "refusing"
+            }
+            fn describe(&self, _image: &Image, _context: &str) -> Result<Recovered, VisionError> {
+                Err(VisionError::Unreachable("offline".into()))
+            }
+        }
+        let c = convert(
+            &text_and_figure(),
+            &DjvuOptions::default().figure_classifier(Some(Arc::new(Refusing))),
+        );
+        let xml = xml(&c);
+        assert!(!xml.contains("w:drawing"), "{xml}");
+        assert!(c
+            .report
+            .losses()
+            .iter()
+            .any(|l| l.id == "djvu.figure" && l.detail.contains("offline")));
+    }
 }
 
 #[cfg(feature = "djvu-image")]
