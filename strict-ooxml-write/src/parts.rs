@@ -705,7 +705,7 @@ fn write_active_writing_styles(
         };
         let missing: Vec<&str> = WRITING_STYLE_ATTRS
             .iter()
-            .filter(|(local, required)| *required && value_of(*local).is_none())
+            .filter(|(local, required)| *required && value_of(local).is_none())
             .map(|(local, _)| *local)
             .collect();
         if !missing.is_empty() {
