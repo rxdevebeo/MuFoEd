@@ -838,6 +838,47 @@ round-trip'ятся. Shared renderer по-прежнему рисует одну
 
 Финальные receipts RC08-среза: `target/rtf-import/RC08-final-{corpus,visual,pixels}`.
 
+### RC08: нумерация и размещение примечаний — 2026-10-10
+
+Закрыт mapping нумерации/размещения сносок и концевых примечаний. Ранее весь
+семейство control-word'ов падало в generic `control:*` Loss, поэтому
+`w:footnotePr`/`w:endnotePr` не писались. Теперь:
+
+- document-level `\ftn*`/`\enddoc` и `\aftn*`/`\aenddoc` → `settings.xml`
+  (`w:footnotePr`/`w:endnotePr`);
+- section-level `\sftn*`/`\saftn*` (формы внутри `\sectd`, как пишет WPS) →
+  `w:sectPr` текущей секции, без утечки в документные settings.
+
+Маппятся (по таблице RTF 1.5 «Footnotes and Endnotes»): формат номера
+(`\ftnnar`/`alc`/`auc`/`rlc`/`ruc`/`chi` и endnote-двойники → `w:numFmt`),
+начальный номер (`\ftnstart`/`\aftnstart` → `w:numStart`), режим рестарта
+(`\ftnrstcont`/`\aftnrstcont` → `continuous`, `\ftnrestart`/`\aftnrestart` →
+`eachSect`, `\ftnrstpg` → `eachPage`) и позиция (`\ftnbj` → `pageBottom`,
+`\ftntj` → `beneathText`, `\endnotes`/`\aendnotes` → `sectEnd`,
+`\enddoc`/`\aenddoc` → `docEnd`).
+
+Не маппится сознательно: содержимое сепараторов (`\ftnsep`/`\ftnsepc`/`\ftncn`
+и endnote-двойники) остаётся `destination:*` Loss — общий model не имеет
+`RunContent::Separator` (reader сейчас помечает `w:separator` Supported и теряет
+его), поэтому пустая note-заглушка была бы скрытым фрагментом, а не контрактом.
+`\aftnbj`/`\aftntj` (нет значения `ST_EdnPos`) и `\ftnlytwnine` (нет
+Strict-эквивалента) остаются явным Loss.
+
+Проверки: RTF structure 48 + import 36 + 1 doc-test Pass; public/PDF suite
+`--features rtf,pdf` Pass; write suite Pass. Corpus receipts
+`target/rtf-import/RC08-notes-{corpus,visual}`: import text/resource 100/100;
+import losses 171 606 → 170 981 (−625 на 29 документах,
+`\sftnbj`/`\ftnbj`/`\ftnnar`/`\aftnnrlc`/`\ftnstart`/`\ftnrstcont`/`\aenddoc`);
+`strict-ooxml check` на всех 100 выходах — 100/100 `ok: strict`, 0 нарушений.
+Pagination не изменилась: все 100 output переcобраны в PDF, page counts
+побитово равны RC08-final; rendered PDF побайтово идентичны baseline, поэтому
+pixel-замер (6/100 документов, 22/458 страниц) переносится по идентичности, без
+нового растеризатора. Оговорка: WPS reference PDF больше не сохраняются под
+sibling-oracle, поэтому pagination/pixel-гейты подтверждены эквивалентностью
+PDF-идентичности, а не свежим raster-сравнением. RC08 остаётся InProgress:
+column-layout, сепараторы, block-result fields и custom marks открыты.
+
+
 
 
 

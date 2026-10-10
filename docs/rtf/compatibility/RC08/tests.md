@@ -118,13 +118,56 @@ pixels (6/100, 22/458) are unchanged.
 `\rtlsect`/`\ltrsect` set the section bidi flag (`\rtlpar`/`\ltrpar` were already
 mapped); `structure.rs::section_bidi_controls_map` pins it.
 
+## Note numbering and placement (2026-10-10)
+
+Footnote/endnote **numbering and placement** controls were dropped as
+`control:*` Loss, so `w:footnotePr`/`w:endnotePr` were never written. They now
+map to the existing `NoteProperties` model per the RTF 1.5 "Footnotes and
+Endnotes" table:
+
+- **document-wide** (`\ftn*`/`\enddoc`, `\aftn*`/`\aenddoc`) land in
+  `settings.xml` (`w:footnotePr`/`w:endnotePr`);
+- **section-scoped** (`\sftn*`/`\saftn*`, the WPS `\sectd` forms) land in the
+  running `w:sectPr` and do **not** leak into the document settings.
+
+The mapped properties are the number format (`\ftnnar`/`alc`/`auc`/`rlc`/`ruc`/
+`chi` and the endnote twins -> `w:numFmt`), the starting number
+(`\ftnstart`/`\aftnstart` -> `w:numStart`), the restart mode (`\ftnrstcont`/
+`\aftnrstcont` -> `continuous`, `\ftnrestart`/`\aftnrestart` -> `eachSect`,
+`\ftnrstpg` -> `eachPage`) and the position (`\ftnbj` -> `pageBottom`,
+`\ftntj` -> `beneathText`, `\endnotes`/`\aendnotes` -> `sectEnd`,
+`\enddoc`/`\aenddoc` -> `docEnd`).
+
+`structure.rs::document_note_numbering_and_placement_map_to_settings` and
+`::section_note_properties_map_to_the_running_section` pin the mapping through
+import -> Strict write -> reopen. `::recognized_note_controls_are_not_reported_
+as_loss` pins that the recognized family no longer reports Loss, and
+`::unsupported_note_controls_stay_explicit_losses` is the negative control:
+`\aftnbj` has no `ST_EdnPos` value and `\ftnlytwnine` has no Strict equivalent,
+so both keep their explicit `control:*` Loss instead of a guessed mapping.
+`strict-ooxml/tests/rtf.rs::note_numbering_properties_reach_the_svg_marker`
+(`rtf,svg`) is the end-to-end witness: an imported `\ftnnalc\ftnstart3`
+footnote renders the marker `c` (not the default `1`).
+
+### What is intentionally not mapped here
+
+`\ftnsep`/`\ftnsepc`/`\ftncn` and the endnote twins define the note **separator
+content**. They stay `destination:*` Loss: the shared model has no
+`RunContent::Separator` (the reader currently records `w:separator` as Supported
+and discards it), so writing an empty placeholder note would be a hidden
+fragment rather than a contract. That is a shared model addition, tracked under
+"Other open items".
+
 ## Other open items
 
 - Section column **layout** in the shared renderer (model + `w:cols` mapping are
   done; a multi-column section still paints one column).
-- Note placement/numbering (`\ftn*`/`\aftn*`; most corpus uses are the OOXML
-  defaults) and multi-paragraph field block results (a shared model change) and
-  custom marks are unreviewed.
+- Note **separator** definitions (`\ftnsep`/`\ftnsepc`/`\ftncn`,
+  `\aftnsep`/`\aftnsepc`/`\aftncn`): faithful mapping needs a shared
+  `RunContent::Separator` (reader + writer + render), so they remain Loss rather
+  than an empty placeholder. Numbering/placement are mapped (above).
+- Multi-paragraph field block results (a shared model change) and custom marks
+  are unreviewed.
 - `field-instruction-control:*` (~40k events) are formatting controls inside
   `\fldinst` that are correctly kept out of the instruction text but reported as
   Loss; whether to reclassify them as explicit ignored-formatting Info is open
