@@ -16,13 +16,13 @@ use strict_ooxml_wml::model::document::{Body, DocumentSource};
 use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, BreakKind, CellProperties, Color,
-    Field, Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl,
-    Inline, Justification, Language, Level, LineSpacingRule, Note, NoteKind, NoteTable, Num, NumId,
-    NumPr, NumberingTable, PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties,
-    RowProperties, Rsids, Run, RunContent, RunProperties, Section, SectionProperties, SectionType,
-    Space, Style, StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table,
-    TableCell, TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign,
-    VerticalJc, VerticalMerge, Width, WidthKind,
+    ColumnSpec, Field, Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind,
+    HeaderFooterRef, Ilvl, Inline, Justification, Language, Level, LineSpacingRule, Note, NoteKind,
+    NoteTable, Num, NumId, NumPr, NumberingTable, PageMargins, PageOrientation, PageSize,
+    Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent, RunProperties, Section,
+    SectionProperties, SectionType, Space, Style, StyleId, StyleTable, StyleType, Symbol,
+    TabAlignment, TabLeader, TabStop, Table, TableCell, TableProperties, TableRow, TextNode,
+    TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -379,6 +379,8 @@ struct Parser<'a> {
     bookmark_seq: u32,
     /// An even-page (`\headerl`/`\footerl`) region was seen: `w:evenAndOddHeaders`.
     even_and_odd_headers: bool,
+    /// Column index (0-based) that `\colw`/`\colsr` describe.
+    column_index: usize,
     footnotes: NoteTable,
     endnotes: NoteTable,
     numbering: NumberingTable,
@@ -2464,6 +2466,50 @@ impl Parser<'_> {
                 self.section_reset_pending = true;
             }
             "titlepg" => self.section.title_page = true,
+            "cols" | "colsx" | "colno" | "colw" | "colsr" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing column value",
+                })?;
+                match name {
+                    "cols" => {
+                        let count = u16::try_from(value).map_err(|_| RtfError::Malformed {
+                            offset: span.start,
+                            reason: "invalid column count",
+                        })?;
+                        let columns = self.section.columns.get_or_insert_with(Default::default);
+                        columns.count = Some(count);
+                        if columns.columns.is_empty() {
+                            columns.equal_width = true;
+                        }
+                        self.column_index = 0;
+                    }
+                    "colsx" => {
+                        self.section
+                            .columns
+                            .get_or_insert_with(Default::default)
+                            .space = Some(Twips(value));
+                    }
+                    "colno" => {
+                        self.column_index = usize::try_from(value.max(1) - 1).unwrap_or(0);
+                    }
+                    "colw" | "colsr" => {
+                        let columns = self.section.columns.get_or_insert_with(Default::default);
+                        // An explicit per-column width makes the columns unequal.
+                        columns.equal_width = false;
+                        while columns.columns.len() <= self.column_index {
+                            columns.columns.push(ColumnSpec::default());
+                        }
+                        let column = &mut columns.columns[self.column_index];
+                        if name == "colw" {
+                            column.width = Some(Twips(value));
+                        } else {
+                            column.space = Some(Twips(value));
+                        }
+                    }
+                    _ => unreachable!("matched column control"),
+                }
+            }
             "sbknone" | "sbkpage" | "sbkcol" | "sbkeven" | "sbkodd" => {
                 self.section.section_type = Some(match name {
                     "sbknone" => SectionType::Continuous,
@@ -3177,6 +3223,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         bookmarks: std::collections::HashMap::new(),
         bookmark_seq: 0,
         even_and_odd_headers: false,
+        column_index: 0,
         footnotes: NoteTable::new(),
         endnotes: NoteTable::new(),
         numbering: NumberingTable::new(),

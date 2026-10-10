@@ -1009,6 +1009,24 @@ fn wps_sectd_before_sect_keeps_each_section_header() {
 }
 
 #[test]
+fn section_columns_map_to_w_cols() {
+    let d = reopened(br"{\rtf1\cols2\colno1\colw4820\colsr425\colno2\colw4727 Body}");
+    let columns = d.sections[0]
+        .properties
+        .columns
+        .as_ref()
+        .expect("column properties");
+    assert_eq!(columns.count, Some(2));
+    assert!(
+        !columns.equal_width,
+        "explicit \\colw makes the columns unequal"
+    );
+    assert_eq!(columns.columns[0].width, Some(Twips(4820)));
+    assert_eq!(columns.columns[0].space, Some(Twips(425)));
+    assert_eq!(columns.columns[1].width, Some(Twips(4727)));
+}
+
+#[test]
 fn titlepg_and_even_headers_are_recorded() {
     // `\titlepg` needs `w:titlePg`, and an even-page header only renders when
     // settings carry `w:evenAndOddHeaders`.
