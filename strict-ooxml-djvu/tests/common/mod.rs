@@ -125,6 +125,12 @@ pub(crate) fn directory(entries: &[(&str, u8, usize, usize)], bundled: bool) -> 
     chunk(b"DIRM", &payload)
 }
 pub(crate) fn bundled(pages: &[Vec<u8>]) -> Vec<u8> {
+    bundled_with(pages, &[])
+}
+
+/// A bundled `DJVM` with extra root-level chunks (for example `NAVM`) placed
+/// after `DIRM` and before the pages.
+pub(crate) fn bundled_with(pages: &[Vec<u8>], extra: &[Vec<u8>]) -> Vec<u8> {
     let names: Vec<_> = (0..pages.len()).map(|i| format!("p{i}.djvu")).collect();
     // BZZ excludes offsets; changing the offset table cannot change DIRM size.
     let dummy: Vec<_> = pages
@@ -137,6 +143,12 @@ pub(crate) fn bundled(pages: &[Vec<u8>]) -> Vec<u8> {
     if offset % 2 == 1 {
         offset += 1;
     }
+    for chunk in extra {
+        offset += chunk.len();
+        if offset % 2 == 1 {
+            offset += 1;
+        }
+    }
     let mut entries = Vec::new();
     for (i, p) in pages.iter().enumerate() {
         entries.push((names[i].as_str(), 1, offset, p.len()));
@@ -146,6 +158,28 @@ pub(crate) fn bundled(pages: &[Vec<u8>]) -> Vec<u8> {
         }
     }
     let mut children = vec![directory(&entries, true)];
+    children.extend_from_slice(extra);
     children.extend_from_slice(pages);
     file(&form(b"DJVM", &children))
+}
+
+/// A decoded `NAVM` payload: `BE16` entry count, then each node as `DjVuLibre`
+/// writes it (`LE16` child count, `BE16` title length, title, `BE24` url length,
+/// url) in pre-order.
+pub(crate) fn navm_entries(entries: &[(u16, &str, &str)]) -> Vec<u8> {
+    let mut out = (entries.len() as u16).to_be_bytes().to_vec();
+    for (count, title, url) in entries {
+        out.push((*count & 0xff) as u8);
+        out.push((*count >> 8) as u8);
+        out.extend_from_slice(&(title.len() as u16).to_be_bytes());
+        out.extend_from_slice(title.as_bytes());
+        out.extend_from_slice(&u24(url.len()));
+        out.extend_from_slice(url.as_bytes());
+    }
+    out
+}
+
+/// A BZZ-encoded `NAVM` outline chunk.
+pub(crate) fn navm(entries: &[(u16, &str, &str)]) -> Vec<u8> {
+    chunk(b"NAVM", &djvu_bzz::bzz_encode(&navm_entries(entries)))
 }

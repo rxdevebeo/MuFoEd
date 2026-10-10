@@ -303,3 +303,46 @@ fn unicode_component_ids_are_safe_identifiers() {
     .expect("safe Unicode id");
     assert_eq!(doc.pages()[0].id, "civilisação.djvu");
 }
+
+#[test]
+fn the_navm_outline_is_read_as_a_forest() {
+    let page = |label: &str| {
+        form(
+            b"DJVU",
+            &[
+                chunk(b"INFO", &info(100, 100, 72)),
+                chunk(b"TXTa", &text(label)),
+            ],
+        )
+    };
+    // DjVuLibre layout: "Chapter" (one child) then "Section", pre-order.
+    let outline = navm(&[(1, "Chapter", "#page=1"), (0, "Section", "#page=2")]);
+    let doc = open(&bundled_with(&[page("one"), page("two")], &[outline]));
+    assert_eq!(doc.outline.len(), 1, "one root entry");
+    assert_eq!(doc.outline[0].title, "Chapter");
+    assert_eq!(doc.outline[0].url, "#page=1");
+    assert_eq!(doc.outline[0].children.len(), 1);
+    assert_eq!(doc.outline[0].children[0].title, "Section");
+    assert_eq!(doc.outline[0].children[0].url, "#page=2");
+}
+
+#[test]
+fn a_broken_navm_is_a_warning_not_an_error() {
+    let page = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("one")),
+        ],
+    );
+    // A `NAVM` whose payload is not BZZ.
+    let broken = chunk(b"NAVM", b"not bzz at all");
+    let doc = DjvuDocument::open(&bundled_with(&[page], &[broken]), DjvuLimits::default())
+        .expect("the outline never fails the read");
+    assert!(doc.outline.is_empty());
+    assert!(
+        doc.warnings.iter().any(|w| w.contains("NAVM")),
+        "{:?}",
+        doc.warnings
+    );
+}

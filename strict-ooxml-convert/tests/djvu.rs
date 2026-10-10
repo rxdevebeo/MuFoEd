@@ -299,3 +299,50 @@ fn an_internal_maparea_links_to_a_page_bookmark() {
     assert!(document.contains("w:anchor=\"djvu-page-2\""), "{document}");
     assert!(document.contains("w:name=\"djvu-page-2\""), "{document}");
 }
+
+#[test]
+fn the_navm_outline_becomes_flat_page_bookmarks() {
+    let first = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("one")),
+        ],
+    );
+    let second = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("two")),
+        ],
+    );
+    // "Chapter one" (one child "Chapter two") targeting pages 1 and 2.
+    let outline = navm(&[(1, "Chapter one", "#page=1"), (0, "Chapter two", "#page=2")]);
+    let c = convert(
+        &bundled_with(&[first, second], &[outline]),
+        &DjvuOptions::default(),
+    );
+    let (document, _rels) = parts(&c);
+    assert!(
+        document.contains("w:name=\"djvu-outline-Chapter_one\""),
+        "{document}"
+    );
+    assert!(
+        document.contains("w:name=\"djvu-outline-Chapter_two\""),
+        "{document}"
+    );
+    // Both outline entries carry a bookmark, and the flatness is reported.
+    assert_eq!(
+        document.matches("<w:bookmarkStart").count(),
+        2,
+        "{document}"
+    );
+    assert!(
+        c.report
+            .losses()
+            .iter()
+            .any(|loss| loss.id == "djvu.outline"),
+        "{:?}",
+        c.report.losses()
+    );
+}

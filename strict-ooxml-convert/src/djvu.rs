@@ -1,9 +1,9 @@
 //! Map native DjVu zones; do not invent PDF glyphs or run PDF structure inference.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{to_twips, ConversionReport, ConvertError, Converted, Mode, Severity};
 use strict_ooxml_djvu::{
-    AnnotationTarget, DjvuDocument, DjvuPage, Rect, TextLayer, TextZone, ZoneKind,
+    AnnotationTarget, DjvuDocument, DjvuPage, NavItem, Rect, TextLayer, TextZone, ZoneKind,
 };
 use strict_ooxml_wml::model::{
     block::{Block, Paragraph},
@@ -87,6 +87,47 @@ pub fn convert_djvu(
     for warning in &reader.warnings {
         report.record("djvu.document.unsupported", Severity::Unsupported, warning);
     }
+    // SC-D9/L3: the `NAVM` outline becomes flat bookmarks on its target pages.
+    let mut outline = Vec::new();
+    let mut outline_external = 0usize;
+    let mut outline_unresolved = 0usize;
+    collect_outline(
+        &reader.outline,
+        all,
+        &mut outline,
+        &mut outline_external,
+        &mut outline_unresolved,
+    );
+    if !reader.outline.is_empty() {
+        report.record(
+            "djvu.outline",
+            Severity::Inferred,
+            "NAVM outline levels are flattened: Word bookmarks are flat and the tree's depth is not kept",
+        );
+    }
+    if outline_external > 0 {
+        report.record(
+            "djvu.outline.external",
+            Severity::Lost,
+            format!(
+                "{outline_external} outline entries point outside the document and are not bookmarked"
+            ),
+        );
+    }
+    if outline_unresolved > 0 {
+        report.record(
+            "djvu.outline.unresolved",
+            Severity::Lost,
+            format!("{outline_unresolved} outline entries target no page"),
+        );
+    }
+    let mut outline_by_page: BTreeMap<usize, Vec<&OutlineBookmark>> = BTreeMap::new();
+    for entry in &outline {
+        outline_by_page.entry(entry.page).or_default().push(entry);
+    }
+    // `maparea` page bookmarks take `w:id` 1..=page count; outline bookmarks continue.
+    let mut next_bookmark_id = all.len() + 1;
+    let mut used_names = BTreeSet::new();
     // SC-D9/L2: a page that some `maparea` points at gets a bookmark to link to.
     let bookmarked = bookmarked_pages(all);
     for (index, page) in all
@@ -255,6 +296,23 @@ pub fn convert_djvu(
                         Severity::Inferred,
                         format!("page {}: bookmark for internal maparea links", page.number),
                     );
+                }
+            }
+        }
+        // SC-D9/L3: outline entries targeting this page become bookmarks named
+        // after their heading. Nesting is recorded, not represented.
+        if let Some(entries) = outline_by_page.get(&page.number) {
+            if let Some(blocks) = document.body.blocks.get_mut(first..) {
+                for entry in entries {
+                    let name = outline_name(&entry.title, &mut used_names);
+                    if add_page_bookmark(blocks, &next_bookmark_id.to_string(), &name) {
+                        next_bookmark_id += 1;
+                        report.record(
+                            "djvu.outline.bookmark",
+                            Severity::Inferred,
+                            format!("page {}: outline bookmark {name:?}", page.number),
+                        );
+                    }
                 }
             }
         }
@@ -584,6 +642,89 @@ fn bookmarked_pages(pages: &[DjvuPage]) -> BTreeSet<usize> {
         }
     }
     bookmarked
+}
+
+/// A resolved outline entry: the page it targets and its heading.
+struct OutlineBookmark {
+    page: usize,
+    title: String,
+}
+
+/// Where an outline entry's URL points.
+enum OutlineTarget {
+    /// A one-based page in this document.
+    Internal(usize),
+    /// Outside the document.
+    External,
+    /// Internal, but not resolvable to a page.
+    Unresolved,
+}
+
+/// Flattens the outline forest into one bookmark per resolvable entry.
+fn collect_outline(
+    items: &[NavItem],
+    pages: &[DjvuPage],
+    out: &mut Vec<OutlineBookmark>,
+    external: &mut usize,
+    unresolved: &mut usize,
+) {
+    for item in items {
+        match outline_target(&item.url, pages) {
+            OutlineTarget::Internal(page) => out.push(OutlineBookmark {
+                page,
+                title: item.title.clone(),
+            }),
+            OutlineTarget::External => *external += 1,
+            OutlineTarget::Unresolved => *unresolved += 1,
+        }
+        collect_outline(&item.children, pages, out, external, unresolved);
+    }
+}
+
+/// An outline URL is internal when it is a `#` fragment; DjVuLibre writes
+/// `#page=N` or `#name`. A `±N` offset names no page of its own and is left
+/// unresolved.
+fn outline_target(url: &str, pages: &[DjvuPage]) -> OutlineTarget {
+    if let Some(reference) = url.strip_prefix('#') {
+        if reference.starts_with('+') || reference.starts_with('-') {
+            return OutlineTarget::Unresolved;
+        }
+        return match resolve_page(reference, 1, pages) {
+            Some(page) => OutlineTarget::Internal(page),
+            None => OutlineTarget::Unresolved,
+        };
+    }
+    if url.is_empty() {
+        OutlineTarget::Unresolved
+    } else {
+        OutlineTarget::External
+    }
+}
+
+/// A unique, Word-legal bookmark name carrying the outline heading.
+///
+/// `w:name` must begin with a letter, so the heading is reduced to
+/// letters/digits/underscores behind a `djvu-outline-` stem; a numeric suffix
+/// makes it unique. The stem is capped well under Word's 40-character limit.
+fn outline_name(title: &str, used: &mut BTreeSet<String>) -> String {
+    let mut stem = String::from("djvu-outline-");
+    for ch in title.chars() {
+        if stem.len() >= 32 {
+            break;
+        }
+        stem.push(if ch.is_alphanumeric() || ch == '_' {
+            ch
+        } else {
+            '_'
+        });
+    }
+    let mut candidate = stem.clone();
+    let mut suffix = 2;
+    while !used.insert(candidate.clone()) {
+        candidate = format!("{stem}-{suffix}");
+        suffix += 1;
+    }
+    candidate
 }
 
 /// Wraps a page's first-to-last paragraph in a bookmark. Returns whether one was

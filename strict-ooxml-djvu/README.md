@@ -2,7 +2,8 @@
 
 Bounded native DjVu reading for Strict OOXML import. Text layers are parsed
 by this crate; MIT `djvu-rs` component codecs handle BZZ/JB2/IW44. Optional
-`djvu-image` enables page PNGs. No external DjVuLibre process is invoked by
+`djvu-image` enables page PNGs. The `NAVM` outline (a bookmarks tree) is read
+into `DjvuDocument::outline`. No external DjVuLibre process is invoked by
 production code. No DjVu document writer is provided.
 
 “DjVu” is used descriptively to identify the supported format. This project

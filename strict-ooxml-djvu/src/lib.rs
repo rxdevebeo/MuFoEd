@@ -16,10 +16,12 @@ mod document;
 mod image;
 #[cfg(feature = "djvu-image")]
 pub use image::PageImage;
+mod nav;
 mod text;
 pub use annotations::{Annotation, AnnotationTarget, DjvuMetadata};
 pub use container::Chunk;
 pub use document::{DjvuDocument, DjvuPage, PageInfo};
+pub use nav::NavItem;
 pub use text::{Rect, TextLayer, TextZone, ZoneKind};
 
 /// Failure to read a DjVu document.

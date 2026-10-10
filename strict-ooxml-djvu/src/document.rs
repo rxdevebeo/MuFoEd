@@ -1,6 +1,6 @@
 //! Directory and include resolution. No filesystem or network access is implicit.
 use crate::{
-    bounded, container, decompress, invalid, text, Chunk, DjvuError, DjvuLimits, TextLayer,
+    bounded, container, decompress, invalid, nav, text, Chunk, DjvuError, DjvuLimits, TextLayer,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -70,6 +70,8 @@ pub struct DjvuDocument {
     pub limits: DjvuLimits,
     /// Document metadata from `(metadata …)` / `(xmp …)`.
     pub metadata: crate::DjvuMetadata,
+    /// The `NAVM` outline as a pre-order forest. Empty when the file has none.
+    pub outline: Vec<crate::NavItem>,
     /// Document-level observations, including unsupported navigation.
     pub warnings: Vec<String>,
 }
@@ -107,6 +109,7 @@ impl DjvuDocument {
         let mut roots = vec![root.clone()];
         let mut components = BTreeMap::new();
         let mut page_roots = Vec::new();
+        let mut outline = Vec::new();
         let mut warnings = Vec::new();
         match root.form_type.as_ref() {
             Some(b"DJVU" | b"PM44" | b"BM44") => {
@@ -167,11 +170,20 @@ impl DjvuDocument {
                         return Err(invalid("duplicate DIRM id"));
                     }
                 }
-                if root.children().iter().any(|c| c.id == *b"NAVM") {
-                    warnings.push("NAVM outline is not mapped to Word bookmarks".into());
-                }
             }
             _ => return Err(invalid("document root must be DJVU or DJVM")),
+        }
+        // SC-D9 L3: the `NAVM` outline is a BZZ-wrapped pre-order forest that
+        // sits directly under the root form (after `DIRM` in a `DJVM`).
+        if let Some(navm) = root.children().iter().find(|c| c.id == *b"NAVM") {
+            match decompress(navm.data(), limits.max_text_bytes, limits) {
+                Ok(decoded) => match nav::parse(&decoded, limits) {
+                    Ok(items) => outline = items,
+                    Err(e @ DjvuError::Limit(_)) => return Err(e),
+                    Err(e) => warnings.push(format!("NAVM outline could not be read: {e}")),
+                },
+                Err(e) => warnings.push(format!("NAVM outline is not BZZ-decodable: {e}")),
+            }
         }
         bounded(page_roots.len(), limits.max_pages, "max_pages")?;
         if page_roots.is_empty() {
@@ -319,6 +331,7 @@ impl DjvuDocument {
             pages,
             limits,
             metadata,
+            outline,
             warnings,
         })
     }
