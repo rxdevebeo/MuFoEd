@@ -698,9 +698,9 @@ disposition = "named_loss"
 elements = ["r"]
 parents = ["rules"]
 parts = ["word/settings.xml"]
-requires_cited = ["w:shapeDefaults"]
+requires_cited = ["o:shapelayout"]
 summary = "VML connector rules (o:shapelayout/o:rules/o:r) inside w:shapeDefaults have no Strict home"
-audit = "Census 2026-10-10: o:r under o:rules in settings.xml - 001_wajiz removed=6, 022_S_301 removed=1, 041_l_lm_l_qyd removed=1, 070_Innovations removed=6, 090_Gritos removed=16, Spanner visibility graph removed=10; all named=0, and w:shapeDefaults cited in none of them. Strict carries no VML (ADR-0014). The label is the bare local because the office namespace is not a Strict one. Both paths that drop the block now name it with its children: the normalizer's T5.removal reason for w:shapeDefaults lists o:shapedefaults/v:fill/v:stroke/o:colormru and o:shapelayout/o:idmap/o:rules/o:r, and write/src/package.rs records w:shapeDefaults (and w:hdrShapeDefaults) with the same list when the parser skipped it. A removal without the citation stays unclassified."
+audit = "Census 2026-10-10: o:r under o:rules in settings.xml - 001_wajiz removed=6, 022_S_301 removed=1, 041_l_lm_l_qyd removed=1, 070_Innovations removed=6, 090_Gritos removed=16, Spanner visibility graph removed=10; all named=0, and w:shapeDefaults cited in none of them. Strict carries no VML (ADR-0014). The label is the bare local because the office namespace is not a Strict one. The normalizer's loss id is the namespace URI plus #shapeDefaults, which the census tokenizes to a bare local, so the item binds on o:shapelayout - printed only by that reason. Both paths that drop the block now name it with its children: the normalizer's T5.removal reason for w:shapeDefaults lists o:shapedefaults/v:fill/v:stroke/o:colormru and o:shapelayout/o:idmap/o:rules/o:r, and write/src/package.rs records w:shapeDefaults (and w:hdrShapeDefaults) with the same list when the parser skipped it. A removal without the citation stays unclassified."
 
 [[item]]
 id = "TZ-61"
@@ -710,7 +710,7 @@ disposition = "named_loss"
 elements = ["fill"]
 parents = ["shapedefaults"]
 parts = ["word/settings.xml"]
-requires_cited = ["w:shapeDefaults"]
+requires_cited = ["o:shapedefaults"]
 summary = "VML default fill (o:shapedefaults/v:fill) inside w:shapeDefaults has no Strict home"
 audit = "Census 2026-10-10: v:fill under o:shapedefaults - 057_Wen_Xue removed=1 named=0, 090_Gritos removed=2 named=1 (by coincidence). Same block and the same two citations as TZ-60: w:shapeDefaults is cited and its reason names v:fill, so named=1 is earned by this input's report."
 
@@ -755,12 +755,15 @@ id = "TZ-65"
 origin = "waived"
 signal = "element"
 disposition = "named_loss"
-elements = ["a:blipFill", "a:blip", "a:duotone", "a:tile"]
-parents = ["bgFillStyleLst", "fillStyleLst", "blipFill", "blip"]
+elements = [
+  "a:blipFill", "a:blip", "a:duotone", "a:tile",
+  "a:satMod@val", "a:shade@val", "a:tint@val",
+]
+parents = ["bgFillStyleLst", "fillStyleLst", "blipFill", "blip", "schemeClr"]
 parts = ["word/theme/theme*.xml"]
 requires_cited = ["a:fmtScheme"]
 summary = "a theme texture fill (a:blipFill with r:embed) is replaced by a:solidFill over phClr"
-audit = "Census 2026-10-10: 090_Gritos theme1.xml - a:blipFill (parent bgFillStyleLst), a:blip, a:tile (parent blipFill), a:duotone (parent blip), a:contourClr (parent sp3d), named=0. Cause: the generic capture_fragment refuses any prefix beyond a:/pic:, so r:embed made the WHOLE a:fmtScheme fall back to the placeholder (a:contourClr, the gradients and bevels went with it). parse/theme.rs::capture_format_scheme now keeps the scheme and replaces only each relationship-bearing a:blipFill by a:solidFill/phClr (EG_FillProperties keeps its three entries); the theme part is written without relationships, so the texture itself cannot be kept. The a:fmtScheme Partial record names every element inside the replaced fill (a:blipFill, a:blip, a:duotone, a:schemeClr, a:shade, a:tint, a:tile...), so named=1 is this input's. a:contourClr is no longer removed. The colour children of a:duotone are on TZ-31."
+audit = "Census 2026-10-10: 090_Gritos theme1.xml - a:blipFill (parent bgFillStyleLst), a:blip, a:tile (parent blipFill), a:duotone (parent blip), a:contourClr (parent sp3d), named=0. Cause: the generic capture_fragment refuses any prefix beyond a:/pic:, so r:embed made the WHOLE a:fmtScheme fall back to the placeholder (a:contourClr, the gradients and bevels went with it). parse/theme.rs::capture_format_scheme now keeps the scheme and replaces only each relationship-bearing a:blipFill by a:solidFill/phClr (EG_FillProperties keeps its three entries); the theme part is written without relationships, so the texture itself cannot be kept. The a:fmtScheme Partial record names every element inside the replaced fill (a:blipFill, a:blip, a:duotone, a:schemeClr, a:shade, a:tint, a:tile...), so named=1 is this input's. a:contourClr is no longer removed. The colour transforms of the duotone's a:schemeClr (a:satMod/a:shade/a:tint @val, measured 2026-10-10 on 090 after the scheme stopped falling back) leave with it and are listed here; elsewhere in a theme a changed percentage without the a:fmtScheme citation stays unclassified."
 
 [[item]]
 id = "TZ-71"
