@@ -821,12 +821,19 @@ even-регион `\headerl`/`\footerl` включает `w:evenAndOddHeaders` (
 Заголовки в поле, поэтому pagination (65/100) и pixels (6/100, 22/458) не
 изменились.
 
-Открыты по RC08: columns (`\cols`/`\colno`/`\column` — нужен section-column
-модель+renderer, shared), note placement/numbering, multi-paragraph field
+Открыты по RC08: columns (`\cols`/`\colno`/`\colw`/`\colsx`/`\colsr` — нужен
+section-column renderer, shared), note placement/numbering, multi-paragraph field
 block-result (shared model) и custom marks. `field-instruction-control:*`
 (~40k) — форматирование внутри `\fldinst`, корректно не попадает в instruction,
 но помечено Loss; вопрос реклассификации в явный ignored-formatting Info открыт
 (blanket rename запрещён планом).
+
+Ещё закрыт mapping секционных колонок: `\cols` → `w:cols/@num`, `\colsx` →
+`@space`, `\colno`/`\colw`/`\colsr` → per-column `w:col` (explicit `\colw`
+снимает `equalWidth`). 074/092 теперь несут свои 2-column определения и
+round-trip'ятся. Shared renderer по-прежнему рисует одну колонку — column-layout
+остаётся отдельным shared-build; pagination (65/100) и pixels (6/100, 22/458)
+не изменились.
 
 
 

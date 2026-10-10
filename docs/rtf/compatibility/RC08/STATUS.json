@@ -9,12 +9,15 @@
     "per-section headers survive the WPS \\sectd\\sect ordering: the reset is deferred past the following \\sect, so a section commits the header/footer and geometry it accumulated instead of losing them; 072 now writes 40 header references (was 1) and the header renders on every section's pages",
     "\\chpgn and \\sectnum are kept as dynamic PAGE/SECTION fields instead of unknown controls; the renderer's page-dependent field pass computes them, so 072's headers read 'Ruth (Page 2)' (was 'Ruth (Page )'); 072 import losses 42 -> 2",
     "bookmarks are preserved: {\\*\\bkmkstart Name}/{\\*\\bkmkend Name} become paired w:bookmarkStart/w:bookmarkEnd with a shared decimal w:id and the name (616 occurrences across 7 corpus docs were dropped, losing every anchor a hyperlink or REF field targets)",
-    "first/even-page headers render: \\titlepg maps to the section's w:titlePg and an even \\headerl/\\footerl region sets w:evenAndOddHeaders (002 now writes 7 w:titlePg and even/default header references; both were dropped before)"
+    "first/even-page headers render: \\titlepg maps to the section's w:titlePg and an even \\headerl/\\footerl region sets w:evenAndOddHeaders (002 now writes 7 w:titlePg and even/default header references; both were dropped before)",
+    "section columns are preserved: \\cols -> w:cols/@num, \\colsx -> @space, \\colno/\\colw/\\colsr -> the per-column w:col specs with equalWidth cleared (074/092 now carry their 2-column definitions)"
   ],
   "remaining": [
     "072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug. Body line pitch matches (16.1pt = Arimo 1.15em x \\sl280/240). The residual is inter-paragraph spacing: measured against the immutable WPS references, the WPS RTF path SUMS before+after (072 heading->heading 38.25pt = sum 36pt) while the WPS DOCX path takes MAX (06-strict-math-display body->Heading2 14.74pt = max 14pt). The renderer's max (paginate.rs) is what the DOCX baseline and the SVG refs require; a max->sum change regressed 06 and was reverted, and inflating w:before at import would misrepresent the document. Recorded as a WPS RTF-path quirk (not imitated, not a support blocker).",
     "w:contextualSpacing is unimplemented in the renderer (a real gap; neither witness above uses it)",
-    "first/even/odd header regions, note placement/numbering, multi-paragraph/nested fields and custom marks are unreviewed"
+    "section column LAYOUT is not implemented in the shared renderer: w:cols round-trips and validates, but a multi-column section still renders as one column (a shared layout build)",
+    "note placement/numbering (\\ftn*/\\aftn*; most corpus uses are defaults) and multi-paragraph field block results (a shared model change) and custom marks are unreviewed",
+    "field-instruction-control:* (~40k events) are formatting controls inside \\fldinst; correctly kept out of the instruction text but reported as Loss, reclassification open (blanket rename forbidden by the plan)"
   ],
   "blocked": [],
   "checks": {
@@ -53,13 +56,22 @@
         "002 writes 7 w:titlePg and even/default header references"
       ]
     },
+    "section_columns": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::section_columns_map_to_w_cols",
+      "assertions": [
+        "\\cols2 -> w:cols/@num=2",
+        "\\colno/\\colw/\\colsr -> w:col/@w and @space, equalWidth cleared",
+        "074/092 carry their 2-column w:cols; the renderer still lays out one column"
+      ]
+    },
     "corpus_gates": {
       "status": "Measured",
       "date": "2026-10-09",
       "receipts": [
-        "target/rtf-import/RC08-titlepg-corpus/results.json",
-        "target/rtf-import/RC08-titlepg-visual/results.json",
-        "target/rtf-import/RC08-titlepg-pixels/results.json"
+        "target/rtf-import/RC08-columns-corpus/results.json",
+        "target/rtf-import/RC08-columns-visual/results.json",
+        "target/rtf-import/RC08-columns-pixels/results.json"
       ],
       "results": {
         "import_text_resource": "100/100 Pass",

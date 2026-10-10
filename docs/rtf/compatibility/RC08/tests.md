@@ -103,12 +103,25 @@ writes 7 `w:titlePg` and even/default header references.
 `structure.rs::titlepg_and_even_headers_are_recorded` pins it. Headers sit in
 the margin, so pagination (65/100) and pixels (6/100, 22/458) are unchanged.
 
+## Section columns (2026-10-09)
+
+`\cols`/`\colno`/`\colw`/`\colsx`/`\colsr` were dropped, so a two-column section
+lost its `w:cols` entirely. They now map to `w:cols/@num`, `@space`, and the
+per-column `w:col/@w`/`@space` specs, with `equalWidth` cleared when an explicit
+`\colw` appears. 074 and 092 carry their 2-column definitions
+(`<w:cols w:num="2" w:equalWidth="false"><w:col w:w="5795" w:space="1657"/><w:col w:w="2228"/></w:cols>`).
+`structure.rs::section_columns_map_to_w_cols` pins it. The shared renderer still
+lays out a single column, so the property round-trips and validates but the
+rendered columns are a follow-up shared-layout build; pagination (65/100) and
+pixels (6/100, 22/458) are unchanged.
+
 ## Other open items
 
-- Columns (`\cols`/`\colno`/`\column`, 2 corpus docs) need a section-column
-  model and renderer support (a shared build), and are not yet started.
-- Note placement/numbering (`\ftn*`, `\aftn*`), multi-paragraph field block
-  results (a shared model change) and custom marks are unreviewed.
+- Section column **layout** in the shared renderer (model + `w:cols` mapping are
+  done; a multi-column section still paints one column).
+- Note placement/numbering (`\ftn*`/`\aftn*`; most corpus uses are the OOXML
+  defaults) and multi-paragraph field block results (a shared model change) and
+  custom marks are unreviewed.
 - `field-instruction-control:*` (~40k events) are formatting controls inside
   `\fldinst` that are correctly kept out of the instruction text but reported as
   Loss; whether to reclassify them as explicit ignored-formatting Info is open
