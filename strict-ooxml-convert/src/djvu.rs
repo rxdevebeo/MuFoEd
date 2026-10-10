@@ -35,6 +35,8 @@ pub struct DjvuOptions {
     pub recovery_mixed_min_area_ratio: f64,
     /// The most figures one page may yield.
     pub recovery_max_regions: usize,
+    /// Fraction of a figure's size to add as margin when cropping it for a model.
+    pub recovery_region_margin: f64,
 }
 impl Default for DjvuOptions {
     fn default() -> Self {
@@ -49,6 +51,7 @@ impl Default for DjvuOptions {
             max_recovered_text_bytes: 1024 * 1024,
             recovery_mixed_min_area_ratio: 0.25,
             recovery_max_regions: 4,
+            recovery_region_margin: 0.05,
         }
     }
 }
@@ -89,6 +92,11 @@ impl DjvuOptions {
     /// The share of a page a figure must cover, and the most figures per page.
     pub fn recovery_mixed_area(mut self, min_area_ratio: f64) -> Self {
         self.recovery_mixed_min_area_ratio = min_area_ratio;
+        self
+    }
+    /// The margin (fraction of a figure's size) added when cropping it for a model.
+    pub fn recovery_region_margin(mut self, margin: f64) -> Self {
+        self.recovery_region_margin = margin;
         self
     }
 }
@@ -993,6 +1001,24 @@ fn union(left: Rect, right: Rect) -> Rect {
     }
 }
 
+/// Grows a region by a margin (fraction of its size), clamped to the page.
+#[cfg(feature = "djvu-image")]
+fn expand(region: Rect, margin: f64, page_w: f64, page_h: f64) -> Rect {
+    if margin <= 0.0 {
+        return region;
+    }
+    let dx = region.width * margin;
+    let dy = region.height * margin;
+    let x = (region.x - dx).max(0.0);
+    let y = (region.y - dy).max(0.0);
+    Rect {
+        x,
+        y,
+        width: (region.x + region.width + dx).min(page_w) - x,
+        height: (region.y + region.height + dy).min(page_h) - y,
+    }
+}
+
 /// The description a classifier's answer carries after its kind line.
 #[cfg(feature = "djvu-image")]
 fn describe_text(answer: &str) -> String {
@@ -1066,7 +1092,9 @@ fn emit_figure(
     media: &mut Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>,
     region: Rect,
 ) {
-    let png = match page.region_png(reader.limits, region) {
+    let (page_w, page_h) = page.info.points();
+    let crop = expand(region, options.recovery_region_margin, page_w, page_h);
+    let png = match page.region_png(reader.limits, crop) {
         Ok(png) => png,
         Err(error) => {
             report.record(
@@ -1118,8 +1146,7 @@ fn emit_figure(
             )];
             document.body.blocks.push(Block::Paragraph(p));
             media.push((part, png));
-            let (pw, ph) = page.info.points();
-            let share = 100.0 * region.width * region.height / (pw * ph).max(1.0);
+            let share = 100.0 * region.width * region.height / (page_w * page_h).max(1.0);
             report.record(
                 "djvu.figure",
                 Severity::Inferred,

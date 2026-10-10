@@ -2294,7 +2294,9 @@ version = "0.1.0"
 dependencies = [
  "djvu-bitmap",
  "djvu-bzz",
+ "djvu-iw44",
  "djvu-jb2",
+ "djvu-pixmap",
  "png",
  "roxmltree 0.20.0",
  "strict-ooxml-core",

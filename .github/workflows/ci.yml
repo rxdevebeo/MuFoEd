@@ -456,7 +456,7 @@ jobs:
 
   # STAGE-9-TASK.md §9.1 floors: the DjVu reader (container/text) ≥80% lines,
   # the codec-bearing build ≥70%, and the converter's DjVu module ≥80%.
-  # Re-measured 2026-10-10 at 84.32 / 84.69 / 87.55; the floors sit below, not
+  # Re-measured 2026-10-10 at 84.32 / 84.91 / 88.26; the floors sit below, not
   # at, the measurement so a refactor is not a red build.
   coverage-djvu-nightly:
     name: coverage (djvu)

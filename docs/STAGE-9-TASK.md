@@ -756,7 +756,7 @@ BE24  child_count
 Пороги стали гейтом CI job'ом `coverage-djvu-nightly` (schedule). Измерено
 2026-10-09 82.89 / 85.25 / 85.09 %; **перемерено 2026-10-10 после добавления
 `xmp.rs`, `ink_boxes`/`region_png` и фигур: djvu core 84.32 %, djvu
-all-features 84.69 %, convert `djvu.rs` 87.55 %** — пороги стоят ниже измерения,
+all-features 84.91 %, convert `djvu.rs` 88.26 %** — пороги стоят ниже измерения,
 а не на нём, чтобы рефакторинг не красил сборку.
 
 ---

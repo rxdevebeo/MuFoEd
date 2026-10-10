@@ -448,6 +448,83 @@ mod recognition {
         assert_eq!(model.calls.load(Ordering::SeqCst), 1);
         assert!(xml(&c).contains("descr=\"Partly under the caption.\""));
     }
+
+    /// A page with native text and a photographic background: the left 40 % is a
+    /// dark plate, the rest is white.
+    fn background_chunks() -> Vec<Vec<u8>> {
+        let mut data = vec![255u8; 100 * 100];
+        for y in 0..100 {
+            for x in 0..40 {
+                data[y * 100 + x] = 40;
+            }
+        }
+        let image = djvu_pixmap::GrayPixmap {
+            width: 100,
+            height: 100,
+            data,
+        };
+        let parts = djvu_iw44::encode::encode_iw44_gray(
+            &image,
+            &djvu_iw44::encode::Iw44EncodeOptions::default(),
+        );
+        let mut chunks = vec![
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("caption")),
+        ];
+        for part in parts {
+            chunks.push(chunk(b"BG44", &part));
+        }
+        chunks
+    }
+
+    #[test]
+    fn a_background_photo_and_its_ink_are_one_figure() {
+        let mut mask = djvu_bitmap::Bitmap::new(100, 100);
+        for y in 50..70 {
+            for x in 10..30 {
+                mask.set_black(x, y);
+            }
+        }
+        let mut chunks = background_chunks();
+        chunks.push(chunk(
+            b"Sjbz",
+            &djvu_jb2::encode::encode_jb2_lossless(&mask),
+        ));
+        let model = classifier("diagram\nThe plate behind the text.");
+        let c = convert(
+            &single(&chunks),
+            &DjvuOptions::default().figure_classifier(Some(model.clone())),
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 1, "one figure, not two");
+        assert_eq!(c.media.len(), 1);
+        assert!(xml(&c).contains("descr=\"The plate behind the text.\""));
+    }
+
+    #[test]
+    fn disjoint_ink_and_background_are_two_figures() {
+        let mut mask = djvu_bitmap::Bitmap::new(100, 100);
+        for y in 20..99 {
+            for x in 60..99 {
+                mask.set_black(x, y);
+            }
+        }
+        let mut chunks = background_chunks();
+        chunks.push(chunk(
+            b"Sjbz",
+            &djvu_jb2::encode::encode_jb2_lossless(&mask),
+        ));
+        let model = classifier("diagram\nEither part.");
+        let c = convert(
+            &single(&chunks),
+            &DjvuOptions::default().figure_classifier(Some(model.clone())),
+        );
+        assert_eq!(
+            model.calls.load(Ordering::SeqCst),
+            2,
+            "a plate and a figure are separate"
+        );
+        assert_eq!(c.media.len(), 2);
+    }
 }
 
 #[cfg(feature = "djvu-image")]
@@ -568,11 +645,13 @@ fn option_builders_configure_the_conversion() {
         .mode(Mode::Visual)
         .embed_images(false)
         .pages(1, 1)
-        .recovery_mixed_area(0.5);
+        .recovery_mixed_area(0.5)
+        .recovery_region_margin(0.1);
     assert_eq!(options.mode, Mode::Visual);
     assert!(!options.embed_images);
     assert_eq!(options.pages, Some((1, 1)));
     assert_eq!(options.recovery_mixed_min_area_ratio, 0.5);
+    assert_eq!(options.recovery_region_margin, 0.1);
 }
 
 #[test]

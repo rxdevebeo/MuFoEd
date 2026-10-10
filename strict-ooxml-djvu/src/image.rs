@@ -460,8 +460,13 @@ fn components(mask: &djvu_bitmap::Bitmap, dpi: u16, limits: DjvuLimits) -> Vec<R
     }
     boxes
 }
-/// Bounding boxes of the 8-connected non-white regions of a background plane,
-/// in page points (the plane may be a reduced image, so it is upsampled).
+/// Bounding boxes of the page's photographic background, in points, from an
+/// 8×8 block map.
+///
+/// A block is a picture when enough of it is non-white **and** it varies or
+/// carries colour (or is dark enough). A per-pixel test cannot tell a stray
+/// speck or a uniform tint from a real picture; a block can, and it also
+/// localises a figure that sits on an otherwise white page.
 fn background_boxes(
     bg: &djvu_pixmap::Pixmap,
     page_w: u32,
@@ -469,6 +474,7 @@ fn background_boxes(
     dpi: u16,
     limits: DjvuLimits,
 ) -> Vec<Rect> {
+    const BLOCK: usize = 8;
     let bw = bg.width as usize;
     let bh = bg.height as usize;
     if bw == 0 || bh == 0 {
@@ -477,21 +483,21 @@ fn background_boxes(
     let scale_x = f64::from(page_w) / f64::from(bg.width) * 72.0 / f64::from(dpi);
     let scale_y = f64::from(page_h) / f64::from(bg.height) * 72.0 / f64::from(dpi);
     let cap = limits.max_zones.max(1);
-    let mut seen = vec![false; bw * bh];
+    let gx = bw.div_ceil(BLOCK);
+    let gy = bh.div_ceil(BLOCK);
+    let mut seen = vec![false; gx * gy];
     let mut boxes = Vec::new();
     let mut stack: Vec<(usize, usize)> = Vec::new();
-    for y in 0..bh {
-        for x in 0..bw {
-            if seen[y * bw + x] || background_white(bg, x, y) {
+    for by in 0..gy {
+        for bx in 0..gx {
+            if seen[by * gx + bx] || !background_picture_block(bg, bx, by, BLOCK, bw, bh) {
                 continue;
             }
-            let (mut lo_x, mut hi_x, mut lo_y, mut hi_y) = (x, x, y, y);
-            let mut size = 0usize;
+            let (mut lo_x, mut hi_x, mut lo_y, mut hi_y) = (bx, bx, by, by);
             stack.clear();
-            stack.push((x, y));
-            seen[y * bw + x] = true;
+            stack.push((bx, by));
+            seen[by * gx + bx] = true;
             while let Some((cx, cy)) = stack.pop() {
-                size += 1;
                 for dy in -1i32..=1 {
                     for dx in -1i32..=1 {
                         if dx == 0 && dy == 0 {
@@ -499,14 +505,16 @@ fn background_boxes(
                         }
                         let nx = cx as i32 + dx;
                         let ny = cy as i32 + dy;
-                        if nx < 0 || ny < 0 || nx >= bw as i32 || ny >= bh as i32 {
+                        if nx < 0 || ny < 0 || nx >= gx as i32 || ny >= gy as i32 {
                             continue;
                         }
                         let (nx, ny) = (nx as usize, ny as usize);
-                        if seen[ny * bw + nx] || background_white(bg, nx, ny) {
+                        if seen[ny * gx + nx]
+                            || !background_picture_block(bg, nx, ny, BLOCK, bw, bh)
+                        {
                             continue;
                         }
-                        seen[ny * bw + nx] = true;
+                        seen[ny * gx + nx] = true;
                         stack.push((nx, ny));
                         lo_x = lo_x.min(nx);
                         hi_x = hi_x.max(nx);
@@ -515,15 +523,19 @@ fn background_boxes(
                     }
                 }
             }
-            // A speck is not a picture.
-            if size < 4 {
+            let px0 = lo_x * BLOCK;
+            let px1 = ((hi_x + 1) * BLOCK).min(bw);
+            let py0 = lo_y * BLOCK;
+            let py1 = ((hi_y + 1) * BLOCK).min(bh);
+            // Morphological floor: a single block is a speck, not a picture.
+            if (hi_x - lo_x + 1) * (hi_y - lo_y + 1) < 2 {
                 continue;
             }
             boxes.push(Rect {
-                x: lo_x as f64 * scale_x,
-                y: lo_y as f64 * scale_y,
-                width: (hi_x - lo_x + 1) as f64 * scale_x,
-                height: (hi_y - lo_y + 1) as f64 * scale_y,
+                x: px0 as f64 * scale_x,
+                y: py0 as f64 * scale_y,
+                width: (px1 - px0) as f64 * scale_x,
+                height: (py1 - py0) as f64 * scale_y,
             });
             if boxes.len() >= cap {
                 return boxes;
@@ -532,8 +544,46 @@ fn background_boxes(
     }
     boxes
 }
-/// A background pixel is white when every channel is at least 240.
-fn background_white(bg: &djvu_pixmap::Pixmap, x: usize, y: usize) -> bool {
-    let (r, g, b) = bg.get_rgb(x as u32, y as u32);
-    r >= 240 && g >= 240 && b >= 240
+
+/// Whether one block of the background plane is a picture: at least an eighth of
+/// its pixels non-white, and either variation, colour, or a dark enough mean.
+fn background_picture_block(
+    bg: &djvu_pixmap::Pixmap,
+    bx: usize,
+    by: usize,
+    block: usize,
+    bw: usize,
+    bh: usize,
+) -> bool {
+    let x0 = bx * block;
+    let y0 = by * block;
+    let x1 = (x0 + block).min(bw);
+    let y1 = (y0 + block).min(bh);
+    let mut total = 0u32;
+    let mut ink = 0u32;
+    let mut sum = 0u32;
+    let (mut lo_gray, mut hi_gray) = (255u8, 0u8);
+    let (mut lo_chan, mut hi_chan) = (255u8, 0u8);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let (r, g, b) = bg.get_rgb(x as u32, y as u32);
+            let gray = ((u16::from(r) + u16::from(g) + u16::from(b)) / 3) as u8;
+            lo_gray = lo_gray.min(gray);
+            hi_gray = hi_gray.max(gray);
+            lo_chan = lo_chan.min(r.min(g).min(b));
+            hi_chan = hi_chan.max(r.max(g).max(b));
+            sum += u32::from(gray);
+            total += 1;
+            if !(r >= 240 && g >= 240 && b >= 240) {
+                ink += 1;
+            }
+        }
+    }
+    if total == 0 || ink * 8 < total {
+        return false;
+    }
+    let range = hi_gray - lo_gray;
+    let spread = hi_chan - lo_chan;
+    let mean = (sum / total) as u8;
+    range >= 16 || spread >= 16 || mean <= 200
 }
