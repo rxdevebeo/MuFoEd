@@ -18,6 +18,7 @@
     clippy::panic,
     clippy::doc_markdown,
     clippy::format_push_string,
+    clippy::case_sensitive_file_extension_comparisons,
     missing_docs
 )]
 
