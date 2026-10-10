@@ -778,17 +778,6 @@ summary = "explicit customMarkFollows off on a note reference is the default and
 audit = "Census 2026-10-10: 033_Nghiep_cam_but_chi removed=14, 034_CCOO removed=2 (document.xml), all was=0. RunContent::FootnoteRef/EndnoteRef hold the id alone and are matched by render-svg and edit, so the attribute cannot be kept without a cross-crate change. parse/document.rs::record_custom_mark_follows cites the attribute. Only the off spellings match: customMarkFollows=1 (a custom mark, a real loss) stays unclassified."
 
 [[item]]
-id = "TZ-72"
-origin = "waived"
-signal = "element"
-disposition = "named_loss"
-elements = ["w:ins"]
-parents = ["rPr"]
-requires_cited = ["w:ins"]
-summary = "tracked insertion of a paragraph mark (w:pPr/w:rPr/w:ins) is not written"
-audit = "Census 2026-10-10: 020_Nghien_cuu removed=8, 085_Fu_Ben removed=3 (document.xml), named=1. The parser keeps it as the paragraph-mark revision (ADR-0018); write/src/props.rs::paragraph_properties omits it and reports w:ins through ctx.report_unsupported. A removal without that citation stays unclassified."
-
-[[item]]
 id = "TZ-74"
 origin = "waived"
 signal = "element"

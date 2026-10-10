@@ -360,3 +360,27 @@ fn a_custom_mark_follows_attribute_is_cited() {
         "w:footnoteReference@customMarkFollows"
     ));
 }
+
+/// 020, 085: a tracked insertion of the paragraph mark (`w:pPr/w:rPr/w:ins`) is
+/// written back first in the mark's `w:rPr`, and reads back as the same change.
+#[test]
+fn a_paragraph_mark_revision_round_trips() {
+    let written = write_transitional_body(
+        "<w:p><w:pPr><w:rPr><w:ins w:id=\"5\" w:author=\"Ann\" w:date=\"2026-10-10T00:00:00Z\"/>\
+<w:b/></w:rPr></w:pPr><w:r><w:t>a</w:t></w:r></w:p>\
+<w:p><w:pPr><w:rPr><w:del w:id=\"6\" w:author=\"Bo\"/></w:rPr></w:pPr></w:p>",
+    );
+    let xml = document_xml(&written);
+    assert!(
+        xml.contains(
+            r#"<w:rPr><w:ins w:id="5" w:author="Ann" w:date="2026-10-10T00:00:00Z"/><w:b"#
+        ),
+        "{xml}"
+    );
+    assert!(
+        xml.contains(r#"<w:pPr><w:rPr><w:del w:id="6" w:author="Bo"/></w:rPr></w:pPr>"#),
+        "{xml}"
+    );
+    assert!(!written.report.contains("w:ins"), "{}", written.report);
+    assert_fixed_point(&written);
+}
