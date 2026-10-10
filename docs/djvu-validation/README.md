@@ -96,6 +96,7 @@ image codecs перечислены в [руководстве](../DJVU_IMPORT.m
 | `xtool/djvu-zone-oracle.py` | `examples/zones` | `djvutxt --detail=word` | SC-D5 |
 | `xtool/djvu-render-oracle.py` | `examples/codec_probe` | `ddjvu -format=ppm` | SC-D7 |
 | `xtool/djvu-ant-oracle.py` | — (инвентарь) | `djvused print-ant` | SC-D9 |
+| `xtool/djvu-outline-oracle.py` | `examples/outline` (NAVM) | `djvused print-outline` | SC-D9 L3 |
 
 Общий контракт: SHA256 входа, отпечаток оракула (хеш бинарника + версия
 пакета), JSON-свидетельство, `--resume`. `xtool/djvu-oracle-selftest.py`
@@ -104,9 +105,10 @@ image codecs перечислены в [руководстве](../DJVU_IMPORT.m
 манифесту и кладёт свидетельства в артефакт `djvu-oracle`.
 
 Фигуры из маски `Sjbz` сегментируются и описываются классификатором (SC-D9 O7).
-Оглавление `NAVM` уже читается и переносится в закладки
-(SC-D9 L3), а XMP (RDF) заполняет `docProps/core.xml`; но собственных
-oracle-драйверов (`djvused print-outline`, XMP) у них пока нет.
+Оглавление `NAVM` читается, переносится в закладки (SC-D9 L3) и сверяется с
+`djvused print-outline` драйвером `xtool/djvu-outline-oracle.py` на синтетической
+фикстуре; XMP (RDF) заполняет `docProps/core.xml`, но собственного oracle-драйвера
+у XMP пока нет.
 
 ## Первая проверка против DjVuLibre (2026-10-09)
 

@@ -106,6 +106,23 @@ print('(maparea "" (rect 0 20 10 10) (url "https://example.invalid/b"))')
 
 ANT_OURS = "print('1')"
 
+OUTLINE_ORACLE = """
+import sys
+print('(bookmarks')
+print(' ("Chapter" "#page=1"')
+print('  ("Section" "#page=2"))')
+print(' ("Appendix" "#page=3"))')
+"""
+
+# A different wrapper and spacing, same nodes: the driver compares the ordered
+# (title, url) pairs, not the writer's formatting.
+OUTLINE_PRODUCER = """
+import sys
+print('(outline ("Chapter" "#page=1" ("Section" "#page=2")) ("Appendix" "#page=3"))')
+"""
+
+OUTLINE_BAD = OUTLINE_ORACLE.replace('"#page=3"', '"#page=9"')
+
 
 def run(driver: str, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -139,6 +156,9 @@ def main() -> int:
         oracle_render_bad = make_mock(root, "ddjvu_bad", RENDER_BAD)
         oracle_ant = make_mock(root, "djvused", ANT_ORACLE)
         ours_ant = make_mock(root, "ant_ours", ANT_OURS)
+        ours_outline = make_mock(root, "outline_ours", OUTLINE_PRODUCER)
+        oracle_outline = make_mock(root, "djvused_outline", OUTLINE_ORACLE)
+        oracle_outline_bad = make_mock(root, "djvused_outline_bad", OUTLINE_BAD)
 
         # SC-D3: a match passes, a divergent tree fails.
         report = root / "dump.json"
@@ -174,6 +194,19 @@ def main() -> int:
         expect("ant gated mismatch", run(
             "djvu-ant-oracle.py", "--corpus", str(corpus), "--oracle", str(oracle_ant),
             "--ours", str(ours_ant), "--report", str(report)), 1)
+
+        # SC-D9 L3: the outline compares as ordered (title, url) pairs, whatever
+        # the wrapper; a changed target url fails.
+        expect("outline inventory", run(
+            "djvu-outline-oracle.py", "--corpus", str(corpus), "--oracle", str(oracle_outline),
+            "--report", str(report)), 0)
+        assert json.loads(report.read_text())["oracle_nodes_total"] == 3
+        expect("outline ok", run(
+            "djvu-outline-oracle.py", "--corpus", str(corpus), "--ours", str(ours_outline),
+            "--oracle", str(oracle_outline), "--report", str(report)), 0)
+        expect("outline mismatch", run(
+            "djvu-outline-oracle.py", "--corpus", str(corpus), "--ours", str(ours_outline),
+            "--oracle", str(oracle_outline_bad), "--report", str(report)), 1)
 
     print("selftest: all oracle drivers behaved as expected")
     return 0

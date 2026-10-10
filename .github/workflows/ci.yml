@@ -606,6 +606,7 @@ jobs:
         run: |
           cargo build --release --locked -p strict-ooxml-cli
           cargo build --release --locked -p strict-ooxml-djvu --example corpus --example zones
+          cargo build --release --locked -p strict-ooxml-djvu --example outline
           cargo build --release --locked -p strict-ooxml-djvu --features djvu-image --example codec_probe
           cargo build --release --locked -p strict-ooxml-convert --features djvu --example djvu_links
       - name: Driver self-test (no oracle needed)
@@ -665,6 +666,21 @@ jobs:
           python3 xtool/djvu-ant-oracle.py --corpus "$OUT/annotated" \
             --oracle /usr/bin/djvused --ours target/release/examples/djvu_links \
             --report "$OUT/ant-oracle.json"
+          # SC-D9/L3: the NAVM outline becomes flat page bookmarks. The corpus has
+          # no NAVM, so the fixture is synthesized with djvused set-outline.
+          OUTLINE=target/release/examples/outline
+          mkdir -p "$OUT/outline"
+          python3 xtool/djvu-outline-fixture.py --input "$SRC" \
+            --out "$OUT/outline/outline.djvu" --djvused /usr/bin/djvused
+          python3 xtool/djvu-outline-oracle.py --corpus "$OUT/outline" --ours "$OUTLINE" \
+            --oracle /usr/bin/djvused --report "$OUT/outline-oracle.json"
+          "$CLI" from-djvu "$OUT/outline/outline.djvu" --out "$OUT/outline/outline.docx"
+          python3 - <<'PY'
+          import zipfile
+          doc = zipfile.ZipFile("artifacts/djvu-oracle/outline/outline.docx").read("word/document.xml").decode()
+          assert "djvu-outline-" in doc, doc
+          print("outline: bookmarks ok")
+          PY
           # SC-D9/L4: document metadata becomes docProps/core.xml.
           python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
             --out "$OUT/metadata.djvu" --djvused /usr/bin/djvused \
