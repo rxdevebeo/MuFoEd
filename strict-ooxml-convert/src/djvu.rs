@@ -26,8 +26,15 @@ pub struct DjvuOptions {
     /// Provider for pages with no text chunk. Available only with native image decoding.
     #[cfg(feature = "djvu-image")]
     pub text_recovery: Option<std::sync::Arc<dyn strict_ooxml_ocr::TextRecovery>>,
+    /// Describes graphic regions (figures) for `wp:docPr`, opt-in as well.
+    #[cfg(feature = "djvu-image")]
+    pub figure_classifier: Option<std::sync::Arc<dyn strict_ooxml_ocr::FigureClassifier>>,
     /// Maximum bytes accepted from a caller-supplied recognition provider.
     pub max_recovered_text_bytes: usize,
+    /// The share of the page a figure must cover to be offered (O3/O7).
+    pub recovery_mixed_min_area_ratio: f64,
+    /// The most figures one page may yield.
+    pub recovery_max_regions: usize,
 }
 impl Default for DjvuOptions {
     fn default() -> Self {
@@ -37,7 +44,11 @@ impl Default for DjvuOptions {
             embed_images: true,
             #[cfg(feature = "djvu-image")]
             text_recovery: None,
+            #[cfg(feature = "djvu-image")]
+            figure_classifier: None,
             max_recovered_text_bytes: 1024 * 1024,
+            recovery_mixed_min_area_ratio: 0.25,
+            recovery_max_regions: 4,
         }
     }
 }
@@ -64,6 +75,20 @@ impl DjvuOptions {
         provider: std::sync::Arc<dyn strict_ooxml_ocr::TextRecovery>,
     ) -> Self {
         self.text_recovery = Some(provider);
+        self
+    }
+    /// Supply a figure classifier; a figure gets a `descr`, never guessed text.
+    #[cfg(feature = "djvu-image")]
+    pub fn figure_classifier(
+        mut self,
+        classifier: Option<std::sync::Arc<dyn strict_ooxml_ocr::FigureClassifier>>,
+    ) -> Self {
+        self.figure_classifier = classifier;
+        self
+    }
+    /// The share of a page a figure must cover, and the most figures per page.
+    pub fn recovery_mixed_area(mut self, min_area_ratio: f64) -> Self {
+        self.recovery_mixed_min_area_ratio = min_area_ratio;
         self
     }
 }
@@ -230,6 +255,22 @@ pub fn convert_djvu(
                                 "page {}: maparea covers no text zone and is not a hyperlink",
                                 page.number
                             ),
+                        );
+                    }
+                }
+                // SC-D9 O7: the ink the text zones do not cover is a figure.
+                #[cfg(feature = "djvu-image")]
+                if options.figure_classifier.is_some() || options.text_recovery.is_some() {
+                    let text = text_hotspots(root);
+                    for region in figure_regions(page, reader.limits, &text, options) {
+                        emit_figure(
+                            page,
+                            reader,
+                            options,
+                            &mut document,
+                            &mut report,
+                            &mut media,
+                            region,
                         );
                     }
                 }
@@ -447,6 +488,13 @@ fn scan(
         }
     };
     let png = raster.bytes;
+    // SC-D9 O7: with a classifier a graphic page is described, not transcribed;
+    // only a scan (or an unclassified page) goes on to OCR.
+    let described = if recover {
+        classify_page(page, options, &png, report)
+    } else {
+        None
+    };
     if options.embed_images {
         let part = strict_ooxml_core::part::PartId::new(format!(
             "/word/media/djvu-page-{}.png",
@@ -464,7 +512,14 @@ fn scan(
         if matches!(page.info.rotation, 90 | 270) {
             std::mem::swap(&mut w, &mut h);
         }
-        p.inlines = vec![picture(&part, w, h)];
+        p.inlines = vec![picture(
+            &part,
+            w,
+            h,
+            "DjVu page",
+            described.as_deref(),
+            described.as_deref(),
+        )];
         document.body.blocks.push(Block::Paragraph(p));
         media.push((part, png.clone()));
     } else {
@@ -473,6 +528,9 @@ fn scan(
             Severity::Lost,
             format!("page {} image embedding disabled", page.number),
         );
+    }
+    if described.is_some() {
+        return;
     }
     if !recover || !raster.has_ink {
         return;
@@ -533,7 +591,14 @@ fn scan(
     }
 }
 #[cfg(feature = "djvu-image")]
-fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
+fn picture(
+    part: &strict_ooxml_core::part::PartId,
+    w: f64,
+    h: f64,
+    name: &str,
+    descr: Option<&str>,
+    title: Option<&str>,
+) -> Inline {
     use std::sync::Arc;
     use strict_ooxml_wml::model::drawing::{
         BlipRef, DocPr, Drawing, DrawingKind, Extent, Graphic, InlineDrawing, Picture,
@@ -549,9 +614,9 @@ fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
             effect_extent: None,
             doc_pr: Some(DocPr {
                 id: None,
-                name: Some(Arc::from("DjVu page")),
-                descr: None,
-                title: None,
+                name: Some(Arc::from(name)),
+                descr: descr.map(Arc::from),
+                title: title.map(Arc::from),
             }),
             dist_top: None,
             dist_bottom: None,
@@ -559,8 +624,8 @@ fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
             dist_right: None,
             graphic_uri: None,
             graphic: Box::new(Graphic::Picture(Picture {
-                name: Some(Arc::from("DjVu page")),
-                descr: None,
+                name: Some(Arc::from(name)),
+                descr: descr.map(Arc::from),
                 nv_id: None,
                 bw_mode: None,
                 blip: Some(BlipRef {
@@ -799,4 +864,311 @@ fn font_height(zone: &TextZone) -> f64 {
         .get(heights.len() / 2)
         .copied()
         .unwrap_or(zone.rect.height)
+}
+
+/// The rectangles where a page's text actually sits: words, else lines, else
+/// paragraphs. Container zones are **not** used — a page or column zone covers
+/// the whole area and would mask every figure.
+#[cfg(feature = "djvu-image")]
+fn text_hotspots(root: &TextZone) -> Vec<Rect> {
+    for kind in [ZoneKind::Word, ZoneKind::Line, ZoneKind::Paragraph] {
+        let mut out = Vec::new();
+        collect_kind(root, kind, &mut out);
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    Vec::new()
+}
+
+#[cfg(feature = "djvu-image")]
+fn collect_kind(zone: &TextZone, kind: ZoneKind, out: &mut Vec<Rect>) {
+    if zone.kind == kind {
+        out.push(zone.rect);
+        return;
+    }
+    for child in &zone.children {
+        collect_kind(child, kind, out);
+    }
+}
+
+/// Whether a box's centre falls inside a text zone's rectangle.
+#[cfg(feature = "djvu-image")]
+fn centre_inside(candidate: Rect, zone: Rect) -> bool {
+    let cx = candidate.x + candidate.width / 2.0;
+    let cy = candidate.y + candidate.height / 2.0;
+    cx >= zone.x && cx <= zone.x + zone.width && cy >= zone.y && cy <= zone.y + zone.height
+}
+
+/// The figure regions of a page: ink outside every text zone, clustered, above
+/// the area floor, the largest first (SC-D9 O7).
+#[cfg(feature = "djvu-image")]
+fn figure_regions(
+    page: &DjvuPage,
+    limits: strict_ooxml_djvu::DjvuLimits,
+    text: &[Rect],
+    options: &DjvuOptions,
+) -> Vec<Rect> {
+    let Ok(boxes) = page.ink_boxes(limits) else {
+        return Vec::new();
+    };
+    let free: Vec<Rect> = boxes
+        .into_iter()
+        .filter(|candidate| !text.iter().any(|zone| centre_inside(*candidate, *zone)))
+        .collect();
+    let (pw, ph) = page.info.points();
+    let page_area = (pw * ph).max(1.0);
+    let mut figures: Vec<Rect> = cluster(free)
+        .into_iter()
+        .filter(|region| {
+            region.width * region.height / page_area >= options.recovery_mixed_min_area_ratio
+        })
+        .collect();
+    figures.sort_by(|left, right| {
+        (right.width * right.height)
+            .partial_cmp(&(left.width * left.height))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    figures.truncate(options.recovery_max_regions);
+    figures
+}
+
+/// Merges overlapping components into one figure; the iteration reaches a
+/// fixed point because a merge can only join boxes, never split them.
+#[cfg(feature = "djvu-image")]
+fn cluster(boxes: Vec<Rect>) -> Vec<Rect> {
+    let mut out: Vec<Rect> = Vec::new();
+    for candidate in boxes {
+        let mut merged = candidate;
+        while let Some(position) = out.iter().position(|existing| near(*existing, merged)) {
+            let existing = out.swap_remove(position);
+            merged = union(existing, merged);
+        }
+        out.push(merged);
+    }
+    out
+}
+
+/// Two boxes are near when their 4-point-padded rectangles intersect.
+#[cfg(feature = "djvu-image")]
+fn near(left: Rect, right: Rect) -> bool {
+    let gap = 4.0;
+    left.x < right.x + right.width + gap
+        && right.x < left.x + left.width + gap
+        && left.y < right.y + right.height + gap
+        && right.y < left.y + left.height + gap
+}
+
+#[cfg(feature = "djvu-image")]
+fn union(left: Rect, right: Rect) -> Rect {
+    let x = left.x.min(right.x);
+    let y = left.y.min(right.y);
+    Rect {
+        x,
+        y,
+        width: (left.x + left.width).max(right.x + right.width) - x,
+        height: (left.y + left.height).max(right.y + right.height) - y,
+    }
+}
+
+/// The description a classifier's answer carries after its kind line.
+#[cfg(feature = "djvu-image")]
+fn describe_text(answer: &str) -> String {
+    answer
+        .split_once('\n')
+        .map_or(answer.trim(), |(_, rest)| rest.trim())
+        .to_owned()
+}
+
+/// Describes a whole graphic page; `None` means it is a scan and OCR may run.
+#[cfg(feature = "djvu-image")]
+fn classify_page(
+    page: &DjvuPage,
+    options: &DjvuOptions,
+    png: &[u8],
+    report: &mut ConversionReport,
+) -> Option<String> {
+    let classifier = options.figure_classifier.as_ref()?;
+    let image = strict_ooxml_ocr::Image::png(png.to_vec());
+    match classifier.describe(&image, &format!("page {}", page.number)) {
+        Ok(answer) => {
+            let kind = strict_ooxml_ocr::FigureKind::parse(&answer.text);
+            if matches!(
+                kind,
+                strict_ooxml_ocr::FigureKind::Scan | strict_ooxml_ocr::FigureKind::Unknown
+            ) {
+                report.record(
+                    "djvu.figure",
+                    Severity::Inferred,
+                    format!(
+                        "page {}: classified as {kind}; treated as a scan",
+                        page.number
+                    ),
+                );
+                return None;
+            }
+            let description = describe_text(&answer.text);
+            report.record(
+                "djvu.figure",
+                Severity::Inferred,
+                format!(
+                    "page {}: {kind}, described as {description:?} (model {} {})",
+                    page.number, answer.model, answer.version
+                ),
+            );
+            Some(description)
+        }
+        Err(error) => {
+            report.record(
+                "djvu.figure",
+                Severity::Lost,
+                format!(
+                    "page {}: a page could not be classified ({error})",
+                    page.number
+                ),
+            );
+            None
+        }
+    }
+}
+
+/// A classified figure becomes a picture carrying the model's description.
+#[cfg(feature = "djvu-image")]
+#[allow(clippy::too_many_arguments)]
+fn emit_figure(
+    page: &DjvuPage,
+    reader: &DjvuDocument,
+    options: &DjvuOptions,
+    document: &mut strict_ooxml_wml::model::Document,
+    report: &mut ConversionReport,
+    media: &mut Vec<(strict_ooxml_core::part::PartId, Vec<u8>)>,
+    region: Rect,
+) {
+    let png = match page.region_png(reader.limits, region) {
+        Ok(png) => png,
+        Err(error) => {
+            report.record(
+                "djvu.figure",
+                Severity::Lost,
+                format!(
+                    "page {}: a figure could not be rendered ({error})",
+                    page.number
+                ),
+            );
+            return;
+        }
+    };
+    let Some(classifier) = options.figure_classifier.as_ref() else {
+        // Only a text provider is configured: the region's text is worth a call (O3).
+        recover_region(page, options, document, report, &png, region);
+        return;
+    };
+    let image = strict_ooxml_ocr::Image::png(png.clone());
+    match classifier.describe(&image, &format!("page {}", page.number)) {
+        Ok(answer) => {
+            let kind = strict_ooxml_ocr::FigureKind::parse(&answer.text);
+            if kind == strict_ooxml_ocr::FigureKind::Scan && options.text_recovery.is_some() {
+                // A scan of text: transcribe it, do not describe it.
+                recover_region(page, options, document, report, &png, region);
+                return;
+            }
+            let description = describe_text(&answer.text);
+            let part = strict_ooxml_core::part::PartId::new(format!(
+                "/word/media/djvu-figure-{}-{}.png",
+                page.number,
+                media.len() + 1
+            ));
+            document
+                .media
+                .insert(strict_ooxml_wml::model::drawing::MediaItem {
+                    part: part.clone(),
+                    content_type: None,
+                    kind: strict_ooxml_wml::model::drawing::MediaKind::Png,
+                });
+            let mut p = paragraph("");
+            p.inlines = vec![picture(
+                &part,
+                region.width,
+                region.height,
+                "DjVu figure",
+                Some(&description),
+                Some(kind.as_str()),
+            )];
+            document.body.blocks.push(Block::Paragraph(p));
+            media.push((part, png));
+            let (pw, ph) = page.info.points();
+            let share = 100.0 * region.width * region.height / (pw * ph).max(1.0);
+            report.record(
+                "djvu.figure",
+                Severity::Inferred,
+                format!(
+                    "page {}: {kind} covering {share:.0}% of the page, described as {description:?} \
+                     (model {} {})",
+                    page.number, answer.model, answer.version
+                ),
+            );
+        }
+        Err(error) => report.record(
+            "djvu.figure",
+            Severity::Lost,
+            format!(
+                "page {}: a figure could not be classified ({error})",
+                page.number
+            ),
+        ),
+    }
+}
+
+/// Recovers the text inside one region, with the region's own indent (SC-D9 O3).
+#[cfg(feature = "djvu-image")]
+fn recover_region(
+    page: &DjvuPage,
+    options: &DjvuOptions,
+    document: &mut strict_ooxml_wml::model::Document,
+    report: &mut ConversionReport,
+    png: &[u8],
+    region: Rect,
+) {
+    let Some(provider) = &options.text_recovery else {
+        return;
+    };
+    let image = strict_ooxml_ocr::Image::png(png.to_vec());
+    match provider.recover_region(&image) {
+        Ok(Some(answer))
+            if !answer.text.trim().is_empty()
+                && answer.text.len() <= options.max_recovered_text_bytes =>
+        {
+            let paragraphs = crate::recover::policy::paragraphs_of(&answer.text, region.x);
+            crate::recover::policy::declare_style(document);
+            report.recovered_pages += 1;
+            report.recovered_paragraphs += paragraphs.len();
+            report.record(
+                "djvu.ocr.region",
+                Severity::Recovered,
+                format!(
+                    "page {}: region text from {} {}; no geometry beyond the indent",
+                    page.number, answer.model, answer.version
+                ),
+            );
+            document
+                .body
+                .blocks
+                .extend(paragraphs.into_iter().map(Block::Paragraph));
+        }
+        Ok(Some(_)) => report.record(
+            "djvu.ocr.region",
+            Severity::Lost,
+            format!("page {}: empty or oversized region answer", page.number),
+        ),
+        Ok(None) => report.record(
+            "djvu.ocr.region",
+            Severity::Lost,
+            format!("page {}: the region has no text", page.number),
+        ),
+        Err(error) => report.record(
+            "djvu.ocr.region",
+            Severity::Lost,
+            format!("page {}: {error}", page.number),
+        ),
+    }
 }

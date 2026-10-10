@@ -205,7 +205,9 @@ fn execute(args: &[String], dump: bool) -> Result<bool, String> {
         if let Some(endpoint) = args.endpoint {
             config.endpoint = endpoint;
         }
-        options.text_recovery = Some(std::sync::Arc::new(strict_ooxml::OllamaVision::new(config)));
+        let vision = std::sync::Arc::new(strict_ooxml::OllamaVision::new(config));
+        options.text_recovery = Some(vision.clone());
+        options.figure_classifier = Some(vision);
     }
     let converted = strict_ooxml::convert_djvu(&mut reader, &options).map_err(|e| e.to_string())?;
     let mut bag = strict_ooxml::MediaBag::new();

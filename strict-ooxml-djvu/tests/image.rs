@@ -3,7 +3,7 @@
 #![cfg(feature = "djvu-image")]
 mod common;
 use common::*;
-use strict_ooxml_djvu::{DjvuDocument, DjvuLimits};
+use strict_ooxml_djvu::{DjvuDocument, DjvuLimits, Rect};
 fn decoded(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
     let doc = DjvuDocument::open(bytes, DjvuLimits::default()).expect("fixture");
     let png = doc.pages()[0].image_png(doc.limits).expect("PNG");
@@ -216,4 +216,93 @@ fn mmr_horizontal_and_vertical_modes_preserve_black_runs() {
             );
         }
     }
+}
+
+/// The black rectangle of `scan()` is x 10..40, y 10..15 at 72 dpi.
+#[test]
+fn ink_boxes_are_the_component_bounding_boxes() {
+    let doc = DjvuDocument::open(&scan(), DjvuLimits::default()).expect("fixture");
+    let boxes = doc.pages()[0].ink_boxes(doc.limits).expect("boxes");
+    assert_eq!(
+        boxes,
+        [Rect {
+            x: 10.0,
+            y: 10.0,
+            width: 30.0,
+            height: 5.0
+        }]
+    );
+}
+
+#[test]
+fn disjoint_components_are_separate_boxes() {
+    let mut mask = djvu_bitmap::Bitmap::new(100, 100);
+    for y in 5..10 {
+        for x in 5..10 {
+            mask.set_black(x, y);
+        }
+    }
+    for y in 50..55 {
+        for x in 50..60 {
+            mask.set_black(x, y);
+        }
+    }
+    let bytes = single(&[
+        chunk(b"INFO", &info(100, 100, 72)),
+        chunk(b"Sjbz", &djvu_jb2::encode::encode_jb2_lossless(&mask)),
+    ]);
+    let doc = DjvuDocument::open(&bytes, DjvuLimits::default()).expect("fixture");
+    let boxes = doc.pages()[0].ink_boxes(doc.limits).expect("boxes");
+    assert_eq!(boxes.len(), 2, "{boxes:?}");
+    assert_eq!(boxes[0].width, 5.0);
+    assert_eq!(boxes[1].width, 10.0);
+}
+
+#[test]
+fn a_page_without_a_mask_has_no_ink_boxes() {
+    let bytes = single(&[
+        chunk(b"INFO", &info(100, 100, 72)),
+        chunk(b"TXTa", &text("only text")),
+    ]);
+    let doc = DjvuDocument::open(&bytes, DjvuLimits::default()).expect("fixture");
+    assert!(doc.pages()[0].ink_boxes(doc.limits).unwrap().is_empty());
+}
+
+#[test]
+fn region_png_crops_the_composite() {
+    let doc = DjvuDocument::open(&scan(), DjvuLimits::default()).expect("fixture");
+    let png = doc.pages()[0]
+        .region_png(
+            doc.limits,
+            Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 30.0,
+                height: 5.0,
+            },
+        )
+        .expect("crop");
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(png))
+        .read_info()
+        .expect("PNG decoder");
+    let mut data = vec![0; decoder.output_buffer_size().expect("size")];
+    let info = decoder.next_frame(&mut data).expect("frame");
+    assert_eq!((info.width, info.height), (30, 5));
+    assert!(
+        data.iter().all(|&sample| sample == 0),
+        "the crop is the black rectangle"
+    );
+    // An empty region is refused, not a zero-size image.
+    let doc = DjvuDocument::open(&scan(), DjvuLimits::default()).expect("fixture");
+    assert!(doc.pages()[0]
+        .region_png(
+            doc.limits,
+            Rect {
+                x: 500.0,
+                y: 500.0,
+                width: 1.0,
+                height: 1.0
+            }
+        )
+        .is_err());
 }

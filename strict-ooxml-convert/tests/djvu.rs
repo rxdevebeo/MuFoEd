@@ -233,6 +233,86 @@ mod recognition {
             .iter()
             .any(|l| l.id == "convert.invalid-xml-char"));
     }
+
+    struct Scripted {
+        answer: String,
+        calls: AtomicUsize,
+    }
+    impl strict_ooxml_ocr::FigureClassifier for Scripted {
+        fn model_name(&self) -> &'static str {
+            "scripted"
+        }
+        fn describe(&self, _image: &Image, _context: &str) -> Result<Recovered, VisionError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Recovered {
+                text: self.answer.clone(),
+                model: "scripted".into(),
+                version: "v1".into(),
+                confidence: None,
+            })
+        }
+    }
+    fn classifier(answer: &str) -> Arc<Scripted> {
+        Arc::new(Scripted {
+            answer: answer.to_owned(),
+            calls: AtomicUsize::new(0),
+        })
+    }
+    /// A page with a text line near the top and an ink box at the bottom that no
+    /// text zone covers.
+    fn text_and_figure() -> Vec<u8> {
+        let mut mask = djvu_bitmap::Bitmap::new(100, 100);
+        for y in 55..95 {
+            for x in 15..95 {
+                mask.set_black(x, y);
+            }
+        }
+        single(&[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("caption")),
+            chunk(b"Sjbz", &djvu_jb2::encode::encode_jb2_lossless(&mask)),
+        ])
+    }
+    #[test]
+    fn a_mask_figure_is_classified_and_described() {
+        let model = classifier("diagram\nA schematic of the flow.");
+        let c = convert(
+            &text_and_figure(),
+            &DjvuOptions::default().figure_classifier(Some(model.clone())),
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+        let xml = xml(&c);
+        assert!(xml.contains("descr=\"A schematic of the flow.\""), "{xml}");
+        assert!(xml.contains("title=\"diagram\""), "{xml}");
+        assert_eq!(c.media.len(), 1, "the crop is one media part");
+        assert!(c.report.losses().iter().any(|l| l.id == "djvu.figure"));
+    }
+    #[test]
+    fn without_a_classifier_no_figure_is_invented() {
+        let c = convert(&text_and_figure(), &DjvuOptions::default());
+        let xml = xml(&c);
+        assert!(!xml.contains("w:drawing"), "{xml}");
+        assert!(!c.report.losses().iter().any(|l| l.id == "djvu.figure"));
+    }
+    #[test]
+    fn a_graphic_scan_is_described_not_transcribed() {
+        let model = classifier("photograph\nA portrait of a woman.");
+        let ocr = success();
+        let c = convert(
+            &scan(),
+            &DjvuOptions::default()
+                .figure_classifier(Some(model.clone()))
+                .text_recovery(ocr.clone()),
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            ocr.calls.load(Ordering::SeqCst),
+            0,
+            "a figure is described, not transcribed"
+        );
+        let xml = xml(&c);
+        assert!(xml.contains("descr=\"A portrait of a woman.\""), "{xml}");
+    }
 }
 
 #[cfg(feature = "djvu-image")]
