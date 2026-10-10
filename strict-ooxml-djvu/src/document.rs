@@ -1,6 +1,7 @@
 //! Directory and include resolution. No filesystem or network access is implicit.
 use crate::{
-    bounded, container, decompress, invalid, nav, text, Chunk, DjvuError, DjvuLimits, TextLayer,
+    bounded, container, decompress, invalid, nav, text, xmp, Chunk, DjvuError, DjvuLimits,
+    TextLayer,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -325,6 +326,19 @@ impl DjvuDocument {
                 chunks,
                 warnings: page_warnings,
             });
+        }
+        // SC-D9 L4: an XMP packet fills the core properties a native
+        // `(metadata …)` block did not state. Native keys win; XMP is the fallback.
+        if let Some(packet) = metadata.xmp.clone() {
+            for (key, value) in xmp::entries(&packet) {
+                if !metadata
+                    .entries
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case(&key))
+                {
+                    metadata.entries.push((key, value));
+                }
+            }
         }
         Ok(Self {
             roots,

@@ -18,6 +18,7 @@ mod image;
 pub use image::PageImage;
 mod nav;
 mod text;
+mod xmp;
 pub use annotations::{Annotation, AnnotationTarget, DjvuMetadata};
 pub use container::Chunk;
 pub use document::{DjvuDocument, DjvuPage, PageInfo};

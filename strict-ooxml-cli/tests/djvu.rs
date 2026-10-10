@@ -81,3 +81,50 @@ fn offline_build_reports_unsupported_ocr() {
     assert_eq!(result.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&result.stderr).contains("build with --features ocr-ollama"));
 }
+
+#[test]
+fn cli_writes_xmp_properties_to_core_xml() {
+    let dir = dir();
+    let input = dir.join("input.djvu");
+    let output = dir.join("output.docx");
+    let page = common::single(&[
+        common::chunk(b"INFO", &common::info(100, 100, 72)),
+        common::chunk(b"TXTa", &common::text("body")),
+        common::ant(
+            "(xmp \"<rdf:RDF xmlns:rdf='x'><dc:title>From XMP</dc:title>\
+             <dc:creator>Ada Lovelace</dc:creator></rdf:RDF>\")",
+        ),
+    ]);
+    std::fs::write(&input, page).expect("fixture");
+    let result = Command::new(env!("CARGO_BIN_EXE_strict-ooxml"))
+        .arg("from-djvu")
+        .arg(&input)
+        .arg("--out")
+        .arg(&output)
+        .output()
+        .expect("CLI");
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let bytes = std::fs::read(&output).expect("output");
+    let package = strict_ooxml_core::opc::Package::open_reader(
+        bytes.as_slice(),
+        &strict_ooxml_core::opc::OpenOptions::default(),
+    )
+    .expect("Strict package");
+    let core = String::from_utf8(
+        package
+            .read_part(&strict_ooxml_core::part::PartId::new("/docProps/core.xml"))
+            .expect("core.xml"),
+    )
+    .expect("UTF-8");
+    assert!(core.contains("<dc:title>From XMP</dc:title>"), "{core}");
+    assert!(
+        core.contains("<dc:creator>Ada Lovelace</dc:creator>"),
+        "{core}"
+    );
+    std::fs::remove_dir_all(dir).expect("cleanup test-owned directory");
+}

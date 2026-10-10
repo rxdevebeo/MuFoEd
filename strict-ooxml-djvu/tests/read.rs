@@ -346,3 +346,18 @@ fn a_broken_navm_is_a_warning_not_an_error() {
         doc.warnings
     );
 }
+
+#[test]
+fn xmp_fills_properties_the_metadata_block_omits() {
+    let page = single(&[
+        chunk(b"INFO", &info(100, 100, 72)),
+        chunk(b"TXTa", &text("body")),
+        ant("(metadata (Title \"Native\")) \
+             (xmp \"<rdf:RDF xmlns:rdf='x'><dc:title>From XMP</dc:title>\
+             <dc:creator>Ada Lovelace</dc:creator></rdf:RDF>\")"),
+    ]);
+    let doc = open(&page);
+    // The native `(metadata …)` key wins; XMP is the fallback.
+    assert_eq!(doc.metadata.get("Title"), Some("Native"));
+    assert_eq!(doc.metadata.get("Author"), Some("Ada Lovelace"));
+}
