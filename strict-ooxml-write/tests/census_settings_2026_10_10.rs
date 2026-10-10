@@ -7,7 +7,8 @@
 //! * `w:activeWritingStyle`, `w:stylePaneSortMethod`, `w:smartTagType` and the
 //!   two `w:drawingGrid*Origin` children are `CT_Settings` members Strict
 //!   declares, and were dropped as foreign;
-//! * `w:numPicBullet` / `w:lvlPicBulletId` were skipped silently;
+//! * `w:numPicBullet` / `w:lvlPicBulletId` were skipped silently (they are now
+//!   carried; see `picture_bullets_2026_10_10.rs`);
 //! * one `a:blipFill` with `r:embed` in a theme's background fills threw the
 //!   whole `a:fmtScheme` away for the placeholder.
 #![allow(clippy::doc_markdown, clippy::format_push_string)]
@@ -23,8 +24,6 @@ use strict_ooxml_write::{write_package, WriteOptions};
 
 const SETTINGS_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml";
-const NUMBERING_TYPE: &str =
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
 const THEME_TYPE: &str = "application/vnd.openxmlformats-officedocument.theme+xml";
 
 /// Opens `bytes` through the Transitional normalizer, as `write --transitional` does.
@@ -193,94 +192,6 @@ w:dllVersion=\"0\" w:nlCheck=\"1\" w:checkStyle=\"0\"/>\
         settings,
         "not a fixed point"
     );
-}
-
-const PICTURE_BULLET_LEVEL: &str = "<w:abstractNum w:abstractNumId=\"0\">\
-<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"bullet\"/>\
-<w:lvlText w:val=\"\u{f0b7}\"/><w:lvlPicBulletId w:val=\"0\"/><w:lvlJc w:val=\"left\"/>\
-</w:lvl></w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>";
-
-fn numbering_package(builder: DocxBuilder, numbering: &str) -> Vec<u8> {
-    builder
-        .body(
-            "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr>\
-<w:r><w:t>item</w:t></w:r></w:p>",
-        )
-        .part_xml("word/numbering.xml", "w:numbering", numbering)
-        .rel("rIdNumbering", "numbering", "numbering.xml")
-        .content_type("/word/numbering.xml", NUMBERING_TYPE)
-        .build()
-}
-
-fn assert_picture_bullet_named(document: &Document, numbering: &str) {
-    let bullet = document
-        .support
-        .get("w:numPicBullet")
-        .expect("w:numPicBullet is named");
-    assert_eq!(bullet.status, SupportStatus::Unsupported);
-    let message = bullet.message.as_deref().unwrap_or_default();
-    for token in [
-        "v:shapetype",
-        "v:f",
-        "v:path",
-        "o:lock",
-        "v:shape",
-        "w:drawing",
-    ] {
-        assert!(message.contains(token), "{token} missing from {message}");
-    }
-    let reference = document
-        .support
-        .get("w:lvlPicBulletId")
-        .expect("w:lvlPicBulletId is named");
-    assert_eq!(reference.status, SupportStatus::Unsupported);
-    // Dropped together: no definition and no dangling reference.
-    assert!(!numbering.contains("numPicBullet"), "{numbering}");
-    assert!(!numbering.contains("lvlPicBulletId"), "{numbering}");
-    // The level keeps its text bullet.
-    assert!(numbering.contains("<w:lvlText "), "{numbering}");
-    assert!(
-        numbering.contains(r#"<w:numFmt w:val="bullet"/>"#),
-        "{numbering}"
-    );
-}
-
-/// 009_stratigrafi: a Strict picture bullet (`w:drawing`) is named, not skipped.
-#[test]
-fn census_numbering_strict_picture_bullet_is_named() {
-    let numbering = format!(
-        "<w:numPicBullet w:numPicBulletId=\"0\"><w:drawing><wp:inline>\
-<wp:extent cx=\"100\" cy=\"100\"/><wp:docPr id=\"1\" name=\"b\"/><a:graphic>\
-<a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\"><pic:pic>\
-<pic:nvPicPr><pic:cNvPr id=\"0\" name=\"b\"/><pic:cNvPicPr/></pic:nvPicPr>\
-<pic:blipFill><a:blip r:embed=\"rId1\"/></pic:blipFill><pic:spPr/></pic:pic>\
-</a:graphicData></a:graphic></wp:inline></w:drawing></w:numPicBullet>{PICTURE_BULLET_LEVEL}"
-    );
-    let bytes = numbering_package(DocxBuilder::strict(), &numbering);
-    let (document, written) = round_trip(&open_strict(&bytes));
-    let numbering = part_text(&written, "/word/numbering.xml");
-    assert_picture_bullet_named(&document, &numbering);
-}
-
-/// 009_stratigrafi as Word wrote it: a VML `w:pict` inside `w:numPicBullet`.
-#[test]
-fn census_numbering_vml_picture_bullet_is_named() {
-    let numbering = format!(
-        "<w:numPicBullet w:numPicBulletId=\"0\" \
-xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">\
-<w:pict><v:shapetype id=\"_x0000_t75\" coordsize=\"21600,21600\" o:spt=\"75\" \
-o:preferrelative=\"t\" path=\"m@4@5l@4@11@9@11@9@5xe\" filled=\"f\" stroked=\"f\">\
-<v:stroke joinstyle=\"miter\"/><v:formulas><v:f eqn=\"if lineDrawn pixelLineWidth 0\"/>\
-<v:f eqn=\"sum @0 1 0\"/></v:formulas><v:path o:extrusionok=\"f\" gradientshapeok=\"t\" \
-o:connecttype=\"rect\"/><o:lock v:ext=\"edit\" aspectratio=\"t\"/></v:shapetype>\
-<v:shape id=\"_x0000_i1039\" type=\"#_x0000_t75\" style=\"width:10.9pt;height:10.9pt\" \
-o:bullet=\"t\"><v:imagedata r:id=\"rId1\" o:title=\"bullet\"/></v:shape></w:pict>\
-</w:numPicBullet>{PICTURE_BULLET_LEVEL}"
-    );
-    let bytes = numbering_package(DocxBuilder::transitional(), &numbering);
-    let (document, written) = round_trip(&open_transitional(&bytes));
-    let numbering = part_text(&written, "/word/numbering.xml");
-    assert_picture_bullet_named(&document, &numbering);
 }
 
 /// The theme of 090_Gritos, cut down: the background fills end with a texture

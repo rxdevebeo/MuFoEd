@@ -129,7 +129,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         &mut media,
     )?;
 
-    let (styles, numbering, settings, font_table, aux_support) = parse_auxiliary(
+    let (styles, numbering, settings, font_table, aux_support, numbering_media) = parse_auxiliary(
         package,
         styles_part.as_ref(),
         numbering_part.as_ref(),
@@ -138,6 +138,8 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         options,
     )?;
     support.merge(aux_support);
+    // Picture bullets: their images are `numbering.xml`'s relationships.
+    merge_media(&mut media, &numbering_media);
 
     // `w:gutterAtTop` in a `w:sectPr`, which is where Transitional puts it and
     // where Strict has no slot for it. An OR, not an overwrite: it is a
@@ -215,17 +217,29 @@ fn parse_aux_styles(
     Ok((Some(table), support))
 }
 
-#[allow(clippy::redundant_closure_for_method_calls)]
+/// Parses `numbering.xml`, returning the media its picture bullets reference.
+///
+/// A `w:numPicBullet` picture resolves its image against `numbering.xml`'s own
+/// relationships, so the image is discovered here and merged into the
+/// document's index by [`parse_document`], as a header's pictures are.
 fn parse_aux_numbering(
     package: &Package,
     part: Option<&PartId>,
     options: &ParseOptions,
-) -> Result<(Option<NumberingTable>, SupportModel)> {
+) -> Result<(Option<NumberingTable>, SupportModel, MediaIndex)> {
     let Some(part) = part else {
-        return Ok((None, SupportModel::new()));
+        return Ok((None, SupportModel::new(), MediaIndex::new()));
     };
-    let (table, support) = parse_part_with(package, part, options, |p| p.parse_numbering_root())?;
-    Ok((Some(table), support))
+    let mut parser = PartParser::new(
+        package,
+        part.clone(),
+        package.read_part(part)?,
+        &options.limits,
+    )?;
+    let table = parser.parse_numbering_root()?;
+    let support = std::mem::take(&mut parser.support);
+    let media = std::mem::take(&mut parser.media);
+    Ok((Some(table), support, media))
 }
 
 #[allow(clippy::redundant_closure_for_method_calls)]
@@ -241,13 +255,15 @@ fn parse_aux_settings(
     Ok((Some(settings), support))
 }
 
-/// The optional auxiliary parts and their merged support model.
+/// The optional auxiliary parts, their merged support model, and the media the
+/// numbering part's picture bullets reference.
 type AuxiliaryParts = (
     Option<StyleTable>,
     Option<NumberingTable>,
     Option<Settings>,
     Option<FontTable>,
     SupportModel,
+    MediaIndex,
 );
 
 /// Parses the independent `styles`/`numbering`/`settings`/`fontTable` parts.
@@ -278,26 +294,27 @@ fn parse_auxiliary(
             },
         );
         let (styles, styles_support) = styles_result?;
-        let (numbering, numbering_support) = numbering_result?;
+        let (numbering, numbering_support, numbering_media) = numbering_result?;
         let (settings, settings_support) = parse_aux_settings(package, settings_part, options)?;
         let (fonts, fonts_support) = parse_aux_font_table(package, font_table_part, options)?;
         let mut support = styles_support;
         support.merge(numbering_support);
         support.merge(settings_support);
         support.merge(fonts_support);
-        Ok((styles, numbering, settings, fonts, support))
+        Ok((styles, numbering, settings, fonts, support, numbering_media))
     }
     #[cfg(not(feature = "parallel"))]
     {
         let (styles, styles_support) = parse_aux_styles(package, styles_part, options)?;
-        let (numbering, numbering_support) = parse_aux_numbering(package, numbering_part, options)?;
+        let (numbering, numbering_support, numbering_media) =
+            parse_aux_numbering(package, numbering_part, options)?;
         let (settings, settings_support) = parse_aux_settings(package, settings_part, options)?;
         let (fonts, fonts_support) = parse_aux_font_table(package, font_table_part, options)?;
         let mut support = styles_support;
         support.merge(numbering_support);
         support.merge(settings_support);
         support.merge(fonts_support);
-        Ok((styles, numbering, settings, fonts, support))
+        Ok((styles, numbering, settings, fonts, support, numbering_media))
     }
 }
 

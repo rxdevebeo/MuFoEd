@@ -6,10 +6,13 @@
 //! that had no `numbering.xml` does not acquire one — that is what keeps a
 //! round trip from growing parts it did not have (SC-3).
 
+use std::collections::BTreeSet;
+
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::{Block, Paragraph};
 use strict_ooxml_wml::model::document::HeaderFooter;
+use strict_ooxml_wml::model::drawing::{Drawing, DrawingKind, Graphic};
 use strict_ooxml_wml::model::ids::Ilvl;
 use strict_ooxml_wml::model::inline::{Inline, Run, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
@@ -231,9 +234,15 @@ pub fn numbering_part(
     table: &NumberingTable,
 ) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
-    xml.start_root("w:numbering", &WML_NAMESPACES);
+    // A picture bullet is a `w:drawing`, so the part may need `wp`/`a`/`pic`;
+    // `start_root` declares only the prefixes the part actually used.
+    let mut namespaces = content_and_vendor_namespaces();
+    namespaces.push(("m", NS_M));
+    xml.start_root("w:numbering", &namespaces);
+    // `CT_Numbering`: `numPicBullet*`, `abstractNum*`, `num*`.
+    let bullets = pic_bullets(ctx, &mut xml, table);
     for abstract_num in table.abstracts() {
-        abstract_num_element(ctx, &mut xml, abstract_num);
+        abstract_num_element(ctx, &mut xml, abstract_num, &bullets);
     }
     for num in table.nums() {
         xml.start("w:num");
@@ -246,7 +255,7 @@ pub fn numbering_part(
                 xml.empty_attr_w("w:startOverride", "val", start);
             }
             if let Some(level) = &over.level {
-                level_element(ctx, &mut xml, level);
+                level_element(ctx, &mut xml, level, &bullets);
             }
             xml.end();
         }
@@ -256,7 +265,58 @@ pub fn numbering_part(
     ctx.finish_xml(xml)
 }
 
-fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &AbstractNum) {
+/// Writes the `w:numPicBullet` definitions and returns the ids written.
+///
+/// `CT_NumPicBullet` requires its picture, so a bullet whose drawing the
+/// writer cannot reproduce is not written at all (and is reported) rather
+/// than written empty; a `w:lvlPicBulletId` naming it is then left out too.
+fn pic_bullets(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &NumberingTable) -> BTreeSet<u32> {
+    let mut written = BTreeSet::new();
+    for bullet in table.pic_bullets() {
+        if !pic_bullet_writable(&bullet.drawing) {
+            ctx.report_unsupported(
+                "w:numPicBullet",
+                &format!(
+                    "picture bullet {} holds no picture the writer can reproduce, so it is not \
+                     written and levels that reference it keep their w:lvlText bullet",
+                    bullet.id
+                ),
+                &bullet.location,
+            );
+            continue;
+        }
+        xml.start("w:numPicBullet");
+        xml.attr_w("numPicBulletId", bullet.id);
+        crate::drawing::drawing_element(ctx, xml, &bullet.drawing);
+        xml.end();
+        written.insert(bullet.id);
+    }
+    written
+}
+
+/// Whether [`crate::drawing::drawing_element`] writes `drawing` out.
+///
+/// A chart or a diagram needs a pass-through part `numbering.xml` does not
+/// bind, and an opaque drawing is not written at all; either would leave
+/// `w:numPicBullet` without the child the schema requires.
+fn pic_bullet_writable(drawing: &Drawing) -> bool {
+    let graphic = match &drawing.kind {
+        DrawingKind::Inline(inline) => inline.graphic.as_ref(),
+        DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
+        DrawingKind::Opaque(_) => return false,
+    };
+    matches!(
+        graphic,
+        Graphic::Picture(_) | Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_)
+    )
+}
+
+fn abstract_num_element(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    abstract_num: &AbstractNum,
+    bullets: &BTreeSet<u32>,
+) {
     xml.start("w:abstractNum");
     xml.attr_w("abstractNumId", abstract_num.id.0);
     if let Some(kind) = &abstract_num.multi_level_type {
@@ -273,7 +333,7 @@ fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &A
         xml.empty_attr_w("w:styleLink", "val", link.as_str());
     }
     for level in &abstract_num.levels {
-        level_element(ctx, xml, level);
+        level_element(ctx, xml, level, bullets);
     }
     xml.end();
 }
@@ -301,7 +361,7 @@ fn ilvl_attr(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, ilvl: &Ilvl, at: &str) {
     }
 }
 
-fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
+fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level, bullets: &BTreeSet<u32>) {
     // `CT_Lvl` order is [`crate::order::LVL`]: start, numFmt, lvlRestart,
     // pStyle, isLgl, suff, lvlText, lvlPicBulletId, lvlJc, pPr, rPr.
     xml.start("w:lvl");
@@ -341,6 +401,23 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     }
     if let Some(text) = &level.text {
         xml.empty_attr_w("w:lvlText", "val", text.as_ref());
+    }
+    if let Some(id) = level.pic_bullet_id {
+        if bullets.contains(&id) {
+            xml.empty_attr_w("w:lvlPicBulletId", "val", id);
+        } else {
+            // A reference to a definition the part does not carry would dangle.
+            ctx.report_unsupported(
+                "w:lvlPicBulletId",
+                &format!(
+                    "level {} refers to picture bullet {id}, which this numbering part does \
+                     not carry; the reference is not written and the level keeps its \
+                     w:lvlText bullet",
+                    level.ilvl.0
+                ),
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+        }
     }
     if let Some(justification) = &level.justification {
         xml.empty_attr_w("w:lvlJc", "val", justification.as_str());

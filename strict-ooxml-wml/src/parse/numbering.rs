@@ -4,7 +4,9 @@ use strict_ooxml_core::error::Result;
 use strict_ooxml_core::xml::{Attr, XmlEvent};
 
 use crate::model::ids::{AbstractNumId, NumId, StyleId};
-use crate::model::numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
+use crate::model::numbering::{
+    AbstractNum, Level, LevelOverride, Num, NumberingTable, PictureBullet,
+};
 use crate::model::support::SupportStatus;
 use crate::model::values::Justification;
 
@@ -12,18 +14,16 @@ use super::{attr_in_ns, is_wml, parse_u32, val_attr, wml_attr, PartParser};
 
 const WORDML_2012_NS: &str = "http://schemas.microsoft.com/office/word/2012/wordml";
 
-/// The report text for a dropped `w:numPicBullet`.
+/// The report text for a `w:numPicBullet` whose picture is still VML.
 ///
-/// Strict declares the element, but the model has no picture-bullet slot and the
-/// writer gives `numbering.xml` no image relationship, so the definition and its
-/// picture are not written. The picture arrives either as a `w:drawing` or as the
-/// VML `w:pict` a Transitional producer wrote (the normalizer converts the
-/// latter); the VML vocabulary is named because that is what leaves the part.
-const PICTURE_BULLET_LOSS: &str = "picture bullet is not carried: the model has no \
-     picture-bullet slot and numbering.xml gets no image relationship, so its picture \
-     (w:drawing, or the VML w:pict it came from: v:shapetype with v:stroke, v:formulas/v:f, \
-     v:path and o:lock; v:shape with v:imagedata) is dropped and levels that reference it \
-     through w:lvlPicBulletId keep their w:lvlText bullet";
+/// Strict `w:pict` carries no VML. Under `VmlFallback::Convert` the normalizer
+/// turns the bullet's `w:pict` into a `w:drawing` (T7) before this parser sees
+/// it; a `w:pict` that is still here is one nothing converted, and its VML
+/// vocabulary is named because that is what leaves the part.
+const VML_PICTURE_BULLET_LOSS: &str = "picture bullet is VML that was not converted to \
+     DrawingML, so its picture (w:pict: v:shapetype with v:stroke, v:formulas/v:f, v:path \
+     and o:lock; v:shape with v:imagedata) is dropped and levels that reference it through \
+     w:lvlPicBulletId keep their w:lvlText bullet";
 
 impl PartParser<'_> {
     /// Parses a `numbering.xml` part.
@@ -79,13 +79,20 @@ impl PartParser<'_> {
                                 }
                             }
                             "numPicBullet" => {
-                                parser.record(
-                                    "w:numPicBullet",
-                                    SupportStatus::Unsupported,
-                                    Some(PICTURE_BULLET_LOSS.to_owned()),
-                                    Some(parser.location()),
-                                );
-                                parser.skip_element()?;
+                                if let Some(bullet) = parser.parse_pic_bullet(&attrs)? {
+                                    let id = bullet.id;
+                                    let location = bullet.location.clone();
+                                    if !table.insert_pic_bullet(bullet) {
+                                        parser.record(
+                                            "w:numPicBulletId",
+                                            SupportStatus::Partial,
+                                            Some(format!(
+                                                "duplicate numPicBulletId {id}; keeping the first"
+                                            )),
+                                            Some(location),
+                                        );
+                                    }
+                                }
                             }
                             _ => parser.skip_element()?,
                         }
@@ -97,6 +104,88 @@ impl PartParser<'_> {
             }
             parser.expect_end_of_part()?;
             Ok(table)
+        })
+    }
+
+    /// Parses `w:numPicBullet`: the bullet id and its `w:drawing`.
+    ///
+    /// The drawing goes through the same parser as a picture in the body, so
+    /// its `a:blip/@r:embed` resolves against `numbering.xml`'s relationships
+    /// and the image lands in this part's media index.
+    fn parse_pic_bullet(&mut self, attrs: &[Attr]) -> Result<Option<PictureBullet>> {
+        let location = self.location();
+        let Some(id) = wml_attr(attrs, "numPicBulletId").and_then(parse_u32) else {
+            self.record(
+                "w:numPicBullet",
+                SupportStatus::Partial,
+                Some(
+                    "picture bullet without a decimal numPicBulletId was skipped; nothing \
+                     can refer to it"
+                        .to_owned(),
+                ),
+                Some(location),
+            );
+            self.skip_element()?;
+            return Ok(None);
+        };
+        self.nested(|parser| {
+            let mut drawing = None;
+            let mut vml = false;
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs: _ } => {
+                        if !is_wml(&name) {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                            continue;
+                        }
+                        match name.local() {
+                            "drawing" if drawing.is_none() => {
+                                drawing = Some(parser.parse_drawing()?);
+                            }
+                            "pict" => {
+                                vml = true;
+                                parser.record(
+                                    "w:numPicBullet",
+                                    SupportStatus::Unsupported,
+                                    Some(VML_PICTURE_BULLET_LOSS.to_owned()),
+                                    Some(parser.location()),
+                                );
+                                parser.skip_element()?;
+                            }
+                            _ => parser.skip_element()?,
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of picture bullet")),
+                }
+            }
+            let Some(drawing) = drawing else {
+                if !vml {
+                    parser.record(
+                        "w:numPicBullet",
+                        SupportStatus::Partial,
+                        Some(format!(
+                            "picture bullet {id} has no w:drawing and was skipped; levels \
+                             that reference it keep their w:lvlText bullet"
+                        )),
+                        Some(location),
+                    );
+                }
+                return Ok(None);
+            };
+            parser.record(
+                "w:numPicBullet",
+                SupportStatus::Supported,
+                None,
+                Some(location.clone()),
+            );
+            Ok(Some(PictureBullet {
+                id,
+                drawing,
+                location,
+            }))
         })
     }
 
@@ -235,19 +324,26 @@ impl PartParser<'_> {
                             }
                             "rPr" => level.run = parser.parse_run_properties()?,
                             "lvlPicBulletId" => {
-                                // Dropped together with the `w:numPicBullet` it
-                                // points at; a reference to a picture bullet the
-                                // part no longer defines would be dangling.
-                                parser.record(
-                                    "w:lvlPicBulletId",
-                                    SupportStatus::Unsupported,
-                                    Some(
-                                        "picture-bullet reference is not written; the level \
-                                         keeps its w:lvlText bullet (see w:numPicBullet)"
-                                            .to_owned(),
-                                    ),
-                                    Some(parser.location()),
-                                );
+                                level.pic_bullet_id = val_attr(&attrs).and_then(parse_u32);
+                                if level.pic_bullet_id.is_some() {
+                                    parser.record(
+                                        "w:lvlPicBulletId",
+                                        SupportStatus::Supported,
+                                        None,
+                                        Some(parser.location()),
+                                    );
+                                } else {
+                                    parser.record(
+                                        "w:lvlPicBulletId",
+                                        SupportStatus::Partial,
+                                        Some(
+                                            "picture-bullet reference without a decimal w:val \
+                                             was skipped; the level keeps its w:lvlText bullet"
+                                                .to_owned(),
+                                        ),
+                                        Some(parser.location()),
+                                    );
+                                }
                                 parser.skip_element()?;
                             }
                             _ => parser.skip_element()?,

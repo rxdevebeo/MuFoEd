@@ -49,7 +49,7 @@ pub use math::{
     Phantom, PreScript, Radical, SubSuperscript, Subscript, Superscript, UnknownMathNode,
 };
 pub use notes::{Note, NoteKind, NoteProperties, NoteTable};
-pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable};
+pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable, PictureBullet};
 pub use props::{
     BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, FrameProperties,
     HeaderFooterKind, HeaderFooterRef, Language, LineNumbering, NumPr, PageBorder, PageBorders,

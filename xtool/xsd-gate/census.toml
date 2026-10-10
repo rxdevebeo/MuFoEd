@@ -727,28 +727,15 @@ summary = "Transitional ST_StylePaneSortMethods code written as its Strict name"
 audit = "Census 2026-10-10: 044_Yekuana_Prayers w:stylePaneSortMethod w:val=0001. The element is now kept (it used to be dropped as foreign). Strict ST_StylePaneSortMethods has only name/priority/font/basedOn/type/default; write/src/parts.rs::strict_style_pane_sort_method maps 0000..0005 onto them in that order and write_style_pane_sort_method cites w:stylePaneSortMethod (report_info) whenever it rewrites. A value outside both vocabularies is not written and is reported Lossy under the same id, but it is not in `was` and stays unclassified."
 
 [[item]]
-id = "TZ-63"
-origin = "waived"
-signal = "element"
-disposition = "named_loss"
-elements = ["w:numPicBullet", "w:lvlPicBulletId"]
-parents = ["numbering", "lvl"]
-parts = ["word/numbering.xml"]
-requires_cited = ["w:numPicBullet", "w:lvlPicBulletId"]
-summary = "picture bullets are not carried; definition and level reference are dropped together"
-audit = "Census 2026-10-10: 009_stratigrafi w:numPicBullet (parent numbering) and w:lvlPicBulletId (parent lvl), removed=1 each, named=0 - both were skipped silently. Strict declares w:numPicBullet, but the model has no picture-bullet slot and the writer gives numbering.xml no image relationship (package.rs), so parse/numbering.rs now records w:numPicBullet and w:lvlPicBulletId as Unsupported; the level keeps its w:lvlText bullet and no dangling w:lvlPicBulletId is written. Close this item when picture bullets are modelled and numbering.xml.rels is written."
-
-[[item]]
 id = "TZ-64"
 origin = "waived"
 signal = "element"
-disposition = "named_loss"
+disposition = "declared_transform"
 elements = ["shape", "f", "path", "lock"]
 parents = ["pict", "formulas", "shapetype"]
 parts = ["word/numbering.xml"]
-requires_cited = ["w:numPicBullet"]
-summary = "the VML picture inside a dropped w:numPicBullet"
-audit = "Census 2026-10-10: 009_stratigrafi numbering.xml - v:shape (parent pict) named=1, v:f (parent formulas) removed=12, v:path and o:lock (parent shapetype) removed=1, named=0. TZ-34 covers these locals only in story parts. They leave with the picture bullet (TZ-63); the w:numPicBullet support record's message names v:shapetype, v:stroke, v:formulas/v:f, v:path, o:lock, v:shape and v:imagedata, so named=1 comes from this input's own report. A VML node removed from numbering.xml without that citation stays unclassified."
+summary = "a VML picture bullet (w:numPicBullet/w:pict) is converted to its DrawingML w:drawing"
+audit = "Census 2026-10-10: 009_stratigrafi numbering.xml - v:shape (parent pict), v:f (parent formulas) removed=12, v:path and o:lock (parent shapetype) removed=1. TZ-34 covers these locals only in story parts. Picture bullets are now modelled (model/numbering.rs PictureBullet, Level::pic_bullet_id): the normalizer's T7 turns the bullet's w:pict into a w:drawing with the same image relationship, parse/numbering.rs reads it with the body's drawing parser against numbering.xml's relationships, and write/src/parts.rs writes w:numPicBullet first in CT_Numbering and w:lvlPicBulletId in CT_Lvl order, with word/_rels/numbering.xml.rels carrying the image (package.rs). The VML vocabulary leaves the part because the picture is now DrawingML, not because it is lost. The former TZ-63 (w:numPicBullet and w:lvlPicBulletId dropped together) is closed: both are written back. A w:pict nothing converted (VmlFallback::Report/Drop) is still dropped and named by the T7.vml loss, or by parse/numbering.rs's w:numPicBullet Unsupported record when the w:pict reaches the parser."
 
 [[item]]
 id = "TZ-65"

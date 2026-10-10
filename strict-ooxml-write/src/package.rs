@@ -807,14 +807,26 @@ pub fn write_package(
             .into_bytes(),
         )?;
     }
+    // Extra parts copied because a header/footer/notes part referenced them
+    // (AUD-61); merged with the document passthrough by name when writing.
+    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
+
     if !document.numbering.is_empty() {
-        add_part(
+        // Picture bullets: `numbering.xml` owns the image relationships its
+        // `w:numPicBullet` drawings use, allocated against the written media
+        // target the same way a header's pictures are, so the ids are stable
+        // from one write to the next. Nothing else in the part refers to
+        // another part, so no foreign id is bound.
+        write_content_part_with_rels(
             &mut zip,
+            &mut ctx,
+            source,
             NUMBERING_PART,
-            part_xml(&mut ctx, NUMBERING_PART, |ctx| {
-                parts::numbering_part(ctx, &document.numbering)
-            })?
-            .into_bytes(),
+            "numbering.xml",
+            None,
+            &[],
+            &mut part_extra_copies,
+            |ctx| parts::numbering_part(ctx, &document.numbering),
         )?;
     }
     if document.settings != Default::default() || options.always_write_settings {
@@ -876,10 +888,6 @@ pub fn write_package(
             part_xml(&mut ctx, THEME_PART, |ctx| parts::theme_part(ctx, theme))?.into_bytes(),
         )?;
     }
-    // Extra parts copied because a header/footer/notes part referenced them
-    // (AUD-61); merged with the document passthrough by name when writing.
-    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
-
     if !document.footnotes.is_empty() {
         let foreign = note_foreign_ids(&document.footnotes);
         write_content_part_with_rels(
