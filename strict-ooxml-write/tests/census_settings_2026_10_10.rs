@@ -10,6 +10,7 @@
 //! * `w:numPicBullet` / `w:lvlPicBulletId` were skipped silently;
 //! * one `a:blipFill` with `r:embed` in a theme's background fills threw the
 //!   whole `a:fmtScheme` away for the placeholder.
+#![allow(clippy::doc_markdown, clippy::format_push_string)]
 
 use strict_ooxml_core::normalize::TransitionalNormalizer;
 use strict_ooxml_core::opc::{ConformancePolicy, OpenOptions, Package};

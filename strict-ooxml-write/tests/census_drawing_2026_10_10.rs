@@ -12,7 +12,14 @@
 //!   `wp:docPr` was dropped without the citation ADR-0014 requires.
 //! - `c:chart@id` / `c:userShapes@id`: a carried chart is rewritten to Strict by
 //!   the reader; the write now says so (`c:chartSpace`, `c:userShapes`).
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, missing_docs)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::doc_markdown,
+    clippy::format_push_string,
+    missing_docs
+)]
 
 use std::sync::Arc;
 

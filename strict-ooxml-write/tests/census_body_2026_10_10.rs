@@ -15,7 +15,14 @@
 //! - `w:br@clear`: kept on a text wrapping break (`RunContent::ClearingBreak`).
 //! - `w:footnoteReference@customMarkFollows`: an explicit off is the default and
 //!   is not written back; the parser cites it.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, missing_docs)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::doc_markdown,
+    clippy::format_push_string,
+    missing_docs
+)]
 
 use std::sync::Arc;
 
