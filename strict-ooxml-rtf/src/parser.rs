@@ -59,6 +59,10 @@ enum RegionKind {
     Note {
         endnote: bool,
     },
+    NoteSeparator {
+        endnote: bool,
+        kind: NoteKind,
+    },
     Field {
         instruction: String,
     },
@@ -558,11 +562,17 @@ impl Parser<'_> {
     }
     fn begin_region(&mut self, kind: RegionKind, offset: usize) -> Result<(), RtfError> {
         if matches!(kind, RegionKind::Header { .. }) && !self.regions.is_empty()
-            || matches!(kind, RegionKind::Note { .. })
-                && self
-                    .regions
-                    .iter()
-                    .any(|r| matches!(r.kind, RegionKind::Note { .. } | RegionKind::Header { .. }))
+            || matches!(
+                kind,
+                RegionKind::Note { .. } | RegionKind::NoteSeparator { .. }
+            ) && self.regions.iter().any(|r| {
+                matches!(
+                    r.kind,
+                    RegionKind::Note { .. }
+                        | RegionKind::NoteSeparator { .. }
+                        | RegionKind::Header { .. }
+                )
+            })
         {
             return malformed(offset, "unsupported nested document region");
         }
@@ -699,6 +709,42 @@ impl Parser<'_> {
                     revision: None,
                     location: SourceLocation::unknown(),
                 })))
+            }
+            RegionKind::NoteSeparator { endnote, kind } => {
+                // The reserved separator (`-1`) and continuation-separator
+                // (`0`) definitions, plus the `w:footnotePr`/`w:endnotePr`
+                // references that make the rule appear above the note block.
+                let id = match kind {
+                    NoteKind::Separator => -1,
+                    _ => 0,
+                };
+                let table = if endnote {
+                    &mut self.endnotes
+                } else {
+                    &mut self.footnotes
+                };
+                bounded(
+                    table.len() + 1,
+                    self.options.limits.definitions,
+                    span.start,
+                    "notes",
+                )?;
+                table.insert(Note {
+                    id,
+                    kind,
+                    blocks,
+                    location: SourceLocation::unknown(),
+                });
+                let props = if endnote {
+                    &mut self.document_endnote
+                } else {
+                    &mut self.document_footnote
+                };
+                if !props.separator_ids.contains(&id) {
+                    props.separator_ids.push(id);
+                    props.separator_ids.sort_unstable();
+                }
+                Ok(None)
             }
             RegionKind::Field { instruction } => {
                 if blocks.len() > 1 || ended_paragraph {
@@ -2109,6 +2155,19 @@ impl Parser<'_> {
                 );
             }
         }
+        if first && matches!(name, "ftnsep" | "ftnsepc" | "aftnsep" | "aftnsepc") {
+            // `{\*\ftnsep ...}`/`{\*\ftnsepc ...}` and the endnote twins define
+            // the separator content. Capture them as the reserved separator
+            // definitions instead of dropping the destination.
+            self.state.ignorable = false;
+            let endnote = name.starts_with('a');
+            let kind = if name.ends_with("sepc") {
+                NoteKind::ContinuationSeparator
+            } else {
+                NoteKind::Separator
+            };
+            return self.begin_region(RegionKind::NoteSeparator { endnote, kind }, span.start);
+        }
         if first && self.state.ignorable {
             self.state.skip = true;
             return self.issue(span, Severity::Loss, format!("destination:{name}"));
@@ -2536,6 +2595,8 @@ impl Parser<'_> {
                     self.pending_note_marker = Some(span);
                 }
             }
+            "chftnsep" => self.content(RunContent::Separator, span.start)?,
+            "chftnsepc" => self.content(RunContent::ContinuationSeparator, span.start)?,
             "tqc" => self.state.tab_alignment = TabAlignment::Center,
             "tqr" => self.state.tab_alignment = TabAlignment::End,
             "tqdec" => self.state.tab_alignment = TabAlignment::Decimal,

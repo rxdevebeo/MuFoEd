@@ -513,6 +513,11 @@ fn flatten_run(
             RunContent::CommentReference(_)
             | RunContent::SoftHyphen
             | RunContent::LastRenderedPageBreak
+            // The separator markers live in separator/continuation-separator
+            // note bodies, which the paginator draws as its own rule; they are
+            // never inline text.
+            | RunContent::Separator
+            | RunContent::ContinuationSeparator
             // A `w:ptab` moves the following text to a margin or an indent. The
             // renderer has no notion of either, and drawing the leader glyphs
             // would be a character run the document did not ask for. It is named

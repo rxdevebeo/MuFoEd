@@ -1323,9 +1323,13 @@ fn leading_paragraph_has_reference(note: &Note) -> bool {
 }
 
 fn paragraph_has_reference(paragraph: &Paragraph) -> bool {
-    paragraph.inlines.iter().any(
-        |inline| matches!(inline, Inline::Run(run) if run.content.contains(&RunContent::NoteRef)),
-    )
+    paragraph.inlines.iter().any(|inline| {
+        matches!(inline, Inline::Run(run)
+            if run.content.iter().any(|content| matches!(content,
+                RunContent::NoteRef
+                    | RunContent::Separator
+                    | RunContent::ContinuationSeparator)))
+    })
 }
 
 /// Ensures the first run of `paragraph` carries [`RunContent::NoteRef`].

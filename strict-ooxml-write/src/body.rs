@@ -368,6 +368,8 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
         RunContent::LastRenderedPageBreak => xml.empty("w:lastRenderedPageBreak"),
         RunContent::NoBreakHyphen => xml.empty("w:noBreakHyphen"),
         RunContent::SoftHyphen => xml.empty("w:softHyphen"),
+        RunContent::Separator => xml.empty("w:separator"),
+        RunContent::ContinuationSeparator => xml.empty("w:continuationSeparator"),
         RunContent::Opaque(opaque) => {
             ctx.report_unsupported(
                 &opaque.feature_id(),

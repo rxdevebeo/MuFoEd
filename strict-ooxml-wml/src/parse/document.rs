@@ -859,6 +859,18 @@ impl PartParser<'_> {
                     None,
                     Some(self.location()),
                 );
+                content.push(RunContent::Separator);
+                self.skip_element()?;
+            }
+            RunKind::ContinuationSeparator => {
+                let feature = feature_id_for(name);
+                self.record(
+                    &feature,
+                    SupportStatus::Supported,
+                    None,
+                    Some(self.location()),
+                );
+                content.push(RunContent::ContinuationSeparator);
                 self.skip_element()?;
             }
             RunKind::Opaque => {

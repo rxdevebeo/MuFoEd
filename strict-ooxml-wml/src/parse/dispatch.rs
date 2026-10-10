@@ -207,8 +207,10 @@ pub(crate) enum RunKind {
     SoftHyphen,
     /// `w:rPr`.
     RunProperties,
-    /// `w:separator` / `w:continuationSeparator` (note separators).
+    /// `w:separator` (footnote/endnote separator marker).
     Separator,
+    /// `w:continuationSeparator` (continuation-separator marker).
+    ContinuationSeparator,
     /// Unknown.
     Opaque,
 }
@@ -235,7 +237,7 @@ const RUN_TABLE: &[(&str, RunKind)] = &[
     ("softHyphen", RunKind::SoftHyphen),
     ("rPr", RunKind::RunProperties),
     ("separator", RunKind::Separator),
-    ("continuationSeparator", RunKind::Separator),
+    ("continuationSeparator", RunKind::ContinuationSeparator),
     ("object", RunKind::Opaque),
     ("pict", RunKind::Opaque),
     ("AlternateContent", RunKind::Opaque),

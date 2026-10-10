@@ -63,6 +63,11 @@ pub enum RunContent {
     /// The number marker inside a footnote/endnote body (`w:footnoteRef`/
     /// `w:endnoteRef`); replaced by the note's number when rendered.
     NoteRef,
+    /// The separator marker (`w:separator`) inside a separator note body.
+    Separator,
+    /// The continuation-separator marker (`w:continuationSeparator`) inside a
+    /// continuation-separator note body.
+    ContinuationSeparator,
     /// Absolute position tab (`w:ptab`).
     ///
     /// All three attributes are `use="required"`, so this is three strings rather

@@ -2,8 +2,8 @@
 #![allow(clippy::default_trait_access)]
 use strict_ooxml_rtf::{import, RtfOptions};
 use strict_ooxml_wml::model::{
-    AbstractNumId, Block, HalfPoints, Ilvl, Inline, NumId, RunContent, StyleId, TabLeader,
-    TriState, Twips,
+    AbstractNumId, Block, HalfPoints, Ilvl, Inline, NoteKind, NumId, RunContent, StyleId,
+    TabLeader, TriState, Twips,
 };
 
 #[test]
@@ -1236,4 +1236,50 @@ fn unsupported_note_controls_stay_explicit_losses() {
             .iter()
             .any(|issue| issue.feature.starts_with("control:")));
     }
+}
+
+#[test]
+fn note_separator_definitions_become_reserved_notes() {
+    // `{\*\ftnsep ...}`/`{\*\ftnsepc ...}` define the separator rule content;
+    // they must become the reserved ids -1/0 instead of a dropped destination.
+    let input = br"{\rtf1\ftnbj{\*\ftnsep\chftnsep}{\*\ftnsepc\chftnsepc}{\*\aftnsep\chftnsep}A\chftn{\footnote\chftn Note}\par}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let separator = document.footnotes.separator().expect("separator note");
+        assert_eq!((separator.id, separator.kind), (-1, NoteKind::Separator));
+        let continuation = document
+            .footnotes
+            .continuation_separator()
+            .expect("continuation separator note");
+        assert_eq!(
+            (continuation.id, continuation.kind),
+            (0, NoteKind::ContinuationSeparator)
+        );
+        assert_eq!(
+            document.settings.footnote_properties.separator_ids,
+            vec![-1, 0]
+        );
+        assert!(document.endnotes.separator().is_some());
+        assert_eq!(document.settings.endnote_properties.separator_ids, vec![-1]);
+        let Block::Paragraph(p) = &separator.blocks[0] else {
+            panic!("separator note body");
+        };
+        assert!(p
+            .inlines
+            .iter()
+            .any(|i| matches!(i, Inline::Run(r) if r.content.contains(&RunContent::Separator))));
+    }
+
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert!(
+        !imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature.starts_with("destination:ftn")),
+        "{:?}",
+        imported.report.issues
+    );
 }
