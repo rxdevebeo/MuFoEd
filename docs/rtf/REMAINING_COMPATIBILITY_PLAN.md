@@ -878,6 +878,35 @@ sibling-oracle, поэтому pagination/pixel-гейты подтвержде�
 PDF-идентичности, а не свежим raster-сравнением. RC08 остаётся InProgress:
 column-layout, сепараторы, block-result fields и custom marks открыты.
 
+### RC08: сепараторы, реклассификация полей и contextualSpacing — 2026-10-10
+
+Три среза закрыты и закоммичены (`b5f6cfd`, `4520a46`, `06f4eba`):
+
+1. **Сепараторы примечаний.** Общий model получил `RunContent::Separator`/
+   `ContinuationSeparator`; reader больше не теряет `w:separator`/
+   `w:continuationSeparator` (раньше помечал Supported и выбрасывал), writer их
+   пишет. `\ftnsep`/`\ftnsepc` и endnote-двойники становятся reserved-описаниями
+   `id -1/0` плюс ссылками `w:footnotePr`/`w:endnotePr`. Разбор тела сепаратора
+   вскрывает форматирующие контролы внутри него: ledger +152 на 6 документах
+   (честный per-control учёт вместо одиночного `destination:*`). Вывод DOCX,
+   page counts и PDF побайтово не изменились. `\ftncn`/`\aftncn` остаются Loss.
+2. **Реклассификация `field-instruction-control`.** Курируемый набор
+   символьного форматирования внутри `\fldinst` (font/script/lang/цвет/тоглы/
+   размер) → явный Info; неизвестный контрол остаётся Loss (blanket rename
+   запрещён). Corpus losses 170 981 → 137 380 (−33 753).
+3. **contextualSpacing.** `\contextualspace` → `w:contextualSpacing`; paginator
+   подавляет before/after между соседними одно-стилевыми параграфами, если
+   включено с любой стороны. Ни корпус, ни WPS-референс его не используют —
+   pagination/pixels не изменились.
+
+Проверки: RTF structure 52 + import 36 + 1 doc-test; render-svg (существующий
+alias-skip) и public/PDF suite (`rtf,svg,pdf`) Pass; clippy `-D warnings` (MSRV
+1.92) и changed-file rustfmt Pass. Финал: `RC08-acd-corpus`/`RC08-acd-visual`:
+text/resource 100/100; `check` 100/100 `ok: strict`; все 100 page counts равны
+RC08-final, все 100 PDF побайтово идентичны (pixel-замер переносится по
+идентичности). Открыто: column-layout, multi-paragraph field block, custom
+marks — крупные shared-build задачи.
+
 
 
 

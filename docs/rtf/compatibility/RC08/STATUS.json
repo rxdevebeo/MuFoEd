@@ -3,7 +3,7 @@
   "status": "InProgress",
   "updated": "2026-10-10",
   "scope": "sections, regions, notes and complex fields",
-  "base_commit": "afc9d81",
+  "base_commit": "06f4eba",
   "dependencies": ["RC01", "RC04"],
   "implemented": [
     "per-section headers survive the WPS \\sectd\\sect ordering: the reset is deferred past the following \\sect, so a section commits the header/footer and geometry it accumulated instead of losing them; 072 now writes 40 header references (was 1) and the header renders on every section's pages",
@@ -12,15 +12,15 @@
     "first/even-page headers render: \\titlepg maps to the section's w:titlePg and an even \\headerl/\\footerl region sets w:evenAndOddHeaders (002 now writes 7 w:titlePg and even/default header references; both were dropped before)",
     "section columns are preserved: \\cols -> w:cols/@num, \\colsx -> @space, \\colno/\\colw/\\colsr -> the per-column w:col specs with equalWidth cleared (074/092 now carry their 2-column definitions)",
     "\\rtlsect/\\ltrsect set the section bidi flag (\\rtlpar/\\ltrpar were already mapped)",
-    "footnote/endnote numbering and placement map to NoteProperties: document-wide \\ftn*/\\enddoc and \\aftn*/\\aenddoc land in settings.xml (w:footnotePr/w:endnotePr), and the section-scoped \\sftn*/\\saftn* forms land in the running w:sectPr. Number formats (\\ftnnar/alc/auc/rlc/ruc/chi and endnote twins), \\ftnstart/\\aftnstart (w:numStart), \\ftnrstcont/\\ftnrestart/\\ftnrstpg and \\aftnrstcont/\\aftnrestart (w:numRestart), and position (\\ftnbj->pageBottom, \\ftntj->beneathText, \\endnotes->sectEnd, \\enddoc->docEnd, \\aendnotes->sectEnd, \\aenddoc->docEnd) are mapped per the RTF 1.5 footnotes table; 29 corpus documents lose 625 import-loss events. \\aftnbj/\\aftntj and \\ftnlytwnine stay Loss (no ST_EdnPos value / no Strict equivalent). Note separators (\\ftnsep/\\ftnsepc/\\ftncn and endnote twins) remain Loss: faithful w:separator content needs a shared RunContent::Separator, not a hidden fragment."
+    "footnote/endnote numbering and placement map to NoteProperties: document-wide \\ftn*/\\enddoc and \\aftn*/\\aenddoc land in settings.xml (w:footnotePr/w:endnotePr), and the section-scoped \\sftn*/\\saftn* forms land in the running w:sectPr. Number formats (\\ftnnar/alc/auc/rlc/ruc/chi and endnote twins), \\ftnstart/\\aftnstart (w:numStart), \\ftnrstcont/\\ftnrestart/\\ftnrstpg and \\aftnrstcont/\\aftnrestart (w:numRestart), and position (\\ftnbj->pageBottom, \\ftntj->beneathText, \\endnotes->sectEnd, \\enddoc->docEnd, \\aendnotes->sectEnd, \\aenddoc->docEnd) are mapped per the RTF 1.5 footnotes table; 29 corpus documents lose 625 import-loss events. \\aftnbj/\\aftntj and \\ftnlytwnine stay Loss (no ST_EdnPos value / no Strict equivalent). Note separators (\\ftnsep/\\ftnsepc/\\ftncn and endnote twins) remain Loss: faithful w:separator content needs a shared RunContent::Separator, not a hidden fragment.",
+    "note separator definitions are preserved: RunContent::Separator/ContinuationSeparator were added to the shared model (the reader now keeps w:separator/w:continuationSeparator instead of discarding them; the writer emits them); \\ftnsep/\\ftnsepc and the endnote twins become the reserved id -1/0 note definitions plus their w:footnotePr/w:endnotePr references instead of a dropped destination. Capturing the destination body unmasks the formatting controls inside it (+152 Loss across 6 docs; honest per-control accounting). Output DOCX, page counts and PDF bytes are unchanged.",
+    "field-instruction formatting is classified honestly: the curated character-formatting controls the writer embeds in \\fldinst (font/script/lang/colour/toggles/size) are the field-code display formatting, kept out of the instruction; they become explicit Info. An unknown instruction control stays an explicit Loss (no blanket rename). Corpus import losses 170981 -> 137380 (-33753).",
+    "w:contextualSpacing is mapped and applied: \\contextualspace sets the paragraph property, and the paginator suppresses the before/after gap between consecutive same-style paragraphs when either side enables it (no corpus or WPS reference uses it, so pagination/pixels are unchanged)."
   ],
   "remaining": [
     "072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug. Body line pitch matches (16.1pt = Arimo 1.15em x \\sl280/240). The residual is inter-paragraph spacing: measured against the immutable WPS references, the WPS RTF path SUMS before+after (072 heading->heading 38.25pt = sum 36pt) while the WPS DOCX path takes MAX (06-strict-math-display body->Heading2 14.74pt = max 14pt). The renderer's max (paginate.rs) is what the DOCX baseline and the SVG refs require; a max->sum change regressed 06 and was reverted, and inflating w:before at import would misrepresent the document. Recorded as a WPS RTF-path quirk (not imitated, not a support blocker).",
-    "w:contextualSpacing is unimplemented in the renderer (a real gap; neither witness above uses it)",
     "section column LAYOUT is not implemented in the shared renderer: w:cols round-trips and validates, but a multi-column section still renders as one column (a shared layout build)",
-    "note placement/numbering is mapped for the controls the corpus and RTF 1.5 define; note SEPARATOR definitions (\\ftnsep/\\ftnsepc/\\ftncn, \\aftnsep/\\aftnsepc/\\aftncn) are still dropped as destination Loss because the shared model has no RunContent::Separator and the reader currently discards w:separator; mapping them faithfully needs that shared addition rather than an empty placeholder note",
-    "multi-paragraph field block results (a shared model change) and custom marks are unreviewed",
-    "field-instruction-control:* (~40k events) are formatting controls inside \\fldinst; correctly kept out of the instruction text but reported as Loss, reclassification open (blanket rename forbidden by the plan)"
+    "multi-paragraph field block results (a shared model change; the current inline Field cannot hold a block result, and the complex-field marker form needs a document-level field state across paragraphs) and custom marks (footnote/endnote customMarkFollows) are unreviewed"
   ],
   "blocked": [],
   "checks": {
@@ -93,17 +93,49 @@
         "an imported footnote with \\ftnnalc\\ftnstart3 renders the marker 'c' in SVG, proving the numbering reaches the renderer end to end"
       ]
     },
+    "note_separator_definitions": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::note_separator_definitions_become_reserved_notes",
+      "assertions": [
+        "{\\*\\ftnsep}/{\\*\\ftnsepc} become w:footnote id -1/0 (separator/continuationSeparator) and \\aftnsep an endnote separator",
+        "settings.footnote_properties.separator_ids == [-1, 0] and endnote == [-1]",
+        "the separator body carries the w:separator/w:continuationSeparator marker and survives import -> Strict write -> reopen",
+        "no destination:ftn* Loss remains for the captured names"
+      ]
+    },
+    "field_instruction_formatting": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::field_instruction_formatting_is_info_not_loss",
+        "strict-ooxml-rtf/tests/structure.rs::unknown_field_instruction_control_stays_a_loss"
+      ],
+      "assertions": [
+        "\\b/\\i/\\insrsid/\\lang inside \\fldinst are Info, the instruction text is unchanged and loss_count is 0",
+        "an unknown control inside \\fldinst stays an explicit Loss (negative control)"
+      ]
+    },
+    "contextual_spacing": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::contextual_space_maps_to_wml_contextual_spacing",
+        "strict-ooxml-render-svg/tests/p5_p6.rs::t_rc08_contextual_spacing_suppresses_same_style_gap"
+      ],
+      "assertions": [
+        "\\contextualspace -> w:contextualSpacing On, \\contextualspace0 -> Off (import -> reopen)",
+        "the paginator removes the 32 px before/after gap between two same-style paragraphs when contextualSpacing is on, and keeps it when off"
+      ]
+    },
     "corpus_gates": {
       "status": "Measured",
       "date": "2026-10-10",
       "receipts": [
-        "target/rtf-import/RC08-notes-corpus/results.json",
-        "target/rtf-import/RC08-notes-visual/results.json"
+        "target/rtf-import/RC08-acd-corpus/results.json",
+        "target/rtf-import/RC08-acd-visual/results.json"
       ],
       "results": {
         "import_text_resource": "100/100 Pass",
-        "import_loss_events": "171606 -> 170981 (-625 across 29 documents; \\sftnbj/\\ftnbj/\\ftnnar/\\aftnnrlc/\\ftnstart/\\ftnrstcont/\\aenddoc families)",
-        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict` (the package passes the library's OPC + Strict-conformance admission gate); 0 rejections",
+        "import_loss_events": "170981 -> 137380: separator capture +152 (unmasked formatting), field-instruction formatting -33753",
+        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict` (OPC + Strict-conformance admission gate); 0 rejections",
         "pagination": "65/100 Pass, every page count identical to RC08-final (100/100 re-rendered to PDF, reference pages unchanged)",
         "pixels": "carried forward by exact PDF identity: all 100 rendered PDFs are byte-identical to RC08-final, so 6/100 documents and 22/458 pages still hold; no reraster",
         "not_rerun": "WPS reference PDFs are no longer retained under the sibling oracle root, so the pagination/pixel gates are verified by PDF-identity equivalence, not a fresh raster comparison"

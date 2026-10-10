@@ -149,26 +149,47 @@ so both keep their explicit `control:*` Loss instead of a guessed mapping.
 (`rtf,svg`) is the end-to-end witness: an imported `\ftnnalc\ftnstart3`
 footnote renders the marker `c` (not the default `1`).
 
-### What is intentionally not mapped here
+### Note separator definitions (2026-10-10)
 
-`\ftnsep`/`\ftnsepc`/`\ftncn` and the endnote twins define the note **separator
-content**. They stay `destination:*` Loss: the shared model has no
-`RunContent::Separator` (the reader currently records `w:separator` as Supported
-and discards it), so writing an empty placeholder note would be a hidden
-fragment rather than a contract. That is a shared model addition, tracked under
-"Other open items".
+`\ftnsep`/`\ftnsepc` and the endnote twins are now captured. `RunContent::
+Separator`/`ContinuationSeparator` were added to the shared model: the reader no
+longer discards `w:separator`/`w:continuationSeparator` (it used to record them
+`Supported` and drop them), and the writer emits them. The destination becomes
+the reserved note definitions (`id -1` separator, `id 0` continuationSeparator)
+plus their `w:footnotePr`/`w:endnotePr` references.
+`structure.rs::note_separator_definitions_become_reserved_notes` pins it through
+import -> Strict write -> reopen. Capturing the body unmasks the formatting
+controls inside the separator (`\cgrid`, `\hyphpar`, `\adjustright`, `\itap0`,
+...), so the ledger rises by 152 across 6 documents (honest per-control
+accounting replaces the single `destination:ftn*` placeholder). Output DOCX,
+page counts and PDF bytes are unchanged.
+
+## Field-instruction formatting (2026-10-10)
+
+The writer embeds run formatting in `\fldinst`; it styles the field-code display,
+not the instruction text. A curated set of character-formatting controls is now
+ignored as explicit **Info** (`field-instruction-formatting:<name>`) instead of
+Loss; anything else inside an instruction stays `field-instruction-control:*`
+Loss (no blanket rename).
+`structure.rs::field_instruction_formatting_is_info_not_loss` and
+`::unknown_field_instruction_control_stays_a_loss` pin both sides. Corpus import
+losses 170981 -> 137380.
+
+## Contextual spacing (2026-10-10)
+
+`\contextualspace` -> `w:contextualSpacing`, and the paginator suppresses the
+before/after gap between consecutive same-style paragraphs when either side
+enables it (`structure.rs::contextual_space_maps_to_wml_contextual_spacing`,
+`p5_p6.rs::t_rc08_contextual_spacing_suppresses_same_style_gap`). No corpus or
+WPS reference uses it, so pagination/pixels are unchanged.
 
 ## Other open items
 
 - Section column **layout** in the shared renderer (model + `w:cols` mapping are
   done; a multi-column section still paints one column).
-- Note **separator** definitions (`\ftnsep`/`\ftnsepc`/`\ftncn`,
-  `\aftnsep`/`\aftnsepc`/`\aftncn`): faithful mapping needs a shared
-  `RunContent::Separator` (reader + writer + render), so they remain Loss rather
-  than an empty placeholder. Numbering/placement are mapped (above).
-- Multi-paragraph field block results (a shared model change) and custom marks
-  are unreviewed.
-- `field-instruction-control:*` (~40k events) are formatting controls inside
-  `\fldinst` that are correctly kept out of the instruction text but reported as
-  Loss; whether to reclassify them as explicit ignored-formatting Info is open
-  (the plan forbids a blanket rename).
+- Multi-paragraph field block results: the inline `Field` cannot hold a block
+  result, and the complex-field marker form needs a document-level field state
+  threaded across paragraphs. One corpus occurrence (014).
+- Custom marks (footnote/endnote `customMarkFollows`): no corpus occurrence and
+  no shared model support yet.
+- `\ftncn`/`\aftncn` continuation-notice definitions.
