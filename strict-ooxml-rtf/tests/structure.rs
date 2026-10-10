@@ -1009,6 +1009,14 @@ fn wps_sectd_before_sect_keeps_each_section_header() {
 }
 
 #[test]
+fn section_bidi_controls_map() {
+    let rtl = reopened(br"{\rtf1\rtlsect Body}");
+    assert!(rtl.sections[0].properties.bidi);
+    let ltr = reopened(br"{\rtf1\rtlsect\ltrsect Body}");
+    assert!(!ltr.sections[0].properties.bidi, "\\ltrsect clears section bidi");
+}
+
+#[test]
 fn section_columns_map_to_w_cols() {
     let d = reopened(br"{\rtf1\cols2\colno1\colw4820\colsr425\colno2\colw4727 Body}");
     let columns = d.sections[0]

@@ -2657,6 +2657,8 @@ impl Parser<'_> {
             "qj" => self.state.paragraph.alignment = Some(Justification::Both),
             "rtlpar" => self.state.paragraph.bidi = TriState::On,
             "ltrpar" => self.state.paragraph.bidi = TriState::Off,
+            "rtlsect" => self.section.bidi = true,
+            "ltrsect" => self.section.bidi = false,
             "keep" => self.state.paragraph.keep_lines = toggle,
             "keepn" => self.state.paragraph.keep_next = toggle,
             "pagebb" => self.state.paragraph.page_break_before = toggle,
