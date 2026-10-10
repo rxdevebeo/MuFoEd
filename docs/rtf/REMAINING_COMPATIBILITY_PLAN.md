@@ -833,7 +833,10 @@ block-result (shared model) и custom marks. `field-instruction-control:*`
 снимает `equalWidth`). 074/092 теперь несут свои 2-column определения и
 round-trip'ятся. Shared renderer по-прежнему рисует одну колонку — column-layout
 остаётся отдельным shared-build; pagination (65/100) и pixels (6/100, 22/458)
-не изменились.
+не изменились. Также `\rtlsect`/`\ltrsect` теперь задают section bidi
+(`\rtlpar`/`\ltrpar` были закрыты раньше).
+
+Финальные receipts RC08-среза: `target/rtf-import/RC08-final-{corpus,visual,pixels}`.
 
 
 

@@ -115,6 +115,9 @@ lays out a single column, so the property round-trips and validates but the
 rendered columns are a follow-up shared-layout build; pagination (65/100) and
 pixels (6/100, 22/458) are unchanged.
 
+`\rtlsect`/`\ltrsect` set the section bidi flag (`\rtlpar`/`\ltrpar` were already
+mapped); `structure.rs::section_bidi_controls_map` pins it.
+
 ## Other open items
 
 - Section column **layout** in the shared renderer (model + `w:cols` mapping are
