@@ -874,10 +874,8 @@ impl PartParser<'_> {
                         }
                         body.push_str(attr.name.local());
                         body.push_str("=\"");
-                        let _ = strict_ooxml_core::xml::escape::escape_attr_into(
-                            &mut body,
-                            &attr.value,
-                        );
+                        let value = strict_percent(name, attr);
+                        let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut body, &value);
                         body.push('"');
                     }
                     pending = true;
@@ -2289,10 +2287,11 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) -> bool {
         }
         out.push_str(attr.name.local());
         out.push_str("=\"");
+        let percent = strict_percent(name, attr);
         let value = match attr.name.local() {
             "uri" => strict_ooxml_core::ns::registry::strict_form(&attr.value)
                 .unwrap_or(attr.value.as_str()),
-            _ => attr.value.as_str(),
+            _ => percent.as_ref(),
         };
         let _ = strict_ooxml_core::xml::escape::escape_attr_into(out, value);
         out.push('"');
@@ -2405,6 +2404,29 @@ fn join_markup(
         (Some(first), Some(second)) => Some(std::sync::Arc::from(format!("{first}{second}"))),
         (first, second) => first.or(second),
     }
+}
+
+/// The value a kept `DrawingML` attribute is written with.
+///
+/// A percentage (`a:gs/@pos`, `a:satMod/@val`, `a:fillToRect/@l`, ...) that a
+/// producer wrote as bare Transitional thousandths in a *Strict* part goes back
+/// as the Strict percentage it means: `35000` is `35%`. The normalizer does this
+/// for Transitional parts; a Strict part never meets it, and a theme kept as
+/// read carried the SDK's `pos="35000"` straight into the schema's refusal.
+/// Every other value is written as read.
+fn strict_percent<'a>(element: &QName, attr: &'a Attr) -> std::borrow::Cow<'a, str> {
+    use strict_ooxml_core::normalize::tables::{
+        drawingml_thousandths_percent, is_drawingml_percentage_attr,
+    };
+    if is_ns(element, DRAWINGML_STRICT_NS)
+        && attr.name.ns.is_none()
+        && is_drawingml_percentage_attr(element.local(), attr.name.local())
+    {
+        if let Some(strict) = drawingml_thousandths_percent(&attr.value) {
+            return std::borrow::Cow::Owned(strict);
+        }
+    }
+    std::borrow::Cow::Borrowed(attr.value.as_str())
 }
 
 /// Stable prefix for a namespace URI when serialising locked-canvas markup.
