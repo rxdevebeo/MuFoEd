@@ -455,9 +455,9 @@ jobs:
           PY
 
   # STAGE-9-TASK.md §9.1 floors: the DjVu reader (container/text) ≥80% lines,
-  # the codec-bearing build ≥70%, and the converter's DjVu module ≥80%. Measured
-  # 2026-10-09 at 82.89 / 85.25 / 85.09; the floors sit below, not at, the
-  # measurement so a refactor is not a red build.
+  # the codec-bearing build ≥70%, and the converter's DjVu module ≥80%.
+  # Re-measured 2026-10-10 at 84.32 / 84.20 / 87.60; the floors sit below, not
+  # at, the measurement so a refactor is not a red build.
   coverage-djvu-nightly:
     name: coverage (djvu)
     if: github.event_name == 'schedule'

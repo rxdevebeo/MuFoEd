@@ -353,6 +353,77 @@ mod recognition {
             .iter()
             .any(|l| l.id == "djvu.figure" && l.detail.contains("offline")));
     }
+
+    #[test]
+    fn two_near_ink_components_make_one_figure() {
+        // Two boxes 2 px apart are one figure once clustered (gap is 4 pt).
+        let mut mask = djvu_bitmap::Bitmap::new(100, 100);
+        for y in 40..90 {
+            for x in 15..58 {
+                mask.set_black(x, y);
+            }
+            for x in 60..95 {
+                mask.set_black(x, y);
+            }
+        }
+        let page = single(&[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("caption")),
+            chunk(b"Sjbz", &djvu_jb2::encode::encode_jb2_lossless(&mask)),
+        ]);
+        let model = classifier("diagram\nTwo parts, one figure.");
+        let c = convert(
+            &page,
+            &DjvuOptions::default().figure_classifier(Some(model.clone())),
+        );
+        assert_eq!(
+            model.calls.load(Ordering::SeqCst),
+            1,
+            "two near boxes are one figure"
+        );
+        assert_eq!(c.media.len(), 1);
+    }
+
+    #[test]
+    fn a_scan_page_classified_as_scan_goes_to_ocr() {
+        let model = classifier("scan of a page");
+        let ocr = success();
+        let c = convert(
+            &scan(),
+            &DjvuOptions::default()
+                .figure_classifier(Some(model.clone()))
+                .text_recovery(ocr.clone()),
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(ocr.calls.load(Ordering::SeqCst), 1, "a scan is transcribed");
+        assert_eq!(c.report.recovered_pages(), 1);
+    }
+
+    #[test]
+    fn an_unclassifiable_scan_still_attempts_ocr() {
+        struct Refusing;
+        impl strict_ooxml_ocr::FigureClassifier for Refusing {
+            fn model_name(&self) -> &'static str {
+                "refusing"
+            }
+            fn describe(&self, _image: &Image, _context: &str) -> Result<Recovered, VisionError> {
+                Err(VisionError::Unreachable("offline".into()))
+            }
+        }
+        let ocr = success();
+        let c = convert(
+            &scan(),
+            &DjvuOptions::default()
+                .figure_classifier(Some(Arc::new(Refusing)))
+                .text_recovery(ocr.clone()),
+        );
+        assert_eq!(ocr.calls.load(Ordering::SeqCst), 1);
+        assert!(c
+            .report
+            .losses()
+            .iter()
+            .any(|l| l.id == "djvu.figure" && l.detail.contains("offline")));
+    }
 }
 
 #[cfg(feature = "djvu-image")]
@@ -465,4 +536,92 @@ fn the_navm_outline_becomes_flat_page_bookmarks() {
         "{:?}",
         c.report.losses()
     );
+}
+
+#[test]
+fn option_builders_configure_the_conversion() {
+    let options = DjvuOptions::default()
+        .mode(Mode::Visual)
+        .embed_images(false)
+        .pages(1, 1)
+        .recovery_mixed_area(0.5);
+    assert_eq!(options.mode, Mode::Visual);
+    assert!(!options.embed_images);
+    assert_eq!(options.pages, Some((1, 1)));
+    assert_eq!(options.recovery_mixed_min_area_ratio, 0.5);
+}
+
+#[test]
+fn internal_maparea_offsets_numbers_and_names_resolve() {
+    fn linked(target: &str) -> Vec<u8> {
+        form(
+            b"DJVU",
+            &[
+                chunk(b"INFO", &info(100, 100, 72)),
+                chunk(b"TXTa", &text("go")),
+                ant(&format!(
+                    "(maparea \"\" (rect 0 0 100 100) (url \"{target}\"))"
+                )),
+            ],
+        )
+    }
+    let plain = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("two")),
+        ],
+    );
+    for target in ["+1", "#2", "#p1.djvu"] {
+        let c = convert(
+            &bundled(&[linked(target), plain.clone()]),
+            &DjvuOptions::default(),
+        );
+        let (document, _) = parts(&c);
+        assert!(
+            document.contains("w:anchor=\"djvu-page-2\""),
+            "{target}: {document}"
+        );
+    }
+}
+
+#[test]
+fn outline_external_unresolved_and_duplicates_are_reported() {
+    let first = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("one")),
+        ],
+    );
+    let second = form(
+        b"DJVU",
+        &[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("two")),
+        ],
+    );
+    let outline = navm(&[
+        (0, "Chapter", "#page=1"),
+        (0, "Chapter", "#page=1"),
+        (0, "Web", "https://example.invalid/x"),
+        (0, "Gone", "#page=9"),
+    ]);
+    let c = convert(
+        &bundled_with(&[first, second], &[outline]),
+        &DjvuOptions::default(),
+    );
+    let (document, _) = parts(&c);
+    // Two entries named "Chapter": the second gets a unique suffix.
+    assert!(
+        document.contains("w:name=\"djvu-outline-Chapter\""),
+        "{document}"
+    );
+    assert!(
+        document.contains("w:name=\"djvu-outline-Chapter-2\""),
+        "{document}"
+    );
+    let ids: Vec<&str> = c.report.losses().iter().map(|l| l.id.as_str()).collect();
+    assert!(ids.contains(&"djvu.outline.external"), "{ids:?}");
+    assert!(ids.contains(&"djvu.outline.unresolved"), "{ids:?}");
 }
