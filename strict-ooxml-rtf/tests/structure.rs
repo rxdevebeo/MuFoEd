@@ -1373,3 +1373,44 @@ fn legacy_list_constructs_are_info_not_loss() {
         .iter()
         .any(|i| i.feature == "destination:listtext"));
 }
+
+#[test]
+fn table_look_and_bidi_map_to_table_properties() {
+    // `\tbllk*` are `w:tblLook` conditional-formatting flags and `\rtlrow` is
+    // `w:bidiVisual`; both are table-level in the Strict model.
+    let input = br"{\rtf1\trowd\tbllkhdrrows\tbllklastrow\tbllkhdrcols\tbllklastcol\tbllknocolband\rtlrow\cellx2000\cellx4000\intbl A\cell B\cell\row}";
+    for document in [
+        import(input, &RtfOptions::default()).unwrap().document,
+        reopened(input),
+    ] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        let look = table.props.look.expect("w:tblLook");
+        assert!(look.first_row, "\\tbllkhdrrows -> first_row");
+        assert!(look.last_row, "\\tbllklastrow -> last_row");
+        assert!(look.first_column, "\\tbllkhdrcols -> first_column");
+        assert!(look.last_column, "\\tbllklastcol -> last_column");
+        assert!(look.no_v_band, "\\tbllknocolband -> no_v_band");
+        assert!(table.props.bidi_visual, "\\rtlrow -> w:bidiVisual");
+    }
+}
+
+#[test]
+fn table_compat_controls_are_info_not_loss() {
+    let imported = import(
+        br"{\rtf1\trowd\cgrid\irow0\irowband1\lastrow\snaptogridincell\cellx2000\intbl A\cell\row}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "table-compat:cgrid"));
+}

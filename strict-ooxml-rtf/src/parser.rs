@@ -21,8 +21,8 @@ use strict_ooxml_wml::model::{
     NoteTable, Num, NumId, NumPr, NumberingTable, PageMargins, PageOrientation, PageSize,
     Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent, RunProperties, Section,
     SectionProperties, SectionType, Space, Style, StyleId, StyleTable, StyleType, Symbol,
-    TabAlignment, TabLeader, TabStop, Table, TableCell, TableProperties, TableRow, TextNode,
-    TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
+    TabAlignment, TabLeader, TabStop, Table, TableCell, TableLook, TableProperties, TableRow,
+    TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -458,6 +458,10 @@ struct Parser<'a> {
     sections: Vec<Section>,
     row: Option<RowBuilder>,
     table: Option<Table>,
+    /// `w:tblLook` flags accumulated from `\tbllk*` (applied at table creation).
+    table_look: TableLook,
+    /// `w:bidiVisual` from `\rtlrow`/`\ltrrow`.
+    table_rtl: bool,
     table_rows: usize,
     table_cells: usize,
     row_template: Option<RowBuilder>,
@@ -964,6 +968,8 @@ impl Parser<'_> {
         if let Some(table) = self.table.take() {
             self.blocks.push(Block::Table(table));
         }
+        self.table_look = TableLook::default();
+        self.table_rtl = false;
     }
     fn cell(&mut self, offset: usize) -> Result<(), RtfError> {
         if self.row.is_none() {
@@ -1041,10 +1047,13 @@ impl Parser<'_> {
             self.issue(span, Severity::Loss, "table:unequal-row-grids")?;
         }
         if self.table.is_none() {
+            let look = (self.table_look != TableLook::default()).then_some(self.table_look);
             self.node(1, span.start)?;
             self.table = Some(Table {
                 props: TableProperties {
                     indent: Some(Twips(row.left)),
+                    look,
+                    bidi_visual: self.table_rtl,
                     ..Default::default()
                 },
                 grid,
@@ -2977,6 +2986,15 @@ impl Parser<'_> {
                     row.props.cant_split = n != Some(0);
                 }
             }
+            // `w:tblLook` conditional-formatting flags, repeated on every row.
+            "tbllkhdrrows" => self.table_look.first_row = n != Some(0),
+            "tbllkhdrcols" => self.table_look.first_column = n != Some(0),
+            "tbllklastrow" => self.table_look.last_row = n != Some(0),
+            "tbllklastcol" => self.table_look.last_column = n != Some(0),
+            "tbllknocolband" => self.table_look.no_v_band = n != Some(0),
+            "tbllknorowband" => self.table_look.no_h_band = n != Some(0),
+            "rtlrow" => self.table_rtl = n != Some(0),
+            "ltrrow" => self.table_rtl = false,
             "itap" if n.is_some_and(|n| n > 1) => {
                 return Err(RtfError::UnsupportedRejected {
                     span,
@@ -3208,6 +3226,15 @@ impl Parser<'_> {
             // cosmetic template id.
             "jclisttab" | "levelspace" | "levelindent" | "leveltemplateid" => {
                 return self.issue(span, Severity::Info, format!("list-compat:{name}"));
+            }
+            // Table compatibility controls with no WML equivalent: the character
+            // grid (`\cgrid`/`\snaptogridincell`), the table-growth/format hints
+            // (`\nogrowautofit`/`\nocxsptable`/`\usenormstyforlist`) and the
+            // conditional-formatting row band ids (`\irow`/`\irowband`/
+            // `\lastrow`) are hints the Strict model does not carry.
+            "cgrid" | "snaptogridincell" | "nocxsptable" | "nogrowautofit"
+            | "usenormstyforlist" | "irow" | "irowband" | "lastrow" => {
+                return self.issue(span, Severity::Info, format!("table-compat:{name}"));
             }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
@@ -3444,6 +3471,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         sections: vec![],
         row: None,
         table: None,
+        table_look: TableLook::default(),
+        table_rtl: false,
         table_rows: 0,
         table_cells: 0,
         row_template: None,
