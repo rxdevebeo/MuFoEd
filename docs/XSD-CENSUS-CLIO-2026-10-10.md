@@ -18,17 +18,18 @@
 `smartTagType`, `stylePaneSortMethod`, начала сетки), `a:fmtScheme` рядом с текстурной заливкой, позиции
 градиентов, `wpg:cNvPr`, внешние картинки `r:link`, картинки-маркеры (`w:numPicBullet` с `w:drawing`,
 `w:lvlPicBulletId`, своя `numbering.xml.rels`; VML-маркер переводится T7, TZ-64 теперь `declared_transform`,
-TZ-63 закрыт).
+TZ-63 закрыт; рендер рисует картинку вместо текстового маркера), ревизия знака абзаца
+(`w:ins`/`w:del`/`w:moveFrom`/`w:moveTo` первыми в `w:pPr/w:rPr`, с обязательным `w:author`; TZ-72 закрыт).
 
 Называется (места нет): VML-умолчания фигур в settings (TZ-60/61), текстура
 темы (TZ-65), служебная перекодировка `stylePaneSortMethod` (TZ-62), явное off у `customMarkFollows` (TZ-71),
-ревизия знака абзаца (TZ-72), `prefixMappings` (TZ-74), переписанные при переносе диаграммы (TZ-80..82).
+метки `w:ins`/`w:del` внутри непереносимого `w:rPrChange` (TZ-75), `prefixMappings` (TZ-74), переписанные при переносе диаграммы (TZ-80..82).
 
 Находка: нормализатор печатает id потери как `<uri>#local`, census видит голое `local` — `requires_cited`
 с `w:` для потерь нормализатора не работает; TZ-60/61 привязаны к VML-именам из текста причины.
 
-Не делалось: ревизия знака абзаца, `customMarkFollows=1`; рендер картинки-маркера (рисуется текстовый
-маркер `w:lvlText`).
+Не делалось: история изменений форматирования (`w:rPrChange`/`w:pPrChange` — пункт 3.6 плана редактора),
+`customMarkFollows=1` (свой знак сноски).
 
 ## 3. Clio
 
@@ -43,5 +44,4 @@ wps-gate ledger, допуск 0,25 px. Выполняется там, где е�
 
 ## Гейты
 
-`55a3661`: fmt, clippy, test 1782/0, deny, doc — зелёные. census PASS (`8360145`), XSD PASS (`cfcde39`);
-контрольные census/XSD на финальном коммите — в журнале hostq.
+`f904115`: fmt, clippy, test 1785/0, deny, doc — зелёные; census PASS (0); XSD PASS (наших 0, источника 11).
