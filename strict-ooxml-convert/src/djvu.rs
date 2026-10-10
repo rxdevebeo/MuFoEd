@@ -515,6 +515,7 @@ fn picture(part: &strict_ooxml_core::part::PartId, w: f64, h: f64) -> Inline {
                 extent: Some(extent),
                 src_rect: None,
                 xfrm: None,
+                markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
             })),
             location: location.clone(),
         }),
@@ -598,6 +599,8 @@ fn add_page_bookmark(blocks: &mut [Block], id: &str, name: &str) -> bool {
         Inline::BookmarkStart(Bookmark {
             id: id.clone(),
             name: std::sync::Arc::from(name),
+            col_first: None,
+            col_last: None,
         }),
     );
     let Some(last) = blocks.iter_mut().rev().find_map(paragraph_mut) else {
