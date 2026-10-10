@@ -22,7 +22,7 @@ DjVuLibre `3.5.28` как внешний оракул (WSL), WPS `12.1.0.28485`
 | **9B** | Текстовый слой `TXTa`/`TXTz`: UTF-8 диапазоны, 17-байтовые зоны с дельтами (раскладка по типу зоны), три состояния `Readable`/`Empty`/`Unusable` | готово |
 | **9C** | Изображение: JB2/`Djbz`, IW44 (progressive), палитра `FGbz`, `BGjp`/`FGjp`, обычный `Smmr`, legacy `PM44`/`BM44`; PNG за фичей `djvu-image` | готово; striped `Smmr` — явный отказ |
 | **9D** | Конвертер `djvu.rs`: дерево зон → WML (semantic/visual), `INFO` → секции, `maparea` → `w:hyperlink` + закладки (`L1`/`L2`), `NAVM` → плоские закладки (`L3`), metadata/XMP → `docProps/core.xml` (`L4`), счётчики в отчёте (`L6`) | готово |
-| **9E** | `recover.rs` → `recover/policy.rs` + поставщики; `DjvuOptions::text_recovery`/`figure_classifier` за фичами; фигуры из маски `Sjbz` → `FigureClassifier` → `wp:docPr/@descr`; OCR пустых и смешанных страниц | готово |
+| **9E** | `recover.rs` → `recover/policy.rs` + поставщики; `DjvuOptions::text_recovery`/`figure_classifier` за фичами; фигуры из маски `Sjbz` (вычитание текста по перекрытию) и из небелого фонового слоя → `FigureClassifier` → `wp:docPr/@descr`; OCR пустых и смешанных страниц | готово |
 
 Приёмка 9A–9D подтверждена детерминированными native-фикстурами, оракулами
 DjVuLibre и корпусом (`testdata-lock/djvu.toml`, 100 документов); 9E — тестами

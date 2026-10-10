@@ -424,6 +424,30 @@ mod recognition {
             .iter()
             .any(|l| l.id == "djvu.figure" && l.detail.contains("offline")));
     }
+
+    #[test]
+    fn a_component_partly_under_text_is_still_a_figure() {
+        // The box's top edge overlaps the caption line; most of it does not, so
+        // it stays a figure (overlap share, not centre-in-zone).
+        let mut mask = djvu_bitmap::Bitmap::new(100, 100);
+        for y in 15..85 {
+            for x in 10..95 {
+                mask.set_black(x, y);
+            }
+        }
+        let page = single(&[
+            chunk(b"INFO", &info(100, 100, 72)),
+            chunk(b"TXTa", &text("caption")),
+            chunk(b"Sjbz", &djvu_jb2::encode::encode_jb2_lossless(&mask)),
+        ]);
+        let model = classifier("diagram\nPartly under the caption.");
+        let c = convert(
+            &page,
+            &DjvuOptions::default().figure_classifier(Some(model.clone())),
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+        assert!(xml(&c).contains("descr=\"Partly under the caption.\""));
+    }
 }
 
 #[cfg(feature = "djvu-image")]

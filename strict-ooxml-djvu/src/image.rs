@@ -56,6 +56,22 @@ impl DjvuPage {
         };
         Ok(components(&mask, self.info.dpi, limits))
     }
+    /// Bounding boxes of the page's colour/photographic background, in points,
+    /// unrotated.
+    ///
+    /// A page whose background is a picture (IW44/JPEG/legacy plane) reports
+    /// where that background is not white; a purely bitonal page has no
+    /// background plane and yields none. This is the signal the bitonal mask
+    /// cannot give: text and pen strokes live in the mask, a photograph lives in
+    /// the background plane, and only the latter marks a figure.
+    pub fn background_regions(&self, limits: DjvuLimits) -> Result<Vec<Rect>, DjvuError> {
+        let (w, h) = self.dimensions(limits)?;
+        let layers = self.decode_layers(limits)?;
+        let Some(bg) = layers.bg.as_ref() else {
+            return Ok(Vec::new());
+        };
+        Ok(background_boxes(bg, w, h, self.info.dpi, limits))
+    }
     /// A PNG of one unrotated region (in points), for a model.
     ///
     /// INFO rotation is not applied: the region is cut from the same space as the
@@ -443,4 +459,81 @@ fn components(mask: &djvu_bitmap::Bitmap, dpi: u16, limits: DjvuLimits) -> Vec<R
         }
     }
     boxes
+}
+/// Bounding boxes of the 8-connected non-white regions of a background plane,
+/// in page points (the plane may be a reduced image, so it is upsampled).
+fn background_boxes(
+    bg: &djvu_pixmap::Pixmap,
+    page_w: u32,
+    page_h: u32,
+    dpi: u16,
+    limits: DjvuLimits,
+) -> Vec<Rect> {
+    let bw = bg.width as usize;
+    let bh = bg.height as usize;
+    if bw == 0 || bh == 0 {
+        return Vec::new();
+    }
+    let scale_x = f64::from(page_w) / f64::from(bg.width) * 72.0 / f64::from(dpi);
+    let scale_y = f64::from(page_h) / f64::from(bg.height) * 72.0 / f64::from(dpi);
+    let cap = limits.max_zones.max(1);
+    let mut seen = vec![false; bw * bh];
+    let mut boxes = Vec::new();
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    for y in 0..bh {
+        for x in 0..bw {
+            if seen[y * bw + x] || background_white(bg, x, y) {
+                continue;
+            }
+            let (mut lo_x, mut hi_x, mut lo_y, mut hi_y) = (x, x, y, y);
+            let mut size = 0usize;
+            stack.clear();
+            stack.push((x, y));
+            seen[y * bw + x] = true;
+            while let Some((cx, cy)) = stack.pop() {
+                size += 1;
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        if dx == 0 && dy == 0 {
+                            continue;
+                        }
+                        let nx = cx as i32 + dx;
+                        let ny = cy as i32 + dy;
+                        if nx < 0 || ny < 0 || nx >= bw as i32 || ny >= bh as i32 {
+                            continue;
+                        }
+                        let (nx, ny) = (nx as usize, ny as usize);
+                        if seen[ny * bw + nx] || background_white(bg, nx, ny) {
+                            continue;
+                        }
+                        seen[ny * bw + nx] = true;
+                        stack.push((nx, ny));
+                        lo_x = lo_x.min(nx);
+                        hi_x = hi_x.max(nx);
+                        lo_y = lo_y.min(ny);
+                        hi_y = hi_y.max(ny);
+                    }
+                }
+            }
+            // A speck is not a picture.
+            if size < 4 {
+                continue;
+            }
+            boxes.push(Rect {
+                x: lo_x as f64 * scale_x,
+                y: lo_y as f64 * scale_y,
+                width: (hi_x - lo_x + 1) as f64 * scale_x,
+                height: (hi_y - lo_y + 1) as f64 * scale_y,
+            });
+            if boxes.len() >= cap {
+                return boxes;
+            }
+        }
+    }
+    boxes
+}
+/// A background pixel is white when every channel is at least 240.
+fn background_white(bg: &djvu_pixmap::Pixmap, x: usize, y: usize) -> bool {
+    let (r, g, b) = bg.get_rgb(x as u32, y as u32);
+    r >= 240 && g >= 240 && b >= 240
 }

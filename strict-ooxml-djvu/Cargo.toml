@@ -39,3 +39,7 @@ required-features = ["djvu-image"]
 [[example]]
 name = "codec_probe"
 required-features = ["djvu-image"]
+
+[[example]]
+name = "regions"
+required-features = ["djvu-image"]

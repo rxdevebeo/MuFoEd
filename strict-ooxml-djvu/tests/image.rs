@@ -306,3 +306,35 @@ fn region_png_crops_the_composite() {
         )
         .is_err());
 }
+
+#[test]
+fn background_regions_are_where_the_background_is_not_white() {
+    let image = djvu_pixmap::GrayPixmap {
+        width: 100,
+        height: 100,
+        data: vec![100; 10_000],
+    };
+    let parts = djvu_iw44::encode::encode_iw44_gray(
+        &image,
+        &djvu_iw44::encode::Iw44EncodeOptions::default(),
+    );
+    let mut chunks = vec![chunk(b"INFO", &info(100, 100, 72))];
+    for part in parts {
+        chunks.push(chunk(b"BG44", &part));
+    }
+    let doc = DjvuDocument::open(&single(&chunks), DjvuLimits::default()).expect("fixture");
+    let regions = doc.pages()[0]
+        .background_regions(doc.limits)
+        .expect("regions");
+    assert_eq!(regions.len(), 1, "{regions:?}");
+    assert!(
+        regions[0].width >= 90.0 && regions[0].height >= 90.0,
+        "a grey plane covers the page: {regions:?}"
+    );
+    // A purely bitonal page has no background plane.
+    let doc = DjvuDocument::open(&scan(), DjvuLimits::default()).expect("scan");
+    assert!(doc.pages()[0]
+        .background_regions(doc.limits)
+        .expect("empty")
+        .is_empty());
+}

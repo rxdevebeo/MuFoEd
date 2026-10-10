@@ -892,16 +892,31 @@ fn collect_kind(zone: &TextZone, kind: ZoneKind, out: &mut Vec<Rect>) {
     }
 }
 
-/// Whether a box's centre falls inside a text zone's rectangle.
+/// A mask component is text when text hotspots cover at least this share of it.
 #[cfg(feature = "djvu-image")]
-fn centre_inside(candidate: Rect, zone: Rect) -> bool {
-    let cx = candidate.x + candidate.width / 2.0;
-    let cy = candidate.y + candidate.height / 2.0;
-    cx >= zone.x && cx <= zone.x + zone.width && cy >= zone.y && cy <= zone.y + zone.height
+const TEXT_OVERLAP_MAX: f64 = 0.5;
+
+/// The share of a box covered by the union of the text hotspots.
+#[cfg(feature = "djvu-image")]
+fn text_fraction(candidate: Rect, text: &[Rect]) -> f64 {
+    let area = candidate.width * candidate.height;
+    if area <= 0.0 {
+        return 1.0;
+    }
+    let mut covered = 0.0;
+    for zone in text {
+        let x = (candidate.x + candidate.width).min(zone.x + zone.width) - candidate.x.max(zone.x);
+        let y =
+            (candidate.y + candidate.height).min(zone.y + zone.height) - candidate.y.max(zone.y);
+        if x > 0.0 && y > 0.0 {
+            covered += x * y;
+        }
+    }
+    (covered / area).min(1.0)
 }
 
-/// The figure regions of a page: ink outside every text zone, clustered, above
-/// the area floor, the largest first (SC-D9 O7).
+/// The figure regions of a page (SC-D9 O7): bitonal ink the text does not cover,
+/// plus the page's photographic background, clustered and above the area floor.
 #[cfg(feature = "djvu-image")]
 fn figure_regions(
     page: &DjvuPage,
@@ -909,16 +924,24 @@ fn figure_regions(
     text: &[Rect],
     options: &DjvuOptions,
 ) -> Vec<Rect> {
-    let Ok(boxes) = page.ink_boxes(limits) else {
-        return Vec::new();
-    };
-    let free: Vec<Rect> = boxes
-        .into_iter()
-        .filter(|candidate| !text.iter().any(|zone| centre_inside(*candidate, *zone)))
-        .collect();
+    let mut candidates: Vec<Rect> = Vec::new();
+    if let Ok(boxes) = page.ink_boxes(limits) {
+        candidates.extend(
+            boxes
+                .into_iter()
+                .filter(|candidate| text_fraction(*candidate, text) < TEXT_OVERLAP_MAX),
+        );
+    }
+    // A photographic background is a figure the mask cannot name; it is kept
+    // whole even where text is printed over it.
+    if let Ok(mut photos) = page.background_regions(limits) {
+        candidates.append(&mut photos);
+    }
     let (pw, ph) = page.info.points();
     let page_area = (pw * ph).max(1.0);
-    let mut figures: Vec<Rect> = cluster(free)
+    // The gap scales with the page so a large sheet is not cut into pieces.
+    let gap = (0.01 * (pw + ph)).clamp(4.0, 12.0);
+    let mut figures: Vec<Rect> = cluster(candidates, gap)
         .into_iter()
         .filter(|region| {
             region.width * region.height / page_area >= options.recovery_mixed_min_area_ratio
@@ -936,11 +959,11 @@ fn figure_regions(
 /// Merges overlapping components into one figure; the iteration reaches a
 /// fixed point because a merge can only join boxes, never split them.
 #[cfg(feature = "djvu-image")]
-fn cluster(boxes: Vec<Rect>) -> Vec<Rect> {
+fn cluster(boxes: Vec<Rect>, gap: f64) -> Vec<Rect> {
     let mut out: Vec<Rect> = Vec::new();
     for candidate in boxes {
         let mut merged = candidate;
-        while let Some(position) = out.iter().position(|existing| near(*existing, merged)) {
+        while let Some(position) = out.iter().position(|existing| near(*existing, merged, gap)) {
             let existing = out.swap_remove(position);
             merged = union(existing, merged);
         }
@@ -949,10 +972,9 @@ fn cluster(boxes: Vec<Rect>) -> Vec<Rect> {
     out
 }
 
-/// Two boxes are near when their 4-point-padded rectangles intersect.
+/// Two boxes are near when their `gap`-padded rectangles intersect.
 #[cfg(feature = "djvu-image")]
-fn near(left: Rect, right: Rect) -> bool {
-    let gap = 4.0;
+fn near(left: Rect, right: Rect, gap: f64) -> bool {
     left.x < right.x + right.width + gap
         && right.x < left.x + left.width + gap
         && left.y < right.y + right.height + gap
