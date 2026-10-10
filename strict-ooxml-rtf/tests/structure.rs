@@ -1352,3 +1352,24 @@ fn contextual_space_maps_to_wml_contextual_spacing() {
         assert_eq!(second.props.contextual_spacing, TriState::Off);
     }
 }
+
+#[test]
+fn legacy_list_constructs_are_info_not_loss() {
+    // `\listtext` (cached list text), `\jclisttab`/`\levelspace`/`\levelindent`/
+    // `\leveltemplateid` (compat markers) and `{\*\levelmarker ...}` have no WML
+    // equivalent and must not be losses (dropping `\listtext` avoids a double
+    // marker).
+    let input = br"{\rtf1{\*\listtable{\list\listtemplateid1{\listlevel\levelnfc0\leveljc0\jclisttab\tx360\levelspace0\levelindent0\leveltemplateid9{\leveltext\'02\'00.;}{\levelnumbers;}}\listid1}}{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}\pard\ls1\ilvl0{\listtext\t1.\t}item\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    assert!(imported.report.info_count >= 3);
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "destination:listtext"));
+}

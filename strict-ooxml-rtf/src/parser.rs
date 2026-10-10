@@ -2398,11 +2398,21 @@ impl Parser<'_> {
                     | "fldinst"
                     | "listtext"
                     | "pntext"
+                    | "levelmarker"
                     | "datafield"
             )
         {
             self.state.skip = true;
-            let severity = if matches!(name, "info" | "generator") {
+            let severity = if matches!(
+                name,
+                "info"
+                    | "generator"
+                    // Legacy cached list text/marker: regenerated from the list
+                    // table, so keeping it would double the marker.
+                    | "listtext"
+                    | "pntext"
+                    | "levelmarker"
+            ) {
                 Severity::Info
             } else {
                 Severity::Loss
@@ -3190,6 +3200,14 @@ impl Parser<'_> {
                     inlines: vec![],
                     location: SourceLocation::unknown(),
                 }));
+            }
+            // Word 7 / list-table compatibility markers with no WML equivalent:
+            // `\jclisttab` only flags the `\tx` tab as a list tab (the tab stop
+            // is already captured), `\levelspace`/`\levelindent` are superseded
+            // by the level's paragraph indents, and `\leveltemplateid` is a
+            // cosmetic template id.
+            "jclisttab" | "levelspace" | "levelindent" | "leveltemplateid" => {
+                return self.issue(span, Severity::Info, format!("list-compat:{name}"));
             }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
