@@ -13,7 +13,7 @@ const NUMBERING_TYPE: &str =
 
 const PICTURE_BULLET_LEVEL: &str = "<w:abstractNum w:abstractNumId=\"0\">\
 <w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"bullet\"/>\
-<w:lvlText w:val=\"\u{f0b7}\"/><w:lvlPicBulletId w:val=\"0\"/><w:lvlJc w:val=\"left\"/>\
+<w:lvlText w:val=\"\u{f0b7}\"/><w:lvlPicBulletId w:val=\"0\"/><w:lvlJc w:val=\"start\"/>\
 </w:lvl></w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>";
 
 const STRICT_BULLET: &str = "<w:numPicBullet w:numPicBulletId=\"0\"><w:drawing>\

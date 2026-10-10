@@ -808,3 +808,17 @@ parts = ["word/charts/*.xml"]
 requires_cited = ["c:ext"]
 summary = "an empty chart c:ext (no extension child) is dropped and named"
 audit = "C-2026-10-10: Strict CT_Extension needs content. 077 chart1.xml ships eight self-closing <c:ext uri=\"{CE6537A1-...}\" xmlns:c15=.../> under c:dLbl/c:extLst; normalize/transitional.rs drop_unsupported_start removes the empty shell and records it as T5.empty-chart-ext under c:ext (Lossy). Matches only chart parts and only when this input's report cites c:ext. Row: 077_2016_Greater_Launceston... chart1.xml removed=8."
+
+[[item]]
+id = "TZ-75"
+origin = "waived"
+signal = "element"
+disposition = "named_loss"
+elements = [
+  "w:ins", "w:ins@id", "w:ins@author", "w:ins@date",
+  "w:del", "w:del@id", "w:del@author", "w:del@date",
+]
+parents = ["rPr"]
+requires_cited = ["w:rPrChange"]
+summary = "a revision mark inside w:rPrChange's previous properties leaves with the dropped change history"
+audit = "Census 2026-10-10 (8b7648e): 020_Nghien_cuu, four w:ins (ids 2, 15, 26, 36) under w:pPr/w:rPr/w:rPrChange/w:rPr - the previous properties of a tracked formatting change on the paragraph mark. The paragraph mark's own w:ins is written since b5ea221 (the other four rows of this document disappeared); w:rPrChange is not modelled and its record now names the w:ins/w:del it takes with it. The census sees only the parent rPr, so this item also matches a mark-level w:ins that went missing - but that one is written and stays covered by the round-trip test census_body_2026_10_10::a_paragraph_mark_revision_round_trips; a drop without the w:rPrChange citation stays unclassified."

@@ -466,10 +466,16 @@ impl PartParser<'_> {
                                 }
                             }
                             "rPrChange" => {
+                                // The previous properties inside it can carry the
+                                // mark's own w:ins/w:del; they leave with it.
                                 parser.record(
                                     "w:rPrChange",
                                     SupportStatus::Partial,
-                                    Some("property change history dropped".to_owned()),
+                                    Some(
+                                        "property change history dropped, with the w:ins/w:del \
+                                         marks its previous properties record"
+                                            .to_owned(),
+                                    ),
                                     Some(parser.location()),
                                 );
                             }
