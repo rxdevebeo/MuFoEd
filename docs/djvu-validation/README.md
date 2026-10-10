@@ -124,6 +124,7 @@ WSL; драйверы прогнаны на реальных файлах кор
 | rotate (SC-D14) | синтетические 90/180/270 (`xtool/djvu-rotate-fixture.py`): зоны совпали с unrotated `djvutxt`, картинка — с повёрнутым `ddjvu`, точно |
 | text (SC-D4) | 3/3 совпали |
 | ant (SC-D9) | гейт на синтетической фикстуре: 1 `maparea` URL → 1 `w:hyperlink` (в корпусе аннотаций нет) |
+| outline (SC-D9 L3) | синтетическая фикстура `djvused set-outline`: 3 узла (title/url) совпали с `print-outline`; закладки `djvu-outline-*` дошли до `word/document.xml` |
 
 Проверка уточнила форматы и исправила драйверы: `djvutxt --detail=word` печатает
 `xmin ymin xmax ymax` (начало внизу-слева), а не `x y w h`; `djvmcvt -i` требует

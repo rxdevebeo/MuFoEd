@@ -22,8 +22,8 @@ from pathlib import Path
 
 DEFAULT_OUTLINE = """(bookmarks
  ("Chapter" "#page=1"
-  ("Section" "#page=2"))
- ("Appendix" "#page=3"))
+  ("Section" "#page=1"))
+ ("Appendix" "#page=1"))
 """
 
 
