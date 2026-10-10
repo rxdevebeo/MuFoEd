@@ -1,0 +1,57 @@
+{
+  "what": "Live OCR of scanned DjVu pages through the CLI and a running Ollama vision model, plus the external-editor open (SC-D8). Complements ocr-cli-smoke.json, which tests the contract against a mock server.",
+  "date": "2026-10-10",
+  "tools": {
+    "model": "qwen3-vl:8b-instruct-ctx16k",
+    "endpoint": "http://127.0.0.1:11434",
+    "ollama": "0.40.2",
+    "wps": "12.1.0.28485"
+  },
+  "runs": [
+    {
+      "file": "keraleeya-kalakal.djvu",
+      "page": 1,
+      "reader": "TextLayer::Empty",
+      "classification": "illustration",
+      "outcome": "described, not transcribed (SC-D9 O7)",
+      "report": "djvu.figure"
+    },
+    {
+      "file": "keraleeya-kalakal.djvu",
+      "page": 10,
+      "reader": "TextLayer::Empty",
+      "classification": "scan",
+      "outcome": "recovered 2 paragraphs of Malayalam text (SC-D9 O3)",
+      "report": "djvu.ocr.recovered",
+      "seconds": 10
+    },
+    {
+      "file": "OtnoshenieNoveysheyFiziki.djvu",
+      "page": 5,
+      "reader": "TextLayer::Empty",
+      "outcome": "refused: DjVu limit exceeded: max_ink_pixels (raise via --max-image-pixels)",
+      "report": "djvu.image.failed"
+    }
+  ],
+  "wps_open": [
+    {
+      "source": "AdrianMoraru-Marfa.djvu p.1 (native text)",
+      "pages": 1,
+      "characters": 1395,
+      "words": 316,
+      "repaired": false
+    },
+    {
+      "source": "keraleeya-kalakal.djvu p.10 (OCR)",
+      "pages": 2,
+      "characters": 15,
+      "words": 4,
+      "repaired": false
+    }
+  ],
+  "wps_method": "KWPS.Application COM: Documents.Open(file, ConfirmConversions=false, ReadOnly=true); a corrupt package raises and no repair is offered.",
+  "reproduce": [
+    "cargo +1.92.0 build --release -p strict-ooxml-cli --features ocr-ollama",
+    "target/release/strict-ooxml from-djvu testdata/CC0_DJVU/keraleeya-kalakal.djvu --pages 10-10 --ocr --out out.docx"
+  ]
+}

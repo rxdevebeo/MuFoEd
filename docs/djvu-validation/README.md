@@ -61,8 +61,12 @@ python3 xtool/djvu-oracle.py --corpus /path/to/CC0_DJVU --text /path/to/native-t
 
 ## Пределы доказательства
 
-OCR smoke проверяет integration contract с mock-сервером, а не качество
-реальной vision-модели. Ни один установленный Ollama model не запускался.
+OCR smoke (`ocr-cli-smoke.json`) проверяет integration contract с mock-сервером.
+Отдельно, 2026-10-10, прогнан **живой** OCR (`ocr-real.json`): модель
+`qwen3-vl:8b-instruct-ctx16k` на `keraleeya-kalakal.djvu` — стр. 1 описана как
+`illustration`, стр. 10 распознана как `scan` и транскрибирована; WPS
+`12.1.0.28485` открыл оба пакета без repair (`SC-D8`). Покрыты одна модель и две
+страницы, поэтому о качестве модели речь не идёт.
 Изображения в corpus DOCX gate отключены: он проверяет сохранность текста,
 а не полное визуальное сходство всех книг. Битональный pixel oracle покрывает
 четыре страницы: `keraleeya-kalakal` 5/7/10 и `PlaysHistoriesAndNovelsOfTheIngeniousMrs.AphraBehnV.1` 1.
