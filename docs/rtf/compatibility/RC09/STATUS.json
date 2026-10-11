@@ -8,6 +8,7 @@
   "implemented": [
     "revision save identifiers and the Word 6/7 + Asian layout controls whose bare value is the Strict default are named Info instead of Loss: `\\insrsid`/`\\charrsid`/`\\pararsid` (`rsid-compat`), `\\faauto`/`\\adjustright`/`\\aspalpha`/`\\aspnum` (`word6-compat`), and `\\hyphpar`/`\\wrapdefault`/`\\sectdefaultcl`/`\\linex`/`\\lnbrkrule`/`\\partightenfactor` (`paragraph-compat`). Corpus import losses 83010 -> 11394.",
     "character controls with a real WML slot are mapped instead of dropped: `\\kerning` -> `w:kern` (the WPS spelling of `\\kern`), `\\ulc` -> `w:u/@w:color`, and `\\cb` -> `w:rPr/w:shd` (the WPS spelling of the character background, the same property as `\\chcbpat`).",
+    "text highlight `\\highlightN` -> `w:highlight`: the parameter indexes the colour table and the colour is matched to the `ST_HighlightColor` name (index 0 clears the highlight); a colour outside the fixed highlight set stays a Loss.",
     "table controls with a real WML slot are mapped: `\\trpadd{t,b,l,r}`/`\\trpaddf{t,b,l,r}` -> `w:tblCellMar` (with `\\trgaph` as the fallback), `\\trrh` -> `w:trHeight` (negative value = `exact`), `\\trqr`/`\\trql`/`\\trqc` -> `w:trPr/w:jc`, and `\\trautofit` -> `w:tblLayout`.",
     "`\\pardeftab`/`\\deftab` -> `w:defaultTabStop` in settings.xml, and a nested `{\\*\\panose ...}` -> `w:panose1` on the font-table entry.",
     "the non-visual metadata destinations are named Info: `{\\*\\falt}`, `{\\*\\hyphen}`, `{\\*\\pnseclvl}`, `{\\*\\rsidtbl}`, `{\\*\\revtbl}`, `{\\*\\latentstyles}`, `{\\*\\expandedcolortbl}`, `{\\*\\xmlnstbl}`, `{\\*\\pgptbl}`, `{\\*\\pgdsctbl}`, `{\\*\\wgrffmtfilter}`, `{\\*\\userprops}`, `{\\*\\fname}` and `{\\*\\generator}`.",
@@ -37,6 +38,7 @@
       "status": "Pass",
       "tests": [
         "strict-ooxml-rtf/tests/structure.rs::kerning_underline_colour_and_character_background_map_to_run_props",
+        "strict-ooxml-rtf/tests/structure.rs::highlight_colour_index_maps_to_the_named_highlight",
         "strict-ooxml-rtf/tests/structure.rs::table_padding_row_height_alignment_and_layout_map",
         "strict-ooxml-rtf/tests/structure.rs::default_tab_stop_and_compat_controls_map_and_classify",
         "strict-ooxml-rtf/tests/structure.rs::font_panose_maps_and_metadata_destinations_are_info"
@@ -49,12 +51,12 @@
     "corpus_ledger": {
       "status": "Measured",
       "date": "2026-10-11",
-      "receipt": "target/rtf-import/rc09-slice5/",
+      "receipt": "target/rtf-import/rc09-slice7/",
       "results": {
-        "import_losses": "11394 -> 4531 (-6863)",
+        "import_losses": "11394 -> 4515 (-6879)",
         "pagination": "66/100 unchanged vs RC08-columns-layout (0 page-count changes)",
         "check": "100/100 ok: strict",
-        "output_identity": "the metadata/settings Info slices are severity-only: every imported DOCX is SHA-256 identical to the previous slice"
+        "output_identity": "the metadata/settings Info slices are severity-only: every imported DOCX is SHA-256 identical to the previous slice; the highlight slice changes only 086"
       }
     }
   }

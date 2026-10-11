@@ -17,10 +17,10 @@ use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, Border, BorderStyle, BreakKind,
     CellMargins, CellProperties, Color, ColumnSpec, EighthsPoint, Field, FieldChar, FieldCharType,
-    Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, HeightRule, Ilvl,
-    Inline, Justification, Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind,
-    NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders,
-    PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, RowHeight,
+    Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, HeightRule,
+    Highlight, Ilvl, Inline, Justification, Language, Level, LevelOverride, LineSpacingRule, Note,
+    NoteKind, NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder,
+    PageBorders, PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, RowHeight,
     RowProperties, Rsids, Run, RunContent, RunProperties, Section, SectionProperties, SectionType,
     Shading, Space, Style, StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader,
     TabStop, Table, TableCell, TableLayout, TableLook, TableProperties, TableRow, TextDirection,
@@ -3510,6 +3510,29 @@ impl Parser<'_> {
                 })?;
                 self.apply_shading(ShadingScope::Run, "chcbpat", value, span)?;
             }
+            "highlight" => {
+                // Text highlight (`w:highlight`). The parameter is a colour-table
+                // index; WPS maps the colour to the matching highlight name and
+                // index 0 clears the highlight.
+                let index = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing highlight colour",
+                })?;
+                if index <= 0 {
+                    self.state.run.highlight = None;
+                } else if let Some(color) = self.palette_color(index, span)? {
+                    match highlight_name(color.as_str()) {
+                        Some(highlight) => self.state.run.highlight = Some(highlight),
+                        None => {
+                            return self.issue(
+                                span,
+                                Severity::Loss,
+                                format!("run:highlight-colour-not-a-highlight:{index}"),
+                            )
+                        }
+                    }
+                }
+            }
             "fs" | "afs" => {
                 let Some(size) = n.filter(|n| *n > 0) else {
                     return malformed(span.start, "invalid font size");
@@ -4343,6 +4366,32 @@ fn shading_pattern(value: i32) -> String {
         let pct = ((i64::from(value) + 250) / 500) * 5;
         format!("pct{}", pct.clamp(5, 95))
     }
+}
+/// Maps an RGB colour to its matching `ST_HighlightColor` name, if any.
+///
+/// WPS resolves `\highlightN` through the colour table and writes the highlight
+/// name whose RGB value the colour matches exactly; a colour outside the fixed
+/// highlight set is not representable and stays a Loss.
+fn highlight_name(rgb: &str) -> Option<Highlight> {
+    Some(match rgb.to_ascii_uppercase().as_str() {
+        "000000" => Highlight::Black,
+        "0000FF" => Highlight::Blue,
+        "00FFFF" => Highlight::Cyan,
+        "00FF00" => Highlight::Green,
+        "FF00FF" => Highlight::Magenta,
+        "FF0000" => Highlight::Red,
+        "FFFF00" => Highlight::Yellow,
+        "FFFFFF" => Highlight::White,
+        "000080" => Highlight::DarkBlue,
+        "008080" => Highlight::DarkCyan,
+        "008000" => Highlight::DarkGreen,
+        "800080" => Highlight::DarkMagenta,
+        "800000" => Highlight::DarkRed,
+        "808000" => Highlight::DarkYellow,
+        "808080" => Highlight::DarkGray,
+        "C0C0C0" => Highlight::LightGray,
+        _ => return None,
+    })
 }
 /// Replaces each direction-mixed, text-only run with direction-homogeneous runs.
 /// Runs that already carry `w:rtl` or hold non-text content are left untouched.

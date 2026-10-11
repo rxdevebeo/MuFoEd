@@ -2,9 +2,9 @@
 #![allow(clippy::default_trait_access)]
 use strict_ooxml_rtf::{import, RtfOptions};
 use strict_ooxml_wml::model::{
-    AbstractNumId, Block, BorderStyle, Color, EighthsPoint, HalfPoints, HeightRule, Ilvl, Inline,
-    Justification, NoteKind, NumId, RowHeight, RunContent, StyleId, TabLeader, TableLayout,
-    TriState, Twips, Underline, WidthKind,
+    AbstractNumId, Block, BorderStyle, Color, EighthsPoint, HalfPoints, HeightRule, Highlight,
+    Ilvl, Inline, Justification, NoteKind, NumId, RowHeight, RunContent, StyleId, TabLeader,
+    TableLayout, TriState, Twips, Underline, WidthKind,
 };
 
 /// The complex-field markers (`w:fldChar`/`w:instrText`) of one paragraph, in order.
@@ -1142,6 +1142,33 @@ fn kerning_underline_colour_and_character_background_map_to_run_props() {
             Some("FF0000"),
             "\\cb -> run background"
         );
+    }
+}
+
+#[test]
+fn highlight_colour_index_maps_to_the_named_highlight() {
+    // `\highlightN` resolves through the colour table: index 1 is yellow and
+    // index 2 white here, so the run carries the matching `w:highlight` name.
+    let input = br"{\rtf1{\colortbl;\red255\green255\blue0;\red255\green255\blue255;}\pard\highlight1 yellow\par\highlight2 white\par\highlight0 none\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let run_props = |index: usize| {
+            let Block::Paragraph(paragraph) = &document.body.blocks[index] else {
+                panic!("paragraph")
+            };
+            let Inline::Run(run) = &paragraph.inlines[0] else {
+                panic!("run")
+            };
+            run.props.highlight
+        };
+        assert_eq!(run_props(0), Some(Highlight::Yellow), "\\highlight1");
+        assert_eq!(run_props(1), Some(Highlight::White), "\\highlight2");
+        assert_eq!(run_props(2), None, "\\highlight0 clears the highlight");
     }
 }
 

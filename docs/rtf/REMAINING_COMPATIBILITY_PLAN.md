@@ -1042,7 +1042,7 @@ clippy/fmt Pass. Corpus `target/rtf-import/rc09-triage`: import losses
   settings/cocoa/view/drawing-grid/math/rsid-семейства, `\widowctrl`, `\additive`,
   `\pardirnatural`, `\deflang*`.
 
-Losses **11394 → 4531**. Severity-only срезы дали SHA-256-идентичный DOCX;
+Losses **11394 → 4515**. Severity-only срезы дали SHA-256-идентичный DOCX;
 pagination 66/100 без изменения номеров страниц; `check` 100/100. Тесты —
 `structure.rs::{kerning_underline_colour_and_character_background_map_to_run_props,
 table_padding_row_height_alignment_and_layout_map,

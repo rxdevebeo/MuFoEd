@@ -42,7 +42,8 @@ was used to decide the ones without a slot:
 - **Character** `\kerning` -> `w:kern` (WPS writes `w:kern`), `\ulc` ->
   `w:u/@w:color` (WPS writes `w:u w:val="single" w:color="0000FF"`), `\cb` ->
   `w:rPr/w:shd` (the character background; WPS is inconsistent about it, but it
-  is the same property as the already-mapped `\chcbpat`).
+  is the same property as the already-mapped `\chcbpat`), and `\highlightN` ->
+  `w:highlight` (086: colortbl index 2 = yellow, 3 = white, matching WPS).
 - **Table** `\trpadd{t,b,l,r}` + `\trpaddf{t,b,l,r}` -> `w:tblCellMar`,
   `\trrh` -> `w:trHeight` (negative = `exact`), `\trqr`/`\trql`/`\trqc` ->
   `w:trPr/w:jc`, `\trautofit` -> `w:tblLayout` (all confirmed against 008).
@@ -62,14 +63,15 @@ was used to decide the ones without a slot:
   default-language hints.
 
 Tests: `structure.rs::{kerning_underline_colour_and_character_background_map_to_run_props,
+highlight_colour_index_maps_to_the_named_highlight,
 table_padding_row_height_alignment_and_layout_map,
 default_tab_stop_and_compat_controls_map_and_classify,
 font_panose_maps_and_metadata_destinations_are_info,
 document_settings_and_compat_controls_are_info}`. Corpus receipt
-`target/rtf-import/rc09-slice5/`: import losses **11394 -> 4531**; pagination
+`target/rtf-import/rc09-slice7/`: import losses **11394 -> 4515**; pagination
 66/100 with **0 page-count changes** vs `RC08-columns-layout`; `check` 100/100
 `ok: strict`. The metadata/settings slices are severity-only (DOCX SHA-256
-identical).
+identical); the highlight slice changes only 086 and not its page count.
 
 ## Remaining
 

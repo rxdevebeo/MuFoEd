@@ -21,7 +21,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
 | RC08 regions/fields | InProgress | column layout + multi-paragraph field block **done (2026-10-11)**; remaining: custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
-| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 531); remaining: `wps:leading-group-line-ending`, `\ts` table styles, picture crop, comments/revisions/textboxes/OLE/metadata | shared model |
+| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 515); remaining: `wps:leading-group-line-ending`, `\ts` table styles, picture crop, comments/revisions/textboxes/OLE/metadata | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
 | RC12 public/CI | Planned | матрица фич, CI без WPS, публичный frontend | CI |
@@ -29,7 +29,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 Текущие dev-цифры (полный прогон `RC06-final3`, свежий WPS oracle 2026-10-11):
 import resource 100/100, text 99/100 (014 — WPS field-recompute quirk), `check`
 100/100 `ok: strict`, pagination 66/100, pixels 6/100 док. / 22/458 стр.
-Import losses 4 531 (после RC09-срезов 2026-10-11; было 11 394, 83 671 после
+Import losses 4 515 (после RC09-срезов 2026-10-11; было 11 394, 83 671 после
 RC06, 127 228 изначально).
 
 ---
@@ -284,7 +284,7 @@ Asian layout-контролы, чья bare-форма равна Strict-дефо
   settings/cocoa/view/drawing-grid/math/rsid-семейства, `\widowctrl`, `\additive`,
   `\pardirnatural`, `\deflang*`.
 
-Итог: import losses **83 671 → 11 394 → 4 531**; pagination 66/100 (0 изменений
+Итог: import losses **83 671 → 11 394 → 4 515**; pagination 66/100 (0 изменений
 номеров страниц против `RC08-columns-layout`), `check` 100/100 `ok: strict`.
 Metadata/settings-срезы severity-only → DOCX SHA-256 идентичен. Тесты —
 `structure.rs::{legacy_layout_and_revision_controls_are_info_not_losses,
@@ -389,7 +389,7 @@ unsupported statuses и подробный report. Merge/release — отдел�
 6. **RC07 metafiles** (отдельная очередь) + RC10.
 7. **RC09 по семантическому impact** — сделано (2026-10-11): revision/compat
    metadata, table/char-контролы с реальными слотами и метаданные-дестинации
-   (losses 83 671 → 4 531); далее — `\ts` table styles, picture crop и
+   (losses 83 671 → 4 515); далее — `\ts` table styles, picture crop и
    content-классы (comments/revisions/textboxes/OLE/metadata).
 8. **RC11** после RC02–RC10; **RC12** после RC11.
 
