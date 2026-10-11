@@ -1,0 +1,52 @@
+{
+  "card": "RC06",
+  "status": "InProgress",
+  "updated": "2026-10-10",
+  "scope": "tables",
+  "base_commit": "e453e24",
+  "dependencies": ["RC04"],
+  "implemented": [
+    "table conditional-formatting look maps to w:tblLook: \\tbllkhdrrows -> first_row, \\tbllkhdrcols -> first_column, \\tbllklastrow -> last_row, \\tbllklastcol -> last_column, \\tbllknocolband -> no_v_band (\\tbllknorowband -> no_h_band), applied at table creation from the first row and rendered by the table-style conditional pass.",
+    "table direction maps to w:bidiVisual: \\rtlrow sets it, \\ltrrow clears it.",
+    "the character-grid / table-growth / conditional band compat controls (\\cgrid, \\snaptogridincell, \\nocxsptable, \\nogrowautofit, \\usenormstyforlist, \\irow, \\irowband, \\lastrow) are Info (no WML equivalent), and the row/cell grid mapping, horizontal merge (\\clmgf/\\clmrg), vertical merge (\\clvmgf/\\clvmrg), vertical align, cell widths and the row grid were already mapped."
+  ],
+  "remaining": [
+    "borders/shading are entirely unmapped. Paragraph borders (\\brdrt/\\brdrb/\\brdrl/\\brdrr/\\brdrbar/\\brdrbtw), cell borders (\\clbrdr{t,b,l,r}), table borders (\\brdrtbl), row borders (\\trbrdr*), page borders (\\pgbrdr*) and the per-edge \\brdrs/\\brdrth/\\brdrdb/\\brdrdot/\\brdrdash/\\brdrw/\\brdrcf/\\brsp style tokens are all Loss (~35k events). The RTF grammar is `<edge> <style> \\brdrw? \\brsp? \\brdrcf?`; the four standard edges map cleanly to Borders, but \\brdrbar/\\brdrbtw need w:pBdr between/bar, which the shared Borders model does not carry yet.",
+    "cell shading (\\chshdng/\\clshdrawnil), diagonal cell borders (\\cldgll/\\cldglu) and the nested-table structure (currently explicitly Reject) remain unreviewed.",
+    "table indent \\tblind / \\tblindtype: the indent is already represented by the row position (\\trleft), and WPS writes no w:tblInd for the corpus; the type has no Strict form. Left as Loss pending a witness that needs it."
+  ],
+  "blocked": [],
+  "checks": {
+    "table_look_and_bidi": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::table_look_and_bidi_map_to_table_properties",
+      "assertions": [
+        "\\tbllkhdrrows/\\tbllklastrow/\\tbllkhdrcols/\\tbllklastcol/\\tbllknocolband reach w:tblLook flags",
+        "\\rtlrow reaches w:bidiVisual",
+        "both survive import -> Strict write -> reopen"
+      ]
+    },
+    "table_compat_controls": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::table_compat_controls_are_info_not_loss",
+      "assertions": [
+        "\\cgrid/\\irow/\\irowband/\\lastrow/\\snaptogridincell inside a table row produce zero Loss and appear as Info"
+      ]
+    },
+    "corpus_gates": {
+      "status": "Measured",
+      "date": "2026-10-10",
+      "receipts": [
+        "target/rtf-import/RC0506-corpus/results.json",
+        "target/rtf-import/RC0506-visual/results.json"
+      ],
+      "results": {
+        "import_text_resource": "100/100 Pass",
+        "import_loss_events": "137380 -> 127228 (RC06 part: -1354; 5 documents gain w:tblLook/w:bidiVisual)",
+        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict`",
+        "pagination": "65/100 Pass, every page count identical to RC08-final",
+        "pixels": "carried forward by exact PDF identity: all 100 rendered PDFs are byte-identical to RC08-final"
+      }
+    }
+  }
+}

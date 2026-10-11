@@ -907,6 +907,37 @@ RC08-final, все 100 PDF побайтово идентичны (pixel-заме
 идентичности). Открыто: column-layout, multi-paragraph field block, custom
 marks — крупные shared-build задачи.
 
+### RC05/RC06: списки и таблицы — 2026-10-10
+
+Карточки заведены: [compatibility/RC05](compatibility/RC05/STATUS.json) и
+[compatibility/RC06](compatibility/RC06/STATUS.json). Срезы (`23f0d03`,
+`e453e24`, `72e7d05`):
+
+- **RC05.** Легаси/совместимые list-конструкции перестали быть Loss:
+  `{\listtext}`/`{\pntext}` (кэшированный текст маркера, регенерируется из list
+  table — иначе двойной маркер), `{\*\levelmarker}` (альтернативный маркер,
+  уступает `\leveltext`), `\jclisttab`/`\levelspace`/`\levelindent`/
+  `\leveltemplateid` (Word 7 / list-template compat) → Info. Уже
+  маппились `\list`/`\listlevel`/`\levelnfc`/`\levelstartat`/`\levelfollow`/
+  `\leveltext` → `w:abstractNum`/`w:lvl` и `\listoverride`/`\ls` → `w:num`;
+  отрицательный `\listid` сохраняется как source identity. Открыто: override
+  levels (`\lfolevel`) — model/renderer уже держат `w:lvlOverride`, нужен только
+  parser (witness 021).
+- **RC06.** `\tbllk*` → `w:tblLook` (firstRow/lastRow/firstColumn/lastColumn/
+  noVBand), `\rtlrow`/`\ltrrow` → `w:bidiVisual`; char-grid/growth/band compat
+  (`\cgrid`, `\snaptogridincell`, `\nocxsptable`, `\nogrowautofit`,
+  `\usenormstyforlist`, `\irow`, `\irowband`, `\lastrow`) → Info. Уже
+  маппились grid/merge/widths/header rows; nested tables — явный Reject.
+  Открыто: **бордеры и shading** (~35k Loss; нужен `Borders` между/bar для
+  paragraph `\brdrbar`/`\brdrbtw` и state-machine стилей `<edge> <style>
+  \brdrw? \brdrcf?`), cell shading/diagonal, `\tblind`.
+
+Проверки: RTF structure 55 + import 36 + 1 doc-test Pass; clippy `-D warnings`
+(MSRV 1.92) и changed-file rustfmt Pass. Финал `RC0506-corpus`/`RC0506-visual`:
+text/resource 100/100; `check` 100/100 `ok: strict`; import losses
+137 380 → 127 228 (−10 152); все 100 page counts равны RC08-final, все 100 PDF
+побайтово идентичны (pixel-замер переносится по идентичности).
+
 
 
 

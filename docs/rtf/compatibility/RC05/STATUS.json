@@ -1,0 +1,44 @@
+{
+  "card": "RC05",
+  "status": "InProgress",
+  "updated": "2026-10-10",
+  "scope": "lists and numbering",
+  "base_commit": "e453e24",
+  "dependencies": ["RC04"],
+  "implemented": [
+    "legacy/compat list constructs are classified honestly instead of reported as Loss: {\\*\\listtext ...}/{\\listtext ...}/{\\pntext ...} are the cached list text regenerated from the list table (dropping them avoids a double marker), {\\*\\levelmarker ...} is a legacy alternative marker superseded by \\leveltext, and \\jclisttab/\\levelspace/\\levelindent/\\leveltemplateid are Word 7 / list-template compatibility markers with no Strict equivalent. Corpus import losses fall by 8798 across the affected documents.",
+    "the list table already maps \\list/\\listid/\\listlevel/\\levelnfc/\\levelnfcn/\\levelstartat/\\leveljc/\\leveljcn/\\levelfollow/\\leveltext -> w:abstractNum/w:lvl (start, numFmt, lvlText, lvlJc, suff) and \\listoverride/\\listid/\\ls -> w:num; negative \\listid is preserved as an unsigned source identity. This slice adds no new numbering XML; it stops the legacy constructs from masking real losses."
+  ],
+  "remaining": [
+    "list override levels: {\\*\\lfolevel ...} with \\listoverrideformat{\\listlevel ...} (a full replacement level) or \\listoverridestart\\levelstartatN (a start override) are still dropped as list-override-control:* Loss. The model already carries w:lvlOverride (LevelOverride { start_override, level }), and the renderer consumes it, so the mapping is bounded to the parser: route the nested level controls into a LevelOverride on the w:num. One corpus witness (021).",
+    "counter continuity across paragraphs/tables/sections is a renderer concern and was not re-audited here.",
+    "list:unbound-text (text directly inside listtable/listoverridetable) stays a Loss; it is malformed source, not a supported construct."
+  ],
+  "blocked": [],
+  "checks": {
+    "legacy_list_constructs": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::legacy_list_constructs_are_info_not_loss",
+      "assertions": [
+        "a list table/override with \\jclisttab, \\levelspace, \\levelindent, \\leveltemplateid, {\\*\\levelmarker} and a {\\listtext} paragraph produces zero import Loss",
+        "destination:listtext and destination:levelmarker appear as Info",
+        "the list structure (numbering instance) still round-trips"
+      ]
+    },
+    "corpus_gates": {
+      "status": "Measured",
+      "date": "2026-10-10",
+      "receipts": [
+        "target/rtf-import/RC0506-corpus/results.json",
+        "target/rtf-import/RC0506-visual/results.json"
+      ],
+      "results": {
+        "import_text_resource": "100/100 Pass",
+        "import_loss_events": "137380 -> 127228 (RC05 part: -8798; RC06 part: -1354)",
+        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict`",
+        "pagination": "65/100 Pass, every page count identical to RC08-final",
+        "pixels": "carried forward by exact PDF identity: all 100 rendered PDFs are byte-identical to RC08-final"
+      }
+    }
+  }
+}
