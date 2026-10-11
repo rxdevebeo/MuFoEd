@@ -4216,6 +4216,20 @@ impl Parser<'_> {
             "hyphpar" if n.is_none() => {
                 return self.issue(span, Severity::Info, "paragraph-compat:hyphpar");
             }
+            // `\pardirnatural` asserts the default paragraph direction.
+            "pardirnatural" => {
+                return self.issue(span, Severity::Info, "paragraph-compat:pardirnatural");
+            }
+            // Word 6/7 document default-language hints: WPS writes its own
+            // `w:themeFontLang`, not the RTF default, so a mapping would write
+            // nothing the reference does not already fix.
+            "deflang" | "deflangfe" | "adeflang" => {
+                return self.issue(
+                    span,
+                    Severity::Info,
+                    format!("document-default-compat:{name}"),
+                );
+            }
             // Word 5/6/7 and Asian text-layout hints whose effect is default
             // layout: `\wrapdefault`/`\sectdefaultcl`/`\linex`/`\lnbrkrule`/
             // `\partightenfactor` assert default line breaking, and the Arabic
