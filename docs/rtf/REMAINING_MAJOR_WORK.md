@@ -21,7 +21,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
 | RC08 regions/fields | InProgress | column layout + multi-paragraph field block **done (2026-10-11)**; remaining: custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
-| RC09 other losses | Planned | comments/revisions/textboxes/OLE/metadata | shared model |
+| RC09 other losses | InProgress | legacy/compat + revision controls classified **done (2026-10-11)** (losses 83671 → 11394); remaining: table/char controls with slots; comments/revisions/textboxes/OLE/metadata | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
 | RC12 public/CI | Planned | матрица фич, CI без WPS, публичный frontend | CI |
@@ -29,7 +29,8 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 Текущие dev-цифры (полный прогон `RC06-final3`, свежий WPS oracle 2026-10-11):
 import resource 100/100, text 99/100 (014 — WPS field-recompute quirk), `check`
 100/100 `ok: strict`, pagination 65/100, pixels 6/100 док. / 22/458 стр.
-Import losses 83 671 (после RC06; было 127 197 до RC06, 127 228 изначально).
+Import losses 11 394 (после RC09-triage 2026-10-11; было 83 671 после RC06,
+127 228 изначально).
 
 ---
 
@@ -262,17 +263,26 @@ geometry.
 
 ## RC09 — остальные классы потерь
 
-**Состояние.** Не начат по существу; ledger задаёт triage. Уже частично снято
-RC08 (fields/bookmarks/notes) и RC05/RC06 реклассификациями.
+**Состояние.** Начат (2026-10-11): ledger-driven triage. Ревизионные save-ID
+(`\insrsid`/`\charrsid`/`\pararsid`) и Word 6/7 + Asian layout-контролы, чья
+bare-форма равна Strict-дефолту (`\faauto`/`\adjustright`/`\aspalpha`/`\aspnum`,
+`\hyphpar`/`\wrapdefault`/`\sectdefaultcl`/`\linex`/`\lnbrkrule`/
+`\partightenfactor`), теперь именованный Info (`rsid-compat`/`word6-compat`/
+`paragraph-compat`), а non-default формы (`\hyphpar0`, `\adjustright0`) остаются
+явным Loss (нет слота в paragraph model). Карточка
+[compatibility/RC09](compatibility/RC09/STATUS.json). Import losses **83671 →
+11394**; DOCX байт-идентичен, pagination/pixels без изменений.
 
-**Осталось.** Разложить по RC01: comments, revisions, textboxes/shapes, OLE,
-metadata и прочие controls на mapping-tasks с witnesses. Использовать
-существующие WML revision/DrawingML типы; проверять final/original view. OLE —
-opaque payload/relationships без activation; preview измерять отдельно.
-Метаданные (авторство/даты/docprops) не считать визуальными glyph-losses, но
-показывать в import report. Шапковые metadata-дестинации, всё ещё Loss:
+**Осталось.** Остаток ledger небольшая: (a) table/char-контролы с реальным
+WML-слотом (`\trpadd*`→`w:tblCellMar`, `\ulc`→`w:u/@w:color`, `\cltxlrtb`→
+`w:textDirection`, `\pardeftab`→defaultTabStop, `\nooverflow`/`\nocwrap`→cell
+wrap, `\trrh`/`\trautofit`/`\trftsWidth`); (b) content-классы, которым нужен
+shared model — comments, revisions, textboxes/shapes, OLE, document metadata
+(авторство/даты/docprops не считать glyph-losses, но показывать в report;
+OLE — opaque payload/relations без activation); (c) metadata-дестинации
 `{\*\rsidtbl}`, `{\*\expandedcolortbl}`, `{\*\xmlnstbl}`, `{\*\pgptbl}`,
-`{\*\pgdsctbl}`, `{\*\revtbl}`.
+`{\*\pgdsctbl}`, `{\*\revtbl}`, `{\*\panose}`, `{\*\pnseclvl}`, `{\*\hyphen}`;
+(d) WPS-специфичный `wps:leading-group-line-ending`.
 
 **DoD.** у каждого наблюдаемого класса — implemented semantics + independent
 roundtrip test либо явное неподдержанное правило с открытым compatibility
@@ -355,7 +365,9 @@ unsupported statuses и подробный report. Merge/release — отдел�
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
 6. **RC07 metafiles** (отдельная очередь) + RC10.
-7. **RC09** по семантическому impact (RC01 triage).
+7. **RC09 по семантическому impact** — начато (2026-10-11): revision/compat
+   metadata классифицированы Info (losses 83671 → 11394); далее остаточные
+   table/char-контролы и content-классы.
 8. **RC11** после RC02–RC10; **RC12** после RC11.
 
 Правила параллелизма из плана сохраняются: shared `parser.rs`, model и layout не

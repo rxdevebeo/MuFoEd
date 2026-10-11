@@ -999,3 +999,33 @@ reader раньше ронял молча; теперь ссылка сохра�
 
 Далее по порядку — RC04.
 
+### RC09: revision ids и legacy layout-контролы — 2026-10-11
+
+Ledger корпуса доминировали два семейства, чья bare-форма равна Strict-дефолту
+(маппинг записал бы ничего), поэтому честная классификация — именованный Info,
+а не Loss: ревизионные save-ID `\insrsid`/`\charrsid`/`\pararsid`
+(`rsid-compat`; невизуальные merge-метаданные) и Word 6/7 + Asian layout-контролы
+`\faauto`/`\adjustright`/`\aspalpha`/`\aspnum` (`word6-compat`; `w:textAlignment=
+auto`, `w:adjustRightInd` on, `w:autoSpaceDE`/`autoSpaceDN` on) плюс `\hyphpar`/
+`\wrapdefault`/`\sectdefaultcl`/`\linex`/`\lnbrkrule`/`\partightenfactor`
+(`paragraph-compat`). Non-default формы (`\hyphpar0`, `\adjustright0`) остаются
+явным `control:*` Loss — в paragraph model нет `w:suppressAutoHyphens`/
+`w:adjustRightInd`.
+
+Проверки: `structure.rs::{legacy_layout_and_revision_controls_are_info_not_losses,
+non_default_legacy_layout_controls_stay_losses}`; suite `strict-ooxml-rtf` Pass;
+clippy/fmt Pass. Corpus `target/rtf-import/rc09-triage`: import losses
+**83010 → 11394** (−71616). Изменение только severity, поэтому DOCX байт-идентичен
+(SHA-256 совпал на 014/074/092) — pagination и pixels без изменений. Карточка
+[compatibility/RC09](compatibility/RC09/STATUS.json).
+
+### RC04: resolver-probe (заметка) — 2026-10-11
+
+Проверен `xtool/rtf/effective_style_resolver.py` на текущем выходе 019/039 против
+WPS `reference.docx` (лежат в `RC05-wps-full/oracle/files/`). Остаток — не mapping,
+а корректность самого probe: `resolve` заменяет свойство целиком, а не по
+атрибутам, поэтому унаследованный `rFonts` при direct `<w:rFonts w:hint>` читается
+как `{}`; нужна и нормализация absent-vs-default. Остаётся и genuinе WPS-quirk:
+WPS-reference 019 теряет `\sl276` строки 1, наш импорт его сохраняет. Pixel-часть
+RC04 заблокирована на faces (RC02/RC03).
+
