@@ -48,6 +48,85 @@ SDT-метаданные, настройки редактора, UI-флаги �
   `table_style.rs`, `notes.rs`; гарантии полноты по ним нет.
 - Не проверялось, всё ли из XML парсер кладёт в модель (обратная задача).
 
+## Статус исправлений (2026-10-11)
+
+Порядок работ — из раздела «Порядок исправления» ниже. На каждую группу есть
+интеграционный тест в `strict-ooxml-render-svg/tests/*_properties.rs`, плюс
+модульные тесты в новых модулях.
+
+**Новые общие механизмы**
+
+- [`layout/decoration.rs`](../strict-ooxml-render-svg/src/layout/decoration.rs) —
+  подчёркивание, зачёркивание, выделение и заливка run как геометрия, общая для SVG и
+  PDF. SVG больше не использует `text-decoration`; **PDF раньше не рисовал ни
+  подчёркивания, ни зачёркивания, ни выделения** — теперь рисует.
+- [`layout/border.rs`](../strict-ooxml-render-svg/src/layout/border.rs) — сторона
+  рамки как полоса: составные стили (`double`, `triple`, `thinThick*`), пунктиры, цвет
+  темы. Используется рамками абзаца, ячеек и страницы.
+- [`layout/sectionpage.rs`](../strict-ooxml-render-svg/src/layout/sectionpage.rs) —
+  проход по готовым страницам: `vAlign` секции, разделитель колонок, номера строк,
+  зеркальные поля.
+- `ParagraphNeighbors` в [`layout/paragraph.rs`](../strict-ooxml-render-svg/src/layout/paragraph.rs)
+  — соседи абзаца для `contextualSpacing`, общего блока рамки и autospacing в ячейке.
+
+**Сделано** (по группам плана)
+
+1. Run: тип и цвет подчёркивания, `dstrike`, `smallCaps`, `w:position`, заливка run
+   с узором `w:shd` и белым `auto`-текстом на тёмном фоне, шрифт `w:sym` (с
+   PUA-заменами Symbol/Wingdings), шрифты `eastAsia`/`eastAsiaTheme`/`cstheme`.
+2. Абзац: линии `w:pBdr` (все стороны, `between`, общий блок для одинаковых рамок),
+   `contextualSpacing`, `widowControl` (висячие и «вдовьи» строки), autospacing
+   (14 pt, без отступа у края ячейки), `beforeLines`/`afterLines`.
+3. Таблицы: `vAlign` ячейки (с учётом вертикального объединения), `hRule`
+   (`exact`/`auto`/`atLeast`), стили линий границ, заливка таблицы и `tblPrEx`,
+   границы `tblPrEx`, диагонали `tl2br`/`tr2bl`, `bidiVisual`, ширины из `tcW` при
+   пустой сетке. Рамки страницы — тоже через `border.rs`.
+4. DrawingML: `a:srcRect` (обрезка; поле `ImageItem::crop`, SVG и PDF), `wps:style`
+   (`fillRef`/`lnRef`/`fontRef`), стрелки `headEnd`/`tailEnd`, `a:path/@fill="none"`
+   и `@stroke="0"`, `wp:anchor/@hidden`, пресеты `straightConnector1`,
+   `bentConnector2-5`, `curvedConnector2-5`, `arc`, `mathMinus`, `trapezoid`,
+   `homePlate` и др.; линии и соединители не заливаются.
+5. Страница: `gutter` (с `rtlGutter`), `mirrorMargins`, `vAlign` секции, разделитель
+   колонок `w:sep`, нумерация строк `lnNumType` (`countBy`, `start`, `restart`,
+   `distance`, `suppressLineNumbers`).
+6. Нумерация и сноски: **нумерация через стиль абзаца** (см. ниже), `lvlJc`,
+   `isLgl`, `w:ilvl` без `w:numId`, свойства сносок по секциям и
+   `numRestart="eachSect"`.
+7. Математика: `m:defJc` (по умолчанию `centerGroup`), `m:lMargin`/`m:rMargin`,
+   `m:naryLim`/`m:intLim` для выносных формул, `m:mcPr/m:count`.
+
+**Найдено по ходу работ** (не было в списке ниже)
+
+- Нумерация, заданная в `w:pPr` **стиля** абзаца (заголовки, «Список»), не
+  рисовалась: движок маркеров читал только прямой `w:numPr`, а каскад
+  `ComputedParagraph.numbering` никто не использовал. Исправлено.
+- Абзацы в ячейках таблиц теряли `line.graphics`: заливку абзаца, табуляторы `bar`,
+  черты дробей и другие линии inline-формул, inline-фигуры. Исправлено в
+  `place_cell_paragraph`.
+- Соединители (`straightConnector1` — 768 вхождений в 13 документах корпуса) и
+  `arc` рисовались серой заглушкой. Исправлено.
+- Строки таблиц атомарны: пагинатор никогда не делит строку. Пункт `cantSplit`
+  ниже описан неверно — фактически *все* строки ведут себя как `cantSplit`, и
+  длинная строка без него переносится целиком, а не делится, как в Word.
+- `wp:docPr/@hidden` парсер не читает (пробел парсера; `wp:anchor/@hidden` теперь
+  учитывается).
+
+**Отложено** (требует отдельной переработки)
+
+- Деление строк таблицы между страницами (обратная сторона `cantSplit`).
+- `tblLayout autofit` — подбор ширин колонок по содержимому; сейчас ширины всегда
+  из сетки (поведение `fixed`).
+- Плавающие таблицы `tblpPr`.
+- Колонки разной ширины (`equalWidth="0"`): абзацы раскладываются до того, как
+  известна колонка.
+- Перезапуск сносок `eachPage`, положение сносок `beneathText`/`sectEnd`,
+  пользовательские разделители сносок.
+- Повороты и отражения групп, `bodyPr/@vert`, `@wrap="none"`, `numCol` надписей
+  (в корпусе: `vert270` в 2 документах, `wrap="none"` в 8, повороты групп — 0).
+- `gutterAtTop`; зеркалирование объектов, привязанных к странице.
+- Рамка run (`w:bdr`), эффекты (`emboss`, `shadow`, `outline`, `w:em`), CJK-сетка
+  символов, автоматические переносы, флаги `w:compat`.
+
 ## Приоритеты
 
 - **P1** — встречается в обычных документах и сразу видно на странице.
@@ -64,7 +143,7 @@ SDT-метаданные, настройки редактора, UI-флаги �
 | P1 | `w:tcBorders`/`w:tblBorders` `@w:val` | [`BorderStyle`](../strict-ooxml-wml/src/model/values.rs:167) | Различаются только «нет», «пунктир/точки» и «сплошная» ([`table.rs:1463`](../strict-ooxml-render-svg/src/layout/table.rs:1463)). `double`, `triple`, `thinThick*`, `wave`, `threeDEmboss` и т.п. рисуются одной линией. Так же в [`pageborders.rs:166`](../strict-ooxml-render-svg/src/layout/pageborders.rs:166). |
 | P1 | `w:tblPr/w:shd` | [`TableProperties.shading`](../strict-ooxml-wml/src/model/props.rs:194) | Не читается. Заливка на уровне таблицы теряется, работает только заливка ячеек. |
 | P1 | `w:shd/@w:val`, `@w:color` | [`Shading.pattern`](../strict-ooxml-wml/src/model/values.rs:980), `color`, `theme_color` | Используется только `fill`. `solid` (цвет берётся из `w:color`), `pct10…pct90`, штриховки теряются. Касается абзацев, ячеек и run. |
-| P1 | `w:trPr/w:cantSplit` | [`RowProperties.cant_split`](../strict-ooxml-wml/src/model/props.rs:226) | Не читается: строки делятся между страницами. |
+| P1 | `w:trPr/w:cantSplit` | [`RowProperties.cant_split`](../strict-ooxml-wml/src/model/props.rs:226) | Не читается, но потеря обратная: пагинатор никогда не делит строку, так что все строки ведут себя как `cantSplit`, а длинная строка без него переносится целиком (уточнено при реализации, см. «Статус»). |
 | P2 | `w:tblpPr` | [`TableProperties.positioning`](../strict-ooxml-wml/src/model/props.rs:206) и вся [`TablePositioning`](../strict-ooxml-wml/src/model/props.rs:381) | Плавающие таблицы ставятся в поток; обтекание не строится. |
 | P2 | `w:tblLayout` | [`TableProperties.layout`](../strict-ooxml-wml/src/model/props.rs:188), [`TableLayout`](../strict-ooxml-wml/src/model/values.rs:691) | `fixed` и `autofit` не различаются. |
 | P2 | `w:tcW` | `CellProperties.width` | Не читается: ширины берутся из `w:tblGrid` и `gridSpan`. Документы с устаревшей сеткой расходятся с Word. |
