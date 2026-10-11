@@ -303,6 +303,39 @@ fn absent_deff_defaults_to_the_first_font_in_the_table() {
 }
 
 #[test]
+fn font_panose_maps_and_metadata_destinations_are_info() {
+    // A nested `{\*\panose ...}` becomes `w:panose1`; the non-visual metadata
+    // destinations (`\falt`, `\hyphen`, `\pnseclvl`, `\rsidtbl`, ...) are named
+    // Info rather than losses.
+    let input = br"{\rtf1{\fonttbl{\f0\froman{\*\panose 02020603050405020304}Times New Roman;}}{\*\hyphen ex-ceptions}{\*\falt Arial}{\*\pnseclvl1\pnlvl1}Text}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "panose and the metadata destinations are Info: {:?}",
+        imported.report.issues
+    );
+    for feature in [
+        "destination:hyphen",
+        "destination:falt",
+        "destination:pnseclvl",
+    ] {
+        assert!(
+            imported.report.issues.iter().any(|i| i.feature == feature),
+            "missing {feature}: {:?}",
+            imported.report.issues
+        );
+    }
+    for document in [imported.document, reopened(input)] {
+        let table = document.font_table.as_ref().expect("font table");
+        assert_eq!(
+            table.fonts[0].hints.panose1.as_deref(),
+            Some("02020603050405020304"),
+            "\\panose -> w:panose1"
+        );
+    }
+}
+
+#[test]
 fn explicit_deff_wins_over_the_first_font_in_the_table() {
     let d = reopened(br"{\rtf1\deff1{\fonttbl{\f0 Helvetica;}{\f1 Times;}}Text}");
     let defaults = d.styles.defaults().expect("docDefaults are always emitted");

@@ -39,6 +39,7 @@ enum Destination {
     Lists,
     Overrides,
     LevelText,
+    Panose,
 }
 /// Which border collection a running RTF border edge writes into.
 #[derive(Clone, Copy)]
@@ -128,6 +129,8 @@ struct Font {
     charset: i32,
     codepage: Option<i32>,
     theme: Option<FontTheme>,
+    /// `w:panose1` from a nested `{\*\panose ...}` (`None` when absent).
+    panose: Option<String>,
 }
 #[derive(Clone, Copy)]
 struct FontTheme {
@@ -492,6 +495,8 @@ struct Parser<'a> {
     font_name: String,
     font_charset: i32,
     font_codepage: Option<i32>,
+    /// Accumulated `{\*\panose ...}` text for the font being defined.
+    font_panose: String,
     font_theme: Option<FontTheme>,
     pending_font_theme: Option<FontTheme>,
     single_font_active: bool,
@@ -1712,6 +1717,11 @@ impl Parser<'_> {
                     charset: self.font_charset,
                     codepage: self.font_codepage,
                     theme: self.font_theme.take(),
+                    panose: {
+                        let panose = std::mem::take(&mut self.font_panose);
+                        let panose = panose.trim();
+                        (!panose.is_empty()).then(|| panose.to_string())
+                    },
                 },
             );
         }
@@ -1944,6 +1954,17 @@ impl Parser<'_> {
                 "leveltext_bytes",
             )?;
             draft.text.push_str(&text);
+            return Ok(());
+        }
+        if self.state.destination == Destination::Panose {
+            // `{\*\panose 02020603050405020304}`: the payload is bare hex.
+            bounded(
+                self.font_panose.len() + text.len(),
+                self.options.limits.input_bytes,
+                offset,
+                "panose_bytes",
+            )?;
+            self.font_panose.push_str(&text);
             return Ok(());
         }
         if matches!(
@@ -2772,12 +2793,47 @@ impl Parser<'_> {
             return self.begin_region(RegionKind::NoteSeparator { endnote, kind }, span.start);
         }
         if first && self.state.ignorable {
+            // A nested `{\*\panose ...}` inside a font definition carries the
+            // face's PANOSE classification as bare hex; collect it into the
+            // font's `w:panose1` instead of dropping the destination.
+            if name == "panose" {
+                self.state.ignorable = false;
+                self.state.destination = Destination::Panose;
+                self.font_panose.clear();
+                return Ok(());
+            }
             self.state.skip = true;
             // `{\*\levelmarker ...}` is a legacy alternative list marker
             // superseded by `\leveltext`, and `{\*\datafield ...}` is a legacy
             // cached binary field payload whose human-readable result Word takes
             // from `\fldrslt`; both are ignored, not a loss.
-            let severity = if matches!(name, "levelmarker" | "datafield") {
+            //
+            // The named metadata destinations carry no visual content and have no
+            // Strict slot, so they are Info rather than a Loss: `\falt` (a font
+            // substitution hint), `\hyphen` (a hyphenation exception dictionary),
+            // `\pnseclvl` (Word 6 paragraph-numbering defaults superseded by the
+            // list table), `\rsidtbl`/`\revtbl` (revision bookkeeping),
+            // `\latentstyles`, `\expandedcolortbl`, `\xmlnstbl`, `\pgptbl`/
+            // `\pgdsctbl`, `\wgrffmtfilter` and `\userprops`.
+            let severity = if matches!(
+                name,
+                "levelmarker"
+                    | "datafield"
+                    | "falt"
+                    | "fname"
+                    | "generator"
+                    | "hyphen"
+                    | "pnseclvl"
+                    | "rsidtbl"
+                    | "revtbl"
+                    | "latentstyles"
+                    | "expandedcolortbl"
+                    | "xmlnstbl"
+                    | "pgptbl"
+                    | "pgdsctbl"
+                    | "wgrffmtfilter"
+                    | "userprops"
+            ) {
                 Severity::Info
             } else {
                 Severity::Loss
@@ -2853,6 +2909,7 @@ impl Parser<'_> {
                     self.font_charset = 0;
                     self.font_codepage = None;
                     self.font_name.clear();
+                    self.font_panose.clear();
                 }
                 "fbimajor" | "fbiminor" | "fdbmajor" | "fdbminor" | "fhimajor" | "fhiminor"
                 | "flomajor" | "flominor" => {
@@ -4431,6 +4488,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         font_name: String::new(),
         font_charset: 0,
         font_codepage: None,
+        font_panose: String::new(),
         font_theme: None,
         pending_font_theme: None,
         single_font_active: false,
@@ -4850,7 +4908,10 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
             .values()
             .map(|f| strict_ooxml_wml::model::fonts::FontEntry {
                 name: Arc::from(f.name.as_str()),
-                hints: Default::default(),
+                hints: strict_ooxml_wml::model::fonts::FontHints {
+                    panose1: f.panose.as_deref().map(Arc::from),
+                    ..Default::default()
+                },
                 embeds: Default::default(),
             })
             .collect(),
