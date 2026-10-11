@@ -1,0 +1,6 @@
+pywin32
+psutil
+pypdfium2
+numpy
+scikit-image
+Pillow
