@@ -78,6 +78,8 @@ pub(crate) struct ParagraphFlow {
     pub border_after: f64,
     /// Keep the paragraph on one page.
     pub keep_lines: bool,
+    /// Keep at least two lines on each side of a page break (`w:widowControl`).
+    pub widow_control: bool,
 }
 
 /// Default tab stop in twips (0.5 inch) when settings omit one.
@@ -105,7 +107,7 @@ impl Drop for MetricAdvanceGuard<'_> {
 /// coordinates (from earlier floating objects on the page). `host` supplies the
 /// page geometry and paragraph origin used to resolve the current paragraph's
 /// own anchors with the same extent rules as paint.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 #[must_use]
 pub(crate) fn layout_paragraph(
     ctx: &LayoutContext<'_>,
@@ -116,6 +118,7 @@ pub(crate) fn layout_paragraph(
     note_marker: Option<&str>,
     page_exclusions: &[WrapExclusion],
     host: Option<(&Geometry, f64, f64)>,
+    neighbors: ParagraphNeighbors,
 ) -> ParagraphFlow {
     let mut computed = compute_paragraph(ctx.document, para);
     let justify = matches!(
@@ -147,6 +150,7 @@ pub(crate) fn layout_paragraph(
             }
         }
     }
+    let edges = apply_neighbors(&mut computed, &neighbors);
     // `w:pBdr` pads are separate from `w:spacing`: consecutive bordered
     // paragraphs collapse their shared edge to zero in `layout_frame_contents`.
     let space_before = pt_to_px(computed.space_before_pt, ctx.options.scale);
@@ -166,7 +170,7 @@ pub(crate) fn layout_paragraph(
         &mut field_state,
     );
 
-    let flows = build_lines(
+    let mut flows = build_lines(
         ctx,
         para,
         &computed,
@@ -178,6 +182,26 @@ pub(crate) fn layout_paragraph(
         page_exclusions,
         host,
     );
+    if computed.borders.any() {
+        let scale = ctx.options.scale;
+        let indent_start = pt_to_px(computed.indent_start_pt, scale);
+        let first = indent_start + pt_to_px(computed.first_line_pt, scale);
+        let box_left = content_left + indent_start.min(first);
+        let box_right = content_left + content_width - pt_to_px(computed.indent_end_pt, scale);
+        let reach_above = if neighbors.joins_prev {
+            pt_to_px(neighbors.prev_after_pt + computed.space_before_pt, scale)
+        } else {
+            0.0
+        };
+        add_border_strokes(
+            &mut flows.0,
+            &computed.borders,
+            &edges,
+            (box_left, box_right),
+            (border_before, border_after, reach_above),
+            pt_to_px(1.0, scale),
+        );
+    }
 
     // A paragraph whose only content is a display formula (`m:oMathPara`) is a
     // *math paragraph*: Word lays it out as one self-contained block and does
@@ -222,6 +246,234 @@ pub(crate) fn layout_paragraph(
         border_before: if math_paragraph { 0.0 } else { border_before },
         border_after: if math_paragraph { 0.0 } else { border_after },
         keep_lines: computed.keep_lines,
+        widow_control: computed.widow_control,
+    }
+}
+
+/// How a paragraph relates to the blocks next to it in its container.
+///
+/// The layout of one paragraph needs this for `w:contextualSpacing`, for
+/// paragraphs that share one `w:pBdr` box, and for autospacing at the edge
+/// of a cell. The loops that walk a block list work it out with
+/// [`paragraph_neighbors`]; the default is a paragraph with no neighbours.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct ParagraphNeighbors {
+    /// The previous block is a paragraph with the same style.
+    pub prev_same_style: bool,
+    /// The next block is a paragraph with the same style.
+    pub next_same_style: bool,
+    /// The previous paragraph has the same borders: one box holds both.
+    pub joins_prev: bool,
+    /// The next paragraph has the same borders.
+    pub joins_next: bool,
+    /// The previous paragraph's space after, in pt, when joined.
+    pub prev_after_pt: f64,
+    /// First block of a cell, header, footer or text box.
+    pub first_in_container: bool,
+    /// Last block of a cell, header, footer or text box.
+    pub last_in_container: bool,
+}
+
+/// Works out the neighbours of the paragraph at `blocks[index]`.
+pub(crate) fn paragraph_neighbors(
+    document: &strict_ooxml_wml::model::Document,
+    blocks: &[strict_ooxml_wml::model::block::Block],
+    index: usize,
+    in_container: bool,
+) -> ParagraphNeighbors {
+    use strict_ooxml_wml::model::block::Block;
+    let paragraph_at = |at: Option<usize>| match at.and_then(|at| blocks.get(at)) {
+        Some(Block::Paragraph(para)) => Some(compute_paragraph(document, para)),
+        _ => None,
+    };
+    let Some(current) = paragraph_at(Some(index)) else {
+        return ParagraphNeighbors::default();
+    };
+    let prev = paragraph_at(index.checked_sub(1));
+    let next = paragraph_at(index.checked_add(1));
+    let same_style = |other: &Option<ComputedParagraph>| {
+        other
+            .as_ref()
+            .is_some_and(|other| other.style == current.style)
+    };
+    let joins = |other: &Option<ComputedParagraph>| {
+        other.as_ref().is_some_and(|other| {
+            current.borders.any()
+                && other.borders == current.borders
+                && (other.indent_start_pt - current.indent_start_pt).abs() < 1e-6
+                && (other.indent_end_pt - current.indent_end_pt).abs() < 1e-6
+        })
+    };
+    let prev_same_style = same_style(&prev);
+    let joins_prev = joins(&prev);
+    let prev_after_pt = match &prev {
+        Some(prev) if joins_prev => {
+            if prev.contextual_spacing && prev_same_style {
+                0.0
+            } else {
+                prev.space_after_pt
+            }
+        }
+        _ => 0.0,
+    };
+    ParagraphNeighbors {
+        prev_same_style,
+        next_same_style: same_style(&next),
+        joins_prev,
+        joins_next: joins(&next),
+        prev_after_pt,
+        first_in_container: in_container && index == 0,
+        last_in_container: in_container && index + 1 == blocks.len(),
+    }
+}
+
+/// The edges drawn above and below a paragraph once its neighbours are known.
+#[derive(Clone, Debug, Default)]
+struct DrawnEdges {
+    /// `w:top`, or `w:between` inside a shared box, or nothing.
+    above: Option<crate::layout::border::ResolvedBorder>,
+    /// `w:bottom` at the end of a box, or nothing.
+    below: Option<crate::layout::border::ResolvedBorder>,
+}
+
+/// Applies `w:contextualSpacing`, autospacing at a container edge and a
+/// shared border box to `computed`'s spacing and border pads.
+fn apply_neighbors(computed: &mut ComputedParagraph, neighbors: &ParagraphNeighbors) -> DrawnEdges {
+    // Each paragraph's own flag governs its own spacing (§17.3.1.9).
+    if computed.contextual_spacing && neighbors.prev_same_style {
+        computed.space_before_pt = 0.0;
+    }
+    if computed.contextual_spacing && neighbors.next_same_style {
+        computed.space_after_pt = 0.0;
+    }
+    // HTML spacing does not push the first line of a cell down, nor the
+    // last one up.
+    if computed.before_autospacing && neighbors.first_in_container {
+        computed.space_before_pt = 0.0;
+    }
+    if computed.after_autospacing && neighbors.last_in_container {
+        computed.space_after_pt = 0.0;
+    }
+    let above = if neighbors.joins_prev {
+        computed.borders.between.clone()
+    } else {
+        computed.borders.top.clone()
+    };
+    let below = if neighbors.joins_next {
+        None
+    } else {
+        computed.borders.bottom.clone()
+    };
+    let pad = |edge: &Option<crate::layout::border::ResolvedBorder>| {
+        edge.as_ref()
+            .map_or(0.0, |edge| edge.space_pt + edge.band_pt())
+    };
+    computed.border_before_pt = pad(&above);
+    computed.border_after_pt = pad(&below);
+    DrawnEdges { above, below }
+}
+
+/// Adds the strokes of a paragraph border to the paragraph's flows.
+///
+/// Each line carries the side edges for its own height, so the box follows
+/// the lines across a page break. The first line also carries the edge
+/// above it (in the pad the paginator leaves there) and the last the edge
+/// below. `bounds` is the text box, `pads` the pads above and below and how
+/// far the side edges reach up to meet the previous paragraph of a shared
+/// box, all in px.
+fn add_border_strokes(
+    flows: &mut [Flow],
+    borders: &crate::style::ParagraphBorders,
+    edges: &DrawnEdges,
+    bounds: (f64, f64),
+    pads: (f64, f64, f64),
+    px_per_pt: f64,
+) {
+    use crate::layout::border::{edge_items, Side};
+    let (box_left, box_right) = bounds;
+    let (pad_above, pad_below, reach_above) = pads;
+    let positions: Vec<usize> = flows
+        .iter()
+        .enumerate()
+        .filter(|(_, flow)| matches!(flow, Flow::Line(_) | Flow::Block { .. }))
+        .map(|(index, _)| index)
+        .collect();
+    let (Some(&first), Some(&last)) = (positions.first(), positions.last()) else {
+        return;
+    };
+    let left_at = borders
+        .left
+        .as_ref()
+        .map(|edge| box_left - edge.space_pt * px_per_pt);
+    let right_at = borders
+        .right
+        .as_ref()
+        .map(|edge| box_right + edge.space_pt * px_per_pt);
+    let outer_left = match (&borders.left, left_at) {
+        (Some(edge), Some(at)) => at - edge.band_pt() * px_per_pt,
+        _ => box_left,
+    };
+    let outer_right = match (&borders.right, right_at) {
+        (Some(edge), Some(at)) => at + edge.band_pt() * px_per_pt,
+        _ => box_right,
+    };
+    for &index in &positions {
+        let Some(flow) = flows.get_mut(index) else {
+            continue;
+        };
+        let height = match flow {
+            Flow::Line(line) => line.height,
+            Flow::Block { height, .. } => *height,
+            _ => continue,
+        };
+        let top = if index == first {
+            -(pad_above + reach_above)
+        } else {
+            0.0
+        };
+        let bottom = if index == last {
+            height + pad_below
+        } else {
+            height
+        };
+        let mut strokes = Vec::new();
+        if let (Some(edge), Some(at)) = (&borders.left, left_at) {
+            strokes.extend(edge_items(edge, Side::Left, at, top, bottom, px_per_pt));
+        }
+        if let (Some(edge), Some(at)) = (&borders.right, right_at) {
+            strokes.extend(edge_items(edge, Side::Right, at, top, bottom, px_per_pt));
+        }
+        if index == first {
+            if let Some(edge) = &edges.above {
+                let at = -edge.space_pt * px_per_pt;
+                strokes.extend(edge_items(
+                    edge,
+                    Side::Top,
+                    at,
+                    outer_left,
+                    outer_right,
+                    px_per_pt,
+                ));
+            }
+        }
+        if index == last {
+            if let Some(edge) = &edges.below {
+                let at = height + edge.space_pt * px_per_pt;
+                strokes.extend(edge_items(
+                    edge,
+                    Side::Bottom,
+                    at,
+                    outer_left,
+                    outer_right,
+                    px_per_pt,
+                ));
+            }
+        }
+        match flow {
+            Flow::Line(line) => line.graphics.extend(strokes),
+            Flow::Block { items, .. } => items.extend(strokes),
+            _ => {}
+        }
     }
 }
 

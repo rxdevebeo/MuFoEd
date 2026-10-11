@@ -905,7 +905,22 @@ pub(crate) fn layout_blocks_inline(
         }
         match block {
             Block::Paragraph(para) => {
-                place_cell_paragraph(ctx, para, left, width, y, items, note_marker, page_frames);
+                let neighbors = crate::layout::paragraph::paragraph_neighbors(
+                    ctx.document,
+                    blocks,
+                    index,
+                    true,
+                );
+                place_cell_paragraph(
+                    ctx,
+                    para,
+                    left,
+                    width,
+                    y,
+                    items,
+                    (note_marker, neighbors),
+                    page_frames,
+                );
             }
             Block::Table(table) => {
                 if push_uniform_framed_table(ctx, table, depth, escape_frames, page_frames) {
@@ -948,18 +963,37 @@ fn place_cell_paragraph(
     width: f64,
     y: &mut f64,
     items: &mut Vec<Item>,
-    note_marker: Option<&str>,
+    (note_marker, neighbors): (Option<&str>, crate::layout::paragraph::ParagraphNeighbors),
     page_frames: &mut Vec<Item>,
 ) {
-    let flow = layout_paragraph(ctx, para, left, width, None, note_marker, &[], None);
+    let flow = layout_paragraph(
+        ctx,
+        para,
+        left,
+        width,
+        None,
+        note_marker,
+        &[],
+        None,
+        neighbors,
+    );
     *y += flow.space_before + flow.border_before;
     for item in flow.flows {
         match item {
             Flow::Line(line) => {
+                // The line's own graphics (paragraph shading and borders, bar
+                // tabs, formula rules, inline shapes) come with it: shading
+                // under the text, the rest over it, as in a frame.
+                let (backs, rest): (Vec<_>, Vec<_>) = line
+                    .graphics
+                    .into_iter()
+                    .partition(|item| matches!(item, Item::Rect(_)));
+                items.extend(backs.iter().map(|item| offset_item(item, 0.0, *y)));
                 for mut text in line.items {
                     text.baseline += *y;
                     items.push(Item::Text(text));
                 }
+                items.extend(rest.iter().map(|item| offset_item(item, 0.0, *y)));
                 *y += line.height;
             }
             Flow::Image(image) => {
@@ -1248,11 +1282,23 @@ pub(crate) fn layout_frame_contents(
     ctx.frame_prior_exact.set(None);
     ctx.frame_force_exact_grid.set(false);
     let was_in_frame = ctx.in_frame.replace(true);
-    for block in blocks {
+    for (index, block) in blocks.iter().enumerate() {
         let Block::Paragraph(para) = block else {
             continue;
         };
-        let flow = layout_paragraph(ctx, para, 0.0, frame_width, None, None, &[], None);
+        let neighbors =
+            crate::layout::paragraph::paragraph_neighbors(ctx.document, blocks, index, false);
+        let flow = layout_paragraph(
+            ctx,
+            para,
+            0.0,
+            frame_width,
+            None,
+            None,
+            &[],
+            None,
+            neighbors,
+        );
         local_y += pending_after.max(flow.space_before);
         let curr_bordered = flow.border_before > 0.0 || flow.border_after > 0.0;
         // Consecutive `w:pBdr` paragraphs share one edge: skip the pads between

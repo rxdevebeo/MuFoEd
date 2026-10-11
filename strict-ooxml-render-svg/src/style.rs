@@ -10,10 +10,12 @@
 use strict_ooxml_wml::model::props::{FrameProperties, ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
-    Border, BorderStyle, Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule,
-    Shading, Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
+    Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule, Shading, Spacing,
+    TabStop, ThemeColorRef, TriState, Underline, VertAlign,
 };
 use strict_ooxml_wml::model::Document;
+
+use crate::layout::border::ResolvedBorder;
 
 /// Effective run formatting.
 #[derive(Clone, Debug, PartialEq)]
@@ -147,6 +149,20 @@ pub struct ComputedParagraph {
     pub page_break_before: bool,
     /// Paragraph shading fill (`w:shd/@w:fill`), `#rrggbb`.
     pub shading: Option<String>,
+    /// Paragraph border edges (`w:pBdr`) after the cascade.
+    pub borders: ParagraphBorders,
+    /// Ignore this paragraph's spacing next to a paragraph of the same style
+    /// (`w:contextualSpacing`).
+    pub contextual_spacing: bool,
+    /// Keep at least two lines of the paragraph on each page (`w:widowControl`).
+    pub widow_control: bool,
+    /// `w:spacing/@w:beforeAutospacing`: the space before is Word's HTML
+    /// spacing, not `w:before`.
+    pub before_autospacing: bool,
+    /// `w:spacing/@w:afterAutospacing`.
+    pub after_autospacing: bool,
+    /// Effective paragraph style (`w:pStyle`, else the default paragraph style).
+    pub style: Option<strict_ooxml_wml::model::StyleId>,
     /// Numbering reference.
     pub numbering: Option<NumberingRef>,
     /// Default run format for runs without explicit properties.
@@ -172,11 +188,51 @@ impl Default for ComputedParagraph {
             keep_next: false,
             page_break_before: false,
             shading: None,
+            borders: ParagraphBorders::default(),
+            contextual_spacing: false,
+            widow_control: false,
+            before_autospacing: false,
+            after_autospacing: false,
+            style: None,
             numbering: None,
             default_run: ComputedRun::default(),
         }
     }
 }
+
+/// The edges of a paragraph border (`w:pBdr`), each `None` when not drawn.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ParagraphBorders {
+    /// Top edge.
+    pub top: Option<ResolvedBorder>,
+    /// Bottom edge.
+    pub bottom: Option<ResolvedBorder>,
+    /// Leading edge.
+    pub left: Option<ResolvedBorder>,
+    /// Trailing edge.
+    pub right: Option<ResolvedBorder>,
+    /// Edge between consecutive paragraphs with the same borders.
+    pub between: Option<ResolvedBorder>,
+}
+
+impl ParagraphBorders {
+    /// Whether any edge is drawn.
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.top.is_some()
+            || self.bottom.is_some()
+            || self.left.is_some()
+            || self.right.is_some()
+            || self.between.is_some()
+    }
+}
+
+/// Space Word gives a paragraph whose `w:spacing` asks for autospacing, in pt.
+pub const AUTOSPACING_PT: f64 = 14.0;
+
+/// Points in one line of `w:beforeLines`/`w:afterLines` (hundredths of a
+/// line of the 12 pt grid Word measures them on).
+const SPACING_LINE_PT: f64 = 12.0;
 
 impl ComputedParagraph {
     /// Returns the effective left indentation for the first line, in points.
@@ -218,6 +274,15 @@ pub fn compute_paragraph(
     }
     apply_paragraph_props_mode(&mut computed, &para.props, theme, ToggleMode::Direct);
     resolve_font_hints(document, &mut computed.default_run);
+    computed.style = style_id.cloned();
+    if computed.before_autospacing {
+        computed.space_before_pt = AUTOSPACING_PT;
+    }
+    if computed.after_autospacing {
+        computed.space_after_pt = AUTOSPACING_PT;
+    }
+    computed.border_before_pt = border_pad_pt(computed.borders.top.as_ref());
+    computed.border_after_pt = border_pad_pt(computed.borders.bottom.as_ref());
     computed
 }
 
@@ -389,14 +454,23 @@ fn apply_paragraph_props_mode(
     if let Some(indentation) = &props.indentation {
         apply_indentation(computed, indentation);
     }
-    // `w:pBdr` top/bottom push following content. Width is eighths of a point;
-    // `w:space` is points between the border stroke and the text.
-    if props.borders.top.is_some() {
-        computed.border_before_pt = border_pad_pt(props.borders.top.as_ref());
+    // `w:pBdr`: each edge a layer names replaces the inherited one, and a
+    // `nil`/`none` edge removes it. The pads above and below are derived from
+    // the final edges in `compute_paragraph`.
+    let edges = [
+        (&props.borders.top, &mut computed.borders.top),
+        (&props.borders.bottom, &mut computed.borders.bottom),
+        (&props.borders.start, &mut computed.borders.left),
+        (&props.borders.end, &mut computed.borders.right),
+        (&props.borders.between, &mut computed.borders.between),
+    ];
+    for (declared, target) in edges {
+        if let Some(border) = declared {
+            *target = crate::layout::border::resolve_border(border, theme);
+        }
     }
-    if props.borders.bottom.is_some() {
-        computed.border_after_pt = border_pad_pt(props.borders.bottom.as_ref());
-    }
+    apply_flag(&mut computed.contextual_spacing, props.contextual_spacing);
+    apply_flag(&mut computed.widow_control, props.widow_control);
     if let Some(fill) = props
         .shading
         .as_ref()
@@ -431,6 +505,20 @@ fn apply_spacing(computed: &mut ComputedParagraph, spacing: &Spacing) {
     if let Some(after) = spacing.after {
         computed.space_after_pt = f64::from(after.value()) / 20.0;
     }
+    // `w:beforeLines`/`w:afterLines` take precedence over the twips value
+    // in the same element (ISO/IEC 29500-1 §17.3.1.33).
+    if let Some(lines) = spacing.before_lines {
+        computed.space_before_pt = f64::from(lines.max(0)) / 100.0 * SPACING_LINE_PT;
+    }
+    if let Some(lines) = spacing.after_lines {
+        computed.space_after_pt = f64::from(lines.max(0)) / 100.0 * SPACING_LINE_PT;
+    }
+    if let Some(auto) = spacing.before_autospacing {
+        computed.before_autospacing = auto;
+    }
+    if let Some(auto) = spacing.after_autospacing {
+        computed.after_autospacing = auto;
+    }
     if let Some(rule) = spacing.line_rule {
         computed.line_rule = rule;
     }
@@ -439,20 +527,10 @@ fn apply_spacing(computed: &mut ComputedParagraph, spacing: &Spacing) {
     }
 }
 
-/// Layout gap from one paragraph border edge: `w:space` (pt) + `w:sz`/8 (pt).
-fn border_pad_pt(border: Option<&Border>) -> f64 {
-    let Some(border) = border else {
-        return 0.0;
-    };
-    match border.style {
-        None | Some(BorderStyle::Nil | BorderStyle::None) => return 0.0,
-        Some(_) => {}
-    }
-    let space = f64::from(border.space.unwrap_or(0));
-    let width = border
-        .size
-        .map_or(0.0, |size| f64::from(size.value()) / 8.0);
-    space + width
+/// Layout gap from one paragraph border edge: `w:space` plus the band the
+/// edge's lines take, in points.
+fn border_pad_pt(border: Option<&ResolvedBorder>) -> f64 {
+    border.map_or(0.0, |border| border.space_pt + border.band_pt())
 }
 
 fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation) {
@@ -773,7 +851,10 @@ fn theme_font(reference: Option<&str>, theme: Option<&Theme>) -> Option<String> 
 }
 
 /// Resolves a themed run colour (`w:themeColor`/`themeTint`/`themeShade`).
-fn resolve_theme_color(reference: &ThemeColorRef, theme: Option<&Theme>) -> Option<String> {
+pub(crate) fn resolve_theme_color(
+    reference: &ThemeColorRef,
+    theme: Option<&Theme>,
+) -> Option<String> {
     let theme = theme?;
     let (red, green, blue) = parse_hex(theme.color(reference.color.as_str())?)?;
     let tint = reference

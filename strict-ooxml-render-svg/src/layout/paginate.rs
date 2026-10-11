@@ -8,7 +8,7 @@ use strict_ooxml_core::error::Result;
 use crate::error::RenderError;
 use crate::layout::exclusions::PageExclusion;
 use crate::layout::floating::{page_exclusion, PendingAnchor, WrapSide};
-use crate::layout::paragraph::layout_paragraph;
+use crate::layout::paragraph::{layout_paragraph, paragraph_neighbors, ParagraphNeighbors};
 use crate::layout::table::{
     frame_placement, framed_table_items, layout_blocks_inline, layout_frame_contents, layout_table,
     offset_item, table_uniform_frame,
@@ -378,8 +378,17 @@ fn layout_blocks(
         }
         match block {
             Block::Paragraph(para) => {
-                pending_after =
-                    place_body_paragraph(ctx, para, left, width, grid, paginator, pending_after)?;
+                let neighbors = paragraph_neighbors(ctx.document, blocks, index, false);
+                pending_after = place_body_paragraph(
+                    ctx,
+                    para,
+                    left,
+                    width,
+                    grid,
+                    paginator,
+                    pending_after,
+                    neighbors,
+                )?;
             }
             Block::Table(table) => {
                 ctx.frame_anchor.set((
@@ -412,6 +421,7 @@ fn layout_blocks(
 }
 
 /// Lays out one body paragraph, registers wrap exclusions, returns `space_after`.
+#[allow(clippy::too_many_arguments)]
 fn place_body_paragraph(
     ctx: &LayoutContext<'_>,
     para: &strict_ooxml_wml::model::Paragraph,
@@ -420,6 +430,7 @@ fn place_body_paragraph(
     grid: Option<f64>,
     paginator: &mut Paginator<'_>,
     pending_after: f64,
+    neighbors: ParagraphNeighbors,
 ) -> Result<f64> {
     // An empty paragraph that only carries `w:sectPr` is a boundary, not a line
     // of text. Letting it overflow would insert a blank page before the section
@@ -459,6 +470,7 @@ fn place_body_paragraph(
         None,
         &local_exclusions,
         Some((&paginator.geometry, host_x, host_y_pred)),
+        neighbors,
     );
     paginator.add_vspace(pending_after.max(flow.space_before));
     paginator.add_vspace(flow.border_before);
@@ -484,9 +496,23 @@ fn place_body_paragraph(
     if paginator.selection_exhausted() {
         return Ok(0.0);
     }
+    let widow_break = if flow.widow_control && !boundary_marker {
+        paginator.widow_break(&flow.flows)
+    } else {
+        None
+    };
+    if widow_break == Some(0) {
+        paginator.overflow_break()?;
+        if paginator.selection_exhausted() {
+            return Ok(0.0);
+        }
+    }
     let page = paginator.pages.len();
     let host_y = paginator.geometry.top + paginator.cursor;
-    for item in flow.flows {
+    for (index, item) in flow.flows.into_iter().enumerate() {
+        if index > 0 && widow_break == Some(index) {
+            paginator.overflow_break()?;
+        }
         if boundary_marker {
             paginator.place_boundary_marker(item)?;
         } else {
@@ -678,9 +704,10 @@ fn append_note_blocks(
     }
     ctx.set_block_depth(depth);
     let grid = paginator.geometry.grid_line_pitch;
-    for block in blocks {
+    for (index, block) in blocks.iter().enumerate() {
         match block {
             Block::Paragraph(para) => {
+                let neighbors = paragraph_neighbors(ctx.document, blocks, index, true);
                 let space_before = pt_to_px(
                     compute_paragraph(ctx.document, para).space_before_pt,
                     ctx.options.scale,
@@ -702,6 +729,7 @@ fn append_note_blocks(
                     Some(marker),
                     &local_exclusions,
                     Some((&paginator.geometry, host_x, host_y_pred)),
+                    neighbors,
                 );
                 paginator.add_vspace(flow.space_before);
                 let host_y = paginator.geometry.top + paginator.cursor;
@@ -1085,6 +1113,51 @@ impl<'a> Paginator<'a> {
     /// Height of one cached footnote.
     fn note_height(&self, id: u32) -> f64 {
         self.note_cache.get(&id).map_or(0.0, |(_, height)| *height)
+    }
+
+    /// Where `w:widowControl` moves the first page break of a paragraph.
+    ///
+    /// `Some(0)` moves the whole paragraph on when only its first line would
+    /// stay behind (an orphan); `Some(k)` breaks before line `k` when only its
+    /// last line would go over (a widow). `None` when the break, if any, can
+    /// stay where the lines put it. Only paragraphs made of text lines are
+    /// considered: an image or a formula block decides its own break.
+    fn widow_break(&self, flows: &[Flow]) -> Option<usize> {
+        let heights: Option<Vec<f64>> = flows
+            .iter()
+            .map(|flow| match flow {
+                Flow::Line(line) => Some(line.height),
+                _ => None,
+            })
+            .collect();
+        let heights = heights?;
+        let total = heights.len();
+        if total < 2 {
+            return None;
+        }
+        let body = self.body_height();
+        let mut cursor = self.cursor;
+        let mut fitting = 0;
+        for height in &heights {
+            let empty = fitting == 0 && self.current.is_empty();
+            if !empty && cursor + height > body {
+                break;
+            }
+            cursor += height;
+            fitting += 1;
+        }
+        if fitting == total || fitting == 0 {
+            return None;
+        }
+        let widow = total - fitting == 1;
+        if fitting >= 3 && widow {
+            return Some(fitting - 1);
+        }
+        // An orphan, or a widow that cannot be fixed without leaving one.
+        if (fitting == 1 || (fitting == 2 && widow)) && !self.at_column_top() {
+            return Some(0);
+        }
+        None
     }
 
     fn at_page_top(&self) -> bool {

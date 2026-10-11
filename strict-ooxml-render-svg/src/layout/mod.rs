@@ -4,6 +4,7 @@
 //! pagination → a list of [`PlacedPage`]s holding paint [`Item`]s. Painting
 //! (`crate::paint`) is the only place that knows SVG.
 
+pub mod border;
 pub mod decoration;
 pub(crate) mod exclusions;
 pub(crate) mod floating;
