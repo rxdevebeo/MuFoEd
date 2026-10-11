@@ -913,12 +913,34 @@ pub(crate) fn layout_display(
         boxed.stack_line(line);
     }
     // `m:oMathParaPr/m:jc` places the display formula in the text column.
+    // Without one, the document's `m:mathPr/m:defJc` decides, and without that
+    // Word's default, `centerGroup`.
+    let settings = ctx.document.settings.math_properties.as_ref();
     let justification = paragraph
         .properties
         .as_ref()
         .and_then(|properties| properties.justification)
-        .unwrap_or(MathJustification::Default);
-    let available = crate::units::finite(content_width);
+        .filter(|justification| *justification != MathJustification::Default)
+        .unwrap_or_else(|| {
+            match settings.and_then(|settings| settings.default_justification.as_deref()) {
+                Some("left") => MathJustification::Left,
+                Some("right") => MathJustification::Right,
+                Some("center") => MathJustification::Center,
+                _ => MathJustification::CenterGroup,
+            }
+        });
+    // `m:lMargin`/`m:rMargin` narrow the column a display formula sits in.
+    let margin = |value: Option<&str>| {
+        value
+            .and_then(|value| value.parse::<i32>().ok())
+            .filter(|twips| *twips > 0)
+            .map_or(0.0, |twips| {
+                crate::units::twips_to_px(twips, ctx.options.scale)
+            })
+    };
+    let left_margin = margin(settings.and_then(|settings| settings.left_margin.as_deref()));
+    let right_margin = margin(settings.and_then(|settings| settings.right_margin.as_deref()));
+    let available = (crate::units::finite(content_width) - left_margin - right_margin).max(0.0);
     let shift = match justification {
         MathJustification::Left | MathJustification::Default => 0.0,
         MathJustification::Right => (available - boxed.size.width).max(0.0),
@@ -926,7 +948,10 @@ pub(crate) fn layout_display(
             (available - boxed.size.width).max(0.0) / 2.0
         }
     };
-    boxed.shifted(crate::units::finite(content_left) + shift, 0.0)
+    boxed.shifted(
+        crate::units::finite(content_left) + left_margin + shift,
+        0.0,
+    )
 }
 
 /// Lays out a list of sibling nodes as one horizontal list.
@@ -1360,7 +1385,28 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     } else {
         layout_argument(&script_frame, &nary.superscript)
     };
-    let under_over = nary.limit_location == Some(LimitLocation::UnderOver);
+    // An operator without `m:limLoc` follows the document: `m:intLim` for
+    // integrals, `m:naryLim` for the rest (Word: side scripts and stacked
+    // limits). Inline formulas keep their limits at the side, as Word sets
+    // them in a line of text.
+    let under_over = match nary.limit_location {
+        Some(location) => location == LimitLocation::UnderOver,
+        None if frame.display => {
+            let settings = frame.ctx.document.settings.math_properties.as_ref();
+            let character = nary.chr.unwrap_or('\u{222B}');
+            let integral = matches!(character, '\u{222B}'..='\u{2233}' | '\u{2A0B}'..='\u{2A1C}');
+            let declared = if integral {
+                settings.and_then(|settings| settings.integral_limit.as_deref())
+            } else {
+                settings.and_then(|settings| settings.nary_limit.as_deref())
+            };
+            match declared {
+                Some(value) => value == "undOvr",
+                None => !integral,
+            }
+        }
+        None => false,
+    };
     // Stacked limits already clear the operator. Side-script shifts do not
     // apply to limits which will be positioned above and below it.
     let (lower, upper) = if under_over {
@@ -1689,10 +1735,16 @@ impl Grid {
     ///
     /// Inline grids use `base` for vertical placement in `place`.
     fn column_alignment(&self, column: usize) -> MathAlignment {
-        self.per_column
-            .get(column)
-            .and_then(|spec| spec.justification)
-            .unwrap_or(MathAlignment::Center)
+        // Each `m:mc` covers `m:count` grid columns (one when absent).
+        let mut first = 0usize;
+        for spec in &self.per_column {
+            let count = usize::try_from(spec.count.unwrap_or(1).max(1)).unwrap_or(1);
+            if column < first.saturating_add(count) {
+                return spec.justification.unwrap_or(MathAlignment::Center);
+            }
+            first = first.saturating_add(count);
+        }
+        MathAlignment::Center
     }
 
     /// Places every cell and returns the laid-out grid.
