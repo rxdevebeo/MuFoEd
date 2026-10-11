@@ -21,16 +21,16 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
 | RC08 regions/fields | InProgress | column layout + multi-paragraph field block **done (2026-10-11)**; remaining: custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
-| RC09 other losses | InProgress | legacy/compat + revision controls classified **done (2026-10-11)** (losses 83671 → 11394); remaining: table/char controls with slots; comments/revisions/textboxes/OLE/metadata | shared model |
+| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 531); remaining: `wps:leading-group-line-ending`, `\ts` table styles, picture crop, comments/revisions/textboxes/OLE/metadata | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
 | RC12 public/CI | Planned | матрица фич, CI без WPS, публичный frontend | CI |
 
 Текущие dev-цифры (полный прогон `RC06-final3`, свежий WPS oracle 2026-10-11):
 import resource 100/100, text 99/100 (014 — WPS field-recompute quirk), `check`
-100/100 `ok: strict`, pagination 65/100, pixels 6/100 док. / 22/458 стр.
-Import losses 11 394 (после RC09-triage 2026-10-11; было 83 671 после RC06,
-127 228 изначально).
+100/100 `ok: strict`, pagination 66/100, pixels 6/100 док. / 22/458 стр.
+Import losses 4 531 (после RC09-срезов 2026-10-11; было 11 394, 83 671 после
+RC06, 127 228 изначально).
 
 ---
 
@@ -263,30 +263,47 @@ geometry.
 
 ## RC09 — остальные классы потерь
 
-**Состояние.** Начат (2026-10-11): ledger-driven triage. Ревизионные save-ID
-(`\insrsid`/`\charrsid`/`\pararsid`) и Word 6/7 + Asian layout-контролы, чья
-bare-форма равна Strict-дефолту (`\faauto`/`\adjustright`/`\aspalpha`/`\aspnum`,
-`\hyphpar`/`\wrapdefault`/`\sectdefaultcl`/`\linex`/`\lnbrkrule`/
-`\partightenfactor`), теперь именованный Info (`rsid-compat`/`word6-compat`/
-`paragraph-compat`), а non-default формы (`\hyphpar0`, `\adjustright0`) остаются
-явным Loss (нет слота в paragraph model). Карточка
-[compatibility/RC09](compatibility/RC09/STATUS.json). Import losses **83671 →
-11394**; DOCX байт-идентичен, pagination/pixels без изменений.
+**Состояние.** Ledger-driven triage (2026-10-11). Ревизионные save-ID и Word 6/7 +
+Asian layout-контролы, чья bare-форма равна Strict-дефолту, теперь именованный Info
+(`rsid-compat`/`word6-compat`/`paragraph-compat`). Затем:
+- **slot mappings:** `\kerning`→`w:kern`, `\ulc`→`w:u/@w:color`, `\cb`→run `w:shd`;
+  `\trpadd{t,b,l,r}`/`\trpaddf*`→`w:tblCellMar`, `\trrh`→`w:trHeight` (отрицательный
+  = `exact`), `\trqr`/`\trql`/`\trqc`→`w:trPr/w:jc`, `\trautofit`→`w:tblLayout`;
+  `\pardeftab`/`\deftab`→`w:defaultTabStop`; `{\*\panose}`→`w:panose1`;
+- **named Info по WPS-оракулу** (reference пишет пусто): `\hyphpar0`/`\noline`,
+  `\nooverflow`/`\nocwrap`, `\cltxlrtb`, `\hres`/`\chhres`, `\qk`/`\qnatural`,
+  `\animtext`, `\trftsWidth*`/`\trwWidth*`, метаданные-дестинации (`{\*\falt}`,
+  `{\*\hyphen}`, `{\*\pnseclvl}`, `{\*\rsidtbl}`, `{\*\revtbl}`, `{\*\latentstyles}`,
+  `{\*\expandedcolortbl}`, `{\*\xmlnstbl}`, `{\*\pgptbl}`, `{\*\pgdsctbl}`,
+  `{\*\wgrffmtfilter}`, `{\*\userprops}`, `{\*\fname}`, `{\*\generator}`) и
+  settings/cocoa/view/drawing-grid/math/rsid-семейства, `\widowctrl`, `\additive`,
+  `\pardirnatural`, `\deflang*`.
 
-**Осталось.** Остаток ledger небольшая: (a) table/char-контролы с реальным
-WML-слотом (`\trpadd*`→`w:tblCellMar`, `\ulc`→`w:u/@w:color`, `\cltxlrtb`→
-`w:textDirection`, `\pardeftab`→defaultTabStop, `\nooverflow`/`\nocwrap`→cell
-wrap, `\trrh`/`\trautofit`/`\trftsWidth`); (b) content-классы, которым нужен
-shared model — comments, revisions, textboxes/shapes, OLE, document metadata
-(авторство/даты/docprops не считать glyph-losses, но показывать в report;
-OLE — opaque payload/relations без activation); (c) metadata-дестинации
-`{\*\rsidtbl}`, `{\*\expandedcolortbl}`, `{\*\xmlnstbl}`, `{\*\pgptbl}`,
-`{\*\pgdsctbl}`, `{\*\revtbl}`, `{\*\panose}`, `{\*\pnseclvl}`, `{\*\hyphen}`;
-(d) WPS-специфичный `wps:leading-group-line-ending`.
+Итог: import losses **83 671 → 11 394 → 4 531**; pagination 66/100 (0 изменений
+номеров страниц против `RC08-columns-layout`), `check` 100/100 `ok: strict`.
+Metadata/settings-срезы severity-only → DOCX SHA-256 идентичен. Тесты —
+`structure.rs::{legacy_layout_and_revision_controls_are_info_not_losses,
+non_default_legacy_layout_controls_stay_losses,
+document_settings_and_compat_controls_are_info,
+kerning_underline_colour_and_character_background_map_to_run_props,
+table_padding_row_height_alignment_and_layout_map,
+default_tab_stop_and_compat_controls_map_and_classify,
+font_panose_maps_and_metadata_destinations_are_info}`. Карточка
+[compatibility/RC09](compatibility/RC09/STATUS.json).
+
+**Осталось.** (a) `wps:leading-group-line-ending` (2 541) — WPS пишет `&#10;`, наш
+WPS-профиль сохраняет байт как LF, тексты расходятся, поэтому остаётся явным Loss;
+(b) `\ts` table styles (`w:tblStyle`); (c) picture crop `\piccrop*`/`{\*\picprop}`
+(нужен `a:srcRect`); (d) content-классы, которым нужен shared model — comments,
+revisions, textboxes/shapes, OLE, document metadata; (e) language-сентинелы
+`\lang0`/`\lang1024` и прочие unknown LCID закреплены как Loss тестами; (f) хвост
+низкоуверенных application/layout-флагов (`\newtblstyruls`, `\sectlinegrid`,
+`\horzdoc`, `\stshf*`, `\clmar*`, `\gaph`, `\fet`, shape-stroke) сознательно не
+переклассифицирован.
 
 **DoD.** у каждого наблюдаемого класса — implemented semantics + independent
-roundtrip test либо явное неподдержанное правило с открытым compatibility
-status. Blanket ignore/rename-to-info запрещён.
+roundtrip test либо явное неподдержанное правило с открытым compatibility status.
+Blanket ignore/rename-to-info запрещён.
 
 **Риск.** средний; делается порциями по классам.
 
@@ -365,9 +382,10 @@ unsupported statuses и подробный report. Merge/release — отдел�
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
 6. **RC07 metafiles** (отдельная очередь) + RC10.
-7. **RC09 по семантическому impact** — начато (2026-10-11): revision/compat
-   metadata классифицированы Info (losses 83671 → 11394); далее остаточные
-   table/char-контролы и content-классы.
+7. **RC09 по семантическому impact** — сделано (2026-10-11): revision/compat
+   metadata, table/char-контролы с реальными слотами и метаданные-дестинации
+   (losses 83 671 → 4 531); далее — `\ts` table styles, picture crop и
+   content-классы (comments/revisions/textboxes/OLE/metadata).
 8. **RC11** после RC02–RC10; **RC12** после RC11.
 
 Правила параллелизма из плана сохраняются: shared `parser.rs`, model и layout не

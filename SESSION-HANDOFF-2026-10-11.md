@@ -9,8 +9,8 @@
 **Правило:** коммиты — только с явного разрешения пользователя. Все команды —
 с этим worktree как cwd; `target/` локальный.
 
-> **Состояние на передаче:** в дереве лежит **незакоммиченный** срез RC09
-> (см. §3). Всё остальное из сессии закоммичено (§2).
+> **Состояние на передаче:** рабочее дерево **чистое** — вся работа этой сессии
+> закоммичена (см. §2). Незакоммиченного среза RC09 больше нет.
 
 ---
 
@@ -34,66 +34,44 @@ model/render/write менять согласованно и с regression-тес
 |---|---|
 | `f9a14f2` | RC05 `\lfolevel`-override уровни → `w:lvlOverride`; RC06 табличные бордеры/shading/cell-props, общий `Borders` (+`between`/`bar`/`tl2br`/`tr2bl`), renderer штрихи `w:pBdr` |
 | `016e290` | доки RC05/RC06 |
-| `4bf8f81` | **RC08 column layout**: `layout::column_layout`, колоночный менеджер в paginator, `w:br type=column` (`Flow::ColumnBreak`); single-column fast-path |
+| `4bf8f81` | **RC08 column layout**: `layout::column_layout`, колоночный менеджер в paginator, `w:br type=column`; single-column fast-path |
 | `2fc2e02` | доки RC08 columns |
-| `b69ab9a` | **RC08 field block**: block-result `{\field}` (и `\flddirty`) → complex marker-форма `fldChar begin/instrText/separate/…/end`; `\fldedit`/`datafield` → Info |
+| `b69ab9a` | **RC08 field block**: block-result `{\field}` → complex marker-форма (`fldChar`/`instrText`); `\flddirty` → `w:dirty` |
 | `9a090a0` | доки RC08 field block |
 | `6b5ebe7` | `w:customMarkFollows` теперь `Partial`, а не молчаливый drop |
 | `3c5ff0e` | доки RC08 custom marks / `\ftncn` |
+| `f277519` | **RC09 triage №1**: `\insrsid`/`\charrsid`/`\pararsid`, `\faauto`/`\adjustright`/`\aspalpha`/`\aspnum`, `\hyphpar`/`\wrapdefault`/… → Info (83010 → 11394) |
+| `16f3203` | доки RC09 triage №1 + карточка |
+| `13c904c` | **RC09 slot mappings**: `\kerning`→`w:kern`, `\ulc`→`w:u/@color`, `\cb`→run `w:shd`; `\trpadd*`→`w:tblCellMar`, `\trrh`→`w:trHeight`, `\trqr/ql/qc`→`w:trPr/w:jc`, `\trautofit`→`w:tblLayout`; `\pardeftab`→`w:defaultTabStop`; `\hyphpar0`/`\nooverflow`/`\cltxlrtb`/… → Info (11394 → 6995) |
+| `d0625c3` | **RC09 metadata**: `{\*\panose}`→`w:panose1`; `\falt`/`\hyphen`/`\pnseclvl`/`\rsidtbl`/… → Info (6995 → 5869) |
+| `d61f718` | **RC09 settings**: style/table/section rsid, view/cocoa/drawing-grid/math/settings-семейства, `\widowctrl`/`\additive` → Info (severity-only, 5869 → 4696) |
+| `dea8eb1` | **RC09 defaults**: `\pardirnatural`, `\deflang`/`\deflangfe`/`\adeflang` → Info (severity-only, 4696 → 4531) |
 
-**Цифры корпуса сейчас:** import losses **11 394**; resource 100/100; text
-99/100 (014 — WPS field-recompute quirk); `check` 100/100 `ok: strict`;
-pagination **66/100** (092 закрыт колонками); pixels 6/100 док. / 22/458 стр.
-(переносятся по идентичности PDF; свежий raster требует эталонов).
+**Цифры корпуса сейчас:** import losses **4 531** (было 11 394 на входе сессии;
+83 671 после RC06; 127 228 изначально); resource 100/100; text 99/100 (014 —
+WPS field-recompute quirk); `check` 100/100 `ok: strict`; pagination **66/100**;
+pixels 6/100 док. / 22/458 стр. Severity-only срезы дали SHA-256-идентичный DOCX;
+slot-маппинг срезы не меняли номера страниц (0 изменений vs `RC08-columns-layout`).
 
 **Единственный красный тест (pre-existing, не наш):**
 `strict-ooxml-render-svg::font::family::tests::maps_regular_postscript_names_to_the_same_bundled_faces`
 — ждёт `map_family("Arial-BoldMT") == "Arial-BoldMT"`, реализация возвращает
-`"Carlito"`. `map_family` реально вызывается с styled PostScript-именами
-(`builtin.rs`), так что там возможен настоящий баг, но интерпретация теста
-неоднозначна. Не трогали.
+`"Carlito"`. Не трогали.
 
-## 3. Незакоммиченная работа (главное на сейчас)
+## 3. Незакоммиченная работа
 
-Срез **RC09 triage №1** — ревизионные save-ID и legacy layout-контролы,
-чья bare-форма равна Strict-дефолту, классифицированы Info:
-
-```
-M strict-ooxml-rtf/src/parser.rs      # rsid-compat / word6-compat / paragraph-compat
-M strict-ooxml-rtf/tests/structure.rs  # 2 теста
-M docs/rtf/REMAINING_MAJOR_WORK.md
-M docs/rtf/REMAINING_COMPATIBILITY_PLAN.md
-?? docs/rtf/compatibility/RC09/        # STATUS.json + tests.md (новая карточка)
-```
-
-- `\insrsid`/`\charrsid`/`\pararsid` → `rsid-compat` Info (невизуальные
-  merge-метаданные).
-- `\faauto`/`\adjustright`/`\aspalpha`/`\aspnum` (bare) → `word6-compat` Info
-  (это Strict-дефолты `w:textAlignment=auto`/`w:adjustRightInd` on/
-  `w:autoSpaceDE`/`DN` on).
-- `\hyphpar`/`\wrapdefault`/`\sectdefaultcl`/`\linex`/`\lnbrkrule`/
-  `\partightenfactor` → `paragraph-compat` Info.
-- Non-default формы (`\hyphpar0`, `\adjustright0`) **остаются Loss** (нет слота
-  в paragraph model).
-
-**Результат:** import losses **83010 → 11 394** (−71 616). Изменение только
-severity → DOCX байт-идентичен (SHA-256 совпал на 014/074/092), pagination/
-pixels без изменений. Тесты `strict-ooxml-rtf` 70 Pass; clippy/fmt чисто.
-Receipts — `target/rtf-import/rc09-triage/`.
-
-**Действие:** прогнать `fmt --check` + `clippy -p strict-ooxml-rtf --all-targets`
-+ `test -p strict-ooxml-rtf` и **закоммитить** (код + доки), с разрешения.
+**Нет.** Дерево чистое.
 
 ## 4. Состояние плана (порядок исполнения)
 
 | Этап | Статус |
 |---|---|
-| RC05 / RC06 | **Done** (закоммичено) |
-| RC08 columns + field block | **Done**; custom marks/`\ftncn` — explicit non-support; остаётся **same-page continuous geometry** (074: 4 стр. против ref 3, 2-column секция — continuous break, откладывается на след. страницу) |
-| RC04 | resolver-probe: остаток — корректность самого инструмента (`resolve` заменяет свойство целиком, не по атрибутам) + нормализация absent-vs-default; есть WPS-quirk (019 теряет `\sl276`). Pixel — **blocked** на faces (RC02/RC03) |
+| RC05 / RC06 | **Done** |
+| RC08 columns + field block | **Done**; custom marks/`\ftncn` — explicit non-support; остаётся **same-page continuous geometry** (074) |
+| RC04 | resolver-probe: остаток — корректность самого инструмента + нормализация absent-vs-default; WPS-quirk (019). Pixel — **blocked** на faces (RC02/RC03) |
 | RC03 | **Blocked** на bidi-oracle с per-char levels |
 | RC07 | не начат: bounded WMF/EMF decoder (крупный, high-risk, +RC10) |
-| RC09 | **InProgress** этим срезом: остаток — table/char-контролы с WML-слотом (`\trpadd*`→`w:tblCellMar`, `\ulc`→`w:u/@w:color`, `\cltxlrtb`→`w:textDirection`, `\pardeftab`, `\nooverflow`/`\nocwrap`, `\trrh`/`\trautofit`/`\trftsWidth`) и content-классы (comments/revisions/textboxes/OLE/metadata) |
+| RC09 | **InProgress, большой прогресс**: ledger 83 671 → **4 531**. Остаток — `wps:leading-group-line-ending` (2541; наш LF vs WPS `&#10;`), `\ts` table styles (`w:tblStyle`), picture crop `\piccrop*`/`{\*\picprop}` (`a:srcRect`), content-классы (comments/revisions/textboxes/shapes/OLE/metadata), unknown LCID (закреплены тестами), хвост низкоуверенных application/layout-флагов |
 | RC10 / RC11 / RC12 | не начаты / Blocked / Planned |
 
 ## 5. Как проверять (рецепты)
@@ -115,7 +93,7 @@ target/debug/strict-ooxml.exe render <out.docx> --out <svg-dir>
 target/rtf-import/poppler/poppler-26.09.0/Library/bin/pdfinfo.exe <out.pdf>
 
 # Корпус: import + to-pdf + pdfinfo по всем 100; compare к baseline
-# (см. target/rtf-import/rc08-field-verify2/corpus/pages.json для примеров)
+# (baseline пагинации — target/rtf-import/RC08-columns-layout/corpus-pages.json)
 
 # RC04 resolver-probe (на текущем выходе против WPS reference)
 python xtool/rtf/effective_style_resolver.py \
@@ -124,22 +102,34 @@ python xtool/rtf/effective_style_resolver.py \
   --receipt <r.json>
 ```
 
+**Свидетели WPS-оракула для новых классификаций:**
+`target/rtf-import/RC05-wps-full/oracle/files/{028,033,073,099}/reference.docx`
+(`\ulc`→`w:u/@color`, `\kerning`→`w:kern`), `{008}/reference.docx`
+(`\trpadd*`→`w:tblCellMar`, `\trrh`→`w:trHeight`, `\trautofit`→`w:tblLayout`,
+`\trqr`→`w:trPr/w:jc`), `{002}/word/fontTable.xml` (`\panose`→`w:panose1`),
+`{028,032}/word/settings.xml` (`\pardeftab`→`w:defaultTabStop`).
+
 ## 6. Уроки этой сессии
 
-1. **Severity-only правки проверять по SHA DOCX.** Классификация Loss→Info не
-   должна менять вывод: сравнивать `Get-FileHash` до/после, а не только
-   `loss_count`.
-2. **Baseline пагинации — `RC06-final3`** (свежий WPS-оракул), а не старые
-   receipt'ы: `RC08-columns-visual` устарел на RC05/RC06 (017/053 там другие).
-3. **`column_layout` — single-column fast-path:** пустой список колонок и
-   нулевой offset держат старую раскладку byte-identical; проверять, что
-   меняется ровно один документ (092).
-4. **Marker-форма сложного поля уже поддержана** model/reader/writer/layout;
-   для block-result `\field` не нужен `Field { blocks }`.
-5. **`\flddirty`/`datafield`/`\fldedit`** в 014 были чистым Loss; `\flddirty` →
-   `w:dirty` на begin-маркере, остальные — Info.
-6. **Probe ≠ gate.** `effective_style_resolver` — probe; его «0 mismatches»
-   достигается ручным рассуждением, а не самим инструментом (см. §4 RC04).
+1. **WPS-reference — решающий аргумент для «default vs loss».** Перед классификацией
+   контрол-слова проверять, пишет ли WPS-эталон соответствующий элемент
+   (`w:noWrap` для `\nooverflow`, `w:suppressAutoHyphens` для `\hyphpar0`,
+   `w:jс kashida` для `\qk` — пусто ⇒ Info).
+2. **Severity-only правки проверять по SHA DOCX по всем 100**, не только по
+   `loss_count`: срезы `d61f718`/`dea8eb1` дали 0 изменений хэшей.
+3. **`\falt` не декодировать через text()-путь.** Значения в корпусе — CJK-имена в
+   кодировке гарнитуры (`\'81\'66`); `InvalidTextPolicy` по умолчанию `Error`,
+   поэтому наивный маппинг в `w:altName` ломает импорт 002/004/017/051. `\panose`
+   безопасно (чистый hex → ASCII).
+4. **LCID 0/1024 закреплены тестами** как явный Loss
+   (`unknown_language_lcid_remains_an_explicit_loss`,
+   `unknown_alang_lcid_remains_an_explicit_loss`) — не переклассифицировать без
+   переписывания этих тестов.
+5. **`wps:leading-group-line-ending` — реальный Loss, не false positive.** На 005
+   наш текст сохраняет байт как LF, WPS пишет `&#10;` (+замена) — тексты расходятся
+   на длину. Оставить Loss.
+6. **`Borders`/`RowHeight`/`CellMargins`/`FontHints.panose1`/`Settings.default_tab_stop`
+   уже есть в shared model** — большинство маппингов этой сессии parser-local.
 
 ## 7. Риски / внешние активы
 
@@ -153,10 +143,14 @@ python xtool/rtf/effective_style_resolver.py \
 
 ## 8. Рекомендуемый следующий шаг
 
-1. **Закоммитить незакоммиченный срез RC09** (код + доки).
-2. Затем — на выбор: (a) **продолжить RC09** — table/char-контролы с реальными
-   WML-слотами (наибольший оставшийся ledger, ~11k), (b) **RC07** metafiles
-   (следующий по порядку, крупный), (c) RC04 resolver-probe fix.
+1. **Продолжить RC09** (наибольший оставшийся ledger):
+   (a) `\ts` table styles → `w:tblStyle` (нужна модель table-style; крупно);
+   (b) picture crop `\piccrop{t,b,l,r}` → `a:srcRect` (DrawingML, shared model);
+   (c) content-классы: comments (`\annotation`), revisions, textboxes/shapes
+   (`\shp`), OLE (`\object`/`\objdata` — opaque payload/relations без activation),
+   document metadata (`\info`/docprops — показывать в report, не glyph-loss).
+2. Либо **RC07** metafiles (следующий по порядку, крупный, +RC10).
+3. Либо RC04 resolver-probe fix.
 
 ---
 

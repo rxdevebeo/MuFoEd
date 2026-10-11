@@ -1019,6 +1019,45 @@ clippy/fmt Pass. Corpus `target/rtf-import/rc09-triage`: import losses
 (SHA-256 совпал на 014/074/092) — pagination и pixels без изменений. Карточка
 [compatibility/RC09](compatibility/RC09/STATUS.json).
 
+### RC09: slot-маппинги и метаданные — 2026-10-11
+
+Продолжение triage. Классы, у которых есть реальный WML-слот, смаплены, а те, у
+которых слота нет, классифицированы по независимому WPS-оракулу
+(`RC05-wps-full/oracle/files/`):
+
+- char: `\kerning`→`w:kern` (033/073/099 reference), `\ulc`→`w:u/@w:color`
+  (028 reference `<w:u w:val="single" w:color="0000FF"/>`), `\cb`→run `w:shd`
+  (как `\chcbpat`; WPS непоследователен, но семантика та же).
+- table: `\trpadd{t,b,l,r}`/`\trpaddf*`→`w:tblCellMar`, `\trrh`→`w:trHeight`
+  (negative = `exact`), `\trqr`/`\trql`/`\trqc`→`w:trPr/w:jc`,
+  `\trautofit`→`w:tblLayout` (все — 008 reference).
+- paragraph/settings: `\pardeftab`/`\deftab`→`w:defaultTabStop` (028/032),
+  `{\*\panose}`→`w:panose1` (002 fontTable).
+- named Info (reference пишет пусто): `\hyphpar0`/`\noline`, `\nooverflow`/`\nocwrap`,
+  `\cltxlrtb`, `\hres`/`\chhres`, `\qk`/`\qnatural`, `\animtext`,
+  `\trftsWidth*`/`\trwWidth*`; метаданные-дестинации `{\*\falt}`/`{\*\hyphen}`/
+  `{\*\pnseclvl}`/`{\*\rsidtbl}`/`{\*\revtbl}`/`{\*\latentstyles}`/
+  `{\*\expandedcolortbl}`/`{\*\xmlnstbl}`/`{\*\pgptbl}`/`{\*\pgdsctbl}`/
+  `{\*\wgrffmtfilter}`/`{\*\userprops}`/`{\*\fname}`/`{\*\generator}`;
+  settings/cocoa/view/drawing-grid/math/rsid-семейства, `\widowctrl`, `\additive`,
+  `\pardirnatural`, `\deflang*`.
+
+Losses **11394 → 4531**. Severity-only срезы дали SHA-256-идентичный DOCX;
+pagination 66/100 без изменения номеров страниц; `check` 100/100. Тесты —
+`structure.rs::{kerning_underline_colour_and_character_background_map_to_run_props,
+table_padding_row_height_alignment_and_layout_map,
+default_tab_stop_and_compat_controls_map_and_classify,
+font_panose_maps_and_metadata_destinations_are_info,
+document_settings_and_compat_controls_are_info}`. Receipts —
+`target/rtf-import/rc09-slice5/`.
+
+Остаток и почему не закрыт: `wps:leading-group-line-ending` (наш WPS-профиль
+сохраняет байт как LF, WPS пишет `&#10;` — тексты расходятся, поэтому честный Loss);
+`\ts` table styles (нет `w:tblStyle`-модели); picture crop `\piccrop*`/`{\*\picprop}`
+(нужен `a:srcRect`); content-классы (comments/revisions/textboxes/OLE/metadata);
+unknown LCID закреплены тестами; хвост низкоуверенных флагов (`\newtblstyruls`,
+`\sectlinegrid`, `\horzdoc`, `\stshf*`, `\clmar*`, `\gaph`, `\fet`, shape-stroke).
+
 ### RC04: resolver-probe (заметка) — 2026-10-11
 
 Проверен `xtool/rtf/effective_style_resolver.py` на текущем выходе 019/039 против

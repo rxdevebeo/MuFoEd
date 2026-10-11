@@ -2,19 +2,25 @@
   "card": "RC09",
   "status": "InProgress",
   "updated": "2026-10-11",
-  "scope": "remaining loss classes: revision/compat metadata, comments, revisions, textboxes, OLE, document metadata",
-  "base_commit": "3c5ff0e",
+  "scope": "remaining loss classes: revision/compat metadata, table/character controls with WML slots, comments, revisions, textboxes, OLE, document metadata",
+  "base_commit": "16f3203",
   "dependencies": ["RC01"],
   "implemented": [
-    "revision save identifiers and the Word 6/7 + Asian layout controls whose bare value is the Strict default are named Info instead of Loss: `\\insrsid`/`\\charrsid`/`\\pararsid` (non-visual merge metadata; the model carries optional `w:rsid*` slots the renderer never reads), `\\faauto`/`\\adjustright`/`\\aspalpha`/`\\aspnum` (whose bare form is the WML default `w:textAlignment=auto`, `w:adjustRightInd` on, `w:autoSpaceDE`/`w:autoSpaceDN` on, so a mapping would write nothing back), and `\\hyphpar`/`\\wrapdefault`/`\\sectdefaultcl`/`\\linex`/`\\lnbrkrule`/`\\partightenfactor`. A non-default form (`\\hyphpar0`, `\\adjustright0`, ...) has no slot in the paragraph model and stays an explicit Loss. Corpus import losses 83010 -> 11394."
+    "revision save identifiers and the Word 6/7 + Asian layout controls whose bare value is the Strict default are named Info instead of Loss: `\\insrsid`/`\\charrsid`/`\\pararsid` (`rsid-compat`), `\\faauto`/`\\adjustright`/`\\aspalpha`/`\\aspnum` (`word6-compat`), and `\\hyphpar`/`\\wrapdefault`/`\\sectdefaultcl`/`\\linex`/`\\lnbrkrule`/`\\partightenfactor` (`paragraph-compat`). Corpus import losses 83010 -> 11394.",
+    "character controls with a real WML slot are mapped instead of dropped: `\\kerning` -> `w:kern` (the WPS spelling of `\\kern`), `\\ulc` -> `w:u/@w:color`, and `\\cb` -> `w:rPr/w:shd` (the WPS spelling of the character background, the same property as `\\chcbpat`).",
+    "table controls with a real WML slot are mapped: `\\trpadd{t,b,l,r}`/`\\trpaddf{t,b,l,r}` -> `w:tblCellMar` (with `\\trgaph` as the fallback), `\\trrh` -> `w:trHeight` (negative value = `exact`), `\\trqr`/`\\trql`/`\\trqc` -> `w:trPr/w:jc`, and `\\trautofit` -> `w:tblLayout`.",
+    "`\\pardeftab`/`\\deftab` -> `w:defaultTabStop` in settings.xml, and a nested `{\\*\\panose ...}` -> `w:panose1` on the font-table entry.",
+    "the non-visual metadata destinations are named Info: `{\\*\\falt}`, `{\\*\\hyphen}`, `{\\*\\pnseclvl}`, `{\\*\\rsidtbl}`, `{\\*\\revtbl}`, `{\\*\\latentstyles}`, `{\\*\\expandedcolortbl}`, `{\\*\\xmlnstbl}`, `{\\*\\pgptbl}`, `{\\*\\pgdsctbl}`, `{\\*\\wgrffmtfilter}`, `{\\*\\userprops}`, `{\\*\\fname}` and `{\\*\\generator}`.",
+    "document settings and metadata control families are named Info: the table/section/style revision ids (`\\styrsid`/`\\tblrsid`/`\\sectrsid`/`\\rsidroot`), view settings, Word-for-Mac Cocoa flags, drawing-grid display settings, math layout settings (`w:mathPr`), Word application settings, `\\widowctrl` (the Strict default), `\\additive`, `\\pardirnatural`, and the Word 6/7 default-language hints (`\\deflang`/`\\deflangfe`/`\\adeflang`).",
+    "the WPS-default controls whose reference writes nothing back are named Info: `\\hyphpar0`/`\\noline` (`paragraph-compat`), `\\nooverflow`/`\\nocwrap` (`table-cell-compat`), `\\cltxlrtb` (the default cell direction), `\\hres`/`\\chhres` (`picture-resolution`), `\\qk`/`\\qnatural` (`paragraph-compat`), `\\animtext` (`character-compat`) and the row-width unit/value hints (`table-row-compat`)."
   ],
   "remaining": [
     "comments, tracked revisions, textboxes/shapes, OLE objects and document metadata (author/dates/docprops) are still Loss; they need per-class mapping tasks (RC08 already took fields/bookmarks/notes).",
-    "metadata destinations still Loss: `{\\*\\rsidtbl}`, `{\\*\\expandedcolortbl}`, `{\\*\\xmlnstbl}`, `{\\*\\pgptbl}`, `{\\*\\pgdsctbl}`, `{\\*\\revtbl}`.",
-    "font/paragraph metadata destinations still Loss: `{\\*\\panose}`, `{\\*\\pnseclvl}`, `{\\*\\hyphen}`.",
-    "the WPS-only `wps:leading-group-line-ending` marker (2541) is still Loss; it is a WPS source artifact with no Strict slot.",
-    "table cell props still Loss: `\\trpadd{t,b,l,r}`/`\\trpaddf{t,b,l,r}` (table default cell padding -> `w:tblCellMar`), `\\trrh`, `\\trqr`/`\\trftsWidth`, `\\trautofit`; and cell text direction `\\cltxlrtb`.",
-    "character controls still Loss: `\\ulc` (underline colour -> `w:u/@w:color`), `\\kerning` (old `\\kern`), `\\cb`, `\\pardeftab` (default tab stop), `\\nooverflow`/`\\nocwrap` (cell wrap), `\\animtext`."
+    "`wps:leading-group-line-ending` (2541) is still Loss: WPS writes a `&#10;`-encoded line end where our WPS profile preserves the byte as a plain line feed, so the two texts differ and the mismatch is reported rather than silently accepted.",
+    "table styles (`\\ts`) remain Loss: the `{\\*\\tsNN ...}` / `\\tsNN` table-style definition and reference need a `w:tblStyle` model path that does not exist yet.",
+    "picture crop (`\\piccrop{t,b,l,r}`) and `{\\*\\picprop}` remain Loss: they need DrawingML `a:srcRect`/shape-property support.",
+    "the language sentinels `\\lang0`/`\\lang1024` and other unknown LCIDs stay explicit `language:unknown-lcid` Loss (pinned by `unknown_language_lcid_remains_an_explicit_loss`/`unknown_alang_lcid_remains_an_explicit_loss`).",
+    "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the shape stroke controls."
   ],
   "blocked": [],
   "checks": {
@@ -22,20 +28,32 @@
       "status": "Pass",
       "tests": [
         "strict-ooxml-rtf/tests/structure.rs::legacy_layout_and_revision_controls_are_info_not_losses",
-        "strict-ooxml-rtf/tests/structure.rs::non_default_legacy_layout_controls_stay_losses"
+        "strict-ooxml-rtf/tests/structure.rs::non_default_legacy_layout_controls_stay_losses",
+        "strict-ooxml-rtf/tests/structure.rs::document_settings_and_compat_controls_are_info"
+      ]
+    },
+    "character_and_table_slot_mappings": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::kerning_underline_colour_and_character_background_map_to_run_props",
+        "strict-ooxml-rtf/tests/structure.rs::table_padding_row_height_alignment_and_layout_map",
+        "strict-ooxml-rtf/tests/structure.rs::default_tab_stop_and_compat_controls_map_and_classify",
+        "strict-ooxml-rtf/tests/structure.rs::font_panose_maps_and_metadata_destinations_are_info"
       ],
       "assertions": [
-        "the bare legacy controls and revision ids produce loss_count 0 and a named `*-compat:` Info (`rsid-compat`, `word6-compat`, `paragraph-compat`)",
-        "`\\hyphpar0` and `\\adjustright0` stay `control:*` Loss (negative control; the paragraph model has no suppressAutoHyphens/adjustRightInd slot)"
+        "each mapping round-trips through the writer and reader (document + reopened)",
+        "every classified control produces loss_count 0 with its named Info feature"
       ]
     },
     "corpus_ledger": {
       "status": "Measured",
       "date": "2026-10-11",
-      "receipt": "target/rtf-import/rc09-triage/",
+      "receipt": "target/rtf-import/rc09-slice5/",
       "results": {
-        "import_losses": "83010 -> 11394 (-71616)",
-        "output_identity": "the imported DOCX bytes are SHA-256 identical on 014/074/092 (severity-only change), so pagination and pixels are unchanged"
+        "import_losses": "11394 -> 4531 (-6863)",
+        "pagination": "66/100 unchanged vs RC08-columns-layout (0 page-count changes)",
+        "check": "100/100 ok: strict",
+        "output_identity": "the metadata/settings Info slices are severity-only: every imported DOCX is SHA-256 identical to the previous slice"
       }
     }
   }

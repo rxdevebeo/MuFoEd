@@ -33,13 +33,50 @@ Corpus receipt `target/rtf-import/rc09-triage/`: import losses **83010 -> 11394*
 (-71616). The change is severity-only, so the imported DOCX bytes are SHA-256
 identical (checked on 014/074/092) and pagination/pixels are unchanged.
 
+## Slot mappings and metadata classification (2026-10-11)
+
+The remaining classes with a real WML slot were mapped rather than dropped, and
+the reference oracle (WPS Writer 12.1.0.28485, `RC05-wps-full/oracle/files/`)
+was used to decide the ones without a slot:
+
+- **Character** `\kerning` -> `w:kern` (WPS writes `w:kern`), `\ulc` ->
+  `w:u/@w:color` (WPS writes `w:u w:val="single" w:color="0000FF"`), `\cb` ->
+  `w:rPr/w:shd` (the character background; WPS is inconsistent about it, but it
+  is the same property as the already-mapped `\chcbpat`).
+- **Table** `\trpadd{t,b,l,r}` + `\trpaddf{t,b,l,r}` -> `w:tblCellMar`,
+  `\trrh` -> `w:trHeight` (negative = `exact`), `\trqr`/`\trql`/`\trqc` ->
+  `w:trPr/w:jc`, `\trautofit` -> `w:tblLayout` (all confirmed against 008).
+- **Paragraph/settings** `\pardeftab`/`\deftab` -> `w:defaultTabStop`
+  (confirmed against 028/032), and `{\*\panose ...}` -> `w:panose1` on the font
+  entry (WPS writes `w:panose1`).
+- **Classified Info (reference writes nothing back):** `\hyphpar0`/`\noline`,
+  `\nooverflow`/`\nocwrap`, `\cltxlrtb` (the default `tb` direction),
+  `\hres`/`\chhres`, `\qk`/`\qnatural`, `\animtext`, `\trftsWidth*`/`\trwWidth*`.
+- **Metadata destinations as Info:** `{\*\falt}`, `{\*\hyphen}`, `{\*\pnseclvl}`,
+  `{\*\rsidtbl}`, `{\*\revtbl}`, `{\*\latentstyles}`, `{\*\expandedcolortbl}`,
+  `{\*\xmlnstbl}`, `{\*\pgptbl}`, `{\*\pgdsctbl}`, `{\*\wgrffmtfilter}`,
+  `{\*\userprops}`, `{\*\fname}`, `{\*\generator}`.
+- **Settings/metadata control families as Info:** the table/section/style revision
+  ids, view settings, Cocoa flags, drawing-grid settings, math settings, Word
+  application settings, `\widowctrl`, `\additive`, `\pardirnatural` and the
+  default-language hints.
+
+Tests: `structure.rs::{kerning_underline_colour_and_character_background_map_to_run_props,
+table_padding_row_height_alignment_and_layout_map,
+default_tab_stop_and_compat_controls_map_and_classify,
+font_panose_maps_and_metadata_destinations_are_info,
+document_settings_and_compat_controls_are_info}`. Corpus receipt
+`target/rtf-import/rc09-slice5/`: import losses **11394 -> 4531**; pagination
+66/100 with **0 page-count changes** vs `RC08-columns-layout`; `check` 100/100
+`ok: strict`. The metadata/settings slices are severity-only (DOCX SHA-256
+identical).
+
 ## Remaining
 
-The rest of the ledger is now small. The classes still Loss (see
-[STATUS.json](STATUS.json) `remaining`) are the table-cell / character controls
-with real WML slots (`\trpadd*` -> `w:tblCellMar`, `\ulc` -> `w:u/@w:color`,
-`\cltxlrtb` -> `w:textDirection`, ...) plus the content classes that need a
-shared model (`comments`, `revisions`, `textboxes`, `OLE`, document metadata) and
-the metadata destinations (`{\*\rsidtbl}`, `{\*\expandedcolortbl}`,
-`{\*\xmlnstbl}`, `{\*\pgptbl}`, `{\*\pgdsctbl}`, `{\*\revtbl}`,
-`{\*\panose}`, `{\*\pnseclvl}`, `{\*\hyphen}`).
+The classes still Loss (see [STATUS.json](STATUS.json) `remaining`) are the WPS
+leading-group line ending (`wps:leading-group-line-ending`, where our preserved
+byte differs from WPS's `&#10;` spelling), the table styles (`\ts`), picture
+crop/`\picprop`, the content classes that need a shared model (`comments`,
+`revisions`, `textboxes`, `OLE`, document metadata), the pinned unknown-LCID
+languages, and a deliberately unclassified tail of lower-confidence application
+and layout flags.
