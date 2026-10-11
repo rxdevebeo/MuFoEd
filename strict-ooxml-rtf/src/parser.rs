@@ -2205,7 +2205,14 @@ impl Parser<'_> {
         }
         if first && self.state.ignorable {
             self.state.skip = true;
-            return self.issue(span, Severity::Loss, format!("destination:{name}"));
+            // `{\*\levelmarker ...}` is a legacy alternative list marker
+            // superseded by `\leveltext`; it is ignored, not a loss.
+            let severity = if name == "levelmarker" {
+                Severity::Info
+            } else {
+                Severity::Loss
+            };
+            return self.issue(span, severity, format!("destination:{name}"));
         }
         if first && name == "fonttbl" {
             self.state.destination = Destination::Fonts;
