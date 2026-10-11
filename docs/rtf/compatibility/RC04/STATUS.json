@@ -1,7 +1,7 @@
 {
   "card": "RC04",
   "status": "InProgress",
-  "updated": "2026-10-09",
+  "updated": "2026-10-11",
   "scope": "style cascade and paragraph/run text geometry",
   "base_commit": "a53042b",
   "dependencies": ["RC02"],
@@ -25,8 +25,8 @@
     "RTF 1.0 indent controls \\lin/\\rin/\\fin map to the same w:ind start/end/firstLine as \\li/\\ri/\\fi (the corpus pairs them; 015 gains its indent and the ledger stops reporting the old spellings as loss)"
   ],
   "remaining": [
-    "normalize absent-vs-default in the resolved diff (remaining diffs are explicit-defaults-vs-inherited, not effective mismatches)",
-    "residual corpus pixels: 6/100 documents and 22/458 pages pass after the 2026-10-09 geometry fixes (from 3/100, 6/423). The remaining line_metrics/row_correlation pages are dominated by advance-driven reflow from substitute-face advance differences (witness 013 page 2: 'получат.' wraps early while the vertical profile matches, top/bottom +0/+1, shift 0), plus a documented WPS leading-whitespace advance difference (013 page 1); these need exact faces, not a new RTF mapping"
+    "resolved-cascade follow-ups are now specific, not noise: 019 still differs in `w:spacing/@w:line=276` (our import keeps `\\sl276`, the WPS reference drops it) and in the run `w:rFonts` (our explicit Arial `\\f2`/`\\af2` vs WPS inheriting docDefaults Times New Roman/SimSun); 039 differs only in the run `w:cs` slot (our Helvetica vs WPS Times New Roman). These need an oracle decision, not more normalization.",
+    "residual corpus pixels: 6/100 documents and 22/458 pages pass after the 2026-10-09 geometry fixes (from 3/100, 6/423). The remaining line_metrics/row_correlation pages are dominated by advance-driven reflow from substitute-face advance differences (witness 013 page 2: '������.' wraps early while the vertical profile matches, top/bottom +0/+1, shift 0), plus a documented WPS leading-whitespace advance difference (013 page 1); these need exact faces, not a new RTF mapping"
   ],
   "blocked": [
     {
@@ -86,6 +86,22 @@
         "target/rtf-import/RC04-resolved-039.json"
       ],
       "finding": "after normalizing Strict/Transitional names and zero auto-spacing, the remaining diffs are explicit-defaults-vs-inherited (our writer states docDefaults explicitly, WPS inherits them); no effective-value mismatch found on 019/039"
+    },
+    "resolved_cascade_normalization": {
+      "status": "Pass",
+      "date": "2026-10-11",
+      "tool": "xtool/rtf/effective_style_resolver.py",
+      "test": "xtool/rtf/test_effective_style_resolver.py",
+      "assertions": [
+        "the cascade overlays `w:rFonts` per attribute, so a later `<w:rFonts w:hint>` keeps the inherited ascii/hAnsi slot (test_rfonts_attributes_inherit_from_doc_defaults)",
+        "an explicit Strict default (`jc=start`, `bidi=false`, `widowControl=true`, all-zero `ind`) equals absence (test_explicit_strict_default_equals_absence)",
+        "a non-default toggle (`b=true`) is still reported (negative control, test_non_default_toggle_is_still_reported)",
+        "`docDefaults` without a `pPrDefault`/`rPrDefault` wrapper no longer crashes the loader"
+      ],
+      "findings_2026_10_11": {
+        "019": "133 -> 20 diffs; the remainder is the documented WPS `\\sl276` loss plus a run `w:rFonts` difference (our explicit Arial vs WPS docDefaults)",
+        "039": "18 diffs, all the single `w:cs` slot (our Helvetica vs WPS Times New Roman) — the complex-script font for Latin runs"
+      }
     },
     "corpus_geometry": {
       "status": "Measured",

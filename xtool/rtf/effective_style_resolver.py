@@ -42,10 +42,11 @@ def local_child(element, name):
 def value(element):
     if element is None:
         return None
-    return sorted(
-        (tag(key), val) for key, val in element.attrib.items()
+    return {
+        tag(key): val
+        for key, val in element.attrib.items()
         if tag(key) not in ("rsidR", "rsidRPr", "rsidP", "rsidTr")
-    )
+    }
 
 
 def props(element, names):
@@ -59,6 +60,24 @@ def props(element, names):
     return out
 
 
+def overlay(base, override):
+    """Overlays a later property bag onto an earlier one.
+
+    Every property replaces its inherited slot wholesale, except `w:rFonts`,
+    whose attributes inherit individually (an inherited `w:ascii` survives a
+    later element that names only `w:hint`). This mirrors the importer's own
+    `Fonts::overlay` and the observed Word cascade.
+    """
+    merged = {name: dict(attrs) for name, attrs in base.items()}
+    for name, attrs in override.items():
+        attrs = dict(attrs)
+        if name == "rFonts" and name in merged:
+            merged[name] = {**merged[name], **attrs}
+        else:
+            merged[name] = attrs
+    return merged
+
+
 def load_styles(package):
     defaults = {"pPr": {}, "rPr": {}}
     styles = {}
@@ -70,7 +89,6 @@ def load_styles(package):
     if doc_defaults is not None:
         for kind, name in (("pPr", "pPrDefault"), ("rPr", "rPrDefault")):
             wrapper = get(doc_defaults, name)
-            inner = wrapper.find("./{" + TRANS + "}" + kind) or wrapper.find("./{" + STRICT + "}" + kind)
             if wrapper is not None:
                 inner = get(wrapper, kind)
                 if inner is not None:
@@ -114,9 +132,9 @@ def chain(style_id, styles):
 
 
 def resolve(style_id, styles, defaults, kind):
-    merged = dict(defaults[kind])
+    merged = {name: dict(attrs) for name, attrs in defaults[kind].items()}
     for identifier in chain(style_id, styles):
-        merged.update(styles[identifier][kind])
+        merged = overlay(merged, styles[identifier][kind])
     return merged
 
 
@@ -159,12 +177,10 @@ def effective(path):
         paragraphs = document_paragraphs(package)
     resolved = []
     for paragraph in paragraphs:
-        ppr = resolve(paragraph["pStyle"], styles, defaults, "pPr")
-        ppr.update(paragraph["direct"])
+        ppr = overlay(resolve(paragraph["pStyle"], styles, defaults, "pPr"), paragraph["direct"])
         runs = []
         for rstyle, direct in paragraph["runs"]:
-            rpr = resolve(rstyle, styles, defaults, "rPr")
-            rpr.update(direct)
+            rpr = overlay(resolve(rstyle, styles, defaults, "rPr"), direct)
             runs.append(rpr)
         resolved.append({"index": paragraph["index"], "pPr": ppr, "runs": runs})
     return resolved
@@ -172,31 +188,71 @@ def effective(path):
 
 def diff(left, right):
     justification = {"start": "left", "end": "right", "both": "justify"}
+    # Properties whose Strict default is off (`false`); an explicit `false` is
+    # absence. `widowControl` defaults on, so an explicit `true` is absence.
+    default_off = ("b", "i", "strike", "bidi", "keepLines", "keepNext")
+    default_on = ("widowControl",)
 
-    def canonical(scope, name, entry):
-        attrs = {key: val for key, val in entry[name]}
+    def canonical(scope, name, attrs):
+        attrs = dict(attrs)
         if name == "jc":
             attrs["val"] = justification.get(attrs.get("val"), attrs.get("val"))
+        if name == "rFonts":
+            attrs.pop("hint", None)
+            if not attrs:
+                return None
         if name == "spacing":
             attrs = {
                 key: val
                 for key, val in attrs.items()
                 if not (key in ("beforeLines", "afterLines") and val == "0")
             }
-        if name == "rFonts":
-            attrs.pop("hint", None)
+        if name in default_off and attrs.get("val") in ("false", "0"):
+            return None
+        if name in default_on and attrs.get("val") in ("true", "1"):
+            return None
+        if name == "u" and attrs.get("val") == "none":
+            return None
+        if name == "color" and attrs.get("val") in ("000000", "auto"):
+            return None
+        if name == "jc" and attrs.get("val") in ("left", "start"):
+            return None
+        if name in ("numPr", "pBdr") and not attrs:
+            return None
+        if name == "ind":
+            zeroed = {key: val for key, val in attrs.items() if val != "0"}
+            if not zeroed:
+                return None
+            attrs = zeroed
+        if name == "spacing":
+            nonzero = {
+                key: val
+                for key, val in attrs.items()
+                if not (key in ("before", "after", "line") and val == "0")
+            }
+            if not nonzero:
+                return None
+            attrs = nonzero
         return json.dumps(attrs, sort_keys=True)
 
     def flatten(rows):
         out = []
         for row in rows:
             for name in PARAGRAPH_PROPS:
-                if row["pPr"].get(name) is not None:
-                    out.append((row["index"], "pPr", name, canonical("pPr", name, row["pPr"])))
+                entry = row["pPr"].get(name)
+                if entry is None:
+                    continue
+                doc = canonical("pPr", name, entry)
+                if doc is not None:
+                    out.append((row["index"], "pPr", name, doc))
             for run in row["runs"]:
                 for name in RUN_PROPS:
-                    if run.get(name) is not None:
-                        out.append((row["index"], "rPr", name, canonical("rPr", name, run)))
+                    entry = run.get(name)
+                    if entry is None:
+                        continue
+                    doc = canonical("rPr", name, entry)
+                    if doc is not None:
+                        out.append((row["index"], "rPr", name, doc))
         return out
 
     left_rows = flatten(left)

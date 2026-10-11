@@ -75,8 +75,13 @@ leaders/keep/widow/kern/position/effect и т.д.), три доказанных 
 как substitute-face fidelity (RC02/RC03), не mapping.
 
 **Осталось.**
-1. **Resolved-cascade effective-style equality** — нужен styles.xml resolver;
-   сейчас есть только direct-diff (receipts `RC04-resolved-{019,039}.json`).
+1. **Resolved-cascade effective-style equality** — резолвер
+   `xtool/rtf/effective_style_resolver.py` нормализован (2026-10-11): `w:rFonts`
+   теперь накладывается по атрибутам через всю цепочку (не заменяет слот
+   целиком), а явный Strict-дефолт равен отсутствию. 019: 133 → 20 диффов
+   (остаток — WPS-квирк `\sl276` + прямой `\f2`-шрифт против docDefaults); 039:
+   18 диффов, все — единственный слот `w:cs`. Тесты —
+   `xtool/rtf/test_effective_style_resolver.py`.
 2. **Corpus tab/leader/keep/widow/pixel geometry** на 019/039, 052/076 — нужен
    растеризатор (poppler есть; WPS reference PDF — в sibling).
 

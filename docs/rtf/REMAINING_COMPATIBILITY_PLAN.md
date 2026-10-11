@@ -1062,9 +1062,15 @@ unknown LCID закреплены тестами; хвост низкоувер�
 
 Проверен `xtool/rtf/effective_style_resolver.py` на текущем выходе 019/039 против
 WPS `reference.docx` (лежат в `RC05-wps-full/oracle/files/`). Остаток — не mapping,
-а корректность самого probe: `resolve` заменяет свойство целиком, а не по
-атрибутам, поэтому унаследованный `rFonts` при direct `<w:rFonts w:hint>` читается
-как `{}`; нужна и нормализация absent-vs-default. Остаётся и genuinе WPS-quirk:
-WPS-reference 019 теряет `\sl276` строки 1, наш импорт его сохраняет. Pixel-часть
-RC04 заблокирована на faces (RC02/RC03).
+а корректность самого probe: `resolve` заменял свойство целиком, а не по
+атрибутам, поэтому унаследованный `rFonts` при direct `<w:rFonts w:hint>` читался
+как `{}`; нужна и нормализация absent-vs-default. **Исправлено 2026-10-11:**
+resolver накладывает `w:rFonts` по атрибутам через всю цепочку (`overlay`), а
+явный Strict-дефолт (`jc=start`, `bidi=false`, `widowControl=true`, нулевой `ind`,
+`u=none`, `color=000000`) равён отсутствию; заодно исправлено падение на
+`docDefaults` без `pPrDefault`/`rPrDefault`. 019: 133 → 20 диффов (остаток —
+genuine WPS-quirk `\sl276` строки 1 плюс прямой `\f2`-шрифт против docDefaults);
+039: 18 диффов, все — слот `w:cs` (наш Helvetica vs Times New Roman). Тесты —
+`xtool/rtf/test_effective_style_resolver.py`. Pixel-часть RC04 по-прежнему
+заблокирована на faces (RC02/RC03).
 
