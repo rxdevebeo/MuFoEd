@@ -68,7 +68,7 @@ table_padding_row_height_alignment_and_layout_map,
 default_tab_stop_and_compat_controls_map_and_classify,
 font_panose_maps_and_metadata_destinations_are_info,
 document_settings_and_compat_controls_are_info}`. Corpus receipt
-`target/rtf-import/rc09-slice7/`: import losses **11394 -> 4515**; pagination
+`target/rtf-import/rc09-slice8/`: import losses **11394 -> 4441**; pagination
 66/100 with **0 page-count changes** vs `RC08-columns-layout`; `check` 100/100
 `ok: strict`. The metadata/settings slices are severity-only (DOCX SHA-256
 identical); the highlight slice changes only 086 and not its page count.

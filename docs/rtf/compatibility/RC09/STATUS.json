@@ -13,7 +13,8 @@
     "`\\pardeftab`/`\\deftab` -> `w:defaultTabStop` in settings.xml, and a nested `{\\*\\panose ...}` -> `w:panose1` on the font-table entry.",
     "the non-visual metadata destinations are named Info: `{\\*\\falt}`, `{\\*\\hyphen}`, `{\\*\\pnseclvl}`, `{\\*\\rsidtbl}`, `{\\*\\revtbl}`, `{\\*\\latentstyles}`, `{\\*\\expandedcolortbl}`, `{\\*\\xmlnstbl}`, `{\\*\\pgptbl}`, `{\\*\\pgdsctbl}`, `{\\*\\wgrffmtfilter}`, `{\\*\\userprops}`, `{\\*\\fname}` and `{\\*\\generator}`.",
     "document settings and metadata control families are named Info: the table/section/style revision ids (`\\styrsid`/`\\tblrsid`/`\\sectrsid`/`\\rsidroot`), view settings, Word-for-Mac Cocoa flags, drawing-grid display settings, math layout settings (`w:mathPr`), Word application settings, `\\widowctrl` (the Strict default), `\\additive`, `\\pardirnatural`, and the Word 6/7 default-language hints (`\\deflang`/`\\deflangfe`/`\\adeflang`).",
-    "the WPS-default controls whose reference writes nothing back are named Info: `\\hyphpar0`/`\\noline` (`paragraph-compat`), `\\nooverflow`/`\\nocwrap` (`table-cell-compat`), `\\cltxlrtb` (the default cell direction), `\\hres`/`\\chhres` (`picture-resolution`), `\\qk`/`\\qnatural` (`paragraph-compat`), `\\animtext` (`character-compat`) and the row-width unit/value hints (`table-row-compat`)."
+    "the WPS-default controls whose reference writes nothing back are named Info: `\\hyphpar0`/`\\noline` (`paragraph-compat`), `\\nooverflow`/`\\nocwrap` (`table-cell-compat`), `\\cltxlrtb` (the default cell direction), `\\hres`/`\\chhres` (`picture-resolution`), `\\qk`/`\\qnatural` (`paragraph-compat`), `\\animtext` (`character-compat`) and the row-width unit/value hints (`table-row-compat`).",
+    "the WPS profile's leading group whitespace drop (`wps:header-whitespace:dropped`) is a named Info: WPS drops the same whitespace, so matching it is not a loss."
   ],
   "remaining": [
     "comments, tracked revisions, textboxes/shapes, OLE objects and document metadata (author/dates/docprops) are still Loss; they need per-class mapping tasks (RC08 already took fields/bookmarks/notes).",
@@ -51,9 +52,9 @@
     "corpus_ledger": {
       "status": "Measured",
       "date": "2026-10-11",
-      "receipt": "target/rtf-import/rc09-slice7/",
+      "receipt": "target/rtf-import/rc09-slice8/",
       "results": {
-        "import_losses": "11394 -> 4515 (-6879)",
+        "import_losses": "11394 -> 4441 (-6953)",
         "pagination": "66/100 unchanged vs RC08-columns-layout (0 page-count changes)",
         "check": "100/100 ok: strict",
         "output_identity": "the metadata/settings Info slices are severity-only: every imported DOCX is SHA-256 identical to the previous slice; the highlight slice changes only 086"

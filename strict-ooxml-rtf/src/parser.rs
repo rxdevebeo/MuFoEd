@@ -4789,12 +4789,14 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                             && options.compatibility_profile == CompatibilityProfile::WpsText
                         {
                             if matches!(byte, b' ' | b'\t') {
+                                // WPS drops this leading group whitespace too, so
+                                // matching it is a named Info, not a loss.
                                 p.issue(
                                     RtfSpan {
                                         start: span.start + index,
                                         end: span.start + index + 1,
                                     },
-                                    Severity::Loss,
+                                    Severity::Info,
                                     "wps:header-whitespace:dropped",
                                 )?;
                             }
