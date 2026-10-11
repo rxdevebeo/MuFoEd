@@ -156,6 +156,8 @@ pub struct ComputedParagraph {
     pub contextual_spacing: bool,
     /// Keep at least two lines of the paragraph on each page (`w:widowControl`).
     pub widow_control: bool,
+    /// Leave the paragraph's lines out of line numbering (`w:suppressLineNumbers`).
+    pub suppress_line_numbers: bool,
     /// `w:spacing/@w:beforeAutospacing`: the space before is Word's HTML
     /// spacing, not `w:before`.
     pub before_autospacing: bool,
@@ -191,6 +193,7 @@ impl Default for ComputedParagraph {
             borders: ParagraphBorders::default(),
             contextual_spacing: false,
             widow_control: false,
+            suppress_line_numbers: false,
             before_autospacing: false,
             after_autospacing: false,
             style: None,
@@ -471,6 +474,10 @@ fn apply_paragraph_props_mode(
     }
     apply_flag(&mut computed.contextual_spacing, props.contextual_spacing);
     apply_flag(&mut computed.widow_control, props.widow_control);
+    apply_flag(
+        &mut computed.suppress_line_numbers,
+        props.suppress_line_numbers,
+    );
     if let Some(fill) = props
         .shading
         .as_ref()

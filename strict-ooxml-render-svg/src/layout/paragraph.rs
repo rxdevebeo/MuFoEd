@@ -2195,6 +2195,7 @@ fn finish_line(
         height,
         ascent,
         footnote_refs: line.footnote_refs,
+        suppress_line_number: computed.suppress_line_numbers,
     }
 }
 

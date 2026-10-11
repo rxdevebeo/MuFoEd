@@ -235,7 +235,9 @@ fn layout_once(
         let width = paginator.geometry.column_width();
         let body_blocks = &ctx.document.body.blocks;
         let run_blocks = body_blocks.get(*start..*end).unwrap_or_default();
+        paginator.body_lines = true;
         layout_blocks(ctx, run_blocks, width, &mut paginator, 0)?;
+        paginator.body_lines = false;
     }
     if !paginator.selection_exhausted() {
         append_endnotes(ctx, &mut paginator)?;
@@ -249,7 +251,7 @@ fn layout_once(
     }
     let (mut layout, regions) = paginator.finish()?;
     crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, sections)?;
-    crate::layout::pageborders::apply(ctx, &mut layout.pages, sections)?;
+    crate::layout::sectionpage::apply(ctx, &mut layout.pages, &mut layout.line_marks, sections)?;
     crate::layout::headerfooter::decorate_pages(
         ctx,
         &mut layout.pages,
@@ -257,6 +259,10 @@ fn layout_once(
         assumed.pages.max(1),
         &assumed.section_pages,
     )?;
+    // Mirrored margins move the whole page content; the page border is drawn
+    // after, from the page edges.
+    crate::layout::sectionpage::mirror_margins(ctx, &mut layout.pages, sections);
+    crate::layout::pageborders::apply(ctx, &mut layout.pages, sections)?;
     let fingerprint = LayoutFingerprint::new(&layout.pages, &regions);
     Ok((layout, fingerprint, has_fields))
 }
@@ -825,6 +831,10 @@ struct Paginator<'a> {
     current_region: (f64, f64),
     /// Per-page active header/footer heights (F13 fingerprint).
     page_regions: Vec<(f64, f64)>,
+    /// Body lines placed so far, for `w:lnNumType`.
+    line_marks: Vec<crate::layout::LineMark>,
+    /// Whether lines being placed are body text (not endnotes).
+    body_lines: bool,
 }
 
 impl<'a> Paginator<'a> {
@@ -895,6 +905,8 @@ impl<'a> Paginator<'a> {
             wrap_exclusions: Vec::new(),
             current_region: (0.0, 0.0),
             page_regions: Vec::new(),
+            line_marks: Vec::new(),
+            body_lines: false,
         };
         paginator.apply_page_regions();
         paginator
@@ -1477,6 +1489,14 @@ impl<'a> Paginator<'a> {
             self.reserve_line_footnotes(&line);
         }
         self.resolve_fields(&mut line);
+        if self.body_lines && !line.suppress_line_number {
+            self.line_marks.push(crate::layout::LineMark {
+                page: self.pages.len(),
+                section: self.section_index,
+                column_left: self.geometry.column_left(self.column_index),
+                baseline: self.geometry.top + self.cursor + line.ascent,
+            });
+        }
         line.offset(self.column_offset(), self.geometry.top + self.cursor);
         let graphics = std::mem::take(&mut line.graphics);
         let (backs, rest): (Vec<_>, Vec<_>) = graphics
@@ -1601,6 +1621,7 @@ impl<'a> Paginator<'a> {
                 pages: self.pages,
                 anchors: self.anchors,
                 warnings: self.ctx.take_warnings(),
+                line_marks: self.line_marks,
             },
             self.page_regions,
         ))

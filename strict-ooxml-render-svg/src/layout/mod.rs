@@ -12,6 +12,7 @@ pub(crate) mod headerfooter;
 pub(crate) mod pageborders;
 pub(crate) mod paginate;
 pub(crate) mod paragraph;
+pub(crate) mod sectionpage;
 pub(crate) mod table;
 
 use std::collections::HashMap;
@@ -272,6 +273,9 @@ pub(crate) struct TextLine {
     pub ascent: f64,
     /// Footnote ids referenced on this line, in order.
     pub footnote_refs: Vec<u32>,
+    /// The paragraph keeps this line out of `w:lnNumType` numbering
+    /// (`w:suppressLineNumbers`).
+    pub suppress_line_number: bool,
 }
 
 impl TextLine {
@@ -488,12 +492,23 @@ pub(crate) fn geometry_for(
         || twips_to_px(720, scale),
         |space| twips_to_px(space.value(), scale),
     );
+    // `w:pgMar/@w:gutter` widens the binding-side margin: the left one, or the
+    // right one under `w:rtlGutter`.
+    let gutter = margins
+        .gutter
+        .map_or(0.0, |gutter| twips_to_px(gutter.value().max(0), scale));
+    let rtl_gutter = section.is_some_and(|section| section.rtl_gutter);
+    let (left_gutter, right_gutter) = if rtl_gutter {
+        (0.0, gutter)
+    } else {
+        (gutter, 0.0)
+    };
     Geometry {
         width,
         height,
-        left: value(margins.left, DEFAULT_MARGIN),
+        left: value(margins.left, DEFAULT_MARGIN) + left_gutter,
         top: value(margins.top, DEFAULT_MARGIN),
-        right: value(margins.right, DEFAULT_MARGIN),
+        right: value(margins.right, DEFAULT_MARGIN) + right_gutter,
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
         column_count,
@@ -778,4 +793,19 @@ pub(crate) struct Layout {
     pub anchors: Vec<floating::PendingAnchor>,
     /// What the layout had to say about the document, for `Page::warnings`.
     pub warnings: Vec<String>,
+    /// Body text lines that `w:lnNumType` numbers.
+    pub line_marks: Vec<LineMark>,
+}
+
+/// A body line placed on a page, for line numbering.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LineMark {
+    /// Zero-based page index.
+    pub page: usize,
+    /// Section the line belongs to.
+    pub section: usize,
+    /// Left edge of the line's column, px.
+    pub column_left: f64,
+    /// Baseline, px from the page top.
+    pub baseline: f64,
 }

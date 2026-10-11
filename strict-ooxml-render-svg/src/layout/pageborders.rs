@@ -39,7 +39,8 @@ pub(crate) fn apply(
     sections: &[Section],
 ) -> Result<()> {
     let scale = ctx.options.scale;
-    for page in pages.iter_mut() {
+    let mirrored = ctx.document.settings.mirror_margins;
+    for (index, page) in pages.iter_mut().enumerate() {
         let section = sections
             .get(page.section_index)
             .map(|section| &section.properties);
@@ -49,7 +50,11 @@ pub(crate) fn apply(
         if !has_visible_edge(borders) {
             continue;
         }
-        let geometry = geometry_for(section, scale, None);
+        let mut geometry = geometry_for(section, scale, None);
+        // An even page of a mirrored document has its margins swapped.
+        if mirrored && index % 2 == 1 {
+            std::mem::swap(&mut geometry.left, &mut geometry.right);
+        }
         let from_text = matches!(borders.offset_from, Some(BorderOffsetFrom::Text));
         let (left, top, right, bottom) = if from_text {
             (
