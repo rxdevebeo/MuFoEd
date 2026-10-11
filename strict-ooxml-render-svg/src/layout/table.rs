@@ -4,14 +4,15 @@
 use strict_ooxml_wml::model::drawing::AnchorDrawing;
 use strict_ooxml_wml::model::props::{CellProperties, FrameProperties};
 use strict_ooxml_wml::model::values::{
-    Border, BorderStyle, CellMargins, TextDirection, Twips, VerticalMerge, Width, WidthKind,
+    Borders, CellMargins, HeightRule, TextDirection, Twips, VerticalJc, VerticalMerge, Width,
+    WidthKind,
 };
 use strict_ooxml_wml::model::{Block, Table};
 
+use crate::layout::border::{edge_items, resolve_border, ResolvedBorder, Side as BorderSide};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::{Flow, Item, LayoutContext, LineItem, RectItem, TableRowFlow};
-use crate::style::parse_color;
-use crate::units::{eighths_point_to_px, twips_to_px};
+use crate::units::twips_to_px;
 
 /// Default horizontal cell margin in twips (`CT_TblCellMar` start/end).
 const DEFAULT_CELL_MARGIN: i32 = 108;
@@ -106,11 +107,17 @@ pub(crate) fn layout_table(
         );
         let mut height = raw.height;
         if let Some(declared) = &row.props.height {
-            height = height.max(
-                declared
-                    .value
-                    .map_or(0.0, |value| twips_to_px(value.value(), scale)),
-            );
+            let value = declared
+                .value
+                .map_or(0.0, |value| twips_to_px(value.value(), scale));
+            // `w:hRule`: `exact` fixes the row whatever its content, `auto`
+            // lets the content decide, and `atLeast` — what Word reads when
+            // the attribute is absent — is a minimum.
+            height = match declared.rule {
+                Some(HeightRule::Exact) if value > 0.0 => value,
+                Some(HeightRule::Auto) => height,
+                _ => height.max(value),
+            };
         }
         if height <= 0.0 {
             height = 1.0;
@@ -123,7 +130,30 @@ pub(crate) fn layout_table(
     }
 
     fit_rotated_merges(&mut rows);
+    if table.props.bidi_visual {
+        mirror_columns(&mut rows, table_x, total_width);
+    }
     row_flows(ctx, table, &rows)
+}
+
+/// Lays a `w:bidiVisual` table out right to left: the first cell of a row is
+/// the rightmost, and a cell's start edge is its right one.
+///
+/// The cells were laid out left to right; each moves to its mirrored place
+/// with its content, so the text inside a cell keeps its own direction.
+fn mirror_columns(rows: &mut [RawRow], table_x: f64, total_width: f64) {
+    for row in rows {
+        for cell in &mut row.cells {
+            let mirrored = 2.0 * table_x + total_width - cell.x - cell.width;
+            let dx = mirrored - cell.x;
+            cell.x = mirrored;
+            for item in &mut cell.items {
+                *item = offset_item(item, dx, 0.0);
+            }
+            let borders = &mut cell.properties.borders;
+            std::mem::swap(&mut borders.start, &mut borders.end);
+        }
+    }
 }
 
 /// Rotated content occupies the complete merged region, not its first row.
@@ -241,7 +271,9 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
                 VState::Restart => (cell, true, true, !merge_continues(rows, row_index, cell)),
                 VState::None => (cell, true, true, true),
             };
-            if let Some(fill) = shading_fill(ctx, &source.properties) {
+            if let Some(fill) = shading_fill(ctx, &source.properties)
+                .or_else(|| table_shading_fill(ctx, table, row_index))
+            {
                 items.push(Item::Rect(RectItem {
                     x: cell.x,
                     y: 0.0,
@@ -253,8 +285,9 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
                 }));
             }
             if paint_text {
+                let shift = vertical_align_shift(rows, row_index, cell);
                 for item in &cell.items {
-                    items.push(offset_item(item, 0.0, cell.margin_top));
+                    items.push(offset_item(item, 0.0, cell.margin_top + shift));
                 }
                 page_frames.extend(cell.page_frames.iter().cloned());
             }
@@ -267,9 +300,13 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
                 cell.col > 0,
                 cell.col + cell.span < row_end,
             ];
+            let row_borders = table
+                .rows
+                .get(row_index)
+                .map(|row| &row.props.exception_borders);
             push_borders(
                 ctx,
-                table,
+                (table, row_borders),
                 cell,
                 &source.properties,
                 row.height,
@@ -583,6 +620,35 @@ fn restart_cell<'a>(rows: &'a [RawRow], row: usize, cell: &RawCell) -> Option<&'
     None
 }
 
+/// How far `w:vAlign` moves a cell's content down from the top margin.
+///
+/// A merged cell aligns within the whole merged region. Rotated text keeps
+/// the top: its `w:vAlign` aligns along the text, which the rotated layout
+/// already decides.
+fn vertical_align_shift(rows: &[RawRow], row: usize, cell: &RawCell) -> f64 {
+    let factor = match cell.properties.vertical_align {
+        Some(VerticalJc::Center) => 0.5,
+        Some(VerticalJc::Bottom) => 1.0,
+        Some(VerticalJc::Top) | None => return 0.0,
+    };
+    if matches!(
+        cell.properties.text_direction,
+        Some(TextDirection::BtLr | TextDirection::TbRl)
+    ) {
+        return 0.0;
+    }
+    let mut region = rows.get(row).map_or(0.0, |row| row.height);
+    let mut index = row;
+    if cell.vmerge == VState::Restart {
+        while rows.get(index).is_some() && merge_continues(rows, index, cell) {
+            index += 1;
+            region += rows.get(index).map_or(0.0, |row| row.height);
+        }
+    }
+    let free = region - cell.margin_top - cell.margin_bottom - cell.content_height;
+    free.max(0.0) * factor
+}
+
 /// Whether the next row still belongs to this cell's vertical merge.
 fn merge_continues(rows: &[RawRow], row: usize, cell: &RawCell) -> bool {
     rows.get(row + 1).is_some_and(|next| {
@@ -643,7 +709,42 @@ fn column_widths(
         .take(column_count)
         .map(|col| twips_to_px(col.width.map_or(0, Twips::value), scale))
         .collect();
-    split_widths(total, &grid, column_count)
+    if grid.iter().sum::<f64>() > 0.0 {
+        return split_widths(total, &grid, column_count);
+    }
+    // No usable `w:tblGrid`: the cells' own `w:tcW` are the next best word on
+    // the column widths, before an equal split.
+    let from_cells = cell_width_grid(table, column_count).map(|twips| {
+        twips
+            .into_iter()
+            .map(|value| twips_to_px(value, scale))
+            .collect::<Vec<_>>()
+    });
+    split_widths(total, from_cells.as_deref().unwrap_or(&grid), column_count)
+}
+
+/// Column widths in twips from the first row whose cells all give a `dxa`
+/// `w:tcW`, a spanning cell's width shared equally by its columns.
+fn cell_width_grid(table: &Table, column_count: usize) -> Option<Vec<i32>> {
+    table.rows.iter().find_map(|row| {
+        let mut widths = Vec::with_capacity(column_count);
+        let before = usize::try_from(row.props.grid_before.unwrap_or(0).max(0)).unwrap_or(0);
+        if before > 0 {
+            return None;
+        }
+        for cell in &row.cells {
+            let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+            let width = cell
+                .props
+                .width
+                .filter(|width| width.kind == WidthKind::Dxa)
+                .and_then(|width| width.value)
+                .filter(|value| *value > 0)?;
+            let share = width / i32::try_from(span).unwrap_or(i32::MAX).max(1);
+            widths.extend(std::iter::repeat_n(share, span));
+        }
+        (widths.len() == column_count).then_some(widths)
+    })
 }
 
 /// Divides `total` between `column_count` columns, given the widths `grid`
@@ -1436,7 +1537,7 @@ pub(crate) fn offset_item(item: &Item, dx: f64, dy: f64) -> Item {
 #[allow(clippy::too_many_arguments)]
 fn push_borders(
     ctx: &LayoutContext<'_>,
-    table: &Table,
+    (table, row_borders): (&Table, Option<&Borders>),
     cell: &RawCell,
     properties: &CellProperties,
     height: f64,
@@ -1454,35 +1555,55 @@ fn push_borders(
         (2, true, x, y, x, bottom),
         (3, true, right, y, right, bottom),
     ];
+    let px_per_pt = crate::units::pt_to_px(1.0, ctx.options.scale);
     for (edge, draw, x1, y1, x2, y2) in edges {
         if !draw {
             continue;
         }
         let inside = interior.get(usize::from(edge)).copied().unwrap_or_default();
-        if let Some(stroke) = resolve_edge(ctx, table, properties, edge, inside) {
+        let Some(border) = resolve_edge(ctx, (table, row_borders), properties, edge, inside) else {
+            continue;
+        };
+        // A cell edge is centred on the grid line, so a compound band
+        // (`double`, `thinThick*`) straddles it as a single line does.
+        let half = border.band_pt() * px_per_pt / 2.0;
+        let (side, at, from, to) = match edge {
+            0 => (BorderSide::Top, y1 + half, x1, x2),
+            1 => (BorderSide::Bottom, y1 - half, x1, x2),
+            2 => (BorderSide::Left, x1 + half, y1, y2),
+            _ => (BorderSide::Right, x1 - half, y1, y2),
+        };
+        items.extend(edge_items(&border, side, at, from, to, px_per_pt));
+    }
+    // `w:tl2br` and `w:tr2bl` cross the cell fragment corner to corner.
+    let theme = ctx.document.theme.as_ref();
+    let diagonals = [
+        (properties.diagonal_down.as_ref(), (x, y, right, bottom)),
+        (properties.diagonal_up.as_ref(), (x, bottom, right, y)),
+    ];
+    for (border, (x1, y1, x2, y2)) in diagonals {
+        if let Some(border) = border.and_then(|border| resolve_border(border, theme)) {
             items.push(Item::Line(LineItem {
                 x1,
                 y1,
                 x2,
                 y2,
-                color: stroke.0,
-                width: stroke.1,
-                dashed: stroke.2,
+                color: border.color,
+                width: (border.width_pt * px_per_pt).max(0.5),
+                dashed: false,
             }));
         }
     }
 }
 
-type Stroke = (String, f64, bool);
-
 /// Resolves the stroke for one cell edge (`0` top, `1` bottom, `2` left, `3` right).
 fn resolve_edge(
     ctx: &LayoutContext<'_>,
-    table: &Table,
+    (table, row_borders): (&Table, Option<&Borders>),
     properties: &CellProperties,
     edge: u8,
     inside: bool,
-) -> Option<Stroke> {
+) -> Option<ResolvedBorder> {
     let cell_border = match edge {
         0 => properties.borders.top.as_ref(),
         1 => properties.borders.bottom.as_ref(),
@@ -1496,42 +1617,33 @@ fn resolve_edge(
         (true, 0 | 1) => 4,
         (true, _) => 5,
     };
+    // A row's `w:tblPrEx/w:tblBorders` replaces the table's for that row.
+    let row_border = row_borders.and_then(|borders| match table_edge {
+        0 => borders.top.as_ref(),
+        1 => borders.bottom.as_ref(),
+        2 => borders.start.as_ref(),
+        3 => borders.end.as_ref(),
+        4 => borders.inside_horizontal.as_ref(),
+        _ => borders.inside_vertical.as_ref(),
+    });
     let table_border = crate::table_style::table_border(ctx.document, table, table_edge);
     cell_border
+        .or(row_border)
         .or(table_border)
-        .and_then(|border| stroke(ctx, border))
+        .and_then(|border| resolve_border(border, ctx.document.theme.as_ref()))
 }
 
-/// Converts a `w:border` into a stroke (colour, width px, dashed).
-fn stroke(ctx: &LayoutContext<'_>, border: &Border) -> Option<Stroke> {
-    if matches!(
-        border.style,
-        Some(BorderStyle::None | BorderStyle::Nil) | None
-    ) {
-        return None;
-    }
-    let color = border
-        .color
-        .as_ref()
-        .and_then(parse_color)
-        .unwrap_or_else(|| "#000000".to_owned());
-    let width = eighths_point_to_px(
-        border
-            .size
-            .map_or(4, strict_ooxml_wml::model::values::EighthsPoint::value),
-        ctx.options.scale,
-    )
-    .max(0.25);
-    let dashed = matches!(
-        border.style,
-        Some(
-            BorderStyle::Dashed
-                | BorderStyle::Dotted
-                | BorderStyle::DotDash
-                | BorderStyle::DotDotDash
-        )
-    );
-    Some((color, width, dashed))
+/// The table's own shading (`w:tblPr/w:shd`, or the row's `w:tblPrEx`), which
+/// shows behind every cell that has none of its own.
+fn table_shading_fill(ctx: &LayoutContext<'_>, table: &Table, row: usize) -> Option<String> {
+    let exception = table
+        .rows
+        .get(row)
+        .and_then(|row| row.props.exception.as_ref())
+        .and_then(|exception| exception.shading.as_ref());
+    exception
+        .or(table.props.shading.as_ref())
+        .and_then(|shading| crate::style::shading_fill_color(shading, ctx.document.theme.as_ref()))
 }
 
 /// Returns the cell shading fill colour, if any (`w:themeFill` resolved through
