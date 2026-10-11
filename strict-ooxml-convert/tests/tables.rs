@@ -145,6 +145,10 @@ fn fixture() -> Document {
         end: Some(border()),
         inside_horizontal: Some(border()),
         inside_vertical: Some(border()),
+        tl2br: None,
+        tr2bl: None,
+        between: None,
+        bar: None,
     };
     let table = Table {
         props: TableProperties {

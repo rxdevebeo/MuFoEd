@@ -3,7 +3,7 @@
     clippy::struct_excessive_bools,
     clippy::default_trait_access
 )]
-use crate::lists::{number_format, LevelDraft, ListDraft, OverrideDraft};
+use crate::lists::{number_format, LevelDraft, ListDraft, OverrideDraft, OverrideLevelDraft};
 use crate::picture::PictureBuilder;
 use crate::{
     CompatibilityProfile, Document, InvalidTextPolicy, NulPolicy, PartId, RtfError, RtfImported,
@@ -15,14 +15,16 @@ use strict_ooxml_core::opc::rels::RelId;
 use strict_ooxml_wml::model::document::{Body, DocumentSource};
 use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
-    AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, BreakKind, CellProperties, Color,
-    ColumnSpec, Field, Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef,
-    Ilvl, Inline, Justification, Language, Level, LineSpacingRule, Note, NoteKind, NoteProperties,
-    NoteTable, Num, NumId, NumPr, NumberingTable, PageMargins, PageOrientation, PageSize,
-    Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent, RunProperties, Section,
-    SectionProperties, SectionType, Space, Style, StyleId, StyleTable, StyleType, Symbol,
-    TabAlignment, TabLeader, TabStop, Table, TableCell, TableLook, TableProperties, TableRow,
-    TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
+    AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, Border, BorderStyle, BreakKind,
+    CellMargins, CellProperties, Color, ColumnSpec, EighthsPoint, Field, Fonts, GridCol,
+    HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl, Inline, Justification,
+    Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind, NoteProperties, NoteTable,
+    Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders, PageMargins, PageOrientation,
+    PageSize, Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent, RunProperties,
+    Section, SectionProperties, SectionType, Shading, Space, Style, StyleId, StyleTable, StyleType,
+    Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell, TableLook, TableProperties,
+    TableRow, TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width,
+    WidthKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -37,6 +39,43 @@ enum Destination {
     Lists,
     Overrides,
     LevelText,
+}
+/// Which border collection a running RTF border edge writes into.
+#[derive(Clone, Copy)]
+enum BorderScope {
+    Paragraph,
+    Cell,
+    Row,
+    Run,
+    Page,
+}
+/// One edge of a `Borders` collection.
+#[derive(Clone, Copy)]
+enum BorderSide {
+    Top,
+    Bottom,
+    Start,
+    End,
+    InsideHorizontal,
+    InsideVertical,
+    Bar,
+    Between,
+    TopLeftToBottomRight,
+    BottomLeftToTopRight,
+}
+/// The edge a trailing border style/width/colour/space token applies to.
+#[derive(Clone, Copy)]
+struct BorderTarget {
+    scope: BorderScope,
+    side: BorderSide,
+}
+/// Where an RTF shading control (`\ch*`/`\cl*`/`\tr*`/paragraph) lands.
+#[derive(Clone, Copy)]
+enum ShadingScope {
+    Paragraph,
+    Run,
+    Cell,
+    Row,
 }
 struct StyleDraft {
     depth: usize,
@@ -104,6 +143,11 @@ struct RowBuilder {
     props: RowProperties,
     merges: Vec<Option<bool>>,
     next_merge: Option<bool>,
+    /// Explicit cell width from `\clftsWidth`/`\clwWidth` for the next `\cellx`.
+    next_width_kind: Option<WidthKind>,
+    next_width_value: Option<i32>,
+    /// Row background shading (`\trcbpat`/`\trcfpat`/`\trshdng`).
+    shading: Option<Shading>,
 }
 
 #[derive(Debug)]
@@ -267,6 +311,8 @@ struct State {
     tab_leader: Option<TabLeader>,
     line_spacing: i32,
     line_multiple: bool,
+    /// Edge that trailing `<style> \brdrw? \brsp? \brdrcf?` tokens configure.
+    current_border: Option<BorderTarget>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -288,6 +334,7 @@ impl Default for State {
             tab_leader: None,
             line_spacing: 0,
             line_multiple: false,
+            current_border: None,
         }
     }
 }
@@ -464,6 +511,8 @@ struct Parser<'a> {
     table_rtl: bool,
     table_rows: usize,
     table_cells: usize,
+    /// Table default cell half-gap from `\trgaph` (left/right cell margins).
+    table_gap: Option<Twips>,
     row_template: Option<RowBuilder>,
     picture: Option<PictureBuilder>,
     media: Vec<(PartId, Vec<u8>)>,
@@ -490,17 +539,12 @@ struct Parser<'a> {
     list_draft: Option<ListDraft>,
     level_draft: Option<LevelDraft>,
     override_draft: Option<OverrideDraft>,
+    override_level_draft: Option<OverrideLevelDraft>,
 }
 impl Parser<'_> {
-    fn finish_level(&mut self, offset: usize) -> Result<(), RtfError> {
+    /// Builds a [`Level`] from the active level draft, consuming it.
+    fn take_level(&mut self, offset: usize) -> Result<Level, RtfError> {
         let draft = self.level_draft.take().expect("checked level depth");
-        let list = self.list_draft.as_mut().ok_or(RtfError::Malformed {
-            offset,
-            reason: "list level outside list",
-        })?;
-        if list.levels.len() >= 9 {
-            return malformed(offset, "list has more than nine levels");
-        }
         let mut chars = draft.text.chars();
         let count = chars.next().ok_or(RtfError::Malformed {
             offset,
@@ -524,8 +568,8 @@ impl Parser<'_> {
         if chars.any(|c| c != ';' && !c.is_whitespace()) {
             return malformed(offset, "leveltext exceeds declared length");
         }
-        list.levels.push(Level {
-            ilvl: Ilvl(u8::try_from(list.levels.len()).expect("at most nine")),
+        Ok(Level {
+            ilvl: Ilvl(0),
             start: Some(draft.start),
             format: Some(Arc::from(draft.format)),
             text: Some(Arc::from(text)),
@@ -534,7 +578,26 @@ impl Parser<'_> {
             paragraph: self.state.paragraph.clone(),
             run: self.state.run.clone(),
             ..Default::default()
-        });
+        })
+    }
+    fn finish_level(&mut self, offset: usize) -> Result<(), RtfError> {
+        let mut level = self.take_level(offset)?;
+        if let Some(over) = self.override_level_draft.as_mut() {
+            if over.level.is_some() {
+                return malformed(offset, "duplicate list override level");
+            }
+            over.level = Some(level);
+        } else {
+            let list = self.list_draft.as_mut().ok_or(RtfError::Malformed {
+                offset,
+                reason: "list level outside list",
+            })?;
+            if list.levels.len() >= 9 {
+                return malformed(offset, "list has more than nine levels");
+            }
+            level.ilvl = Ilvl(u8::try_from(list.levels.len()).expect("at most nine"));
+            list.levels.push(level);
+        }
         self.node(1, offset)
     }
     fn finish_list(&mut self, offset: usize) -> Result<(), RtfError> {
@@ -583,12 +646,438 @@ impl Parser<'_> {
         if !self.numbering.insert_num(Num {
             num_id: NumId(instance),
             abstract_num_id: AbstractNumId(list),
-            overrides: vec![],
+            overrides: draft.levels,
             location: SourceLocation::unknown(),
         }) {
             return malformed(offset, "duplicate list instance");
         }
         self.node(1, offset)
+    }
+    /// Finalizes the `\lfolevel` group into a [`LevelOverride`] on the override.
+    fn finish_override_level(&mut self, offset: usize) -> Result<(), RtfError> {
+        let draft = self
+            .override_level_draft
+            .take()
+            .expect("checked override level depth");
+        let over = self.override_draft.as_mut().ok_or(RtfError::Malformed {
+            offset,
+            reason: "list override level outside declaration",
+        })?;
+        if over.levels.len() >= 9 {
+            return malformed(offset, "list override has more than nine levels");
+        }
+        let ilvl = Ilvl(u8::try_from(over.levels.len()).expect("at most nine"));
+        let level = draft.level.map(|mut level| {
+            level.ilvl = ilvl;
+            level
+        });
+        over.levels.push(LevelOverride {
+            ilvl,
+            start_override: draft.start_override,
+            level,
+        });
+        self.node(1, offset)
+    }
+    /// Applies a list-level control word to the active [`LevelDraft`], if any.
+    ///
+    /// Shared by the `\listtable` levels and the `\lfolevel` override levels.
+    /// Returns `true` when `name` is a recognized level control.
+    fn level_control(
+        &mut self,
+        name: &str,
+        n: Option<i32>,
+        span: RtfSpan,
+    ) -> Result<bool, RtfError> {
+        let Some(level) = &mut self.level_draft else {
+            return Ok(false);
+        };
+        match name {
+            "levelnfc" | "levelnfcn" => {
+                if let Some(format) = n.and_then(number_format) {
+                    level.format = format;
+                } else {
+                    self.issue(
+                        span,
+                        Severity::Loss,
+                        format!("list:unsupported-number-format:{n:?}"),
+                    )?;
+                }
+            }
+            "levelstartat" => {
+                level.start = n
+                    .and_then(|n| u32::try_from(n).ok())
+                    .ok_or(RtfError::Malformed {
+                        offset: span.start,
+                        reason: "invalid list start",
+                    })?;
+            }
+            "leveljc" | "leveljcn" => {
+                level.justification = match n {
+                    Some(0) => Justification::Start,
+                    Some(1) => Justification::Center,
+                    Some(2) => Justification::End,
+                    _ => return malformed(span.start, "invalid list alignment"),
+                };
+            }
+            "levelfollow" => {
+                level.suffix = match n {
+                    Some(0) => "tab",
+                    Some(1) => "space",
+                    Some(2) => "nothing",
+                    _ => return malformed(span.start, "invalid list suffix"),
+                };
+            }
+            "leveltemplateid" => {}
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+    /// Applies an RTF border control (`<edge> <style> \brdrw? \brsp? \brdrcf?`).
+    ///
+    /// Paragraph edges map to `w:pBdr`, cell edges to `w:tcBorders`, and row
+    /// edges to `w:tblPrEx`. `\brdrtbl` (a reference to the table borders) and
+    /// the page-border family only clear the running edge, so a trailing style
+    /// token is never misapplied to a stale edge; those edge tokens still fall
+    /// through to the explicit Loss accounting.
+    fn border_control(
+        &mut self,
+        name: &str,
+        n: Option<i32>,
+        span: RtfSpan,
+    ) -> Result<bool, RtfError> {
+        match name {
+            "brdrt" => return self.begin_border(BorderScope::Paragraph, BorderSide::Top, span),
+            "brdrb" => return self.begin_border(BorderScope::Paragraph, BorderSide::Bottom, span),
+            "brdrl" => return self.begin_border(BorderScope::Paragraph, BorderSide::Start, span),
+            "brdrr" => return self.begin_border(BorderScope::Paragraph, BorderSide::End, span),
+            "brdrbar" => return self.begin_border(BorderScope::Paragraph, BorderSide::Bar, span),
+            "brdrbtw" => {
+                return self.begin_border(BorderScope::Paragraph, BorderSide::Between, span)
+            }
+            "clbrdrt" => return self.begin_border(BorderScope::Cell, BorderSide::Top, span),
+            "clbrdrb" => return self.begin_border(BorderScope::Cell, BorderSide::Bottom, span),
+            "clbrdrl" => return self.begin_border(BorderScope::Cell, BorderSide::Start, span),
+            "clbrdrr" => return self.begin_border(BorderScope::Cell, BorderSide::End, span),
+            "trbrdrt" => return self.begin_border(BorderScope::Row, BorderSide::Top, span),
+            "trbrdrb" => return self.begin_border(BorderScope::Row, BorderSide::Bottom, span),
+            "trbrdrl" => return self.begin_border(BorderScope::Row, BorderSide::Start, span),
+            "trbrdrr" => return self.begin_border(BorderScope::Row, BorderSide::End, span),
+            "trbrdrh" => {
+                return self.begin_border(BorderScope::Row, BorderSide::InsideHorizontal, span)
+            }
+            "trbrdrv" => {
+                return self.begin_border(BorderScope::Row, BorderSide::InsideVertical, span)
+            }
+            "cldgll" => {
+                return self.begin_border(BorderScope::Cell, BorderSide::TopLeftToBottomRight, span)
+            }
+            "cldglu" => {
+                return self.begin_border(BorderScope::Cell, BorderSide::BottomLeftToTopRight, span)
+            }
+            // A character border (`\chbrdr`) is one `w:rPr/w:bdr` box; the single
+            // edge slot the writer/reader use is `top`.
+            "chbrdr" => return self.begin_border(BorderScope::Run, BorderSide::Top, span),
+            "brdrtbl" => {
+                // `\clbrdX\brdrtbl` makes the cell edge inherit the table border:
+                // drop the override we just started and consume the token.
+                if let Some(target) = self.state.current_border {
+                    if matches!(target.scope, BorderScope::Cell) {
+                        self.clear_border_edge(target);
+                        self.state.current_border = None;
+                        return Ok(true);
+                    }
+                }
+                self.state.current_border = None;
+                return Ok(false);
+            }
+            "pgbrdrt" => return self.begin_border(BorderScope::Page, BorderSide::Top, span),
+            "pgbrdrb" => return self.begin_border(BorderScope::Page, BorderSide::Bottom, span),
+            "pgbrdrl" => return self.begin_border(BorderScope::Page, BorderSide::Start, span),
+            "pgbrdrr" => return self.begin_border(BorderScope::Page, BorderSide::End, span),
+            "brdrart" => {
+                // A page-border art style (`\brdrartN`) has no Strict `ST_Border`
+                // form: drop the edge we started and let the art (and its trailing
+                // width/space) fall through to Loss rather than misattribute them.
+                if let Some(target) = self.state.current_border {
+                    if matches!(target.scope, BorderScope::Page) {
+                        self.clear_border_edge(target);
+                    }
+                }
+                self.state.current_border = None;
+                return Ok(false);
+            }
+            _ => {}
+        }
+        let Some(target) = self.state.current_border else {
+            return Ok(false);
+        };
+        if matches!(target.scope, BorderScope::Page) {
+            return self.page_border_token(target, name, n, span);
+        }
+        if let Some(style) = border_style(name) {
+            self.border_slot(target).style = Some(style);
+            return Ok(true);
+        }
+        match name {
+            "brdrw" => {
+                let twips = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing border width",
+                })?;
+                self.border_slot(target).size = Some(EighthsPoint(border_eighths(twips)));
+            }
+            "brdrcf" => {
+                let index = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "invalid border color index",
+                })?;
+                let Some(color) = self.palette_color(index, span)? else {
+                    return Ok(true);
+                };
+                self.border_slot(target).color = Some(color);
+            }
+            "brsp" => {
+                let twips = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing border space",
+                })?;
+                self.border_slot(target).space = Some(border_space_points(twips));
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+    /// Starts a fresh border edge and remembers it for the trailing tokens.
+    fn begin_border(
+        &mut self,
+        scope: BorderScope,
+        side: BorderSide,
+        span: RtfSpan,
+    ) -> Result<bool, RtfError> {
+        if matches!(scope, BorderScope::Cell | BorderScope::Row) && self.row.is_none() {
+            return malformed(span.start, "border outside table row");
+        }
+        let target = BorderTarget { scope, side };
+        self.state.current_border = Some(target);
+        if matches!(scope, BorderScope::Page) {
+            *self.page_slot(side) = PageBorder::default();
+        } else {
+            *self.border_slot(target) = Border::default();
+        }
+        Ok(true)
+    }
+    /// Returns the mutable edge slot a running border targets.
+    fn border_slot(&mut self, target: BorderTarget) -> &mut Border {
+        let borders = match target.scope {
+            BorderScope::Paragraph => &mut self.state.paragraph.borders,
+            BorderScope::Cell => {
+                &mut self
+                    .row
+                    .as_mut()
+                    .expect("cell border requires a row")
+                    .next_props
+                    .borders
+            }
+            BorderScope::Row => {
+                &mut self
+                    .row
+                    .as_mut()
+                    .expect("row border requires a row")
+                    .props
+                    .exception_borders
+            }
+            BorderScope::Run => &mut self.state.run.borders,
+            BorderScope::Page => unreachable!("page edges use page_slot, not border_slot"),
+        };
+        match target.side {
+            BorderSide::Top => borders.top.get_or_insert_with(Border::default),
+            BorderSide::Bottom => borders.bottom.get_or_insert_with(Border::default),
+            BorderSide::Start => borders.start.get_or_insert_with(Border::default),
+            BorderSide::End => borders.end.get_or_insert_with(Border::default),
+            BorderSide::InsideHorizontal => borders
+                .inside_horizontal
+                .get_or_insert_with(Border::default),
+            BorderSide::InsideVertical => {
+                borders.inside_vertical.get_or_insert_with(Border::default)
+            }
+            BorderSide::Bar => borders.bar.get_or_insert_with(Border::default),
+            BorderSide::Between => borders.between.get_or_insert_with(Border::default),
+            BorderSide::TopLeftToBottomRight => borders.tl2br.get_or_insert_with(Border::default),
+            BorderSide::BottomLeftToTopRight => borders.tr2bl.get_or_insert_with(Border::default),
+        }
+    }
+    /// Removes the edge a running border targets (used by `\brdrtbl` inherit).
+    fn clear_border_edge(&mut self, target: BorderTarget) {
+        if matches!(target.scope, BorderScope::Page) {
+            if let Some(page) = self.section.page_borders.as_mut() {
+                match target.side {
+                    BorderSide::Top => page.top = None,
+                    BorderSide::Bottom => page.bottom = None,
+                    BorderSide::Start => page.left = None,
+                    _ => page.right = None,
+                }
+            }
+            return;
+        }
+        let borders = match target.scope {
+            BorderScope::Paragraph => &mut self.state.paragraph.borders,
+            BorderScope::Cell => {
+                &mut self
+                    .row
+                    .as_mut()
+                    .expect("cell border requires a row")
+                    .next_props
+                    .borders
+            }
+            BorderScope::Row => {
+                &mut self
+                    .row
+                    .as_mut()
+                    .expect("row border requires a row")
+                    .props
+                    .exception_borders
+            }
+            BorderScope::Run => &mut self.state.run.borders,
+            BorderScope::Page => {
+                unreachable!("page edges must be cleared with the page collection")
+            }
+        };
+        match target.side {
+            BorderSide::Top => borders.top = None,
+            BorderSide::Bottom => borders.bottom = None,
+            BorderSide::Start => borders.start = None,
+            BorderSide::End => borders.end = None,
+            BorderSide::InsideHorizontal => borders.inside_horizontal = None,
+            BorderSide::InsideVertical => borders.inside_vertical = None,
+            BorderSide::Bar => borders.bar = None,
+            BorderSide::Between => borders.between = None,
+            BorderSide::TopLeftToBottomRight => borders.tl2br = None,
+            BorderSide::BottomLeftToTopRight => borders.tr2bl = None,
+        }
+    }
+    /// Applies a border style/width/colour/space token to the running page edge.
+    fn page_border_token(
+        &mut self,
+        target: BorderTarget,
+        name: &str,
+        n: Option<i32>,
+        span: RtfSpan,
+    ) -> Result<bool, RtfError> {
+        if let Some(style) = border_style(name) {
+            self.page_slot(target.side).style = Some(style);
+            return Ok(true);
+        }
+        match name {
+            "brdrw" => {
+                let twips = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing border width",
+                })?;
+                self.page_slot(target.side).size = Some(EighthsPoint(border_eighths(twips)));
+            }
+            "brdrcf" => {
+                let index = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "invalid border color index",
+                })?;
+                let Some(color) = self.palette_color(index, span)? else {
+                    return Ok(true);
+                };
+                self.page_slot(target.side).color = Some(color);
+            }
+            "brsp" => {
+                let twips = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing border space",
+                })?;
+                self.page_slot(target.side).space = Some(border_space_points(twips));
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+    /// Returns the mutable page-border edge (`w:pgBorders/{top,left,bottom,right}`).
+    fn page_slot(&mut self, side: BorderSide) -> &mut PageBorder {
+        let page = self
+            .section
+            .page_borders
+            .get_or_insert_with(PageBorders::default);
+        match side {
+            BorderSide::Top => page.top.get_or_insert_with(PageBorder::default),
+            BorderSide::Bottom => page.bottom.get_or_insert_with(PageBorder::default),
+            BorderSide::Start => page.left.get_or_insert_with(PageBorder::default),
+            _ => page.right.get_or_insert_with(PageBorder::default),
+        }
+    }
+    /// Resolves a colour-table index (`Ok(Some(color))`, with an absent entry
+    /// mapped to `auto`; `Ok(None)` = undefined and already reported as a Loss).
+    fn palette_color(&mut self, index: i32, span: RtfSpan) -> Result<Option<Color>, RtfError> {
+        let Ok(index) = usize::try_from(index) else {
+            return malformed(span.start, "invalid colour index");
+        };
+        let Some(color) = self.colors.get(index).cloned() else {
+            self.issue(span, Severity::Loss, format!("undefined-color:{index}"))?;
+            return Ok(None);
+        };
+        Ok(Some(color.unwrap_or_else(|| Color::new("auto"))))
+    }
+    /// Applies one RTF shading control to its target scope.
+    fn apply_shading(
+        &mut self,
+        scope: ShadingScope,
+        name: &str,
+        value: i32,
+        span: RtfSpan,
+    ) -> Result<(), RtfError> {
+        if name.ends_with("shdng") || name == "shading" {
+            let pattern: Arc<str> = Arc::from(shading_pattern(value));
+            self.shading_mut(scope, span)?.pattern = Some(pattern);
+        } else {
+            let Some(color) = self.palette_color(value, span)? else {
+                return Ok(());
+            };
+            let shading = self.shading_mut(scope, span)?;
+            if name.ends_with("cbpat") {
+                shading.fill = Some(color);
+            } else {
+                shading.color = Some(color);
+            }
+        }
+        Ok(())
+    }
+    /// Returns the mutable shading of a scope (`\ch*`/`\cl*`/`\tr*`/paragraph).
+    fn shading_mut(
+        &mut self,
+        scope: ShadingScope,
+        span: RtfSpan,
+    ) -> Result<&mut Shading, RtfError> {
+        Ok(match scope {
+            ShadingScope::Paragraph => self
+                .state
+                .paragraph
+                .shading
+                .get_or_insert_with(Shading::default),
+            ShadingScope::Run => self.state.run.shading.get_or_insert_with(Shading::default),
+            ShadingScope::Cell => self
+                .row
+                .as_mut()
+                .ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell shading outside row",
+                })?
+                .next_props
+                .shading
+                .get_or_insert_with(Shading::default),
+            ShadingScope::Row => self
+                .row
+                .as_mut()
+                .ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "row shading outside row",
+                })?
+                .shading
+                .get_or_insert_with(Shading::default),
+        })
     }
     fn begin_region(&mut self, kind: RegionKind, offset: usize) -> Result<(), RtfError> {
         if matches!(kind, RegionKind::Header { .. }) && !self.regions.is_empty()
@@ -970,6 +1459,7 @@ impl Parser<'_> {
         }
         self.table_look = TableLook::default();
         self.table_rtl = false;
+        self.table_gap = None;
     }
     fn cell(&mut self, offset: usize) -> Result<(), RtfError> {
         if self.row.is_none() {
@@ -1052,6 +1542,13 @@ impl Parser<'_> {
             self.table = Some(Table {
                 props: TableProperties {
                     indent: Some(Twips(row.left)),
+                    cell_margins: self.table_gap.map_or_else(CellMargins::default, |gap| {
+                        CellMargins {
+                            start: Some(gap),
+                            end: Some(gap),
+                            ..CellMargins::default()
+                        }
+                    }),
                     look,
                     bidi_visual: self.table_rtl,
                     ..Default::default()
@@ -1103,6 +1600,16 @@ impl Parser<'_> {
             } else {
                 merge_active = marker == Some(true);
                 cells.push(cell);
+            }
+        }
+        // A row background (`\trcbpat`/`\trcfpat`/`\trshdng`) shades the whole
+        // row; WML has no row-level shading, so it lands on every cell that does
+        // not carry its own `\cl*` shading.
+        if let Some(shading) = row.shading.clone() {
+            for cell in &mut cells {
+                if cell.props.shading.is_none() {
+                    cell.props.shading = Some(shading.clone());
+                }
             }
         }
         let mut previous_merges = BTreeMap::new();
@@ -1957,50 +2464,8 @@ impl Parser<'_> {
                 "listtemplateid" | "listhybrid" | "listsimple" => return Ok(()),
                 _ => (),
             }
-            if let Some(level) = &mut self.level_draft {
-                match name {
-                    "levelnfc" | "levelnfcn" => {
-                        if let Some(format) = n.and_then(number_format) {
-                            level.format = format;
-                        } else {
-                            self.issue(
-                                span,
-                                Severity::Loss,
-                                format!("list:unsupported-number-format:{n:?}"),
-                            )?;
-                        }
-                        return Ok(());
-                    }
-                    "levelstartat" => {
-                        level.start =
-                            n.and_then(|n| u32::try_from(n).ok())
-                                .ok_or(RtfError::Malformed {
-                                    offset: span.start,
-                                    reason: "invalid list start",
-                                })?;
-                        return Ok(());
-                    }
-                    "leveljc" | "leveljcn" => {
-                        level.justification = match n {
-                            Some(0) => Justification::Start,
-                            Some(1) => Justification::Center,
-                            Some(2) => Justification::End,
-                            _ => return malformed(span.start, "invalid list alignment"),
-                        };
-                        return Ok(());
-                    }
-                    "levelfollow" => {
-                        level.suffix = match n {
-                            Some(0) => "tab",
-                            Some(1) => "space",
-                            Some(2) => "nothing",
-                            _ => return malformed(span.start, "invalid list suffix"),
-                        };
-                        return Ok(());
-                    }
-                    "leveltemplateid" => return Ok(()),
-                    _ => (),
-                }
+            if self.level_control(name, n, span)? {
+                return Ok(());
             }
         }
         if self.state.destination == Destination::Overrides {
@@ -2013,6 +2478,7 @@ impl Parser<'_> {
                         depth: self.stack.len(),
                         list: None,
                         instance: None,
+                        levels: vec![],
                     });
                     return Ok(());
                 }
@@ -2040,14 +2506,79 @@ impl Parser<'_> {
                     }
                     return Ok(());
                 }
-                "listoverridecount" if n == Some(0) => return Ok(()),
-                _ => {
-                    return self.issue(
-                        span,
-                        Severity::Loss,
-                        format!("list-override-control:{name}"),
-                    );
+                // The override level count is redundant with the number of
+                // `\lfolevel` groups actually present, so accept any value;
+                // `\listoverrideformat`/`\listoverridestart` only select which
+                // form follows (the nested controls carry the actual level or
+                // start); `\listtemplateid`/`\listhybrid`/`\listsimple` are
+                // top-level list hints with no `w:num` analogue.
+                "listoverridecount" | "listoverrideformat" | "listoverridestart"
+                | "listtemplateid" | "listhybrid" | "listsimple" => return Ok(()),
+                "lfolevel" => {
+                    if self.override_level_draft.is_some() {
+                        return malformed(span.start, "nested list override level");
+                    }
+                    if self.override_draft.is_none() {
+                        return malformed(span.start, "list override level outside declaration");
+                    }
+                    self.override_level_draft = Some(OverrideLevelDraft {
+                        depth: self.stack.len(),
+                        start_override: None,
+                        level: None,
+                    });
+                    return Ok(());
                 }
+                "listlevel" => {
+                    if self.override_level_draft.is_none() {
+                        return malformed(span.start, "list level outside list override level");
+                    }
+                    if self.level_draft.is_some() {
+                        return malformed(span.start, "nested list level");
+                    }
+                    self.state.run = RunProperties::default();
+                    self.state.paragraph = ParagraphProperties::default();
+                    self.level_draft = Some(LevelDraft {
+                        depth: self.stack.len(),
+                        start: 1,
+                        format: "decimal",
+                        text: String::new(),
+                        justification: Justification::Start,
+                        suffix: "tab",
+                    });
+                    return Ok(());
+                }
+                "leveltext" => {
+                    self.state.ignorable = false;
+                    self.state.destination = Destination::LevelText;
+                    return Ok(());
+                }
+                "levelnumbers" | "listname" => {
+                    self.state.skip = true;
+                    return Ok(());
+                }
+                _ => (),
+            }
+            if self.level_control(name, n, span)? {
+                return Ok(());
+            }
+            // A `\levelstartat` without a nested `\listlevel` is a start-only
+            // override (`\listoverridestart`).
+            if name == "levelstartat" {
+                let start = n
+                    .and_then(|n| u32::try_from(n).ok())
+                    .ok_or(RtfError::Malformed {
+                        offset: span.start,
+                        reason: "invalid list start",
+                    })?;
+                let over = self
+                    .override_level_draft
+                    .as_mut()
+                    .ok_or(RtfError::Malformed {
+                        offset: span.start,
+                        reason: "level start outside list override level",
+                    })?;
+                over.start_override = Some(start);
+                return Ok(());
             }
         }
         if self.state.destination == Destination::Styles {
@@ -2481,6 +3012,9 @@ impl Parser<'_> {
         if self.note_control(name, n, span)? {
             return Ok(());
         }
+        if self.border_control(name, n, span)? {
+            return Ok(());
+        }
         match name {
             "upr" => self.state.upr_children = Some(0),
             "rtf" if n == Some(1) && self.stack.len() == 1 => (),
@@ -2584,6 +3118,7 @@ impl Parser<'_> {
                 self.state.tab_leader = None;
                 self.state.line_spacing = 0;
                 self.state.line_multiple = false;
+                self.state.current_border = None;
             }
             "s" | "cs" => {
                 let id = n.filter(|n| *n >= 0).ok_or(RtfError::Malformed {
@@ -2920,6 +3455,7 @@ impl Parser<'_> {
                 } else {
                     self.row = Some(RowBuilder::default());
                 }
+                self.state.current_border = None;
             }
             "trleft" => {
                 let row = self.row.as_mut().ok_or(RtfError::Malformed {
@@ -2932,6 +3468,7 @@ impl Parser<'_> {
                 })?;
             }
             "cellx" => {
+                self.state.current_border = None;
                 let row = self.row.as_mut().ok_or(RtfError::Malformed {
                     offset: span.start,
                     reason: "cellx outside row",
@@ -2954,9 +3491,11 @@ impl Parser<'_> {
                     "table_cells",
                 )?;
                 let mut props = std::mem::take(&mut row.next_props);
+                // `\clftsWidth`/`\clwWidth` give the explicit cell width; without
+                // them the width is the `\cellx` delta (both agree in the corpus).
                 props.width = Some(Width {
-                    kind: WidthKind::Dxa,
-                    value: Some(width),
+                    kind: row.next_width_kind.take().unwrap_or(WidthKind::Dxa),
+                    value: row.next_width_value.take().or(Some(width)),
                 });
                 row.ends.push(end);
                 row.declarations.push(props);
@@ -2981,6 +3520,107 @@ impl Parser<'_> {
                     "clvertalc" => row.next_props.vertical_align = Some(VerticalJc::Center),
                     _ => row.next_props.vertical_align = Some(VerticalJc::Bottom),
                 }
+            }
+            "clhidemark" => {
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                row.next_props.hide_mark = n != Some(0);
+            }
+            "clpadt" | "clpadb" | "clpadl" | "clpadr" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing cell margin",
+                })?;
+                let margin = Twips(value);
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                let margins = &mut row.next_props.margins;
+                match name {
+                    "clpadt" => margins.top = Some(margin),
+                    "clpadb" => margins.bottom = Some(margin),
+                    "clpadl" => margins.start = Some(margin),
+                    _ => margins.end = Some(margin),
+                }
+            }
+            // The `\clpadf*` family only selects the padding unit (twips); the
+            // value itself comes from `\clpad*`.
+            "clpadfl" | "clpadfr" | "clpadft" | "clpadfb" => {
+                return self.issue(
+                    span,
+                    Severity::Info,
+                    format!("table-cell-padding-unit:{name}"),
+                );
+            }
+            "clftsWidth" => {
+                let kind = match n {
+                    Some(0) => WidthKind::Auto,
+                    Some(1) => WidthKind::Nil,
+                    Some(2) => WidthKind::Pct,
+                    Some(3) => WidthKind::Dxa,
+                    _ => return malformed(span.start, "invalid cell width type"),
+                };
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                row.next_width_kind = Some(kind);
+            }
+            "clwWidth" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing cell width",
+                })?;
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                row.next_width_value = Some(value);
+            }
+            "clcbpat" | "clcfpat" | "clshdng" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing cell shading value",
+                })?;
+                self.apply_shading(ShadingScope::Cell, name, value, span)?;
+            }
+            "clshdrawnil" => {
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                row.next_props.shading = None;
+            }
+            "trcbpat" | "trcfpat" | "trshdng" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing row shading value",
+                })?;
+                self.apply_shading(ShadingScope::Row, name, value, span)?;
+            }
+            "chcbpat" | "chcfpat" | "chshdng" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing character shading value",
+                })?;
+                self.apply_shading(ShadingScope::Run, name, value, span)?;
+            }
+            "cbpat" | "cfpat" | "shading" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing paragraph shading value",
+                })?;
+                self.apply_shading(ShadingScope::Paragraph, name, value, span)?;
+            }
+            "trgaph" => self.table_gap = n.map(Twips),
+            // Table-indent controls with no independent WML form: the indent is
+            // carried by the row position (`\trleft`), and WPS writes no
+            // `w:tblInd` for the corpus (`\tblind0`).
+            "tblind" | "tblindtype" | "alntblind" => {
+                return self.issue(span, Severity::Info, format!("table-indent-compat:{name}"));
             }
             "trhdr" | "trkeep" => {
                 let row = self.row.as_mut().ok_or(RtfError::Malformed {
@@ -3229,9 +3869,12 @@ impl Parser<'_> {
             // Word 7 / list-table compatibility markers with no WML equivalent:
             // `\jclisttab` only flags the `\tx` tab as a list tab (the tab stop
             // is already captured), `\levelspace`/`\levelindent` are superseded
-            // by the level's paragraph indents, and `\leveltemplateid` is a
-            // cosmetic template id.
-            "jclisttab" | "levelspace" | "levelindent" | "leveltemplateid" => {
+            // by the level's paragraph indents, `\leveltemplateid` is a cosmetic
+            // template id, `\levelold` marks a level converted from Word 6.0 or
+            // 7.0, and `\fbias` is the East-Asian font-bias hint Word emits only
+            // inside a `\listlevel` (no direct `w:rFonts` analogue).
+            "jclisttab" | "levelspace" | "levelindent" | "leveltemplateid" | "levelold"
+            | "fbias" => {
                 return self.issue(span, Severity::Info, format!("list-compat:{name}"));
             }
             // Table compatibility controls with no WML equivalent: the character
@@ -3240,8 +3883,14 @@ impl Parser<'_> {
             // conditional-formatting row band ids (`\irow`/`\irowband`/
             // `\lastrow`) are hints the Strict model does not carry.
             "cgrid" | "snaptogridincell" | "nocxsptable" | "nogrowautofit"
-            | "usenormstyforlist" | "irow" | "irowband" | "lastrow" => {
+            | "usenormstyforlist" | "irow" | "irowband" | "lastrow" | "lytcalctblwd" => {
                 return self.issue(span, Severity::Info, format!("table-compat:{name}"));
+            }
+            // Page-border placement hints (draw in header/footer, offset) with no
+            // Strict `w:pgBorders` analogue; the page edges themselves stay Loss
+            // because the corpus uses unrepresentable art borders (`\brdrart`).
+            "pgbrdrhead" | "pgbrdrfoot" | "pgbrdropt" => {
+                return self.issue(span, Severity::Info, format!("page-border-compat:{name}"));
             }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
@@ -3261,6 +3910,68 @@ impl Parser<'_> {
             self.paragraph_props = self.state.paragraph.clone();
         }
         Ok(())
+    }
+}
+/// Maps an RTF border line-style control word to a WML [`BorderStyle`].
+fn border_style(name: &str) -> Option<BorderStyle> {
+    Some(match name {
+        "brdrs" => BorderStyle::Single,
+        "brdrth" => BorderStyle::Thick,
+        "brdrdb" => BorderStyle::Double,
+        "brdrdot" => BorderStyle::Dotted,
+        "brdrdash" => BorderStyle::Dashed,
+        "brdrinset" => BorderStyle::Inset,
+        "brdroutset" => BorderStyle::Outset,
+        "brdrtriple" => BorderStyle::Triple,
+        "brdrdashsm" => BorderStyle::DashSmallGap,
+        "brdrdashd" => BorderStyle::DotDash,
+        "brdrdashdd" => BorderStyle::DotDotDash,
+        "brdrdashdotstr" => BorderStyle::DashDotStroked,
+        "brdrtnthsg" => BorderStyle::ThinThickSmallGap,
+        "brdrthtnsg" => BorderStyle::ThickThinSmallGap,
+        "brdrtnthtnsg" => BorderStyle::ThinThickThinSmallGap,
+        "brdrtnthmg" => BorderStyle::ThinThickMediumGap,
+        "brdrthtnmg" => BorderStyle::ThickThinMediumGap,
+        "brdrtnthtnmg" => BorderStyle::ThinThickThinMediumGap,
+        "brdrtnthlg" => BorderStyle::ThinThickLargeGap,
+        "brdrthtnlg" => BorderStyle::ThickThinLargeGap,
+        "brdrtnthtnlg" => BorderStyle::ThinThickThinLargeGap,
+        "brdrwavy" => BorderStyle::Wave,
+        "brdrwavydb" => BorderStyle::DoubleWave,
+        "brdrnil" => BorderStyle::Nil,
+        "brdrnone" => BorderStyle::None,
+        _ => return None,
+    })
+}
+/// Converts an RTF `\brdrwN` (twips) to `w:sz` (eighths of a point), clamped to
+/// the `ST_EighthsPoint` range `0..=96`.
+fn border_eighths(twips: i32) -> u16 {
+    let eighths = if twips <= 0 {
+        0
+    } else {
+        (i64::from(twips) * 8 + 10) / 20
+    };
+    u16::try_from(eighths.clamp(0, 96)).expect("clamped to ST_EighthsPoint range")
+}
+/// Converts an RTF `\brspN` (twips) to `w:space` (points), clamped to `0..=31`.
+fn border_space_points(twips: i32) -> u16 {
+    let points = if twips <= 0 {
+        0
+    } else {
+        (i64::from(twips) + 10) / 20
+    };
+    u16::try_from(points.clamp(0, 31)).expect("clamped to point range")
+}
+/// Maps an RTF shading intensity (`\shdng`, `\clshdng`, ... 0..=10000) to an
+/// `ST_Shd` pattern: `clear`, `solid` or the nearest `pctNN`.
+fn shading_pattern(value: i32) -> String {
+    if value <= 0 {
+        "clear".to_owned()
+    } else if value >= 10_000 {
+        "solid".to_owned()
+    } else {
+        let pct = ((i64::from(value) + 250) / 500) * 5;
+        format!("pct{}", pct.clamp(5, 95))
     }
 }
 /// Replaces each direction-mixed, text-only run with direction-homogeneous runs.
@@ -3503,6 +4214,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         list_draft: None,
         level_draft: None,
         override_draft: None,
+        override_level_draft: None,
+        table_gap: None,
     };
     loop {
         let Some((span, token)) = lexer.next()? else {
@@ -3555,6 +4268,12 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                 {
                     p.finish_high()?;
                     p.finish_level(span.start)?;
+                }
+                if p.override_level_draft
+                    .as_ref()
+                    .is_some_and(|d| d.depth == p.stack.len())
+                {
+                    p.finish_override_level(span.start)?;
                 }
                 if p.list_draft
                     .as_ref()

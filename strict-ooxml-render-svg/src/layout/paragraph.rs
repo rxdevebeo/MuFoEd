@@ -74,6 +74,8 @@ pub(crate) struct ParagraphFlow {
     pub border_before: f64,
     /// Bottom `w:pBdr` pad in px (`space` + stroke width).
     pub border_after: f64,
+    /// Effective `w:pBdr` edges, so the paginator can stroke them.
+    pub borders: strict_ooxml_wml::model::values::Borders,
     /// Keep the paragraph on one page.
     pub keep_lines: bool,
 }
@@ -216,6 +218,7 @@ pub(crate) fn layout_paragraph(
         space_after,
         border_before: if math_paragraph { 0.0 } else { border_before },
         border_after: if math_paragraph { 0.0 } else { border_after },
+        borders: computed.borders.clone(),
         keep_lines: computed.keep_lines,
     }
 }

@@ -574,6 +574,10 @@ fn borders_empty(borders: &Borders) -> bool {
         && borders.end.is_none()
         && borders.inside_horizontal.is_none()
         && borders.inside_vertical.is_none()
+        && borders.tl2br.is_none()
+        && borders.tr2bl.is_none()
+        && borders.between.is_none()
+        && borders.bar.is_none()
 }
 
 /// Writes a border container (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
@@ -601,7 +605,7 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
     xml.start(name);
     let (near, far) = match edges {
         EdgeNames::Paragraph => ("left", "right"),
-        EdgeNames::Table => ("start", "end"),
+        EdgeNames::Table | EdgeNames::Cell => ("start", "end"),
     };
     for (local, edge) in [
         ("top", &borders.top),
@@ -615,6 +619,23 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
             border_edge(xml, local, edge);
         }
     }
+    // `CT_PBdr` alone carries `between`/`bar`; `CT_TblBorders`/`CT_TcBorders`
+    // have no such children.
+    if matches!(edges, EdgeNames::Paragraph) {
+        for (local, edge) in [("between", &borders.between), ("bar", &borders.bar)] {
+            if let Some(edge) = edge {
+                border_edge(xml, local, edge);
+            }
+        }
+    }
+    // `CT_TcBorders` alone carries the diagonals.
+    if matches!(edges, EdgeNames::Cell) {
+        for (local, edge) in [("tl2br", &borders.tl2br), ("tr2bl", &borders.tr2bl)] {
+            if let Some(edge) = edge {
+                border_edge(xml, local, edge);
+            }
+        }
+    }
     xml.end();
 }
 
@@ -623,8 +644,10 @@ fn borders_element(xml: &mut XmlWriter, name: &str, borders: &Borders, edges: Ed
 enum EdgeNames {
     /// `CT_PBdr` keeps `left`/`right`.
     Paragraph,
-    /// `CT_TblBorders` and `CT_TcBorders` use `start`/`end`.
+    /// `CT_TblBorders` uses `start`/`end` and no diagonals.
     Table,
+    /// `CT_TcBorders` uses `start`/`end` and adds `tl2br`/`tr2bl`.
+    Cell,
 }
 
 /// Writes `w:rPr/w:bdr`, which is one edge and not a container.
@@ -1018,7 +1041,7 @@ fn cell_child(xml: &mut XmlWriter, props: &CellProperties, name: &str) {
         }
         "tcBorders" => {
             if !borders_empty(&props.borders) {
-                borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Table);
+                borders_element(xml, "w:tcBorders", &props.borders, EdgeNames::Cell);
             }
         }
         "shd" => {
@@ -1543,6 +1566,10 @@ mod tests {
             end: Some(border),
             inside_horizontal: None,
             inside_vertical: None,
+            tl2br: None,
+            tr2bl: None,
+            between: None,
+            bar: None,
         };
         let mut xml = XmlWriter::new();
         borders_element(&mut xml, "w:pBdr", &borders, EdgeNames::Paragraph);

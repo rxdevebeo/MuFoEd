@@ -235,6 +235,10 @@ fn merge_borders(target: &mut Borders, layer: &Borders) {
         (&mut target.end, &layer.end),
         (&mut target.inside_horizontal, &layer.inside_horizontal),
         (&mut target.inside_vertical, &layer.inside_vertical),
+        (&mut target.tl2br, &layer.tl2br),
+        (&mut target.tr2bl, &layer.tr2bl),
+        (&mut target.between, &layer.between),
+        (&mut target.bar, &layer.bar),
     ] {
         if edge.is_some() {
             slot.clone_from(edge);

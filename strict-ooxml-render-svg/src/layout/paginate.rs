@@ -19,7 +19,7 @@ use crate::layout::{
 };
 use crate::style::compute_paragraph;
 use crate::units::pt_to_px;
-use strict_ooxml_wml::model::values::SectionType;
+use strict_ooxml_wml::model::values::{Borders, SectionType};
 use strict_ooxml_wml::model::{Block, StyleId};
 
 /// Height reserved for the footnote separator, in px.
@@ -429,7 +429,7 @@ fn layout_blocks(
 }
 
 /// Lays out one body paragraph, registers wrap exclusions, returns `space_after`.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn place_body_paragraph(
     ctx: &LayoutContext<'_>,
     para: &strict_ooxml_wml::model::Paragraph,
@@ -457,13 +457,11 @@ fn place_body_paragraph(
         pending_after = 0.0;
     }
     // `w:contextualSpacing` suppresses the gap to a paragraph of the same style.
+    let computed = compute_paragraph(ctx.document, para);
     let space_before = if collapse_spacing {
         0.0
     } else {
-        pt_to_px(
-            compute_paragraph(ctx.document, para).space_before_pt,
-            ctx.options.scale,
-        )
+        pt_to_px(computed.space_before_pt, ctx.options.scale)
     };
     let gap = pending_after.max(space_before);
     let host_x = paginator.geometry.left;
@@ -490,7 +488,11 @@ fn place_body_paragraph(
         pending_after.max(flow.space_before)
     };
     paginator.add_vspace(leading_space);
+    let box_top = paginator.geometry.top + paginator.cursor;
     paginator.add_vspace(flow.border_before);
+    let borders = flow.borders.clone();
+    let border_after = flow.border_after;
+    let space_after = flow.space_after;
     if flow.keep_lines && !boundary_marker {
         let total: f64 = flow
             .flows
@@ -515,12 +517,32 @@ fn place_body_paragraph(
     }
     let page = paginator.pages.len();
     let host_y = paginator.geometry.top + paginator.cursor;
+    let pages_before = paginator.pages.len();
     for item in flow.flows {
         if boundary_marker {
             paginator.place_boundary_marker(item)?;
         } else {
             paginator.place(item)?;
         }
+    }
+    // Stroke the paragraph's `w:pBdr` edges. A paragraph that broke across a
+    // page is skipped: its border box would span two pages.
+    if paginator.pages.len() == pages_before {
+        let text_bottom = paginator.geometry.top + paginator.cursor + border_after;
+        // `w:pBdr` spans the paragraph's indented text box, not the full column.
+        let indent_start = pt_to_px(computed.indent_start_pt, ctx.options.scale);
+        let indent_end = pt_to_px(computed.indent_end_pt, ctx.options.scale);
+        let border_left = left + indent_start;
+        let border_width = (width - indent_start - indent_end).max(0.0);
+        stroke_paragraph_borders(
+            ctx,
+            paginator,
+            &borders,
+            border_left,
+            border_width,
+            box_top,
+            text_bottom,
+        )?;
     }
     for anchor in flow.anchors {
         if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y) {
@@ -533,7 +555,43 @@ fn place_body_paragraph(
             anchor,
         });
     }
-    Ok(flow.space_after + flow.border_after)
+    Ok(space_after + border_after)
+}
+
+/// Strokes a paragraph's `w:pBdr` edges as page-absolute lines.
+fn stroke_paragraph_borders(
+    ctx: &LayoutContext<'_>,
+    paginator: &mut Paginator<'_>,
+    borders: &Borders,
+    left: f64,
+    width: f64,
+    top: f64,
+    bottom: f64,
+) -> Result<()> {
+    let right = left + width;
+    for (x1, y1, x2, y2, edge) in [
+        (left, top, right, top, &borders.top),
+        (left, bottom, right, bottom, &borders.bottom),
+        (left, top, left, bottom, &borders.start),
+        (right, top, right, bottom, &borders.end),
+    ] {
+        let Some(border) = edge.as_ref() else {
+            continue;
+        };
+        let Some((color, stroke_w, dashed)) = crate::layout::table::stroke(ctx, border) else {
+            continue;
+        };
+        paginator.push_item(Item::Line(LineItem {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+            width: stroke_w,
+            dashed,
+        }))?;
+    }
+    Ok(())
 }
 
 /// Lays a frame group out once and paints every child from the frame origin.

@@ -396,10 +396,14 @@ impl PartParser<'_> {
                             }
                             "shd" => props.shading = Some(parser.parse_shading(&attrs)),
                             "bdr" => {
+                                // `w:rPr/w:bdr` is one `CT_Border` (attributes, no
+                                // children). Keep it on the `top` edge slot, the
+                                // slot the writer reads back.
+                                props.borders.top = Some(parser.parse_border_edge(&attrs));
                                 parser.record(
                                     "w:bdr",
-                                    SupportStatus::Partial,
-                                    Some("run borders are not retained".to_owned()),
+                                    SupportStatus::Supported,
+                                    None,
                                     Some(parser.location()),
                                 );
                             }
@@ -517,6 +521,10 @@ impl PartParser<'_> {
                                 "end" | "right" => borders.end = Some(border),
                                 "insideH" => borders.inside_horizontal = Some(border),
                                 "insideV" => borders.inside_vertical = Some(border),
+                                "tl2br" => borders.tl2br = Some(border),
+                                "tr2bl" => borders.tr2bl = Some(border),
+                                "between" => borders.between = Some(border),
+                                "bar" => borders.bar = Some(border),
                                 _ => {
                                     record_unmodelled_property(parser, &name)?;
                                     continue;

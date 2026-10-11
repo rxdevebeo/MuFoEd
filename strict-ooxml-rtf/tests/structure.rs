@@ -2,8 +2,8 @@
 #![allow(clippy::default_trait_access)]
 use strict_ooxml_rtf::{import, RtfOptions};
 use strict_ooxml_wml::model::{
-    AbstractNumId, Block, HalfPoints, Ilvl, Inline, NoteKind, NumId, RunContent, StyleId,
-    TabLeader, TriState, Twips,
+    AbstractNumId, Block, BorderStyle, Color, EighthsPoint, HalfPoints, Ilvl, Inline, NoteKind,
+    NumId, RunContent, StyleId, TabLeader, TriState, Twips, WidthKind,
 };
 
 #[test]
@@ -1151,6 +1151,72 @@ fn multilevel_list_definition_and_instance_roundtrip() {
 }
 
 #[test]
+fn list_override_level_replaces_the_level() {
+    // RTF 1.5 "List Override Level": `{\lfolevel\listoverrideformat{\listlevel ...}}`
+    // replaces one level of the referenced abstract list (corpus 021, whose
+    // override swaps the `*` marker for a bullet glyph). The model carries it as
+    // `w:lvlOverride/w:lvl`, so no `list-override-control:*` loss may remain.
+    let input = br"{\rtf1{\*\listtable{\list{\listlevel\levelnfc23{\leveltext\'01*;}{\levelnumbers;}}\listid2}}{\*\listoverridetable{\listoverride\listid2\listoverridecount1{\lfolevel\listoverrideformat{\listlevel\levelnfc23\leveljc0\levelfollow0\levelstartat0{\leveltext\'01\u183 ?;}{\levelnumbers;}}}\ls1}}\pard\ls1\ilvl0 item\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    assert!(
+        !imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature.starts_with("list-override-control:")),
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        // The abstract list keeps the literal `*`; the override replaces it.
+        let abstract_level = document
+            .numbering
+            .abstract_num(AbstractNumId(2))
+            .unwrap()
+            .level(Ilvl(0))
+            .unwrap();
+        assert_eq!(abstract_level.text.as_deref(), Some("*"));
+        let overrides = &document.numbering.num(NumId(1)).unwrap().overrides;
+        assert_eq!(overrides.len(), 1);
+        let over = &overrides[0];
+        assert_eq!(over.ilvl, Ilvl(0));
+        assert_eq!(over.start_override, None);
+        let level = over
+            .level
+            .as_ref()
+            .expect("format override carries a level");
+        assert_eq!(level.format.as_deref(), Some("bullet"));
+        assert_eq!(level.text.as_deref(), Some("\u{b7}"));
+    }
+}
+
+#[test]
+fn list_override_start_sets_the_start_override() {
+    // The start-only form (`\lfolevel\listoverridestart\levelstartatN`) overrides
+    // only the level's start value: `w:lvlOverride/w:startOverride` with no `w:lvl`.
+    let input = br"{\rtf1{\*\listtable{\list{\listlevel\levelnfc0{\leveltext\'02\'00.;}{\levelnumbers;}}\listid2}}{\*\listoverridetable{\listoverride\listid2\listoverridecount1{\lfolevel\listoverridestart\levelstartat5}\ls1}}\pard\ls1\ilvl0 item\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let overrides = &document.numbering.num(NumId(1)).unwrap().overrides;
+        assert_eq!(overrides.len(), 1);
+        let over = &overrides[0];
+        assert_eq!(over.ilvl, Ilvl(0));
+        assert_eq!(over.start_override, Some(5));
+        assert!(over.level.is_none());
+    }
+}
+
+#[test]
 fn document_note_numbering_and_placement_map_to_settings() {
     // `\ftn*`/`\aftn*` are document-wide and land in `settings.xml` as
     // `w:footnotePr`/`w:endnotePr` (RTF 1.5 "Footnotes and Endnotes").
@@ -1395,6 +1461,276 @@ fn table_look_and_bidi_map_to_table_properties() {
         assert!(look.no_v_band, "\\tbllknocolband -> no_v_band");
         assert!(table.props.bidi_visual, "\\rtlrow -> w:bidiVisual");
     }
+}
+
+#[test]
+fn cell_borders_map_to_tc_borders() {
+    // RTF cell borders are `<edge> <style> \brdrw? \brdrcf?` inside a row
+    // definition; the four edges map to `w:tcBorders` (`w:sz` is eighths of a
+    // point, so `\brdrw20` = 1pt = 8).
+    let input = br"{\rtf1{\colortbl;\red255\green0\blue0;}\trowd\clbrdrt\brdrs\brdrw20\brdrcf1\clbrdrb\brdrnil\clbrdrl\brdrdash\clbrdrr\brdrdot\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        let borders = &table.rows[0].cells[0].props.borders;
+        let top = borders.top.as_ref().expect("top border");
+        assert_eq!(top.style, Some(BorderStyle::Single));
+        assert_eq!(top.size, Some(EighthsPoint(8)));
+        assert_eq!(top.color.as_ref().map(Color::as_str), Some("FF0000"));
+        assert_eq!(
+            borders.bottom.as_ref().unwrap().style,
+            Some(BorderStyle::Nil)
+        );
+        assert_eq!(
+            borders.start.as_ref().unwrap().style,
+            Some(BorderStyle::Dashed)
+        );
+        assert_eq!(
+            borders.end.as_ref().unwrap().style,
+            Some(BorderStyle::Dotted)
+        );
+    }
+}
+
+#[test]
+fn paragraph_borders_map_to_pbdr() {
+    // Paragraph edges `\brdrt\brdrs\brdrw10` map to `w:pBdr`; `\brdrbar` and
+    // `\brdrbtw` are the paragraph-only `bar`/`between` edges.
+    let input =
+        br"{\rtf1\pard\brdrt\brdrs\brdrw10\brdrl\brdrdb\brdrbar\brdrs\brdrbtw\brdrdot body\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Paragraph(p) = &document.body.blocks[0] else {
+            panic!("paragraph")
+        };
+        let borders = &p.props.borders;
+        let top = borders.top.as_ref().expect("w:top");
+        assert_eq!(top.style, Some(BorderStyle::Single));
+        assert_eq!(top.size, Some(EighthsPoint(4)));
+        assert_eq!(
+            borders.start.as_ref().unwrap().style,
+            Some(BorderStyle::Double)
+        );
+        assert_eq!(
+            borders.bar.as_ref().unwrap().style,
+            Some(BorderStyle::Single)
+        );
+        assert_eq!(
+            borders.between.as_ref().unwrap().style,
+            Some(BorderStyle::Dotted)
+        );
+    }
+}
+
+#[test]
+fn row_exception_borders_map_to_tbl_prex() {
+    // Row edges `\trbrdr*` map to the row exception borders (`w:tblPrEx`).
+    let input = br"{\rtf1\trowd\trbrdrt\brdrs\trbrdrb\brdrdb\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        let borders = &table.rows[0].props.exception_borders;
+        assert_eq!(
+            borders.top.as_ref().unwrap().style,
+            Some(BorderStyle::Single)
+        );
+        assert_eq!(
+            borders.bottom.as_ref().unwrap().style,
+            Some(BorderStyle::Double)
+        );
+    }
+}
+
+#[test]
+fn cell_shading_margins_width_and_diagonals() {
+    // Cell-level property controls: `\clhidemark`, `\clpad{t,b,l,r}`,
+    // `\clftsWidth`/`\clwWidth`, `\clcbpat`/`\clshdng` and `\cldgll`.
+    let input = br"{\rtf1{\colortbl;\red255\green0\blue0;}\trowd\clhidemark\clpadt50\clpadl100\clftsWidth3\clwWidth2000\clcbpat1\clshdng10000\cldgll\brdrs\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        let cell = &table.rows[0].cells[0].props;
+        assert!(cell.hide_mark, "\\clhidemark -> w:hideMark");
+        assert_eq!(cell.margins.top, Some(Twips(50)));
+        assert_eq!(cell.margins.start, Some(Twips(100)));
+        let width = cell.width.expect("w:tcW");
+        assert_eq!(width.kind, WidthKind::Dxa);
+        assert_eq!(width.value, Some(2000));
+        let shading = cell.shading.as_ref().expect("w:shd");
+        assert_eq!(shading.pattern.as_deref(), Some("solid"));
+        assert_eq!(shading.fill.as_ref().map(Color::as_str), Some("FF0000"));
+        assert_eq!(
+            cell.borders.tl2br.as_ref().unwrap().style,
+            Some(BorderStyle::Single)
+        );
+    }
+}
+
+#[test]
+fn brdrtbl_makes_the_cell_edge_inherit() {
+    // `\clbrdrt\brdrtbl` means "use the table border": the cell edge override is
+    // dropped (inherit), and the token is not a loss.
+    let input = br"{\rtf1\trowd\clbrdrt\brdrtbl\clbrdrl\brdrnil\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        let borders = &table.rows[0].cells[0].props.borders;
+        assert!(
+            borders.top.is_none(),
+            "\\brdrtbl inherits, no w:top override"
+        );
+        assert_eq!(
+            borders.start.as_ref().unwrap().style,
+            Some(BorderStyle::Nil)
+        );
+    }
+}
+
+#[test]
+fn table_gap_and_row_shading() {
+    // `\trgaph` is the table's half cell gap (`w:tblCellMar`), and
+    // `\trcbpat` shades every cell of the row.
+    let input = br"{\rtf1{\colortbl;\red255\green0\blue0;}\trowd\trgaph108\trcbpat1\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        assert_eq!(table.props.cell_margins.start, Some(Twips(108)));
+        assert_eq!(table.props.cell_margins.end, Some(Twips(108)));
+        let shading = table.rows[0].cells[0]
+            .props
+            .shading
+            .as_ref()
+            .expect("row shading lands on the cell");
+        assert_eq!(shading.fill.as_ref().map(Color::as_str), Some("FF0000"));
+    }
+}
+
+#[test]
+fn character_shading_maps_to_run_shading() {
+    let input = br"{\rtf1{\colortbl;\red255\green0\blue0;}\chshdng10000\chcbpat1\chcfpat1 shaded}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Paragraph(p) = &document.body.blocks[0] else {
+            panic!("paragraph")
+        };
+        let Inline::Run(run) = &p.inlines[0] else {
+            panic!("run")
+        };
+        let shading = run.props.shading.as_ref().expect("w:rPr/w:shd");
+        assert_eq!(shading.pattern.as_deref(), Some("solid"));
+        assert_eq!(shading.fill.as_ref().map(Color::as_str), Some("FF0000"));
+    }
+}
+
+#[test]
+fn character_border_maps_to_run_border() {
+    // `\chbrdr` is one box around the run -> `w:rPr/w:bdr` (single edge).
+    let input = br"{\rtf1\chbrdr\brdrs\brdrw10 boxed}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Paragraph(p) = &document.body.blocks[0] else {
+            panic!("paragraph")
+        };
+        let Inline::Run(run) = &p.inlines[0] else {
+            panic!("run")
+        };
+        let border = run.props.borders.top.as_ref().expect("w:rPr/w:bdr");
+        assert_eq!(border.style, Some(BorderStyle::Single));
+        assert_eq!(border.size, Some(EighthsPoint(4)));
+    }
+}
+
+#[test]
+fn page_borders_map_to_pg_borders() {
+    // Page-border edges `\pgbrdr{t,b,l,r}` map to the section's `w:pgBorders`.
+    let input = br"{\rtf1{\colortbl;\red255\green0\blue0;}\sectd\pgbrdrt\brdrs\brdrw20\brdrcf1\pgbrdrb\brdrdb body\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let page = document.sections[0]
+            .properties
+            .page_borders
+            .as_ref()
+            .expect("w:pgBorders");
+        let top = page.top.as_ref().expect("w:pgBorders/w:top");
+        assert_eq!(top.style, Some(BorderStyle::Single));
+        assert_eq!(top.size, Some(EighthsPoint(8)));
+        assert_eq!(top.color.as_ref().map(Color::as_str), Some("FF0000"));
+        assert_eq!(
+            page.bottom.as_ref().unwrap().style,
+            Some(BorderStyle::Double)
+        );
+    }
+}
+
+#[test]
+fn nested_tables_are_an_explicit_bounded_reject() {
+    // Nested tables (`\itap > 1`) are not flattened: the import rejects with a
+    // named feature so the loss is bounded and visible.
+    let input = br"{\rtf1\trowd\cellx2000\intbl A\itap2\cell\row}";
+    let error = import(input, &RtfOptions::default()).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            strict_ooxml_rtf::RtfError::UnsupportedRejected { ref feature, .. }
+                if feature == "nested-table-structure"
+        ),
+        "{error:?}"
+    );
 }
 
 #[test]

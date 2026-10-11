@@ -10,8 +10,8 @@
 use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
-    Border, BorderStyle, Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule,
-    Shading, Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
+    Border, BorderStyle, Borders, Color, Fonts, Highlight, Indentation, Justification,
+    LineSpacingRule, Shading, Spacing, TabStop, ThemeColorRef, TriState, Underline, VertAlign,
 };
 use strict_ooxml_wml::model::Document;
 
@@ -97,6 +97,8 @@ pub struct ComputedParagraph {
     pub border_before_pt: f64,
     /// Extra gap below the last line from `w:pBdr/w:bottom` (`space` + width), pt.
     pub border_after_pt: f64,
+    /// Effective paragraph borders (`w:pBdr`).
+    pub borders: Borders,
     /// Line spacing value in points (interpretation depends on `line_rule`).
     pub line_pt: Option<f64>,
     /// Line-spacing rule.
@@ -131,6 +133,7 @@ impl Default for ComputedParagraph {
             space_after_pt: 0.0,
             border_before_pt: 0.0,
             border_after_pt: 0.0,
+            borders: Borders::default(),
             line_pt: None,
             line_rule: LineSpacingRule::Auto,
             indent_start_pt: 0.0,
@@ -289,6 +292,7 @@ fn apply_paragraph_props_mode(
     if props.borders.bottom.is_some() {
         computed.border_after_pt = border_pad_pt(props.borders.bottom.as_ref());
     }
+    merge_borders(&mut computed.borders, &props.borders);
     if let Some(fill) = props
         .shading
         .as_ref()
@@ -345,6 +349,22 @@ fn border_pad_pt(border: Option<&Border>) -> f64 {
         .size
         .map_or(0.0, |size| f64::from(size.value()) / 8.0);
     space + width
+}
+
+/// Overlays the set edges of `layer` onto `borders` (later cascade layers win).
+fn merge_borders(borders: &mut Borders, layer: &Borders) {
+    for (slot, edge) in [
+        (&mut borders.top, &layer.top),
+        (&mut borders.bottom, &layer.bottom),
+        (&mut borders.start, &layer.start),
+        (&mut borders.end, &layer.end),
+        (&mut borders.between, &layer.between),
+        (&mut borders.bar, &layer.bar),
+    ] {
+        if edge.is_some() {
+            slot.clone_from(edge);
+        }
+    }
 }
 
 fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation) {

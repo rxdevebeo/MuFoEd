@@ -656,6 +656,14 @@ pub struct Borders {
     pub inside_horizontal: Option<Border>,
     /// Inside vertical border (tables).
     pub inside_vertical: Option<Border>,
+    /// Diagonal top-left to bottom-right border (`w:tcBorders/w:tl2br`).
+    pub tl2br: Option<Border>,
+    /// Diagonal top-right to bottom-left border (`w:tcBorders/w:tr2bl`).
+    pub tr2bl: Option<Border>,
+    /// Between border (`w:pBdr/w:between`), paragraph borders only.
+    pub between: Option<Border>,
+    /// Bar border (`w:pBdr/w:bar`), paragraph borders only.
+    pub bar: Option<Border>,
 }
 
 /// The set of fonts for the four script classes (`w:rFonts`).

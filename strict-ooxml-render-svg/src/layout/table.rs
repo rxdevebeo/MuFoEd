@@ -1237,9 +1237,31 @@ fn push_borders(
             }));
         }
     }
+    // Cell diagonals (`w:tl2br`/`w:tr2bl`) span the whole cell, so only the
+    // fragment carrying both the top and bottom edges draws them.
+    if top_edge && bottom_edge {
+        for (x1, y1, x2, y2, edge) in [
+            (x, y, right, bottom, properties.borders.tl2br.as_ref()),
+            (right, y, x, bottom, properties.borders.tr2bl.as_ref()),
+        ] {
+            let Some(border) = edge else { continue };
+            let Some((color, width, dashed)) = stroke(ctx, border) else {
+                continue;
+            };
+            items.push(Item::Line(LineItem {
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                width,
+                dashed,
+            }));
+        }
+    }
 }
 
-type Stroke = (String, f64, bool);
+pub(crate) type Stroke = (String, f64, bool);
 
 /// Resolves the stroke for one cell edge (`0` top, `1` bottom, `2` left, `3` right).
 fn resolve_edge(
@@ -1269,7 +1291,7 @@ fn resolve_edge(
 }
 
 /// Converts a `w:border` into a stroke (colour, width px, dashed).
-fn stroke(ctx: &LayoutContext<'_>, border: &Border) -> Option<Stroke> {
+pub(crate) fn stroke(ctx: &LayoutContext<'_>, border: &Border) -> Option<Stroke> {
     if matches!(
         border.style,
         Some(BorderStyle::None | BorderStyle::Nil) | None
