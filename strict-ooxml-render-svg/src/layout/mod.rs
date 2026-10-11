@@ -272,6 +272,8 @@ pub(crate) enum Flow {
     TableRow(TableRowFlow),
     /// An explicit page break.
     PageBreak,
+    /// An explicit column break (`w:br w:type="column"`).
+    ColumnBreak,
 }
 
 /// A laid-out table row.
@@ -405,6 +407,67 @@ pub(crate) fn geometry_for(
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
     }
+}
+
+/// Computes each column's absolute left and width in px from a section's `w:cols`.
+///
+/// Returns an empty vector for a single-column section (or no `w:cols`), which
+/// the paginator treats as the fast path: the content box is the whole page and
+/// nothing about the old layout changes.
+///
+/// Explicit `w:col` widths (RTF `\colw`) are used as written, and an undeclared
+/// width in an explicit set is the equal share of what is left over. The gap
+/// after a column is its `w:col/@space`, falling back to `w:cols/@space`, and a
+/// genuine `0` when neither is present — the units are never guessed.
+pub(crate) fn column_layout(
+    section: Option<&SectionProperties>,
+    content_left: f64,
+    content_width: f64,
+    scale: f64,
+) -> Vec<(f64, f64)> {
+    let Some(columns) = section.and_then(|section| section.columns.as_ref()) else {
+        return Vec::new();
+    };
+    let count = columns
+        .count
+        .map_or(columns.columns.len(), usize::from)
+        .max(1);
+    if count <= 1 {
+        return Vec::new();
+    }
+    let default_space = columns
+        .space
+        .map_or(0.0, |space| twips_to_px(space.value(), scale));
+    let explicit = !columns.equal_width && !columns.columns.is_empty();
+    let mut out = Vec::with_capacity(count);
+    let mut x = content_left;
+    if explicit {
+        for index in 0..count {
+            let spec = columns.columns.get(index);
+            let width = spec
+                .and_then(|spec| spec.width)
+                .map(|width| twips_to_px(width.value(), scale))
+                .filter(|width| *width > 0.0)
+                .unwrap_or_else(|| {
+                    // A `w:col` with no `w:w`: the equal share of what the
+                    // declared columns leave over (never negative).
+                    let remaining = (content_width - (x - content_left)).max(1.0);
+                    remaining / (count - index) as f64
+                });
+            out.push((x, width));
+            let space = spec
+                .and_then(|spec| spec.space)
+                .map_or(default_space, |space| twips_to_px(space.value(), scale));
+            x += width + space;
+        }
+    } else {
+        let width = ((content_width - default_space * (count - 1) as f64) / count as f64).max(1.0);
+        for _ in 0..count {
+            out.push((x, width));
+            x += width + default_space;
+        }
+    }
+    out
 }
 
 /// Shared state for layout and media resolution.

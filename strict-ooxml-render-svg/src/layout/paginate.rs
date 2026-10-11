@@ -14,8 +14,8 @@ use crate::layout::table::{
     layout_frame_contents, layout_table, offset_item, table_uniform_frame,
 };
 use crate::layout::{
-    geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
-    TextLine,
+    column_layout, geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage,
+    TableRowFlow, TextLine,
 };
 use crate::style::compute_paragraph;
 use crate::units::pt_to_px;
@@ -198,6 +198,12 @@ fn layout_once(
     );
     let mut paginator = Paginator::new(ctx, geometry, assumed, page_start, page_format);
     paginator.section_index = 0;
+    paginator.set_columns(column_layout(
+        first_props,
+        paginator.geometry.left,
+        paginator.geometry.content_width(),
+        ctx.options.scale,
+    ));
     for (index, (start, end)) in runs.iter().enumerate() {
         if paginator.selection_exhausted() {
             break;
@@ -231,10 +237,9 @@ fn layout_once(
                 );
             }
         }
-        let width = paginator.geometry.content_width();
         let body_blocks = &ctx.document.body.blocks;
         let run_blocks = body_blocks.get(*start..*end).unwrap_or_default();
-        layout_blocks(ctx, run_blocks, width, &mut paginator, 0)?;
+        layout_blocks(ctx, run_blocks, &mut paginator, 0)?;
     }
     if !paginator.selection_exhausted() {
         append_endnotes(ctx, &mut paginator)?;
@@ -326,7 +331,6 @@ fn any_headers_footers_have_dynamic_fields(
 fn layout_blocks(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
-    width: f64,
     paginator: &mut Paginator<'_>,
     depth: u32,
 ) -> Result<()> {
@@ -344,7 +348,6 @@ fn layout_blocks(
         .into_strict());
     }
     ctx.set_block_depth(depth);
-    let left = paginator.geometry.left;
     let grid = paginator.geometry.grid_line_pitch;
     // The space between two paragraphs is the **larger** of the first's
     // `w:after` and the second's `w:before`, not their sum: `06-strict-math-display`
@@ -377,6 +380,12 @@ fn layout_blocks(
         }
         match block {
             Block::Paragraph(para) => {
+                // The paragraph is laid out at the column it starts in; if it
+                // overflows into the next column the paginator shifts its lines
+                // by the column offset (equal-width columns keep the same wrap).
+                let left = paginator.content_left();
+                let width = paginator.column_width();
+                paginator.origin_left = left;
                 let collapse = previous_style
                     .as_ref()
                     .is_some_and(|style| *style == para.props.style)
@@ -397,6 +406,9 @@ fn layout_blocks(
             Block::Table(table) => {
                 previous_style = None;
                 previous_contextual = false;
+                let left = paginator.content_left();
+                let width = paginator.column_width();
+                paginator.origin_left = left;
                 ctx.frame_anchor.set((
                     paginator.geometry.left,
                     paginator.geometry.top,
@@ -419,7 +431,7 @@ fn layout_blocks(
             Block::SdtBlock(sdt) => {
                 previous_style = None;
                 previous_contextual = false;
-                layout_blocks(ctx, &sdt.blocks, width, paginator, depth + 1)?;
+                layout_blocks(ctx, &sdt.blocks, paginator, depth + 1)?;
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
@@ -464,7 +476,7 @@ fn place_body_paragraph(
         pt_to_px(computed.space_before_pt, ctx.options.scale)
     };
     let gap = pending_after.max(space_before);
-    let host_x = paginator.geometry.left;
+    let host_x = paginator.content_left();
     let host_y_pred = paginator.geometry.top + paginator.cursor + gap;
     let local_exclusions: Vec<_> = paginator
         .wrap_exclusions
@@ -502,11 +514,11 @@ fn place_body_paragraph(
                 Flow::Image(image) => image.h,
                 Flow::Block { height, .. } => *height,
                 Flow::TableRow(row) => row.height,
-                Flow::PageBreak => 0.0,
+                Flow::PageBreak | Flow::ColumnBreak => 0.0,
             })
             .sum();
         if !paginator.at_page_top() && paginator.cursor + total > paginator.body_height() {
-            paginator.page_break()?;
+            paginator.advance_column()?;
             if paginator.selection_exhausted() {
                 return Ok(0.0);
             }
@@ -518,6 +530,7 @@ fn place_body_paragraph(
     let page = paginator.pages.len();
     let host_y = paginator.geometry.top + paginator.cursor;
     let pages_before = paginator.pages.len();
+    let column_before = paginator.column;
     for item in flow.flows {
         if boundary_marker {
             paginator.place_boundary_marker(item)?;
@@ -526,8 +539,8 @@ fn place_body_paragraph(
         }
     }
     // Stroke the paragraph's `w:pBdr` edges. A paragraph that broke across a
-    // page is skipped: its border box would span two pages.
-    if paginator.pages.len() == pages_before {
+    // page or a column is skipped: its border box would span two of them.
+    if paginator.pages.len() == pages_before && paginator.column == column_before {
         let text_bottom = paginator.geometry.top + paginator.cursor + border_after;
         // `w:pBdr` spans the paragraph's indented text box, not the full column.
         let indent_start = pt_to_px(computed.indent_start_pt, ctx.options.scale);
@@ -669,6 +682,8 @@ fn append_endnotes(ctx: &LayoutContext<'_>, paginator: &mut Paginator<'_>) -> Re
     if ids.is_empty() {
         return Ok(());
     }
+    // Endnotes span the whole page, not a section column.
+    paginator.set_columns(Vec::new());
     let left = paginator.geometry.left;
     let width = paginator.geometry.content_width();
     let line = Item::Line(LineItem {
@@ -791,6 +806,10 @@ fn append_note_blocks(
     Ok(())
 }
 
+/// A continuous section break's pending page geometry: the new section's
+/// geometry, its index, and its column layout.
+type DeferredGeometry = (Geometry, usize, Vec<(f64, f64)>);
+
 /// The paginator accumulates items into pages and manages footnotes.
 struct Paginator<'a> {
     ctx: &'a LayoutContext<'a>,
@@ -816,7 +835,15 @@ struct Paginator<'a> {
     /// `PageSelection::Range` already produced `end` pages; further content is dropped.
     truncated: bool,
     /// Geometry deferred by a `continuous` section break until the next page.
-    pending_geometry: Option<(Geometry, usize)>,
+    pending_geometry: Option<DeferredGeometry>,
+    /// Active section's columns as `(absolute left, width)` in px, empty for one
+    /// column (the fast path).
+    columns: Vec<(f64, f64)>,
+    /// Index of the column content is placed into.
+    column: usize,
+    /// Left edge the current block of flows was laid out at, so items placed in
+    /// a later column can be shifted by the column offset.
+    origin_left: f64,
     /// Footnote ids rendered on the current page, in order.
     page_footnotes: Vec<u32>,
     /// Footnote ids deferred to the next page (continuation).
@@ -893,6 +920,9 @@ impl<'a> Paginator<'a> {
             keep_empty_page: false,
             truncated: false,
             pending_geometry: None,
+            columns: Vec::new(),
+            column: 0,
+            origin_left: geometry.left,
             page_footnotes: Vec::new(),
             pending: Vec::new(),
             notes_height: 0.0,
@@ -952,11 +982,27 @@ impl<'a> Paginator<'a> {
         geometry: Geometry,
         section_index: usize,
     ) -> Result<()> {
+        // The ctx borrow is copied out first so the sections lookup does not
+        // borrow `self` across the mutations below.
+        let columns = {
+            let ctx = self.ctx;
+            let props = ctx
+                .document
+                .sections
+                .get(section_index)
+                .map(|section| &section.properties);
+            column_layout(
+                props,
+                geometry.left,
+                geometry.content_width(),
+                ctx.options.scale,
+            )
+        };
         let break_type = break_type.unwrap_or(SectionType::NextPage);
         match break_type {
             SectionType::Continuous => {
                 // Same page; new geometry applies from the next page onward.
-                self.pending_geometry = Some((geometry, section_index));
+                self.pending_geometry = Some((geometry, section_index, columns));
                 Ok(())
             }
             SectionType::NextPage | SectionType::NextColumn => {
@@ -971,6 +1017,7 @@ impl<'a> Paginator<'a> {
                 self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.set_columns(columns);
                 self.apply_page_regions();
                 Ok(())
             }
@@ -988,6 +1035,7 @@ impl<'a> Paginator<'a> {
                 self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.set_columns(columns);
                 self.apply_page_regions();
                 Ok(())
             }
@@ -1005,6 +1053,7 @@ impl<'a> Paginator<'a> {
                 self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.set_columns(columns);
                 self.apply_page_regions();
                 Ok(())
             }
@@ -1013,10 +1062,59 @@ impl<'a> Paginator<'a> {
 
     /// Applies a deferred continuous-section geometry when a new page starts.
     fn take_pending_geometry(&mut self) {
-        if let Some((geometry, section_index)) = self.pending_geometry.take() {
+        if let Some((geometry, section_index, columns)) = self.pending_geometry.take() {
             self.base_geometry = geometry;
             self.geometry = geometry;
             self.section_index = section_index;
+            self.columns = columns;
+            self.column = 0;
+            self.origin_left = self.geometry.left;
+        }
+    }
+
+    /// Installs a section's column layout and resets to the first column.
+    ///
+    /// An empty vector is the single-column fast path: the content box is the
+    /// whole page and every `content_left`/`column_width`/`column_dx` call
+    /// returns exactly what the pre-column layout used.
+    fn set_columns(&mut self, columns: Vec<(f64, f64)>) {
+        self.columns = columns;
+        self.column = 0;
+        self.origin_left = self.geometry.left;
+    }
+
+    /// Absolute left edge of the active column (or the page content box).
+    fn content_left(&self) -> f64 {
+        self.columns
+            .get(self.column)
+            .map_or(self.geometry.left, |column| column.0)
+    }
+
+    /// Width of the active column (or the whole page content box).
+    fn column_width(&self) -> f64 {
+        self.columns
+            .get(self.column)
+            .map_or_else(|| self.geometry.content_width(), |column| column.1)
+    }
+
+    /// Horizontal shift from the block's layout origin to the active column.
+    fn column_dx(&self) -> f64 {
+        self.content_left() - self.origin_left
+    }
+
+    /// Moves to the next column, or to the next page when the columns are full.
+    ///
+    /// Returns `true` when it opened a new page rather than a new column, which
+    /// is what decides whether table header rows repeat.
+    fn advance_column(&mut self) -> Result<bool> {
+        if self.column + 1 < self.columns.len() {
+            self.column += 1;
+            self.cursor = 0.0;
+            self.wrap_exclusions.clear();
+            Ok(false)
+        } else {
+            self.page_break()?;
+            Ok(true)
         }
     }
 
@@ -1116,6 +1214,7 @@ impl<'a> Paginator<'a> {
         self.ctx.reset_frame_cursors();
         self.take_pending_geometry();
         self.cursor = 0.0;
+        self.column = 0;
         self.started = true;
         self.current = Vec::new();
         self.wrap_exclusions.clear();
@@ -1224,16 +1323,21 @@ impl<'a> Paginator<'a> {
                 self.keep_empty_page = true;
                 self.page_break()
             }
+            Flow::ColumnBreak => {
+                self.advance_column()?;
+                Ok(())
+            }
             Flow::Line(line) => self.place_line(line),
             Flow::Image(image) => {
                 self.started = true;
                 if !self.current.is_empty() && self.cursor + image.h > self.body_height() {
-                    self.page_break()?;
+                    self.advance_column()?;
                     if self.selection_exhausted() {
                         return Ok(());
                     }
                 }
                 let mut image = image;
+                image.x += self.column_dx();
                 image.y += self.geometry.top + self.cursor;
                 self.cursor += image.h;
                 self.push_item(Item::Image(image))?;
@@ -1242,14 +1346,15 @@ impl<'a> Paginator<'a> {
             Flow::Block { items, height } => {
                 self.started = true;
                 if !self.current.is_empty() && self.cursor + height > self.body_height() {
-                    self.page_break()?;
+                    self.advance_column()?;
                     if self.selection_exhausted() {
                         return Ok(());
                     }
                 }
+                let dx = self.column_dx();
                 let dy = self.geometry.top + self.cursor;
                 for item in &items {
-                    self.push_item(offset_item(item, 0.0, dy))?;
+                    self.push_item(offset_item(item, dx, dy))?;
                 }
                 self.cursor += height;
                 Ok(())
@@ -1286,20 +1391,23 @@ impl<'a> Paginator<'a> {
         }
         self.started = true;
         if !self.current.is_empty() && self.cursor + row.height > self.body_height() {
-            self.page_break()?;
+            let new_page = self.advance_column()?;
             if self.selection_exhausted() {
                 return Ok(());
             }
-            self.repeat_table_headers()?;
+            if new_page {
+                self.repeat_table_headers()?;
+            }
         }
         self.place_row_items(row)
     }
 
     /// Places a row's items at the current cursor.
     fn place_row_items(&mut self, row: &TableRowFlow) -> Result<()> {
+        let dx = self.column_dx();
         let dy = self.geometry.top + self.cursor;
         for item in &row.items {
-            self.push_item(offset_item(item, 0.0, dy))?;
+            self.push_item(offset_item(item, dx, dy))?;
         }
         for item in &row.page_frames {
             self.push_item(item.clone())?;
@@ -1331,7 +1439,7 @@ impl<'a> Paginator<'a> {
         } else {
             let extra = self.prospective_footnote_extra(&line);
             if self.cursor + line.height + extra > self.body_height() {
-                self.page_break()?;
+                self.advance_column()?;
                 if self.selection_exhausted() {
                     return Ok(());
                 }
@@ -1339,7 +1447,7 @@ impl<'a> Paginator<'a> {
             self.reserve_line_footnotes(&line);
         }
         self.resolve_fields(&mut line);
-        line.offset(0.0, self.geometry.top + self.cursor);
+        line.offset(self.column_dx(), self.geometry.top + self.cursor);
         let graphics = std::mem::take(&mut line.graphics);
         let (backs, rest): (Vec<_>, Vec<_>) = graphics
             .into_iter()

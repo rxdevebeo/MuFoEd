@@ -36,6 +36,8 @@ enum Seg {
     Break,
     /// A hard page break.
     PageBreak,
+    /// A hard column break (`w:br w:type="column"`).
+    ColumnBreak,
     /// An inline image.
     Image(ImageItem),
     /// An inline block object (shape/group), already rendered.
@@ -339,7 +341,8 @@ fn flatten_inlines(
             Inline::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             Inline::Break(kind) => match kind {
                 BreakKind::Page => out.push(Seg::PageBreak),
-                BreakKind::Column | BreakKind::TextWrapping => out.push(Seg::Break),
+                BreakKind::Column => out.push(Seg::ColumnBreak),
+                BreakKind::TextWrapping => out.push(Seg::Break),
             },
             Inline::Tab => out.push(Seg::Tab),
             Inline::SdtInline(sdt) => flatten_inlines(
@@ -492,8 +495,10 @@ fn flatten_run(
             }
             RunContent::Tab => out.push(Seg::Tab),
             RunContent::Break(BreakKind::Page) => out.push(Seg::PageBreak),
-            RunContent::Break(BreakKind::Column | BreakKind::TextWrapping)
-            | RunContent::CarriageReturn => out.push(Seg::Break),
+            RunContent::Break(BreakKind::Column) => out.push(Seg::ColumnBreak),
+            RunContent::Break(BreakKind::TextWrapping) | RunContent::CarriageReturn => {
+                out.push(Seg::Break);
+            }
             RunContent::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             RunContent::Symbol(symbol) => {
                 out.push(Seg::Text(symbol.character.to_string(), run_style.clone()));
@@ -672,6 +677,13 @@ fn build_lines(
                 sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
                 sink.flows.push(Flow::PageBreak);
                 // The square wrap stays on the page where the anchor was placed.
+                sink.exclusions.clear();
+                sink.line_y = 0.0;
+                x = normal_x;
+            }
+            Seg::ColumnBreak => {
+                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                sink.flows.push(Flow::ColumnBreak);
                 sink.exclusions.clear();
                 sink.line_y = 0.0;
                 x = normal_x;
@@ -1882,7 +1894,12 @@ fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
             Seg::Text(text, run) => width += ctx.measure(text, run),
             Seg::Object(_, object_width, _) => width += object_width,
             Seg::Math(boxed, _) => width += boxed.size.width,
-            Seg::Tab | Seg::Break | Seg::PageBreak | Seg::Image(_) | Seg::MathParagraph(_) => break,
+            Seg::Tab
+            | Seg::Break
+            | Seg::PageBreak
+            | Seg::ColumnBreak
+            | Seg::Image(_)
+            | Seg::MathParagraph(_) => break,
             Seg::Anchor(_)
             | Seg::FootnoteMarker(_, _)
             | Seg::EndnoteMarker(_, _)
@@ -1906,7 +1923,7 @@ fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
                 }
                 width += ctx.measure(text, run);
             }
-            Seg::Tab | Seg::Break | Seg::PageBreak => break,
+            Seg::Tab | Seg::Break | Seg::PageBreak | Seg::ColumnBreak => break,
             _ => {}
         }
     }
