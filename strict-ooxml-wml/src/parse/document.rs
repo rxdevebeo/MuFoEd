@@ -549,12 +549,7 @@ impl PartParser<'_> {
             InlineKind::FootnoteRef => {
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     out.push(Inline::FootnoteRef(id));
-                    self.record(
-                        "w:footnoteReference",
-                        SupportStatus::Supported,
-                        None,
-                        Some(location),
-                    );
+                    self.record_note_reference("w:footnoteReference", attrs, location);
                 } else {
                     self.record(
                         "w:footnoteReference",
@@ -568,12 +563,7 @@ impl PartParser<'_> {
             InlineKind::EndnoteRef => {
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     out.push(Inline::EndnoteRef(id));
-                    self.record(
-                        "w:endnoteReference",
-                        SupportStatus::Supported,
-                        None,
-                        Some(location),
-                    );
+                    self.record_note_reference("w:endnoteReference", attrs, location);
                 } else {
                     self.record(
                         "w:endnoteReference",
@@ -722,12 +712,8 @@ impl PartParser<'_> {
             RunKind::FootnoteRef => {
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     content.push(RunContent::FootnoteRef(id));
-                    self.record(
-                        "w:footnoteReference",
-                        SupportStatus::Supported,
-                        None,
-                        Some(self.location()),
-                    );
+                    let location = self.location();
+                    self.record_note_reference("w:footnoteReference", attrs, location);
                 } else {
                     self.record(
                         "w:footnoteReference",
@@ -741,12 +727,8 @@ impl PartParser<'_> {
             RunKind::EndnoteRef => {
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     content.push(RunContent::EndnoteRef(id));
-                    self.record(
-                        "w:endnoteReference",
-                        SupportStatus::Supported,
-                        None,
-                        Some(self.location()),
-                    );
+                    let location = self.location();
+                    self.record_note_reference("w:endnoteReference", attrs, location);
                 } else {
                     self.record(
                         "w:endnoteReference",
@@ -998,6 +980,33 @@ impl PartParser<'_> {
             inlines,
             location,
         })
+    }
+
+    /// Records a `w:footnoteReference`/`w:endnoteReference`.
+    ///
+    /// The reference itself is carried (`SupportStatus::Supported`), but
+    /// `w:customMarkFollows` (a hand-typed custom note mark) is not: the model
+    /// keeps only the note id, so an input that uses it is `Partial` rather
+    /// than silently cleaned.
+    fn record_note_reference(
+        &mut self,
+        feature: &str,
+        attrs: &[Attr],
+        location: strict_ooxml_core::error::SourceLocation,
+    ) {
+        if wml_attr(attrs, "customMarkFollows").is_some_and(parse_on_off_value) {
+            self.record(
+                feature,
+                SupportStatus::Partial,
+                Some(
+                    "customMarkFollows is not carried; custom note marks are unsupported"
+                        .to_owned(),
+                ),
+                Some(location),
+            );
+        } else {
+            self.record(feature, SupportStatus::Supported, None, Some(location));
+        }
     }
 
     /// Parses a simple field (`w:fldSimple`).
