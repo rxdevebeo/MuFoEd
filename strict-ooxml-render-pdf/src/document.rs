@@ -18,7 +18,9 @@ use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str};
 use strict_ooxml_core::control;
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::part::PartId;
-use strict_ooxml_render_svg::layout::{Item, PathItem, PlacedPage, TextAdvanceKind, TextItem};
+use strict_ooxml_render_svg::layout::{
+    Item, PathItem, PathPaint, PlacedPage, TextAdvanceKind, TextItem,
+};
 use strict_ooxml_render_svg::{FontProvider, MediaSource, RenderOptions};
 
 use crate::font::{EmbeddedFont, FaceCollector, FaceKey};
@@ -57,6 +59,7 @@ struct PageWriter<'a> {
     /// The document's image resource names, fixed before any content is written.
     names: &'a BTreeMap<PartId, String>,
     images: BTreeMap<PartId, String>,
+    paints: Vec<(String, PathPaint)>,
     report: &'a mut PdfReport,
 }
 
@@ -107,7 +110,7 @@ pub fn render_with_source(
     ));
 
     // Pass one: content streams and the images each page needs.
-    let mut streams: Vec<(Vec<u8>, BTreeMap<PartId, String>)> = Vec::with_capacity(pages.len());
+    let mut streams = Vec::with_capacity(pages.len());
     let _scope = options.control.as_ref().map(control::OpenControl::enter);
     control::stage(control::Stage::Painting, pages.len() as u64);
     for page in pages {
@@ -121,10 +124,15 @@ pub fn render_with_source(
             media,
             names: &image_names,
             images: BTreeMap::new(),
+            paints: Vec::new(),
             report: &mut report,
         };
         writer.draw_page(page, options.background);
-        streams.push((writer.content.finish().into_vec(), writer.images));
+        streams.push((
+            writer.content.finish().into_vec(),
+            writer.images,
+            writer.paints,
+        ));
     }
 
     // Pass two: the file, with ids handed out in a fixed order.
@@ -136,7 +144,7 @@ pub fn render_with_source(
     let mut builder = PdfBuilder::new();
     let mut image_refs: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
     let mut page_objects: Vec<PageObjects> = Vec::with_capacity(pages.len());
-    for (_, images) in &streams {
+    for (_, images, paints) in &streams {
         let content_id = builder.allocate();
         let mut image_ids: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
         for part in images.keys() {
@@ -175,6 +183,10 @@ pub fn render_with_source(
             content: content_id,
             page: builder.allocate(),
             images: image_ids,
+            paints: paints
+                .iter()
+                .map(|(name, paint)| (name.clone(), builder.allocate(), paint.clone()))
+                .collect(),
         });
     }
     // A CID font needs seven objects: the program, its descriptor, the CID font,
@@ -193,9 +205,14 @@ pub fn render_with_source(
     for ((font, _), ids) in fonts.iter().zip(font_ids.iter()) {
         write_font(&mut pdf, *ids, font);
     }
+    for objects in &page_objects {
+        for (_, id, paint) in &objects.paints {
+            crate::fills::write(&mut pdf, *id, paint);
+        }
+    }
     // Pass one pushed one stream per page and the loop above one set of ids per
     // stream, so the three line up.
-    for ((page, objects), (content, _)) in pages.iter().zip(&page_objects).zip(&streams) {
+    for ((page, objects), (content, _, _)) in pages.iter().zip(&page_objects).zip(&streams) {
         let width_pt = px_to_pt(page.width_px, scale) as f32;
         let height_pt = px_to_pt(page.height_px, scale) as f32;
         {
@@ -210,6 +227,22 @@ pub fn render_with_source(
         page_writer.media_box(Rect::new(0.0, 0.0, width_pt, height_pt));
         {
             let mut resources = page_writer.resources();
+            {
+                let mut shadings = resources.shadings();
+                for (name, id, paint) in &objects.paints {
+                    if matches!(paint, PathPaint::LinearGradient { .. }) {
+                        shadings.pair(Name(name.as_bytes()), *id);
+                    }
+                }
+            }
+            {
+                let mut patterns = resources.patterns();
+                for (name, id, paint) in &objects.paints {
+                    if matches!(paint, PathPaint::Pattern { .. }) {
+                        patterns.pair(Name(name.as_bytes()), *id);
+                    }
+                }
+            }
             {
                 let mut fonts_dict = resources.fonts();
                 for ((_, name), ids) in fonts.iter().zip(font_ids.iter()) {
@@ -247,6 +280,7 @@ struct PageObjects {
     page: Ref,
     /// Image id and optional mask id, by media part.
     images: BTreeMap<PartId, (Ref, Option<Ref>)>,
+    paints: Vec<(String, Ref, PathPaint)>,
 }
 
 /// The object ids a CID font occupies (seven: Type0, program, descriptor, CID
@@ -327,11 +361,10 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                 continue;
             };
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
-            let Some(source) = strict_ooxml_render_svg::font::face_source(
-                &text.run.family,
-                text.run.bold,
-                text.run.italic,
-            ) else {
+            let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &shown);
+            let Some(source) =
+                strict_ooxml_render_svg::font::face_source(&family, text.run.bold, text.run.italic)
+            else {
                 report.record_missing_face(&text.run.family);
                 continue;
             };
@@ -345,7 +378,7 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
             }
             if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
                 &shown,
-                &text.run.family,
+                &family,
                 text.run.bold,
                 text.run.italic,
             ) {
@@ -474,7 +507,7 @@ impl PageWriter<'_> {
             return;
         }
         let fill = shape.fill.as_deref().filter(|c| is_paint(c));
-        if fill.is_none() && shape.stroke.is_none() {
+        if fill.is_none() && shape.paint.is_none() && shape.stroke.is_none() {
             return;
         }
         // The path is in local coordinates with y pointing down; PDF's y points
@@ -524,7 +557,50 @@ impl PageWriter<'_> {
         let matrix = Matrix::chain(inner, Matrix::translate(self.x(shape.x), self.y(shape.y)));
         self.content.save_state();
         self.content.transform(matrix.to_array());
-        for segment in &segments {
+        self.outline(&segments);
+        if let Some(fill) = fill {
+            let (red, green, blue) = rgb(fill);
+            self.content.set_fill_rgb(red, green, blue);
+        }
+        if let Some(paint) = &shape.paint {
+            let name = format!("Fill{}", self.paints.len());
+            self.paints.push((name.clone(), paint.clone()));
+            match paint {
+                PathPaint::LinearGradient { .. } => {
+                    self.content.save_state().clip_nonzero().end_path();
+                    self.content.shading(Name(name.as_bytes())).restore_state();
+                    self.outline(&segments);
+                }
+                PathPaint::Pattern { .. } => {
+                    self.content
+                        .set_fill_color_space(pdf_writer::types::ColorSpaceOperand::Pattern)
+                        .set_fill_pattern([], Name(name.as_bytes()));
+                }
+            }
+        }
+        if let Some(stroke) = shape.stroke.as_deref().filter(|c| is_paint(c)) {
+            let (red, green, blue) = rgb(stroke);
+            self.content.set_stroke_rgb(red, green, blue);
+            self.content
+                .set_line_width(px_to_pt(shape.stroke_w, self.scale).max(0.0) as f32);
+            if let Some(dash) = shape.dash.as_deref() {
+                let array = dash_array(dash);
+                if !array.is_empty() {
+                    self.content.set_dash_pattern(array, 0.0);
+                }
+            }
+        }
+        let paint_fill = match &shape.paint {
+            Some(PathPaint::LinearGradient { .. }) => false,
+            Some(PathPaint::Pattern { .. }) => true,
+            None => fill.is_some(),
+        };
+        finish(&mut self.content, paint_fill, shape.stroke.is_some());
+        self.content.restore_state();
+    }
+
+    fn outline(&mut self, segments: &[Segment]) {
+        for segment in segments {
             match *segment {
                 Segment::MoveTo(x, y) => {
                     self.content.move_to(x as f32, y as f32);
@@ -550,24 +626,6 @@ impl PageWriter<'_> {
                 }
             }
         }
-        if let Some(fill) = fill {
-            let (red, green, blue) = rgb(fill);
-            self.content.set_fill_rgb(red, green, blue);
-        }
-        if let Some(stroke) = shape.stroke.as_deref().filter(|c| is_paint(c)) {
-            let (red, green, blue) = rgb(stroke);
-            self.content.set_stroke_rgb(red, green, blue);
-            self.content
-                .set_line_width(px_to_pt(shape.stroke_w, self.scale).max(0.0) as f32);
-            if let Some(dash) = shape.dash.as_deref() {
-                let array = dash_array(dash);
-                if !array.is_empty() {
-                    self.content.set_dash_pattern(array, 0.0);
-                }
-            }
-        }
-        finish(&mut self.content, fill.is_some(), shape.stroke.is_some());
-        self.content.restore_state();
     }
 
     fn image(&mut self, image: &strict_ooxml_render_svg::layout::ImageItem) {
@@ -600,6 +658,27 @@ impl PageWriter<'_> {
     }
 
     fn text(&mut self, text: &TextItem) {
+        if text.run.rotation_deg == 0.0 {
+            self.text_unrotated(text);
+            return;
+        }
+        let (sin, cos) = (-text.run.rotation_deg.to_radians()).sin_cos();
+        let x = f64::from(self.x(text.x));
+        let y = f64::from(self.y(text.baseline));
+        self.content.save_state();
+        self.content.transform([
+            cos as f32,
+            sin as f32,
+            -sin as f32,
+            cos as f32,
+            (x - cos * x + sin * y) as f32,
+            (y - sin * x - cos * y) as f32,
+        ]);
+        self.text_unrotated(text);
+        self.content.restore_state();
+    }
+
+    fn text_unrotated(&mut self, text: &TextItem) {
         if text.text.is_empty() {
             return;
         }
@@ -607,7 +686,7 @@ impl PageWriter<'_> {
         // the layout used decides which embedded face a run refers to, and it is
         // cloned out before anything is drawn: `fonts` is an immutable borrow of
         // `self` and the content stream is a mutable one.
-        let mapped = strict_ooxml_render_svg::font::map_family(&text.run.family);
+        let mapped = strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text);
         let found = self
             .fonts
             .iter()
@@ -634,7 +713,7 @@ impl PageWriter<'_> {
             TextAdvanceKind::Shaped => {
                 if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
                     &shown,
-                    &text.run.family,
+                    &mapped,
                     text.run.bold,
                     text.run.italic,
                 ) {

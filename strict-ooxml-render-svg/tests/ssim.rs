@@ -97,7 +97,9 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // through the numerator's descenders, and the page's SSIM went from 0.9496 —
     // below the threshold, i.e. failing — to 0.9513, legible and measured. The
     // layout's own invariant is now a unit test rather than a number of pixels.
-    ("strict-stage5c", 0, 1.0, 21.0),
+    // Compact inline fraction parts reduce the bottom drift by 2 px (21 -> 19).
+    // Real alphabets, compact grids and the radical degree notch improve 19 -> 12 px.
+    ("strict-stage5c", 0, 1.0, 12.0),
     // AUD-50: several `m:oMath` children of one `m:oMathPara` are laid out one
     // display line each (was: nodes merged into one horizontal expression).
     // That adds roughly one formula height per multi-equation paragraph, so
@@ -105,10 +107,13 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // +3. Pins track the new stacking; `coverage/render-gates.toml` carries
     // the matching override. Waiver `STAGE5C-P1-LAYOUT` tracks bringing the
     // WPS reference (or a follow-up layout pass) back inside the old band.
-    ("strict-stage5c", 1, 3.0, 240.0),
+    // Real index outlines need an additional 0.82 px separation on the script
+    // row. Its propagated ink edge rounds to +2 px; class bounds stay unchanged.
+    ("strict-stage5c", 1, 3.0, 242.0),
     // -2 -> 4: the same trade on the simplest formula page, where one fraction gets
     // 6 px taller. The page's SSIM went from 0.9632 to 0.9747.
-    ("05-strict-math-simple", 0, 0.0, 4.0),
+    // Compact inline fraction parts bring the former +4 px bottom drift to zero.
+    ("05-strict-math-simple", 0, 0.0, 0.0),
     // -10 -> 5: the same trade on the display-math page, and the largest single
     // change here — 15 px, because three stacked fractions each get taller. The
     // page's SSIM went from 0.9496 (below the threshold) to 0.9762, and its
@@ -667,19 +672,23 @@ fn the_extent_check_sees_drift_the_centroid_does_not() {
 /// and the pinned value was not lowered, which is how progress is claimed.
 #[test]
 fn structural_extent_ratchet_pins_the_known_drift() {
+    let mut changes = Vec::new();
     for (document, page, top, bottom) in EXTENT_RATCHET {
         let (reference, candidate) = rasterize_reference_pair(document, *page);
         let top_delta = extent_delta(&reference, &candidate, Edge::Top);
         let bottom_delta = extent_delta(&reference, &candidate, Edge::Bottom);
-        assert_eq!(
-            top_delta, *top,
-            "{document} page {page}: top ink edge moved (was {top}, now {top_delta})"
-        );
-        assert_eq!(
-            bottom_delta, *bottom,
-            "{document} page {page}: bottom ink edge moved (was {bottom}, now {bottom_delta})"
-        );
+        if top_delta != *top {
+            changes.push(format!(
+                "{document} page {page}: top ink edge moved (was {top}, now {top_delta})"
+            ));
+        }
+        if bottom_delta != *bottom {
+            changes.push(format!(
+                "{document} page {page}: bottom ink edge moved (was {bottom}, now {bottom_delta})"
+            ));
+        }
     }
+    assert!(changes.is_empty(), "{}", changes.join("\n"));
 }
 
 /// The ratchet must cover every gated page: a fixture added to the gate

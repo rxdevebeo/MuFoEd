@@ -4,7 +4,7 @@
 use strict_ooxml_wml::model::drawing::AnchorDrawing;
 use strict_ooxml_wml::model::props::{CellProperties, FrameProperties};
 use strict_ooxml_wml::model::values::{
-    Border, BorderStyle, CellMargins, Twips, VerticalMerge, Width, WidthKind,
+    Border, BorderStyle, CellMargins, TextDirection, Twips, VerticalMerge, Width, WidthKind,
 };
 use strict_ooxml_wml::model::{Block, Table};
 
@@ -50,6 +50,8 @@ struct RawCell {
     /// Page-absolute frames taken out of the cell flow.
     page_frames: Vec<Item>,
     margin_top: f64,
+    content_height: f64,
+    margin_bottom: f64,
     vmerge: VState,
 }
 
@@ -120,7 +122,89 @@ pub(crate) fn layout_table(
         });
     }
 
+    fit_rotated_merges(&mut rows);
     row_flows(ctx, table, &rows)
+}
+
+/// Rotated content occupies the complete merged region, not its first row.
+fn fit_rotated_merges(rows: &mut [RawRow]) {
+    for index in 0..rows.len() {
+        let constraints: Vec<(usize, usize, f64)> = rows
+            .get(index)
+            .into_iter()
+            .flat_map(|row| &row.cells)
+            .filter(|cell| {
+                cell.vmerge == VState::Restart
+                    && matches!(
+                        cell.properties.text_direction,
+                        Some(TextDirection::BtLr | TextDirection::TbRl)
+                    )
+            })
+            .map(|cell| {
+                (
+                    cell.col,
+                    cell.span,
+                    cell.content_height + cell.margin_top + cell.margin_bottom,
+                )
+            })
+            .collect();
+        for (col, span, required) in constraints {
+            let mut end = index + 1;
+            while rows.get(end).is_some_and(|row| {
+                row.cells.iter().any(|cell| {
+                    cell.col == col && cell.span == span && cell.vmerge == VState::Continue
+                })
+            }) {
+                end += 1;
+            }
+            let available: f64 = rows
+                .get(index..end)
+                .unwrap_or_default()
+                .iter()
+                .map(|row| row.height)
+                .sum();
+            if let Some(last) = rows.get_mut(end - 1) {
+                last.height += (required - available).max(0.0);
+            }
+        }
+    }
+}
+
+/// Authored row minima give a vertical text cell its horizontal wrapping width.
+fn authored_cell_height(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    row: usize,
+    col: usize,
+    span: usize,
+    merge: Option<VerticalMerge>,
+) -> Option<f64> {
+    let mut height = 0.0;
+    for (index, next) in table.rows.iter().enumerate().skip(row) {
+        if index > row {
+            if merge != Some(VerticalMerge::Restart) {
+                break;
+            }
+            let mut column = next.props.grid_before.unwrap_or(0).max(0) as usize;
+            let continuation = next.cells.iter().any(|cell| {
+                let width = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+                let matches = column == col
+                    && width == span
+                    && cell.props.vertical_merge == Some(VerticalMerge::Continue);
+                column += width;
+                matches
+            });
+            if !continuation {
+                break;
+            }
+        }
+        let declared = next.props.height.as_ref()?.value?.value();
+        if declared <= 0 {
+            return None;
+        }
+        height += twips_to_px(declared, ctx.options.scale);
+    }
+    (height > 0.0).then_some(height)
 }
 
 /// Paints the laid-out rows (shading, cell content, borders) into row flows.
@@ -252,7 +336,7 @@ fn layout_row(
             table.grid.len()
         ));
     }
-    let mut column = 0usize;
+    let mut column = row.props.grid_before.unwrap_or(0).max(0) as usize;
     let mut cells = Vec::with_capacity(row.cells.len());
     let mut max_content: f64 = 0.0;
     for cell in &row.cells {
@@ -288,17 +372,39 @@ fn layout_row(
         let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
         let cell_content_width = (width - margins.0 - margins.1).max(1.0);
         let cell_style = crate::table_style::enter_cell(table, conditions);
-        let (items, content_height, page_frames) = layout_cell_content(
+        let direction = crate::table_style::resolve_cell_properties(
+            ctx.document,
+            table,
+            conditions,
+            &cell.props,
+        )
+        .text_direction;
+        let (items, content_height, page_frames) = layout_oriented_cell_content(
             ctx,
             &cell.blocks,
             x + margins.0,
             cell_content_width,
             depth + 1,
             escape_frames,
+            direction,
+            authored_cell_height(
+                ctx,
+                table,
+                row_index,
+                column,
+                span,
+                cell.props.vertical_merge,
+            )
+            .map(|height| (height - margins.2 - margins.3).max(1.0)),
         );
         drop(cell_style);
         let height = content_height + margins.2 + margins.3;
-        max_content = max_content.max(height);
+        if cell.props.vertical_merge != Some(VerticalMerge::Continue)
+            && !(cell.props.vertical_merge == Some(VerticalMerge::Restart)
+                && matches!(direction, Some(TextDirection::BtLr | TextDirection::TbRl)))
+        {
+            max_content = max_content.max(height);
+        }
         push_raw_cell(
             ctx,
             table,
@@ -310,6 +416,8 @@ fn layout_row(
                 x,
                 width,
                 margin_top: margins.2,
+                margin_bottom: margins.3,
+                content_height,
                 conditions,
             },
             items,
@@ -323,6 +431,71 @@ fn layout_row(
     }
 }
 
+/// Rotate a horizontal text layout before deriving the physical row height.
+#[allow(clippy::too_many_arguments)]
+fn layout_oriented_cell_content(
+    ctx: &LayoutContext<'_>,
+    blocks: &[Block],
+    x: f64,
+    width: f64,
+    depth: u32,
+    escape_frames: bool,
+    direction: Option<TextDirection>,
+    along_height: Option<f64>,
+) -> (Vec<Item>, f64, Vec<Item>) {
+    let angle = match direction {
+        Some(TextDirection::BtLr) => -90.0,
+        Some(TextDirection::TbRl) => 90.0,
+        _ => return layout_cell_content(ctx, blocks, x, width, depth, escape_frames),
+    };
+    let available = along_height
+        .unwrap_or_else(|| ctx.frame_anchor.get().4.max(width))
+        .max(1.0);
+    let (mut items, cross_height, frames) =
+        layout_cell_content(ctx, blocks, 0.0, available, depth, escape_frames);
+    if !frames.is_empty() || items.iter().any(|item| !matches!(item, Item::Text(_))) {
+        ctx.warn(
+            "render.vertical-cell-content: rotated cell with non-text content is not yet supported"
+                .to_owned(),
+        );
+        return layout_cell_content(ctx, blocks, x, width, depth, escape_frames);
+    }
+    let left = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text(t) => Some(t.x),
+            _ => None,
+        })
+        .min_by(f64::total_cmp)
+        .unwrap_or(0.0);
+    let right = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text(t) => Some(t.x + t.width),
+            _ => None,
+        })
+        .max_by(f64::total_cmp)
+        .unwrap_or(left);
+    let height = along_height.map_or((right - left).max(0.0), |height| height.max(right));
+    let pad = ((width - cross_height) / 2.0).max(0.0);
+    for item in &mut items {
+        if let Item::Text(text) = item {
+            let along = text.x - if along_height.is_some() { 0.0 } else { left };
+            let across = text.baseline;
+            text.x = x
+                + pad
+                + if angle < 0.0 {
+                    across
+                } else {
+                    cross_height - across
+                };
+            text.baseline = if angle < 0.0 { height - along } else { along };
+            text.run.rotation_deg = angle;
+        }
+    }
+    (items, height, frames)
+}
+
 /// Where a laid-out cell sits in its row.
 #[derive(Clone, Copy)]
 struct CellPlacement {
@@ -331,6 +504,8 @@ struct CellPlacement {
     x: f64,
     width: f64,
     margin_top: f64,
+    margin_bottom: f64,
+    content_height: f64,
     /// `w:tblStylePr` conditions that apply (see `table_style::cell_conditions`).
     conditions: u16,
 }
@@ -362,6 +537,8 @@ fn push_raw_cell(
         items,
         page_frames,
         margin_top: placement.margin_top,
+        margin_bottom: placement.margin_bottom,
+        content_height: placement.content_height,
         vmerge: VState::from_merge(cell.props.vertical_merge),
     });
 }

@@ -163,7 +163,7 @@ pub enum ShapeFill {
         /// Fill colour.
         color: ShapeColor,
     },
-    /// Linear gradient fill.
+    /// Gradient fill. Path shading is retained for writing; painting supports linear shading.
     Gradient {
         /// Colour stops, in document order.
         stops: Vec<GradientStop>,
@@ -173,8 +173,10 @@ pub enum ShapeFill {
         scaled: Option<bool>,
         /// `a:gradFill/@rotWithShape`, when written.
         rotate_with_shape: Option<bool>,
+        /// Preserved `a:path` shading markup, when this is a non-linear gradient.
+        path_shading: Option<Arc<str>>,
     },
-    /// Pattern fill (rendered as a flat foreground colour).
+    /// Pattern fill. Backends resolve supported presets to repeating tiles.
     Pattern {
         /// Pattern preset (`prst`).
         preset: Option<Arc<str>>,

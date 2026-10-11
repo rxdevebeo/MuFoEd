@@ -1,0 +1,85 @@
+{
+  "source_sha256": "95bc2729e41faf93b0bcae9e96c4dc4da45855067fd0581e621e30734fe8d90b",
+  "faces": [
+    {
+      "file": "StrictMath-Regular.otf",
+      "sha256": "ae07eb53d85fcd84ccd140131a8cea8710686a5b0e50518e4c2a5e85acee286b",
+      "remapped_characters": 0
+    },
+    {
+      "file": "StrictMath-Italic.otf",
+      "sha256": "912ac64e964eb5730180786510f78766683c0cdc45ff8a0cfce2f6c18e473ebe",
+      "remapped_characters": 112
+    },
+    {
+      "file": "StrictMath-Bold.otf",
+      "sha256": "73252f7bc733c8f28035741e78639982edba7cc8d09eccd7031c61c02da4e1ff",
+      "remapped_characters": 122
+    },
+    {
+      "file": "StrictMath-BoldItalic.otf",
+      "sha256": "1dd9389ee18cd3aae9c69427fda00dd8c2f246af2d4ca444661366c2174047b3",
+      "remapped_characters": 120
+    },
+    {
+      "file": "StrictMathScript-Regular.otf",
+      "sha256": "885c3b2240a143d936679b1615772b688368767865e8e2d1be12c563daabf07e",
+      "remapped_characters": 52
+    },
+    {
+      "file": "StrictMathScript-Italic.otf",
+      "sha256": "90d043cd0c1cc9eecc6aff1c6df8b7c3bb5f5ba475348683374320b087252827",
+      "remapped_characters": 112
+    },
+    {
+      "file": "StrictMathScript-Bold.otf",
+      "sha256": "c0a794f536ddb9994edd889cabf56c3ec9852510e5f957666223330eb57b382e",
+      "remapped_characters": 122
+    },
+    {
+      "file": "StrictMathScript-BoldItalic.otf",
+      "sha256": "30618bed5241dd7034cce4cf6edb0414b491d5c5d022149024a1a6d97cea2190",
+      "remapped_characters": 120
+    },
+    {
+      "file": "StrictMathFraktur-Regular.otf",
+      "sha256": "38a5e5c814d681c69e8ba690b131ef5047134254f336f1bf5e119d9a2f6999fe",
+      "remapped_characters": 52
+    },
+    {
+      "file": "StrictMathFraktur-Italic.otf",
+      "sha256": "145b5071ab50af5e500518c9eccb539cce3edc5cda9e578404d94e10196949a1",
+      "remapped_characters": 112
+    },
+    {
+      "file": "StrictMathFraktur-Bold.otf",
+      "sha256": "f9ff6100fbce12f8e5857620b4faadeb781d7fd95f9c6db54ad3bab6e260c068",
+      "remapped_characters": 122
+    },
+    {
+      "file": "StrictMathFraktur-BoldItalic.otf",
+      "sha256": "2c6b53cb8c369a17836a4b4ee1e208e25e42d6a82f2334ef73e15477bea8ca8c",
+      "remapped_characters": 120
+    },
+    {
+      "file": "StrictMathDoubleStruck-Regular.otf",
+      "sha256": "8d731e07eb3ca31d17d16923ca6198b42c5720e091aa9e1921aac8d902b3e17a",
+      "remapped_characters": 66
+    },
+    {
+      "file": "StrictMathDoubleStruck-Italic.otf",
+      "sha256": "e154daf2cd38a2cc5434eef9df4402b1c426f6dc9079cfff1cdafe8493eff21a",
+      "remapped_characters": 122
+    },
+    {
+      "file": "StrictMathDoubleStruck-Bold.otf",
+      "sha256": "72b7f4d8cbcb074a361161dcbca2a9d43fdceb0672c7f11c59974933ec731f31",
+      "remapped_characters": 122
+    },
+    {
+      "file": "StrictMathDoubleStruck-BoldItalic.otf",
+      "sha256": "5e405b2220d536d8c65dcb30253d05be3b962d39b93157fdcde83bfc3e9b97ff",
+      "remapped_characters": 120
+    }
+  ]
+}

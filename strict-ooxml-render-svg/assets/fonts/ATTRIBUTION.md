@@ -42,11 +42,35 @@ family).
 ships — it *is* the open face for the OMML repertoire: n-ary operators,
 radicals, stretchy delimiter parts, accents, over/under-braces and the
 letterlike-alphanumeric block. It is bundled from the CTAN package
-`stix2-otf` (`https://mirrors.ctan.org/fonts/stix2-otf.zip`). One upright face
-covers every style, so `m:sty` only reaches the SVG as `font-style` /
-`font-weight`; the *stretchy* constructs (delimiters, the radical sign) are drawn
+`stix2-otf` (`https://mirrors.ctan.org/fonts/stix2-otf.zip`). Its original face
+remains available as STIX Two Math. Office Math uses the derived **Strict Math**
+family below; the *stretchy* constructs (delimiters, the radical sign) are drawn
 as deterministic vector paths instead of glyphs, which is also the fallback when
 a character has no glyph at all.
+
+## Strict Math derived styles
+
+`stix/strict-math/StrictMath-{Regular,Italic,Bold,BoldItalic}.otf` are derived
+from the pinned STIX Two Math program under `stix/OFL.txt`. The family and
+PostScript names are renamed to Strict Math. Copyright/license notices and
+original glyph outlines and MATH tables are retained.
+
+Each styled cmap maps ordinary Latin and Greek source characters to the
+corresponding mathematical alphabet glyphs already present in STIX. Operators
+remain upright; italic digits remain upright; bold digits use mathematical bold.
+This provides real outlines and advances for all four `m:sty` values in SVG and
+PDF without changing searchable source Unicode. These are math alphabet styles,
+not a general-purpose italic/bold cut of every symbol in the original font.
+
+`Strict Math Script`, `Strict Math Fraktur`, and `Strict Math DoubleStruck`
+provide the corresponding `m:scr` alphabets, each with four style selections.
+Script and Fraktur have separate bold alphabet outlines; DoubleStruck has one
+alphabet in the source font. Greek letters outside these alphabets retain the
+selected Roman math style. Unicode compatibility holes (such as script H and
+double-struck R) map to the original Letterlike Symbols glyphs.
+
+Rebuild with `xtool/corpus/build_math_style_fonts.py` (fontTools required).
+`stix/strict-math/manifest.json` records source/output SHA-256 and cmap counts.
 
 ## SHA-256
 

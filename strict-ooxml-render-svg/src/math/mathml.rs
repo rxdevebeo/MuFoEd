@@ -98,7 +98,7 @@ use strict_ooxml_core::xml::escape::escape_text as escape;
 
 /// Writes a list of sibling nodes inside the current container.
 fn write_nodes(out: &mut String, nodes: &[MathNode]) -> Result<(), MathMlError> {
-    for node in nodes {
+    for node in super::visible_nodes(nodes) {
         write_node(out, node)?;
     }
     Ok(())
@@ -418,6 +418,7 @@ fn write_operator(out: &mut String, text: &str) {
 /// A run holding one operator/decorative character.
 fn synthetic_run(character: char) -> MathRun {
     MathRun {
+        field_char: None,
         properties: MathRunProperties {
             literal: false,
             normal: true,
@@ -444,6 +445,7 @@ mod tests {
 
     fn run(text: &str) -> MathNode {
         MathNode::Run(MathRun {
+            field_char: None,
             properties: MathRunProperties::default(),
             run_properties: None,
             text: text.to_owned(),
@@ -577,6 +579,7 @@ mod tests {
         for (script, style, expected) in cases {
             let expression = MathExpression {
                 nodes: vec![MathNode::Run(MathRun {
+                    field_char: None,
                     properties: MathRunProperties {
                         script,
                         style,
@@ -606,6 +609,7 @@ mod tests {
         // nor/lit wins over scr/sty.
         let expression = MathExpression {
             nodes: vec![MathNode::Run(MathRun {
+                field_char: None,
                 properties: MathRunProperties {
                     normal: true,
                     script: Some(MathScript::Script),

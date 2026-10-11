@@ -50,6 +50,17 @@ pub trait FontProvider: Send + Sync {
     fn has_glyph(&self, _family: &str, _ch: char) -> bool {
         false
     }
+
+    /// Outline ascent and descent in em; absent when a provider has no outlines.
+    fn glyph_vertical_em(
+        &self,
+        _family: &str,
+        _ch: char,
+        _bold: bool,
+        _italic: bool,
+    ) -> Option<(f64, f64)> {
+        None
+    }
 }
 
 /// Which font provider the renderer uses.

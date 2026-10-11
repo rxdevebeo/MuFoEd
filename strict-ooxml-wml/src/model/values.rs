@@ -748,6 +748,24 @@ strict_enum! {
     }
 }
 
+impl TextDirection {
+    /// Reads equivalent Strict and Transitional spellings of text direction.
+    #[must_use]
+    pub fn from_ooxml(value: &str) -> Option<Self> {
+        Self::from_strict(value).or_else(|| {
+            Some(match value {
+                "lrTb" => Self::LrTb,
+                "tbRl" => Self::TbRl,
+                "btLr" => Self::BtLr,
+                "lrTbV" => Self::LrTbV,
+                "tbRlV" => Self::TbRlV,
+                "tbLrV" => Self::TbLrV,
+                _ => return None,
+            })
+        })
+    }
+}
+
 strict_enum! {
     /// `ST_VerticalJc` — vertical justification of a table cell or section.
     pub enum VerticalJc {

@@ -132,7 +132,9 @@ pub use strict_ooxml_render_pdf::{
     PdfOutput, PdfReport,
 };
 #[cfg(feature = "svg")]
-pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};
+pub use strict_ooxml_render_svg::{
+    MediaMode, Page, PageSelection, RenderError, RenderOptions, WrapCoordinates,
+};
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
     Feature, FeatureStatus, Location, OverallStatus, Severity, SupportReport,

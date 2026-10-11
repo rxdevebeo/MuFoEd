@@ -43,6 +43,13 @@ pub(crate) fn placed_blocks_for(
         let Item::Vector(vector) = item else {
             continue;
         };
+        if vector.gradient.is_some() {
+            report.record(
+                "vector.gradient", Severity::Unsupported,
+                format!("page {} vector {index}: axial shading is retained by the reader but not converted to DrawingML", page.number),
+            );
+            continue;
+        }
         match rectangle(vector, page.geometry.height) {
             // The PDF renderer paints the page itself as a white rectangle.
             // That canvas is the page, not a drawing, so it is not a second

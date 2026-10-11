@@ -8,7 +8,14 @@
 /// same name is what the SVG `@font-face` delivers.
 #[must_use]
 pub fn map_family(family: &str) -> &'static str {
-    match family.trim().to_ascii_lowercase().as_str() {
+    known_family(family).unwrap_or("Carlito")
+}
+
+/// Returns a bundled face only for a recognized family or alias.
+#[must_use]
+pub fn known_family(family: &str) -> Option<&'static str> {
+    Some(match family.trim().to_ascii_lowercase().as_str() {
+        "calibri" | "carlito" => "Carlito",
         // Calibri is the wildcard below: it is the family Carlito metrics match.
         "cambria" | "caladea" => "Caladea",
         // LibreOffice writes its own metric-compatible Liberation families;
@@ -19,12 +26,16 @@ pub fn map_family(family: &str) -> &'static str {
         "courier new" | "liberation mono" | "cousine" => "Cousine",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
         // is the bundled OFL face with the full OMML glyph repertoire.
-        "cambria math" | "stix two math" | "stix2 math" | "stixgeneral" => "STIX Two Math",
+        "cambria math" | "strict math" => "Strict Math",
+        "strict math script" => "Strict Math Script",
+        "strict math fraktur" => "Strict Math Fraktur",
+        "strict math doublestruck" => "Strict Math DoubleStruck",
+        "stix two math" | "stix2 math" | "stixgeneral" => "STIX Two Math",
         // An unknown CSS family is measured and delivered as Carlito, the bundled
         // Calibri-metric face. Leaving the request unchanged made layout use the
         // fallback model while the SVG named a face the viewer does not have.
-        _ => "Carlito",
-    }
+        _ => return None,
+    })
 }
 
 /// Horizontal advance scale for a mapped family versus WPS-embedded Times.
@@ -64,8 +75,8 @@ mod tests {
 
     #[test]
     fn maps_the_math_family_to_the_bundled_ofl_face() {
-        assert_eq!(map_family("Cambria Math"), "STIX Two Math");
-        assert_eq!(map_family("cambria math"), "STIX Two Math");
+        assert_eq!(map_family("Cambria Math"), "Strict Math");
+        assert_eq!(map_family("cambria math"), "Strict Math");
         assert_eq!(map_family("STIX Two Math"), "STIX Two Math");
     }
 

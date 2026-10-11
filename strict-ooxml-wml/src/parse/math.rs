@@ -378,10 +378,17 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
         let mut properties = MathRunProperties::default();
         let mut run_properties: Option<Box<crate::model::props::RunProperties>> = None;
         let mut text = String::new();
+        let mut field_char = None;
         loop {
             match parser.next_event()? {
-                XmlEvent::StartElement { name, attrs: _ } => {
+                XmlEvent::StartElement { name, attrs } => {
                     if !is_math(&name) {
+                        if name.local() == "fldChar" && crate::parse::is_wml(&name) {
+                            field_char = super::wml_attr(&attrs, "fldCharType")
+                                .and_then(crate::model::values::FieldCharType::from_strict);
+                            parser.skip_element()?;
+                            continue;
+                        }
                         // `w:rPr` is a legitimate child of `m:r`
                         // (ISO/IEC 29500-1 §22.1.2.79) and carries the character
                         // formatting Word applies to a math run. It used to fall
@@ -427,6 +434,7 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
             }
         }
         Ok(MathRun {
+            field_char,
             properties,
             run_properties,
             text,

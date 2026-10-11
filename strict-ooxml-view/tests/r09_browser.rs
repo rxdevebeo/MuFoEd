@@ -48,7 +48,7 @@ fn prepare_fixtures(dir: &Path) {
     .expect("stale sidecar");
 
     let plain = DocxBuilder::strict()
-        .body("<w:p><w:r><w:t>Plain clean document</w:t></w:r></w:p>")
+        .body("<w:p><w:r><w:t>Plain clean document</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr>")
         .build();
     std::fs::write(dir.join("plain.docx"), plain).expect("plain");
 

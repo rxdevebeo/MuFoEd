@@ -985,6 +985,7 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
             angle,
             scaled,
             rotate_with_shape,
+            path_shading,
         } => {
             xml.start("a:gradFill");
             if let Some(rotate) = rotate_with_shape {
@@ -1001,7 +1002,9 @@ fn fill_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, fill: &ShapeFill) {
                 xml.end();
             }
             xml.end();
-            if let Some(angle) = angle {
+            if let Some(path) = path_shading {
+                kept_markup(xml, path);
+            } else if let Some(angle) = angle {
                 xml.start("a:lin");
                 xml.attr("ang", angle);
                 xml.attr("scaled", bool_str(scaled.unwrap_or(false)));

@@ -164,6 +164,7 @@ fn shape_items(
     }
     let paths = shape_paths(shape, w, h);
     let fill = shape.fill.as_ref().and_then(|fill| fill_color(ctx, fill));
+    let paint = super::fills::resolve(ctx, shape, w, h);
     let (stroke, stroke_w, dash) = stroke_paint(ctx, shape.stroke.as_ref());
     let (rotate_deg, flip_h, flip_v) = shape.xfrm.map_or((0.0, false, false), |xfrm| {
         (
@@ -184,6 +185,7 @@ fn shape_items(
                 h,
                 d,
                 fill: fill.clone(),
+                paint: paint.clone(),
                 stroke: stroke.clone(),
                 stroke_w,
                 dash: dash.clone(),

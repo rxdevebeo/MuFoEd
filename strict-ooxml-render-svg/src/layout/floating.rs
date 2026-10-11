@@ -6,9 +6,10 @@ use strict_ooxml_wml::model::values::Emu;
 use strict_ooxml_core::error::Result;
 use strict_ooxml_wml::model::props::Section;
 
-use crate::layout::exclusions::PageExclusion;
+use crate::layout::exclusions::{Contour, PageExclusion};
 use crate::layout::{geometry_for, Geometry, Item, LayoutContext, PlacedPage};
 use crate::units::emu_to_px;
+use std::sync::Arc;
 
 /// An anchored object recorded during pagination.
 pub(crate) struct PendingAnchor {
@@ -230,7 +231,7 @@ pub(crate) enum WrapSide {
 }
 
 /// A wrap rectangle in the same coordinates as the paragraph lines.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct WrapExclusion {
     /// Left edge, already expanded by `distL`.
     pub left: f64,
@@ -242,6 +243,10 @@ pub(crate) struct WrapExclusion {
     pub bottom: f64,
     /// Side policy.
     pub side: WrapSide,
+    /// Shared page-space contour, when the source supplies one.
+    pub contour: Option<Arc<Contour>>,
+    /// Paragraph origin for sampling the page-space contour.
+    pub page_y: f64,
 }
 
 /// Resolved width/height for an anchor, matching paint placement (`sizeRel` wins).
@@ -269,7 +274,7 @@ pub(crate) fn resolved_extent(
 
 /// Wrap exclusion in absolute page coordinates, or `None` when text is not excluded.
 ///
-/// Tight/Through stay explicitly unsupported (rectangle is not claimed as a contour).
+/// Tight/Through use the source polygon rather than its bounding rectangle.
 pub(crate) fn page_exclusion(
     ctx: &LayoutContext<'_>,
     anchor: &AnchorDrawing,
@@ -279,15 +284,17 @@ pub(crate) fn page_exclusion(
 ) -> Option<PageExclusion> {
     let wrap = anchor.wrap.as_ref()?;
     let top_and_bottom = match wrap.kind {
-        WrapKind::Square => false,
         WrapKind::TopAndBottom => true,
-        WrapKind::Tight | WrapKind::Through => {
+        WrapKind::Tight | WrapKind::Through
+            if wrap.polygon.len() < 3 || wrap.polygon.len() > 2048 =>
+        {
             ctx.warn(
-                "render.wrap: tight/through contour is Unsupported; rectangle is not applied as a contour"
+                "render.wrap: tight/through needs 3..2048 contour points; no contour exclusion applied"
                     .to_owned(),
             );
             return None;
         }
+        WrapKind::Square | WrapKind::Tight | WrapKind::Through => false,
         WrapKind::None => return None,
     };
     let (width, height) = resolved_extent(ctx, anchor, geometry)?;
@@ -316,14 +323,54 @@ pub(crate) fn page_exclusion(
             side,
         )
     };
-    let top = y - dist(anchor.dist_top, wrap.dist_top);
-    let bottom = y + height + dist(anchor.dist_bottom, wrap.dist_bottom);
+    let distances = [
+        dist(anchor.dist_left, wrap.dist_left),
+        dist(anchor.dist_right, wrap.dist_right),
+        dist(anchor.dist_top, wrap.dist_top),
+        dist(anchor.dist_bottom, wrap.dist_bottom),
+    ];
+    let contour = if matches!(wrap.kind, WrapKind::Tight | WrapKind::Through) {
+        let source = anchor.extent?;
+        let (sx, sy) = match ctx.options.wrap_coordinates {
+            crate::WrapCoordinates::Emu => (
+                width / source.cx.value().max(1) as f64,
+                height / source.cy.value().max(1) as f64,
+            ),
+            crate::WrapCoordinates::Office21600 => (width / 21_600.0, height / 21_600.0),
+        };
+        Some(Arc::new(Contour {
+            points: wrap
+                .polygon
+                .iter()
+                .map(|(px, py)| (x + *px as f64 * sx, y + *py as f64 * sy))
+                .collect(),
+            through: wrap.kind == WrapKind::Through,
+            distance: distances,
+        }))
+    } else {
+        None
+    };
+    let top = contour.as_ref().map_or(y, |contour| {
+        contour
+            .points
+            .iter()
+            .map(|point| point.1)
+            .fold(f64::INFINITY, f64::min)
+    }) - distances[2];
+    let bottom = contour.as_ref().map_or(y + height, |contour| {
+        contour
+            .points
+            .iter()
+            .map(|point| point.1)
+            .fold(f64::NEG_INFINITY, f64::max)
+    }) + distances[3];
     Some(PageExclusion {
         left,
         right,
         top,
         bottom,
         side,
+        contour,
     })
 }
 
@@ -336,5 +383,5 @@ pub(crate) fn wrap_exclusion(
     host_y: f64,
 ) -> Option<WrapExclusion> {
     page_exclusion(ctx, anchor, geometry, host_x, host_y)
-        .map(|exclusion| exclusion.to_paragraph_local(host_y))
+        .map(|exclusion| exclusion.into_paragraph_local(host_y))
 }

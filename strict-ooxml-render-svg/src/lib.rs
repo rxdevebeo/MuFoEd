@@ -158,9 +158,24 @@ pub enum RevisionView {
     Original,
 }
 
+/// Coordinate interpretation for wrapping polygons.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WrapCoordinates {
+    /// ISO coordinates and this library's VML-normalized model, in EMU.
+    #[default]
+    Emu,
+    /// Office's fixed 21600 by 21600 shape space (MS-OI29500 2.1.1349).
+    Office21600,
+}
+
 /// Options controlling rendering.
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
+    /// Maximum combined SVG payload. Painting stops with a warning before
+    /// retaining output beyond this bound; the default is unlimited.
+    pub max_svg_bytes: usize,
+    /// Wrapping polygon coordinate convention; no size-based guessing is used.
+    pub wrap_coordinates: WrapCoordinates,
     /// Output scale: px per inch (default `96.0` = 96 DPI).
     pub scale: f64,
     /// Media emission mode.
@@ -209,6 +224,8 @@ pub struct RenderOptions {
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
+            max_svg_bytes: usize::MAX,
+            wrap_coordinates: WrapCoordinates::Emu,
             scale: 96.0,
             media: MediaMode::EmbedDataUri,
             font_provider: FontProviderKind::Builtin,
@@ -225,6 +242,13 @@ impl Default for RenderOptions {
 }
 
 impl RenderOptions {
+    /// Selects the coordinate convention used by anchored wrap polygons.
+    #[must_use]
+    pub fn wrap_coordinates(mut self, coordinates: WrapCoordinates) -> Self {
+        self.wrap_coordinates = coordinates;
+        self
+    }
+
     /// Sets the scale (px per inch).
     #[must_use]
     pub fn scale(mut self, scale: f64) -> Self {
@@ -290,6 +314,8 @@ pub struct Page {
     pub svg: String,
     /// What the page could not show as the model has it, one line each,
     /// prefixed with a stable id (`render.invalid-xml-char: ...`).
+    /// Document layout warnings are repeated on every returned page; only
+    /// paint diagnostics such as invalid XML characters identify this page.
     pub warnings: Vec<String>,
 }
 
@@ -394,7 +420,8 @@ pub fn render_with_media(
     let laid_out = layout::paginate::layout_document(&context)?;
     let layout_warnings = laid_out.warnings.clone();
 
-    let mut pages = Vec::new();
+    let mut pages: Vec<Page> = Vec::new();
+    let mut svg_bytes = 0usize;
     control::stage(control::Stage::Painting, laid_out.pages.len() as u64);
     for (index, page) in laid_out.pages.iter().enumerate() {
         control::checkpoint_now()?;
@@ -402,11 +429,31 @@ pub fn render_with_media(
         if !options.pages.contains(index + 1) {
             continue;
         }
+        let svg = paint::render_page(page, options.background);
+        if svg_bytes.saturating_add(svg.len()) > options.max_svg_bytes {
+            let warning = format!(
+                "render.output-limit: SVG payload exceeds {} bytes; remaining pages omitted",
+                options.max_svg_bytes
+            );
+            if pages.is_empty() {
+                return Err(RenderError::LimitExceeded {
+                    what: "SVG bytes",
+                    limit: options.max_svg_bytes as u64,
+                    actual: svg.len() as u64,
+                }
+                .into_strict());
+            }
+            for previous in &mut pages {
+                previous.warnings.push(warning.clone());
+            }
+            break;
+        }
+        svg_bytes += svg.len();
         pages.push(Page {
             index,
             width_px: page.width_px,
             height_px: page.height_px,
-            svg: paint::render_page(page, options.background),
+            svg,
             warnings: paint::invalid_char_warning(page)
                 .into_iter()
                 .chain(layout_warnings.iter().cloned())

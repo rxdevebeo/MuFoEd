@@ -70,6 +70,120 @@ fn extracted_text(pdf: &[u8]) -> String {
     out
 }
 
+#[test]
+fn rotated_cell_keeps_unicode_cids_and_embeds_the_hinted_substitute() {
+    use strict_ooxml_wml::model::fonts::{FontEntry, FontHints, FontTable};
+    let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:textDirection w:val=\"lr\"/></w:tcPr><w:p><w:r><w:rPr><w:rFonts w:ascii=\"Unavailable Serif\"/></w:rPr><w:t>Compounds</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes);
+    let mut document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    document.font_table = Some(FontTable {
+        fonts: vec![FontEntry {
+            name: "Unavailable Serif".into(),
+            hints: FontHints {
+                family: Some("roman".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+    });
+    let options = RenderOptions::default();
+    let pages = place_pages(&document, &options, Some(&package)).expect("place");
+    let output = render_with_source(&pages, &options, Some(&package)).expect("render");
+    let pdf = lopdf::Document::load_mem(&output.bytes).expect("valid PDF");
+    assert!(output.report.losses().is_empty(), "{:?}", output.report);
+    assert!(pdf
+        .objects
+        .values()
+        .filter_map(|object| object.as_dict().ok())
+        .filter_map(|dictionary| dictionary.get(b"BaseFont").ok())
+        .filter_map(|name| name.as_name().ok())
+        .any(|name| String::from_utf8_lossy(name).contains("Tinos")));
+    let id = pdf.page_iter().next().expect("page");
+    let content = lopdf::content::Content::decode(&pdf.get_page_content(id)).expect("content");
+    assert_eq!(decode_single_face_cids(&pdf, &content), "Compounds");
+    assert!(
+        content.operations.iter().any(|operation| {
+            if operation.operator != "cm" {
+                return false;
+            }
+            let numbers: Vec<f32> = operation
+                .operands
+                .iter()
+                .filter_map(|value| value.as_float().ok())
+                .collect();
+            numbers.len() == 6
+                && numbers[0].abs() < 0.001
+                && (numbers[1] - 1.0).abs() < 0.001
+                && (numbers[2] + 1.0).abs() < 0.001
+                && numbers[3].abs() < 0.001
+        }),
+        "PDF must rotate the cell around the same baseline as SVG"
+    );
+}
+
+/// Read the fixture's single-face bfchar map and actual painted two-byte CIDs.
+fn decode_single_face_cids(pdf: &lopdf::Document, content: &lopdf::content::Content) -> String {
+    let mut mapping = std::collections::BTreeMap::new();
+    for object in pdf.objects.values() {
+        let Ok(dictionary) = object.as_dict() else {
+            continue;
+        };
+        let Ok(reference) = dictionary
+            .get(b"ToUnicode")
+            .and_then(lopdf::Object::as_reference)
+        else {
+            continue;
+        };
+        let stream = pdf
+            .get_object(reference)
+            .and_then(lopdf::Object::as_stream)
+            .expect("CMap");
+        let bytes = stream
+            .decompressed_content()
+            .unwrap_or_else(|_| stream.content.clone());
+        for line in String::from_utf8_lossy(&bytes).lines() {
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            if columns.len() != 2 || !columns[0].starts_with('<') {
+                continue;
+            }
+            let source = u16::from_str_radix(columns[0].trim_matches(['<', '>']), 16).expect("CID");
+            let target = columns[1].trim_matches(['<', '>']);
+            let utf16: Vec<u16> = target
+                .as_bytes()
+                .chunks_exact(4)
+                .map(|chunk| {
+                    u16::from_str_radix(std::str::from_utf8(chunk).expect("hex"), 16)
+                        .expect("unicode")
+                })
+                .collect();
+            mapping.insert(source, String::from_utf16(&utf16).expect("UTF16"));
+        }
+    }
+    let mut result = String::new();
+    for operation in &content.operations {
+        if operation.operator != "Tj" {
+            continue;
+        }
+        let bytes = operation
+            .operands
+            .first()
+            .and_then(|value| value.as_str().ok())
+            .expect("CID text");
+        for pair in bytes.chunks_exact(2) {
+            let cid = u16::from_be_bytes([pair[0], pair[1]]);
+            result.push_str(
+                mapping
+                    .get(&cid)
+                    .expect("painted CID has a Unicode mapping"),
+            );
+        }
+    }
+    result
+}
+
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
 /// encoding and a `ToUnicode` CMap: the two things that make the text
 /// selectable and searchable rather than glyph ids.
@@ -574,4 +688,37 @@ fn direct_italic_embeds_the_italic_face() {
         "the embedded face is italic"
     );
     assert!(!extracted_text(&pdf).is_empty(), "the page draws text");
+}
+#[test]
+fn styled_math_embeds_real_glyphs_and_preserves_source_unicode() {
+    for (script, family) in [
+        ("roman", "StrictMath-Bold-Italic"),
+        ("script", "StrictMathScript-Bold-Italic"),
+        ("fraktur", "StrictMathFraktur-Bold-Italic"),
+        ("double-struck", "StrictMathDoubleStruck-Bold-Italic"),
+    ] {
+        let body = format!("<w:p><m:oMath><m:r><m:rPr><m:scr m:val=\"{script}\"/><m:sty m:val=\"bi\"/></m:rPr><m:t>xα+3</m:t></m:r></m:oMath></w:p>");
+        let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+            .body(&body)
+            .build();
+        let package = open(&bytes);
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        let options = RenderOptions::default();
+        let pages = place_pages(&document, &options, Some(&package)).expect("place");
+        let output = render_with_source(&pages, &options, Some(&package)).expect("render");
+        assert!(output.report.losses().is_empty(), "{:?}", output.report);
+        let pdf = lopdf::Document::load_mem(&output.bytes).expect("valid PDF");
+        assert!(
+            pdf.objects
+                .values()
+                .filter_map(|object| object.as_dict().ok())
+                .filter_map(|dictionary| dictionary.get(b"BaseFont").ok())
+                .filter_map(|name| name.as_name().ok())
+                .any(|name| String::from_utf8_lossy(name).contains(family)),
+            "{script} face"
+        );
+        let id = pdf.page_iter().next().expect("page");
+        let content = lopdf::content::Content::decode(&pdf.get_page_content(id)).expect("content");
+        assert_eq!(decode_single_face_cids(&pdf, &content), "xα+3");
+    }
 }

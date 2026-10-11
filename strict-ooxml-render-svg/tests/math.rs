@@ -4,6 +4,203 @@
 
 mod common;
 
+use strict_ooxml_render_svg::font::{BuiltinFontProvider, FontProvider};
+
+#[test]
+fn left_and_right_script_pairs_leave_a_visible_gap() {
+    let font = BuiltinFontProvider::new();
+    for tag in ["sPre", "sSubSup"] {
+        let scripts =
+            "<m:sub><m:r><m:t>i</m:t></m:r></m:sub><m:sup><m:r><m:t>j</m:t></m:r></m:sup>";
+        let base = "<m:e><m:r><m:t>F</m:t></m:r></m:e>";
+        let arguments = if tag == "sPre" {
+            format!("{scripts}{base}")
+        } else {
+            format!("{base}{scripts}")
+        };
+        let svg = render_body(&format!(
+            "<w:p><m:oMath><m:{tag}>{arguments}</m:{tag}></m:oMath></w:p>"
+        ));
+        let (_, lower_baseline) = position(&svg, ">i</text>").expect("subscript");
+        let (_, upper_baseline) = position(&svg, ">j</text>").expect("superscript");
+        let lower_size = font_size_near(&svg, ">i</text>").expect("size");
+        let upper_size = font_size_near(&svg, ">j</text>").expect("size");
+        let lower_top = lower_baseline
+            - font
+                .glyph_vertical_em("Cambria Math", 'i', false, true)
+                .expect("glyph")
+                .0
+                * lower_size;
+        let upper_bottom = upper_baseline
+            + font
+                .glyph_vertical_em("Cambria Math", 'j', false, true)
+                .expect("glyph")
+                .1
+                * upper_size;
+        assert!(
+            lower_top - upper_bottom > 0.5,
+            "{tag}: script glyphs must not touch: sub {lower_baseline}/{lower_top} sup {upper_baseline}/{upper_bottom}, sizes {lower_size}/{upper_size}"
+        );
+    }
+}
+
+#[test]
+fn radical_degree_sits_inside_the_radical_height() {
+    let svg = render_body("<w:p><m:oMath><m:rad><m:deg><m:r><m:t>3</m:t></m:r></m:deg><m:e><m:r><m:t>x</m:t></m:r></m:e></m:rad></m:oMath></w:p>");
+    let (_, degree) = position(&svg, ">3</text>").expect("degree");
+    let (_, radicand) = position(&svg, ">x</text>").expect("radicand");
+    let top_rule = line_y(&svg).expect("rule");
+    assert!(
+        degree > top_rule && degree < radicand,
+        "degree baseline must sit inside the radical's height"
+    );
+}
+
+#[test]
+fn display_formula_preserves_explicit_paragraph_and_math_surround_spacing() {
+    let baseline = "<w:p><w:r><w:t>before</w:t></w:r></w:p><w:p><m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara></w:p><w:p><w:r><w:t>after</w:t></w:r></w:p>";
+    let original = render_body(baseline);
+    let configured = baseline.replace(
+        "<w:p><m:oMathPara>",
+        "<w:p><w:pPr><w:spacing w:before=\"300\" w:after=\"450\"/></w:pPr><m:oMathPara>",
+    );
+    let (_, mut parsed) = common::open_body(&configured);
+    parsed.settings.math_properties = Some(strict_ooxml_wml::model::settings::MathProperties {
+        pre_space: Some("200".into()),
+        post_space: Some("400".into()),
+        ..Default::default()
+    });
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    let (_, equation_before) = position(&original, ">x</text>").expect("original equation");
+    let (_, equation_after) = position(&pages[0].svg, ">x</text>").expect("equation");
+    let (_, text_before) = position(&original, ">after</text>").expect("original after");
+    let (_, text_after) = position(&pages[0].svg, ">after</text>").expect("after");
+    assert!((equation_after - equation_before - 500.0 / 15.0).abs() < 0.01);
+    assert!((text_after - text_before - 1350.0 / 15.0).abs() < 0.01);
+}
+
+#[test]
+fn justified_inline_formula_moves_with_the_spaces_before_it() {
+    let body = "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:t xml:space=\"preserve\">before words </w:t></w:r><m:oMath><m:r><m:t>MARKER</m:t></m:r></m:oMath><w:r><w:t xml:space=\"preserve\"> after words </w:t></w:r><w:r><w:br/></w:r><w:r><w:t>tail</w:t></w:r></w:p>";
+    let options = RenderOptions {
+        wps_times_calibration: false,
+        ..RenderOptions::default()
+    };
+    let pages = render_with(body, &options);
+    let (formula_x, _) = position(&pages[0].svg, ">MARKER</text>").expect("formula");
+    let (before_x, _) = position(&pages[0].svg, ">words </text>").expect("preceding word");
+    let (after_x, _) = position(&pages[0].svg, ">after </text>").expect("following word");
+    assert!(
+        formula_x > before_x + 60.0,
+        "expanded space before formula: {before_x}, {formula_x}"
+    );
+    assert!(
+        formula_x + 50.0 < after_x,
+        "formula must not overlap following text: {formula_x}, {after_x}"
+    );
+}
+
+#[test]
+fn tall_inline_fraction_reserves_room_for_the_following_line() {
+    let body = "<w:p><m:oMath><m:f><m:num><m:r><m:t>upper</m:t></m:r></m:num><m:den><m:r><m:t>lower</m:t></m:r></m:den></m:f></m:oMath><w:r><w:br/></w:r><w:r><w:t>following</w:t></w:r></w:p>";
+    let pages = common::render_body(body);
+    let svg = &pages[0].svg;
+    assert!(
+        pages.iter().all(|page| !page
+            .warnings
+            .iter()
+            .any(|warning| warning.starts_with("render.math-line-overflow"))),
+        "the compact fraction must fit its reserved line box"
+    );
+    let fraction_size = font_size_near(svg, ">lower</text>").expect("fraction size");
+    let text_size = font_size_near(svg, ">following</text>").expect("text size");
+    assert!(
+        fraction_size < text_size,
+        "inline fraction parts must use compact type"
+    );
+    let (_, denominator) = position(svg, ">lower</text>").expect("denominator");
+    let (_, following) = position(svg, ">following</text>").expect("following");
+    let font = BuiltinFontProvider::new();
+    let denominator_depth = "lower"
+        .chars()
+        .filter_map(|ch| font.glyph_vertical_em("Cambria Math", ch, false, true))
+        .map(|bounds| bounds.1 * fraction_size)
+        .fold(0.0_f64, f64::max);
+    let following_ascent = "following"
+        .chars()
+        .filter_map(|ch| font.glyph_vertical_em("Calibri", ch, false, false))
+        .map(|bounds| bounds.0 * text_size)
+        .fold(0.0_f64, f64::max);
+    assert!(
+        following - denominator > denominator_depth + following_ascent,
+        "following line must clear denominator: {denominator}, {following}"
+    );
+}
+
+#[test]
+fn long_inline_equation_wraps_at_operators_without_losing_terms() {
+    let formula = (0..80)
+        .map(|i| format!("x{i}"))
+        .collect::<Vec<_>>()
+        .join("+");
+    let pages = common::render_body(&format!(
+        "<w:p><m:oMath><m:r><m:t>{formula}</m:t></m:r></m:oMath></w:p>"
+    ));
+    let mut text = String::new();
+    let mut baselines = Vec::new();
+    for page in &pages {
+        assert!(
+            !page
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("render.object-overflow")
+                    || w.starts_with("render.math-overflow")),
+            "{:?}",
+            page.warnings
+        );
+        for element in page.svg.split("<text ").skip(1) {
+            let (tag, rest) = element.split_once('>').expect("text");
+            text.push_str(rest.split_once("</text>").expect("closing").0);
+            baselines.push(attribute(tag, "y").expect("baseline"));
+        }
+    }
+    assert_eq!(text, formula);
+    assert!(
+        baselines.iter().any(|y| (*y - baselines[0]).abs() > 0.25),
+        "equation must occupy several lines"
+    );
+}
+
+#[test]
+fn oversized_atomic_formula_is_reported_without_splitting_its_fraction() {
+    let numerator = "abcdefghijk".repeat(20);
+    let pages = common::render_body(&format!("<w:p><m:oMath><m:f><m:num><m:r><m:t>{numerator}</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f></m:oMath></w:p>"));
+    assert!(pages[0]
+        .warnings
+        .iter()
+        .any(|w| w.starts_with("render.math-overflow")));
+    assert!(pages[0].svg.contains(&format!(">{numerator}</text>")));
+    assert_eq!(pages[0].svg.matches("<line ").count(), 1);
+}
+
+#[test]
+fn math_field_instructions_are_hidden_and_cached_result_is_kept() {
+    let body = "<w:p><m:oMath><m:r><m:t>x=1 (</m:t></m:r><m:r><w:fldChar w:fldCharType=\"begin\"/></m:r><m:r><m:t> SEQ Equation \\* ARABIC </m:t></m:r><m:r><w:fldChar w:fldCharType=\"separate\"/></m:r><m:r><m:t>8</m:t></m:r><m:r><w:fldChar w:fldCharType=\"end\"/></m:r><m:r><m:t>)</m:t></m:r></m:oMath></w:p>";
+    let svg = render_body(body);
+    assert!(!svg.contains("SEQ Equation"));
+    assert!(svg.contains(">8</text>"));
+    let (_, parsed) = common::open_body(body);
+    let Block::Paragraph(p) = &parsed.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let Inline::Math(expr) = &p.inlines[0] else {
+        panic!("math")
+    };
+    let projected = math_expression_to_mathml(expr).expect("MathML");
+    assert!(!projected.contains("SEQ Equation"));
+    assert!(projected.contains('8'));
+}
+
 use std::path::Path;
 
 use strict_ooxml_core::opc::OpenOptions;
@@ -56,6 +253,7 @@ fn formulas(document: &Document) -> Vec<strict_ooxml_wml::model::math::MathExpre
 /// A run node with the given text.
 fn run(text: &str) -> MathNode {
     MathNode::Run(MathRun {
+        field_char: None,
         properties: MathRunProperties::default(),
         run_properties: None,
         text: text.to_owned(),
@@ -69,7 +267,7 @@ fn an_inline_formula_is_drawn_with_the_bundled_math_face() {
         "<w:p><w:r><w:t>a</w:t></w:r><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>\
 <w:r><w:t>b</w:t></w:r></w:p>",
     );
-    assert!(svg.contains("font-family=\"STIX Two Math\""), "{svg}");
+    assert!(svg.contains("font-family=\"Strict Math\""));
     assert!(svg.contains(">x</text>"), "{svg}");
     // The surrounding text keeps the body face.
     assert!(svg.contains("font-family=\"Carlito\""), "{svg}");
@@ -340,7 +538,7 @@ fn an_equation_array_row_spacing_is_twips() {
         // The two rows are the only `<text>` runs; their baselines differ by the
         // row pitch.
         let ys: Vec<f64> = svg
-            .match_indices("STIX Two Math")
+            .match_indices("Strict Math")
             .map(|(index, _)| {
                 let tag = &svg[index - 40..index];
                 attribute(tag, "y").expect("baseline")
@@ -419,7 +617,7 @@ fn the_stage5c_fixture_renders_two_pages() {
     assert_eq!(pages.len(), 2, "the fixture must keep its page invariant");
     let svg: String = pages.iter().map(|page| page.svg.as_str()).collect();
     for expected in [
-        "STIX Two Math",
+        "Strict Math",
         "<line ",
         "<path ",
         "<rect ",
@@ -492,5 +690,27 @@ fn attribute(tag: &str, name: &str) -> Option<f64> {
     let key = format!("{name}=\"");
     let start = tag.find(&key)? + key.len();
     let end = tag[start..].find('"')? + start;
-    tag[start..end].parse().ok()
+    tag[start..end].split_whitespace().next()?.parse().ok()
+}
+
+#[test]
+fn script_alphabets_keep_source_text_and_use_distinct_faces() {
+    for (script, family) in [
+        ("script", "Strict Math Script"),
+        ("fraktur", "Strict Math Fraktur"),
+        ("double-struck", "Strict Math DoubleStruck"),
+        ("sans-serif", "Arimo"),
+        ("monospace", "Cousine"),
+    ] {
+        let pages = render_with(&format!("<w:p><m:oMath><m:r><m:rPr><m:scr m:val=\"{script}\"/><m:sty m:val=\"p\"/></m:rPr><m:t>R+3</m:t></m:r></m:oMath></w:p>"), &RenderOptions::default());
+        assert_eq!(pages.len(), 1);
+        assert!(
+            pages[0].svg.contains(&format!("font-family=\"{family}\"")),
+            "{script} family"
+        );
+        assert!(
+            pages[0].svg.contains(">R+3</text>"),
+            "source text preserved for {script}"
+        );
+    }
 }

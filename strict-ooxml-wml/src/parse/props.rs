@@ -205,7 +205,7 @@ impl PartParser<'_> {
                                 props.text_direction = parser.val_enum(
                                     &attrs,
                                     "w:textDirection",
-                                    TextDirection::from_strict,
+                                    TextDirection::from_ooxml,
                                 );
                                 parser.skip_element()?;
                             }
@@ -920,7 +920,7 @@ impl PartParser<'_> {
                                 props.text_direction = parser.val_enum(
                                     &attrs,
                                     "w:textDirection",
-                                    TextDirection::from_strict,
+                                    TextDirection::from_ooxml,
                                 );
                             }
                             "tcBorders" => {
@@ -1175,7 +1175,7 @@ impl PartParser<'_> {
                                 props.text_direction = parser.val_enum(
                                     &attrs,
                                     "w:textDirection",
-                                    TextDirection::from_strict,
+                                    TextDirection::from_ooxml,
                                 );
                             }
                             "lnNumType" => {

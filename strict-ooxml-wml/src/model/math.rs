@@ -322,6 +322,8 @@ pub struct MathRunProperties {
 /// A math run (`m:r`) with its text (`m:t`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MathRun {
+    /// Complex field boundary carried by this math run (`w:fldChar`).
+    pub field_char: Option<super::values::FieldCharType>,
     /// Run properties (`m:rPr`).
     pub properties: MathRunProperties,
     /// `w:rPr` — the character formatting Word puts on a math run.
@@ -1004,6 +1006,7 @@ mod tests {
 
     fn run(text: &str) -> MathNode {
         MathNode::Run(MathRun {
+            field_char: None,
             properties: MathRunProperties::default(),
             run_properties: None,
             text: text.to_owned(),

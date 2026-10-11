@@ -863,6 +863,7 @@ struct PageResources<'a> {
     fonts: BTreeMap<String, PdfFont>,
     images: BTreeMap<String, lopdf::ObjectId>,
     forms: BTreeMap<String, lopdf::ObjectId>,
+    shadings: BTreeMap<String, crate::content::AxialGradient>,
     limits: PdfLimits,
     /// The resources a form falls back on, when the form declares none itself.
     parent: Option<&'a PageResources<'a>>,
@@ -919,6 +920,7 @@ impl<'a> PageResources<'a> {
         let mut fonts = BTreeMap::new();
         let mut images = BTreeMap::new();
         let mut forms = BTreeMap::new();
+        let mut shadings = BTreeMap::new();
         let mut notes: Vec<(String, String)> = Vec::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
@@ -933,6 +935,7 @@ impl<'a> PageResources<'a> {
                 fonts,
                 images,
                 forms,
+                shadings,
                 limits,
                 parent,
                 notes,
@@ -943,6 +946,13 @@ impl<'a> PageResources<'a> {
         // picture has no `/Font` at all, and a reader that stops looking when
         // the font table is missing never finds the picture. That is the normal
         // case for a scanned document.
+        if let Ok(shading_object) = resources.get(b"Shading") {
+            for (name, object) in dictionary_entries(resolve, shading_object) {
+                if let Some(shading) = crate::shading::decode(resolve, &object) {
+                    shadings.insert(name, shading);
+                }
+            }
+        }
         if let Some(fonts_object) = resources.get(b"Font").ok().cloned() {
             for (name, value) in dictionary_entries(resolve, &fonts_object) {
                 let Some(id) = value.as_reference().ok() else {
@@ -1001,6 +1011,7 @@ impl<'a> PageResources<'a> {
             fonts,
             images,
             forms,
+            shadings,
             limits,
             parent,
             notes,
@@ -1035,6 +1046,12 @@ fn dictionary_entries(
 }
 
 impl ResourceProvider for PageResources<'_> {
+    fn shading(&self, name: &str) -> Option<crate::content::AxialGradient> {
+        self.shadings
+            .get(name)
+            .cloned()
+            .or_else(|| self.parent.and_then(|parent| parent.shading(name)))
+    }
     fn font(&self, name: &str) -> Option<&PdfFont> {
         // A form's own name first, then the page it was invoked from: a form that
         // declares three fonts and uses a fourth is legal, and the fourth is the

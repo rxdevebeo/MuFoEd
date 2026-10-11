@@ -6,8 +6,45 @@ use super::coord;
 use crate::font::{shape_bundled, unicode_x_positions_px, BuiltinFontProvider, FontProvider};
 use crate::layout::{TextAdvanceKind, TextItem};
 
+/// Outline edge using the same scalar positions and face as SVG paint.
+pub(crate) fn text_ink_right(item: &TextItem) -> Option<f64> {
+    thread_local! {
+        static FONTS: BuiltinFontProvider = BuiltinFontProvider::new();
+    }
+    let shown = crate::font::present_text(&item.run.family, &item.text);
+    let family = crate::style::chosen_family(&item.run, &item.text);
+    let positions = shaped_x_attribute(&shown, &family, item);
+    FONTS.with(|fonts| {
+        shown
+            .chars()
+            .zip(positions.split_whitespace())
+            .filter_map(|(ch, x)| {
+                let x = x.parse::<f64>().ok()?;
+                let right = fonts.ink_right_em(&family, ch, item.run.bold, item.run.italic)?;
+                Some(x + right * item.size_px)
+            })
+            .max_by(f64::total_cmp)
+    })
+}
+
 /// Writes one text fragment, optionally with a highlight rectangle behind it.
 pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
+    if item.run.rotation_deg != 0.0 {
+        let _ = writeln!(
+            out,
+            "<g transform=\"rotate({} {} {})\">",
+            coord(item.run.rotation_deg),
+            coord(item.x),
+            coord(item.baseline)
+        );
+    }
+    text_svg_unrotated(out, item);
+    if item.run.rotation_deg != 0.0 {
+        out.push_str("</g>\n");
+    }
+}
+
+fn text_svg_unrotated(out: &mut String, item: &TextItem) {
     if let Some(highlight) = &item.run.highlight {
         // Highlight: an approximate box around the glyphs.
         let height = item.size_px * 1.2;

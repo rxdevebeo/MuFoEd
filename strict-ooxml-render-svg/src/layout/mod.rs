@@ -23,6 +23,7 @@ use crate::font::FontProvider;
 use crate::style::ComputedRun;
 use crate::units::twips_to_px;
 use crate::{MediaMode, MediaSource, RenderOptions};
+pub(crate) use paragraph::formula_ink;
 
 /// Which advance geometry produced [`TextItem::width`] and must be used to paint.
 ///
@@ -109,6 +110,33 @@ pub struct LineItem {
     pub dashed: bool,
 }
 
+/// A resolved non-solid fill shared by SVG and PDF.
+#[derive(Clone, Debug)]
+pub enum PathPaint {
+    /// A linear gradient, with stop positions between zero and one.
+    LinearGradient {
+        /// Resolved RGB stop colours.
+        stops: Vec<(f64, String)>,
+        /// Endpoints in the shape's local coordinates.
+        start: (f64, f64),
+        /// End of the gradient axis.
+        end: (f64, f64),
+    },
+    /// A repeating hatch or dot tile.
+    Pattern {
+        /// Resolved foreground RGB colour.
+        foreground: String,
+        /// Resolved background RGB colour.
+        background: String,
+        /// Tile edge in local pixels.
+        size: f64,
+        /// Foreground line segments, in normalized tile coordinates.
+        lines: Vec<(f64, f64, f64, f64)>,
+        /// Foreground rectangles, in normalized tile coordinates.
+        rectangles: Vec<(f64, f64, f64, f64)>,
+    },
+}
+
 /// An arbitrary SVG path (a DrawingML shape), in local coordinates.
 #[derive(Clone, Debug)]
 pub struct PathItem {
@@ -124,6 +152,8 @@ pub struct PathItem {
     pub d: String,
     /// Fill colour.
     pub fill: Option<String>,
+    /// A gradient or pattern, replacing the solid fill when present.
+    pub paint: Option<PathPaint>,
     /// Stroke colour.
     pub stroke: Option<String>,
     /// Stroke width in px.
@@ -605,6 +635,15 @@ impl LayoutContext<'_> {
         let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
         let family = crate::style::chosen_family(run, text);
+        let requested =
+            if run.complex_family.is_some() && crate::style::script_is_complex_only(text) {
+                run.complex_family.as_deref().unwrap_or(&run.family)
+            } else {
+                &run.family
+            };
+        if crate::font::family::known_family(requested).is_none() && !text.trim().is_empty() {
+            self.warn(format!("font.substitution: unavailable family {requested:?}; using {family:?}, metrics may differ"));
+        }
         let complex = crate::font::needs_complex_script(&shown);
         let non_space = shown.chars().filter(|ch| !ch.is_whitespace()).count() as f64;
         let extra = crate::style::spacing_px(run, size_px) * non_space;

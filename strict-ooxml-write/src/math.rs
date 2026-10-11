@@ -713,6 +713,11 @@ fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
     if let Some(run_props) = run.run_properties.as_deref() {
         crate::props::run_properties(xml, run_props);
     }
+    if let Some(kind) = run.field_char {
+        xml.start("w:fldChar");
+        xml.attr("w:fldCharType", kind.as_str());
+        xml.end();
+    }
     // AUD-64: same preserve rule as `w:t` — edge whitespace or a double space
     // would be collapsed by an XML parser without `xml:space="preserve"`.
     let needs_preserve = run.text.chars().next().is_some_and(char::is_whitespace)
@@ -801,9 +806,51 @@ mod tests {
     use crate::xml::XmlWriter;
 
     #[test]
+    fn field_boundaries_and_instruction_text_are_preserved() {
+        use strict_ooxml_wml::model::values::FieldCharType;
+        let parts = [
+            (Some(FieldCharType::Begin), ""),
+            (None, " SEQ Equation \\* ARABIC "),
+            (Some(FieldCharType::Separate), ""),
+            (None, "8"),
+            (Some(FieldCharType::End), ""),
+        ];
+        let expression = MathExpression {
+            nodes: parts
+                .into_iter()
+                .map(|(field_char, text)| {
+                    MathNode::Run(MathRun {
+                        field_char,
+                        properties: MathRunProperties::default(),
+                        run_properties: None,
+                        text: text.to_owned(),
+                        location: strict_ooxml_core::error::SourceLocation::unknown(),
+                    })
+                })
+                .collect(),
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let mut xml = XmlWriter::new();
+        math_expression(&mut ctx, &mut xml, &expression);
+        let output = xml.finish().expect("balanced");
+        for marker in ["begin", "separate", "end"] {
+            assert!(
+                output.contains(&format!("<w:fldChar w:fldCharType=\"{marker}\"/>")),
+                "{output}"
+            );
+        }
+        assert!(output.contains(" SEQ Equation \\* ARABIC "));
+        assert!(output.contains("<m:t>8</m:t>"));
+        assert!(report.losses().is_empty());
+    }
+
+    #[test]
     fn a_plain_run_round_trips() {
         let expression = MathExpression {
             nodes: vec![MathNode::Run(MathRun {
+                field_char: None,
                 properties: MathRunProperties::default(),
                 run_properties: None,
                 text: "x+1".to_owned(),
@@ -826,6 +873,7 @@ mod tests {
     fn math_text_preserves_edge_whitespace() {
         let expression = MathExpression {
             nodes: vec![MathNode::Run(MathRun {
+                field_char: None,
                 properties: MathRunProperties::default(),
                 run_properties: None,
                 text: " x ".to_owned(),
@@ -848,6 +896,7 @@ mod tests {
     fn run_properties_use_the_math_vocabulary() {
         let expression = MathExpression {
             nodes: vec![MathNode::Run(MathRun {
+                field_char: None,
                 properties: MathRunProperties {
                     literal: true,
                     normal: false,

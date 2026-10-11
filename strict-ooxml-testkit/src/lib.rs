@@ -23,6 +23,7 @@
 pub mod audit;
 pub mod corpus;
 pub mod docx;
+pub mod graphics;
 pub mod harness;
 pub mod inspect;
 pub mod pdf;

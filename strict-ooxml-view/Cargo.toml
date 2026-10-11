@@ -24,6 +24,12 @@ doc = false
 strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg"] }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 sha2 = "0.11"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3.27"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_ProcessStatus", "Win32_System_Threading", "Win32_System_Memory"] }
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }

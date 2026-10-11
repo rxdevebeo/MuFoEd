@@ -1823,6 +1823,7 @@ impl PartParser<'_> {
         let mut stops = Vec::new();
         let mut angle = None;
         let mut scaled = None;
+        let mut path_shading = None;
         let rotate_with_shape = optional_bool_attr(attrs, "rotWithShape");
         self.nested(|parser| {
             loop {
@@ -1834,6 +1835,9 @@ impl PartParser<'_> {
                             angle = parse_i32_attr(&attrs, "ang");
                             scaled = optional_bool_attr(&attrs, "scaled");
                             parser.skip_element()?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "path" {
+                            path_shading =
+                                Some(parser.capture_fragment(name, attrs)?.unwrap_or_default());
                         } else {
                             parser.skip_element()?;
                         }
@@ -1848,6 +1852,7 @@ impl PartParser<'_> {
                 angle,
                 scaled,
                 rotate_with_shape,
+                path_shading,
             })
         })
     }

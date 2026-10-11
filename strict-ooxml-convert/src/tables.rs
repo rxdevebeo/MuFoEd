@@ -492,6 +492,9 @@ fn rules_of(page: &PdfPage, config: &TableRules) -> Vec<Rule> {
 
 /// The ruling lines one path draws.
 fn vector_rules(vector: &Vector, height: f64, config: &TableRules) -> Vec<Rule> {
+    if vector.gradient.is_some() {
+        return Vec::new();
+    }
     let color = vector
         .stroke
         .or(vector.fill)
@@ -1128,6 +1131,7 @@ mod tests {
     /// A stroked ruling line, top-left to bottom-right, as the reader sees it.
     fn rule(x0: f64, y0: f64, x1: f64, y1: f64) -> Item {
         Item::Vector(Vector {
+            gradient: None,
             subpaths: vec![SubPath {
                 points: vec![(x0, HEIGHT - y0), (x1, HEIGHT - y1)],
                 closed: false,
@@ -1147,6 +1151,7 @@ mod tests {
     /// A filled box, the way a producer draws a shaded cell.
     fn box_at(left: f64, top: f64, right: f64, bottom: f64) -> Item {
         Item::Vector(Vector {
+            gradient: None,
             subpaths: vec![SubPath {
                 points: vec![
                     (left, HEIGHT - top),

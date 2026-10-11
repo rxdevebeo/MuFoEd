@@ -78,6 +78,10 @@ name = "pdf_pixels"
 required-features = ["raster"]
 
 [[test]]
+name = "complex_graphics"
+required-features = ["raster"]
+
+[[test]]
 name = "formats"
 required-features = ["raster"]
 
@@ -90,4 +94,3 @@ workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
-

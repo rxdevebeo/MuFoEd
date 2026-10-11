@@ -304,6 +304,9 @@ pub(crate) fn resolve_cell_properties(
     if resolved.vertical_align.is_none() {
         resolved.vertical_align = layer.vertical_align;
     }
+    if resolved.text_direction.is_none() {
+        resolved.text_direction = layer.text_direction;
+    }
     resolved
 }
 

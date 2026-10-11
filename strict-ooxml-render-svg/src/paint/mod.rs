@@ -5,6 +5,7 @@
 //! single `<svg>` document per page, terminated by `\n`.
 
 pub(crate) mod chart;
+mod fills;
 pub(crate) mod graphics;
 pub(crate) mod image;
 pub(crate) mod shapes;

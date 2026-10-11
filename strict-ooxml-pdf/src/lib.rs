@@ -100,3 +100,4 @@ pub use crate::text::{lines as text_lines, GlyphLine};
 pub const FLATTEN_TOLERANCE_PT: f64 = 0.125;
 
 pub use document::{PdfDocument as Document, PdfPage as Page};
+mod shading;

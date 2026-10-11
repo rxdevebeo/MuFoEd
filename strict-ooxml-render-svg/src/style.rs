@@ -7,7 +7,7 @@
 //! assign a state, so a paragraph mark and a run that both say italic stay
 //! italic. `TriState::Absent` leaves the inherited value untouched.
 
-use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
+use strict_ooxml_wml::model::props::{FrameProperties, ParagraphProperties, RunProperties};
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{
     Border, BorderStyle, Color, Fonts, Highlight, Indentation, Justification, LineSpacingRule,
@@ -18,8 +18,14 @@ use strict_ooxml_wml::model::Document;
 /// Effective run formatting.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedRun {
+    /// Rotation of delivered text around its baseline origin, in degrees.
+    pub rotation_deg: f64,
     /// Font family (ascii/hAnsi).
     pub family: String,
+    /// Deterministic substitute selected using the document font-table hints.
+    pub family_fallback: Option<String>,
+    /// Substitute for an unavailable complex-script face.
+    pub complex_family_fallback: Option<String>,
     /// Font size in points.
     pub size_pt: f64,
     /// Additional pitch after each character, in points (`w:spacing` on `w:rPr`).
@@ -51,7 +57,10 @@ pub struct ComputedRun {
 impl Default for ComputedRun {
     fn default() -> Self {
         Self {
+            rotation_deg: 0.0,
             family: "Calibri".to_owned(),
+            family_fallback: None,
+            complex_family_fallback: None,
             size_pt: 11.0,
             spacing_pt: 0.0,
             bold: false,
@@ -81,6 +90,8 @@ pub struct NumberingRef {
 /// Effective paragraph formatting plus the paragraph's default run format.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedParagraph {
+    /// Frame attributes after the style cascade and direct overrides.
+    pub frame: Option<FrameProperties>,
     /// Alignment.
     pub alignment: Justification,
     /// Space before, in points.
@@ -120,6 +131,7 @@ pub struct ComputedParagraph {
 impl Default for ComputedParagraph {
     fn default() -> Self {
         Self {
+            frame: None,
             alignment: Justification::Start,
             space_before_pt: 0.0,
             space_after_pt: 0.0,
@@ -180,6 +192,7 @@ pub fn compute_paragraph(
         apply_paragraph_style(document, &mut computed, style_id, theme);
     }
     apply_paragraph_props_mode(&mut computed, &para.props, theme, ToggleMode::Direct);
+    resolve_font_hints(document, &mut computed.default_run);
     computed
 }
 
@@ -203,7 +216,47 @@ pub fn compute_run(
         }
     }
     apply_direct_run_props(&mut computed, &run.props, theme);
+    resolve_font_hints(document, &mut computed);
     computed
+}
+
+fn resolve_font_hints(document: &Document, run: &mut ComputedRun) {
+    run.family_fallback = font_hint_substitute(document, &run.family);
+    run.complex_family_fallback = run
+        .complex_family
+        .as_deref()
+        .and_then(|family| font_hint_substitute(document, family));
+}
+
+fn font_hint_substitute(document: &Document, family: &str) -> Option<String> {
+    if crate::font::family::known_family(family).is_some() {
+        return None;
+    }
+    let hints = &document
+        .font_table
+        .as_ref()?
+        .fonts
+        .iter()
+        .find(|font| font.name.eq_ignore_ascii_case(family.trim()))?
+        .hints;
+    if let Some(mapped) = hints
+        .alt_name
+        .as_deref()
+        .and_then(crate::font::family::known_family)
+    {
+        return Some(mapped.to_owned());
+    }
+    let mapped = if hints.pitch.as_deref() == Some("fixed") {
+        "Cousine"
+    } else {
+        match hints.family.as_deref() {
+            Some("roman") => "Tinos",
+            Some("swiss") => "Arimo",
+            Some("modern") => "Cousine",
+            _ => "Carlito",
+        }
+    };
+    Some(mapped.to_owned())
 }
 
 /// Applies the table style of the cell being laid out, if any.
@@ -266,6 +319,33 @@ fn apply_paragraph_props_mode(
     theme: Option<&Theme>,
     mark: ToggleMode,
 ) {
+    if let Some(frame) = &props.frame {
+        let inherited = computed.frame.get_or_insert_with(FrameProperties::default);
+        macro_rules! overlay {
+            ($($field:ident),+ $(,)?) => { $(
+                if frame.$field.is_some() {
+                    inherited.$field = frame.$field.clone();
+                }
+            )+ };
+        }
+        overlay!(
+            drop_cap,
+            lines,
+            width,
+            height,
+            v_space,
+            h_space,
+            wrap,
+            h_anchor,
+            v_anchor,
+            x,
+            x_align,
+            y,
+            y_align,
+            height_rule,
+            anchor_lock
+        );
+    }
     if let Some(alignment) = props.alignment {
         computed.alignment = alignment;
     }
@@ -485,12 +565,18 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
 /// Cyrillic letters.
 #[must_use]
 pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
-    let requested = if run.complex_family.is_some() && script_is_complex_only(text) {
-        run.complex_family.as_deref().unwrap_or(&run.family)
+    let (requested, fallback) = if run.complex_family.is_some() && script_is_complex_only(text) {
+        (
+            run.complex_family.as_deref().unwrap_or(&run.family),
+            run.complex_family_fallback.as_deref(),
+        )
     } else {
-        run.family.as_str()
+        (run.family.as_str(), run.family_fallback.as_deref())
     };
-    crate::font::map_family(requested).to_owned()
+    crate::font::family::known_family(requested)
+        .or(fallback)
+        .unwrap_or("Carlito")
+        .to_owned()
 }
 
 /// Extra advance, in px, added after each character of `run`.
@@ -560,7 +646,7 @@ pub fn compressed_char_factor(
 }
 
 /// Whether `text` is a complex script, with no Latin or Cyrillic letters.
-fn script_is_complex_only(text: &str) -> bool {
+pub(crate) fn script_is_complex_only(text: &str) -> bool {
     let mut complex = false;
     for ch in text.chars() {
         if is_latin_or_cyrillic(ch) {

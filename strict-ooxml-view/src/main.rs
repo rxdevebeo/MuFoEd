@@ -28,19 +28,26 @@
 )]
 
 mod http;
+mod process_limit;
 mod ui;
+mod worker;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
+#[cfg(test)]
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use http::Response;
-use strict_ooxml_view::{discover, failed, render, Cache, DocumentView, Entry};
+#[cfg(test)]
+use strict_ooxml::OpenControl;
+use strict_ooxml_view::{discover, Cache, DocumentView, Entry};
+#[cfg(test)]
+use strict_ooxml_view::{failed, render_controlled};
 
 /// Exit code: the viewer ran and stopped cleanly.
 const EXIT_OK: u8 = 0;
@@ -63,6 +70,7 @@ const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
 /// spawned thread gets 2 MiB by default; the Linux main thread the render used
 /// to run on has 8. The same 8 here, so moving the render off the main thread
 /// costs no document its render.
+#[cfg(test)]
 const RENDER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 /// One directory the viewer offers in the corpus menu.
@@ -98,6 +106,12 @@ const KNOWN_CORPORA: &[KnownCorpus] = &[
         transitional: true,
     },
     KnownCorpus {
+        id: "cc0-docx-math",
+        label: "CC0 DOCX Math",
+        path: "testdata/CC0_DOCX_MATH",
+        transitional: true,
+    },
+    KnownCorpus {
         id: "cc0",
         label: "CC0",
         path: "testdata/CC0",
@@ -107,6 +121,18 @@ const KNOWN_CORPORA: &[KnownCorpus] = &[
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--render-worker") {
+        let Some(path) = args.get(1) else {
+            return ExitCode::from(EXIT_ERROR);
+        };
+        return match worker::entry(Path::new(path)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::from(EXIT_ERROR)
+            }
+        };
+    }
     let Some(config) = Config::parse(&args) else {
         return ExitCode::from(EXIT_ERROR);
     };
@@ -198,30 +224,36 @@ struct State {
 
 impl State {
     /// Returns the view for `name` in `corpus`, rendering it on first request.
-    fn view(&self, corpus: &Corpus, name: &str) -> Option<DocumentView> {
+    fn view(&self, corpus: &Corpus, name: &str) -> Option<Arc<DocumentView>> {
         if let Some(cached) = self
             .caches
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .get(&corpus.id)
-            .and_then(|cache| cache.get(name).cloned())
+            .and_then(|cache| cache.get_shared(name))
         {
             return Some(cached);
         }
         let entry = corpus.entries.iter().find(|entry| entry.name == name)?;
-        let view = render_bounded(entry, corpus.transitional, self.scale, RENDER_TIMEOUT);
+        let view = Arc::new(render_bounded(
+            entry,
+            corpus.transitional,
+            self.scale,
+            RENDER_TIMEOUT,
+        ));
         self.caches
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .entry(corpus.id.clone())
             .or_default()
-            .insert(view.clone());
+            .insert_shared(Arc::clone(&view));
         Some(view)
     }
 }
 
 /// Why [`run_bounded`] came back without a value.
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(test)]
 enum Unfinished {
     /// The job is still running; it was left to finish on its own.
     TimedOut,
@@ -233,6 +265,7 @@ enum Unfinished {
 ///
 /// A job that does not finish is not stopped — a thread cannot be — but the
 /// caller stops waiting for it, and its answer, if it ever comes, goes nowhere.
+#[cfg(test)]
 fn run_bounded<T, F>(timeout: Duration, job: F) -> Result<T, Unfinished>
 where
     T: Send + 'static,
@@ -271,17 +304,33 @@ fn render_bounded(
     scale: f64,
     timeout: Duration,
 ) -> DocumentView {
+    worker::run(entry, transitional, scale, timeout)
+}
+
+#[cfg(test)]
+fn render_in_test_thread(
+    entry: &Entry,
+    transitional: bool,
+    scale: f64,
+    timeout: Duration,
+) -> DocumentView {
     let job = entry.clone();
+    let control = OpenControl::with_timeout(timeout);
+    let worker_control = control.clone();
     let outcome = run_bounded(timeout, move || {
-        render(&job, transitional, scale).map_err(|error| error.to_string())
+        render_controlled(&job, transitional, scale, &worker_control)
+            .map_err(|error| error.to_string())
     });
+    if matches!(outcome, Err(Unfinished::TimedOut)) {
+        control.cancel();
+    }
     match outcome {
         Ok(Ok(view)) => view,
         Ok(Err(reason)) | Err(Unfinished::Lost(reason)) => failed(entry, &reason),
         Err(Unfinished::TimedOut) => failed(
             entry,
             &format!(
-                "rendering did not finish within {} s and was abandoned",
+                "rendering did not finish within {} s; cancellation requested",
                 timeout.as_secs()
             ),
         ),
@@ -330,10 +379,41 @@ fn route(state: &State, path: &str, query: &str) -> Response {
             let Some(view) = state.view(corpus, &name) else {
                 return Response::not_found(&name);
             };
-            Response::ok(
-                "application/json; charset=utf-8",
-                document_json(&view).into_bytes(),
-            )
+            let metadata_only = query_value(query, "metadata").as_deref() == Some("1");
+            if !metadata_only && view.svg_bytes() > 96 * 1024 * 1024 {
+                return Response::payload_too_large();
+            }
+            let body = match document_json_mode(&view, metadata_only) {
+                Ok(json) => json.into_bytes(),
+                Err(error) => {
+                    return Response::bad_request(&format!("stored page unavailable: {error}"))
+                }
+            };
+            worker::log(
+                &serde_json::json!({"event":"response","document":name,"corpus":corpus.id,"bytes":body.len(),"metadata_only":metadata_only,"extreme":body.len()>8*1024*1024}),
+            );
+            Response::ok("application/json; charset=utf-8", body)
+        }
+        "/api/page" => {
+            let Some(corpus) = selected_corpus(state, query) else {
+                return Response::not_found("corpus");
+            };
+            let name = query_value(query, "name").unwrap_or_default();
+            let Some(number) =
+                query_value(query, "page").and_then(|value| value.parse::<usize>().ok())
+            else {
+                return Response::bad_request("page is required");
+            };
+            let Some(view) = state.view(corpus, &name) else {
+                return Response::not_found(&name);
+            };
+            let Some(page) = view.pages.iter().find(|page| page.number == number) else {
+                return Response::not_found("page");
+            };
+            match view.page_svg(page) {
+                Ok(svg) => Response::ok("image/svg+xml; charset=utf-8", svg.into_bytes()),
+                Err(error) => Response::bad_request(&format!("stored page unavailable: {error}")),
+            }
         }
         other => Response::not_found(other),
     }
@@ -365,20 +445,30 @@ fn menu_entry_json(name: &str, size: u64) -> String {
 }
 
 /// A rendered view as the JSON the page script expects.
+#[cfg(test)]
 fn document_json(view: &DocumentView) -> String {
-    let pages: Vec<String> = view
-        .pages
-        .iter()
-        .map(|page| {
-            format!(
-                "{{\"number\":{},\"width\":{},\"height\":{},\"svg\":{}}}",
-                page.number,
-                json_number(page.width),
-                json_number(page.height),
-                json_string(&page.svg)
-            )
-        })
-        .collect();
+    document_json_mode(view, false).unwrap_or_default()
+}
+
+fn document_json_mode(view: &DocumentView, metadata_only: bool) -> std::io::Result<String> {
+    let mut pages = String::new();
+    for page in &view.pages {
+        if !pages.is_empty() {
+            pages.push(',');
+        }
+        let _ = write!(
+            pages,
+            "{{\"number\":{},\"width\":{},\"height\":{}",
+            page.number,
+            json_number(page.width),
+            json_number(page.height)
+        );
+        if !metadata_only {
+            pages.push_str(",\"svg\":");
+            write_json_string(&mut pages, &view.page_svg(page)?);
+        }
+        pages.push('}');
+    }
     // An absent value must serialize as JSON `null`, not as nothing: writing
     // an empty string where a value is expected produces `"note":,` and the
     // client cannot parse the document at all.
@@ -399,13 +489,13 @@ fn document_json(view: &DocumentView) -> String {
         .note
         .as_deref()
         .map_or_else(|| "null".to_owned(), json_string);
-    format!(
+    Ok(format!(
         "{{\"name\":{},\"conformance\":{},\"summary\":{summary},\"note\":{note},\"pipeline\":{},\"pages\":[{}]}}",
         json_string(&view.name),
         json_string(&view.conformance),
         pipeline_json(&view.pipeline),
-        pages.join(",")
-    )
+        pages
+    ))
 }
 
 /// The loss ledger, kept apart from the mechanism summary.
@@ -463,6 +553,11 @@ fn issue_json(issue: &strict_ooxml_view::ViewIssue) -> String {
 /// page of valid-but-unparseable JSON.
 fn json_string(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
+    write_json_string(&mut out, value);
+    out
+}
+
+fn write_json_string(out: &mut String, value: &str) {
     out.push('"');
     for character in value.chars() {
         match character {
@@ -479,7 +574,6 @@ fn json_string(value: &str) -> String {
         }
     }
     out.push('"');
-    out
 }
 
 /// Formats a number, or `0` when it is not finite.
@@ -687,8 +781,9 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::{
-        corpus_json, json_number, json_string, known_for, query_value, render_bounded, run_bounded,
-        slug, unique_id, Config, Corpus, Entry, Unfinished, EXIT_OK, KNOWN_CORPORA,
+        corpus_json, json_number, json_string, known_for, query_value,
+        render_in_test_thread as render_bounded, run_bounded, slug, unique_id, Config, Corpus,
+        Entry, Unfinished, EXIT_OK, KNOWN_CORPORA,
     };
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
@@ -761,9 +856,10 @@ mod tests {
         assert!(ids.contains(&"strict"));
         assert!(ids.contains(&"docx"));
         assert!(ids.contains(&"cc0-docx"));
+        assert!(ids.contains(&"cc0-docx-math"));
         assert!(KNOWN_CORPORA
             .iter()
-            .filter(|known| known.id != "cc0" && known.id != "cc0-docx")
+            .filter(|known| !known.id.starts_with("cc0"))
             .all(|known| known.path.starts_with("strict-ooxml-core/tests/")));
     }
 
@@ -898,6 +994,7 @@ mod tests {
         // to open looks like, and it is exactly the one that produced
         // `"note":,` — invalid JSON the client could not read.
         let view = DocumentView {
+            page_files: None,
             name: "broken.docx".to_owned(),
             conformance: "—".to_owned(),
             summary: None,
@@ -923,6 +1020,7 @@ mod tests {
     #[test]
     fn a_rendered_document_produces_valid_json() {
         let view = DocumentView {
+            page_files: None,
             name: "a.docx".to_owned(),
             conformance: "strict".to_owned(),
             summary: Some(strict_ooxml_view::Summary {

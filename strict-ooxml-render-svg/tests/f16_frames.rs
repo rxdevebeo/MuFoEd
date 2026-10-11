@@ -7,6 +7,120 @@ mod common;
 use common::open_body;
 use strict_ooxml_render_svg::{render, RenderOptions};
 
+#[test]
+fn rotated_merged_header_uses_the_combined_authored_row_height() {
+    let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"1500\"/><w:gridCol w:w=\"1500\"/></w:tblGrid><w:tr><w:trPr><w:trHeight w:val=\"450\"/></w:trPr><w:tc><w:tcPr><w:vMerge w:val=\"restart\"/><w:textDirection w:val=\"lr\"/></w:tcPr><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:t>Human either-a-go-go inhibition</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Title</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:trHeight w:val=\"1500\"/></w:trPr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>Second header</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Following</w:t></w:r></w:p>";
+    let (_, parsed) = open_body(body);
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    let (_, following) = text_at(&pages[0].svg, "Following");
+    assert!(
+        (225.0..270.0).contains(&following),
+        "merged header must not charge its content twice: {following}"
+    );
+    assert!(pages[0].svg.contains("rotate(-90 "));
+}
+
+#[test]
+fn unavailable_font_uses_declared_family_hints_and_reports_the_substitution() {
+    use strict_ooxml_wml::model::fonts::{FontEntry, FontHints, FontTable};
+    let (_, mut parsed) = open_body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Unavailable Serif\"/></w:rPr><w:t>Serif text</w:t></w:r></w:p>");
+    parsed.font_table = Some(FontTable {
+        fonts: vec![FontEntry {
+            name: "Unavailable Serif".into(),
+            hints: FontHints {
+                family: Some("roman".into()),
+                ..FontHints::default()
+            },
+            ..FontEntry::default()
+        }],
+    });
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    assert!(pages[0].svg.contains("font-family=\"Tinos\""));
+    assert!(pages[0]
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("font.substitution")
+            && warning.contains("Unavailable Serif")
+            && warning.contains("Tinos")));
+}
+
+#[test]
+fn bottom_to_top_cell_rotates_whole_words_and_uses_their_length_as_height() {
+    let body = "<w:tbl><w:tblPr><w:tblW w:w=\"600\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:textDirection w:val=\"lr\"/></w:tcPr><w:p><w:r><w:t>Compounds</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
+    for body in [
+        body.to_owned(),
+        body.replace("w:val=\"lr\"", "w:val=\"btLr\""),
+    ] {
+        let (_, parsed) = open_body(&body);
+        let pages = render(&parsed, &RenderOptions::default()).expect("render");
+        assert!(pages[0].svg.contains("rotate(-90 "));
+        assert!(pages[0].svg.contains(">Compounds</text>"));
+        assert!(!pages[0]
+            .warnings
+            .iter()
+            .any(|w| w.contains("render.line-overflow")));
+    }
+}
+
+#[test]
+fn italic_outline_overhang_is_reported_even_when_advance_fits() {
+    let (_, parsed) = open_body("<w:p><w:pPr><w:jc w:val=\"end\"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Times New Roman\"/><w:i/></w:rPr><w:t>f</w:t></w:r></w:p>");
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    assert!(
+        pages[0]
+            .warnings
+            .iter()
+            .any(|w| w.contains("render.glyph-overflow")),
+        "outline must be checked separately from advance"
+    );
+    assert!(!pages[0]
+        .warnings
+        .iter()
+        .any(|w| w.contains("render.line-overflow")));
+}
+
+#[test]
+fn inherited_frame_anchors_and_partial_direct_override_wrap_the_body() {
+    let styles = "<w:style w:type=\"paragraph\" w:styleId=\"Frame\"><w:name w:val=\"Frame\"/><w:pPr><w:framePr w:w=\"9000\" w:h=\"3000\" w:hRule=\"exact\" w:wrap=\"notBeside\" w:hAnchor=\"margin\" w:vAnchor=\"page\" w:y=\"1800\"/></w:pPr></w:style>";
+    let body = "<w:p><w:pPr><w:pStyle w:val=\"Frame\"/><w:framePr w:y=\"1200\"/></w:pPr><w:r><w:t>framed</w:t></w:r></w:p><w:p><w:r><w:t>body</w:t></w:r></w:p><w:sectPr><w:pgMar w:left=\"1200\" w:right=\"1200\" w:top=\"1200\" w:bottom=\"1200\"/></w:sectPr>";
+    let (_, parsed) = common::open_with_styles(body, styles);
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    let (x, y) = text_at(&pages[0].svg, "framed");
+    assert!((x - 80.0).abs() < 0.25, "inherits margin anchor: {x}");
+    assert!((80.0..120.0).contains(&y), "direct y overrides style: {y}");
+    let (_, body_y) = text_at(&pages[0].svg, "body");
+    assert!(
+        body_y >= 280.0,
+        "body must clear exact frame bottom: {body_y}"
+    );
+}
+
+#[test]
+fn style_only_frame_groups_adjacent_paragraphs() {
+    let styles = "<w:style w:type=\"paragraph\" w:styleId=\"Frame\"><w:pPr><w:framePr w:w=\"5000\" w:x=\"1200\" w:y=\"1800\" w:wrap=\"none\"/></w:pPr></w:style>";
+    let body = "<w:p><w:pPr><w:pStyle w:val=\"Frame\"/></w:pPr><w:r><w:t>alpha</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Frame\"/></w:pPr><w:r><w:t>beta</w:t></w:r></w:p>";
+    let (_, parsed) = common::open_with_styles(body, styles);
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    let (x, y) = text_at(&pages[0].svg, "alpha");
+    let (next_x, next_y) = text_at(&pages[0].svg, "beta");
+    assert!((x - 80.0).abs() < 0.25);
+    assert!((next_x - x).abs() < 0.25 && next_y > y);
+}
+
+#[test]
+fn omitted_leading_grid_column_does_not_narrow_the_first_cell() {
+    let body = "<w:tbl><w:tblPr><w:tblW w:w=\"4590\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"90\"/><w:gridCol w:w=\"4500\"/></w:tblGrid><w:tr><w:trPr><w:gridBefore w:val=\"1\"/></w:trPr><w:tc><w:p><w:r><w:t>Source of variation</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
+    let (_, parsed) = open_body(body);
+    let pages = render(&parsed, &RenderOptions::default()).expect("render");
+    let svg = &pages[0].svg;
+    let (_, source_y) = text_at(svg, "Source");
+    let (_, variation_y) = text_at(svg, "variation");
+    assert!(
+        (source_y - variation_y).abs() < 0.25,
+        "label should fit on one line"
+    );
+}
+
 fn framed(x_twips: i32) -> String {
     let body = format!(
         "<w:p><w:pPr><w:framePr w:w=\"4000\" w:h=\"800\" w:x=\"{x_twips}\" w:y=\"2000\"/></w:pPr>\

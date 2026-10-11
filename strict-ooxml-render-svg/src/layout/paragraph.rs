@@ -81,14 +81,7 @@ pub(crate) struct ParagraphFlow {
 /// Default tab stop in twips (0.5 inch) when settings omit one.
 const DEFAULT_TAB_TWIPS: i32 = 720;
 
-/// Hard cap on how far the ink of an inline formula may grow a text line.
-///
-/// A formula line keeps the paragraph's natural line height and grows only by
-/// what the formula's own box needs (ISO/IEC 29500-1 gives no separate math
-/// line spacing, and both reproducible WPS references measure exactly that).
-/// The cap bounds the growth for a construct that is genuinely taller than one
-/// line — a large matrix — so that a following line cannot be pushed off the
-/// producer's grid (`STAGE-5C-REWORK-1` C1, §5.2 of `STAGE-5C-TASK.md`).
+/// Compatibility limit for complex inline math pending complete compact layout.
 const MAX_MATH_LINE_GROWTH: f64 = 1.60;
 
 struct MetricAdvanceGuard<'a> {
@@ -205,7 +198,17 @@ pub(crate) fn layout_paragraph(
     ParagraphFlow {
         flows: flows.0,
         anchors: flows.1,
-        space_before: if math_paragraph { 0.0 } else { space_before },
+        space_before: if math_paragraph
+            && !para
+                .props
+                .spacing
+                .as_ref()
+                .is_some_and(|spacing| spacing.before.is_some() || spacing.before_lines.is_some())
+        {
+            0.0
+        } else {
+            space_before
+        },
         // `w:after` is **kept** for a math paragraph, and the reference says so: the
         // gap between the last display formula on `06-strict-math-display` and the
         // paragraph below it is 15 px in the reference and 5 px in ours, and
@@ -382,10 +385,9 @@ fn flatten_inlines(
             )),
             // Formulas (Stage 5C, §3.1.1/§3.1.5). An inline `m:oMath` joins the
             // text baseline; a display `m:oMathPara` becomes its own block.
-            Inline::Math(expression) if ctx.options.math => out.push(Seg::Math(
-                crate::math::layout_inline(ctx, expression, &computed.default_run),
-                computed.default_run.clone(),
-            )),
+            Inline::Math(expression) if ctx.options.math => {
+                flatten_math(ctx, computed, expression, content_width, out);
+            }
             Inline::MathParagraph(paragraph) if ctx.options.math => {
                 out.push(Seg::MathParagraph(crate::math::layout_display(
                     ctx,
@@ -404,6 +406,45 @@ fn flatten_inlines(
             | Inline::MathParagraph(_)
             | Inline::Opaque(_) => {}
         }
+    }
+}
+
+fn math_spacing(ctx: &LayoutContext<'_>, value: Option<&str>, name: &str) -> f64 {
+    match value {
+        None => 0.0,
+        Some(value) => match value.parse::<i32>() {
+            Ok(twips) if twips >= 0 => twips_to_px(twips, ctx.options.scale),
+            _ => {
+                ctx.warn(format!(
+                    "render.math-spacing: invalid m:{name} value {value:?}; using zero"
+                ));
+                0.0
+            }
+        },
+    }
+}
+
+fn flatten_math(
+    ctx: &LayoutContext<'_>,
+    computed: &ComputedParagraph,
+    expression: &strict_ooxml_wml::model::math::MathExpression,
+    content_width: f64,
+    out: &mut Vec<Seg>,
+) {
+    let width = content_width
+        - pt_to_px(
+            computed.indent_start_pt + computed.indent_end_pt,
+            ctx.options.scale,
+        );
+    for (index, boxed) in
+        crate::math::layout_inline_wrapped(ctx, expression, &computed.default_run, width)
+            .into_iter()
+            .enumerate()
+    {
+        if index > 0 {
+            out.push(Seg::Break);
+        }
+        out.push(Seg::Math(boxed, computed.default_run.clone()));
     }
 }
 
@@ -544,6 +585,7 @@ fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg
 
 /// Mutable line being assembled.
 struct LineBuilder {
+    inline_fraction: bool,
     items: Vec<TextItem>,
     graphics: Vec<Item>,
     footnote_refs: Vec<u32>,
@@ -558,6 +600,7 @@ struct LineBuilder {
 impl LineBuilder {
     fn new() -> Self {
         Self {
+            inline_fraction: false,
             items: Vec::new(),
             graphics: Vec::new(),
             footnote_refs: Vec::new(),
@@ -729,11 +772,22 @@ fn build_lines(
                 if !pending.is_empty() {
                     sink.emit(pending, false);
                 }
-                let height = boxed.size.height + boxed.size.depth;
+                let properties = ctx.document.settings.math_properties.as_ref();
+                let before = math_spacing(
+                    ctx,
+                    properties.and_then(|props| props.pre_space.as_deref()),
+                    "preSp",
+                );
+                let after = math_spacing(
+                    ctx,
+                    properties.and_then(|props| props.post_space.as_deref()),
+                    "postSp",
+                );
+                let height = before + boxed.size.height + boxed.size.depth + after;
                 let items = boxed
                     .items
                     .into_iter()
-                    .map(|item| shift_item(item, 0.0, boxed.size.height))
+                    .map(|item| shift_item(item, 0.0, before + boxed.size.height))
                     .collect();
                 sink.flows.push(Flow::Block { items, height });
                 sink.math_block = true;
@@ -915,12 +969,95 @@ fn place_formula(
         sink.emit(std::mem::replace(current, LineBuilder::new()), false);
         *x = normal_x;
     }
+    current.inline_fraction |= boxed.inline_fraction;
     for item in boxed.items {
         current.graphics.push(shift_item(item, *x, 0.0));
     }
     current.ink_height = current.ink_height.max(boxed.size.height);
     current.ink_depth = current.ink_depth.max(boxed.size.depth);
     *x += width;
+}
+
+/// Keep the construction's nominal metrics while reserving its painted extent
+/// in the surrounding paragraph. Font ascent is not the height of every glyph.
+pub(crate) fn formula_ink(ctx: &LayoutContext<'_>, items: &[Item]) -> (f64, f64) {
+    let mut above: f64 = 0.0;
+    let mut below: f64 = 0.0;
+    for item in items {
+        let (top, bottom) = match item {
+            Item::Text(text) => {
+                let family = crate::style::chosen_family(&text.run, &text.text);
+                let metrics = ctx.font.metrics(&family, text.run.bold, text.run.italic);
+                let bounds = text
+                    .text
+                    .chars()
+                    .filter_map(|ch| {
+                        ctx.font
+                            .glyph_vertical_em(&family, ch, text.run.bold, text.run.italic)
+                    })
+                    .reduce(|a, b| (a.0.max(b.0), a.1.max(b.1)))
+                    .unwrap_or((metrics.ascent_em(), metrics.descender));
+                (
+                    text.baseline - bounds.0 * text.size_px,
+                    text.baseline + bounds.1 * text.size_px,
+                )
+            }
+            Item::Line(line) => (
+                line.y1.min(line.y2) - line.width / 2.0,
+                line.y1.max(line.y2) + line.width / 2.0,
+            ),
+            Item::Rect(rect) => (
+                rect.y - rect.stroke_w / 2.0,
+                rect.y + rect.h + rect.stroke_w / 2.0,
+            ),
+            Item::Path(path) => (
+                path.y - path.stroke_w / 2.0,
+                path.y + path.h + path.stroke_w / 2.0,
+            ),
+            Item::Image(image) => (image.y, image.y + image.h),
+        };
+        above = above.max(-top);
+        below = below.max(bottom);
+    }
+    (above, below)
+}
+
+fn resolve_math_line_metrics(
+    line: &mut LineBuilder,
+    mut height: f64,
+    mut ascent: f64,
+) -> (f64, f64) {
+    let natural = height.max(1.0);
+    if line.ink_height > 0.0 || line.ink_depth > 0.0 {
+        ascent = ascent.max(line.ink_height);
+        height = height.max(ascent + line.ink_depth);
+        let allowed = natural * MAX_MATH_LINE_GROWTH;
+        if height > allowed && !line.inline_fraction {
+            let excess = height - natural;
+            let factor = ((allowed - natural) / excess).clamp(0.0, 1.0);
+            line.ink_height *= factor;
+            line.ink_depth *= factor;
+            ascent = ascent.max(line.ink_height);
+            height = allowed.max(ascent + line.ink_depth);
+        }
+    }
+    (height, ascent)
+}
+
+fn warn_inline_vertical_overflow(
+    ctx: &LayoutContext<'_>,
+    line: &LineBuilder,
+    ascent: f64,
+    height: f64,
+) {
+    if line.ink_height == 0.0 && line.ink_depth == 0.0 {
+        return;
+    }
+    let (above, below) = formula_ink(ctx, &line.graphics);
+    let excess = (above - ascent).max(ascent + below - height);
+    if excess > 0.25 {
+        ctx.warn(format!("render.math-line-overflow: inline formula extends {excess:.3} px beyond its reserved vertical line box"));
+    }
 }
 
 /// Accumulates finished lines and break/image flows in order.
@@ -1033,7 +1170,12 @@ fn blocked_line_bottom(sink: &LineSink<'_, '_>, line_height: f64) -> Option<f64>
         }
         // A full-width band (TopAndBottom) or any exclusion that leaves no free
         // span advances past its bottom rather than placing ink inside it.
-        bottom = Some(bottom.map_or(exclusion.bottom, |value: f64| value.max(exclusion.bottom)));
+        let edge = if exclusion.contour.is_some() {
+            line_top + line_height
+        } else {
+            exclusion.bottom
+        };
+        bottom = Some(bottom.map_or(edge, |value: f64| value.max(edge)));
     }
     bottom
 }
@@ -1141,7 +1283,26 @@ fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64,
         if sink.line_y + line_height <= exclusion.top || sink.line_y >= exclusion.bottom {
             continue;
         }
-        apply_side(&mut spans, exclusion);
+        if let Some(contour) = &exclusion.contour {
+            let occupied = contour.intervals(
+                sink.line_y + exclusion.page_y,
+                sink.line_y + line_height + exclusion.page_y,
+            );
+            if exclusion.side == WrapSide::Both {
+                for (left, right) in occupied {
+                    subtract(&mut spans, left, right);
+                }
+            } else if let (Some(first), Some(last)) = (occupied.first(), occupied.last()) {
+                let bounds = WrapExclusion {
+                    left: first.0,
+                    right: last.1,
+                    ..exclusion.clone()
+                };
+                apply_side(&mut spans, &bounds);
+            }
+        } else {
+            apply_side(&mut spans, exclusion);
+        }
     }
     spans.retain(|(start, end)| *end - *start > 0.5);
     spans
@@ -1420,8 +1581,8 @@ fn apply_substitute_width_reflow(
             | strict_ooxml_wml::model::values::Justification::Distribute
     );
     let scale_for = |item: &TextItem| -> f64 {
-        let family = crate::font::map_family(&item.run.family);
-        let scale = crate::font::substitute_width_scale(family, item.run.bold);
+        let family = crate::style::chosen_family(&item.run, &item.text);
+        let scale = crate::font::substitute_width_scale(&family, item.run.bold);
         if item.run.bold && !allow_bold {
             1.0
         } else {
@@ -1488,6 +1649,76 @@ fn apply_substitute_width_reflow(
     }
 }
 
+/// Carry text-origin corrections through to formulas and inline drawings.
+fn reflow_with_graphics(
+    line: &mut LineBuilder,
+    alignment: strict_ooxml_wml::model::values::Justification,
+) {
+    if line.graphics.is_empty() {
+        apply_substitute_width_reflow(&mut line.items, alignment);
+        return;
+    }
+    let original: Vec<f64> = line.items.iter().map(|text| text.x + text.width).collect();
+    apply_substitute_width_reflow(&mut line.items, alignment);
+    for graphic in &mut line.graphics {
+        let left = item_left(graphic);
+        let shift = original
+            .iter()
+            .zip(&line.items)
+            .filter(|(right, _)| **right <= left + 1e-6)
+            .max_by(|(a, _), (b, _)| a.total_cmp(b))
+            .map_or(0.0, |(right, text)| text.x + text.width - right);
+        *graphic = shift_item(graphic.clone(), shift, 0.0);
+    }
+}
+
+/// Reports advance, outline and object edges independently.
+fn warn_line_overflow(ctx: &LayoutContext<'_>, line: &LineBuilder, right_edge: f64) {
+    if let Some(item) = line
+        .items
+        .iter()
+        .find(|item| item.x + item.width > right_edge + 0.25)
+    {
+        ctx.warn(format!(
+            "render.line-overflow: text {:?}, family {:?}, x={:.3}, width={:.3}, right={:.3}, limit={:.3}",
+            item.text.chars().take(96).collect::<String>(), item.run.family,
+            item.x, item.width, item.x + item.width, right_edge,
+        ));
+    }
+    for item in line
+        .items
+        .iter()
+        .filter(|item| item.x + item.width + item.size_px * 2.0 > right_edge)
+    {
+        if let Some(ink_right) = crate::paint::text::text_ink_right(item) {
+            if ink_right > right_edge + 0.25 {
+                ctx.warn(format!(
+                    "render.glyph-overflow: text {:?}, family {:?}, ink_right={ink_right:.3}, advance_right={:.3}, limit={right_edge:.3}",
+                    item.text.chars().take(96).collect::<String>(), item.run.family, item.x + item.width,
+                ));
+                break;
+            }
+        }
+    }
+    if let Some(item) = line
+        .graphics
+        .iter()
+        .find(|item| item_right(item) > right_edge + 0.25)
+    {
+        let kind = match item {
+            Item::Text(_) => "formula text",
+            Item::Rect(_) => "rectangle",
+            Item::Line(_) => "line",
+            Item::Path(_) => "path",
+            Item::Image(_) => "image",
+        };
+        ctx.warn(format!(
+            "render.object-overflow: {kind}, right={:.3}, limit={right_edge:.3}",
+            item_right(item)
+        ));
+    }
+}
+
 /// Finalizes a line: baseline, justification and alignment.
 fn finish_line(
     ctx: &LayoutContext<'_>,
@@ -1526,6 +1757,21 @@ fn finish_line(
             .count();
         if gaps > 0 {
             let extra = (line_width - used) / gaps as f64;
+            let boundaries: Vec<f64> = line
+                .items
+                .iter()
+                .filter(|item| item.text.ends_with(' '))
+                .map(|item| item.x + item.width)
+                .collect();
+            for graphic in &mut line.graphics {
+                let left = item_left(graphic);
+                let shift = boundaries
+                    .iter()
+                    .filter(|right| **right <= left + 1e-6)
+                    .count() as f64
+                    * extra;
+                *graphic = shift_item(graphic.clone(), shift, 0.0);
+            }
             let mut shift = 0.0;
             for item in &mut line.items {
                 item.x += shift;
@@ -1555,40 +1801,21 @@ fn finish_line(
 
     // After wrap + justify + alignment: stretch Tinos to WPS Times metrics.
     if ctx.options.wps_times_calibration {
-        apply_substitute_width_reflow(&mut line.items, computed.alignment);
+        reflow_with_graphics(&mut line, computed.alignment);
     }
 
-    if line
-        .items
-        .iter()
-        .any(|item| item.x + item.width > right_edge + 0.25)
-        || line
-            .graphics
-            .iter()
-            .any(|item| item_right(item) > right_edge + 0.25)
-    {
-        ctx.warn("render.line-overflow: a glyph extends past the line's right edge".to_owned());
-    }
+    warn_line_overflow(ctx, &line, right_edge);
 
     let (mut height, mut ascent) =
         resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
-    // A formula may be taller or deeper than the text it sits on. The line keeps
-    // the paragraph's natural height and grows only by what the formula's box
-    // needs, capped so that a genuinely tall construct cannot push the following
-    // line off the producer's grid (STAGE-5C-REWORK-1 C1).
-    let natural = height.max(1.0);
+    (height, ascent) = resolve_math_line_metrics(&mut line, height, ascent);
+    // The nominal cap is a spacing preference, never permission to overlap
+    // adjacent lines. Reserve only the actual painted extent beyond it.
     if line.ink_height > 0.0 || line.ink_depth > 0.0 {
-        ascent = ascent.max(line.ink_height);
-        height = height.max(ascent + line.ink_depth);
-        let allowed = natural * MAX_MATH_LINE_GROWTH;
-        if height > allowed {
-            let excess = height - natural;
-            let factor = ((allowed - natural) / excess).clamp(0.0, 1.0);
-            line.ink_height *= factor;
-            line.ink_depth *= factor;
-            ascent = ascent.max(line.ink_height);
-            height = allowed.max(ascent + line.ink_depth);
-        }
+        let (above, below) = formula_ink(ctx, &line.graphics);
+        let depth = (height - ascent).max(0.0);
+        ascent = ascent.max(above);
+        height = height.max(ascent + depth.max(below));
     }
     // An inline drawing keeps its full extent: the line grows to hold it, as
     // Word does, instead of being capped like a formula.
@@ -1605,6 +1832,7 @@ fn finish_line(
         ascent = ascent.max(line.object_height);
         height = height.max(ascent + depth);
     }
+    warn_inline_vertical_overflow(ctx, &line, ascent, height);
     for item in &mut line.items {
         item.baseline = ascent;
         apply_vertical_align(item);
@@ -1762,7 +1990,8 @@ fn resolve_line_metrics(
     grid_line_pitch: Option<f64>,
 ) -> (f64, f64) {
     let run = item.map_or(&computed.default_run, |item| &item.run);
-    let metrics = ctx.font.metrics(&run.family, run.bold, run.italic);
+    let family = crate::style::chosen_family(run, item.map_or("", |text| text.text.as_str()));
+    let metrics = ctx.font.metrics(&family, run.bold, run.italic);
     let size_px = ctx.size_px(run.size_pt);
     let natural_height = (metrics.line_height_em() * size_px).max(1.0);
     let natural_ascent = metrics.ascent_em() * size_px;
@@ -1891,12 +2120,22 @@ fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
             Seg::Text(text, run) => width += ctx.measure(text, run),
             Seg::Object(_, object_width, _) => width += object_width,
             Seg::Math(boxed, _) => width += boxed.size.width,
+            Seg::FieldResult(kind, format, run) => {
+                let marker = crate::fields::FieldMarker {
+                    kind: *kind,
+                    format: *format,
+                };
+                let (value, format) = ctx.field_env.get().map_or(
+                    (1, format.unwrap_or(crate::notes::NumberFormat::Decimal)),
+                    |env| env.resolve(marker),
+                );
+                width += ctx.measure(&format.format(value), run);
+            }
             Seg::Tab | Seg::Break | Seg::PageBreak | Seg::Image(_) | Seg::MathParagraph(_) => break,
             Seg::Anchor(_)
             | Seg::FootnoteMarker(_, _)
             | Seg::EndnoteMarker(_, _)
-            | Seg::NoteNumber(_)
-            | Seg::FieldResult(_, _, _) => {}
+            | Seg::NoteNumber(_) => {}
         }
     }
     width

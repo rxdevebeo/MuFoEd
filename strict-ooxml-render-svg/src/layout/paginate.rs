@@ -7,11 +7,11 @@ use strict_ooxml_core::error::Result;
 
 use crate::error::RenderError;
 use crate::layout::exclusions::PageExclusion;
-use crate::layout::floating::{page_exclusion, PendingAnchor};
+use crate::layout::floating::{page_exclusion, PendingAnchor, WrapSide};
 use crate::layout::paragraph::layout_paragraph;
 use crate::layout::table::{
-    frame_group_end, frame_placement, framed_table_items, layout_blocks_inline,
-    layout_frame_contents, layout_table, offset_item, table_uniform_frame,
+    frame_placement, framed_table_items, layout_blocks_inline, layout_frame_contents, layout_table,
+    offset_item, table_uniform_frame,
 };
 use crate::layout::{
     geometry_for, Flow, Geometry, Item, Layout, LayoutContext, LineItem, PlacedPage, TableRowFlow,
@@ -360,8 +360,15 @@ fn layout_blocks(
             return Ok(());
         }
         if let Block::Paragraph(para) = block {
-            if para.props.frame.is_some() {
-                let end = frame_group_end(blocks, index);
+            if let Some(frame) = compute_paragraph(ctx.document, para).frame {
+                let mut end = index + 1;
+                while let Some(Block::Paragraph(next)) = blocks.get(end) {
+                    let computed = compute_paragraph(ctx.document, next);
+                    if computed.page_break_before || computed.frame.as_ref() != Some(&frame) {
+                        break;
+                    }
+                    end += 1;
+                }
                 let group = blocks.get(index..end).unwrap_or_default();
                 place_frame_group(ctx, group, paginator)?;
                 pending_after = 0.0;
@@ -440,8 +447,8 @@ fn place_body_paragraph(
     let local_exclusions: Vec<_> = paginator
         .wrap_exclusions
         .iter()
-        .copied()
-        .map(|exclusion| exclusion.to_paragraph_local(host_y_pred))
+        .cloned()
+        .map(|exclusion| exclusion.into_paragraph_local(host_y_pred))
         .collect();
     let flow = layout_paragraph(
         ctx,
@@ -509,7 +516,8 @@ fn place_frame_group(
     let Some(Block::Paragraph(first)) = blocks.first() else {
         return Ok(());
     };
-    let Some(frame) = first.props.frame.as_ref() else {
+    let computed = compute_paragraph(ctx.document, first);
+    let Some(frame) = computed.frame.as_ref() else {
         return Ok(());
     };
     let scale = ctx.options.scale;
@@ -529,6 +537,41 @@ fn place_frame_group(
     let (items, anchors, height) =
         layout_frame_contents(ctx, blocks, origin_x, origin_y + resume, frame_width);
     ctx.frame_advance(frame, height);
+    if frame.wrap.as_deref() != Some("none") {
+        let declared_height = frame
+            .height
+            .map_or(0.0, |value| crate::units::twips_to_px(value.value(), scale));
+        let frame_height = if frame.height_rule.as_deref() == Some("exact") {
+            declared_height
+        } else {
+            declared_height.max(resume + height)
+        };
+        let horizontal_gap = frame
+            .h_space
+            .map_or(0.0, |value| crate::units::twips_to_px(value.value(), scale));
+        let vertical_gap = frame
+            .v_space
+            .map_or(0.0, |value| crate::units::twips_to_px(value.value(), scale));
+        let (left, right) = if frame.wrap.as_deref() == Some("notBeside") {
+            (
+                paginator.geometry.left,
+                paginator.geometry.left + paginator.geometry.content_width(),
+            )
+        } else {
+            (
+                origin_x - horizontal_gap,
+                origin_x + frame_width + horizontal_gap,
+            )
+        };
+        paginator.wrap_exclusions.push(PageExclusion {
+            left,
+            right,
+            top: origin_y - vertical_gap,
+            bottom: origin_y + frame_height + vertical_gap,
+            side: WrapSide::Both,
+            contour: None,
+        });
+    }
     for (host_y, anchor) in anchors {
         paginator.anchors.push(PendingAnchor {
             page,
@@ -643,8 +686,8 @@ fn append_note_blocks(
                 let local_exclusions: Vec<_> = paginator
                     .wrap_exclusions
                     .iter()
-                    .copied()
-                    .map(|exclusion| exclusion.to_paragraph_local(host_y_pred))
+                    .cloned()
+                    .map(|exclusion| exclusion.into_paragraph_local(host_y_pred))
                     .collect();
                 let flow = layout_paragraph(
                     ctx,

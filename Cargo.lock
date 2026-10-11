@@ -2371,10 +2371,14 @@ dependencies = [
 name = "strict-ooxml-view"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "sha2",
  "strict-ooxml",
  "strict-ooxml-core",
  "strict-ooxml-testkit",
+ "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
